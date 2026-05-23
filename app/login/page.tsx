@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // If already authenticated, redirect to home
@@ -26,6 +27,7 @@ export default function LoginPage() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       setError(null);
+      setInfoMessage(null);
 
       if (!email.trim() || !password) {
         setError('Please enter your email and password');
@@ -41,19 +43,27 @@ export default function LoginPage() {
 
       try {
         if (mode === 'signup') {
-          await signUp(email.trim(), password, displayName.trim() || undefined);
+          const result = await signUp(email.trim(), password, displayName.trim() || undefined);
+          if (result?.needsConfirmation) {
+            setInfoMessage('Account created! Check your email to confirm, then sign in.');
+            setMode('signin');
+            return;
+          }
+          router.push('/');
         } else {
           await signIn(email.trim(), password);
+          router.push('/');
         }
-        router.push('/');
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Invalid email or password';
-        setError(
-          message.includes('Invalid login')
-            ? 'Invalid email or password'
-            : message
-        );
+        if (message.includes('Invalid login') || message.includes('Invalid')) {
+          setError('Invalid email or password');
+        } else if (message.includes('not confirmed')) {
+          setError('Email not confirmed yet. Check your inbox.');
+        } else {
+          setError(message);
+        }
       } finally {
         setSubmitting(false);
       }
@@ -80,14 +90,14 @@ export default function LoginPage() {
         <div className="mode-toggle">
           <button
             className={`mode-btn ${mode === 'signin' ? 'active' : ''}`}
-            onClick={() => { setMode('signin'); setError(null); }}
+            onClick={() => { setMode('signin'); setError(null); setInfoMessage(null); }}
             disabled={submitting}
           >
             Sign In
           </button>
           <button
             className={`mode-btn ${mode === 'signup' ? 'active' : ''}`}
-            onClick={() => { setMode('signup'); setError(null); }}
+            onClick={() => { setMode('signup'); setError(null); setInfoMessage(null); }}
             disabled={submitting}
           >
             Sign Up
@@ -158,6 +168,7 @@ export default function LoginPage() {
           </div>
 
           {error && <div className="form-error">{error}</div>}
+          {infoMessage && <div className="form-info">{infoMessage}</div>}
 
           <button
             type="submit"
@@ -356,6 +367,16 @@ export default function LoginPage() {
           border-radius: 8px;
           padding: 8px 12px;
           color: var(--accent-red, #f87171);
+          font-size: 13px;
+          line-height: 1.4;
+        }
+
+        .form-info {
+          background: rgba(6, 182, 212, 0.1);
+          border: 1px solid rgba(6, 182, 212, 0.25);
+          border-radius: 8px;
+          padding: 8px 12px;
+          color: var(--accent-cyan, #06b6d4);
           font-size: 13px;
           line-height: 1.4;
         }

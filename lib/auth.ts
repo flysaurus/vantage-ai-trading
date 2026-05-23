@@ -61,7 +61,7 @@ export async function signUp(
   email: string,
   password: string,
   displayName?: string
-): Promise<{ user: User; session: VantageSession }> {
+): Promise<{ user: User; session: VantageSession | null; needsConfirmation: boolean }> {
   const supabase = createClient();
 
   const { data, error } = await supabase.auth.signUp({
@@ -78,10 +78,26 @@ export async function signUp(
     throw new Error(error.message);
   }
 
-  if (!data.user || !data.session) {
-    throw new Error('Sign up failed — no user or session returned');
+  if (!data.user) {
+    throw new Error('Sign up failed — no user returned');
   }
 
+  // Email confirmation required — user created but no session yet
+  if (!data.session) {
+    return {
+      user: {
+        id: data.user.id,
+        email: data.user.email || email,
+        displayName: displayName || email.split('@')[0],
+        avatarUrl: undefined,
+        createdAt: data.user.created_at,
+      },
+      session: null,
+      needsConfirmation: true,
+    };
+  }
+
+  // Auto-confirmed — session available immediately
   const user: User = {
     id: data.user.id,
     email: data.user.email || email,
@@ -98,7 +114,7 @@ export async function signUp(
 
   storeSession(session);
 
-  return { user, session };
+  return { user, session, needsConfirmation: false };
 }
 
 // ─── Sign Out ─────────────────────────────────────────────────

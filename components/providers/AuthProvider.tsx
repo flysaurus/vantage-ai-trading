@@ -23,7 +23,7 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, displayName?: string) => Promise<void>;
+  signUp: (email: string, password: string, displayName?: string) => Promise<{ needsConfirmation: boolean } | void>;
   signOut: () => Promise<void>;
 }
 
@@ -125,6 +125,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string, displayName?: string) => {
       const result = await authSignUp(email, password, displayName);
+      if (result.needsConfirmation) {
+        return { needsConfirmation: true };
+      }
       setUser(result.user);
       setSession(result.session);
     },
