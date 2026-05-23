@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -28,29 +28,22 @@ function AppShell() {
   const { activeTab } = useTabStore();
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
-  const TabContent = TAB_COMPONENTS[activeTab];
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (!isLoading && !isAuthenticated && !redirecting) {
+      setRedirecting(true);
       router.push('/login');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, redirecting, router]);
 
-  // Loading state — subtle pulse animation
-  if (isLoading) {
-    return (
-      <div className="app-shell">
-        <div className="loading-screen">
-          <div className="loading-logo">
-            <span className="logo">Vantage</span>
-          </div>
-          <div className="loading-spinner" />
-        </div>
-      </div>
-    );
+  // During initial load, show nothing — avoid SSR spinner mismatch
+  // The useEffect above handles redirection within milliseconds
+  if (isLoading || (!isAuthenticated && !redirecting)) {
+    return null;
   }
 
-  // Redirecting — render nothing while router pushes
+  // Router is pushing to /login
   if (!isAuthenticated) {
     return null;
   }
@@ -62,7 +55,7 @@ function AppShell() {
         <MarketBar />
         <WatchlistBar />
         <div className="content-area">
-          <TabContent />
+          {React.createElement(TAB_COMPONENTS[activeTab])}
         </div>
         <BottomNav />
       </div>
