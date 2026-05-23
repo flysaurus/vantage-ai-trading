@@ -13,6 +13,7 @@ import { createClient, createServerClient } from './supabase';
 import type { User, VantageSession } from '@/types';
 
 const SESSION_KEY = 'vantage-session';
+const USER_KEY = 'vantage-user';
 
 // ─── Sign In ──────────────────────────────────────────────────
 
@@ -192,6 +193,37 @@ export function clearSession(): void {
   if (typeof window === 'undefined') return;
   try {
     sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
+// ─── User Storage (avoids blocking API call on mount) ────────
+
+export function getUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
+export function storeUser(user: User): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    console.error('[Auth] Failed to store user in sessionStorage');
+  }
+}
+
+export function clearUser(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(USER_KEY);
   } catch {
     // Ignore
   }

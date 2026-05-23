@@ -13,7 +13,7 @@ import React, {
   useRef,
 } from 'react';
 import type { User, VantageSession } from '@/types';
-import { getSession, storeSession, clearSession, signIn as authSignIn, signUp as authSignUp, signOut as authSignOut, refreshSession } from '@/lib/auth';
+import { getSession, storeSession, clearSession, getUser, storeUser, clearUser, signIn as authSignIn, signUp as authSignUp, signOut as authSignOut, refreshSession } from '@/lib/auth';
 
 // ─── Context Type ─────────────────────────────────────────────
 
@@ -48,44 +48,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ─── Session Detection on Mount ────────────────────────────
 
   useEffect(() => {
+    let mounted = true;
+    const safetyTimeout = setTimeout(() => {
+      if (mounted) setIsLoading(false);
+    }, 5000); // Safety: never spin longer than 5 seconds
+
     const stored = getSession();
 
-    if (stored) {
-      setSession(stored);
-
-      // Fetch current user data
-      import('@/lib/supabase')
-        .then(({ createClient }) => {
-          const supabase = createClient();
-          return supabase.auth.getUser(stored.token);
-        })
-        .then(({ data, error }) => {
-          if (error || !data.user) {
-            clearSession();
-            setSession(null);
-          } else {
-            setUser({
-              id: data.user.id,
-              email: data.user.email || '',
-              displayName:
-                data.user.user_metadata?.display_name ||
-                data.user.email?.split('@')[0] ||
-                'Trader',
-              avatarUrl: data.user.user_metadata?.avatar_url,
-              createdAt: data.user.created_at,
-            });
-          }
-        })
-        .catch(() => {
-          clearSession();
-          setSession(null);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else {
+    if (!stored) {
+      clearTimeout(safetyTimeout);
       setIsLoading(false);
+      return;
     }
+
+    // Load user from sessionStorage immediately (no API call needed)
+    const storedUser = getUser();
+    if (storedUser) {
+      setUser(storedUser);
+      setSession(stored);
+      clearTimeout(safetyTimeout);
+      setIsLoading(false);
+      return;
+    }
+
+    // No stored user — validate session token with Supabase
+    // (this should only happen for sessions created before we added user storage)
+    setSession(stored);
+
+    import('@/lib/supabase')
+      .then(({ createClient }) => {
+        const supabase = createClient();
+        return supabase.auth.getUser(stored.token);
+      })
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        if (error || !data.user) {
+          clearSession();
+          clearUser();
+          setSession(null);
+        } else {
+          const u: User = {
+            id: data.user.id,
+            email: data.user.email || '',
+            displayName:
+              data.user.user_metadata?.display_name ||
+              data.user.email?.split('@')[0] ||
+              'Trader',
+            avatarUrl: data.user.user_metadata?.avatar_url,
+            createdAt: data.user.created_at,
+          };
+          setUser(u);
+          storeUser(u); // Cache for next visit
+        }
+      })
+      .catch(() => {
+        if (!mounted) return;
+        clearSession();
+        clearUser();
+        setSession(null);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        clearTimeout(safetyTimeout);
+        setIsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   // ─── Token Refresh ─────────────────────────────────────────
@@ -120,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await authSignIn(email, password);
     setUser(result.user);
     setSession(result.session);
+    storeUser(result.user);
   }, []);
 
   const signUp = useCallback(
@@ -130,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setUser(result.user);
       setSession(result.session);
+      storeUser(result.user);
     },
     []
   );
@@ -138,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await authSignOut();
     setUser(null);
     setSession(null);
+    clearUser();
   }, []);
 
   // ─── Context Value ─────────────────────────────────────────
