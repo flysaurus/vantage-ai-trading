@@ -1,0 +1,282 @@
+// ─── Supabase Database Types ──────────────────────────────────
+// Auto-generated types from the Supabase schema.
+// In production, generate these with:
+//   npx supabase gen types typescript --project-id <id> > types/supabase.ts
+//
+// For now, we define the minimal types needed for the auth + vault system.
+
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: {
+          id: string;
+          email: string | null;
+          display_name: string | null;
+          avatar_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          email?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      vault: {
+        Row: {
+          id: string;
+          user_id: string;
+          encrypted_api_key: string;
+          encrypted_secret_key: string;
+          master_password_hash: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          encrypted_api_key: string;
+          encrypted_secret_key: string;
+          master_password_hash: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          encrypted_api_key?: string;
+          encrypted_secret_key?: string;
+          master_password_hash?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      chat_history: {
+        Row: {
+          id: string;
+          user_id: string;
+          role: 'user' | 'assistant' | 'system';
+          content: string;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          role: 'user' | 'assistant' | 'system';
+          content: string;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+        };
+        Update: Record<string, unknown>;
+      };
+      trade_history: {
+        Row: {
+          id: string;
+          user_id: string;
+          alpaca_order_id: string | null;
+          symbol: string;
+          side: 'buy' | 'sell';
+          type: string;
+          qty: number;
+          filled_price: number | null;
+          total_value: number | null;
+          status: string;
+          bracket: Record<string, unknown> | null;
+          ai_suggestion_id: string | null;
+          created_at: string;
+          filled_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          alpaca_order_id?: string | null;
+          symbol: string;
+          side: 'buy' | 'sell';
+          type?: string;
+          qty: number;
+          filled_price?: number | null;
+          total_value?: number | null;
+          status?: string;
+          bracket?: Record<string, unknown> | null;
+          ai_suggestion_id?: string | null;
+          created_at?: string;
+          filled_at?: string | null;
+        };
+        Update: Record<string, unknown>;
+      };
+      ai_suggestions: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: 'buy' | 'sell' | 'hold' | 'rebalance' | 'insight';
+          symbol: string | null;
+          conviction: number | null;
+          title: string;
+          reason: string | null;
+          metrics: Record<string, unknown>;
+          status: 'pending' | 'accepted' | 'rejected' | 'expired';
+          executed_trade_id: string | null;
+          created_at: string;
+          expires_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          type: 'buy' | 'sell' | 'hold' | 'rebalance' | 'insight';
+          symbol?: string | null;
+          conviction?: number | null;
+          title: string;
+          reason?: string | null;
+          metrics?: Record<string, unknown>;
+          status?: 'pending' | 'accepted' | 'rejected' | 'expired';
+          executed_trade_id?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+        };
+        Update: {
+          status?: 'pending' | 'accepted' | 'rejected' | 'expired';
+          executed_trade_id?: string | null;
+        };
+      };
+      alerts: {
+        Row: {
+          id: string;
+          user_id: string;
+          symbol: string;
+          type: 'price_above' | 'price_below' | 'volume_spike' | 'technical';
+          threshold: number;
+          is_active: boolean;
+          triggered_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          symbol: string;
+          type: 'price_above' | 'price_below' | 'volume_spike' | 'technical';
+          threshold: number;
+          is_active?: boolean;
+          triggered_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          is_active?: boolean;
+          triggered_at?: string | null;
+        };
+      };
+      account_snapshots: {
+        Row: {
+          id: string;
+          user_id: string;
+          equity: number;
+          cash: number;
+          buying_power: number;
+          day_pnl: number;
+          total_pnl: number;
+          positions: Record<string, unknown>[];
+          confidence_score: number | null;
+          snapshot_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          equity?: number;
+          cash?: number;
+          buying_power?: number;
+          day_pnl?: number;
+          total_pnl?: number;
+          positions?: Record<string, unknown>[];
+          confidence_score?: number | null;
+          snapshot_at?: string;
+        };
+        Update: Record<string, unknown>;
+      };
+      watchlists: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          symbols: string[];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name?: string;
+          symbols?: string[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          symbols?: string[];
+          updated_at?: string;
+        };
+      };
+      market_cache: {
+        Row: {
+          symbol: string;
+          data: Record<string, unknown>;
+          cached_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          symbol: string;
+          data: Record<string, unknown>;
+          cached_at?: string;
+          expires_at: string;
+        };
+        Update: {
+          data?: Record<string, unknown>;
+          cached_at?: string;
+          expires_at?: string;
+        };
+      };
+    };
+    Functions: {
+      vault_store_keys: {
+        Args: {
+          p_user_id: string;
+          p_api_key: string;
+          p_secret_key: string;
+          p_master_hash: string;
+          p_encryption_key: string;
+        };
+        Returns: void;
+      };
+      vault_get_keys: {
+        Args: {
+          p_user_id: string;
+          p_encryption_key: string;
+        };
+        Returns: { api_key: string; secret_key: string }[];
+      };
+      vault_get_password_hash: {
+        Args: {
+          p_user_id: string;
+        };
+        Returns: string;
+      };
+      vault_clear_keys: {
+        Args: {
+          p_user_id: string;
+        };
+        Returns: void;
+      };
+    };
+  };
+}
