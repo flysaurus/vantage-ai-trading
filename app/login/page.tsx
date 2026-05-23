@@ -1,13 +1,14 @@
 // ─── Login Page ───────────────────────────────────────────────
-// Simple, clean login screen with email + password form.
-// Designed for mobile-first with the app's dark theme.
+// Professional auth flow with clear feedback at every step.
+// Handles: sign in, sign up, email confirmation, resend, errors.
 
 'use client';
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
+import { resendConfirmation } from '@/lib/auth';
+import { Eye, EyeOff, LogIn, UserPlus, Mail, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,23 +20,28 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // If already authenticated, redirect to home
+  // Confirmation sent state
+  const [confirmationSent, setConfirmationSent] = useState(false);
+  const [confirmedEmail, setConfirmedEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  // ─── Submit Handler ─────────────────────────────────────────
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       setError(null);
-      setInfoMessage(null);
 
       if (!email.trim() || !password) {
-        setError('Please enter your email and password');
+        setError('Please enter your email and password.');
         return;
       }
 
       if (password.length < 6) {
-        setError('Password must be at least 6 characters');
+        setError('Password must be at least 6 characters.');
         return;
       }
 
@@ -45,22 +51,29 @@ export default function LoginPage() {
         if (mode === 'signup') {
           const result = await signUp(email.trim(), password, displayName.trim() || undefined);
           if (result?.needsConfirmation) {
-            setInfoMessage('Account created! Check your email to confirm, then sign in.');
-            setMode('signin');
+            setConfirmedEmail(email.trim());
+            setConfirmationSent(true);
             return;
           }
+          // Auto-confirmed — straight to app
           router.push('/');
         } else {
           await signIn(email.trim(), password);
           router.push('/');
         }
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : 'Invalid email or password';
-        if (message.includes('Invalid login') || message.includes('Invalid')) {
-          setError('Invalid email or password');
-        } else if (message.includes('not confirmed')) {
-          setError('Email not confirmed yet. Check your inbox.');
+      } catch (err: any) {
+        const message = err?.message || 'Something went wrong. Please try again.';
+
+        if (message.toLowerCase().includes('invalid login') || message.includes('Invalid')) {
+          setError('Invalid email or password.');
+        } else if (message.toLowerCase().includes('not confirmed') || message.includes('not verified')) {
+          setError('Email not verified yet. Please check your inbox for the confirmation link.');
+        } else if (message.toLowerCase().includes('rate limit') || message.includes('too many')) {
+          setError('Too many attempts. Please wait a moment and try again.');
+        } else if (message.toLowerCase().includes('already registered') || message.includes('already exists')) {
+          setError('An account with this email already exists. Try signing in instead.');
+        } else if (message.toLowerCase().includes('network') || message.includes('fetch')) {
+          setError('Network error. Please check your connection and try again.');
         } else {
           setError(message);
         }
@@ -71,11 +84,263 @@ export default function LoginPage() {
     [email, password, displayName, mode, signIn, signUp, router]
   );
 
-  // Redirect if already authenticated
+  // ─── Resend Confirmation ─────────────────────────────────────
+
+  const handleResendConfirmation = useCallback(async () => {
+    setResending(true);
+    setResendMessage(null);
+    try {
+      const result = await resendConfirmation(confirmedEmail);
+      setResendMessage(result.message);
+    } catch {
+      setResendMessage('Unable to resend. Please try again later.');
+    } finally {
+      setResending(false);
+    }
+  }, [confirmedEmail]);
+
+  // ─── Redirect if authenticated ──────────────────────────────
+
   if (isAuthenticated && !isLoading) {
     router.push('/');
     return null;
   }
+
+  // ─── Loading Screen ─────────────────────────────────────────
+
+  if (isLoading) {
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <div className="login-logo">
+            <span className="logo-gradient">Vantage</span>
+          </div>
+          <div className="loading-spinner-center" />
+        </div>
+        <style jsx>{`
+          .loading-spinner-center {
+            width: 24px;
+            height: 24px;
+            margin: 24px auto 0;
+            border: 2px solid rgba(6, 182, 212, 0.2);
+            border-top-color: var(--accent-cyan, #06b6d4);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+          }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ─── Confirmation Sent Screen ───────────────────────────────
+
+  if (confirmationSent) {
+    return (
+      <div className="login-page">
+        <div className="login-card confirmation-card">
+          <button
+            className="back-button"
+            onClick={() => { setConfirmationSent(false); setError(null); }}
+          >
+            <ArrowLeft size={16} />
+            Back to sign in
+          </button>
+
+          <div className="confirmation-icon">
+            <Mail size={40} />
+          </div>
+
+          <h2 className="confirmation-title">Verify your email</h2>
+
+          <p className="confirmation-text">
+            We&apos;ve sent a verification link to
+          </p>
+          <p className="confirmation-email">{confirmedEmail}</p>
+
+          <div className="confirmation-steps">
+            <div className="step">
+              <span className="step-num">1</span>
+              <span>Open your inbox and find the email from Vantage</span>
+            </div>
+            <div className="step">
+              <span className="step-num">2</span>
+              <span>Click the confirmation link in the email</span>
+            </div>
+            <div className="step">
+              <span className="step-num">3</span>
+              <span>Return here and sign in with your credentials</span>
+            </div>
+          </div>
+
+          {resendMessage && (
+            <div className={`resend-status ${resendMessage.includes('resent') ? 'success' : 'warning'}`}>
+              {resendMessage}
+            </div>
+          )}
+
+          <button
+            className="resend-button"
+            onClick={handleResendConfirmation}
+            disabled={resending}
+          >
+            {resending ? (
+              <span className="spinner" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            Resend verification email
+          </button>
+
+          <p className="confirmation-note">
+            Didn&apos;t get it? Check your spam folder, or try a different email address.
+          </p>
+        </div>
+
+        <style jsx>{`
+          .confirmation-card {
+            text-align: center;
+          }
+          .back-button {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: none;
+            border: none;
+            color: var(--text-muted, #94a3b8);
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            margin-bottom: 24px;
+            padding: 4px 0;
+          }
+          .back-button:hover {
+            color: var(--text-primary, #f1f5f9);
+          }
+          .confirmation-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 16px;
+            background: rgba(6, 182, 212, 0.1);
+            border: 2px solid rgba(6, 182, 212, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-cyan, #06b6d4);
+          }
+          .confirmation-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary, #f1f5f9);
+            margin: 0 0 8px;
+          }
+          .confirmation-text {
+            color: var(--text-muted, #94a3b8);
+            font-size: 14px;
+            margin: 0 0 4px;
+          }
+          .confirmation-email {
+            color: var(--accent-cyan, #06b6d4);
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0 0 24px;
+            word-break: break-all;
+          }
+          .confirmation-steps {
+            text-align: left;
+            background: var(--bg-input, #0f172a);
+            border: 1px solid var(--border-primary, #334155);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 20px;
+          }
+          .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            color: var(--text-secondary, #cbd5e1);
+            font-size: 13px;
+            line-height: 1.5;
+          }
+          .step + .step {
+            border-top: 1px solid var(--border-subtle, #1e293b);
+          }
+          .step-num {
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(6, 182, 212, 0.15);
+            border-radius: 50%;
+            color: var(--accent-cyan, #06b6d4);
+            font-size: 12px;
+            font-weight: 700;
+          }
+          .resend-status {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 12px;
+          }
+          .resend-status.success {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+          }
+          .resend-status.warning {
+            background: rgba(250, 204, 21, 0.1);
+            border: 1px solid rgba(250, 204, 21, 0.2);
+            color: #facc15;
+          }
+          .resend-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--border-primary, #334155);
+            border-radius: 8px;
+            color: var(--text-secondary, #cbd5e1);
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            margin-bottom: 12px;
+          }
+          .resend-button:hover:not(:disabled) {
+            border-color: var(--accent-cyan, #06b6d4);
+            color: var(--accent-cyan, #06b6d4);
+          }
+          .resend-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .confirmation-note {
+            color: var(--text-dim, #64748b);
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(6, 182, 212, 0.3);
+            border-top-color: var(--accent-cyan, #06b6d4);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+          }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ─── Login / Sign Up Form ───────────────────────────────────
 
   return (
     <div className="login-page">
@@ -90,14 +355,14 @@ export default function LoginPage() {
         <div className="mode-toggle">
           <button
             className={`mode-btn ${mode === 'signin' ? 'active' : ''}`}
-            onClick={() => { setMode('signin'); setError(null); setInfoMessage(null); }}
+            onClick={() => { setMode('signin'); setError(null); }}
             disabled={submitting}
           >
             Sign In
           </button>
           <button
             className={`mode-btn ${mode === 'signup' ? 'active' : ''}`}
-            onClick={() => { setMode('signup'); setError(null); setInfoMessage(null); }}
+            onClick={() => { setMode('signup'); setError(null); }}
             disabled={submitting}
           >
             Sign Up
@@ -167,8 +432,12 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {error && <div className="form-error">{error}</div>}
-          {infoMessage && <div className="form-info">{infoMessage}</div>}
+          {error && (
+            <div className="form-error">
+              <ShieldCheck size={14} className="error-icon" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -266,6 +535,11 @@ export default function LoginPage() {
           animation: fadeIn 0.4s ease-out;
         }
 
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         .login-logo {
           text-align: center;
           margin-bottom: 4px;
@@ -321,9 +595,7 @@ export default function LoginPage() {
           outline: none;
         }
 
-        .form-input::placeholder {
-          color: var(--text-dim, #64748b);
-        }
+        .form-input::placeholder { color: var(--text-dim, #64748b); }
 
         .form-input:focus {
           border-color: var(--accent-cyan, #06b6d4);
@@ -338,11 +610,9 @@ export default function LoginPage() {
         .password-wrapper {
           position: relative;
         }
-
         .password-wrapper .form-input {
           padding-right: 40px;
         }
-
         .password-toggle {
           position: absolute;
           right: 10px;
@@ -356,29 +626,25 @@ export default function LoginPage() {
           display: flex;
           align-items: center;
         }
-
         .password-toggle:hover {
           color: var(--text-primary, #f1f5f9);
         }
 
         .form-error {
-          background: rgba(248, 113, 113, 0.1);
-          border: 1px solid rgba(248, 113, 113, 0.25);
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          background: rgba(248, 113, 113, 0.08);
+          border: 1px solid rgba(248, 113, 113, 0.2);
           border-radius: 8px;
-          padding: 8px 12px;
+          padding: 10px 12px;
           color: var(--accent-red, #f87171);
           font-size: 13px;
-          line-height: 1.4;
+          line-height: 1.5;
         }
-
-        .form-info {
-          background: rgba(6, 182, 212, 0.1);
-          border: 1px solid rgba(6, 182, 212, 0.25);
-          border-radius: 8px;
-          padding: 8px 12px;
-          color: var(--accent-cyan, #06b6d4);
-          font-size: 13px;
-          line-height: 1.4;
+        .error-icon {
+          flex-shrink: 0;
+          margin-top: 1px;
         }
 
         .form-submit {
@@ -399,16 +665,13 @@ export default function LoginPage() {
           transition: opacity 0.2s, transform 0.1s;
           margin-top: 4px;
         }
-
         .form-submit:hover:not(:disabled) {
           opacity: 0.92;
           transform: translateY(-1px);
         }
-
         .form-submit:active:not(:disabled) {
           transform: translateY(0);
         }
-
         .form-submit:disabled {
           opacity: 0.6;
           cursor: not-allowed;
@@ -422,12 +685,7 @@ export default function LoginPage() {
           border-radius: 50%;
           animation: spin 0.6s linear infinite;
         }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .login-divider {
           display: flex;
@@ -436,7 +694,6 @@ export default function LoginPage() {
           color: var(--text-dim, #64748b);
           font-size: 12px;
         }
-
         .login-divider::before,
         .login-divider::after {
           content: '';
@@ -444,10 +701,7 @@ export default function LoginPage() {
           height: 1px;
           background: var(--border-subtle, #1e293b);
         }
-
-        .login-divider span {
-          padding: 0 12px;
-        }
+        .login-divider span { padding: 0 12px; }
 
         .form-google {
           display: flex;
@@ -466,19 +720,14 @@ export default function LoginPage() {
           cursor: pointer;
           transition: border-color 0.2s;
         }
-
         .form-google:hover:not(:disabled) {
           border-color: var(--accent-cyan, #06b6d4);
         }
-
         .form-google:disabled {
           opacity: 0.4;
           cursor: not-allowed;
         }
-
-        .google-icon {
-          flex-shrink: 0;
-        }
+        .google-icon { flex-shrink: 0; }
 
         .login-footer {
           text-align: center;
@@ -486,7 +735,6 @@ export default function LoginPage() {
           font-size: 13px;
           color: var(--text-muted, #94a3b8);
         }
-
         .link-button {
           background: none;
           border: none;
@@ -496,21 +744,7 @@ export default function LoginPage() {
           font-weight: 600;
           font-family: inherit;
         }
-
-        .link-button:hover {
-          text-decoration: underline;
-        }
-
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
+        .link-button:hover { text-decoration: underline; }
 
         .mode-toggle {
           display: flex;
@@ -520,7 +754,6 @@ export default function LoginPage() {
           padding: 3px;
           margin-bottom: 20px;
         }
-
         .mode-btn {
           flex: 1;
           padding: 8px;
@@ -534,13 +767,11 @@ export default function LoginPage() {
           cursor: pointer;
           transition: all 0.2s;
         }
-
         .mode-btn.active {
           background: var(--bg-secondary, #1e293b);
           color: var(--text-primary, #f1f5f9);
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         }
-
         .mode-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;

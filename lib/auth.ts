@@ -117,6 +117,31 @@ export async function signUp(
   return { user, session, needsConfirmation: false };
 }
 
+// ─── Resend Confirmation ──────────────────────────────────────
+
+export async function resendConfirmation(
+  email: string
+): Promise<{ success: boolean; message: string }> {
+  const supabase = createClient();
+
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email,
+  });
+
+  if (error) {
+    if (error.message?.includes('rate limit') || error.status === 429) {
+      return { success: false, message: 'Please wait before requesting another email.' };
+    }
+    if (error.message?.includes('already confirmed') || error.message?.includes('already verified')) {
+      return { success: false, message: 'Email is already verified. Please sign in.' };
+    }
+    return { success: false, message: 'Unable to resend. Please try again later.' };
+  }
+
+  return { success: true, message: 'Verification email resent. Check your inbox!' };
+}
+
 // ─── Sign Out ─────────────────────────────────────────────────
 
 export async function signOut(): Promise<void> {
