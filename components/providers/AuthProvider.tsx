@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               'Trader',
             avatarUrl: data.user.user_metadata?.avatar_url,
             investorStyle: (data.user.user_metadata?.investor_style as InvestorStyle) || 'buffett',
-            investorStyleSetAt: null,
+            investorStyleSetAt: undefined,
             investorStyleOnboarded: false,
             createdAt: data.user.created_at,
           };

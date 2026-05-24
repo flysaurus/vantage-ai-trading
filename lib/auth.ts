@@ -28,7 +28,7 @@ function buildUser(
     displayName: displayName || (su.user_metadata as any)?.display_name || email.split('@')[0],
     avatarUrl: (su.user_metadata as any)?.avatar_url,
     investorStyle: ((su.user_metadata as any)?.investor_style as InvestorStyle) || 'buffett',
-    investorStyleSetAt: null,
+    investorStyleSetAt: undefined,
     investorStyleOnboarded: false,
     createdAt: su.created_at,
   };
@@ -40,7 +40,7 @@ function placerUser(email: string, displayName?: string): User {
     email,
     displayName: displayName || email.split('@')[0],
     investorStyle: 'buffett',
-    investorStyleSetAt: null,
+    investorStyleSetAt: undefined,
     investorStyleOnboarded: false,
     createdAt: '',
   };

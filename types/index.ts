@@ -147,16 +147,32 @@ export interface WatchlistItem {
 export type InvestorStyle = 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger';
 
 export interface StyleRecommendation {
-  action: 'BUY_MORE' | 'HOLD' | 'SELL';
+  recommendation: 'BUY_MORE' | 'HOLD' | 'SELL';
   confidence: number; // 0-1
-  reason: string;
+  reasoning: string;
+}
+
+export interface PositionStyleRecommendations {
+  buffett: StyleRecommendation;
+  lynch: StyleRecommendation;
+  livermore: StyleRecommendation;
+  soros: StyleRecommendation;
+  munger: StyleRecommendation;
+}
+
+export interface AllStylesRecommendation {
+  buffett: 'BUY_MORE' | 'HOLD' | 'SELL';
+  lynch: 'BUY_MORE' | 'HOLD' | 'SELL';
+  livermore: 'BUY_MORE' | 'HOLD' | 'SELL';
+  soros: 'BUY_MORE' | 'HOLD' | 'SELL';
+  munger: 'BUY_MORE' | 'HOLD' | 'SELL';
 }
 
 export interface PortfolioAnalysis {
   id: string;
   userId: string;
 
-  // Basic metrics
+  // Portfolio metrics
   totalValue: number;
   totalGain: number;
   totalReturn: number;
@@ -168,19 +184,24 @@ export interface PortfolioAnalysis {
   styleRecommendation: 'BUY_MORE' | 'HOLD' | 'SELL' | 'REBALANCE';
   styleInsights: string[];
 
-  // Conflict
+  // Conflict detection
   hasConflict: boolean;
-  conflictSeverity: 'low' | 'medium' | 'high' | null;
-  conflictAlert: string | null;
+  conflictSeverity?: 'low' | 'medium' | 'high';
+  conflictAlert?: string;
 
-  // All 5 styles
-  allStylesRecommendation: Record<InvestorStyle, string | null>;
+  // All styles comparison
+  allStylesRecommendation: AllStylesRecommendation;
 
-  // Per-position recommendations
-  positionRecommendations: Record<string, Record<InvestorStyle, StyleRecommendation>> | null;
+  // Position-level recommendations (keyed by symbol)
+  positionRecommendations: {
+    [symbol: string]: PositionStyleRecommendations;
+  };
 
+  // Metadata
   analyzedAt: string;
-  cachedUntil: string | null;
+  cachedUntil: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Auth ───
@@ -190,7 +211,7 @@ export interface User {
   displayName: string;
   avatarUrl?: string;
   investorStyle: InvestorStyle;
-  investorStyleSetAt: string | null;
+  investorStyleSetAt?: string;
   investorStyleOnboarded: boolean;
   createdAt: string;
 }
