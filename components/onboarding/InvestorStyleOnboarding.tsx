@@ -76,7 +76,13 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
         }}
       >
         {step === 'welcome' && (
-          <OnboardingWelcome onNext={() => setStep('selection')} />
+          <OnboardingWelcome
+            onNext={() => setStep('selection')}
+            onSkip={() => {
+              // Skip saves default style + onboarded flag so it never re-triggers
+              onComplete('buffett');
+            }}
+          />
         )}
 
         {step === 'selection' && (

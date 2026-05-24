@@ -95,9 +95,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               data.user.email?.split('@')[0] ||
               'Trader',
             avatarUrl: data.user.user_metadata?.avatar_url,
-            investorStyle: (data.user.user_metadata?.investor_style as InvestorStyle) || 'buffett',
+            investorStyle: (data.user.user_metadata?.investor_style as InvestorStyle) ||
+              (typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') as InvestorStyle || 'buffett' : 'buffett'),
             investorStyleSetAt: undefined,
-            investorStyleOnboarded: false,
+            investorStyleOnboarded:
+              typeof window !== 'undefined'
+                ? localStorage.getItem('vantage:onboarded') === 'true'
+                : false,
             createdAt: data.user.created_at,
           };
           setUser(u);

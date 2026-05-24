@@ -79,18 +79,21 @@ function AppShell() {
         <InvestorStyleOnboarding
           userId={user.id}
           onComplete={(style) => {
-            // Persist to localStorage (survives tab close, more reliable than sessionStorage)
+            // Persist immediately — localStorage is synchronous, survives everything
             if (typeof window !== 'undefined') {
               localStorage.setItem('vantage:onboarded', 'true');
               localStorage.setItem('vantage:investorStyle', style);
             }
-            // Also update sessionStorage cache
-            const cached = getUser();
-            if (cached) {
-              storeUser({ ...cached, investorStyleOnboarded: true, investorStyle: style });
-            }
+            // Also update sessionStorage cache (optional, nice-to-have)
+            try {
+              const cached = getUser();
+              if (cached) {
+                storeUser({ ...cached, investorStyleOnboarded: true, investorStyle: style });
+              }
+            } catch { /* ignore */ }
             setShowOnboarding(false);
-            window.location.reload();
+            // Small delay to ensure localStorage flush before reload
+            setTimeout(() => window.location.reload(), 100);
           }}
         />
       )}

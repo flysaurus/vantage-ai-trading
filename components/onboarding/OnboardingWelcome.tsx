@@ -4,9 +4,10 @@ import React from 'react';
 
 interface Props {
   onNext: () => void;
+  onSkip: () => void;
 }
 
-export function OnboardingWelcome({ onNext }: Props) {
+export function OnboardingWelcome({ onNext, onSkip }: Props) {
   return (
     <div style={{ padding: 32 }}>
       {/* Icon */}
@@ -83,7 +84,7 @@ export function OnboardingWelcome({ onNext }: Props) {
       {/* Skip */}
       <div style={{ textAlign: 'center', marginTop: 14 }}>
         <button
-          onClick={onNext}
+          onClick={onSkip}
           style={{
             background: 'none',
             border: 'none',
@@ -93,7 +94,7 @@ export function OnboardingWelcome({ onNext }: Props) {
             textDecoration: 'underline',
           }}
         >
-          Skip for now
+          Skip — I'll set this up later in Settings
         </button>
       </div>
     </div>
