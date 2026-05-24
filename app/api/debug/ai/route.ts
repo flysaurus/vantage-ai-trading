@@ -80,7 +80,7 @@ export async function GET() {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': claudeKey,
-          'anthropic-version': '2025-01-02',
+          'anthropic-version': '2023-06-01',
         },
         body: { model: 'claude-3-5-haiku-20241022', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }], stream: false },
         timeoutMs: 15000,
