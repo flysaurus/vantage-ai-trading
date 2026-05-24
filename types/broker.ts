@@ -99,7 +99,7 @@ export interface BrokerOrder {
 }
 
 export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit' | 'trailing_stop';
-export type OrderStatus = 'new' | 'pending' | 'filled' | 'partially_filled' | 'cancelled' | 'rejected' | 'expired';
+export type OrderStatus = 'new' | 'pending' | 'filled' | 'partially_filled' | 'cancelled' | 'rejected' | 'expired' | 'open';
 export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
 
 export interface OrderParams {

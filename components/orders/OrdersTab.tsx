@@ -13,10 +13,7 @@ export function OrdersTab() {
   const { setTab } = useTabStore();
   const { account } = usePortfolio();
 
-  const filtered =
-    activeFilter === 'all'
-      ? orders
-      : orders.filter((o) => o.status === activeFilter);
+  // useOrders hook already pre-filters by activeFilter (open includes pending/partially_filled)
 
   const counts = {
     open: allOrders.filter(
@@ -200,7 +197,7 @@ export function OrdersTab() {
       )}
 
       {/* Empty state */}
-      {filtered.length === 0 && !loading && (
+      {orders.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
           {activeFilter === 'open'
             ? 'No open orders — ready to place your first trade?'
@@ -209,7 +206,7 @@ export function OrdersTab() {
       )}
 
       {/* Orders List */}
-      {filtered.map((order) => (
+      {orders.map((order) => (
         <div key={order.id} className={`order-card ${order.status}`}>
           <div
             style={{

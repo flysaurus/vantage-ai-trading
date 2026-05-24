@@ -67,9 +67,9 @@ export function useOrders() {
       setLoading(true);
       setError(null);
 
-      // Fetch all order statuses
-      const [openOrders, filledOrders] = await Promise.all([
-        broker.getOrders({ status: 'new' }),
+      // Fetch all order statuses in one call
+      const [allOpenOrders, filledOrders] = await Promise.all([
+        broker.getOrders({ status: 'open' }),
         broker
           .getOrders({ status: 'filled', limit: 20 })
           .catch(() => []),
@@ -77,18 +77,8 @@ export function useOrders() {
 
       if (!mountedRef.current) return;
 
-      // Also get pending/partial orders
-      const pendingOrders = await broker
-        .getOrders({ status: 'accepted' as OrderStatus })
-        .catch(() => []);
-      const partialOrders = await broker
-        .getOrders({ status: 'partially_filled' as OrderStatus })
-        .catch(() => []);
-
       const allOrders = [
-        ...openOrders,
-        ...pendingOrders,
-        ...partialOrders,
+        ...allOpenOrders,
         ...filledOrders,
       ];
 
@@ -173,7 +163,10 @@ export function useOrders() {
   const filteredOrders =
     activeFilter === 'all'
       ? orders
-      : orders.filter((o) => o.status === activeFilter);
+      : orders.filter((o) => {
+          if (activeFilter === 'open') return o.status === 'open' || o.status === 'pending';
+          return o.status === activeFilter;
+        });
 
   return {
     orders: filteredOrders,
