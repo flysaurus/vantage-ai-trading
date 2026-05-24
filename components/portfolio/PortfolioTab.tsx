@@ -9,6 +9,8 @@ export function PortfolioTab() {
   const store = usePortfolioStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showSellPanel, setShowSellPanel] = useState(false);
+  const [sortBy, setSortBy] = useState<'pct' | 'name' | 'sector' | 'pnl'>('pct');
+  const [sortOpen, setSortOpen] = useState(false);
   const [sellSubmitting, setSellSubmitting] = useState(false);
   const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
 
@@ -109,6 +111,23 @@ export function PortfolioTab() {
       refresh();
     }
   };
+
+  // ── Sorted positions ─────────────────────────────────────
+  const sortedPositions = (() => {
+    if (!account?.positions) return [];
+    const list = [...account.positions];
+    switch (sortBy) {
+      case 'name':
+        return list.sort((a, b) => a.symbol.localeCompare(b.symbol));
+      case 'sector':
+        return list.sort((a, b) => (a.sector || 'ZZZ').localeCompare(b.sector || 'ZZZ'));
+      case 'pnl':
+        return list.sort((a, b) => b.totalPnl - a.totalPnl);
+      case 'pct':
+      default:
+        return list.sort((a, b) => b.portfolioPercent - a.portfolioPercent);
+    }
+  })();
 
   // Loading state — skeleton shimmer
   if (loading && !account) {
@@ -282,11 +301,57 @@ export function PortfolioTab() {
                 Sell {selected.size} Selected
               </button>
             )}
-            <button className="sort-btn">Sort: % ▼</button>
+            {/* Sort dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setSortOpen(!sortOpen)}
+                style={{
+                  fontSize: 10, fontWeight: 600, padding: '4px 8px',
+                  background: '#1e293b', border: '1px solid #334155',
+                  borderRadius: 6, color: 'var(--text-muted)', cursor: 'pointer',
+                }}
+              >
+                Sort: {sortBy === 'pct' ? '%' : sortBy === 'pnl' ? 'P&L' : sortBy === 'name' ? 'ABC' : 'Sector'} ▾
+              </button>
+              {sortOpen && (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 9 }}
+                    onClick={() => setSortOpen(false)}
+                  />
+                  <div style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 10,
+                    background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 4,
+                    minWidth: 130, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                  }}>
+                    {([
+                      { key: 'pct', label: '% Value' },
+                      { key: 'name', label: 'Name (A-Z)' },
+                      { key: 'sector', label: 'Sector' },
+                      { key: 'pnl', label: 'P&L' },
+                    ] as const).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => { setSortBy(key); setSortOpen(false); }}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '6px 10px', fontSize: 11, borderRadius: 6,
+                          background: sortBy === key ? 'rgba(6,182,212,0.12)' : 'transparent',
+                          border: 'none', color: sortBy === key ? '#06b6d4' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {account.positions.map((pos) => (
+        {sortedPositions.map((pos) => (
           <div key={pos.symbol} className={`pos-row ${selected.has(pos.symbol) ? 'selected' : ''}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -527,6 +592,21 @@ export function PortfolioTab() {
                                 style={{ flex: 1, padding: '5px 0', background: 'transparent', border: 'none', color: '#f1f5f9', fontSize: 11, outline: 'none' }}
                               />
                             </div>
+                            {/* Stop order validation */}
+                            {cfg.orderType === 'stop' && cfg.stopPrice && (() => {
+                              const pos = account?.positions.find(p => p.symbol === symbol);
+                              const sp = parseFloat(cfg.stopPrice);
+                              const cp = pos?.currentPrice;
+                              if (cp && !isNaN(sp) && sp >= cp) {
+                                return (
+                                  <div style={{ fontSize: 9, color: '#fbbf24', marginTop: 3 }}>
+                                    ⚠ Stop ${sp.toFixed(2)} is above current price ($${cp.toFixed(2)}).
+                                    For sell stops, stop price must be below market.
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         )}
                         <div>
