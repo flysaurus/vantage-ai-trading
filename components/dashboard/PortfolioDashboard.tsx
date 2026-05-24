@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useStockRecommendations } from '@/hooks/useStockRecommendations';
 import { StockRecommendationCard } from '@/components/advisor/StockRecommendationCard';
+import ConflictAlert from '@/components/advisor/ConflictAlert';
+import { detectConflict, type ConflictAnalysis } from '@/lib/advisor/conflict-detection';
 import { useTabStore } from '@/store';
 import type { InvestorStyle } from '@/types';
 
@@ -47,8 +49,31 @@ const STYLE_EMOJIS: Record<string, string> = {
 
 // ─── Position Row ─────────────────────────────────────────────
 
-function PositionRow({ position, selectedStyle }: { position: Position; selectedStyle: InvestorStyle }) {
-  const { recommendations, isLoading, isError, error } = useStockRecommendations(position.symbol, true);
+function PositionRow({
+  position,
+  selectedStyle,
+  onDataLoaded,
+}: {
+  position: Position;
+  selectedStyle: InvestorStyle;
+  onDataLoaded?: (symbol: string, data: Record<string, unknown>) => void;
+}) {
+  const { recommendations, stockData, isLoading, isError, error } = useStockRecommendations(position.symbol, true);
+
+  // Report stock data upward for conflict detection
+  useEffect(() => {
+    if (stockData && onDataLoaded) {
+      onDataLoaded(position.symbol, {
+        dividendYield: (stockData as any).dividendYield,
+        pe: (stockData as any).pe,
+        pb: (stockData as any).pb,
+        revenueGrowth: (stockData as any).revenueGrowth,
+        payoutRatio: (stockData as any).payoutRatio,
+        currentPrice: stockData.currentPrice,
+        price200ma: stockData.price200ma,
+      });
+    }
+  }, [stockData, position.symbol, onDataLoaded]);
 
   return (
     <div
@@ -164,7 +189,16 @@ export default function PortfolioDashboard({
   const { user } = useAuth();
   const { setTab } = useTabStore();
   const [showEmpty, setShowEmpty] = useState(false);
+  const [dismissedConflict, setDismissedConflict] = useState(false);
+  const stockDataMap = useRef<Record<string, Record<string, unknown>>>({});
+  const [conflictVersion, setConflictVersion] = useState(0); // bump to recalc
 
+  const handleDataLoaded = useCallback((symbol: string, data: Record<string, unknown>) => {
+    stockDataMap.current[symbol] = data;
+    setConflictVersion(v => v + 1);
+  }, []);
+
+  // Compute conflict from accumulated stock data
   // Short delay to prevent flash on fast loads
   React.useEffect(() => {
     const t = setTimeout(() => setShowEmpty(true), 300);
@@ -181,6 +215,20 @@ export default function PortfolioDashboard({
 
   const selectedStyle = (user.investorStyle || 'buffett') as InvestorStyle;
   const isPositive = totalReturn >= 0;
+
+  // ── Conflict detection ─────────────────────────────────────
+  const conflictAnalysis = useMemo<ConflictAnalysis>(() => {
+    if (Object.keys(stockDataMap.current).length === 0) {
+      return { hasConflict: false, severity: 'low', conflictMessage: '', metrics: {}, suggestions: [] };
+    }
+    return detectConflict(selectedStyle, positions, stockDataMap.current as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictVersion, selectedStyle]);
+
+  // Reset dismissal when conflict severity changes
+  useEffect(() => {
+    setDismissedConflict(false);
+  }, [conflictAnalysis.severity]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -286,6 +334,14 @@ export default function PortfolioDashboard({
         </div>
       </div>
 
+      {/* ── Style Conflict Alert ── */}
+      {!dismissedConflict && conflictAnalysis.hasConflict && (
+        <ConflictAlert
+          analysis={conflictAnalysis}
+          onDismiss={() => setDismissedConflict(true)}
+        />
+      )}
+
       {/* ── Position Recommendations ── */}
       {positions.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -305,6 +361,7 @@ export default function PortfolioDashboard({
               key={pos.symbol}
               position={pos}
               selectedStyle={selectedStyle}
+              onDataLoaded={handleDataLoaded}
             />
           ))}
         </div>
