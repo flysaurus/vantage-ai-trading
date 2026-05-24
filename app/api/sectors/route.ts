@@ -92,5 +92,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // ─── Tier 3: Known ETF detection ───
+  const unresolved = Object.entries(sectors).filter(([_, s]) => !s);
+  if (unresolved.length > 0) {
+    // Common ETF patterns: starts with X, SPY-like, ends with specific letters
+    const etfPattern = /^(XL[KEFUVIR]|SPY|QQQ|IWM|DIA|VOO|VTI|ARK[KFGQWX]|SOXX|SMH|URA|GDX|SLV|GLD|TLT|BND|AGG|HYG|LQD|VNQ|EEM|EFA|IVV|RSP|XLP|XLE|XLF|XLI|XLB|XLY|XLU|XLV|XRT|IYR|KRE|XME|ICLN|TAN)$/;
+    for (const [symbol] of unresolved) {
+      if (etfPattern.test(symbol)) {
+        sectors[symbol] = 'ETF';
+      }
+    }
+  }
+
   return NextResponse.json({ sectors });
 }

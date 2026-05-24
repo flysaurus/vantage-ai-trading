@@ -67,6 +67,9 @@ export function finnhubIndustryToSector(finnhubIndustry: string): string | null 
   // Normalize
   const fi = finnhubIndustry.trim();
 
+  // ETF detection
+  if (fi === 'N/A' || fi === 'ETF' || fi === '' || fi.toLowerCase().includes('exchange traded')) return 'ETF';
+
   // Direct GICS sector matches
   if (fi === 'Technology' || fi.includes('Software') || fi.includes('Semiconductor') || fi.includes('IT Services')) return 'Technology';
   if (fi === 'Financial Services' || fi.includes('Bank') || fi.includes('Insurance') || fi.includes('Capital Markets') || fi.includes('Mortgage')) return 'Financial Services';
