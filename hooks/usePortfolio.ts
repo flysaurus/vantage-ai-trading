@@ -287,7 +287,7 @@ export function usePortfolio() {
       
       if (unknownSymbols.length > 0) {
         try {
-          const res = await fetch(`/api/alpaca/sectors?symbols=${unknownSymbols.join(',')}`);
+          const res = await fetch(`/api/sectors?symbols=${unknownSymbols.join(',')}`);
           if (res.ok) {
             const data = await res.json();
             const resolved: Record<string, string | null> = data.sectors || {};
