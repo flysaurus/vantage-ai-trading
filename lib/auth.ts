@@ -76,11 +76,30 @@ export async function signUp(
   });
 
   if (error) {
+    // User already exists (from a previous signup attempt) —
+    // treat as "needs confirmation" instead of an error
+    if (error.message?.toLowerCase().includes('already registered') ||
+        error.message?.toLowerCase().includes('already exists') ||
+        error.message?.toLowerCase().includes('already signed up') ||
+        error.status === 422) {
+      return {
+        user: { id: '', email, displayName: displayName || email.split('@')[0], createdAt: '' },
+        session: null,
+        needsConfirmation: true,
+      };
+    }
     throw new Error(error.message);
   }
 
+  // Some Supabase configurations return null user/session on signUp
+  // when email confirmation is enabled — user IS created, just not returned.
+  // Treat this as needsConfirmation rather than an error.
   if (!data.user) {
-    throw new Error('Sign up failed — no user returned');
+    return {
+      user: { id: '', email, displayName: displayName || email.split('@')[0], createdAt: '' },
+      session: null,
+      needsConfirmation: true,
+    };
   }
 
   // Email confirmation required — user created but no session yet
