@@ -153,15 +153,10 @@ export function estimateTokens(text: string): number {
  * Estimate USD cost based on model and token counts.
  */
 export function estimateCost(
-  model: 'deepseek-chat' | 'deepseek-reasoner' | 'claude-3-haiku-20240307',
+  model: 'deepseek-chat' | 'deepseek-reasoner',
   inputTokens: number,
   outputTokens: number
 ): number {
-  // Claude 3 Haiku pricing: $0.25/$1.25 per 1M tokens
-  if (model === 'claude-3-haiku-20240307') {
-    return (inputTokens / 1_000_000) * 0.25 + (outputTokens / 1_000_000) * 1.25;
-  }
-
   const inputRate =
     model === 'deepseek-reasoner'
       ? DEEPSEEK_REASONER_COST_PER_1K_INPUT

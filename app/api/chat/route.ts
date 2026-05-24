@@ -207,10 +207,9 @@ function sendSSE(
 
 export async function POST(request: NextRequest) {
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  const claudeKey = process.env.CLAUDE_API_KEY;
 
-  if (!deepseekKey && !claudeKey) {
-    console.warn('No AI providers configured — using fallback message');
+  if (!deepseekKey) {
+    console.warn('DeepSeek not configured — using fallback message');
     return handleFallback(request);
   }
 
@@ -237,10 +236,9 @@ export async function POST(request: NextRequest) {
     const inputTokens = estimateTokens(systemPrompt) +
       messages.reduce((sum: number, m: { content: string }) => sum + estimateTokens(m.content), 0);
 
-    // Try chain: DeepSeek → Claude → fallback
+    // Try DeepSeek
     let stream: ReadableStream | null = null;
     let usedModel: string = model;
-    let provider: 'deepseek' | 'claude' = 'deepseek';
 
     try {
       // ── Primary: DeepSeek ──
@@ -267,7 +265,6 @@ export async function POST(request: NextRequest) {
             if (dsRes.ok && dsRes.body) {
               stream = dsRes.body;
               usedModel = model;
-              provider = 'deepseek';
             } else {
               const errBody = await dsRes.text().catch(() => '');
               console.warn(`DeepSeek ${model} returned ${dsRes.status}: ${errBody.slice(0, 200)}`);
@@ -292,7 +289,6 @@ export async function POST(request: NextRequest) {
                 });
                 if (ds2Res.ok && ds2Res.body) {
                   stream = ds2Res.body;
-                  provider = 'deepseek';
                 } else {
                   const err2Body = await ds2Res.text().catch(() => '');
                   console.warn(`DeepSeek chat fallback returned ${ds2Res.status}: ${err2Body.slice(0, 200)}`);
@@ -306,53 +302,10 @@ export async function POST(request: NextRequest) {
         await tryDeepSeek();
       }
 
-      // ── Fallback: Claude (Anthropic) ──
-      if (!stream && claudeKey) {
-        const tryClaude = async () => {
-          try {
-            console.warn('DeepSeek unavailable, falling back to Claude');
-            usedModel = 'claude-3-haiku-20240307';
-            provider = 'claude';
-
-            const anthropicMessages = chatMessages
-              .filter((m: { role: string }) => m.role !== 'system')
-              .map((m: { role: string; content: string }) => ({
-                role: m.role === 'assistant' ? 'assistant' : 'user',
-                content: m.content,
-              }));
-
-            const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': claudeKey,
-                'anthropic-version': '2023-06-01',
-              },
-              body: JSON.stringify({
-                model: 'claude-3-haiku-20240307',
-                max_tokens: 2048,
-                system: systemPrompt,
-                messages: anthropicMessages,
-                stream: true,
-              }),
-              signal: AbortSignal.timeout(60000),
-            });
-
-            if (claudeRes.ok && claudeRes.body) {
-              stream = claudeRes.body;
-            } else {
-              const errBody = await claudeRes.text().catch(() => '');
-              console.warn(`Claude returned ${claudeRes.status}: ${errBody.slice(0, 200)}`);
-            }
-          } catch (e) {
-            console.warn(`Claude unreachable: ${e}`, e instanceof Error ? e.stack : '');
-          }
-        };
-        await tryClaude();
-      }
+      // Claude disabled — DeepSeek only (2026-05-25)
 
       if (!stream) {
-        throw new Error('All AI providers unavailable');
+        throw new Error('DeepSeek unreachable');
       }
     } catch (err) {
       console.error('AI provider error:', err);
@@ -378,58 +331,31 @@ export async function POST(request: NextRequest) {
 
             buffer += decoder.decode(value, { stream: true });
 
-            // Parse SSE (provider-aware)
+            // Parse SSE (DeepSeek — OpenAI-compatible format)
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
-            if (provider === 'claude') {
-              // Claude/Anthropic SSE format
-              for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const data = line.slice(6).trim();
-                try {
-                  const parsed = JSON.parse(data);
-                  if (parsed.type === 'content_block_delta') {
-                    const text = parsed.delta?.text;
-                    if (text) {
-                      outputTokens += estimateTokens(text);
-                      fullResponse += text;
-                      cardBuffer += text;
-                      controller.enqueue(
-                        encoder.encode(
-                          `data: ${JSON.stringify({ event: 'token', content: text })}\n\n`
-                        )
-                      );
-                    }
-                  }
-                } catch {
-                  // Skip unparseable lines
-                }
-              }
-            } else {
-              // DeepSeek / OpenAI-compatible SSE format
-              for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const data = line.slice(6).trim();
-                if (data === '[DONE]') continue;
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') continue;
 
-                try {
-                  const parsed = JSON.parse(data);
-                  const delta = parsed.choices?.[0]?.delta?.content;
-                  if (delta) {
-                    outputTokens += estimateTokens(delta);
-                    fullResponse += delta;
-                    cardBuffer += delta;
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta?.content;
+                if (delta) {
+                  outputTokens += estimateTokens(delta);
+                  fullResponse += delta;
+                  cardBuffer += delta;
 
-                    controller.enqueue(
-                      encoder.encode(
-                        `data: ${JSON.stringify({ event: 'token', content: delta })}\n\n`
-                      )
-                    );
-                  }
-                } catch {
-                  // Skip unparseable lines
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ event: 'token', content: delta })}\n\n`
+                    )
+                  );
                 }
+              } catch {
+                // Skip unparseable lines
               }
             }
 
@@ -505,13 +431,12 @@ export async function POST(request: NextRequest) {
  */
 async function handleFallback(request: NextRequest): Promise<NextResponse> {
   const deepseekSet = !!process.env.DEEPSEEK_API_KEY;
-  const claudeSet = !!process.env.CLAUDE_API_KEY;
   
   let responseText: string;
-  if (!deepseekSet && !claudeSet) {
-    responseText = 'AI is not configured. Add API keys to enable portfolio analysis, trade signals, and market insights.\n\nYou can still view your portfolio, monitor trades, and place orders — AI-powered analysis will be available once configured.';
+  if (!deepseekSet) {
+    responseText = 'AI is not configured. Add a DeepSeek API key to enable portfolio analysis, trade signals, and market insights.\n\nYou can still view your portfolio, monitor trades, and place orders — AI-powered analysis will be available once configured.';
   } else {
-    responseText = 'AI service temporarily unavailable. All configured providers are currently unreachable. This might be a temporary network issue — try again in a moment.\n\nYour portfolio, trades, and orders are unaffected.';
+    responseText = 'AI service temporarily unavailable. DeepSeek is currently unreachable. This might be a temporary network issue — try again in a moment.\n\nYour portfolio, trades, and orders are unaffected.';
   }
 
   const encoder = new TextEncoder();
