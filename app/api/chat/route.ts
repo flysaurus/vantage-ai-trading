@@ -206,10 +206,11 @@ function sendSSE(
 // ─── Route Handler ───
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const claudeKey = process.env.CLAUDE_API_KEY;
 
-  if (!apiKey) {
-    console.warn('AI provider not configured — using fallback message');
+  if (!deepseekKey && !claudeKey) {
+    console.warn('No AI providers configured — using fallback message');
     return handleFallback(request);
   }
 
@@ -236,58 +237,104 @@ export async function POST(request: NextRequest) {
     const inputTokens = estimateTokens(systemPrompt) +
       messages.reduce((sum: number, m: { content: string }) => sum + estimateTokens(m.content), 0);
 
-    // Try primary model
+    // Try chain: DeepSeek → Claude → fallback
     let stream: ReadableStream | null = null;
-    let usedModel = model;
+    let usedModel: string = model;
+    let provider: 'deepseek' | 'claude' = 'deepseek';
 
     try {
-      const primaryRes = await fetch(DEEPSEEK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: chatMessages,
-          stream: true,
-          temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
-          max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-
-      if (primaryRes.ok && primaryRes.body) {
-        stream = primaryRes.body;
-      } else if (model === 'deepseek-reasoner') {
-        // Fallback to chat model if reasoner fails
-        console.warn('DeepSeek reasoner unavailable, falling back to chat model');
-        usedModel = 'deepseek-chat';
-        const fallbackRes = await fetch(DEEPSEEK_URL, {
+      // ── Primary: DeepSeek ──
+      if (deepseekKey) {
+        const dsRes = await fetch(DEEPSEEK_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
+            Authorization: `Bearer ${deepseekKey}`,
           },
           body: JSON.stringify({
-            model: 'deepseek-chat',
+            model,
             messages: chatMessages,
             stream: true,
-            temperature: 0.7,
-            max_tokens: 2048,
+            temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
+            max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
           }),
           signal: AbortSignal.timeout(60000),
         });
-        if (fallbackRes.ok && fallbackRes.body) {
-          stream = fallbackRes.body;
+
+        if (dsRes.ok && dsRes.body) {
+          stream = dsRes.body;
+        } else if (model === 'deepseek-reasoner') {
+          // Reasoner unavailable → try deepseek-chat
+          console.warn('DeepSeek reasoner failed, trying chat model');
+          usedModel = 'deepseek-chat';
+          const ds2Res = await fetch(DEEPSEEK_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${deepseekKey}`,
+            },
+            body: JSON.stringify({
+              model: 'deepseek-chat',
+              messages: chatMessages,
+              stream: true,
+              temperature: 0.7,
+              max_tokens: 2048,
+            }),
+            signal: AbortSignal.timeout(60000),
+          });
+          if (ds2Res.ok && ds2Res.body) {
+            stream = ds2Res.body;
+          } else {
+            console.warn(`DeepSeek chat failed: ${ds2Res.status}, will try Claude`);
+          }
         } else {
-          throw new Error(`Both models failed: primary ${primaryRes.status}, fallback ${fallbackRes.status}`);
+          console.warn(`DeepSeek returned ${dsRes.status}, will try Claude`);
         }
-      } else {
-        throw new Error(`DeepSeek API returned ${primaryRes.status}`);
+      }
+
+      // ── Fallback: Claude (Anthropic) ──
+      if (!stream && claudeKey) {
+        console.warn('DeepSeek unavailable, falling back to Claude');
+        usedModel = 'claude-sonnet-4-20250514';
+        provider = 'claude';
+
+        // Adapt messages for Anthropic format
+        const anthropicMessages = chatMessages
+          .filter((m: { role: string }) => m.role !== 'system')
+          .map((m: { role: string; content: string }) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content,
+          }));
+
+        const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': claudeKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 2048,
+            system: systemPrompt,
+            messages: anthropicMessages,
+            stream: true,
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+
+        if (claudeRes.ok && claudeRes.body) {
+          stream = claudeRes.body;
+        } else {
+          console.warn(`Claude failed: ${claudeRes.status}`);
+        }
+      }
+
+      if (!stream) {
+        throw new Error('All AI providers unavailable');
       }
     } catch (err) {
-      console.error('DeepSeek API error:', err);
+      console.error('AI provider error:', err);
       return handleFallback(request);
     }
 
@@ -310,47 +357,73 @@ export async function POST(request: NextRequest) {
 
             buffer += decoder.decode(value, { stream: true });
 
-            // Parse SSE from DeepSeek (they use `data: {...}` format)
+            // Parse SSE (provider-aware)
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta?.content;
-                if (delta) {
-                  outputTokens += estimateTokens(delta);
-                  fullResponse += delta;
-                  cardBuffer += delta;
-
-                  // Stream token to client
-                  controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({ event: 'token', content: delta })}\n\n`
-                    )
-                  );
-
-                  // Check for complete JSON blocks every ~200 chars
-                  if (cardBuffer.length > 200) {
-                    const cards = tryParseCards(cardBuffer);
-                    if (cards.length > 0) {
-                      for (const card of cards) {
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify({ event: 'card', card })}\n\n`
-                          )
-                        );
-                      }
-                      cardBuffer = ''; // reset buffer after parsing
+            if (provider === 'claude') {
+              // Claude/Anthropic SSE format
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6).trim();
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === 'content_block_delta') {
+                    const text = parsed.delta?.text;
+                    if (text) {
+                      outputTokens += estimateTokens(text);
+                      fullResponse += text;
+                      cardBuffer += text;
+                      controller.enqueue(
+                        encoder.encode(
+                          `data: ${JSON.stringify({ event: 'token', content: text })}\n\n`
+                        )
+                      );
                     }
                   }
+                } catch {
+                  // Skip unparseable lines
                 }
-              } catch {
-                // Skip unparseable lines
+              }
+            } else {
+              // DeepSeek / OpenAI-compatible SSE format
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6).trim();
+                if (data === '[DONE]') continue;
+
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta?.content;
+                  if (delta) {
+                    outputTokens += estimateTokens(delta);
+                    fullResponse += delta;
+                    cardBuffer += delta;
+
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ event: 'token', content: delta })}\n\n`
+                      )
+                    );
+                  }
+                } catch {
+                  // Skip unparseable lines
+                }
+              }
+            }
+
+            // Check for complete JSON blocks every ~200 chars (both providers)
+            if (cardBuffer.length > 200) {
+              const cards = tryParseCards(cardBuffer);
+              if (cards.length > 0) {
+                for (const card of cards) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ event: 'card', card })}\n\n`
+                    )
+                  );
+                }
+                cardBuffer = '';
               }
             }
           }
@@ -367,7 +440,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Send cost info
-          const cost = estimateCost(usedModel as 'deepseek-chat' | 'deepseek-reasoner', inputTokens, outputTokens);
+          const cost = estimateCost(usedModel as any, inputTokens, outputTokens);
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ event: 'cost', tokens: { input: inputTokens, output: outputTokens }, cost })}\n\n`

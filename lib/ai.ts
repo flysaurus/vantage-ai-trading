@@ -153,10 +153,15 @@ export function estimateTokens(text: string): number {
  * Estimate USD cost based on model and token counts.
  */
 export function estimateCost(
-  model: 'deepseek-chat' | 'deepseek-reasoner',
+  model: 'deepseek-chat' | 'deepseek-reasoner' | 'claude-sonnet-4-20250514',
   inputTokens: number,
   outputTokens: number
 ): number {
+  // Claude Sonnet pricing (per 1M tokens)
+  if (model === 'claude-sonnet-4-20250514') {
+    return (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15;
+  }
+
   const inputRate =
     model === 'deepseek-reasoner'
       ? DEEPSEEK_REASONER_COST_PER_1K_INPUT
