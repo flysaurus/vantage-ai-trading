@@ -6,7 +6,7 @@ import type { InvestorStyle } from '@/types';
 
 interface Props {
   selectedStyle: InvestorStyle;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>;
   onBack: () => void;
   loading: boolean;
   error?: string | null;
@@ -125,16 +125,16 @@ export function OnboardingConfirmation({
             opacity: loading ? 0.5 : 1,
           }}
         >
-          Back
+          ← Choose Different
         </button>
         <button
           onClick={onConfirm}
           disabled={loading}
           style={{
-            flex: 2,
+            flex: 1,
             padding: '12px 0',
             borderRadius: 10,
-            background: '#22c55e',
+            background: '#06b6d4',
             color: '#0f172a',
             border: 'none',
             fontSize: 14,
@@ -143,7 +143,7 @@ export function OnboardingConfirmation({
             opacity: loading ? 0.5 : 1,
           }}
         >
-          {loading ? 'Saving...' : 'Confirm & Start Trading'}
+          {loading ? 'Setting up...' : 'Confirm & Continue'}
         </button>
       </div>
     </div>
