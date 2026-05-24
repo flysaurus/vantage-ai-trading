@@ -24,9 +24,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ results: [] });
     }
 
-    // Search assets
+    // Search assets — no exchange filter for maximum coverage
     const res = await fetch(
-      `${API_BASE}/v2/assets?status=active&asset_class=us_equity&search=${encodeURIComponent(q)}&exchange=NASDAQ,NYSE,ARCA`,
+      `${API_BASE}/v2/assets?status=active&asset_class=us_equity&search=${encodeURIComponent(q)}&limit=15`,
       { headers: getHeaders() }
     );
 
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const assets = await res.json();
-    const results = assets.slice(0, 8).map((a: any) => ({
+    const results = assets.slice(0, 12).map((a: any) => ({
       symbol: a.symbol,
       name: a.name || '',
       exchange: a.exchange || '',

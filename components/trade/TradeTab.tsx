@@ -20,6 +20,9 @@ export function TradeTab() {
     return largest.symbol;
   })();
   const [searchSymbol, setSearchSymbol] = useState(defaultSymbol);
+  const [submitting, setSubmitting] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [orderSuccess, setOrderSuccess] = useState('');
 
   const quote = quotes[searchSymbol.toUpperCase()];
   const isBuy = form.side === 'buy';
@@ -31,7 +34,7 @@ export function TradeTab() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <SymbolSearch
           value={searchSymbol}
-          onChange={setSearchSymbol}
+          onChange={(sym) => { setSearchSymbol(sym); updateForm({ symbol: sym }); }}
           positions={holdings}
         />
       </div>
@@ -76,13 +79,17 @@ export function TradeTab() {
         </div>
       )}
 
-      {/* AI Suggestion */}
+      {/* AI Suggestion — contextual */}
+      {quote && (
       <div className="ai-suggestion">
         <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>✨</div>
         <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.4 }}>
-          <strong style={{ color: '#06b6d4' }}>AI suggests:</strong> Limit buy at $375 with stop loss at $370 and take profit at $395. Position size: $500 for 1.2% portfolio allocation.
+          <strong style={{ color: '#06b6d4' }}>{quote.symbol}</strong> — ${quote.last.toFixed(2)} · {' '}
+          {quote.changePercent >= 0 ? '↑' : '↓'} {Math.abs(quote.changePercent).toFixed(2)}% today
+          {quote.bid && quote.ask && <span> · Spread ${(quote.ask - quote.bid).toFixed(2)}</span>}
         </div>
       </div>
+      )}
 
       {/* Order Form */}
       <div className="card">
@@ -297,15 +304,59 @@ export function TradeTab() {
 
         {/* Submit */}
         <button
+          onClick={async () => {
+            if (!form.symbol && !searchSymbol) return;
+            const sym = form.symbol || searchSymbol;
+            setSubmitting(true);
+            setOrderError('');
+            try {
+              const qty = form.qtyType === 'dollars' && quote ? Math.floor(form.qty / quote.last) : form.qty;
+              if (!qty || qty <= 0) { setOrderError('Enter a valid quantity'); setSubmitting(false); return; }
+              const body: any = {
+                symbol: sym.toUpperCase(),
+                qty,
+                side: form.side,
+                type: form.type,
+                time_in_force: form.timeInForce,
+              };
+              if (form.type === 'limit' && form.limitPrice) body.limit_price = form.limitPrice;
+              if (form.type === 'stop' && form.stopPrice) body.stop_price = form.stopPrice;
+              if (form.bracketOrder) {
+                body.order_class = 'bracket';
+                if (form.takeProfit) body.take_profit = { limit_price: form.takeProfit };
+                if (form.stopLoss) body.stop_loss = { stop_price: form.stopLoss };
+              }
+              const res = await fetch('/api/alpaca/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+              const json = await res.json();
+              if (res.ok) {
+                setOrderSuccess(`✓ ${form.side === 'buy' ? 'Bought' : 'Sold'} ${qty} ${sym.toUpperCase()} @ ${form.type}`);
+                updateForm({ qty: 0, limitPrice: undefined, stopPrice: undefined, stopLoss: undefined, takeProfit: undefined });
+              } else {
+                setOrderError(json.error || json.message || 'Order failed');
+              }
+            } catch (e: any) {
+              setOrderError(e.message || 'Network error');
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          disabled={submitting}
           style={{
             width: '100%', padding: 13, border: 'none', borderRadius: 10,
-            fontWeight: 700, fontSize: 14, cursor: 'pointer',
-            background: isBuy ? '#22c55e' : '#ef4444',
-            color: 'white',
+            fontWeight: 700, fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer',
+            background: submitting ? '#334155' : isBuy ? '#22c55e' : '#ef4444',
+            color: submitting ? '#94a3b8' : 'white',
+            opacity: submitting ? 0.7 : 1,
           }}
         >
-          Review & Submit {isBuy ? 'Buy' : 'Sell'} Order
+          {submitting ? 'Submitting...' : `Review & Submit ${isBuy ? 'Buy' : 'Sell'} Order`}
         </button>
+        {orderError && <div style={{ marginTop: 8, fontSize: 11, color: '#f87171', textAlign: 'center', padding: '6px 10px', background: 'rgba(248,113,113,0.1)', borderRadius: 6 }}>{orderError}</div>}
+        {orderSuccess && <div style={{ marginTop: 8, fontSize: 11, color: '#4ade80', textAlign: 'center', padding: '6px 10px', background: 'rgba(74,222,128,0.1)', borderRadius: 6 }}>{orderSuccess}</div>}
       </div>
 
       <style jsx>{`

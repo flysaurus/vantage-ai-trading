@@ -78,13 +78,22 @@ export function PortfolioTab() {
         if (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') {
           body.stop_price = parseFloat(cfg.stopPrice);
         }
-        const res = await fetch('/api/alpaca/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const json = await res.json();
-        results.push({ symbol, ok: res.ok, error: json.error || json.message });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const res = await fetch('/api/alpaca/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+          const json = await res.json();
+          results.push({ symbol, ok: res.ok, error: json.error || json.message });
+        } catch (fetchErr: any) {
+          results.push({ symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
+        } finally {
+          clearTimeout(timeout);
+        }
       } catch (e: any) {
         results.push({ symbol, ok: false, error: e.message });
       }

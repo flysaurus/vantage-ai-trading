@@ -53,7 +53,7 @@ export function SymbolSearch({ value, onChange, placeholder = 'Search symbol...'
         if (res.ok) {
           const json = await res.json();
           const items: SearchResult[] = json.results || [];
-          setResults(items.slice(0, 8));
+          setResults(items.slice(0, 12));
         } else {
           setResults([]);
         }
