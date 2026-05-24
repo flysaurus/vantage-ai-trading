@@ -1,7 +1,7 @@
 // ─── useMarketData ────────────────────────────────────────────
 // Fetches real market data from the broker: index prices,
 // watchlist quotes, and live streaming updates.
-// Replaces the previous mock data implementation.
+// Fetches live market data from the broker.
 
 'use client';
 
@@ -10,18 +10,9 @@ import { useMarketStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import type { MarketIndex, Quote, WatchlistItem } from '@/types';
 
-// Default index tracking ETF symbols
-const DEFAULT_INDEX_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
-
-// Default watchlist symbols
-const DEFAULT_WATCHLIST: WatchlistItem[] = [
-  { symbol: 'NVDA' },
-  { symbol: 'AAPL' },
-  { symbol: 'TSLA' },
-  { symbol: 'META' },
-  { symbol: 'AMZN' },
-  { symbol: 'GOOGL' },
-];
+// Indices and watchlist are now persisted in the market store (localStorage).
+// Defaults are defined in store/index.ts for first-time users only.
+const POLL_INTERVAL = 30000; // 30 seconds
 
 export function useMarketData() {
   const {
@@ -29,6 +20,8 @@ export function useMarketData() {
     setWatchlist,
     updateQuote,
     setMarketOpen,
+    indexSymbols,
+    watchlist,
   } = useMarketStore();
 
   const { broker, connected } = useBroker();
@@ -41,7 +34,7 @@ export function useMarketData() {
 
     try {
       const [quotesResp, marketStatus] = await Promise.all([
-        broker.getQuotes(DEFAULT_INDEX_SYMBOLS),
+        broker.getQuotes(indexSymbols),
         broker.getMarketStatus(),
       ]);
 
@@ -78,9 +71,10 @@ export function useMarketData() {
 
   // Fetch watchlist quotes
   const fetchWatchlist = useCallback(async () => {
-    if (!broker || !connected) return;
+    if (!broker || !connected || watchlist.length === 0) return;
 
-    const symbols = DEFAULT_WATCHLIST.map((w) => w.symbol);
+    try {
+      const symbols = watchlist.map((w) => w.symbol);
 
     try {
       const quotes = await broker.getQuotes(symbols);
@@ -120,9 +114,10 @@ export function useMarketData() {
   const setupStreaming = useCallback(() => {
     if (!broker || !connected) return;
 
+    const store = useMarketStore.getState();
     const allSymbols = [
-      ...DEFAULT_INDEX_SYMBOLS,
-      ...DEFAULT_WATCHLIST.map((w) => w.symbol),
+      ...store.indexSymbols,
+      ...store.watchlist.map((w) => w.symbol),
     ];
 
     try {
@@ -140,7 +135,7 @@ export function useMarketData() {
         });
 
         // Also update index store if it's an index symbol
-        if (DEFAULT_INDEX_SYMBOLS.includes(q.symbol)) {
+        if (useMarketStore.getState().indexSymbols.includes(q.symbol)) {
           const store = useMarketStore.getState();
           const updated = store.indexes.map((idx) =>
             idx.symbol === q.symbol

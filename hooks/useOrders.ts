@@ -1,7 +1,7 @@
 // ─── useOrders ────────────────────────────────────────────────
 // Fetches real order data from the broker adapter.
 // Supports filtering by status and order placement.
-// Replaces the previous mock data implementation.
+// Fetches live data from the broker.
 
 'use client';
 

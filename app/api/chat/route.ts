@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
 
   if (!apiKey) {
-    console.warn('DEEPSEEK_API_KEY not configured — using fallback responses');
+    console.warn('AI provider not configured — using fallback message');
     return handleFallback(request);
   }
 
@@ -406,115 +406,39 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Fallback handler when DeepSeek API key is not configured.
- * Returns mock streaming responses for development and testing.
+ * Graceful fallback when AI provider is not configured.
+ * Returns a single honest message — no fake data, no pretending.
  */
 async function handleFallback(request: NextRequest): Promise<NextResponse> {
-  try {
-    const { message, messages } = await request.json();
-    const userMessage = message || (Array.isArray(messages) && messages.length > 0
-      ? messages[messages.length - 1]?.content
-      : '');
-    const lowerMsg = (typeof userMessage === 'string' ? userMessage : '').toLowerCase();
+  const responseText =
+    'AI is not enabled. Please check your AI configuration to activate portfolio analysis, trade signals, and market insights.\n\nYou can still view your portfolio, monitor trades, and place orders — AI-powered analysis will be available once configured.';
 
-    let responseText: string;
+  const encoder = new TextEncoder();
+  const words = responseText.split(/(\s+)/);
 
-    if (lowerMsg.includes('risk') || lowerMsg.includes('confidence')) {
-      responseText =
-        "Your portfolio confidence is 81%. Here's the breakdown:\n\n" +
-        '• **Position Quality: 88%** — Strong cost basis on core holdings\n' +
-        '• **Technical Health: 85%** — Most positions in uptrends\n' +
-        '• **Macro Alignment: 82%** — Well-positioned for rate environment\n' +
-        '• **Volatility Exposure: 78%** — Tech concentration adds beta\n' +
-        '• **Diversification: 72%** — NVDA at 27.1% is overweight\n\n' +
-        '⚠️ Key risk: Tech sector at 39.1% exceeds your 35% target. Consider trimming NVDA by 5-10 shares to reduce single-stock risk while maintaining upside exposure.';
-    } else if (lowerMsg.includes('trade') || lowerMsg.includes('buy') || lowerMsg.includes('sell') || lowerMsg.includes('signal')) {
-      responseText =
-        '**Trade Analysis:**\n\n' +
-        '```json\n' +
-        JSON.stringify({
-          type: 'trade_signal',
-          data: {
-            symbol: lowerMsg.includes('etn') ? 'ETN' : 'NVDA',
-            action: lowerMsg.includes('sell') ? 'sell' : 'buy',
-            conviction: 72,
-            entryPrice: lowerMsg.includes('sell') ? undefined : 375.00,
-            stopLoss: 370.00,
-            takeProfit: 395.00,
-            reason: 'Strong support at key moving average. Volume indicates accumulation. Favorable risk/reward at 1:4.',
-            risks: ['Macro uncertainty in tech sector', 'Earnings volatility ahead'],
-          },
-        }, null, 2) +
-        '\n```\n\n' +
-        '**Risk/Reward:** 1:4.0\n' +
-        '**Position size:** $500 (1.2% of portfolio)';
-    } else if (lowerMsg.includes('rebalance')) {
-      responseText =
-        '**Rebalance Analysis:** Your current allocation vs targets:\n\n' +
-        '| Sector | Current | Target | Action |\n' +
-        '|--------|---------|--------|--------|\n' +
-        '| Tech | 39.1% | 35% | Trim NVDA 5-7 shares |\n' +
-        '| Healthcare | 17.8% | 20% | Add UNH or XLV |\n' +
-        '| Consumer | 15.2% | 15% | ✓ On target |\n' +
-        '| Energy | 6.7% | 10% | Add XOM or XLE |\n' +
-        '| Finance | 5.7% | 10% | Add JPM or XLF |\n\n' +
-        'Estimated trades: 2 sells, 3 buys. Would you like me to prepare these orders?';
-    } else if (lowerMsg.includes('news') || lowerMsg.includes('opportunit')) {
-      responseText =
-        '**Portfolio News Feed** (last 24h):\n\n' +
-        '📰 **NVDA** — New GPU architecture announced at Computex. Analysts raise PT to $750.\n\n' +
-        '📰 **AAPL** — Services revenue hits all-time high. App Store growth accelerating.\n\n' +
-        '📰 **COKE** — Approaching 200-day MA resistance. Watch for breakout or rejection.\n\n' +
-        '📅 **This Week:** FOMC minutes Wed, JPM ex-dividend Thu, UNH earnings Fri pre-market.';
-    } else {
-      responseText =
-        "I've analyzed your portfolio against current market conditions. Here are today's top observations:\n\n" +
-        '📊 **Tech weakness:** NVDA down 3.1% today, dragging the sector. Your healthcare and consumer positions are providing good defense.\n\n' +
-        '💰 **Opportunity:** ETN at $376.42 (-5.7%) — miss priced in, strong risk/reward at 1:4 with support at $370.\n\n' +
-        '⚠️ **Watch:** COKE hit 200-day MA — up 24% in 6 months. Consider taking partial profits.\n\n' +
-        'Want me to dive deeper into any of these? Try asking about risk, specific symbols, or rebalancing.';
-    }
-
-    // Simulate SSE streaming with mock response
-    const encoder = new TextEncoder();
-    const words = responseText.split(/(\s+)/);
-
-    const readable = new ReadableStream({
-      async start(controller) {
-        for (const word of words) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ event: 'token', content: word })}\n\n`
-            )
-          );
-          // Slight delay to simulate streaming
-          await new Promise((r) => setTimeout(r, 10));
-        }
-
-        // Send cost (mock)
+  const readable = new ReadableStream({
+    async start(controller) {
+      for (const word of words) {
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ event: 'cost', tokens: { input: 200, output: words.length * 2 }, cost: 0.0002 })}\n\n`
+            `data: ${JSON.stringify({ event: 'token', content: word })}\n\n`
           )
         );
+        await new Promise((r) => setTimeout(r, 8));
+      }
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({ event: 'done' })}\n\n`)
+      );
+      controller.close();
+    },
+  });
 
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ event: 'done' })}\n\n`)
-        );
-
-        controller.close();
-      },
-    });
-
-    return new NextResponse(readable, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Model-Used': 'mock',
-      },
-    });
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return new NextResponse(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Model-Used': 'unconfigured',
+    },
+  });
 }

@@ -34,27 +34,10 @@ export interface ConfidenceResult {
   warnings: string[];
 }
 
-// ─── Sector ETF proxies for macro alignment ───
-const SECTOR_CATEGORIES: Record<string, string[]> = {
-  'Technology': ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'AMD', 'INTC', 'AVGO', 'CRM', 'ADBE', 'PLTR', 'SNOW', 'NET', 'TSEM'],
-  'Healthcare': ['UNH', 'JNJ', 'PFE', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'ISRG', 'GILD', 'REGN', 'VRTX', 'BMY', 'AMGN'],
-  'Financial Services': ['JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'AXP', 'V', 'MA', 'SCHW', 'PNC', 'COF', 'USB'],
-  'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'PXD', 'KMI', 'WMB'],
-  'Consumer': ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'TGT', 'LOW', 'COKE', 'LULU', 'CMG', 'BKNG', 'ABNB'],
-  'Industrials': ['ETN', 'CAT', 'DE', 'GE', 'HON', 'UPS', 'BA', 'RTX', 'LMT', 'MM', 'ITW', 'FDX'],
-  'Utilities': ['NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'PCG', 'ED'],
-  'Materials': ['LIN', 'SHW', 'FCX', 'NEM', 'DOW', 'DD', 'APD'],
-  'Real Estate': ['PLD', 'AMT', 'CCI', 'EQIX', 'SPG', 'O', 'WELL'],
-  'Media & Entertainment': ['GOOG', 'NFLX', 'DIS', 'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'SPOT', 'WBD', 'PARA'],
-  'Automotive': ['F', 'GM', 'RIVN', 'LCID'],
-};
-
-function inferSector(symbol: string): string {
-  const upper = symbol.toUpperCase();
-  for (const [sector, symbols] of Object.entries(SECTOR_CATEGORIES)) {
-    if (symbols.includes(upper)) return sector;
-  }
-  return 'Other';
+// Sector resolution is now handled by Alpaca API via usePortfolio hook.
+// Fallback: positions without a sector are treated as 'Unknown'.
+function inferSector(_symbol: string): string {
+  return 'Unknown';
 }
 
 // ─── Factor 1: Diversification (25%) ───

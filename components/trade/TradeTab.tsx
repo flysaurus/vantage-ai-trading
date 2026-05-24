@@ -6,13 +6,20 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { SymbolSearch } from './SymbolSearch';
 
 export function TradeTab() {
-  const [searchSymbol, setSearchSymbol] = useState('ETN');
   const { quotes } = useMarketStore();
   const { form, updateForm } = useOrderFormStore();
   const { account } = usePortfolio();
 
   // Initialize hook
   useMarketData();
+
+  // Default to largest position, or empty if no holdings
+  const defaultSymbol = (() => {
+    if (!account?.positions?.length) return '';
+    const largest = account.positions.sort((a, b) => b.marketValue - a.marketValue)[0];
+    return largest.symbol;
+  })();
+  const [searchSymbol, setSearchSymbol] = useState(defaultSymbol);
 
   const quote = quotes[searchSymbol.toUpperCase()];
   const isBuy = form.side === 'buy';

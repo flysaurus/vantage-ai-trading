@@ -1,7 +1,7 @@
 // ─── usePortfolio ─────────────────────────────────────────────
 // Fetches real portfolio data from the broker adapter:
 // account summary, positions, and calculated metrics.
-// Replaces the previous mock data implementation.
+// Fetches live data from the broker.
 
 'use client';
 

@@ -1,9 +1,8 @@
 /**
  * Alpaca API client.
  * 
- * Uses HMAC-signed tokens (not cookies) for auth.
- * Replace mock implementations with real Alpaca SDK calls
- * when API keys are configured.
+ * Uses HMAC-signed tokens for auth.
+ * All calls are real — no mocks.
  */
 
 const ALPACA_BASE = 'https://paper-api.alpaca.markets/v2';

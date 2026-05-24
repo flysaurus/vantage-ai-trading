@@ -4,6 +4,32 @@ import type {
   ChatMessage, ConfidenceBreakdown, WatchlistItem, Position 
 } from '@/types';
 
+// ─── localStorage helpers ───
+const STORAGE_KEYS = {
+  watchlist: 'vantage:watchlist',
+  indexSymbols: 'vantage:indexSymbols',
+} as const;
+
+function loadFromStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore corrupt data */ }
+  return fallback;
+}
+
+function saveToStorage(key: string, value: unknown) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch { /* ignore quota errors */ }
+}
+
+// ─── Persisted defaults ───
+const DEFAULT_WATCHLIST: WatchlistItem[] = [];
+const DEFAULT_INDEX_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
+
 // ─── Tab State ───
 export type TabId = 'ai' | 'trade' | 'portfolio' | 'orders' | 'settings';
 
@@ -20,22 +46,50 @@ export const useTabStore = create<TabStore>((set) => ({
 // ─── Market Data ───
 interface MarketStore {
   indexes: MarketIndex[];
+  indexSymbols: string[];
   watchlist: WatchlistItem[];
   quotes: Record<string, Quote>;
   isMarketOpen: boolean;
   setIndexes: (indexes: MarketIndex[]) => void;
+  setIndexSymbols: (symbols: string[]) => void;
   setWatchlist: (items: WatchlistItem[]) => void;
+  addToWatchlist: (item: WatchlistItem) => void;
+  removeFromWatchlist: (symbol: string) => void;
   updateQuote: (symbol: string, quote: Partial<Quote>) => void;
   setMarketOpen: (open: boolean) => void;
 }
 
+const initialIndexSymbols = loadFromStorage(STORAGE_KEYS.indexSymbols, DEFAULT_INDEX_SYMBOLS);
+const initialWatchlist = loadFromStorage(STORAGE_KEYS.watchlist, DEFAULT_WATCHLIST);
+
 export const useMarketStore = create<MarketStore>((set) => ({
   indexes: [],
-  watchlist: [],
+  indexSymbols: initialIndexSymbols,
+  watchlist: initialWatchlist,
   quotes: {},
   isMarketOpen: false,
   setIndexes: (indexes) => set({ indexes }),
-  setWatchlist: (items) => set({ watchlist: items }),
+  setIndexSymbols: (symbols) => {
+    saveToStorage(STORAGE_KEYS.indexSymbols, symbols);
+    set({ indexSymbols: symbols });
+  },
+  setWatchlist: (items) => {
+    saveToStorage(STORAGE_KEYS.watchlist, items);
+    set({ watchlist: items });
+  },
+  addToWatchlist: (item) =>
+    set((s) => {
+      if (s.watchlist.some(w => w.symbol === item.symbol)) return s;
+      const updated = [...s.watchlist, item];
+      saveToStorage(STORAGE_KEYS.watchlist, updated);
+      return { watchlist: updated };
+    }),
+  removeFromWatchlist: (symbol) =>
+    set((s) => {
+      const updated = s.watchlist.filter(w => w.symbol !== symbol);
+      saveToStorage(STORAGE_KEYS.watchlist, updated);
+      return { watchlist: updated };
+    }),
   updateQuote: (symbol, quote) =>
     set((s) => ({
       quotes: { ...s.quotes, [symbol]: { ...s.quotes[symbol], ...quote } as Quote },
