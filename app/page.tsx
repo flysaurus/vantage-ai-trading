@@ -13,6 +13,7 @@ import { OrdersTab } from '@/components/orders/OrdersTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import { BrokerProvider } from '@/components/providers/BrokerProvider';
 import { AuthProvider, useAuth } from '@/components/providers/AuthProvider';
+import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 
@@ -26,9 +27,10 @@ const TAB_COMPONENTS: Record<TabId, React.FC> = {
 
 function AppShell() {
   const { activeTab } = useTabStore();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
   const [redirecting, setRedirecting] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !redirecting) {
@@ -37,8 +39,14 @@ function AppShell() {
     }
   }, [isLoading, isAuthenticated, redirecting, router]);
 
+  // Show onboarding for authenticated users who haven't set their style
+  useEffect(() => {
+    if (user && !user.investorStyleOnboarded) {
+      setShowOnboarding(true);
+    }
+  }, [user]);
+
   // During initial load, show nothing — avoid SSR spinner mismatch
-  // The useEffect above handles redirection within milliseconds
   if (isLoading || (!isAuthenticated && !redirecting)) {
     return null;
   }
@@ -59,6 +67,14 @@ function AppShell() {
         </div>
         <BottomNav />
       </div>
+
+      {/* Onboarding Overlay */}
+      {showOnboarding && user && (
+        <InvestorStyleOnboarding
+          userId={user.id}
+          onComplete={() => setShowOnboarding(false)}
+        />
+      )}
     </BrokerProvider>
   );
 }
