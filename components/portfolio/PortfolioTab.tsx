@@ -418,6 +418,21 @@ export function PortfolioTab() {
 
                 return (
                   <div key={symbol} className={`sell-pos-card ${result ? (result.ok ? 'sold' : 'failed') : ''}`}>
+                    {/* Remove button */}
+                    <button
+                      onClick={() => setSelected(prev => { const n = new Set(prev); n.delete(symbol); return n; })}
+                      style={{
+                        position: 'absolute', top: 6, right: 8,
+                        width: 22, height: 22, borderRadius: 6,
+                        border: '1px solid #334155', background: '#1e293b',
+                        color: '#94a3b8', fontSize: 12, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        lineHeight: 1,
+                      }}
+                      title="Remove from sell"
+                    >
+                      ✕
+                    </button>
                     {/* Position summary row */}
                     <div className="sell-pos-header">
                       <div>
@@ -645,6 +660,7 @@ export function PortfolioTab() {
         .sell-pos-card {
           background: #0f172a; border: 1px solid #334155;
           border-radius: 10px; padding: 12px;
+          position: relative;
         }
         .sell-pos-card.sold { border-color: rgba(74,222,128,0.3); }
         .sell-pos-card.failed { border-color: rgba(239,68,68,0.3); }
