@@ -82,7 +82,7 @@ export async function GET() {
           'x-api-key': claudeKey,
           'anthropic-version': '2023-06-01',
         },
-        body: { model: 'claude-haiku-4-5-20250514', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }], stream: false },
+        body: { model: 'claude-3-5-haiku-latest', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }], stream: false },
         timeoutMs: 15000,
       })
     : { available: false, status: null, latencyMs: null, error: 'CLAUDE_API_KEY not set' };

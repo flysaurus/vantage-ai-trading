@@ -265,34 +265,41 @@ export async function POST(request: NextRequest) {
 
             if (dsRes.ok && dsRes.body) {
               stream = dsRes.body;
-            } else if (model === 'deepseek-reasoner') {
-              console.warn('DeepSeek reasoner failed, trying chat model');
-              usedModel = 'deepseek-chat';
-              const ds2Res = await fetch(DEEPSEEK_URL, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${deepseekKey}`,
-                },
-                body: JSON.stringify({
-                  model: 'deepseek-chat',
-                  messages: chatMessages,
-                  stream: true,
-                  temperature: 0.7,
-                  max_tokens: 2048,
-                }),
-                signal: AbortSignal.timeout(60000),
-              });
-              if (ds2Res.ok && ds2Res.body) {
-                stream = ds2Res.body;
-              } else {
-                console.warn(`DeepSeek chat failed: ${ds2Res.status}, will try Claude`);
-              }
+              usedModel = model;
+              provider = 'deepseek';
             } else {
-              console.warn(`DeepSeek returned ${dsRes.status}, will try Claude`);
+              const errBody = await dsRes.text().catch(() => '');
+              console.warn(`DeepSeek ${model} returned ${dsRes.status}: ${errBody.slice(0, 200)}`);
+              // Retry with chat model if reasoner failed
+              if (model === 'deepseek-reasoner') {
+                console.warn('DeepSeek reasoner failed, trying chat model');
+                usedModel = 'deepseek-chat';
+                const ds2Res = await fetch(DEEPSEEK_URL, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${deepseekKey}`,
+                  },
+                  body: JSON.stringify({
+                    model: 'deepseek-chat',
+                    messages: chatMessages,
+                    stream: true,
+                    temperature: 0.7,
+                    max_tokens: 2048,
+                  }),
+                  signal: AbortSignal.timeout(60000),
+                });
+                if (ds2Res.ok && ds2Res.body) {
+                  stream = ds2Res.body;
+                  provider = 'deepseek';
+                } else {
+                  const err2Body = await ds2Res.text().catch(() => '');
+                  console.warn(`DeepSeek chat fallback returned ${ds2Res.status}: ${err2Body.slice(0, 200)}`);
+                }
+              }
             }
           } catch (e) {
-            console.warn(`DeepSeek unreachable: ${e}, will try Claude`);
+            console.warn(`DeepSeek unreachable: ${e}`, e instanceof Error ? e.stack : '');
           }
         };
         await tryDeepSeek();
@@ -303,7 +310,7 @@ export async function POST(request: NextRequest) {
         const tryClaude = async () => {
           try {
             console.warn('DeepSeek unavailable, falling back to Claude');
-            usedModel = 'claude-haiku-4-5-20250514';
+            usedModel = 'claude-3-5-haiku-latest';
             provider = 'claude';
 
             const anthropicMessages = chatMessages
@@ -321,7 +328,7 @@ export async function POST(request: NextRequest) {
                 'anthropic-version': '2023-06-01',
               },
               body: JSON.stringify({
-                model: 'claude-haiku-4-5-20250514',
+                model: 'claude-3-5-haiku-latest',
                 max_tokens: 2048,
                 system: systemPrompt,
                 messages: anthropicMessages,
@@ -333,10 +340,11 @@ export async function POST(request: NextRequest) {
             if (claudeRes.ok && claudeRes.body) {
               stream = claudeRes.body;
             } else {
-              console.warn(`Claude failed: ${claudeRes.status}`);
+              const errBody = await claudeRes.text().catch(() => '');
+              console.warn(`Claude returned ${claudeRes.status}: ${errBody.slice(0, 200)}`);
             }
           } catch (e) {
-            console.warn(`Claude unreachable: ${e}`);
+            console.warn(`Claude unreachable: ${e}`, e instanceof Error ? e.stack : '');
           }
         };
         await tryClaude();
