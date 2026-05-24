@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
                 temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
                 max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
               }),
-              signal: AbortSignal.timeout(60000),
+              signal: AbortSignal.timeout(90000),
             });
 
             if (dsRes.ok && dsRes.body) {
@@ -495,8 +495,15 @@ export async function POST(request: NextRequest) {
  * Returns a single honest message — no fake data, no pretending.
  */
 async function handleFallback(request: NextRequest): Promise<NextResponse> {
-  const responseText =
-    'AI is not enabled. Please check your AI configuration to activate portfolio analysis, trade signals, and market insights.\n\nYou can still view your portfolio, monitor trades, and place orders — AI-powered analysis will be available once configured.';
+  const deepseekSet = !!process.env.DEEPSEEK_API_KEY;
+  const claudeSet = !!process.env.CLAUDE_API_KEY;
+  
+  let responseText: string;
+  if (!deepseekSet && !claudeSet) {
+    responseText = 'AI is not configured. Add API keys to enable portfolio analysis, trade signals, and market insights.\n\nYou can still view your portfolio, monitor trades, and place orders — AI-powered analysis will be available once configured.';
+  } else {
+    responseText = 'AI service temporarily unavailable. All configured providers are currently unreachable. This might be a temporary network issue — try again in a moment.\n\nYour portfolio, trades, and orders are unaffected.';
+  }
 
   const encoder = new TextEncoder();
   const words = responseText.split(/(\s+)/);

@@ -35,6 +35,7 @@ export function TradeTab() {
         <SymbolSearch
           value={searchSymbol}
           onChange={(sym) => { setSearchSymbol(sym); updateForm({ symbol: sym }); }}
+          onInputChange={(text) => setSearchSymbol(text)}
           positions={holdings}
         />
       </div>
@@ -305,10 +306,11 @@ export function TradeTab() {
         {/* Submit */}
         <button
           onClick={async () => {
-            if (!form.symbol && !searchSymbol) return;
-            const sym = form.symbol || searchSymbol;
+            const sym = searchSymbol?.trim() || form.symbol;
+            if (!sym) { setOrderError('Select a symbol first'); return; }
             setSubmitting(true);
             setOrderError('');
+            setOrderSuccess('');
             try {
               const qty = form.qtyType === 'dollars' && quote ? Math.floor(form.qty / quote.last) : form.qty;
               if (!qty || qty <= 0) { setOrderError('Enter a valid quantity'); setSubmitting(false); return; }

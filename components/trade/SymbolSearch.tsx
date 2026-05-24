@@ -13,11 +13,12 @@ interface SearchResult {
 interface Props {
   value: string;
   onChange: (symbol: string) => void;
+  onInputChange?: (text: string) => void;
   placeholder?: string;
   positions?: string[];
 }
 
-export function SymbolSearch({ value, onChange, placeholder = 'Search symbol...', positions = [] }: Props) {
+export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Search symbol...', positions = [] }: Props) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -82,9 +83,11 @@ export function SymbolSearch({ value, onChange, placeholder = 'Search symbol...'
           type="text"
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value.toUpperCase());
+            const text = e.target.value.toUpperCase();
+            setQuery(text);
             setShowDropdown(true);
             setSelectedIdx(-1);
+            onInputChange?.(text);
           }}
           onFocus={() => setShowDropdown(true)}
           onKeyDown={(e) => {

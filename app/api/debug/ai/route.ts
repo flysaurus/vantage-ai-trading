@@ -13,83 +13,79 @@ interface ProviderResult {
   error: string | null;
 }
 
+async function testProvider(params: {
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+  timeoutMs: number;
+}): Promise<ProviderResult> {
+  const result: ProviderResult = { available: false, status: null, latencyMs: null, error: null };
+  const start = Date.now();
+  try {
+    const res = await fetch(params.url, {
+      method: 'POST',
+      headers: params.headers,
+      body: JSON.stringify(params.body),
+      signal: AbortSignal.timeout(params.timeoutMs),
+    });
+    result.status = res.status;
+    result.latencyMs = Date.now() - start;
+    result.available = res.ok;
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      result.error = res.status === 401 ? 'API key rejected (401)' : `HTTP ${res.status}: ${body.slice(0, 200)}`;
+    }
+  } catch (e: any) {
+    result.latencyMs = Date.now() - start;
+    result.error = e?.message || String(e);
+  }
+  return result;
+}
+
 export async function GET() {
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
   const claudeKey = process.env.CLAUDE_API_KEY;
-
   const results: Record<string, ProviderResult> = {};
 
-  // ── DeepSeek test ──
-  const dsResult: ProviderResult = { available: false, status: null, latencyMs: null, error: null };
-  if (!deepseekKey) {
-    dsResult.error = 'DEEPSEEK_API_KEY not set';
-  } else {
-    const start = Date.now();
-    try {
-      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
+  // ── DeepSeek Chat ──
+  results.deepseekChat = deepseekKey
+    ? await testProvider({
+        url: 'https://api.deepseek.com/v1/chat/completions',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${deepseekKey}`,
         },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [{ role: 'user', content: 'ping' }],
-          max_tokens: 1,
-          stream: false,
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-      dsResult.status = res.status;
-      dsResult.latencyMs = Date.now() - start;
-      dsResult.available = res.status === 401 ? null as any : res.ok; // 401 = key issue, not "available"
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        dsResult.error = `HTTP ${res.status}: ${body.slice(0, 200)}`;
-        if (res.status === 401) dsResult.error = 'API key rejected (401 Unauthorized)';
-      }
-    } catch (e: any) {
-      dsResult.latencyMs = Date.now() - start;
-      dsResult.error = e?.message || String(e);
-    }
-  }
-  results.deepseek = dsResult;
+        body: { model: 'deepseek-chat', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false },
+        timeoutMs: 15000,
+      })
+    : { available: false, status: null, latencyMs: null, error: 'DEEPSEEK_API_KEY not set' };
 
-  // ── Claude test ──
-  const clResult: ProviderResult = { available: false, status: null, latencyMs: null, error: null };
-  if (!claudeKey) {
-    clResult.error = 'CLAUDE_API_KEY not set';
-  } else {
-    const start = Date.now();
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
+  // ── DeepSeek Reasoner ──
+  results.deepseekReasoner = deepseekKey
+    ? await testProvider({
+        url: 'https://api.deepseek.com/v1/chat/completions',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${deepseekKey}`,
+        },
+        body: { model: 'deepseek-reasoner', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false },
+        timeoutMs: 30000,
+      })
+    : { available: false, status: null, latencyMs: null, error: 'DEEPSEEK_API_KEY not set' };
+
+  // ── Claude Haiku ──
+  results.claudeHaiku = claudeKey
+    ? await testProvider({
+        url: 'https://api.anthropic.com/v1/messages',
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': claudeKey,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20250514',
-          max_tokens: 1,
-          messages: [{ role: 'user', content: 'ping' }],
-          stream: false,
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-      clResult.status = res.status;
-      clResult.latencyMs = Date.now() - start;
-      clResult.available = res.ok;
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        clResult.error = `HTTP ${res.status}: ${body.slice(0, 200)}`;
-      }
-    } catch (e: any) {
-      clResult.latencyMs = Date.now() - start;
-      clResult.error = e?.message || String(e);
-    }
-  }
-  results.claude = clResult;
+        body: { model: 'claude-haiku-4-5-20250514', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }], stream: false },
+        timeoutMs: 15000,
+      })
+    : { available: false, status: null, latencyMs: null, error: 'CLAUDE_API_KEY not set' };
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
