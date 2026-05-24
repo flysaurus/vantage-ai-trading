@@ -1,5 +1,8 @@
 'use client';
 import { useState } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { InvestorStyleSelector } from '@/components/settings/InvestorStyleSelector';
+import type { InvestorStyle } from '@/types';
 import { 
   Star, Bell, Newspaper, CalendarDays, Search, 
   History, Target, CreditCard, Plug, Settings2, HelpCircle,
@@ -62,7 +65,11 @@ const BROKERS: BrokerItem[] = [
 ];
 
 export function SettingsTab() {
+  const { user } = useAuth();
   const [showBrokers, setShowBrokers] = useState(false);
+  const [investorStyle, setInvestorStyle] = useState<InvestorStyle>(
+    user?.investorStyle || 'buffett'
+  );
 
   const connectedBroker = BROKERS.find(b => b.status === 'connected');
 
@@ -75,6 +82,11 @@ export function SettingsTab() {
         <SettingsItem icon={Newspaper} title="News Feed" subtitle="AI-curated for your portfolio" />
         <SettingsItem icon={CalendarDays} title="Earnings Calendar" subtitle="3 holdings reporting this week" />
         <SettingsItem icon={Search} title="Stock Screener" subtitle="Find new opportunities" />
+      </div>
+
+      {/* Investor Style */}
+      <div className="section" style={{ marginTop: 12 }}>
+        <SettingsItem icon={Star} title="Investor Style" subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap to change`} />
       </div>
 
       {/* Account & History */}
@@ -159,6 +171,15 @@ export function SettingsTab() {
           AI-First · Mobile-First · Built with ❤️
         </div>
       </div>
+
+      {/* Investor Style Selector */}
+      {user && (
+        <InvestorStyleSelector
+          userId={user.id}
+          currentStyle={investorStyle}
+          onStyleChanged={(newStyle) => setInvestorStyle(newStyle)}
+        />
+      )}
 
       <style jsx>{`
         .section {
