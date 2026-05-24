@@ -7,6 +7,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllRecommendations, type StockData } from '@/lib/advisor/engine';
 
+// ─── Technical helpers ────────────────────────────────────────
+
+function calcRSI(bars: { c: number }[]): number {
+  if (bars.length < 15) return 50;
+  const changes = [];
+  for (let i = 1; i < 15; i++) {
+    changes.push(bars[i].c - bars[i - 1].c);
+  }
+  let gain = 0, loss = 0;
+  for (const c of changes) {
+    if (c > 0) gain += c; else loss += -c;
+  }
+  const avgGain = gain / 14;
+  const avgLoss = loss / 14;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return Math.round((100 - 100 / (1 + rs)) * 10) / 10;
+}
+
+function calcEMA(values: number[], period: number): number {
+  if (values.length < period) return values[values.length - 1];
+  const k = 2 / (period + 1);
+  let ema = values.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+function calcMACD(bars: { c: number }[]): number {
+  if (bars.length < 26) return 0;
+  const prices = bars.map(b => b.c);
+  const ema12 = calcEMA(prices, 12);
+  const ema26 = calcEMA(prices, 26);
+  return Math.round((ema12 - ema26) * 100) / 100;
+}
+
 // ─── Alpaca snapshot helpers ──────────────────────────────────
 
 async function getAlpacaSnapshot(symbol: string): Promise<{
@@ -27,16 +64,17 @@ async function getAlpacaSnapshot(symbol: string): Promise<{
 
   try {
     // Fetch snapshot for current price, daily bar, latest quote
-    const snapRes = await fetch(
-      `https://data.alpaca.markets/v2/stocks/${symbol.toUpperCase()}/snapshot`,
-      {
-        headers: {
-          'APCA-API-KEY-ID': keyId,
-          'APCA-API-SECRET-KEY': secretKey,
-        },
+    const [snapRes, barsRes] = await Promise.all([
+      fetch(`https://data.alpaca.markets/v2/stocks/${symbol.toUpperCase()}/snapshot`, {
+        headers: { 'APCA-API-KEY-ID': keyId, 'APCA-API-SECRET-KEY': secretKey },
         signal: AbortSignal.timeout(5000),
-      }
-    );
+      }),
+      // Fetch 200 days of daily bars for MAs + RSI
+      fetch(`https://data.alpaca.markets/v2/stocks/${symbol.toUpperCase()}/bars?timeframe=1D&limit=200&adjustment=raw&feed=sip&sort=desc`, {
+        headers: { 'APCA-API-KEY-ID': keyId, 'APCA-API-SECRET-KEY': secretKey },
+        signal: AbortSignal.timeout(7000),
+      }),
+    ]);
 
     if (!snapRes.ok) return null;
     const snap = await snapRes.json();
@@ -47,17 +85,50 @@ async function getAlpacaSnapshot(symbol: string): Promise<{
     const volume = snap?.dailyBar?.v ?? 0;
     const avgVolume = snap?.prevDailyBar?.v ? (snap.dailyBar.v + snap.prevDailyBar.v) / 2 : volume;
 
+    // Calculate MAs + RSI from historical bars
+    let price50ma: number | null = null;
+    let price200ma: number | null = null;
+    let rsi: number | null = null;
+    let macd: number | null = null;
+
+    if (barsRes.ok) {
+      const barsData = await barsRes.json();
+      const bars: { c: number }[] = barsData?.bars || [];
+
+      if (bars.length > 0) {
+        // RSI (14-period)
+        if (bars.length >= 15) {
+          rsi = calcRSI(bars.slice(0, 15).reverse());
+        }
+
+        // MACD (12/26/9)
+        if (bars.length >= 26) {
+          macd = calcMACD(bars.slice(0, 35).reverse());
+        }
+
+        // 50-day MA
+        if (bars.length >= 50) {
+          const last50 = bars.slice(0, 50);
+          price50ma = last50.reduce((sum, b) => sum + b.c, 0) / 50;
+        }
+
+        // 200-day MA
+        if (bars.length >= 200) {
+          price200ma = bars.reduce((sum, b) => sum + b.c, 0) / bars.length;
+        }
+      }
+    }
+
     return {
       currentPrice,
       volume,
       avgVolume,
       week52High: snap?.dailyBar?.h ?? currentPrice,
       week52Low: snap?.dailyBar?.l ?? currentPrice,
-      // MAs and technicals need historical data — fetch separately
-      price50ma: null,
-      price200ma: null,
-      rsi: null,
-      macd: null,
+      price50ma,
+      price200ma,
+      rsi,
+      macd,
       beta: null,
     };
   } catch {
