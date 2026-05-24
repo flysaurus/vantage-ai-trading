@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
       // ── Fallback: Claude (Anthropic) ──
       if (!stream && claudeKey) {
         console.warn('DeepSeek unavailable, falling back to Claude');
-        usedModel = 'claude-sonnet-4-20250514';
+        usedModel = 'claude-haiku-4-5-20250514';
         provider = 'claude';
 
         // Adapt messages for Anthropic format
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-haiku-4-5-20250514',
             max_tokens: 2048,
             system: systemPrompt,
             messages: anthropicMessages,
