@@ -613,7 +613,7 @@ export function PortfolioTab() {
           background: #1e293b; border: 1px solid #334155;
           border-radius: 16px; z-index: 51;
           width: 92%; max-width: 460px;
-          max-height: 88vh;
+          max-height: 80vh; overflow: hidden;
           display: flex; flex-direction: column;
         }
         .sell-header {
@@ -623,7 +623,7 @@ export function PortfolioTab() {
           flex-shrink: 0;
         }
         .sell-body {
-          flex: 1; overflow-y: auto; padding: 12px 16px;
+          flex: 1; overflow-y: auto; padding: 12px 16px; min-height: 0;
           display: flex; flex-direction: column; gap: 10px;
         }
         .sell-footer {
