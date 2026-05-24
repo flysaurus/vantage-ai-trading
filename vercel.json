@@ -2,5 +2,25 @@
   "framework": "nextjs",
   "buildCommand": "next build",
   "installCommand": "npm install",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "functions": {
+    "app/api/chat/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/debug/ai/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/advisor/recommendations/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/alpaca/[...path]/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/alpaca/history/route.ts": {
+      "maxDuration": 20
+    },
+    "app/api/sectors/route.ts": {
+      "maxDuration": 30
+    }
+  }
 }

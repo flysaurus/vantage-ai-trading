@@ -153,13 +153,13 @@ export function estimateTokens(text: string): number {
  * Estimate USD cost based on model and token counts.
  */
 export function estimateCost(
-  model: 'deepseek-chat' | 'deepseek-reasoner' | 'claude-3-5-haiku-20241022',
+  model: 'deepseek-chat' | 'deepseek-reasoner' | 'claude-3-haiku-20240307',
   inputTokens: number,
   outputTokens: number
 ): number {
-  // Claude Haiku 4.5 pricing: $1/$5 per 1M tokens
-  if (model === 'claude-3-5-haiku-20241022') {
-    return (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5;
+  // Claude 3 Haiku pricing: $0.25/$1.25 per 1M tokens
+  if (model === 'claude-3-haiku-20240307') {
+    return (inputTokens / 1_000_000) * 0.25 + (outputTokens / 1_000_000) * 1.25;
   }
 
   const inputRate =

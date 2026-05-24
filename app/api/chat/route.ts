@@ -260,7 +260,8 @@ export async function POST(request: NextRequest) {
                 temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
                 max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
               }),
-              signal: AbortSignal.timeout(90000),
+              // Reasoner can be slow — keep timeout under Vercel serverless limit
+              signal: AbortSignal.timeout(model === 'deepseek-reasoner' ? 25000 : 45000),
             });
 
             if (dsRes.ok && dsRes.body) {
@@ -287,7 +288,7 @@ export async function POST(request: NextRequest) {
                     temperature: 0.7,
                     max_tokens: 2048,
                   }),
-                  signal: AbortSignal.timeout(60000),
+                  signal: AbortSignal.timeout(35000),
                 });
                 if (ds2Res.ok && ds2Res.body) {
                   stream = ds2Res.body;
@@ -310,7 +311,7 @@ export async function POST(request: NextRequest) {
         const tryClaude = async () => {
           try {
             console.warn('DeepSeek unavailable, falling back to Claude');
-            usedModel = 'claude-3-5-haiku-20241022';
+            usedModel = 'claude-3-haiku-20240307';
             provider = 'claude';
 
             const anthropicMessages = chatMessages
@@ -328,7 +329,7 @@ export async function POST(request: NextRequest) {
                 'anthropic-version': '2023-06-01',
               },
               body: JSON.stringify({
-                model: 'claude-3-5-haiku-20241022',
+                model: 'claude-3-haiku-20240307',
                 max_tokens: 2048,
                 system: systemPrompt,
                 messages: anthropicMessages,
