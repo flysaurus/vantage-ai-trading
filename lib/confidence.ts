@@ -36,16 +36,17 @@ export interface ConfidenceResult {
 
 // ─── Sector ETF proxies for macro alignment ───
 const SECTOR_CATEGORIES: Record<string, string[]> = {
-  Technology: ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'AMD', 'INTC', 'AVGO', 'CRM', 'ADBE'],
-  Healthcare: ['UNH', 'JNJ', 'PFE', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'ISRG'],
-  Financials: ['JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'AXP', 'V', 'MA'],
-  Energy: ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY'],
-  Consumer: ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'TGT', 'LOW', 'COKE'],
-  Industrials: ['ETN', 'CAT', 'DE', 'GE', 'HON', 'UPS', 'BA', 'RTX', 'LMT'],
-  Utilities: ['NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE'],
-  Materials: ['LIN', 'SHW', 'FCX', 'NEM', 'DOW'],
-  'Real Estate': ['PLD', 'AMT', 'CCI', 'EQIX', 'SPG'],
-  'Comm Services': ['GOOG', 'NFLX', 'DIS', 'CMCSA', 'T', 'VZ'],
+  'Technology': ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'AMD', 'INTC', 'AVGO', 'CRM', 'ADBE', 'PLTR', 'SNOW', 'NET', 'TSEM'],
+  'Healthcare': ['UNH', 'JNJ', 'PFE', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'ISRG', 'GILD', 'REGN', 'VRTX', 'BMY', 'AMGN'],
+  'Financial Services': ['JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'AXP', 'V', 'MA', 'SCHW', 'PNC', 'COF', 'USB'],
+  'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'PXD', 'KMI', 'WMB'],
+  'Consumer': ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'TGT', 'LOW', 'COKE', 'LULU', 'CMG', 'BKNG', 'ABNB'],
+  'Industrials': ['ETN', 'CAT', 'DE', 'GE', 'HON', 'UPS', 'BA', 'RTX', 'LMT', 'MM', 'ITW', 'FDX'],
+  'Utilities': ['NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'PCG', 'ED'],
+  'Materials': ['LIN', 'SHW', 'FCX', 'NEM', 'DOW', 'DD', 'APD'],
+  'Real Estate': ['PLD', 'AMT', 'CCI', 'EQIX', 'SPG', 'O', 'WELL'],
+  'Media & Entertainment': ['GOOG', 'NFLX', 'DIS', 'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'SPOT', 'WBD', 'PARA'],
+  'Automotive': ['F', 'GM', 'RIVN', 'LCID'],
 };
 
 function inferSector(symbol: string): string {
@@ -181,7 +182,7 @@ function scoreVolatilityExposure(positions: Position[]): FactorResult {
   const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
 
   // High-beta proxies: Tech, Consumer Discretionary, Crypto
-  const highBetaSectors = ['Technology', 'Consumer', 'Comm Services'];
+  const highBetaSectors = ['Technology', 'Consumer', 'Media & Entertainment'];
   let highBetaExposure = 0;
   let largePositionRisk = 0;
 
@@ -246,7 +247,7 @@ function scoreMacroAlignment(positions: Position[]): FactorResult {
   const cyclical: Record<string, number> = {};
 
   const defensiveSectors = ['Healthcare', 'Utilities', 'Consumer'];
-  const cyclicalSectors = ['Technology', 'Industrials', 'Energy', 'Materials', 'Financials'];
+  const cyclicalSectors = ['Technology', 'Industrials', 'Energy', 'Materials', 'Financial Services'];
 
   for (const p of positions) {
     const sector = p.sector || inferSector(p.symbol);

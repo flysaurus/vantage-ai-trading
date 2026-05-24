@@ -631,14 +631,18 @@ export function PortfolioTab() {
 // ─── Sub-components ─────────────────────────────────────
 
 const SECTOR_COLORS = [
-  '#06b6d4',
-  '#8b5cf6',
-  '#22c55e',
-  '#f59e0b',
-  '#ec4899',
-  '#3b82f6',
-  '#ef4444',
-  '#64748b',
+  '#06b6d4', // Technology — cyan
+  '#8b5cf6', // Healthcare — purple
+  '#22c55e', // Financial Services — green
+  '#f59e0b', // Consumer — amber
+  '#ec4899', // Industrials — pink
+  '#3b82f6', // Energy — blue
+  '#ef4444', // Utilities — red
+  '#14b8a6', // Real Estate — teal
+  '#a855f7', // Materials — violet
+  '#f97316', // Media & Entertainment — orange
+  '#84cc16', // Automotive — lime
+  '#64748b', // Other — gray
 ];
 
 function SectorAllocation({ positions }: { positions: import('@/types').Position[] }) {
