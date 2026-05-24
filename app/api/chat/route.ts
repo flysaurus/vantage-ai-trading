@@ -310,7 +310,7 @@ export async function POST(request: NextRequest) {
         const tryClaude = async () => {
           try {
             console.warn('DeepSeek unavailable, falling back to Claude');
-            usedModel = 'claude-3-5-haiku-latest';
+            usedModel = 'claude-3-5-haiku-20241022';
             provider = 'claude';
 
             const anthropicMessages = chatMessages
@@ -325,10 +325,10 @@ export async function POST(request: NextRequest) {
               headers: {
                 'Content-Type': 'application/json',
                 'x-api-key': claudeKey,
-                'anthropic-version': '2023-06-01',
+                'anthropic-version': '2025-01-02',
               },
               body: JSON.stringify({
-                model: 'claude-3-5-haiku-latest',
+                model: 'claude-3-5-haiku-20241022',
                 max_tokens: 2048,
                 system: systemPrompt,
                 messages: anthropicMessages,
