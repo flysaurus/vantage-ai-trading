@@ -555,10 +555,10 @@ export function PortfolioTab() {
           background: rgba(0,0,0,0.6); z-index: 50;
         }
         .sell-overlay {
-          position: fixed; bottom: 0; left: 0; right: 0; z-index: 51;
+          position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
           background: #1e293b; border: 1px solid #334155;
-          border-top-left-radius: 20px; border-top-right-radius: 20px;
-          padding: 16px 16px 24px; max-height: 80vh; overflow: auto;
+          border-radius: 16px; padding: 20px; max-height: 85vh; overflow: auto;
+          width: 90%; max-width: 460px; z-index: 51;
         }
         .close-sell-btn {
           background: transparent; border: none; color: #94a3b8;
