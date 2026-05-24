@@ -11,6 +11,10 @@ export function PortfolioTab() {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [sellSubmitting, setSellSubmitting] = useState(false);
   const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
+  const [sellOrderType, setSellOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
+  const [sellLimitPrice, setSellLimitPrice] = useState('');
+  const [sellStopPrice, setSellStopPrice] = useState('');
+  const [sellTIF, setSellTIF] = useState<'day' | 'gtc'>('day');
 
   const fmt = (n: number) =>
     `$${Math.abs(n).toLocaleString()}`;
@@ -41,16 +45,23 @@ export function PortfolioTab() {
       try {
         const pos = account?.positions.find(p => p.symbol === symbol);
         if (!pos) continue;
+        const body: any = {
+          symbol,
+          qty: pos.qty,
+          side: 'sell',
+          type: sellOrderType,
+          time_in_force: sellOrderType === 'market' ? 'day' : sellTIF,
+        };
+        if (sellOrderType === 'limit' || sellOrderType === 'stop_limit') {
+          body.limit_price = parseFloat(sellLimitPrice);
+        }
+        if (sellOrderType === 'stop' || sellOrderType === 'stop_limit') {
+          body.stop_price = parseFloat(sellStopPrice);
+        }
         const res = await fetch('/api/alpaca/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol,
-            qty: pos.qty,
-            side: 'sell',
-            type: 'market',
-            time_in_force: 'day',
-          }),
+          body: JSON.stringify(body),
         });
         const json = await res.json();
         results.push({ symbol, ok: res.ok, error: json.error || json.message });
@@ -64,6 +75,9 @@ export function PortfolioTab() {
     if (allOk) {
       setSelected(new Set());
       setShowSellPanel(false);
+      setSellOrderType('market');
+      setSellLimitPrice('');
+      setSellStopPrice('');
       refresh();
     }
   };
@@ -353,25 +367,96 @@ export function PortfolioTab() {
         <>
           <div onClick={() => { setShowSellPanel(false); setSellResults([]); }} className="overlay-backdrop" />
           <div className="sell-overlay">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
                 Sell {selected.size} Position{selected.size > 1 ? 's' : ''}
               </span>
-              <button onClick={() => { setShowSellPanel(false); setSellResults([]); }} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer', padding: 4 }}>
+              <button onClick={() => { setShowSellPanel(false); setSellResults([]); }} className="close-sell-btn">
                 ✕
               </button>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
+            {/* Order Type Tabs */}
+            <div className="order-type-tabs">
+              {(['market', 'limit', 'stop', 'stop_limit'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setSellOrderType(t)}
+                  className={`type-tab ${sellOrderType === t ? 'active' : ''}`}
+                >
+                  {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : t === 'stop' ? 'Stop' : 'Stop Limit'}
+                </button>
+              ))}
+            </div>
+
+            {/* Price Inputs */}
+            {(sellOrderType === 'limit' || sellOrderType === 'stop_limit') && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>
+                  Limit Price
+                </div>
+                <div className="price-input-wrap">
+                  <span className="price-prefix">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={sellLimitPrice}
+                    onChange={e => setSellLimitPrice(e.target.value)}
+                    placeholder="Required — minimum sell price"
+                    className="price-input"
+                  />
+                </div>
+              </div>
+            )}
+            {(sellOrderType === 'stop' || sellOrderType === 'stop_limit') && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>
+                  Stop Price
+                </div>
+                <div className="price-input-wrap">
+                  <span className="price-prefix">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={sellStopPrice}
+                    onChange={e => setSellStopPrice(e.target.value)}
+                    placeholder={sellOrderType === 'stop' ? 'Price that triggers order' : 'Price that triggers limit order'}
+                    className="price-input"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* TIF (non-market) */}
+            {sellOrderType !== 'market' && (
+              <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>TIF</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['day', 'gtc'] as const).map(tif => (
+                    <button
+                      key={tif}
+                      onClick={() => setSellTIF(tif)}
+                      style={{
+                        padding: '5px 14px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                        border: sellTIF === tif ? 'none' : '1px solid #334155',
+                        background: sellTIF === tif ? '#06b6d4' : 'transparent',
+                        color: sellTIF === tif ? 'white' : '#94a3b8', cursor: 'pointer',
+                      }}
+                    >
+                      {tif === 'day' ? 'Day' : 'GTC'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Selected Positions */}
+            <div style={{ marginBottom: 10 }}>
               {Array.from(selected).map(symbol => {
                 const pos = account?.positions.find(p => p.symbol === symbol);
                 const result = sellResults.find(r => r.symbol === symbol);
                 return (
-                  <div key={symbol} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '10px', background: '#0f172a', borderRadius: 8, marginBottom: 6,
-                    border: result ? (result.ok ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)') : '1px solid #334155',
-                  }}>
+                  <div key={symbol} className={`sell-pos-row ${result ? (result.ok ? 'sold' : 'failed') : ''}`}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{symbol}</div>
                       <div style={{ fontSize: 10, color: '#94a3b8' }}>
@@ -393,27 +478,37 @@ export function PortfolioTab() {
               })}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, padding: '8px 12px', background: '#0f172a', borderRadius: 8 }}>
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>Estimated Proceeds</span>
+            {/* Estimated Proceeds */}
+            <div className="proceeds-bar">
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>Estimated {sellOrderType === 'limit' ? 'Proceeds (at limit)' : sellOrderType === 'stop' ? 'Proceeds (at stop)' : 'Proceeds'}</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>
                 ${Array.from(selected).reduce((sum, sym) => {
                   const pos = account?.positions.find(p => p.symbol === sym);
-                  return sum + (pos ? pos.qty * pos.currentPrice : 0);
+                  const price = sellOrderType === 'limit' && sellLimitPrice ? parseFloat(sellLimitPrice) : pos?.currentPrice || 0;
+                  return sum + (pos ? pos.qty * price : 0);
                 }, 0).toFixed(2)}
               </span>
             </div>
 
+            {/* Validation */}
+            {sellOrderType !== 'market' && sellOrderType !== 'stop' && !sellLimitPrice && !sellSubmitting && (
+              <div className="validation-msg">Set a limit price to continue</div>
+            )}
+            {sellOrderType !== 'market' && sellOrderType !== 'limit' && !sellStopPrice && !sellSubmitting && (
+              <div className="validation-msg">Set a stop price to continue</div>
+            )}
+
+            {/* Submit */}
             <button
               onClick={submitBulkSell}
-              disabled={sellSubmitting}
-              style={{
-                width: '100%', padding: 13, border: 'none', borderRadius: 10,
-                fontSize: 14, fontWeight: 700, cursor: sellSubmitting ? 'not-allowed' : 'pointer',
-                background: sellSubmitting ? '#334155' : '#ef4444',
-                color: 'white', opacity: sellSubmitting ? 0.6 : 1,
-              }}
+              disabled={
+                sellSubmitting ||
+                ((sellOrderType === 'limit' || sellOrderType === 'stop_limit') && !sellLimitPrice) ||
+                ((sellOrderType === 'stop' || sellOrderType === 'stop_limit') && !sellStopPrice)
+              }
+              className="confirm-sell-btn"
             >
-              {sellSubmitting ? 'Submitting...' : `Confirm — Sell ${selected.size} Position${selected.size > 1 ? 's' : ''} at Market`}
+              {sellSubmitting ? 'Submitting...' : `Confirm — Sell ${selected.size} Position${selected.size > 1 ? 's' : ''} (${sellOrderType === 'market' ? 'Market' : sellOrderType === 'limit' ? 'Limit' : sellOrderType === 'stop' ? 'Stop' : 'Stop Limit'})`}
             </button>
           </div>
         </>
@@ -463,7 +558,61 @@ export function PortfolioTab() {
           position: fixed; bottom: 0; left: 0; right: 0; z-index: 51;
           background: #1e293b; border: 1px solid #334155;
           border-top-left-radius: 20px; border-top-right-radius: 20px;
-          padding: 16px 16px 24px; max-height: 70vh; overflow: auto;
+          padding: 16px 16px 24px; max-height: 80vh; overflow: auto;
+        }
+        .close-sell-btn {
+          background: transparent; border: none; color: #94a3b8;
+          font-size: 20px; cursor: pointer; padding: 4px;
+        }
+        .order-type-tabs {
+          display: flex; gap: 4px; margin-bottom: 12px;
+          background: #0f172a; padding: 4px; border-radius: 8px;
+        }
+        .type-tab {
+          flex: 1; padding: 7px 4px; font-size: 11px; font-weight: 600;
+          border: none; border-radius: 6px; cursor: pointer;
+          background: transparent; color: #94a3b8;
+          font-family: inherit; transition: all 0.15s;
+        }
+        .type-tab.active {
+          background: #06b6d4; color: white;
+        }
+        .price-input-wrap {
+          display: flex; align-items: center;
+          background: #0f172a; border: 1px solid #334155;
+          border-radius: 8px; padding: 0 10px;
+        }
+        .price-prefix {
+          color: #64748b; font-size: 13px; font-weight: 600; margin-right: 4px;
+        }
+        .price-input {
+          flex: 1; padding: 9px 0; background: transparent;
+          border: none; color: #f1f5f9; font-size: 13px; outline: none;
+        }
+        .sell-pos-row {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 10px; background: #0f172a; border-radius: 8px; margin-bottom: 6px;
+          border: 1px solid #334155;
+        }
+        .sell-pos-row.sold { border-color: rgba(74,222,128,0.3); }
+        .sell-pos-row.failed { border-color: rgba(239,68,68,0.3); }
+        .proceeds-bar {
+          display: flex; justify-content: space-between;
+          margin-bottom: 10px; padding: 8px 12px;
+          background: #0f172a; border-radius: 8px;
+        }
+        .validation-msg {
+          text-align: center; font-size: 10px; color: #fbbf24;
+          margin-bottom: 8px; padding: 6px; background: rgba(251,191,36,0.1);
+          border-radius: 6px;
+        }
+        .confirm-sell-btn {
+          width: 100%; padding: 13px; border: none; border-radius: 10px;
+          font-size: 14px; font-weight: 700; cursor: pointer;
+          background: #ef4444; color: white; font-family: inherit;
+        }
+        .confirm-sell-btn:disabled {
+          background: #334155; color: #94a3b8; cursor: not-allowed;
         }
         .sort-btn {
           background: #0f172a;
