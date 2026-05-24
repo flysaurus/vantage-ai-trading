@@ -1,6 +1,7 @@
 'use client';
 import { useOrders } from '@/hooks/useOrders';
 import { useOrderStore, useTabStore } from '@/store';
+import { BarChart3 } from 'lucide-react';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 
@@ -101,11 +102,20 @@ export function OrdersTab() {
           color: 'white',
           fontWeight: 700,
           fontSize: 12,
-          marginBottom: 12,
+          marginBottom: 8,
           cursor: 'pointer',
         }}
       >
         + Place New Order
+      </button>
+
+      {/* Plan Trades */}
+      <button
+        onClick={() => setTab('ai')}
+        className="plan-trades-btn"
+      >
+        <BarChart3 size={16} />
+        Plan Trades with AI
       </button>
 
       {/* Filters */}
@@ -326,6 +336,25 @@ export function OrdersTab() {
       ))}
 
       <style jsx>{`
+        .plan-trades-btn {
+          width: 100%;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          background: rgba(6, 182, 212, 0.1);
+          border: 1px dashed rgba(6, 182, 212, 0.3);
+          border-radius: 8px;
+          color: #06b6d4;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          margin-bottom: 12px;
+          font-family: inherit;
+          transition: background 0.2s;
+        }
+        .plan-trades-btn:active { background: rgba(6, 182, 212, 0.2); }
         .order-card {
           background: #1e293b;
           border: 1px solid #334155;

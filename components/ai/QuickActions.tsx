@@ -1,51 +1,39 @@
 'use client';
 import { useMemo } from 'react';
-import { useTabStore, usePortfolioStore, useMarketStore } from '@/store';
-import {
-  DollarSign, LayoutDashboard, ListOrdered,
-  Search, Shield, TrendingUp, AlertTriangle, BarChart3,
-} from 'lucide-react';
+import { usePortfolioStore, useMarketStore } from '@/store';
+import { TrendingUp, Shield, AlertTriangle } from 'lucide-react';
 
 interface ActionItem {
-  icon: typeof DollarSign;
+  icon: typeof TrendingUp;
   label: string;
-  tab: 'ai' | 'trade' | 'portfolio' | 'orders' | 'settings';
   prompt?: string;
 }
 
-const BASE_ACTIONS: ActionItem[] = [
-  { icon: DollarSign, label: 'Trade', tab: 'trade' },
-  { icon: LayoutDashboard, label: 'Positions', tab: 'portfolio' },
-  { icon: ListOrdered, label: 'Orders', tab: 'orders' },
-  { icon: Search, label: 'Research', tab: 'ai' },
-];
-
 export function QuickActions() {
-  const { setTab } = useTabStore();
   const { account } = usePortfolioStore();
   const { isMarketOpen } = useMarketStore();
 
-  // Dynamically adjust suggestions based on portfolio state
+  // Dynamic AI suggestions based on portfolio state
   const actions = useMemo(() => {
+    const dynamic: ActionItem[] = [];
+
     if (!account?.positions?.length) {
-      // No portfolio yet — show exploration-focused actions
-      return [
-        ...BASE_ACTIONS,
-        { icon: TrendingUp, label: 'Markets', tab: 'ai' as const },
-      ];
+      dynamic.push({
+        icon: TrendingUp,
+        label: 'Markets',
+        prompt: 'What are the markets doing today?',
+      });
+      return dynamic;
     }
 
     const hasLosers = account.positions.some((p) => p.totalPnlPercent < -5);
     const hasBigWinners = account.positions.some((p) => p.totalPnlPercent > 20);
     const isConcentrated = account.positions.some((p) => p.portfolioPercent > 25);
 
-    const dynamic: ActionItem[] = [...BASE_ACTIONS];
-
     if (hasLosers) {
       dynamic.push({
         icon: Shield,
         label: 'Risk Check',
-        tab: 'ai',
         prompt: 'Check my portfolio risk',
       });
     }
@@ -54,7 +42,6 @@ export function QuickActions() {
       dynamic.push({
         icon: TrendingUp,
         label: 'Take Profit?',
-        tab: 'ai',
         prompt: 'Should I take profits on my winning positions?',
       });
     }
@@ -63,22 +50,14 @@ export function QuickActions() {
       dynamic.push({
         icon: AlertTriangle,
         label: 'Rebalance',
-        tab: 'ai',
         prompt: 'How should I rebalance my portfolio?',
-      });
-    }
-
-    if (!isMarketOpen) {
-      dynamic.push({
-        icon: BarChart3,
-        label: 'Plan Trades',
-        tab: 'ai',
-        prompt: 'What should I prepare for next market open?',
       });
     }
 
     return dynamic;
   }, [account, isMarketOpen]);
+
+  if (actions.length === 0) return null;
 
   return (
     <div style={{
@@ -87,13 +66,15 @@ export function QuickActions() {
       gridTemplateColumns: `repeat(${Math.min(actions.length, 4)}, 1fr)`,
       gap: 8,
     }}>
-      {actions.slice(0, 8).map(({ icon: Icon, label, tab, prompt }) => (
+      {actions.slice(0, 8).map(({ icon: Icon, label, prompt }) => (
         <button
           key={label}
           onClick={() => {
-            setTab(tab);
-            // If there's a prompt and we're going to AI tab, we could pre-fill the chat
-            // This is handled by the AIChat component's suggestion buttons instead
+            // Trigger a click on the chat suggestion that matches this prompt
+            const event = new CustomEvent('vantage-ai-suggestion', {
+              detail: { prompt: prompt || label },
+            });
+            window.dispatchEvent(event);
           }}
           className="qa-btn"
         >

@@ -5,12 +5,12 @@ import { useAIChat } from '@/hooks/useAIChat';
 import { ConvictionCard } from './ConvictionCard';
 
 const SUGGESTIONS = [
+  '🔍 Research',
   '📊 Risk Check',
   '💡 Trade Ideas',
   '📰 Market News',
   '⚙️ Rebalance',
   '📈 Technical Analysis',
-  '🔍 Scan Opportunities',
 ];
 
 export function AIChat() {
@@ -42,6 +42,18 @@ export function AIChat() {
       return () => clearTimeout(timer);
     }
   }, [lastCost]);
+
+  // Listen for QuickAction button clicks from the AI tab
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.prompt) {
+        sendMessage(detail.prompt);
+      }
+    };
+    window.addEventListener('vantage-ai-suggestion', handler);
+    return () => window.removeEventListener('vantage-ai-suggestion', handler);
+  }, [sendMessage]);
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
