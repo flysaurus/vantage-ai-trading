@@ -1,7 +1,9 @@
 'use client';
 import { useOrders } from '@/hooks/useOrders';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import { useOrderStore, useTabStore } from '@/store';
 import { BarChart3 } from 'lucide-react';
+import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 
@@ -9,6 +11,7 @@ export function OrdersTab() {
   const { orders, allOrders, loading, error, refresh, cancelOrder } = useOrders();
   const { activeFilter, setFilter } = useOrderStore();
   const { setTab } = useTabStore();
+  const { account } = usePortfolio();
 
   const filtered =
     activeFilter === 'all'
@@ -90,6 +93,13 @@ export function OrdersTab() {
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
+      {/* Account Summary */}
+      {account && (
+        <div style={{ marginBottom: 12 }}>
+          <AccountSummaryCard account={account} />
+        </div>
+      )}
+
       {/* New Order */}
       <button
         onClick={() => setTab('trade')}

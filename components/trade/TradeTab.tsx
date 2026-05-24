@@ -1,37 +1,32 @@
 'use client';
 import { useState } from 'react';
-import { Search } from 'lucide-react';
 import { useMarketStore, useOrderFormStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
+import { usePortfolio } from '@/hooks/usePortfolio';
+import { SymbolSearch } from './SymbolSearch';
 
 export function TradeTab() {
   const [searchSymbol, setSearchSymbol] = useState('ETN');
   const { quotes } = useMarketStore();
   const { form, updateForm } = useOrderFormStore();
+  const { account } = usePortfolio();
 
   // Initialize hook
   useMarketData();
 
   const quote = quotes[searchSymbol.toUpperCase()];
   const isBuy = form.side === 'buy';
+  const holdings = account?.positions?.map(p => p.symbol) || [];
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
       {/* Search */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '0 12px' }}>
-          <Search size={14} style={{ color: '#94a3b8', marginRight: 8 }} />
-          <input
-            type="text"
-            value={searchSymbol}
-            onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
-            placeholder="Search symbol..."
-            style={{
-              flex: 1, padding: '10px 0', background: 'transparent',
-              border: 'none', color: '#f1f5f9', fontSize: 13, outline: 'none',
-            }}
-          />
-        </div>
+        <SymbolSearch
+          value={searchSymbol}
+          onChange={setSearchSymbol}
+          positions={holdings}
+        />
       </div>
 
       {/* Stock Card */}

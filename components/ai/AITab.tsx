@@ -1,13 +1,24 @@
 'use client';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import { ConfidenceRing } from './ConfidenceRing';
 import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
+import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 
 export function AITab() {
+  const { account } = usePortfolio();
+
   return (
     <>
       <ConfidenceRing />
       <div style={{ padding: '12px 16px 0' }}>
+        {/* Account Summary */}
+        {account && (
+          <div style={{ marginBottom: 12 }}>
+            <AccountSummaryCard account={account} />
+          </div>
+        )}
+
         {/* Key Insight */}
         <div className="key-insight">
           <div className="insight-title">🎯 Today&apos;s Key Insight</div>

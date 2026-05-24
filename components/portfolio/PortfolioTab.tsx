@@ -1,15 +1,72 @@
 'use client';
+import { useState } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store';
+import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 
 export function PortfolioTab() {
   const { account, loading, error, refresh } = usePortfolio();
   const store = usePortfolioStore();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showSellPanel, setShowSellPanel] = useState(false);
+  const [sellSubmitting, setSellSubmitting] = useState(false);
+  const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
 
   const fmt = (n: number) =>
     `$${Math.abs(n).toLocaleString()}`;
   const pct = (n: number) =>
     `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+
+  const toggleSelect = (symbol: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(symbol) ? next.delete(symbol) : next.add(symbol);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (account && selected.size === account.positions.length) {
+      setSelected(new Set());
+    } else if (account) {
+      setSelected(new Set(account.positions.map(p => p.symbol)));
+    }
+  };
+
+  const submitBulkSell = async () => {
+    setSellSubmitting(true);
+    setSellResults([]);
+    const results: Array<{ symbol: string; ok: boolean; error?: string }> = [];
+    for (const symbol of selected) {
+      try {
+        const pos = account?.positions.find(p => p.symbol === symbol);
+        if (!pos) continue;
+        const res = await fetch('/api/alpaca/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol,
+            qty: pos.qty,
+            side: 'sell',
+            type: 'market',
+            time_in_force: 'day',
+          }),
+        });
+        const json = await res.json();
+        results.push({ symbol, ok: res.ok, error: json.error || json.message });
+      } catch (e: any) {
+        results.push({ symbol, ok: false, error: e.message });
+      }
+    }
+    setSellResults(results);
+    setSellSubmitting(false);
+    const allOk = results.every(r => r.ok);
+    if (allOk) {
+      setSelected(new Set());
+      setShowSellPanel(false);
+      refresh();
+    }
+  };
 
   // Loading state — skeleton shimmer
   if (loading && !account) {
@@ -154,16 +211,50 @@ export function PortfolioTab() {
       {/* Positions */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700 }}>
-            Positions ({account.positions.length})
-          </span>
-          <button className="sort-btn">Sort: % ▼</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={account && selected.size > 0 && selected.size === account.positions.length}
+                onChange={selectAll}
+                style={{ width: 16, height: 16, accentColor: '#06b6d4', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                {selected.size === 0 ? 'Select All' : selected.size === account?.positions.length ? 'Deselect' : `${selected.size} selected`}
+              </span>
+            </label>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>
+              Positions ({account?.positions.length || 0})
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {selected.size > 0 && (
+              <button
+                onClick={() => setShowSellPanel(true)}
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: '4px 10px',
+                  background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                  borderRadius: 6, color: '#f87171', cursor: 'pointer',
+                }}
+              >
+                Sell {selected.size} Selected
+              </button>
+            )}
+            <button className="sort-btn">Sort: % ▼</button>
+          </div>
         </div>
 
         {account.positions.map((pos) => (
-          <div key={pos.symbol} className="pos-row">
+          <div key={pos.symbol} className={`pos-row ${selected.has(pos.symbol) ? 'selected' : ''}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(pos.symbol)}
+                  onClick={(e) => { e.stopPropagation(); }}
+                  onChange={() => toggleSelect(pos.symbol)}
+                  style={{ width: 16, height: 16, accentColor: '#06b6d4', cursor: 'pointer', flexShrink: 0, margin: 0 }}
+                />
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{pos.symbol}</div>
                 <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                   {pos.qty} shares {pos.sector && `· ${pos.sector}`}
@@ -240,6 +331,94 @@ export function PortfolioTab() {
         ))}
       </div>
 
+      {/* Sticky Batch Action Bar */}
+      {selected.size > 0 && !showSellPanel && (
+        <div className="batch-bar">
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>
+            <span style={{ color: '#06b6d4' }}>{selected.size}</span> position{selected.size > 1 ? 's' : ''} selected
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setSelected(new Set())} className="clear-btn">
+              Clear
+            </button>
+            <button onClick={() => setShowSellPanel(true)} className="sell-btn">
+              Sell Now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sell Confirmation Overlay */}
+      {showSellPanel && selected.size > 0 && (
+        <>
+          <div onClick={() => { setShowSellPanel(false); setSellResults([]); }} className="overlay-backdrop" />
+          <div className="sell-overlay">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
+                Sell {selected.size} Position{selected.size > 1 ? 's' : ''}
+              </span>
+              <button onClick={() => { setShowSellPanel(false); setSellResults([]); }} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer', padding: 4 }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              {Array.from(selected).map(symbol => {
+                const pos = account?.positions.find(p => p.symbol === symbol);
+                const result = sellResults.find(r => r.symbol === symbol);
+                return (
+                  <div key={symbol} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px', background: '#0f172a', borderRadius: 8, marginBottom: 6,
+                    border: result ? (result.ok ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)') : '1px solid #334155',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{symbol}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                        {pos?.qty} shares @ ${pos?.currentPrice?.toFixed(2)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1' }}>
+                        ${pos ? (pos.qty * pos.currentPrice).toFixed(2) : '—'}
+                      </div>
+                      {result && (
+                        <div style={{ fontSize: 10, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
+                          {result.ok ? '✓ Sold' : `✗ ${result.error}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, padding: '8px 12px', background: '#0f172a', borderRadius: 8 }}>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>Estimated Proceeds</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>
+                ${Array.from(selected).reduce((sum, sym) => {
+                  const pos = account?.positions.find(p => p.symbol === sym);
+                  return sum + (pos ? pos.qty * pos.currentPrice : 0);
+                }, 0).toFixed(2)}
+              </span>
+            </div>
+
+            <button
+              onClick={submitBulkSell}
+              disabled={sellSubmitting}
+              style={{
+                width: '100%', padding: 13, border: 'none', borderRadius: 10,
+                fontSize: 14, fontWeight: 700, cursor: sellSubmitting ? 'not-allowed' : 'pointer',
+                background: sellSubmitting ? '#334155' : '#ef4444',
+                color: 'white', opacity: sellSubmitting ? 0.6 : 1,
+              }}
+            >
+              {sellSubmitting ? 'Submitting...' : `Confirm — Sell ${selected.size} Position${selected.size > 1 ? 's' : ''} at Market`}
+            </button>
+          </div>
+        </>
+      )}
+
       <style jsx>{`
         .card {
           background: #1e293b;
@@ -255,6 +434,37 @@ export function PortfolioTab() {
           cursor: pointer;
         }
         .pos-row:active { background: #334155; }
+        .pos-row.selected { background: #0a2333; border: 1px solid rgba(6,182,212,0.3); }
+        .batch-bar {
+          position: sticky; bottom: 60px; z-index: 20;
+          margin: 8px 16px 0; padding: 10px 16px;
+          background: #0f172a; border: 1px solid #334155;
+          border-radius: 12px; display: flex;
+          justify-content: space-between; align-items: center;
+          box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+        }
+        .clear-btn {
+          padding: 6px 12px; background: transparent;
+          border: 1px solid #334155; border-radius: 6px;
+          color: #94a3b8; font-size: 11px; font-weight: 600;
+          cursor: pointer; font-family: inherit;
+        }
+        .sell-btn {
+          padding: 6px 16px; background: #ef4444;
+          border: none; border-radius: 6px;
+          color: white; font-size: 12px; font-weight: 700;
+          cursor: pointer; font-family: inherit;
+        }
+        .overlay-backdrop {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.6); z-index: 50;
+        }
+        .sell-overlay {
+          position: fixed; bottom: 0; left: 0; right: 0; z-index: 51;
+          background: #1e293b; border: 1px solid #334155;
+          border-top-left-radius: 20px; border-top-right-radius: 20px;
+          padding: 16px 16px 24px; max-height: 70vh; overflow: auto;
+        }
         .sort-btn {
           background: #0f172a;
           border: 1px solid #334155;
@@ -270,107 +480,6 @@ export function PortfolioTab() {
 }
 
 // ─── Sub-components ─────────────────────────────────────
-
-function AccountSummaryCard({ account }: { account: import('@/types').AccountSummary }) {
-  const fmt = (n: number) => `$${Math.abs(n).toLocaleString()}`;
-  const pct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
-
-  return (
-    <>
-      <div
-        style={{
-          fontSize: 10,
-          color: 'var(--text-dim)',
-          textTransform: 'uppercase',
-          marginBottom: 4,
-        }}
-      >
-        Account Value
-      </div>
-      <div style={{ fontSize: 26, fontWeight: 700 }}>
-        ${account.equity.toLocaleString()}
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          marginTop: 8,
-          paddingTop: 10,
-          borderTop: '1px solid #334155',
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              marginBottom: 2,
-            }}
-          >
-            Today P&L
-          </div>
-          <div
-            className={account.dayPnl >= 0 ? 'up' : 'down'}
-            style={{ fontSize: 13, fontWeight: 700 }}
-          >
-            {fmt(account.dayPnl)} ({pct(account.dayPnlPercent)})
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              marginBottom: 2,
-            }}
-          >
-            Total P&L
-          </div>
-          <div
-            className="up"
-            style={{ fontSize: 13, fontWeight: 700 }}
-          >
-            {fmt(account.totalPnl)} ({pct(account.totalPnlPercent)})
-          </div>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              marginBottom: 2,
-            }}
-          >
-            Buying Power
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>
-            ${account.buyingPower.toLocaleString()}
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              marginBottom: 2,
-            }}
-          >
-            Cash
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>
-            ${account.cash.toLocaleString()}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
 
 const SECTOR_COLORS = [
   '#06b6d4',

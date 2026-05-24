@@ -1,5 +1,5 @@
 // ─── Market Data Endpoint ────────────────────────────────────
-// Handles quote batches and bar data from Alpaca Data API v2.
+// Handles quote batches, bar data from Alpaca Data API v2.
 //
 // GET /api/alpaca/market?symbols=AAPL,TSLA       → batch quotes
 // GET /api/alpaca/market?symbol=AAPL&bars=1D     → bars (timeframe)
