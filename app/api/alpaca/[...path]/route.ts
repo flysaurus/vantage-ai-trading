@@ -90,6 +90,11 @@ async function handleRequest(
     const contentType = res.headers.get('content-type') || '';
     let data: unknown;
 
+    // 204 No Content — treat as success
+    if (res.status === 204) {
+      return NextResponse.json({ ok: true });
+    }
+
     if (contentType.includes('application/json')) {
       data = await res.json();
     } else {
@@ -112,6 +117,14 @@ async function handleRequest(
             status: 429,
             headers: retryAfter ? { 'Retry-After': retryAfter } : {},
           }
+        );
+      }
+
+      // 403 with wash trade — surface the actual Alpaca message
+      if (res.status === 403 && errMsg) {
+        return NextResponse.json(
+          { error: errMsg },
+          { status: 403 }
         );
       }
 

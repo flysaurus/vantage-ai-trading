@@ -88,7 +88,8 @@ export function PortfolioTab() {
             signal: controller.signal,
           });
           const json = await res.json();
-          results.push({ symbol, ok: res.ok, error: json.error || json.message });
+          const errMsg = json.error || json.message || '';
+          results.push({ symbol, ok: res.ok, error: errMsg });
         } catch (fetchErr: any) {
           results.push({ symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
         } finally {
