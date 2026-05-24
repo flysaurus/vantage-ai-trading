@@ -18,7 +18,6 @@ export async function updateInvestorStyle(
     .update({
       investor_style: style,
       investor_style_set_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     } as never)
     .eq('id', userId);
 
@@ -37,7 +36,6 @@ export async function completeOnboarding(userId: string): Promise<void> {
     .from('users')
     .update({
       investor_style_onboarded: true,
-      updated_at: new Date().toISOString(),
     } as never)
     .eq('id', userId);
 
