@@ -11,10 +11,29 @@ export function PortfolioTab() {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [sellSubmitting, setSellSubmitting] = useState(false);
   const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
-  const [sellOrderType, setSellOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
-  const [sellLimitPrice, setSellLimitPrice] = useState('');
-  const [sellStopPrice, setSellStopPrice] = useState('');
-  const [sellTIF, setSellTIF] = useState<'day' | 'gtc'>('day');
+
+  // Per-position sell configuration
+  interface SellConfig {
+    qty: number;
+    orderType: 'market' | 'limit' | 'stop' | 'stop_limit';
+    limitPrice: string;
+    stopPrice: string;
+    tif: 'day' | 'gtc';
+  }
+  const [sellConfigs, setSellConfigs] = useState<Record<string, SellConfig>>({});
+
+  const initSellConfig = (symbols: string[]) => {
+    const cfgs: Record<string, SellConfig> = {};
+    for (const sym of symbols) {
+      const pos = account?.positions.find(p => p.symbol === sym);
+      cfgs[sym] = { qty: pos?.qty || 0, orderType: 'market', limitPrice: '', stopPrice: '', tif: 'day' };
+    }
+    setSellConfigs(cfgs);
+  };
+
+  const updateSellConfig = (symbol: string, patch: Partial<SellConfig>) => {
+    setSellConfigs(prev => ({ ...prev, [symbol]: { ...prev[symbol], ...patch } }));
+  };
 
   const fmt = (n: number) =>
     `$${Math.abs(n).toLocaleString()}`;
@@ -44,19 +63,20 @@ export function PortfolioTab() {
     for (const symbol of selected) {
       try {
         const pos = account?.positions.find(p => p.symbol === symbol);
-        if (!pos) continue;
+        const cfg = sellConfigs[symbol];
+        if (!pos || !cfg) continue;
         const body: any = {
           symbol,
-          qty: pos.qty,
+          qty: cfg.qty,
           side: 'sell',
-          type: sellOrderType,
-          time_in_force: sellOrderType === 'market' ? 'day' : sellTIF,
+          type: cfg.orderType,
+          time_in_force: cfg.orderType === 'market' ? 'day' : cfg.tif,
         };
-        if (sellOrderType === 'limit' || sellOrderType === 'stop_limit') {
-          body.limit_price = parseFloat(sellLimitPrice);
+        if (cfg.orderType === 'limit' || cfg.orderType === 'stop_limit') {
+          body.limit_price = parseFloat(cfg.limitPrice);
         }
-        if (sellOrderType === 'stop' || sellOrderType === 'stop_limit') {
-          body.stop_price = parseFloat(sellStopPrice);
+        if (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') {
+          body.stop_price = parseFloat(cfg.stopPrice);
         }
         const res = await fetch('/api/alpaca/orders', {
           method: 'POST',
@@ -75,9 +95,7 @@ export function PortfolioTab() {
     if (allOk) {
       setSelected(new Set());
       setShowSellPanel(false);
-      setSellOrderType('market');
-      setSellLimitPrice('');
-      setSellStopPrice('');
+      setSellConfigs({});
       refresh();
     }
   };
@@ -244,7 +262,7 @@ export function PortfolioTab() {
           <div style={{ display: 'flex', gap: 6 }}>
             {selected.size > 0 && (
               <button
-                onClick={() => setShowSellPanel(true)}
+                onClick={() => { setShowSellPanel(true); initSellConfig(Array.from(selected)); }}
                 style={{
                   fontSize: 10, fontWeight: 700, padding: '4px 10px',
                   background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
@@ -355,7 +373,7 @@ export function PortfolioTab() {
             <button onClick={() => setSelected(new Set())} className="clear-btn">
               Clear
             </button>
-            <button onClick={() => setShowSellPanel(true)} className="sell-btn">
+            <button onClick={() => { setShowSellPanel(true); initSellConfig(Array.from(selected)); }} className="sell-btn">
               Sell Now
             </button>
           </div>
@@ -367,7 +385,8 @@ export function PortfolioTab() {
         <>
           <div onClick={() => { setShowSellPanel(false); setSellResults([]); }} className="overlay-backdrop" />
           <div className="sell-overlay">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            {/* Header — sticky */}
+            <div className="sell-header">
               <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
                 Sell {selected.size} Position{selected.size > 1 ? 's' : ''}
               </span>
@@ -376,140 +395,175 @@ export function PortfolioTab() {
               </button>
             </div>
 
-            {/* Order Type Tabs */}
-            <div className="order-type-tabs">
-              {(['market', 'limit', 'stop', 'stop_limit'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setSellOrderType(t)}
-                  className={`type-tab ${sellOrderType === t ? 'active' : ''}`}
-                >
-                  {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : t === 'stop' ? 'Stop' : 'Stop Limit'}
-                </button>
-              ))}
-            </div>
-
-            {/* Price Inputs */}
-            {(sellOrderType === 'limit' || sellOrderType === 'stop_limit') && (
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>
-                  Limit Price
-                </div>
-                <div className="price-input-wrap">
-                  <span className="price-prefix">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={sellLimitPrice}
-                    onChange={e => setSellLimitPrice(e.target.value)}
-                    placeholder="Required — minimum sell price"
-                    className="price-input"
-                  />
-                </div>
-              </div>
-            )}
-            {(sellOrderType === 'stop' || sellOrderType === 'stop_limit') && (
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>
-                  Stop Price
-                </div>
-                <div className="price-input-wrap">
-                  <span className="price-prefix">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={sellStopPrice}
-                    onChange={e => setSellStopPrice(e.target.value)}
-                    placeholder={sellOrderType === 'stop' ? 'Price that triggers order' : 'Price that triggers limit order'}
-                    className="price-input"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* TIF (non-market) */}
-            {sellOrderType !== 'market' && (
-              <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>TIF</span>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {(['day', 'gtc'] as const).map(tif => (
-                    <button
-                      key={tif}
-                      onClick={() => setSellTIF(tif)}
-                      style={{
-                        padding: '5px 14px', fontSize: 11, fontWeight: 600, borderRadius: 6,
-                        border: sellTIF === tif ? 'none' : '1px solid #334155',
-                        background: sellTIF === tif ? '#06b6d4' : 'transparent',
-                        color: sellTIF === tif ? 'white' : '#94a3b8', cursor: 'pointer',
-                      }}
-                    >
-                      {tif === 'day' ? 'Day' : 'GTC'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Selected Positions */}
-            <div style={{ marginBottom: 10 }}>
+            {/* Scrollable position list with per-position config */}
+            <div className="sell-body">
               {Array.from(selected).map(symbol => {
                 const pos = account?.positions.find(p => p.symbol === symbol);
+                const cfg = sellConfigs[symbol];
                 const result = sellResults.find(r => r.symbol === symbol);
+                if (!pos || !cfg) return null;
+
+                const orderType = cfg.orderType;
+                const needsLimit = orderType === 'limit' || orderType === 'stop_limit';
+                const needsStop = orderType === 'stop' || orderType === 'stop_limit';
+
                 return (
-                  <div key={symbol} className={`sell-pos-row ${result ? (result.ok ? 'sold' : 'failed') : ''}`}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{symbol}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                        {pos?.qty} shares @ ${pos?.currentPrice?.toFixed(2)}
+                  <div key={symbol} className={`sell-pos-card ${result ? (result.ok ? 'sold' : 'failed') : ''}`}>
+                    {/* Position summary row */}
+                    <div className="sell-pos-header">
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{symbol}</span>
+                        <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>
+                          {pos.qty} sh @ ${pos.currentPrice?.toFixed(2)}
+                        </span>
                       </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1' }}>
-                        ${pos ? (pos.qty * pos.currentPrice).toFixed(2) : '—'}
-                      </div>
-                      {result && (
-                        <div style={{ fontSize: 10, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
-                          {result.ok ? '✓ Sold' : `✗ ${result.error}`}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1' }}>
+                          ${(cfg.qty * pos.currentPrice).toFixed(2)}
                         </div>
-                      )}
+                        {result && (
+                          <div style={{ fontSize: 10, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
+                            {result.ok ? '✓ Sold' : `✗ ${result.error}`}
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Qty control */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600, minWidth: 14 }}>Qty</span>
+                      <button
+                        onClick={() => { const v = Math.max(1, cfg.qty - 1); updateSellConfig(symbol, { qty: v }); }}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                      >−</button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={pos.qty}
+                        value={cfg.qty}
+                        onChange={e => { const v = Math.min(pos.qty, Math.max(1, parseInt(e.target.value) || 1)); updateSellConfig(symbol, { qty: v }); }}
+                        style={{ width: 60, textAlign: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '4px 6px', color: '#f1f5f9', fontSize: 12, fontWeight: 600 }}
+                      />
+                      <button
+                        onClick={() => { const v = Math.min(pos.qty, cfg.qty + 1); updateSellConfig(symbol, { qty: v }); }}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                      >+</button>
+                      <span style={{ fontSize: 9, color: '#64748b' }}>of {pos.qty}</span>
+                    </div>
+
+                    {/* Order type mini-tabs */}
+                    <div style={{ display: 'flex', gap: 3, marginBottom: 6, background: '#0f172a', padding: 3, borderRadius: 6 }}>
+                      {(['market', 'limit', 'stop', 'stop_limit'] as const).map(t => (
+                        <button
+                          key={t}
+                          onClick={() => updateSellConfig(symbol, { orderType: t })}
+                          style={{
+                            flex: 1, padding: '4px 2px', fontSize: 9, fontWeight: 600,
+                            border: 'none', borderRadius: 4, cursor: 'pointer',
+                            background: orderType === t ? '#06b6d4' : 'transparent',
+                            color: orderType === t ? 'white' : '#64748b',
+                          }}
+                        >
+                          {t === 'market' ? 'Mkt' : t === 'limit' ? 'Lmt' : t === 'stop' ? 'Stp' : 'StpL'}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Price inputs + TIF */}
+                    {orderType !== 'market' && (
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                        {needsLimit && (
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Limit</div>
+                            <div style={{ display: 'flex', alignItems: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '0 6px' }}>
+                              <span style={{ color: '#64748b', fontSize: 10, marginRight: 2 }}>$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={cfg.limitPrice}
+                                onChange={e => updateSellConfig(symbol, { limitPrice: e.target.value })}
+                                placeholder="Min price"
+                                style={{ flex: 1, padding: '5px 0', background: 'transparent', border: 'none', color: '#f1f5f9', fontSize: 11, outline: 'none' }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {needsStop && (
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Stop</div>
+                            <div style={{ display: 'flex', alignItems: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '0 6px' }}>
+                              <span style={{ color: '#64748b', fontSize: 10, marginRight: 2 }}>$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={cfg.stopPrice}
+                                onChange={e => updateSellConfig(symbol, { stopPrice: e.target.value })}
+                                placeholder="Trigger"
+                                style={{ flex: 1, padding: '5px 0', background: 'transparent', border: 'none', color: '#f1f5f9', fontSize: 11, outline: 'none' }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>TIF</div>
+                          <select
+                            value={cfg.tif}
+                            onChange={e => updateSellConfig(symbol, { tif: e.target.value as 'day' | 'gtc' })}
+                            style={{ padding: '5px 4px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: 10, fontWeight: 600 }}
+                          >
+                            <option value="day">Day</option>
+                            <option value="gtc">GTC</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* Estimated Proceeds */}
-            <div className="proceeds-bar">
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>Estimated {sellOrderType === 'limit' ? 'Proceeds (at limit)' : sellOrderType === 'stop' ? 'Proceeds (at stop)' : 'Proceeds'}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>
-                ${Array.from(selected).reduce((sum, sym) => {
-                  const pos = account?.positions.find(p => p.symbol === sym);
-                  const price = sellOrderType === 'limit' && sellLimitPrice ? parseFloat(sellLimitPrice) : pos?.currentPrice || 0;
-                  return sum + (pos ? pos.qty * price : 0);
-                }, 0).toFixed(2)}
-              </span>
+            {/* Sticky footer — always visible */}
+            <div className="sell-footer">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>Estimated proceeds</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                  ${Array.from(selected).reduce((sum, sym) => {
+                    const pos = account?.positions.find(p => p.symbol === sym);
+                    const cfg = sellConfigs[sym];
+                    if (!pos || !cfg) return sum;
+                    const price = cfg.orderType === 'limit' && cfg.limitPrice ? parseFloat(cfg.limitPrice) : pos.currentPrice || 0;
+                    return sum + (cfg.qty * price);
+                  }, 0).toFixed(2)}
+                </span>
+              </div>
+
+              {/* Validation */}
+              {(() => {
+                const invalidCfg = Object.values(sellConfigs).find(cfg => {
+                  const needsLimit = (cfg.orderType === 'limit' || cfg.orderType === 'stop_limit') && !cfg.limitPrice;
+                  const needsStop = (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') && !cfg.stopPrice;
+                  return needsLimit || needsStop;
+                });
+                return invalidCfg && !sellSubmitting ? (
+                  <div className="validation-msg">Missing price(s) for one or more positions</div>
+                ) : null;
+              })()}
+
+              <button
+                onClick={submitBulkSell}
+                disabled={
+                  sellSubmitting ||
+                  Object.values(sellConfigs).some(cfg => {
+                    const needsLimit = (cfg.orderType === 'limit' || cfg.orderType === 'stop_limit') && !cfg.limitPrice;
+                    const needsStop = (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') && !cfg.stopPrice;
+                    return needsLimit || needsStop;
+                  })
+                }
+                className="confirm-sell-btn"
+              >
+                {sellSubmitting ? 'Submitting...' : `Confirm — Sell ${selected.size} Position${selected.size > 1 ? 's' : ''}`}
+              </button>
             </div>
-
-            {/* Validation */}
-            {sellOrderType !== 'market' && sellOrderType !== 'stop' && !sellLimitPrice && !sellSubmitting && (
-              <div className="validation-msg">Set a limit price to continue</div>
-            )}
-            {sellOrderType !== 'market' && sellOrderType !== 'limit' && !sellStopPrice && !sellSubmitting && (
-              <div className="validation-msg">Set a stop price to continue</div>
-            )}
-
-            {/* Submit */}
-            <button
-              onClick={submitBulkSell}
-              disabled={
-                sellSubmitting ||
-                ((sellOrderType === 'limit' || sellOrderType === 'stop_limit') && !sellLimitPrice) ||
-                ((sellOrderType === 'stop' || sellOrderType === 'stop_limit') && !sellStopPrice)
-              }
-              className="confirm-sell-btn"
-            >
-              {sellSubmitting ? 'Submitting...' : `Confirm — Sell ${selected.size} Position${selected.size > 1 ? 's' : ''} (${sellOrderType === 'market' ? 'Market' : sellOrderType === 'limit' ? 'Limit' : sellOrderType === 'stop' ? 'Stop' : 'Stop Limit'})`}
-            </button>
           </div>
         </>
       )}
@@ -557,49 +611,41 @@ export function PortfolioTab() {
         .sell-overlay {
           position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
           background: #1e293b; border: 1px solid #334155;
-          border-radius: 16px; padding: 20px; max-height: 85vh; overflow: auto;
-          width: 90%; max-width: 460px; z-index: 51;
+          border-radius: 16px; z-index: 51;
+          width: 92%; max-width: 460px;
+          max-height: 88vh;
+          display: flex; flex-direction: column;
+        }
+        .sell-header {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 16px 16px 12px;
+          border-bottom: 1px solid #334155;
+          flex-shrink: 0;
+        }
+        .sell-body {
+          flex: 1; overflow-y: auto; padding: 12px 16px;
+          display: flex; flex-direction: column; gap: 10px;
+        }
+        .sell-footer {
+          padding: 12px 16px 16px;
+          border-top: 1px solid #334155;
+          flex-shrink: 0;
+          background: #1e293b;
+          border-radius: 0 0 16px 16px;
+        }
+        .sell-pos-card {
+          background: #0f172a; border: 1px solid #334155;
+          border-radius: 10px; padding: 12px;
+        }
+        .sell-pos-card.sold { border-color: rgba(74,222,128,0.3); }
+        .sell-pos-card.failed { border-color: rgba(239,68,68,0.3); }
+        .sell-pos-header {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 8px;
         }
         .close-sell-btn {
           background: transparent; border: none; color: #94a3b8;
           font-size: 20px; cursor: pointer; padding: 4px;
-        }
-        .order-type-tabs {
-          display: flex; gap: 4px; margin-bottom: 12px;
-          background: #0f172a; padding: 4px; border-radius: 8px;
-        }
-        .type-tab {
-          flex: 1; padding: 7px 4px; font-size: 11px; font-weight: 600;
-          border: none; border-radius: 6px; cursor: pointer;
-          background: transparent; color: #94a3b8;
-          font-family: inherit; transition: all 0.15s;
-        }
-        .type-tab.active {
-          background: #06b6d4; color: white;
-        }
-        .price-input-wrap {
-          display: flex; align-items: center;
-          background: #0f172a; border: 1px solid #334155;
-          border-radius: 8px; padding: 0 10px;
-        }
-        .price-prefix {
-          color: #64748b; font-size: 13px; font-weight: 600; margin-right: 4px;
-        }
-        .price-input {
-          flex: 1; padding: 9px 0; background: transparent;
-          border: none; color: #f1f5f9; font-size: 13px; outline: none;
-        }
-        .sell-pos-row {
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 10px; background: #0f172a; border-radius: 8px; margin-bottom: 6px;
-          border: 1px solid #334155;
-        }
-        .sell-pos-row.sold { border-color: rgba(74,222,128,0.3); }
-        .sell-pos-row.failed { border-color: rgba(239,68,68,0.3); }
-        .proceeds-bar {
-          display: flex; justify-content: space-between;
-          margin-bottom: 10px; padding: 8px 12px;
-          background: #0f172a; border-radius: 8px;
         }
         .validation-msg {
           text-align: center; font-size: 10px; color: #fbbf24;

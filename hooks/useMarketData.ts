@@ -75,8 +75,6 @@ export function useMarketData() {
 
     try {
       const symbols = watchlist.map((w) => w.symbol);
-
-    try {
       const quotes = await broker.getQuotes(symbols);
 
       // Update watchlist with live data
@@ -108,7 +106,7 @@ export function useMarketData() {
     } catch (err) {
       console.warn('[useMarketData] Failed to fetch watchlist:', err);
     }
-  }, [broker, connected, setWatchlist, updateQuote]);
+  }, [broker, connected, watchlist, setWatchlist, updateQuote]);
 
   // WebSocket streaming for live quotes on all tracked symbols
   const setupStreaming = useCallback(() => {
