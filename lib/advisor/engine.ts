@@ -417,7 +417,7 @@ export function analyzeSoros(stock: StockData): RecommendationResult {
 }
 
 // ============================================================
-// MUNGER — QUALITY COMPOUNDER
+// MUNGER — DIVIDEND COMPOUNDER
 // ============================================================
 
 export function analyzeMunger(stock: StockData): RecommendationResult {
@@ -425,73 +425,53 @@ export function analyzeMunger(stock: StockData): RecommendationResult {
   let score = 0;
   const maxScore = 100;
 
-  // ROIC — quality metric (Munger's favorite)
-  if (stock.roic !== undefined) {
-    if (stock.roic > 15) {
-      factors.push(`ROIC: ${stock.roic.toFixed(1)}% (exceptional capital efficiency)`);
-      score += 30;
-    } else if (stock.roic > 10) {
-      factors.push(`ROIC: ${stock.roic.toFixed(1)}% (solid capital returns)`);
-      score += 20;
-    } else if (stock.roic > 5) {
-      factors.push(`ROIC: ${stock.roic.toFixed(1)}% (adequate)`);
+  // Dividend yield (target: 3-4%)
+  if (stock.dividendYield !== undefined) {
+    if (stock.dividendYield >= 3 && stock.dividendYield <= 5) {
+      factors.push(`Dividend yield: ${stock.dividendYield.toFixed(2)}% (target range)`);
+      score += 25;
+    } else if (stock.dividendYield >= 2) {
+      factors.push(`Dividend yield: ${stock.dividendYield.toFixed(2)}% (acceptable)`);
+      score += 15;
+    } else if (stock.dividendYield > 0) {
+      factors.push(`Dividend yield: ${stock.dividendYield.toFixed(2)}% (low)`);
       score += 5;
     } else {
-      factors.push(`ROIC: ${stock.roic.toFixed(1)}% (below cost of capital)`);
-      score -= 15;
-    }
-  }
-
-  // ROE as secondary quality check
-  if (stock.roe !== undefined && stock.roe > 12) {
-    factors.push(`ROE: ${stock.roe.toFixed(1)}% (strong returns)`);
-    score += 15;
-  }
-
-  // Earnings growth consistency (5-7% annual sustained)
-  if (stock.earningsGrowth !== undefined) {
-    if (stock.earningsGrowth >= 5 && stock.earningsGrowth <= 15) {
-      factors.push(`Earnings growth: ${stock.earningsGrowth.toFixed(1)}% (consistent, sustainable)`);
-      score += 20;
-    } else if (stock.earningsGrowth > 15) {
-      factors.push(`Earnings growth: ${stock.earningsGrowth.toFixed(1)}% (aggressive — sustainability risk)`);
-      score += 5;
-    } else {
-      factors.push(`Earnings growth: ${stock.earningsGrowth.toFixed(1)}% (stagnating)`);
+      factors.push('No dividend');
       score -= 10;
     }
   }
 
-  // Dividend growth (5-7% annually = compounding machine)
+  // Dividend growth (target: 5-7% annually)
   if (stock.dividendGrowth !== undefined) {
-    if (stock.dividendGrowth >= 5 && stock.dividendGrowth <= 10) {
-      factors.push(`Dividend growth: ${stock.dividendGrowth.toFixed(1)}%/yr (compounding reliably)`);
-      score += 20;
-    } else if (stock.dividendGrowth > 10) {
-      factors.push(`Dividend growth: ${stock.dividendGrowth.toFixed(1)}%/yr (aggressive — may not sustain)`);
-      score += 5;
-    }
-  }
-
-  // P/E discipline — don't overpay
-  if (stock.pe !== undefined) {
-    if (stock.pe > 30) {
-      factors.push(`P/E: ${stock.pe.toFixed(1)} (expensive — wait for better entry)`);
-      score -= 20;
-    } else if (stock.pe < 18) {
-      factors.push(`P/E: ${stock.pe.toFixed(1)} (reasonable entry)`);
+    if (stock.dividendGrowth >= 5) {
+      factors.push(`Dividend growth: ${stock.dividendGrowth.toFixed(1)}% annually`);
+      score += 25;
+    } else if (stock.dividendGrowth > 0) {
+      factors.push(`Dividend growth: ${stock.dividendGrowth.toFixed(1)}%`);
       score += 10;
     }
   }
 
-  // FCF yield — real cash generation matters
-  if (stock.fcfYield !== undefined) {
-    if (stock.fcfYield > 4) {
-      factors.push(`FCF yield: ${stock.fcfYield.toFixed(2)}% (strong cash compounder)`);
-      score += 15;
-    } else if (stock.fcfYield < 1) {
-      factors.push(`FCF yield: ${stock.fcfYield.toFixed(2)}% (weak — low margin of safety)`);
-      score -= 10;
+  // Payout ratio (target: <70%)
+  if (stock.payoutRatio !== undefined) {
+    if (stock.payoutRatio < 70) {
+      factors.push(`Payout ratio: ${stock.payoutRatio.toFixed(0)}% (sustainable)`);
+      score += 20;
+    } else if (stock.payoutRatio < 85) {
+      factors.push(`Payout ratio: ${stock.payoutRatio.toFixed(0)}% (elevated)`);
+      score += 5;
+    } else {
+      factors.push(`Payout ratio: ${stock.payoutRatio.toFixed(0)}% (risky)`);
+      score -= 15;
+    }
+  }
+
+  // Business stability (low growth is OK)
+  if (stock.revenueGrowth !== undefined) {
+    if (stock.revenueGrowth < 10 && stock.revenueGrowth > -2) {
+      factors.push(`Stable business: ${stock.revenueGrowth.toFixed(1)}% growth`);
+      score += 10;
     }
   }
 
@@ -500,19 +480,19 @@ export function analyzeMunger(stock: StockData): RecommendationResult {
 
   if (score >= 70) {
     recommendation = 'BUY_MORE';
-    reasoning = 'High-quality compounder with durable competitive advantages. Excellent capital allocation.';
+    reasoning = 'Excellent dividend payer with sustainable growth. Perfect for income compounding.';
   } else if (score >= 40) {
     recommendation = 'HOLD';
-    reasoning = 'Decent quality business. Hold and let compounding work; look for better entries on dips.';
+    reasoning = 'Solid income stream. Hold for dividend compounding.';
   } else {
     recommendation = 'SELL';
-    reasoning = 'Lacks the quality characteristics of a long-term compounder. Better capital allocation opportunities exist.';
+    reasoning = 'Dividend unsustainable or insufficient yield. Look for better income opportunities.';
   }
 
   const risks: string[] = [];
-  if (stock.roic !== undefined && stock.roic < 7) risks.push('Returns near or below cost of capital');
-  if (stock.pe !== undefined && stock.pe > 30) risks.push('Significant overvaluation');
-  if (stock.dividendGrowth !== undefined && stock.dividendGrowth < 3) risks.push('Dividend not growing — weak compounding signal');
+  if (stock.payoutRatio && stock.payoutRatio > 80) risks.push('High payout ratio - dividend cut risk');
+  if (!stock.dividendYield || stock.dividendYield < 2) risks.push('Yield below target range');
+  if (stock.dividendGrowth && stock.dividendGrowth < 2) risks.push('Slow dividend growth');
 
   return { recommendation, confidence: clampConfidence(score, maxScore), reasoning, keyFactors: factors, risks };
 }
@@ -521,7 +501,7 @@ export function analyzeMunger(stock: StockData): RecommendationResult {
 // COMBINED — run all 5 styles
 // ============================================================
 
-export function analyzeAllStyles(stock: StockData): AllStylesResult {
+export function getAllRecommendations(stock: StockData): AllStylesResult {
   return {
     buffett: analyzeBuffett(stock),
     lynch: analyzeLynch(stock),
