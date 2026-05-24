@@ -174,33 +174,30 @@ export function StockRecommendationCard({
           />
         </div>
 
-        {/* Reasoning */}
+        {/* Why? */}
+        <p style={{ fontSize: 11, fontWeight: 600, color: colors.text, margin: '0 0 4px' }}>
+          Why?
+        </p>
         <p style={{ fontSize: 12, color: colors.text, margin: '0 0 10px', lineHeight: 1.5 }}>
           {selectedRec.reasoning}
         </p>
 
         {/* Key factors + risks */}
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
           {selectedRec.keyFactors && selectedRec.keyFactors.length > 0 && (
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 10, fontWeight: 600, color: colors.text, margin: '0 0 4px' }}>
-                KEY FACTORS
-              </p>
+            <div>
               {selectedRec.keyFactors.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: colors.text, opacity: 0.85 }}>
-                  <span style={{ color: '#22c55e' }}>+</span> {f}
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: colors.text, opacity: 0.9, marginBottom: 2 }}>
+                  <span style={{ color: '#22c55e', flexShrink: 0 }}>✓</span> <span>{f}</span>
                 </div>
               ))}
             </div>
           )}
           {selectedRec.risks && selectedRec.risks.length > 0 && (
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 10, fontWeight: 600, color: colors.text, margin: '0 0 4px' }}>
-                RISKS
-              </p>
+            <div>
               {selectedRec.risks.map((r, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: colors.text, opacity: 0.85 }}>
-                  <span style={{ color: '#ef4444' }}>−</span> {r}
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: colors.text, opacity: 0.9, marginBottom: 2 }}>
+                  <span style={{ color: '#facc15', flexShrink: 0 }}>⚠️</span> <span>{r}</span>
                 </div>
               ))}
             </div>
@@ -227,11 +224,11 @@ export function StockRecommendationCard({
             gap: 6,
           }}
         >
-          {showAllStyles ? '▲ Hide' : '▼ View'} all 5 styles
+          {showAllStyles ? '✕ Hide' : '→ View'} what other advisors say
         </button>
 
         {showAllStyles && (
-          <div style={{ padding: '0 14px 14px' }}>
+          <div style={{ padding: '14px', background: 'rgba(30,41,59,0.5)' }}>
             {(Object.keys(allRecommendations) as InvestorStyle[]).map((style) => {
               const rec = allRecommendations[style];
               const c = STYLE_COLORS[style];
@@ -248,44 +245,44 @@ export function StockRecommendationCard({
                     border: isCurrent ? `1px solid ${c.border}` : '1px solid #334155',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 16 }}>{STYLE_EMOJIS[style]}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 16 }}>{STYLE_EMOJIS[style]}</span>
+                      <div>
+                        {isCurrent && (
+                          <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block' }}>
+                            (Your style)
+                          </span>
+                        )}
                         <span style={{ fontSize: 12, fontWeight: 600 }}>
                           {STYLE_NAMES[style]}
                         </span>
-                        {isCurrent && (
-                          <span style={{ fontSize: 9, color: 'var(--accent-teal)', fontWeight: 600 }}>
-                            (YOU)
-                          </span>
-                        )}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '1px 7px',
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            background: REC_CSS[rec.recommendation].bg,
-                            color: REC_CSS[rec.recommendation].color,
-                          }}
-                        >
-                          {getRecLabel(rec.recommendation)}
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                          {Math.round(rec.confidence * 100)}%
-                        </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          background: REC_CSS[rec.recommendation].bg,
+                          color: REC_CSS[rec.recommendation].color,
+                        }}
+                      >
+                        {getRecLabel(rec.recommendation)}
+                      </span>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {Math.round(rec.confidence * 100)}%
                       </div>
-                      <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '4px 0 0', lineHeight: 1.4 }}>
-                        {rec.reasoning.length > 100
-                          ? rec.reasoning.slice(0, 100) + '...'
-                          : rec.reasoning}
-                      </p>
                     </div>
                   </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0, lineHeight: 1.4 }}>
+                    {rec.reasoning.length > 100
+                      ? rec.reasoning.slice(0, 100) + '...'
+                      : rec.reasoning}
+                  </p>
                 </div>
               );
             })}
