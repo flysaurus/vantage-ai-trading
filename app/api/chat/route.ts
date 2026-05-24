@@ -245,89 +245,101 @@ export async function POST(request: NextRequest) {
     try {
       // ── Primary: DeepSeek ──
       if (deepseekKey) {
-        const dsRes = await fetch(DEEPSEEK_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${deepseekKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: chatMessages,
-            stream: true,
-            temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
-            max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
-          }),
-          signal: AbortSignal.timeout(60000),
-        });
+        const tryDeepSeek = async () => {
+          try {
+            const dsRes = await fetch(DEEPSEEK_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${deepseekKey}`,
+              },
+              body: JSON.stringify({
+                model,
+                messages: chatMessages,
+                stream: true,
+                temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
+                max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
+              }),
+              signal: AbortSignal.timeout(60000),
+            });
 
-        if (dsRes.ok && dsRes.body) {
-          stream = dsRes.body;
-        } else if (model === 'deepseek-reasoner') {
-          // Reasoner unavailable → try deepseek-chat
-          console.warn('DeepSeek reasoner failed, trying chat model');
-          usedModel = 'deepseek-chat';
-          const ds2Res = await fetch(DEEPSEEK_URL, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${deepseekKey}`,
-            },
-            body: JSON.stringify({
-              model: 'deepseek-chat',
-              messages: chatMessages,
-              stream: true,
-              temperature: 0.7,
-              max_tokens: 2048,
-            }),
-            signal: AbortSignal.timeout(60000),
-          });
-          if (ds2Res.ok && ds2Res.body) {
-            stream = ds2Res.body;
-          } else {
-            console.warn(`DeepSeek chat failed: ${ds2Res.status}, will try Claude`);
+            if (dsRes.ok && dsRes.body) {
+              stream = dsRes.body;
+            } else if (model === 'deepseek-reasoner') {
+              console.warn('DeepSeek reasoner failed, trying chat model');
+              usedModel = 'deepseek-chat';
+              const ds2Res = await fetch(DEEPSEEK_URL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${deepseekKey}`,
+                },
+                body: JSON.stringify({
+                  model: 'deepseek-chat',
+                  messages: chatMessages,
+                  stream: true,
+                  temperature: 0.7,
+                  max_tokens: 2048,
+                }),
+                signal: AbortSignal.timeout(60000),
+              });
+              if (ds2Res.ok && ds2Res.body) {
+                stream = ds2Res.body;
+              } else {
+                console.warn(`DeepSeek chat failed: ${ds2Res.status}, will try Claude`);
+              }
+            } else {
+              console.warn(`DeepSeek returned ${dsRes.status}, will try Claude`);
+            }
+          } catch (e) {
+            console.warn(`DeepSeek unreachable: ${e}, will try Claude`);
           }
-        } else {
-          console.warn(`DeepSeek returned ${dsRes.status}, will try Claude`);
-        }
+        };
+        await tryDeepSeek();
       }
 
       // ── Fallback: Claude (Anthropic) ──
       if (!stream && claudeKey) {
-        console.warn('DeepSeek unavailable, falling back to Claude');
-        usedModel = 'claude-haiku-4-5-20250514';
-        provider = 'claude';
+        const tryClaude = async () => {
+          try {
+            console.warn('DeepSeek unavailable, falling back to Claude');
+            usedModel = 'claude-haiku-4-5-20250514';
+            provider = 'claude';
 
-        // Adapt messages for Anthropic format
-        const anthropicMessages = chatMessages
-          .filter((m: { role: string }) => m.role !== 'system')
-          .map((m: { role: string; content: string }) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-          }));
+            const anthropicMessages = chatMessages
+              .filter((m: { role: string }) => m.role !== 'system')
+              .map((m: { role: string; content: string }) => ({
+                role: m.role === 'assistant' ? 'assistant' : 'user',
+                content: m.content,
+              }));
 
-        const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': claudeKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20250514',
-            max_tokens: 2048,
-            system: systemPrompt,
-            messages: anthropicMessages,
-            stream: true,
-          }),
-          signal: AbortSignal.timeout(60000),
-        });
+            const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': claudeKey,
+                'anthropic-version': '2023-06-01',
+              },
+              body: JSON.stringify({
+                model: 'claude-haiku-4-5-20250514',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: anthropicMessages,
+                stream: true,
+              }),
+              signal: AbortSignal.timeout(60000),
+            });
 
-        if (claudeRes.ok && claudeRes.body) {
-          stream = claudeRes.body;
-        } else {
-          console.warn(`Claude failed: ${claudeRes.status}`);
-        }
+            if (claudeRes.ok && claudeRes.body) {
+              stream = claudeRes.body;
+            } else {
+              console.warn(`Claude failed: ${claudeRes.status}`);
+            }
+          } catch (e) {
+            console.warn(`Claude unreachable: ${e}`);
+          }
+        };
+        await tryClaude();
       }
 
       if (!stream) {
