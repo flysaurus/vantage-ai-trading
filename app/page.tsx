@@ -42,7 +42,12 @@ function AppShell() {
 
   // Show onboarding for authenticated users who haven't set their style
   useEffect(() => {
-    if (user && !user.investorStyleOnboarded) {
+    if (!user) return;
+    // Dual check: Supabase user object + localStorage fallback
+    const localStorageOnboarded = typeof window !== 'undefined'
+      ? localStorage.getItem('vantage:onboarded') === 'true'
+      : false;
+    if (!user.investorStyleOnboarded && !localStorageOnboarded) {
       setShowOnboarding(true);
     }
   }, [user]);
@@ -73,11 +78,16 @@ function AppShell() {
       {showOnboarding && user && (
         <InvestorStyleOnboarding
           userId={user.id}
-          onComplete={() => {
-            // Update cached user so reload doesn't re-show onboarding
+          onComplete={(style) => {
+            // Persist to localStorage (survives tab close, more reliable than sessionStorage)
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vantage:onboarded', 'true');
+              localStorage.setItem('vantage:investorStyle', style);
+            }
+            // Also update sessionStorage cache
             const cached = getUser();
             if (cached) {
-              storeUser({ ...cached, investorStyleOnboarded: true });
+              storeUser({ ...cached, investorStyleOnboarded: true, investorStyle: style });
             }
             setShowOnboarding(false);
             window.location.reload();

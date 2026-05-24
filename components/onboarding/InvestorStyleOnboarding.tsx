@@ -12,7 +12,7 @@ type OnboardingStep = 'welcome' | 'selection' | 'confirmation' | 'complete';
 
 interface Props {
   userId: string;
-  onComplete: () => void;
+  onComplete: (style: InvestorStyle) => void;
 }
 
 export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
@@ -43,7 +43,7 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
 
       // Auto-dismiss after brief celebration
       setTimeout(() => {
-        onComplete();
+        onComplete(selectedStyle!);
       }, 1500);
     } catch (err: any) {
       setError(err?.message || 'Failed to save your style preference. Please try again.');

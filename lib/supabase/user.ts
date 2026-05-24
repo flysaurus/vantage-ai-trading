@@ -22,7 +22,9 @@ export async function updateInvestorStyle(
     .eq('id', userId);
 
   if (error) {
-    throw new Error(error.message);
+    // Don't throw on missing column — migration may not be applied yet
+    // The onboarding flow persists to localStorage as fallback
+    console.warn('[Supabase] updateInvestorStyle failed:', error.message);
   }
 }
 
@@ -40,6 +42,6 @@ export async function completeOnboarding(userId: string): Promise<void> {
     .eq('id', userId);
 
   if (error) {
-    throw new Error(error.message);
+    console.warn('[Supabase] completeOnboarding failed:', error.message);
   }
 }

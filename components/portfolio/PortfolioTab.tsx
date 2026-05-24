@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
@@ -11,6 +11,54 @@ export function PortfolioTab() {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [sortBy, setSortBy] = useState<'pct' | 'name' | 'sector' | 'pnl'>('pct');
   const [sortOpen, setSortOpen] = useState(false);
+
+  // ── Performance Chart ─────────────────────────────────────
+  type RangeKey = '1D' | '7D' | '30D' | '90D' | 'YTD' | '1Y' | 'ALL';
+  const [chartRange, setChartRange] = useState<RangeKey>('30D');
+  const [chartData, setChartData] = useState<{ timestamps: number[]; equities: number[] } | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [tooltip, setTooltip] = useState<{ x: number; idx: number; visible: boolean } | null>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  const RANGE_CONFIG: Record<RangeKey, { period: string; timeframe: string; label: string }> = {
+    '1D': { period: '1D', timeframe: '5Min', label: 'Today' },
+    '7D': { period: '1W', timeframe: '30Min', label: '7D' },
+    '30D': { period: '1M', timeframe: '1D', label: '30D' },
+    '90D': { period: '3M', timeframe: '1D', label: '90D' },
+    'YTD': { period: '1Y', timeframe: '1D', label: 'YTD' },
+    '1Y': { period: '1Y', timeframe: '1D', label: '1Y' },
+    'ALL': { period: 'all', timeframe: '1D', label: 'All' },
+  };
+
+  const fetchChartData = useCallback(async (range: RangeKey) => {
+    setChartLoading(true);
+    try {
+      const cfg = RANGE_CONFIG[range];
+      const res = await fetch(`/api/alpaca/history?period=${cfg.period}&timeframe=${cfg.timeframe}`);
+      const json = await res.json();
+      if (json.timestamp && json.equity) {
+        let timestamps: number[] = json.timestamp;
+        let equities: number[] = json.equity;
+        // YTD: filter to current year
+        if (range === 'YTD') {
+          const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
+          const idx = timestamps.findIndex((t: number) => t >= yearStart);
+          if (idx > 0) {
+            timestamps = timestamps.slice(idx);
+            equities = equities.slice(idx);
+          }
+        }
+        setChartData({ timestamps, equities });
+      } else {
+        setChartData(null);
+      }
+    } catch {
+      setChartData(null);
+    }
+    setChartLoading(false);
+  }, []);
+
+  useEffect(() => { fetchChartData(chartRange); }, [chartRange, fetchChartData]);
   const [sellSubmitting, setSellSubmitting] = useState(false);
   const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
 
@@ -244,8 +292,8 @@ export function PortfolioTab() {
         <AccountSummaryCard account={account} />
       </div>
 
-      {/* Performance Chart Placeholder */}
-      <div className="card" style={{ marginBottom: 12 }}>
+      {/* Performance Chart */}
+      <div className="card" style={{ marginBottom: 12 }} ref={chartRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 700 }}>Performance</span>
           <span style={{ fontSize: 10 }}>
@@ -254,16 +302,133 @@ export function PortfolioTab() {
             </span>
           </span>
         </div>
-        <div className="chart-skeleton" style={{ height: 80, position: 'relative', overflow: 'hidden' }}>
-          <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
-            <path
-              d="M0,60 L30,55 L60,58 L90,50 L120,45 L150,38 L180,42 L210,30 L240,25 L270,28 L300,18"
-              stroke={account.totalPnl >= 0 ? '#4ade80' : '#f87171'}
-              strokeWidth="2"
-              fill="none"
-            />
-          </svg>
+        {/* Time Range Selector */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+          {(Object.keys(RANGE_CONFIG) as RangeKey[]).map(r => (
+            <button
+              key={r}
+              onClick={() => setChartRange(r)}
+              style={{
+                padding: '3px 10px', fontSize: 10, fontWeight: 600, borderRadius: 12,
+                background: chartRange === r ? '#06b6d4' : 'transparent',
+                border: chartRange === r ? '1px solid #06b6d4' : '1px solid #334155',
+                color: chartRange === r ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              {RANGE_CONFIG[r].label}
+            </button>
+          ))}
         </div>
+        {/* Chart */}
+        {chartLoading && (
+          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+            Loading chart...
+          </div>
+        )}
+        {!chartLoading && chartData && chartData.timestamps.length > 1 ? (() => {
+          const W = 600, H = 160, PAD = { top: 10, right: 10, bottom: 28, left: 55 };
+          const plotW = W - PAD.left - PAD.right;
+          const plotH = H - PAD.top - PAD.bottom;
+          const { timestamps, equities } = chartData;
+          const minE = Math.min(...equities) * 0.995;
+          const maxE = Math.max(...equities) * 1.005;
+          const range = maxE - minE || 1;
+          const minT = timestamps[0];
+          const maxT = timestamps[timestamps.length - 1];
+          const tRange = maxT - minT || 1;
+          const xVal = (t: number) => PAD.left + ((t - minT) / tRange) * plotW;
+          const yVal = (e: number) => PAD.top + plotH - ((e - minE) / range) * plotH;
+          const points = timestamps.map((t, i) => `${xVal(t)},${yVal(equities[i])}`).join(' ');
+          const isUp = equities[equities.length - 1] >= equities[0];
+          const color = isUp ? '#4ade80' : '#f87171';
+          // Y-axis ticks
+          const yTicks = [minE, minE + range * 0.25, minE + range * 0.5, minE + range * 0.75, maxE];
+          // X-axis labels (3-4 evenly spaced)
+          const xLabelCount = chartRange === '1D' ? 4 : 4;
+          const xLabels = Array.from({ length: xLabelCount }, (_, i) => {
+            const ts = minT + (tRange / (xLabelCount - 1)) * i;
+            const d = new Date(ts * 1000);
+            const fmt = chartRange === '1D' ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+              : chartRange === '7D' ? d.toLocaleDateString([], { weekday: 'short' })
+              : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            return { x: xVal(ts), label: fmt };
+          });
+          return (
+            <div style={{ position: 'relative' }}>
+              <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
+                onMouseMove={(e) => {
+                  const rect = (e.target as SVGElement).closest('svg')?.getBoundingClientRect();
+                  if (!rect) return;
+                  const mx = ((e.clientX - rect.left) / rect.width) * W;
+                  if (mx < PAD.left || mx > PAD.left + plotW) { setTooltip(null); return; }
+                  const tApprox = minT + ((mx - PAD.left) / plotW) * tRange;
+                  let bestIdx = 0, bestDist = Infinity;
+                  for (let i = 0; i < timestamps.length; i++) {
+                    const d = Math.abs(timestamps[i] - tApprox);
+                    if (d < bestDist) { bestDist = d; bestIdx = i; }
+                  }
+                  setTooltip({ x: mx, idx: bestIdx, visible: true });
+                }}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                {/* Grid lines */}
+                {yTicks.map((y, i) => (
+                  <g key={i}>
+                    <line x1={PAD.left} y1={yVal(y)} x2={PAD.left + plotW} y2={yVal(y)} stroke="#1e293b" strokeWidth="1" />
+                    <text x={PAD.left - 6} y={yVal(y) + 4} textAnchor="end" fill="#64748b" fontSize="9">
+                      ${(y / 1000).toFixed(1)}k
+                    </text>
+                  </g>
+                ))}
+                {/* Line */}
+                <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+                {/* Area fill */}
+                <polygon
+                  points={`${xVal(timestamps[0])},${yVal(minE)} ${points} ${xVal(timestamps[timestamps.length - 1])},${yVal(minE)}`}
+                  fill={color} opacity="0.08"
+                />
+                {/* X-axis labels */}
+                {xLabels.map((l, i) => (
+                  <text key={i} x={l.x} y={H - 6} textAnchor="middle" fill="#64748b" fontSize="9">
+                    {l.label}
+                  </text>
+                ))}
+                {/* Tooltip marker */}
+                {tooltip?.visible && tooltip.idx < timestamps.length && (
+                  <>
+                    <line x1={xVal(timestamps[tooltip.idx])} y1={PAD.top} x2={xVal(timestamps[tooltip.idx])} y2={PAD.top + plotH}
+                      stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+                    <circle cx={xVal(timestamps[tooltip.idx])} cy={yVal(equities[tooltip.idx])} r="4"
+                      fill={color} stroke="#0f172a" strokeWidth="2" />
+                  </>
+                )}
+              </svg>
+              {/* Tooltip popup */}
+              {tooltip?.visible && tooltip.idx < timestamps.length && (() => {
+                const t = new Date(timestamps[tooltip.idx] * 1000);
+                const dateStr = chartRange === '1D'
+                  ? t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : t.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                const eq = equities[tooltip.idx];
+                return (
+                  <div style={{
+                    position: 'absolute', top: 0, left: Math.max(0, Math.min(tooltip.x - 65, (chartRef.current?.offsetWidth ?? 400) - 130)),
+                    background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '6px 10px',
+                    fontSize: 10, color: '#e2e8f0', pointerEvents: 'none', zIndex: 5, boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{dateStr}</div>
+                    <div style={{ color }}>${eq.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })() : !chartLoading && (
+          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+            No history data yet — chart will populate as you trade.
+          </div>
+        )}
       </div>
 
       {/* Sector Allocation */}
