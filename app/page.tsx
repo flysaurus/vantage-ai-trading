@@ -14,6 +14,7 @@ import { SettingsTab } from '@/components/settings/SettingsTab';
 import { BrokerProvider } from '@/components/providers/BrokerProvider';
 import { AuthProvider, useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
+import { getUser, storeUser } from '@/lib/auth';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 
@@ -72,7 +73,15 @@ function AppShell() {
       {showOnboarding && user && (
         <InvestorStyleOnboarding
           userId={user.id}
-          onComplete={() => setShowOnboarding(false)}
+          onComplete={() => {
+            // Update cached user so reload doesn't re-show onboarding
+            const cached = getUser();
+            if (cached) {
+              storeUser({ ...cached, investorStyleOnboarded: true });
+            }
+            setShowOnboarding(false);
+            window.location.reload();
+          }}
         />
       )}
     </BrokerProvider>
