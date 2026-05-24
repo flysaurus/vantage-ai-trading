@@ -12,7 +12,7 @@ import React, {
   useState,
   useRef,
 } from 'react';
-import type { User, VantageSession } from '@/types';
+import type { User, VantageSession, InvestorStyle } from '@/types';
 import { getSession, storeSession, clearSession, getUser, storeUser, clearUser, signIn as authSignIn, signUp as authSignUp, signOut as authSignOut, refreshSession } from '@/lib/auth';
 
 // ─── Context Type ─────────────────────────────────────────────
@@ -95,6 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               data.user.email?.split('@')[0] ||
               'Trader',
             avatarUrl: data.user.user_metadata?.avatar_url,
+            investorStyle: (data.user.user_metadata?.investor_style as InvestorStyle) || 'buffett',
+            investorStyleSetAt: null,
+            investorStyleOnboarded: false,
             createdAt: data.user.created_at,
           };
           setUser(u);

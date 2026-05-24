@@ -20,6 +20,23 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Investor Style (add columns if missing) ──────────────────
+ALTER TABLE users ADD COLUMN IF NOT EXISTS investor_style TEXT DEFAULT 'buffett';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS investor_style_set_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS investor_style_onboarded BOOLEAN DEFAULT FALSE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'valid_investor_style'
+  ) THEN
+    ALTER TABLE users
+    ADD CONSTRAINT valid_investor_style
+    CHECK (investor_style IN ('buffett', 'lynch', 'livermore', 'soros', 'munger'));
+  END IF;
+END;
+$$;
+
 -- ── Vault (encrypted Alpaca keys) ────────────────────────────
 CREATE TABLE IF NOT EXISTS vault (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -133,6 +150,55 @@ CREATE TABLE IF NOT EXISTS market_cache (
   expires_at TIMESTAMPTZ NOT NULL
 );
 
+-- ── Portfolio Analysis (cached style-based analysis) ─────────
+
+CREATE TABLE IF NOT EXISTS portfolio_analysis (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+  -- Basic portfolio metrics
+  total_value DECIMAL(15,2),
+  total_gain DECIMAL(15,2),
+  total_return DECIMAL(10,4),
+  position_count INTEGER,
+
+  -- Current selected style's analysis
+  selected_style TEXT NOT NULL
+    CHECK (selected_style IN ('buffett', 'lynch', 'livermore', 'soros', 'munger')),
+  style_score INTEGER CHECK (style_score >= 0 AND style_score <= 100),
+  style_recommendation TEXT
+    CHECK (style_recommendation IN ('BUY_MORE', 'HOLD', 'SELL', 'REBALANCE')),
+  style_insights TEXT[] DEFAULT '{}',
+
+  -- Style conflict detection
+  has_conflict BOOLEAN DEFAULT FALSE,
+  conflict_severity TEXT
+    CHECK (conflict_severity IN ('low', 'medium', 'high')),
+  conflict_alert TEXT,
+
+  -- All 5 styles comparison
+  all_styles_recommendation JSONB DEFAULT '{
+    "buffett": null,
+    "lynch": null,
+    "livermore": null,
+    "soros": null,
+    "munger": null
+  }'::jsonb,
+
+  -- Position-level recommendations — keyed by symbol
+  -- {"AAPL":{"buffett":{"action":"HOLD","confidence":0.8,"reason":"..."},...},...}
+  position_recommendations JSONB,
+
+  -- Metadata
+  analyzed_at TIMESTAMPTZ DEFAULT NOW(),
+  cached_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pa_user_id
+  ON portfolio_analysis(user_id, analyzed_at DESC);
+
 -- ============================================================
 -- VAULT RPC FUNCTIONS (pgcrypto)
 -- ============================================================
@@ -199,6 +265,7 @@ ALTER TABLE ai_suggestions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE account_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watchlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE portfolio_analysis ENABLE ROW LEVEL SECURITY;
 
 -- Users
 CREATE POLICY "users_read_own" ON users
@@ -259,6 +326,14 @@ CREATE POLICY "watchlists_update_own" ON watchlists
 -- Market Cache (public read, server-only write)
 CREATE POLICY "cache_public_read" ON market_cache
   FOR SELECT USING (true);
+
+-- Portfolio Analysis (user-scoped)
+CREATE POLICY "pa_read_own" ON portfolio_analysis
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "pa_insert_own" ON portfolio_analysis
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "pa_update_own" ON portfolio_analysis
+  FOR UPDATE USING (auth.uid() = user_id);
 
 -- ============================================================
 -- UPDATED-AT TRIGGER

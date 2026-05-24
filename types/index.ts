@@ -143,12 +143,55 @@ export interface WatchlistItem {
   changePercent?: number;
 }
 
+// ─── Investor Styles ───
+export type InvestorStyle = 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger';
+
+export interface StyleRecommendation {
+  action: 'BUY_MORE' | 'HOLD' | 'SELL';
+  confidence: number; // 0-1
+  reason: string;
+}
+
+export interface PortfolioAnalysis {
+  id: string;
+  userId: string;
+
+  // Basic metrics
+  totalValue: number;
+  totalGain: number;
+  totalReturn: number;
+  positionCount: number;
+
+  // Selected style analysis
+  selectedStyle: InvestorStyle;
+  styleScore: number; // 0-100
+  styleRecommendation: 'BUY_MORE' | 'HOLD' | 'SELL' | 'REBALANCE';
+  styleInsights: string[];
+
+  // Conflict
+  hasConflict: boolean;
+  conflictSeverity: 'low' | 'medium' | 'high' | null;
+  conflictAlert: string | null;
+
+  // All 5 styles
+  allStylesRecommendation: Record<InvestorStyle, string | null>;
+
+  // Per-position recommendations
+  positionRecommendations: Record<string, Record<InvestorStyle, StyleRecommendation>> | null;
+
+  analyzedAt: string;
+  cachedUntil: string | null;
+}
+
 // ─── Auth ───
 export interface User {
   id: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
+  investorStyle: InvestorStyle;
+  investorStyleSetAt: string | null;
+  investorStyleOnboarded: boolean;
   createdAt: string;
 }
 

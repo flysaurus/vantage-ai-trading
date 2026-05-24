@@ -10,10 +10,41 @@
 // - No middleware bypass: every API route explicitly checks auth.
 
 import { createClient, createServerClient } from './supabase';
-import type { User, VantageSession } from '@/types';
+import type { User, VantageSession, InvestorStyle } from '@/types';
 
 const SESSION_KEY = 'vantage-session';
 const USER_KEY = 'vantage-user';
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function buildUser(
+  su: { id: string; email?: string | null; created_at: string; user_metadata?: Record<string, unknown> },
+  email: string,
+  displayName?: string
+): User {
+  return {
+    id: su.id,
+    email: su.email || email,
+    displayName: displayName || (su.user_metadata as any)?.display_name || email.split('@')[0],
+    avatarUrl: (su.user_metadata as any)?.avatar_url,
+    investorStyle: ((su.user_metadata as any)?.investor_style as InvestorStyle) || 'buffett',
+    investorStyleSetAt: null,
+    investorStyleOnboarded: false,
+    createdAt: su.created_at,
+  };
+}
+
+function placerUser(email: string, displayName?: string): User {
+  return {
+    id: '',
+    email,
+    displayName: displayName || email.split('@')[0],
+    investorStyle: 'buffett',
+    investorStyleSetAt: null,
+    investorStyleOnboarded: false,
+    createdAt: '',
+  };
+}
 
 // ─── Sign In ──────────────────────────────────────────────────
 
@@ -36,13 +67,7 @@ export async function signIn(
     throw new Error('Sign in failed — no user or session returned');
   }
 
-  const user: User = {
-    id: data.user.id,
-    email: data.user.email || email,
-    displayName: data.user.user_metadata?.display_name || email.split('@')[0],
-    avatarUrl: data.user.user_metadata?.avatar_url,
-    createdAt: data.user.created_at,
-  };
+  const user: User = buildUser(data.user, email, undefined);
 
   const session: VantageSession = {
     token: data.session.access_token,
@@ -83,7 +108,7 @@ export async function signUp(
         error.message?.toLowerCase().includes('already signed up') ||
         error.status === 422) {
       return {
-        user: { id: '', email, displayName: displayName || email.split('@')[0], createdAt: '' },
+        user: placerUser(email, displayName),
         session: null,
         needsConfirmation: true,
       };
@@ -96,7 +121,7 @@ export async function signUp(
   // Treat this as needsConfirmation rather than an error.
   if (!data.user) {
     return {
-      user: { id: '', email, displayName: displayName || email.split('@')[0], createdAt: '' },
+      user: placerUser(email, displayName),
       session: null,
       needsConfirmation: true,
     };
@@ -105,26 +130,14 @@ export async function signUp(
   // Email confirmation required — user created but no session yet
   if (!data.session) {
     return {
-      user: {
-        id: data.user.id,
-        email: data.user.email || email,
-        displayName: displayName || email.split('@')[0],
-        avatarUrl: undefined,
-        createdAt: data.user.created_at,
-      },
+      user: buildUser(data.user, email, displayName),
       session: null,
       needsConfirmation: true,
     };
   }
 
   // Auto-confirmed — session available immediately
-  const user: User = {
-    id: data.user.id,
-    email: data.user.email || email,
-    displayName: displayName || email.split('@')[0],
-    avatarUrl: undefined,
-    createdAt: data.user.created_at,
-  };
+  const user: User = buildUser(data.user, email, displayName);
 
   const session: VantageSession = {
     token: data.session.access_token,
