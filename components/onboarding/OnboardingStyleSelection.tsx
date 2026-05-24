@@ -6,146 +6,131 @@ import type { InvestorStyle } from '@/types';
 
 interface Props {
   onSelectStyle: (style: InvestorStyle) => void;
-  error: string | null;
+  error?: string | null;
 }
 
 export function OnboardingStyleSelection({ onSelectStyle, error }: Props) {
-  const [selected, setSelected] = useState<InvestorStyle>('buffett');
+  const [hoveredStyle, setHoveredStyle] = useState<InvestorStyle | null>(null);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}>
+    <div style={{ padding: 28 }}>
       {/* Header */}
-      <div
-        style={{
-          padding: '20px 24px 16px',
-          borderBottom: '1px solid #1e293b',
-        }}
-      >
-        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-          Choose Your Investor Style
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 4px' }}>
+          Which describes you best?
         </h2>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-          Select the investment philosophy that resonates with you
+        <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Your choice will personalize all recommendations
         </p>
       </div>
 
-      {/* Scrollable style cards */}
-      <div style={{ padding: '12px 24px', overflowY: 'auto', flex: 1 }}>
-        {INVESTOR_STYLES.map((s) => {
-          const isActive = selected === s.id;
+      {/* Style Cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {INVESTOR_STYLES.map((style) => {
+          const isHovered = hoveredStyle === style.id;
 
           return (
-            <div
-              key={s.id}
-              onClick={() => setSelected(s.id)}
+            <button
+              key={style.id}
+              onClick={() => onSelectStyle(style.id)}
+              onMouseEnter={() => setHoveredStyle(style.id)}
+              onMouseLeave={() => setHoveredStyle(null)}
               style={{
+                width: '100%',
+                textAlign: 'left',
                 padding: 14,
-                marginBottom: 8,
                 borderRadius: 10,
-                border: isActive ? '2px solid #06b6d4' : '2px solid #1e293b',
-                background: isActive ? 'rgba(6,182,212,0.06)' : 'transparent',
+                border: isHovered ? '2px solid #06b6d4' : '2px solid #1e293b',
+                background: isHovered ? 'rgba(6,182,212,0.06)' : '#0f172a',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, background 0.15s',
+                fontFamily: 'inherit',
               }}
             >
-              {/* Style header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: 24, lineHeight: 1 }}>{s.emoji}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.title}</div>
-                </div>
-                {isActive && (
-                  <span
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      background: '#06b6d4',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 12,
-                      color: '#0f172a',
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    ✓
-                  </span>
-                )}
-              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                {/* Emoji */}
+                <span style={{ fontSize: 32, lineHeight: 1, flexShrink: 0 }}>
+                  {style.emoji}
+                </span>
 
-              {/* Description */}
-              <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0, lineHeight: 1.5 }}>
-                {s.description}
-              </p>
-            </div>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>
+                      {style.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--accent-teal)',
+                        marginLeft: 8,
+                      }}
+                    >
+                      {style.title}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '4px 0 0', lineHeight: 1.4 }}>
+                    {style.description}
+                  </p>
+                  <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                    Time horizon: {style.timeHorizon}
+                  </p>
+                </div>
+
+                {/* Arrow */}
+                <span
+                  style={{
+                    fontSize: 18,
+                    color: isHovered ? '#06b6d4' : '#475569',
+                    flexShrink: 0,
+                    alignSelf: 'center',
+                    transition: 'color 0.15s',
+                  }}
+                >
+                  →
+                </span>
+              </div>
+            </button>
           );
         })}
       </div>
-
-      {/* Selected style philosophy preview */}
-      {(() => {
-        const active = INVESTOR_STYLES.find((s) => s.id === selected);
-        if (!active) return null;
-        return (
-          <div
-            style={{
-              margin: '0 24px',
-              padding: 12,
-              borderRadius: 8,
-              background: 'rgba(6,182,212,0.08)',
-              border: '1px solid rgba(6,182,212,0.2)',
-              fontSize: 11,
-              color: 'var(--accent-teal)',
-              lineHeight: 1.5,
-            }}
-          >
-            <strong>Philosophy:</strong> {active.philosophy}
-          </div>
-        );
-      })()}
 
       {/* Error */}
       {error && (
         <div
           style={{
-            margin: '8px 24px 0',
-            padding: '10px 12px',
+            padding: '10px 14px',
             borderRadius: 8,
             background: 'rgba(239,68,68,0.1)',
             border: '1px solid rgba(239,68,68,0.3)',
             color: '#fca5a5',
             fontSize: 12,
+            marginBottom: 16,
           }}
         >
           {error}
         </div>
       )}
 
-      {/* Footer */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderTop: '1px solid #1e293b',
-        }}
-      >
+      {/* Default CTA */}
+      <div style={{ textAlign: 'center' }}>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+          Can&apos;t decide? Select Warren Buffett — it&apos;s a safe default
+        </p>
         <button
-          onClick={() => onSelectStyle(selected)}
+          onClick={() => onSelectStyle('buffett')}
           style={{
-            width: '100%',
-            padding: '14px 0',
-            borderRadius: 10,
-            background: '#06b6d4',
-            color: '#0f172a',
+            background: 'none',
             border: 'none',
-            fontSize: 15,
-            fontWeight: 700,
+            color: '#06b6d4',
+            fontSize: 12,
+            fontWeight: 600,
             cursor: 'pointer',
+            padding: 0,
+            textDecoration: 'underline',
           }}
         >
-          Continue →
+          [Use Buffett as default]
         </button>
       </div>
     </div>
