@@ -134,6 +134,36 @@ export function ConfidenceRing() {
         </div>
       </div>
 
+      {/* Low-confidence CTA — visible without expanding */}
+      {overall < 60 && (
+        <div style={{ margin: '12px 16px 0' }}>
+          <button
+            onClick={() => setExpanded(true)}
+            style={{
+              width: '100%', padding: '10px 14px',
+              background: 'linear-gradient(135deg, #f87171, #ef4444)',
+              border: 'none', borderRadius: 10,
+              color: '#fff', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'opacity 0.15s',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+          >
+            <Shield size={14} />
+            View Risk Breakdown &amp; Fix Portfolio
+          </button>
+          <p style={{
+            fontSize: 10, color: 'var(--text-muted)',
+            textAlign: 'center', marginTop: 6, lineHeight: 1.4,
+          }}>
+            See which positions are dragging your score down
+          </p>
+        </div>
+      )}
+
       {/* Expandable breakdown */}
       <div style={{ margin: '0 16px 12px' }}>
         <button
