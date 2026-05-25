@@ -47,6 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Session Detection on Mount ────────────────────────────
 
+  const syncLocalStorage = useCallback((u: User) => {
+    if (typeof window === 'undefined') return;
+    if (u.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+    if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     const safetyTimeout = setTimeout(() => {
@@ -68,9 +74,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(stored);
 
       // Still fetch DB profile to sync onboarding state (critical for cross-device)
-      import('@/lib/supabase/user').then(({ getUserProfile }) => {
+      // AND ensure user row exists in public.users (FK required by watchlists, alerts, etc.)
+      import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
         getUserProfile(storedUser.id).then((profile) => {
-          if (!mounted || !profile) return;
+          if (!mounted) return;
+          if (!profile) {
+            // No DB row yet — create it now (sign-up through login page can skip this)
+            createUser({
+              email: storedUser.email,
+              displayName: storedUser.displayName,
+            }).then((created) => {
+              if (!mounted || !created) return;
+              // Created — keep existing user data as-is
+              syncLocalStorage(storedUser);
+            }).catch(() => {});
+            return;
+          }
           const merged = {
             ...storedUser,
             investorStyle: profile.investorStyle || storedUser.investorStyle,
@@ -78,10 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           setUser(merged);
           storeUser(merged);
-          if (typeof window !== 'undefined') {
-            if (profile.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
-            if (profile.investorStyle) localStorage.setItem('vantage:investorStyle', profile.investorStyle);
-          }
+          syncLocalStorage(merged);
         }).catch(() => {});
       });
 
@@ -127,9 +143,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           storeUser(u); // Cache for next visit
 
           // ── Fetch DB-stored values (source of truth for onboarding) ──
-          import('@/lib/supabase/user').then(({ getUserProfile }) => {
+          // AND ensure user row exists in public.users
+          import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
             getUserProfile(u.id).then((profile) => {
-              if (!mounted || !profile) return;
+              if (!mounted) return;
+              if (!profile) {
+                // No DB row yet — create it
+                createUser({
+                  email: u.email,
+                  displayName: u.displayName,
+                }).then((created) => {
+                  if (!mounted || !created) return;
+                  // Created — keep existing user data as-is
+                  syncLocalStorage(u);
+                }).catch(() => {});
+                return;
+              }
               // DB values override localStorage fallbacks
               const merged: User = {
                 ...u,
@@ -138,15 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               };
               setUser(merged);
               storeUser(merged);
-              // Sync localStorage with DB truth
-              if (typeof window !== 'undefined') {
-                if (profile.investorStyleOnboarded) {
-                  localStorage.setItem('vantage:onboarded', 'true');
-                }
-                if (profile.investorStyle) {
-                  localStorage.setItem('vantage:investorStyle', profile.investorStyle);
-                }
-              }
+              syncLocalStorage(merged);
             }).catch(() => {}); // DB fetch fail is non-fatal — use localStorage fallback
           });
         }

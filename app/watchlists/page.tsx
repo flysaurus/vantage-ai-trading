@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
@@ -43,6 +43,21 @@ export default function WatchlistsPage() {
   // Add stock to expanded watchlist
   const [addingSymbol, setAddingSymbol] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
+  const [addSuggestions, setAddSuggestions] = useState<Array<{ symbol: string; name: string }>>([]);
+  const addingSymbolTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchAddSuggestions = useCallback(async (query: string) => {
+    if (!query || query.length < 1) { setAddSuggestions([]); return; }
+    try {
+      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query.toUpperCase())}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAddSuggestions((data.results || []).slice(0, 6));
+      }
+    } catch {
+      setAddSuggestions([]);
+    }
+  }, []);
 
   // ─── Load watchlists ────────────────────────────────────────
   const loadWatchlists = useCallback(async () => {
@@ -106,23 +121,50 @@ export default function WatchlistsPage() {
     }
   };
 
-  // ─── CRUD operations ────────────────────────────────────────
-  const handleCreate = async (name: string, description: string) => {
+  // ─── Create / Edit with error feedback ─────────────────────
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreate = async (name: string, description: string, initialStocks: string[]) => {
     if (!user || !name.trim()) return;
+    setCreating(true);
+    setCreateError(null);
     const result = await createWatchlist({ userId: user.id, name: name.trim(), description: description.trim() || undefined });
     if (result) {
-      setWatchlists(prev => [result, ...prev]);
+      // Add initial stocks if provided
+      if (initialStocks.length > 0) {
+        for (const sym of initialStocks) {
+          await addStockToWatchlist(result.id, sym);
+        }
+        // Reload the watchlist to get full stocks array
+        const updated = await getWatchlists(user.id);
+        setWatchlists(updated);
+      } else {
+        setWatchlists(prev => [result, ...prev]);
+      }
       setShowCreate(false);
+      setCreating(false);
+    } else {
+      setCreateError('Failed to create watchlist. Please try again.');
+      setCreating(false);
     }
   };
 
+  const [editingError, setEditingError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
   const handleUpdate = async (name: string, description: string) => {
     if (!editing || !name.trim()) return;
+    setSaving(true);
+    setEditingError(null);
     const result = await updateWatchlist(editing.id, { name: name.trim(), description: description.trim() || undefined });
     if (result) {
       setWatchlists(prev => prev.map(w => w.id === editing.id ? { ...w, name: result.name, description: result.description, updatedAt: result.updatedAt } : w));
       setEditing(null);
+    } else {
+      setEditingError('Failed to update watchlist.');
     }
+    setSaving(false);
   };
 
   const handleDelete = async () => {
@@ -293,14 +335,28 @@ export default function WatchlistsPage() {
           {/* Expanded stocks list */}
           {expandedId === wl.id && (
             <div className="expanded-panel">
-              {/* Add stock row */}
+              {/* Add stock row with autocomplete */}
               <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderBottom: '1px solid #0f172a' }}>
                 <div style={{ flex: 1, position: 'relative' }}>
                   <input
                     type="text"
                     value={addingSymbol}
-                    onChange={(e) => { setAddingSymbol(e.target.value.toUpperCase()); setAddError(null); }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddStock()}
+                    onChange={(e) => {
+                      setAddingSymbol(e.target.value.toUpperCase());
+                      setAddError(null);
+                      if (addingSymbolTimer.current) clearTimeout(addingSymbolTimer.current);
+                      addingSymbolTimer.current = setTimeout(() => fetchAddSuggestions(e.target.value), 200);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && addingSymbol.trim()) {
+                        // If exactly one suggestion, use it
+                        if (addSuggestions.length === 1) {
+                          setAddingSymbol(addSuggestions[0].symbol);
+                          setAddSuggestions([]);
+                        }
+                        handleAddStock();
+                      }
+                    }}
                     placeholder="Add symbol (e.g. AAPL)..."
                     style={{
                       width: '100%', padding: '8px 10px', borderRadius: 6,
@@ -308,6 +364,33 @@ export default function WatchlistsPage() {
                       color: '#e2e8f0', fontSize: 12, outline: 'none',
                     }}
                   />
+                  {/* Add autocomplete dropdown */}
+                  {addSuggestions.length > 0 && addingSymbol.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0,
+                      background: '#1e293b', border: '1px solid #334155', borderRadius: '0 0 6px 6px',
+                      zIndex: 10, maxHeight: 160, overflowY: 'auto',
+                    }}>
+                      {addSuggestions.map(s => (
+                        <div
+                          key={s.symbol}
+                          onClick={() => {
+                            setAddingSymbol(s.symbol);
+                            setAddSuggestions([]);
+                          }}
+                          style={{
+                            padding: '8px 12px', cursor: 'pointer',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            borderBottom: '1px solid #0f172a',
+                            fontSize: 12,
+                          }}
+                        >
+                          <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{s.symbol}</span>
+                          <span style={{ color: '#64748b', fontSize: 10, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={handleAddStock}
@@ -379,7 +462,9 @@ export default function WatchlistsPage() {
         <WatchlistFormModal
           title="Create Watchlist"
           onSave={handleCreate}
-          onClose={() => setShowCreate(false)}
+          onClose={() => { setShowCreate(false); setCreateError(null); }}
+          saving={creating}
+          error={createError}
         />
       )}
 
@@ -390,7 +475,9 @@ export default function WatchlistsPage() {
           initialName={editing.name}
           initialDescription={editing.description || ''}
           onSave={handleUpdate}
-          onClose={() => setEditing(null)}
+          onClose={() => { setEditing(null); setEditingError(null); }}
+          saving={saving}
+          error={editingError}
         />
       )}
 
@@ -457,20 +544,69 @@ function WatchlistFormModal({
   initialDescription = '',
   onSave,
   onClose,
+  saving = false,
+  error = null,
 }: {
   title: string;
   initialName?: string;
   initialDescription?: string;
-  onSave: (name: string, description: string) => void;
+  onSave: (name: string, description: string, symbols: string[]) => void;
   onClose: () => void;
+  saving?: boolean;
+  error?: string | null;
 }) {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
+  const [symbolInput, setSymbolInput] = useState('');
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<Array<{ symbol: string; name: string }>>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const suggestionsTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // ── Symbol autocomplete ─────────────────────────────────────
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!query || query.length < 1) { setSuggestions([]); return; }
+    setSuggestionsLoading(true);
+    try {
+      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query.toUpperCase())}`);
+      if (res.ok) {
+        const data = await res.json();
+        // data is { results: [{ symbol, name }] }
+        const items = (data.results || []).slice(0, 6);
+        setSuggestions(items);
+      }
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, []);
+
+  const handleSymbolInput = (value: string) => {
+    setSymbolInput(value);
+    if (suggestionsTimer.current) clearTimeout(suggestionsTimer.current);
+    suggestionsTimer.current = setTimeout(() => fetchSuggestions(value), 200);
+  };
+
+  const addSymbol = (sym: string) => {
+    const upper = sym.toUpperCase();
+    if (!symbols.includes(upper)) {
+      setSymbols(prev => [...prev, upper]);
+    }
+    setSymbolInput('');
+    setSuggestions([]);
+  };
+
+  const removeSymbol = (sym: string) => {
+    setSymbols(prev => prev.filter(s => s !== sym));
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, maxWidth: 400, width: '100%', padding: 24 }}>
+      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, maxWidth: 420, width: '100%', maxHeight: '90dvh', overflowY: 'auto', padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>{title}</div>
+
+        {/* Name */}
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Name *</label>
           <input
@@ -479,29 +615,127 @@ function WatchlistFormModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., Tech Stocks"
             autoFocus
-            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', fontSize: 13, outline: 'none' }}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Description (optional)</label>
+
+        {/* Description */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Description</label>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What are you tracking?"
-            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', fontSize: 13, outline: 'none' }}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
+
+        {/* Initial stocks (create only) */}
+        {title.startsWith('Create') && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
+              Stocks {symbols.length > 0 && `(${symbols.length})`}
+            </label>
+
+            {/* Added symbols as chips */}
+            {symbols.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {symbols.map(sym => (
+                  <span key={sym} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '4px 8px', borderRadius: 6,
+                    background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)',
+                    fontSize: 11, fontWeight: 600, color: '#22d3ee',
+                  }}>
+                    {sym}
+                    <button onClick={() => removeSymbol(sym)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1 }}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Symbol input with autocomplete */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={symbolInput}
+                onChange={(e) => handleSymbolInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && symbolInput.trim()) {
+                    e.preventDefault();
+                    // If there's exactly one suggestion, use it; otherwise add raw input
+                    if (suggestions.length === 1) {
+                      addSymbol(suggestions[0].symbol);
+                    } else {
+                      addSymbol(symbolInput);
+                    }
+                  }
+                }}
+                placeholder="Add symbols (e.g. AAPL)..."
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 8,
+                  background: '#1e293b', border: '1px solid #334155',
+                  color: '#e2e8f0', fontSize: 12, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+
+              {/* Autocomplete dropdown */}
+              {(suggestions.length > 0 || suggestionsLoading) && symbolInput.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0,
+                  background: '#1e293b', border: '1px solid #334155', borderRadius: '0 0 8px 8px',
+                  zIndex: 10, maxHeight: 180, overflowY: 'auto',
+                }}>
+                  {suggestionsLoading ? (
+                    <div style={{ padding: '10px 12px', fontSize: 11, color: '#64748b' }}>Searching...</div>
+                  ) : (
+                    suggestions.map(s => (
+                      <div
+                        key={s.symbol}
+                        onClick={() => addSymbol(s.symbol)}
+                        style={{
+                          padding: '8px 12px', cursor: 'pointer',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          borderBottom: '1px solid #0f172a',
+                          fontSize: 12,
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{s.symbol}</span>
+                        <span style={{ color: '#64748b', fontSize: 10, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 8,
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+            color: '#fca5a5', fontSize: 12, marginBottom: 14,
+          }}>
+            {error}
+          </div>
+        )}
+
+        {/* Actions */}
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'transparent', border: '1px solid #475569', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={onClose} disabled={saving} style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'transparent', border: '1px solid #475569', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}>
             Cancel
           </button>
           <button
-            onClick={() => onSave(name, description)}
-            disabled={!name.trim()}
-            style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: '#06b6d4', color: '#0f172a', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: name.trim() ? 1 : 0.4 }}
+            onClick={() => onSave(name, description, symbols)}
+            disabled={!name.trim() || saving}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: '#06b6d4', color: '#0f172a', border: 'none', fontSize: 13, fontWeight: 600, cursor: (!name.trim() || saving) ? 'default' : 'pointer', opacity: name.trim() && !saving ? 1 : 0.4 }}
           >
-            {title.startsWith('Create') ? 'Create' : 'Save'}
+            {saving ? 'Creating...' : title.startsWith('Create') ? 'Create' : 'Save'}
           </button>
         </div>
       </div>
