@@ -106,7 +106,7 @@ export function SettingsTab() {
         />
         <SettingsItem
           icon={Search} title="Stock Screener" subtitle="Find new opportunities"
-          onClick={() => showToast('🔍 Screener coming soon')}
+          onClick={() => router.push('/stock-screener')}
         />
       </div>
 
