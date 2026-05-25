@@ -205,6 +205,16 @@ function sendSSE(
 
 // ─── Route Handler ───
 
+/**
+ * Strip lone surrogates and other invalid Unicode from strings.
+ * Prevents DeepSeek 400: "lone leading surrogate in hex escape" errors
+ * caused by corrupted data in stored chat history.
+ */
+function sanitizeUnicode(str: string): string {
+  return str.replace(/\u[dD][8-9a-fA-F][0-9a-fA-F]{2}(?!\u[dD][c-fC-F][0-9a-fA-F]{2})/g, '\ufffd')
+    .replace(/[\uD800-\uDFFF]/g, '\ufffd');
+}
+
 export async function POST(request: NextRequest) {
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
 
@@ -226,10 +236,10 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = buildSystemPrompt(context, format);
     const chatMessages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: sanitizeUnicode(systemPrompt) },
       ...messages.map((m: { role: string; content: string }) => ({
         role: m.role,
-        content: m.content,
+        content: sanitizeUnicode(m.content),
       })),
     ];
 
