@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleSelector } from '@/components/settings/InvestorStyleSelector';
 import type { InvestorStyle } from '@/types';
@@ -66,6 +67,7 @@ const BROKERS: BrokerItem[] = [
 
 export function SettingsTab() {
   const { user } = useAuth();
+  const router = useRouter();
   const [showBrokers, setShowBrokers] = useState(false);
   const [showStyleModal, setShowStyleModal] = useState(false);
   const [investorStyle, setInvestorStyle] = useState<InvestorStyle>(
@@ -88,7 +90,7 @@ export function SettingsTab() {
       <div className="section">
         <SettingsItem
           icon={Star} title="Watchlists" subtitle="3 lists · 24 symbols"
-          onClick={() => showToast('📋 Watchlist manager coming soon')}
+          onClick={() => router.push('/watchlists')}
         />
         <SettingsItem
           icon={Bell} title="Price Alerts" subtitle="5 active alerts" badge={2}

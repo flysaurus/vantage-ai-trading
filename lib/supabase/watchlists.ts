@@ -129,6 +129,30 @@ export async function removeStockFromWatchlist(
 }
 
 /**
+ * Updates a watchlist name and/or description.
+ */
+export async function updateWatchlist(
+  watchlistId: string,
+  params: { name: string; description?: string }
+): Promise<{ id: string; name: string; description: string | null; updatedAt: string } | null> {
+  try {
+    const res = await apiFetch(`${API_BASE}/update`, {
+      method: 'POST',
+      body: JSON.stringify({ watchlistId, ...params }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn('[watchlists] update failed:', res.status, err.error);
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('[watchlists] update error:', err);
+    return null;
+  }
+}
+
+/**
  * Deletes an entire watchlist.
  */
 export async function deleteWatchlist(watchlistId: string): Promise<boolean> {
