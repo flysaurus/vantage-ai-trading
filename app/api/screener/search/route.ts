@@ -15,6 +15,21 @@ function getToken(): string {
   return process.env.FINNHUB_IO_API_KEY || '';
 }
 
+// ─── US stock filter ──────────────────────────────────────────
+const INT_PATTERNS = [
+  /\.T$/, /\.L$/, /\.MC$/, /\.SW$/, /\.PA$/, /\.DE$/, /\.HK$/, /\.TO$/,
+  /\.AX$/, /\.ST$/, /\.CO$/, /\.HE$/, /\.MI$/, /\.VI$/, /\.OL$/,
+  /\.BR$/, /\.LS$/, /\.AS$/, /\.BO$/, /\.NS$/, /\.SZ$/, /\.SS$/,
+  /\.KS$/, /\.KQ$/, /\.TW$/, /\.TWO$/, /\.SI$/, /\.JK$/, /\.KL$/,
+  /\.SA$/, /\.MX$/, /\.BA$/, /\.SN$/, /\.IL$/, /\.WA$/, /\.IR$/,
+  /\.NZ$/, /\.V$/, /\.CN$/,
+];
+function isUSStock(s: string): boolean {
+  if (!s || !/^[A-Z]{1,5}(\.[A-Z])?$/.test(s)) return false;
+  for (const p of INT_PATTERNS) { if (p.test(s)) return false; }
+  return true;
+}
+
 export interface ScreenerFilters {
   marketCap?: 'micro' | 'small' | 'mid' | 'large' | 'mega';
   peMin?: number;
@@ -62,17 +77,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const filters: ScreenerFilters = await req.json().catch(() => ({}));
 
     // ─── 1. Get symbol list (cached) ─────────────────────────
+    const exchangeParam = filters.exchange || 'US';
     let symbols: string[] = [];
     if (symbolCache && Date.now() - symbolCache.ts < SYMBOL_CACHE_MS) {
       symbols = symbolCache.symbols;
     } else {
       const symRes = await fetch(
-        `${FINNHUB_BASE}/stock/symbol?exchange=${encodeURIComponent(filters.exchange || 'US')}&token=${token}`,
+        `${FINNHUB_BASE}/stock/symbol?exchange=${encodeURIComponent(exchangeParam)}&token=${token}`,
         { signal: AbortSignal.timeout(8000) }
       );
       if (symRes.ok) {
         const symData = await symRes.json();
         symbols = (Array.isArray(symData) ? symData.map((s: any) => s.symbol || s.displaySymbol) : []).filter(Boolean);
+        // Filter to US-listed stocks only
+        symbols = symbols.filter(isUSStock);
         symbolCache = { symbols, ts: Date.now() };
       }
     }

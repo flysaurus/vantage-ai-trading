@@ -206,7 +206,7 @@ export default function StockScreenerPage() {
   }
 
   return (
-    <div style={{ padding: '12px 16px 80px', minHeight: '100vh' }}>
+    <div style={{ padding: '12px 16px 80px', minHeight: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
