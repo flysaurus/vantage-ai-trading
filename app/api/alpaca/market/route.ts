@@ -97,6 +97,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ quotes: {} });
       }
 
+      const mapped: Record<string, any> = {};
+
       // Use snapshots endpoint — includes daily bar + latest trade + previous close
       const snapUrl = `${dataUrl}/v2/stocks/snapshots?symbols=${symList.join(',')}`;
       const snapRes = await fetch(snapUrl, { headers });
@@ -106,51 +108,81 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const url = `${dataUrl}/v2/stocks/quotes/latest?symbols=${symList.join(',')}`;
         const res = await fetch(url, { headers });
         const raw = await res.json();
-        if (!res.ok) {
+        if (res.ok) {
+          const quotes = (raw as { quotes?: Record<string, AlpacaQuote> }).quotes || {};
+          for (const [sym, q] of Object.entries(quotes)) {
+            if (!q) continue;
+            mapped[sym] = { symbol: sym, bid: q.bp || 0, ask: q.ap || 0, last: q.ap || 0, change: 0, changePercent: 0, volume: q.as || 0, high: 0, low: 0, open: 0, previousClose: 0, high52w: 0, low52w: 0, timestamp: Date.now() };
+          }
+        } else {
           return NextResponse.json(
             { error: `Alpaca quote error ${res.status}`, message: raw },
             { status: res.status }
           );
         }
-        const quotes = (raw as { quotes?: Record<string, AlpacaQuote> }).quotes || {};
-        const mapped: Record<string, any> = {};
-        for (const [sym, q] of Object.entries(quotes)) {
-          if (!q) continue;
-          mapped[sym] = { symbol: sym, bid: q.bp || 0, ask: q.ap || 0, last: q.ap || 0, change: 0, changePercent: 0, volume: q.as || 0, high: 0, low: 0, open: 0, previousClose: 0, high52w: 0, low52w: 0, timestamp: Date.now() };
+      } else {
+        const snapData = await snapRes.json();
+        for (const sym of symList) {
+          const snap = snapData[sym];
+          if (!snap) continue;
+          const trade = snap.latestTrade;
+          const dailyBar = snap.dailyBar;
+          const prevBar = snap.prevDailyBar;
+          const price = trade?.p ?? dailyBar?.c ?? null;
+          const prevClose = prevBar?.c ?? null;
+          const change = price && prevClose ? price - prevClose : 0;
+          const changePercent = change && prevClose ? (change / prevClose) * 100 : 0;
+
+          mapped[sym] = {
+            symbol: sym,
+            bid: snap.latestQuote?.bp || 0,
+            ask: snap.latestQuote?.ap || 0,
+            last: price || 0,
+            change: +change.toFixed(2),
+            changePercent: +changePercent.toFixed(2),
+            volume: dailyBar?.v || 0,
+            high: dailyBar?.h || 0,
+            low: dailyBar?.l || 0,
+            open: dailyBar?.o || 0,
+            previousClose: prevClose || 0,
+            high52w: 0,
+            low52w: 0,
+            timestamp: trade?.t ? new Date(trade.t).getTime() : Date.now(),
+          };
         }
-        return NextResponse.json({ quotes: mapped });
       }
 
-      const snapData = await snapRes.json();
-      const mapped: Record<string, any> = {};
-
-      for (const sym of symList) {
-        const snap = snapData[sym];
-        if (!snap) continue;
-        const trade = snap.latestTrade;
-        const dailyBar = snap.dailyBar;
-        const prevBar = snap.prevDailyBar;
-        const price = trade?.p ?? dailyBar?.c ?? null;
-        const prevClose = prevBar?.c ?? null;
-        const change = price && prevClose ? price - prevClose : 0;
-        const changePercent = change && prevClose ? (change / prevClose) * 100 : 0;
-
-        mapped[sym] = {
-          symbol: sym,
-          bid: snap.latestQuote?.bp || 0,
-          ask: snap.latestQuote?.ap || 0,
-          last: price || 0,
-          change: +change.toFixed(2),
-          changePercent: +changePercent.toFixed(2),
-          volume: dailyBar?.v || 0,
-          high: dailyBar?.h || 0,
-          low: dailyBar?.l || 0,
-          open: dailyBar?.o || 0,
-          previousClose: prevClose || 0,
-          high52w: 0,
-          low52w: 0,
-          timestamp: trade?.t ? new Date(trade.t).getTime() : Date.now(),
-        };
+      // Enrich with 52-week range from Finnhub (Alpaca doesn't provide it)
+      try {
+        const fhKey = process.env.FINNHUB_IO_API_KEY;
+        if (fhKey) {
+          const fhPromises = symList.map(async (sym) => {
+            try {
+              const fhRes = await fetch(
+                `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${fhKey}`,
+                { signal: AbortSignal.timeout(3000) }
+              );
+              if (!fhRes.ok) return null;
+              const fhJson = await fhRes.json();
+              return [sym, fhJson] as const;
+            } catch {
+              return null;
+            }
+          });
+          const results = await Promise.all(fhPromises);
+          for (const r of results) {
+            if (!r) continue;
+            const [sym, fhJson] = r;
+            if (mapped[sym]) {
+              const h = fhJson['52WeekHigh'];
+              const l = fhJson['52WeekLow'];
+              if (h != null && h > 0) mapped[sym].high52w = h;
+              if (l != null && l > 0) mapped[sym].low52w = l;
+            }
+          }
+        }
+      } catch {
+        // Non-critical — 52-week range stays at 0
       }
 
       return NextResponse.json({ quotes: mapped });
