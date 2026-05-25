@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
@@ -373,6 +373,87 @@ function CreateAlertModal({
   const [targetValue, setTargetValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Autocomplete
+  const [suggestions, setSuggestions] = useState<Array<{ symbol: string; name: string; price?: number; changePercent?: number }>>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Selected stock info (fetched when symbol locked in)
+  const [stockInfo, setStockInfo] = useState<{ price: number; change: number; changePercent: number; high52w: number; low52w: number } | null>(null);
+  const [stockInfoLoading, setStockInfoLoading] = useState(false);
+
+  const selectedSymbolRef = useRef<string | null>(null);
+
+  // ── Fetch suggestions ──────────────────────────────────────
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!query || query.length < 1) { setSuggestions([]); setShowSuggestions(false); return; }
+    setSuggestionsLoading(true);
+    try {
+      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query.toUpperCase())}`);
+      if (res.ok) {
+        const data = await res.json();
+        const items = (data.results || []).slice(0, 8);
+        setSuggestions(items);
+        setShowSuggestions(items.length > 0);
+      }
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, []);
+
+  // ── Debounced input handler ────────────────────────────────
+  const handleSymbolChange = (value: string) => {
+    const upper = value.toUpperCase();
+    setSymbol(upper);
+    setError(null);
+    
+    // If user clears or changes from selected symbol, reset
+    if (upper !== selectedSymbolRef.current) {
+      setStockInfo(null);
+      selectedSymbolRef.current = null;
+    }
+
+    if (suggestionsTimer.current) clearTimeout(suggestionsTimer.current);
+    suggestionsTimer.current = setTimeout(() => fetchSuggestions(upper), 200);
+  };
+
+  // ── Select symbol from dropdown / Enter ────────────────────
+  const selectSymbol = async (sym: string) => {
+    setSymbol(sym);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    
+    // Already loaded for this symbol?
+    if (selectedSymbolRef.current === sym && stockInfo) return;
+    
+    // Fetch snapshot for price + 52w range
+    setStockInfoLoading(true);
+    selectedSymbolRef.current = sym;
+    try {
+      const res = await fetch(`/api/alpaca/market?symbols=${encodeURIComponent(sym)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const quote = data?.quotes?.[sym];
+        if (quote) {
+          setStockInfo({
+            price: quote.last || quote.ask || 0,
+            change: quote.change || 0,
+            changePercent: quote.changePercent || 0,
+            high52w: quote.high52w || 0,
+            low52w: quote.low52w || 0,
+          });
+        }
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setStockInfoLoading(false);
+    }
+  };
+
   const handleSubmit = () => {
     setError(null);
     if (!symbol.trim()) { setError('Enter a stock symbol'); return; }
@@ -384,11 +465,22 @@ function CreateAlertModal({
 
   const typeConfig = ALERT_TYPES.find(t => t.value === alertType);
   const valueLabel = alertType === 'percent_change' ? 'Percent' : 'Price ($)';
-  const valuePlaceholder = alertType === 'percent_change' ? '5.0' : '200.00';
+  const valuePlaceholder = alertType === 'percent_change' ? '5.0' : stockInfo ? stockInfo.price.toFixed(2) : '200.00';
+
+  // Detect if alert is on the right side of market
+  const alertWarnings = alertType === 'price_above' && stockInfo && stockInfo.price
+    ? targetValue && parseFloat(targetValue) < stockInfo.price 
+      ? '⚠ Price above is below current price — alert may trigger immediately'
+      : null
+    : alertType === 'price_below' && stockInfo && stockInfo.price
+    ? targetValue && parseFloat(targetValue) > stockInfo.price
+      ? '⚠ Price below is above current price — alert may trigger immediately'
+      : null
+    : null;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, maxWidth: 400, width: '100%', padding: 24 }}>
+      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, maxWidth: 420, width: '100%', padding: 24, maxHeight: '90dvh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>Create Price Alert</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 2 }}>
@@ -397,18 +489,102 @@ function CreateAlertModal({
         </div>
 
         {/* Symbol */}
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 14, position: 'relative' }}>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Symbol *</label>
           <input
             type="text"
             value={symbol}
-            onChange={(e) => { setSymbol(e.target.value.toUpperCase()); setError(null); }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-            placeholder="e.g. AAPL"
+            onChange={(e) => handleSymbolChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (showSuggestions && suggestions.length > 0 && suggestions[0].symbol === symbol) {
+                  // Exact match in suggestions — select it
+                  selectSymbol(symbol);
+                } else {
+                  handleSubmit();
+                }
+              } else if (e.key === 'Escape') {
+                setShowSuggestions(false);
+              }
+            }}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onBlur={() => { setTimeout(() => setShowSuggestions(false), 150); }}
+            placeholder="Search symbol (e.g. AAPL)"
             autoFocus
             style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', fontSize: 13, fontFamily: 'monospace', outline: 'none' }}
           />
+          
+          {/* Autocomplete dropdown */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 101,
+              background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
+              maxHeight: 240, overflowY: 'auto', marginTop: 2,
+            }}>
+              {suggestions.map((s, i) => (
+                <div
+                  key={s.symbol}
+                  onMouseDown={() => selectSymbol(s.symbol)}
+                  style={{
+                    padding: '8px 12px', cursor: 'pointer',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    borderBottom: i < suggestions.length - 1 ? '1px solid #1e293b' : 'none',
+                    background: s.symbol === symbol ? '#0f3460' : 'transparent',
+                  }}
+                >
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: '#e2e8f0' }}>{s.symbol}</span>
+                    <span style={{ fontSize: 10, color: '#64748b', marginLeft: 8 }}>{s.name?.substring(0, 35)}{s.name?.length > 35 ? '…' : ''}</span>
+                  </div>
+                  {s.price != null && (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4', fontVariantNumeric: 'tabular-nums' }}>
+                      ${s.price.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {suggestionsLoading && (
+            <div style={{ position: 'absolute', right: 8, top: 34, color: '#64748b' }}>
+              <RefreshCcw size={12} style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
+          )}
         </div>
+
+        {/* Stock info card — shows when symbol selected */}
+        {stockInfo && (
+          <div style={{
+            marginBottom: 14, padding: '10px 12px', borderRadius: 8,
+            background: '#111b2e', border: '1px solid #1e3a5f',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Current Price</div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', fontVariantNumeric: 'tabular-nums' }}>
+                ${stockInfo.price.toFixed(2)}
+              </span>
+              <span style={{
+                fontSize: 11, fontWeight: 600, marginLeft: 8,
+                color: stockInfo.change >= 0 ? '#10b981' : '#ef4444',
+              }}>
+                {stockInfo.change >= 0 ? '+' : ''}{stockInfo.change.toFixed(2)} ({stockInfo.changePercent >= 0 ? '+' : ''}{stockInfo.changePercent.toFixed(2)}%)
+              </span>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>52-Week Range</div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+                ${stockInfo.low52w.toFixed(2)} – ${stockInfo.high52w.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
+        {stockInfoLoading && (
+          <div style={{ marginBottom: 14, padding: 10, textAlign: 'center', color: '#64748b', fontSize: 11 }}>
+            <RefreshCcw size={12} style={{ animation: 'spin 1s linear infinite', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} />
+            Loading {symbol}...
+          </div>
+        )}
 
         {/* Alert Type */}
         <div style={{ marginBottom: 14 }}>
@@ -439,7 +615,7 @@ function CreateAlertModal({
         </div>
 
         {/* Target Value */}
-        <div style={{ marginBottom: error ? 8 : 20 }}>
+        <div style={{ marginBottom: error || alertWarnings ? 8 : 20 }}>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
             {valueLabel} *
           </label>
@@ -462,10 +638,41 @@ function CreateAlertModal({
               }}
             />
           </div>
-          {typeConfig && (
+          {/* Price reference hint */}
+          {stockInfo && alertType !== 'percent_change' && (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginTop: 6, fontSize: 10, color: 'var(--text-muted)',
+            }}>
+              <span>
+                Current: <strong style={{ color: '#94a3b8' }}>${stockInfo.price.toFixed(2)}</strong>
+                {stockInfo.low52w > 0 && stockInfo.high52w > 0 && (
+                  <> · 52w: <strong style={{ color: '#94a3b8' }}>${stockInfo.low52w.toFixed(2)} – ${stockInfo.high52w.toFixed(2)}</strong></>
+                )}
+              </span>
+              {alertType === 'price_above' && (
+                <span>Alert if {'>'} ${targetValue || '…'}</span>
+              )}
+              {alertType === 'price_below' && (
+                <span>Alert if {'<'} ${targetValue || '…'}</span>
+              )}
+            </div>
+          )}
+          {typeConfig && !stockInfo && (
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{typeConfig.hint}</div>
           )}
         </div>
+
+        {/* Alert warning */}
+        {alertWarnings && (
+          <div style={{
+            marginBottom: 12, padding: '6px 10px', borderRadius: 6,
+            background: '#422316', border: '1px solid #854d0e',
+            fontSize: 10, color: '#fbbf24',
+          }}>
+            {alertWarnings}
+          </div>
+        )}
 
         {/* Error */}
         {error && (
