@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { MarketBar } from '@/components/layout/MarketBar';
@@ -28,22 +27,12 @@ const TAB_COMPONENTS: Record<TabId, React.FC> = {
 
 function AppShell() {
   const { activeTab } = useTabStore();
-  const { user, isAuthenticated, isLoading } = useAuth();
-  const router = useRouter();
-  const [redirecting, setRedirecting] = useState(false);
+  const { user } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated && !redirecting) {
-      setRedirecting(true);
-      router.push('/login');
-    }
-  }, [isLoading, isAuthenticated, redirecting, router]);
 
   // Show onboarding for authenticated users who haven't set their style
   useEffect(() => {
     if (!user) return;
-    // Dual check: Supabase user object + localStorage fallback
     const localStorageOnboarded = typeof window !== 'undefined'
       ? localStorage.getItem('vantage:onboarded') === 'true'
       : false;
@@ -52,15 +41,7 @@ function AppShell() {
     }
   }, [user]);
 
-  // During initial load, show nothing — avoid SSR spinner mismatch
-  if (isLoading || (!isAuthenticated && !redirecting)) {
-    return null;
-  }
-
-  // Router is pushing to /login
-  if (!isAuthenticated) {
-    return null;
-  }
+  // AuthGuard handles auth redirect — this component only renders when authenticated
 
   return (
     <BrokerProvider brokerId="alpaca" config={{ environment: 'paper' }}>

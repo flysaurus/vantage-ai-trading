@@ -66,7 +66,7 @@ const BROKERS: BrokerItem[] = [
 ];
 
 export function SettingsTab() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const router = useRouter();
   const [showBrokers, setShowBrokers] = useState(false);
   const [showStyleModal, setShowStyleModal] = useState(false);
@@ -225,7 +225,6 @@ export function SettingsTab() {
       <div style={{ marginTop: 12 }}>
         <button
           onClick={async () => {
-            const { signOut } = await import('@/lib/auth');
             await signOut();
             window.location.href = '/login';
           }}

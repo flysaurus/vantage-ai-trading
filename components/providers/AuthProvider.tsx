@@ -1,6 +1,7 @@
 // ─── Auth Context Provider ────────────────────────────────────
-// Provides auth state to the entire app via React context.
-// Handles session detection, loading state, and token refresh.
+// Supabase SDK manages session lifecycle (autoRefreshToken, persistSession).
+// AuthProvider subscribes to onAuthStateChange for real-time updates.
+// 10-minute inactivity timeout with 1-minute warning before logout.
 
 'use client';
 
@@ -13,7 +14,12 @@ import React, {
   useRef,
 } from 'react';
 import type { User, VantageSession, InvestorStyle } from '@/types';
-import { getSession, storeSession, clearSession, getUser, storeUser, clearUser, signIn as authSignIn, signUp as authSignUp, signOut as authSignOut, refreshSession } from '@/lib/auth';
+import { storeSession, clearSession, getUser, storeUser, clearUser } from '@/lib/auth';
+import { createClient } from '@/lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+
+const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const WARNING_BEFORE = 60 * 1000;           // warn 1 minute before logout
 
 // ─── Context Type ─────────────────────────────────────────────
 
@@ -22,9 +28,11 @@ interface AuthContextValue {
   session: VantageSession | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  inactivityWarning: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ needsConfirmation: boolean } | void>;
   signOut: () => Promise<void>;
+  resendConfirmation: (email: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -32,10 +40,78 @@ const AuthContext = createContext<AuthContextValue>({
   session: null,
   isLoading: true,
   isAuthenticated: false,
+  inactivityWarning: false,
   signIn: async () => {},
   signUp: async () => {},
   signOut: async () => {},
+  resendConfirmation: async () => ({ success: false, message: '' }),
 });
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function getLocalOnboarding(): { onboarded: boolean; style: InvestorStyle } {
+  if (typeof window === 'undefined') return { onboarded: false, style: 'buffett' };
+  try {
+    return {
+      onboarded: localStorage.getItem('vantage:onboarded') === 'true',
+      style: (localStorage.getItem('vantage:investorStyle') as InvestorStyle) || 'buffett',
+    };
+  } catch {
+    return { onboarded: false, style: 'buffett' };
+  }
+}
+
+function buildUser(session: Session, supabaseMeta?: Record<string, unknown>): User {
+  const meta = supabaseMeta || (session.user.user_metadata as Record<string, unknown>) || {};
+  const local = getLocalOnboarding();
+  const cached = getUser();
+  const email = session.user.email || '';
+  return {
+    id: session.user.id,
+    email,
+    displayName: (meta.display_name as string) || email.split('@')[0] || 'Trader',
+    avatarUrl: meta.avatar_url as string | undefined,
+    investorStyle: ((meta.investor_style as InvestorStyle) || cached?.investorStyle || local.style || 'buffett') as InvestorStyle,
+    investorStyleSetAt: undefined,
+    investorStyleOnboarded: !!(meta.investor_style_onboarded as boolean) || local.onboarded,
+    createdAt: session.user.created_at,
+  };
+}
+
+function toVantageSession(session: Session): VantageSession {
+  return {
+    token: session.access_token,
+    expiresAt: session.expires_at || Math.floor(Date.now() / 1000) + 3600,
+    userId: session.user.id,
+  };
+}
+
+/** Sync DB profile for a user — create if missing, merge if exists. */
+async function syncUserProfile(u: User, token: string, setUser: (u: User) => void, mounted: () => boolean) {
+  try {
+    const { getUserProfile, createUser } = await import('@/lib/supabase/user');
+    const profile = await getUserProfile(u.id);
+    if (!mounted()) return;
+    if (!profile) {
+      // No DB row yet — create it
+      await createUser({ email: u.email, displayName: u.displayName, token }).catch(() => {});
+      return;
+    }
+    // Merge DB values (source of truth for onboarding)
+    const merged: User = {
+      ...u,
+      investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
+      investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
+    };
+    setUser(merged);
+    storeUser(merged);
+    // Sync localStorage
+    if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+    if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
+  } catch {
+    // DB sync is non-critical
+  }
+}
 
 // ─── Provider Component ──────────────────────────────────────
 
@@ -43,257 +119,183 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<VantageSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [inactivityWarning, setInactivityWarning] = useState(false);
 
-  // ─── Session Detection on Mount ────────────────────────────
+  const inactivityRef = useRef<NodeJS.Timeout | null>(null);
+  const warningRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
+  const supabaseRef = useRef(createClient());
 
-  const syncLocalStorage = useCallback((u: User) => {
-    if (typeof window === 'undefined') return;
-    if (u.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
-    if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
+  // ─── Reset inactivity timer ──────────────────────────────
+  const resetInactivity = useCallback(() => {
+    setInactivityWarning(false);
+    if (warningRef.current) clearTimeout(warningRef.current);
+    if (inactivityRef.current) clearTimeout(inactivityRef.current);
+
+    warningRef.current = setTimeout(() => {
+      if (mountedRef.current) setInactivityWarning(true);
+    }, INACTIVITY_TIMEOUT - WARNING_BEFORE);
+
+    inactivityRef.current = setTimeout(async () => {
+      if (mountedRef.current) {
+        await supabaseRef.current.auth.signOut();
+      }
+    }, INACTIVITY_TIMEOUT);
   }, []);
 
+  // ─── Auth state listener ─────────────────────────────────
   useEffect(() => {
-    let mounted = true;
-    const safetyTimeout = setTimeout(() => {
-      if (mounted) setIsLoading(false);
-    }, 5000); // Safety: never spin longer than 5 seconds
+    const supabase = supabaseRef.current;
+    mountedRef.current = true;
 
-    const stored = getSession();
-
-    if (!stored) {
-      clearTimeout(safetyTimeout);
+    // Get initial session (Supabase SDK reads from localStorage automatically)
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      if (!mountedRef.current) return;
+      if (s) {
+        const u = buildUser(s);
+        const vs = toVantageSession(s);
+        setUser(u);
+        setSession(vs);
+        storeUser(u);
+        storeSession(vs); // parallel copy for sync accessors
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current);
+      }
       setIsLoading(false);
-      return;
-    }
+    });
 
-    // Load user from sessionStorage immediately (no API call needed)
-    const storedUser = getUser();
-    if (storedUser) {
-      setUser(storedUser);
-      setSession(stored);
+    // Subscribe to auth state changes (login, logout, token refresh, user update)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      if (!mountedRef.current) return;
 
-      // Still fetch DB profile to sync onboarding state (critical for cross-device)
-      // AND ensure user row exists in public.users (FK required by watchlists, alerts, etc.)
-      import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
-        getUserProfile(storedUser.id).then((profile) => {
-          if (!mounted) return;
-          if (!profile) {
-            // No DB row yet — create it now (pass stored session token to avoid sessionStorage dependency)
-            createUser({
-              email: storedUser.email,
-              displayName: storedUser.displayName,
-              token: stored.token,
-            }).then((created) => {
-              if (!mounted || !created) return;
-              // Created — keep existing user data as-is
-              syncLocalStorage(storedUser);
-            }).catch(() => {});
-            return;
-          }
-          const merged = {
-            ...storedUser,
-            investorStyle: profile.investorStyle || storedUser.investorStyle,
-            investorStyleOnboarded: profile.investorStyleOnboarded ?? storedUser.investorStyleOnboarded,
-          };
-          setUser(merged);
-          storeUser(merged);
-          syncLocalStorage(merged);
-        }).catch(() => {});
-      });
-
-      clearTimeout(safetyTimeout);
-      setIsLoading(false);
-      return;
-    }
-
-    // No stored user — validate session token with Supabase
-    // (this should only happen for sessions created before we added user storage)
-    setSession(stored);
-
-    import('@/lib/supabase')
-      .then(({ createClient }) => {
-        const supabase = createClient();
-        return supabase.auth.getUser(stored.token);
-      })
-      .then(({ data, error }) => {
-        if (!mounted) return;
-        if (error || !data.user) {
-          clearSession();
-          clearUser();
-          setSession(null);
-        } else {
-          const u: User = {
-            id: data.user.id,
-            email: data.user.email || '',
-            displayName:
-              data.user.user_metadata?.display_name ||
-              data.user.email?.split('@')[0] ||
-              'Trader',
-            avatarUrl: data.user.user_metadata?.avatar_url,
-            investorStyle: (data.user.user_metadata?.investor_style as InvestorStyle) ||
-              (typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') as InvestorStyle || 'buffett' : 'buffett'),
-            investorStyleSetAt: undefined,
-            investorStyleOnboarded:
-              typeof window !== 'undefined'
-                ? localStorage.getItem('vantage:onboarded') === 'true'
-                : false,
-            createdAt: data.user.created_at,
-          };
-          setUser(u);
-          storeUser(u); // Cache for next visit
-
-          // ── Fetch DB-stored values (source of truth for onboarding) ──
-          // AND ensure user row exists in public.users
-          import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
-            getUserProfile(u.id).then((profile) => {
-              if (!mounted) return;
-              if (!profile) {
-                // No DB row yet — create it using stored session token
-                createUser({
-                  email: u.email,
-                  displayName: u.displayName,
-                  token: stored.token,
-                }).then((created) => {
-                  if (!mounted || !created) return;
-                  // Created — keep existing user data as-is
-                  syncLocalStorage(u);
-                }).catch(() => {});
-                return;
-              }
-              // DB values override localStorage fallbacks
-              const merged: User = {
-                ...u,
-                investorStyle: profile.investorStyle || u.investorStyle,
-                investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
-              };
-              setUser(merged);
-              storeUser(merged);
-              syncLocalStorage(merged);
-            }).catch(() => {}); // DB fetch fail is non-fatal — use localStorage fallback
-          });
-        }
-      })
-      .catch(() => {
-        if (!mounted) return;
-        clearSession();
-        clearUser();
-        setSession(null);
-      })
-      .finally(() => {
-        if (!mounted) return;
-        clearTimeout(safetyTimeout);
-        setIsLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-      clearTimeout(safetyTimeout);
-    };
-  }, []);
-
-  // ─── Token Refresh ─────────────────────────────────────────
-
-  useEffect(() => {
-    if (!session) return;
-
-    // Refresh token 5 minutes before expiry
-    const expiresInMs = (session.expiresAt - Math.floor(Date.now() / 1000)) * 1000;
-    const refreshIn = Math.max(expiresInMs - 5 * 60 * 1000, 60_000);
-
-    refreshTimerRef.current = setTimeout(async () => {
-      const refreshed = await refreshSession();
-      if (refreshed) {
-        setSession(refreshed);
-      } else {
-        setSession(null);
+      if (event === 'SIGNED_OUT') {
         setUser(null);
+        setSession(null);
+        clearUser();
+        clearSession();
+        setInactivityWarning(false);
+        return;
       }
-    }, refreshIn);
+
+      if (event === 'TOKEN_REFRESHED' && s) {
+        const vs = toVantageSession(s);
+        setSession(vs);
+        storeSession(vs);
+        setInactivityWarning(false);
+        return;
+      }
+
+      if (s && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
+        const u = buildUser(s);
+        const vs = toVantageSession(s);
+        setUser(u);
+        setSession(vs);
+        storeUser(u);
+        storeSession(vs);
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current);
+      }
+    });
 
     return () => {
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-      }
+      mountedRef.current = false;
+      subscription.unsubscribe();
     };
-  }, [session]);
+  }, []);
 
-  // ─── Auth Methods ──────────────────────────────────────────
+  // ─── Inactivity tracking (only when authenticated) ───────
+  useEffect(() => {
+    if (!session) {
+      if (inactivityRef.current) clearTimeout(inactivityRef.current);
+      if (warningRef.current) clearTimeout(warningRef.current);
+      setInactivityWarning(false);
+      return;
+    }
+
+    resetInactivity();
+
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(e => window.addEventListener(e, resetInactivity, { passive: true }));
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetInactivity));
+      if (inactivityRef.current) clearTimeout(inactivityRef.current);
+      if (warningRef.current) clearTimeout(warningRef.current);
+    };
+  }, [session, resetInactivity]);
+
+  // ─── Auth methods ────────────────────────────────────────
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const result = await authSignIn(email, password);
-    setUser(result.user);
-    setSession(result.session);
-    storeUser(result.user);
+    const supabase = supabaseRef.current;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      throw new Error(String(error.message || 'Authentication failed'));
+    }
+    if (!data?.user || !data?.session) {
+      throw new Error('Sign in failed — server returned incomplete response.');
+    }
+    // onAuthStateChange will fire SIGNED_IN — no need to set state here
+  }, []);
 
-    // Ensure user row exists in DB (create if missing)
-    if (result.user?.id && result.session) {
-      const { token } = result.session; // narrow for TS
-      import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
-        getUserProfile(result.user!.id).then((existing) => {
-          if (!existing && result.user?.email) {
-            console.log('👉 [AuthProvider] Creating public.users row with in-memory token');
-            createUser({
-              email: result.user.email,
-              displayName: result.user.displayName,
-              token, // pass token directly, don't rely on sessionStorage
-            });
-          }
-        });
-      });
+  const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
+    const supabase = supabaseRef.current;
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: displayName || email.split('@')[0] } },
+    });
+    if (error) {
+      const errMsg = String(error.message || '').toLowerCase();
+      if (errMsg.includes('already registered') || errMsg.includes('already exists') ||
+          errMsg.includes('already signed up') || error.status === 422) {
+        throw new Error('An account with this email already exists. Please sign in instead.');
+      }
+      throw new Error(String(error.message || 'Authentication failed'));
+    }
+    if (!data.user || !data.session) {
+      return { needsConfirmation: true };
+    }
+    // onAuthStateChange will fire SIGNED_IN
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const supabase = supabaseRef.current;
+    await supabase.auth.signOut();
+    // onAuthStateChange will fire SIGNED_OUT
+  }, []);
+
+  const resendConfirmation = useCallback(async (email: string) => {
+    const supabase = supabaseRef.current;
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email });
+      if (error) {
+        const errMsg = String(error.message || '');
+        if (errMsg.includes('rate limit') || (error as any)?.status === 429)
+          return { success: false, message: 'Please wait before requesting another email.' };
+        if (errMsg.includes('already confirmed') || errMsg.includes('already verified'))
+          return { success: false, message: 'Email is already verified. Please sign in.' };
+        return { success: false, message: 'Unable to resend. Please try again later.' };
+      }
+      return { success: true, message: 'Verification email resent. Check your inbox!' };
+    } catch {
+      return { success: false, message: 'Unable to resend. Please try again later.' };
     }
   }, []);
 
-  const signUp = useCallback(
-    async (email: string, password: string, displayName?: string) => {
-      const result = await authSignUp(email, password, displayName);
-      if (result.needsConfirmation) {
-        return { needsConfirmation: true };
-      }
-      setUser(result.user);
-      setSession(result.session);
-      storeUser(result.user);
-
-      // Create user row in DB
-      if (result.user?.id && result.session) {
-        const { token } = result.session; // narrow for TS
-        import('@/lib/supabase/user').then(({ createUser }) => {
-          console.log('👉 [AuthProvider] signUp: Creating public.users row with in-memory token');
-          createUser({
-            email: result.user!.email,
-            displayName: result.user!.displayName,
-            token,
-          });
-        });
-      }
-    },
-    []
-  );
-
-  const signOut = useCallback(async () => {
-    await authSignOut();
-    setUser(null);
-    setSession(null);
-    clearUser();
-  }, []);
-
-  // ─── Context Value ─────────────────────────────────────────
+  // ─── Context value ───────────────────────────────────────
 
   const value: AuthContextValue = {
     user,
     session,
     isLoading,
     isAuthenticated: !!user && !!session,
+    inactivityWarning,
     signIn,
     signUp,
     signOut,
+    resendConfirmation,
   };
 
-  return React.createElement(
-    AuthContext.Provider,
-    { value },
-    children
-  );
+  return React.createElement(AuthContext.Provider, { value }, children);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────

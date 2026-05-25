@@ -1,6 +1,7 @@
 // ─── Supabase Client Setup ────────────────────────────────────
-// Token-based auth — browser client uses anon key, server client
-// uses service_role key for privileged operations (vault, RPC).
+// Supabase SDK manages session lifecycle: persistSession stores in
+// localStorage, autoRefreshToken handles refresh before expiry.
+// AuthProvider syncs a parallel copy (vantage-session) for sync accessors.
 //
 // NEVER expose SUPABASE_SERVICE_ROLE_KEY to the browser.
 // NEVER import createServerClient in client components.
@@ -30,8 +31,8 @@ export function createClient(): SupabaseClient<Database> {
     {
       auth: {
         storageKey: 'vantage-auth-token',
-        autoRefreshToken: false,
-        persistSession: false,
+        autoRefreshToken: true,
+        persistSession: true,
         detectSessionInUrl: false,
       },
     }

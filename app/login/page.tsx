@@ -1,14 +1,16 @@
 // ─── Login Page ───────────────────────────────────────────────
-// Renders immediately — no loading states, no auth checks on mount.
-// Auth happens only when forms are submitted.
+// Uses AuthProvider context for all auth operations.
+// No direct Supabase calls — state updates via onAuthStateChange.
 
 'use client';
 
 import { useState, useCallback } from 'react';
 import { Eye, EyeOff, LogIn, UserPlus, Mail, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-react';
-import { signIn as doSignIn, signUp as doSignUp, storeSession, storeUser, resendConfirmation } from '@/lib/auth';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function LoginPage() {
+  const { signIn: doSignIn, signUp: doSignUp, resendConfirmation } = useAuth();
+
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,36 +41,22 @@ export default function LoginPage() {
       setSubmitting(true);
       try {
         if (mode === 'signup') {
-          console.log('[login] Starting sign-up for', email.trim());
           const result = await doSignUp(email.trim(), password, displayName.trim() || undefined);
-          console.log('[login] Sign-up result:', { needsConfirmation: result.needsConfirmation, hasUser: !!result.user, hasSession: !!result.session });
-          if (result.needsConfirmation) {
+          if (result?.needsConfirmation) {
             setConfirmedEmail(email.trim());
             setConfirmationSent(true);
             setSubmitting(false);
             return;
           }
-          storeSession(result.session!);
-          storeUser(result.user);
-          import('@/lib/supabase/user').then(({ createUser }) => {
-            createUser({ email: result.user.email, displayName: result.user.displayName, token: result.session!.token });
-          });
-          console.log('[login] Sign-up success, navigating to /');
+          // onAuthStateChange will handle session + redirect will be triggered
+          // by AuthGuard switching from loading → authenticated
           window.location.href = '/';
         } else {
-          console.log('[login] Starting sign-in for', email.trim());
-          const result = await doSignIn(email.trim(), password);
-          console.log('[login] Sign-in result:', { hasUser: !!result.user, hasSession: !!result.session, userId: result.user?.id });
-          storeSession(result.session);
-          storeUser(result.user);
-          import('@/lib/supabase/user').then(({ createUser }) => {
-            createUser({ email: result.user.email, displayName: result.user.displayName, token: result.session.token });
-          });
-          console.log('[login] Sign-in success, navigating to /');
+          await doSignIn(email.trim(), password);
+          // Auth succeeds → onAuthStateChange fires SIGNED_IN → AuthGuard renders children
           window.location.href = '/';
         }
       } catch (err: any) {
-        console.error('[login] Auth error:', err);
         const msg = String(err?.message || err || 'Something went wrong.');
         const low = msg.toLowerCase();
         if (low.includes('invalid login') || low.includes('invalid credential') || low.includes('invalid email') || low.includes('user not found'))
@@ -90,7 +78,7 @@ export default function LoginPage() {
         setSubmitting(false);
       }
     },
-    [email, password, displayName, mode]
+    [email, password, displayName, mode, doSignIn, doSignUp]
   );
 
   // ─── Resend ──────────────────────────────────────────────────
@@ -106,7 +94,7 @@ export default function LoginPage() {
     } finally {
       setResending(false);
     }
-  }, [confirmedEmail]);
+  }, [confirmedEmail, resendConfirmation]);
 
   // ─── Confirmation Screen ────────────────────────────────────
 
@@ -211,17 +199,22 @@ export default function LoginPage() {
         <div className="divider"><span>or</span></div>
 
         <button className="google-btn" disabled title="Coming soon">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
           Continue with Google
         </button>
 
-        <p className="ftr">
+        <div className="ftr">
           {mode === 'signin' ? (
-            <>Don&apos;t have an account? <button className="link" onClick={() => { setMode('signup'); setError(null); }}>Sign up</button></>
+            <>Don&apos;t have an account? <button type="button" className="link" onClick={() => { setMode('signup'); setError(null); }}>Sign up</button></>
           ) : (
-            <>Already have an account? <button className="link" onClick={() => { setMode('signin'); setError(null); }}>Sign in</button></>
+            <>Already have an account? <button type="button" className="link" onClick={() => { setMode('signin'); setError(null); }}>Sign in</button></>
           )}
-        </p>
+        </div>
       </div>
 
       <style jsx>{`
