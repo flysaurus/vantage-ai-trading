@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
     // Try DeepSeek
     let stream: ReadableStream | null = null;
     let usedModel: string = model;
+    let streamError = '';
 
     try {
       // ── Primary: DeepSeek ──
@@ -267,7 +268,8 @@ export async function POST(request: NextRequest) {
               usedModel = model;
             } else {
               const errBody = await dsRes.text().catch(() => '');
-              console.warn(`DeepSeek ${model} returned ${dsRes.status}: ${errBody.slice(0, 200)}`);
+              streamError = `DeepSeek ${model} ${dsRes.status}: ${errBody.slice(0, 200)}`;
+              console.warn(streamError);
               // Retry with chat model if reasoner failed
               if (model === 'deepseek-reasoner') {
                 console.warn('DeepSeek reasoner failed, trying chat model');
@@ -289,14 +291,18 @@ export async function POST(request: NextRequest) {
                 });
                 if (ds2Res.ok && ds2Res.body) {
                   stream = ds2Res.body;
+                  streamError = '';
                 } else {
                   const err2Body = await ds2Res.text().catch(() => '');
-                  console.warn(`DeepSeek chat fallback returned ${ds2Res.status}: ${err2Body.slice(0, 200)}`);
+                  streamError = `DeepSeek chat fallback ${ds2Res.status}: ${err2Body.slice(0, 200)}`;
+                  console.warn(streamError);
                 }
               }
             }
           } catch (e) {
-            console.warn(`DeepSeek unreachable: ${e}`, e instanceof Error ? e.stack : '');
+            const msg = e instanceof Error ? e.message : String(e);
+            streamError = `DeepSeek fetch threw: ${msg}`;
+            console.warn(streamError, e instanceof Error ? e.stack : '');
           }
         };
         await tryDeepSeek();
@@ -305,7 +311,7 @@ export async function POST(request: NextRequest) {
       // Claude disabled — DeepSeek only (2026-05-25)
 
       if (!stream) {
-        throw new Error('DeepSeek unreachable');
+        throw new Error(streamError || 'DeepSeek unreachable');
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
