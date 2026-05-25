@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { BrokerAdapter, BrokerConfig, BrokerId } from '@/types/broker';
 import { brokerRegistry, setActiveBroker } from '@/lib/broker';
 
@@ -30,14 +30,11 @@ export function BrokerProvider({
   children: React.ReactNode;
 }) {
   const broker = brokerRegistry.get(brokerId);
-  const connectedRef = useRef(false);
-  const initRef = useRef(false);
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    if (initRef.current || !broker) return;
-    initRef.current = true;
+    if (!broker) return;
 
-    // In production, config comes from server via vault. For dev, env vars.
     const fullConfig: BrokerConfig = {
       id: brokerId,
       name: broker.name,
@@ -51,7 +48,7 @@ export function BrokerProvider({
       .connect(fullConfig)
       .then(() => {
         setActiveBroker(brokerId);
-        connectedRef.current = true;
+        setConnected(true);
       })
       .catch((err) => {
         console.error(`[BrokerProvider] Failed to connect ${brokerId}:`, err);
@@ -59,14 +56,14 @@ export function BrokerProvider({
 
     return () => {
       broker.disconnect();
-      connectedRef.current = false;
+      setConnected(false);
     };
-  }, [brokerId]);
+  }, [brokerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return React.createElement(
-    BrokerContext.Provider,
-    { value: { broker: broker || null, brokerId, connected: connectedRef.current } },
-    children
+  return (
+    <BrokerContext.Provider value={{ broker: broker || null, brokerId, connected }}>
+      {children}
+    </BrokerContext.Provider>
   );
 }
 
