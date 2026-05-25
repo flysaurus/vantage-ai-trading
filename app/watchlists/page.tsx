@@ -24,7 +24,7 @@ interface StockQuote {
 
 // ─── Page ─────────────────────────────────────────────────────
 export default function WatchlistsPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +169,19 @@ export default function WatchlistsPage() {
       color: c >= 0 ? '#22c55e' : '#ef4444',
     };
   };
+
+  // ─── Auth loading guard ──────────────────────────────────
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+          <RefreshCcw size={24} style={{ color: '#06b6d4', marginBottom: 8, animation: 'spin 1s linear infinite' }} />
+          <div style={{ fontSize: 13 }}>Loading...</div>
+        </div>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
