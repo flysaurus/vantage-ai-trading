@@ -1,9 +1,12 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { useChatStore, usePortfolioStore, useOrderStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { streamChat, getRemainingCalls, isRateLimited, estimateCost, estimateTokens, type ChatContext } from '@/lib/ai';
-import { saveMessage } from '@/lib/supabase/chat';
+import { saveMessage, getMessages } from '@/lib/supabase/chat';
 import type { ChatMessage, AICardComponent } from '@/types';
+
+/** localStorage key — must match store */
+const CHAT_STORAGE_KEY = 'vantage:chatMessages';
 
 /**
  * AI Chat hook — manages streaming chat with cost tracking and caching.
@@ -32,6 +35,43 @@ export function useAIChat() {
   const { orders } = useOrderStore();
   const { user } = useAuth();
   const abortRef = useRef<AbortController | null>(null);
+  const hydratedRef = useRef(false);
+
+  // ─── Hydrate chat messages from DB on mount ──────────────────
+  // localStorage is the primary store; DB is used to recover messages
+  // when localStorage is empty (new device, incognito, cleared cache).
+  useEffect(() => {
+    if (!user?.id || hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    // Only hydrate if localStorage is empty — avoids overwriting newer data
+    const local = typeof window !== 'undefined'
+      ? localStorage.getItem(CHAT_STORAGE_KEY)
+      : null;
+    if (local) return; // Already have messages locally
+
+    getMessages(user.id, 200, 0).then((result) => {
+      if (!result?.messages?.length) return;
+
+      // Convert DB format to store format (oldest first for display)
+      const dbMessages: ChatMessage[] = result.messages
+        .reverse() // DB returns newest first, store wants oldest first
+        .map((m: any) => ({
+          id: m.id || crypto.randomUUID(),
+          role: m.messageType === 'user_message' ? 'user' : 'assistant',
+          content: m.content || '',
+          timestamp: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
+        }));
+
+      if (dbMessages.length === 0) return;
+
+      // Populate store + persist to localStorage
+      useChatStore.setState({ messages: dbMessages });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(dbMessages));
+      }
+    }).catch(() => {}); // Non-fatal — stay with empty chat
+  }, [user?.id]);
 
   const buildContext = useCallback((): ChatContext | undefined => {
     if (!account) return undefined;

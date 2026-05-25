@@ -66,6 +66,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (storedUser) {
       setUser(storedUser);
       setSession(stored);
+
+      // Still fetch DB profile to sync onboarding state (critical for cross-device)
+      import('@/lib/supabase/user').then(({ getUserProfile }) => {
+        getUserProfile(storedUser.id).then((profile) => {
+          if (!mounted || !profile) return;
+          const merged = {
+            ...storedUser,
+            investorStyle: profile.investorStyle || storedUser.investorStyle,
+            investorStyleOnboarded: profile.investorStyleOnboarded ?? storedUser.investorStyleOnboarded,
+          };
+          setUser(merged);
+          storeUser(merged);
+          if (typeof window !== 'undefined') {
+            if (profile.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+            if (profile.investorStyle) localStorage.setItem('vantage:investorStyle', profile.investorStyle);
+          }
+        }).catch(() => {});
+      });
+
       clearTimeout(safetyTimeout);
       setIsLoading(false);
       return;
@@ -106,6 +125,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           setUser(u);
           storeUser(u); // Cache for next visit
+
+          // ── Fetch DB-stored values (source of truth for onboarding) ──
+          import('@/lib/supabase/user').then(({ getUserProfile }) => {
+            getUserProfile(u.id).then((profile) => {
+              if (!mounted || !profile) return;
+              // DB values override localStorage fallbacks
+              const merged: User = {
+                ...u,
+                investorStyle: profile.investorStyle || u.investorStyle,
+                investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
+              };
+              setUser(merged);
+              storeUser(merged);
+              // Sync localStorage with DB truth
+              if (typeof window !== 'undefined') {
+                if (profile.investorStyleOnboarded) {
+                  localStorage.setItem('vantage:onboarded', 'true');
+                }
+                if (profile.investorStyle) {
+                  localStorage.setItem('vantage:investorStyle', profile.investorStyle);
+                }
+              }
+            }).catch(() => {}); // DB fetch fail is non-fatal — use localStorage fallback
+          });
         }
       })
       .catch(() => {
