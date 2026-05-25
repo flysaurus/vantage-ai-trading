@@ -79,42 +79,6 @@ export function AIChat() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      {/* Header */}
-      {messages.length > 0 && (
-        <div style={{
-          padding: '8px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid #1e293b',
-        }}>
-          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>Chat History</span>
-          <button
-            onClick={() => {
-              if (confirm('Clear all chat messages?')) {
-                clearChat();
-              }
-            }}
-            style={{
-              padding: '4px 8px',
-              background: 'transparent',
-              border: '1px solid #334155',
-              borderRadius: 4,
-              color: '#64748b',
-              cursor: 'pointer',
-              fontSize: 10,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              transition: 'all 0.15s',
-            }}
-            title="Clear chat history"
-          >
-            <Trash2 size={12} /> Clear
-          </button>
-        </div>
-      )}
-
       {/* Messages */}
       <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.length === 0 && (
@@ -297,6 +261,30 @@ export function AIChat() {
           >
             <Send size={16} />
           </button>
+          {messages.length > 0 && (
+            <button
+              onClick={() => {
+                if (confirm('Clear all chat messages?')) {
+                  clearChat();
+                }
+              }}
+              disabled={isLoading}
+              title="Clear chat history"
+              style={{
+                width: 34, height: 34,
+                background: 'transparent',
+                border: '1px solid #475569',
+                borderRadius: 8,
+                color: '#94a3b8',
+                cursor: isLoading ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: isLoading ? 0.5 : 1,
+                flexShrink: 0,
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
 
         {/* API status */}
