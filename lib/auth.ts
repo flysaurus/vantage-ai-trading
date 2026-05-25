@@ -124,11 +124,8 @@ export async function signUp(
         error.message?.toLowerCase().includes('already exists') ||
         error.message?.toLowerCase().includes('already signed up') ||
         error.status === 422) {
-      return {
-        user: placerUser(email, displayName),
-        session: null,
-        needsConfirmation: true,
-      };
+      // Account already exists — tell user to sign in, don't pretend to send email
+      throw new Error('An account with this email already exists. Please sign in instead.');
     }
     throw new Error(error.message);
   }

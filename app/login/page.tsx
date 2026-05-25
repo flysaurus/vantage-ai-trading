@@ -65,8 +65,10 @@ export default function LoginPage() {
           setError('Email not verified yet. Check your inbox for the confirmation link.');
         else if (msg.toLowerCase().includes('rate limit') || msg.includes('too many'))
           setError('Too many attempts. Please wait a moment.');
-        else if (msg.toLowerCase().includes('already registered') || msg.includes('already exists'))
+        else if (msg.toLowerCase().includes('already registered') || msg.includes('already exists')) {
           setError('An account with this email already exists. Try signing in instead.');
+          setMode('signin');
+        }
         else if (msg.toLowerCase().includes('network') || msg.includes('fetch'))
           setError('Network error. Check your connection.');
         else
