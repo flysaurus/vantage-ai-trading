@@ -400,7 +400,7 @@ function CreateAlertModal({
     if (!query || query.length < 1) { setSuggestions([]); setShowSuggestions(false); return; }
     setSuggestionsLoading(true);
     try {
-      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query.toUpperCase())}`);
+      const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(query.toUpperCase())}`);
       if (res.ok) {
         const data = await res.json();
         const items = (data.results || []).slice(0, 8);

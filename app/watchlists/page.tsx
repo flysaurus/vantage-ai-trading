@@ -49,7 +49,7 @@ export default function WatchlistsPage() {
   const fetchAddSuggestions = useCallback(async (query: string) => {
     if (!query || query.length < 1) { setAddSuggestions([]); return; }
     try {
-      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query.toUpperCase())}`);
+      const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(query.toUpperCase())}`);
       if (res.ok) {
         const data = await res.json();
         setAddSuggestions((data.results || []).slice(0, 6));
@@ -566,7 +566,7 @@ function WatchlistFormModal({
     if (!query || query.length < 1) { setSuggestions([]); return; }
     setSuggestionsLoading(true);
     try {
-      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query.toUpperCase())}`);
+      const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(query.toUpperCase())}`);
       if (res.ok) {
         const data = await res.json();
         // data is { results: [{ symbol, name }] }

@@ -94,7 +94,7 @@ export default function EarningsCalendarPage() {
   const fetchSearchSuggestions = useCallback(async (q: string) => {
     if (!q || q.length < 1) { setSearchSuggestions([]); setShowSearchSuggestions(false); return; }
     try {
-      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(q.toUpperCase())}`);
+      const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(q.toUpperCase())}`);
       if (res.ok) {
         const data = await res.json();
         setSearchSuggestions((data.results || []).slice(0, 8));

@@ -50,7 +50,7 @@ export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Se
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}`);
         if (res.ok) {
           const json = await res.json();
           const items: SearchResult[] = json.results || [];
