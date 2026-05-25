@@ -71,12 +71,6 @@ export function TradeTab() {
             ))}
           </div>
 
-          {/* Mini chart placeholder */}
-          <div className="chart-skeleton" style={{ height: 100, marginTop: 10, display: 'flex', alignItems: 'flex-end', padding: 8, gap: 3 }}>
-            {[60, 65, 55, 75, 70, 80, 78, 72, 68, 55, 48, 42, 45, 40, 38].map((h, i) => (
-              <div key={i} style={{ flex: 1, height: h, background: 'linear-gradient(180deg, #06b6d4, #0d9488)', borderRadius: 2, opacity: 0.7 }} />
-            ))}
-          </div>
         </div>
       )}
 

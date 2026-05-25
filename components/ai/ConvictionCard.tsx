@@ -108,23 +108,6 @@ export function ConvictionCard({ card }: ConvictionCardProps) {
         </div>
       )}
 
-      {/* Mini chart placeholder for trade signals */}
-      {(card.type === 'buy_signal' || card.type === 'sell_signal') && (
-        <div className="mini-chart" style={{
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around',
-          padding: '6px 2px', gap: 2,
-        }}>
-          {[40, 55, 30, 65, 45, 70, 50, 58, 42, 62].map((h, i) => (
-            <div key={i} style={{
-              flex: 1, height: h,
-              background: card.type === 'buy_signal'
-                ? 'linear-gradient(180deg, #06b6d4, #0d9488)'
-                : 'linear-gradient(180deg, #f87171, #ef4444)',
-              borderRadius: 2, opacity: 0.7,
-            }} />
-          ))}
-        </div>
-      )}
 
       {/* Reason / description */}
       {card.reason && (
@@ -191,13 +174,7 @@ export function ConvictionCard({ card }: ConvictionCardProps) {
           text-transform: uppercase;
           letter-spacing: 0.3px;
         }
-        .mini-chart {
-          height: 50px;
-          background: linear-gradient(180deg, rgba(6,182,212,0.1) 0%, transparent 100%);
-          border: 1px solid #334155;
-          border-radius: 6px;
-          margin-bottom: 8px;
-        }
+
       `}</style>
     </div>
   );
