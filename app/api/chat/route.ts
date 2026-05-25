@@ -211,8 +211,8 @@ function sendSSE(
  * caused by corrupted data in stored chat history.
  */
 function sanitizeUnicode(str: string): string {
-  return str.replace(/\u[dD][8-9a-fA-F][0-9a-fA-F]{2}(?!\u[dD][c-fC-F][0-9a-fA-F]{2})/g, '\ufffd')
-    .replace(/[\uD800-\uDFFF]/g, '\ufffd');
+  // Replace lone surrogates (invalid UTF-16) with replacement character
+  return str.replace(/[�-�]/g, '�');
 }
 
 export async function POST(request: NextRequest) {
