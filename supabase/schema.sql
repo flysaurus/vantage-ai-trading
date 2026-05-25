@@ -208,6 +208,58 @@ END $$;
 
 CREATE INDEX idx_watchlists_user ON watchlists(user_id);
 
+-- ── Sessions (auth tokens) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_sessions_user ON sessions(user_id);
+CREATE INDEX idx_sessions_token ON sessions(token);
+
+-- ── Recent Notifications ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS recent_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  message TEXT,
+  type TEXT NOT NULL DEFAULT 'info' CHECK (type IN ('alert', 'suggestion', 'info')),
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user ON recent_notifications(user_id, created_at DESC);
+
+-- ── Daily Suggestions ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS daily_suggestions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  suggestion_text TEXT NOT NULL,
+  related_stocks JSONB DEFAULT '[]'::jsonb,
+  action_suggested TEXT,
+  is_acted_upon BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_daily_suggestions_user ON daily_suggestions(user_id, created_at DESC);
+
+-- ── Scanner Recommendations ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS scanner_recommendations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  symbol TEXT NOT NULL,
+  recommendation TEXT NOT NULL CHECK (recommendation IN ('BUY_MORE', 'HOLD', 'SELL')),
+  reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_scanner_recs_user ON scanner_recommendations(user_id, created_at DESC);
 -- ── Strategies ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS strategies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -350,6 +402,10 @@ ALTER TABLE watchlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_analysis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE strategies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recent_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_suggestions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scanner_recommendations ENABLE ROW LEVEL SECURITY;
 
 -- Users
 CREATE POLICY "users_read_own" ON users
@@ -435,6 +491,68 @@ CREATE POLICY "metrics_read_own" ON metrics
 CREATE POLICY "metrics_insert_own" ON metrics
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "metrics_delete_own" ON metrics
+-- Sessions
+CREATE POLICY "sessions_read_own" ON sessions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "sessions_insert_own" ON sessions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "sessions_delete_own" ON sessions
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Notifications
+CREATE POLICY "notifications_read_own" ON recent_notifications
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "notifications_insert_own" ON recent_notifications
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "notifications_update_own" ON recent_notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "notifications_delete_own" ON recent_notifications
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Daily Suggestions
+CREATE POLICY "daily_read_own" ON daily_suggestions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "daily_insert_own" ON daily_suggestions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Scanner Recommendations
+CREATE POLICY "scanner_read_own" ON scanner_recommendations
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "scanner_insert_own" ON scanner_recommendations
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "scanner_delete_own" ON scanner_recommendations
+  FOR DELETE USING (auth.uid() = user_id);
+  FOR DELETE USING (auth.uid() = user_id);
+-- Sessions
+CREATE POLICY "sessions_read_own" ON sessions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "sessions_insert_own" ON sessions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "sessions_delete_own" ON sessions
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Notifications
+CREATE POLICY "notifications_read_own" ON recent_notifications
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "notifications_insert_own" ON recent_notifications
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "notifications_update_own" ON recent_notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "notifications_delete_own" ON recent_notifications
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Daily Suggestions
+CREATE POLICY "daily_read_own" ON daily_suggestions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "daily_insert_own" ON daily_suggestions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Scanner Recommendations
+CREATE POLICY "scanner_read_own" ON scanner_recommendations
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "scanner_insert_own" ON scanner_recommendations
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "scanner_delete_own" ON scanner_recommendations
   FOR DELETE USING (auth.uid() = user_id);
   FOR DELETE USING (auth.uid() = user_id);
 -- Metrics
@@ -443,6 +561,68 @@ CREATE POLICY "metrics_read_own" ON metrics
 CREATE POLICY "metrics_insert_own" ON metrics
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "metrics_delete_own" ON metrics
+-- Sessions
+CREATE POLICY "sessions_read_own" ON sessions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "sessions_insert_own" ON sessions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "sessions_delete_own" ON sessions
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Notifications
+CREATE POLICY "notifications_read_own" ON recent_notifications
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "notifications_insert_own" ON recent_notifications
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "notifications_update_own" ON recent_notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "notifications_delete_own" ON recent_notifications
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Daily Suggestions
+CREATE POLICY "daily_read_own" ON daily_suggestions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "daily_insert_own" ON daily_suggestions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Scanner Recommendations
+CREATE POLICY "scanner_read_own" ON scanner_recommendations
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "scanner_insert_own" ON scanner_recommendations
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "scanner_delete_own" ON scanner_recommendations
+  FOR DELETE USING (auth.uid() = user_id);
+  FOR DELETE USING (auth.uid() = user_id);
+-- Sessions
+CREATE POLICY "sessions_read_own" ON sessions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "sessions_insert_own" ON sessions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "sessions_delete_own" ON sessions
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Notifications
+CREATE POLICY "notifications_read_own" ON recent_notifications
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "notifications_insert_own" ON recent_notifications
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "notifications_update_own" ON recent_notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "notifications_delete_own" ON recent_notifications
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Daily Suggestions
+CREATE POLICY "daily_read_own" ON daily_suggestions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "daily_insert_own" ON daily_suggestions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Scanner Recommendations
+CREATE POLICY "scanner_read_own" ON scanner_recommendations
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "scanner_insert_own" ON scanner_recommendations
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "scanner_delete_own" ON scanner_recommendations
   FOR DELETE USING (auth.uid() = user_id);
 
 -- Market Cache (public read, server-only write)
