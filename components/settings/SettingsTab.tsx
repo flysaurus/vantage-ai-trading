@@ -124,7 +124,7 @@ export function SettingsTab() {
       <div className="section" style={{ marginTop: 12 }}>
         <SettingsItem
           icon={History} title="Trade History" subtitle="All time activity & taxes"
-          onClick={() => showToast('📊 Trade history coming soon')}
+          onClick={() => router.push('/trade-history')}
         />
         <SettingsItem
           icon={Target} title="Goals & Targets" subtitle="Track financial milestones"
