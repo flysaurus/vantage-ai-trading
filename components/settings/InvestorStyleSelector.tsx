@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { updateInvestorStyle } from '@/lib/supabase/user';
 import { INVESTOR_STYLES } from '@/components/onboarding/styles';
 import type { InvestorStyle } from '@/types';
@@ -12,14 +12,28 @@ interface Props {
   userId: string;
   currentStyle: InvestorStyle;
   onStyleChanged: (newStyle: InvestorStyle) => void;
+  /** External trigger to open the modal (from SettingsTab menu click) */
+  externalShowModal?: boolean;
+  /** Callback when modal is dismissed */
+  onModalClosed?: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────
 
-export function InvestorStyleSelector({ userId, currentStyle, onStyleChanged }: Props) {
+export function InvestorStyleSelector({ userId, currentStyle, onStyleChanged, externalShowModal, onModalClosed }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Respond to external trigger from SettingsTab menu
+  useEffect(() => {
+    if (externalShowModal) setShowModal(true);
+  }, [externalShowModal]);
+
+  const handleClose = () => {
+    setShowModal(false);
+    onModalClosed?.();
+  };
 
   const active = INVESTOR_STYLES.find((s) => s.id === currentStyle);
 
@@ -93,20 +107,20 @@ export function InvestorStyleSelector({ userId, currentStyle, onStyleChanged }: 
           current={currentStyle}
           loading={loading}
           onConfirm={async (style) => {
-            if (style === currentStyle) { setShowModal(false); return; }
+            if (style === currentStyle) { handleClose(); return; }
             setLoading(true);
             setError(null);
             try {
               await updateInvestorStyle(userId, style);
               onStyleChanged(style);
-              setShowModal(false);
+              handleClose();
             } catch (e: any) {
               setError(e?.message || 'Failed to update style');
             } finally {
               setLoading(false);
             }
           }}
-          onClose={() => setShowModal(false)}
+          onClose={() => handleClose()}
         />
       )}
 

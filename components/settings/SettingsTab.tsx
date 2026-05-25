@@ -1,12 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleSelector } from '@/components/settings/InvestorStyleSelector';
 import type { InvestorStyle } from '@/types';
 import { 
   Star, Bell, Newspaper, CalendarDays, Search, 
   History, Target, CreditCard, Plug, Settings2, HelpCircle,
-  ChevronRight, Building2, CircleDot, Plus
+  ChevronRight, Building2, CircleDot, Plus, Check
 } from 'lucide-react';
 import type { BrokerId } from '@/types/broker';
 
@@ -67,46 +67,103 @@ const BROKERS: BrokerItem[] = [
 export function SettingsTab() {
   const { user } = useAuth();
   const [showBrokers, setShowBrokers] = useState(false);
+  const [showStyleModal, setShowStyleModal] = useState(false);
   const [investorStyle, setInvestorStyle] = useState<InvestorStyle>(
     user?.investorStyle || 'buffett'
   );
+  // Toast notification for items not yet built
+  const [toast, setToast] = useState<string | null>(null);
+  const styleSelectorRef = useRef<HTMLDivElement>(null);
 
   const connectedBroker = BROKERS.find(b => b.status === 'connected');
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2000);
+  }, []);
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
       {/* Portfolio & Research */}
       <div className="section">
-        <SettingsItem icon={Star} title="Watchlists" subtitle="3 lists · 24 symbols" />
-        <SettingsItem icon={Bell} title="Price Alerts" subtitle="5 active alerts" badge={2} />
-        <SettingsItem icon={Newspaper} title="News Feed" subtitle="AI-curated for your portfolio" />
-        <SettingsItem icon={CalendarDays} title="Earnings Calendar" subtitle="3 holdings reporting this week" />
-        <SettingsItem icon={Search} title="Stock Screener" subtitle="Find new opportunities" />
+        <SettingsItem
+          icon={Star} title="Watchlists" subtitle="3 lists · 24 symbols"
+          onClick={() => showToast('📋 Watchlist manager coming soon')}
+        />
+        <SettingsItem
+          icon={Bell} title="Price Alerts" subtitle="5 active alerts" badge={2}
+          onClick={() => showToast('🔔 Alert manager coming soon')}
+        />
+        <SettingsItem
+          icon={Newspaper} title="News Feed" subtitle="AI-curated for your portfolio"
+          onClick={() => showToast('📰 News customization coming soon')}
+        />
+        <SettingsItem
+          icon={CalendarDays} title="Earnings Calendar" subtitle="3 holdings reporting this week"
+          onClick={() => showToast('📅 Earnings details coming soon')}
+        />
+        <SettingsItem
+          icon={Search} title="Stock Screener" subtitle="Find new opportunities"
+          onClick={() => showToast('🔍 Screener coming soon')}
+        />
       </div>
 
       {/* Investor Style */}
       <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem icon={Star} title="Investor Style" subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap to change`} />
+        <SettingsItem
+          icon={Star}
+          title="Investor Style"
+          subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap to change`}
+          onClick={() => setShowStyleModal(true)}
+        />
       </div>
 
       {/* Account & History */}
       <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem icon={History} title="Trade History" subtitle="All time activity & taxes" />
-        <SettingsItem icon={Target} title="Goals & Targets" subtitle="Track financial milestones" />
+        <SettingsItem
+          icon={History} title="Trade History" subtitle="All time activity & taxes"
+          onClick={() => showToast('📊 Trade history coming soon')}
+        />
+        <SettingsItem
+          icon={Target} title="Goals & Targets" subtitle="Track financial milestones"
+          onClick={() => showToast('🎯 Goal tracking coming soon')}
+        />
       </div>
 
       {/* System */}
       <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem icon={CreditCard} title="Account & Funding" subtitle="Deposits, withdrawals, tax docs" />
+        <SettingsItem
+          icon={CreditCard} title="Account & Funding" subtitle="Deposits, withdrawals, tax docs"
+          onClick={() => showToast('💳 Account management coming soon')}
+        />
         <SettingsItem 
           icon={Plug} 
           title="Connected Brokers" 
           subtitle={connectedBroker ? `${connectedBroker.name} · ${connectedBroker.description}` : 'Not connected'}
           onClick={() => setShowBrokers(!showBrokers)}
         />
-        <SettingsItem icon={Settings2} title="Preferences" subtitle="Appearance, notifications & security" />
-        <SettingsItem icon={HelpCircle} title="Help & Support" subtitle="Documentation & contact" />
+        <SettingsItem
+          icon={Settings2} title="Preferences" subtitle="Appearance, notifications & security"
+          onClick={() => showToast('⚙️ Preferences coming soon')}
+        />
+        <SettingsItem
+          icon={HelpCircle} title="Help & Support" subtitle="Documentation & contact"
+          onClick={() => showToast('📚 Help center coming soon')}
+        />
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 60, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 200, padding: '10px 20px', borderRadius: 20,
+          background: '#1e293b', border: '1px solid #06b6d4', color: '#e2e8f0',
+          fontSize: 13, fontWeight: 500, boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          whiteSpace: 'nowrap',
+        }}>
+          {toast}
+        </div>
+      )}
 
       {/* Broker Selector */}
       {showBrokers && (
@@ -172,13 +229,17 @@ export function SettingsTab() {
         </div>
       </div>
 
-      {/* Investor Style Selector */}
+      {/* Investor Style Selector (always visible) */}
       {user && (
-        <InvestorStyleSelector
-          userId={user.id}
-          currentStyle={investorStyle}
-          onStyleChanged={(newStyle) => setInvestorStyle(newStyle)}
-        />
+        <div ref={styleSelectorRef}>
+          <InvestorStyleSelector
+            userId={user.id}
+            currentStyle={investorStyle}
+            onStyleChanged={(newStyle) => setInvestorStyle(newStyle)}
+            externalShowModal={showStyleModal}
+            onModalClosed={() => setShowStyleModal(false)}
+          />
+        </div>
       )}
 
       <style jsx>{`
