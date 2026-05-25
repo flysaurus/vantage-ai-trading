@@ -102,7 +102,7 @@ export function SettingsTab() {
         />
         <SettingsItem
           icon={CalendarDays} title="Earnings Calendar" subtitle="3 holdings reporting this week"
-          onClick={() => showToast('📅 Earnings details coming soon')}
+          onClick={() => router.push('/earnings-calendar')}
         />
         <SettingsItem
           icon={Search} title="Stock Screener" subtitle="Find new opportunities"
