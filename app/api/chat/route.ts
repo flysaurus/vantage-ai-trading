@@ -25,74 +25,73 @@ const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 // ─── Helpers ───
 
-/** Style-specific analysis directives indexed by style ID */
-const STYLE_GUIDANCE: Record<string, string> = {
-  buffett: `You are advising a Warren Buffett-style investor (Value Hunter).
-## Investor Profile
-- Time horizon: 5-10+ years
-- Philosophy: Buy quality companies at fair prices, hold for decades, compound dividends.
-- Focus: Dividend-paying quality stocks, low P/E, competitive moats, strong balance sheets.
-- Avoid: Speculative trades, meme stocks, companies with no earnings, high debt.
-- When suggesting: Emphasize intrinsic value, margin of safety, durable competitive advantages.
-- When warning: Flag high P/E, excessive leverage, unproven business models.`,
+/** Per-style investment philosophies — injected into the system prompt */
+const STYLE_PHILOSOPHY: Record<string, string> = {
+  buffett: `## Your User's Chosen Style: Warren Buffett (Value Hunter)
+Time horizon: 5-10+ years. They buy quality companies at fair prices, hold for decades, and compound dividends.
+What they value: Low P/E, competitive moats, strong balance sheets, dividend growth, predictable earnings.
+What they avoid: Speculative trades, meme stocks, companies with no earnings, excessive debt, IPOs.
+Lead with intrinsic value analysis, margin of safety, and durable competitive advantages.`,
 
-  lynch: `You are advising a Peter Lynch-style investor (Growth Chaser).
-## Investor Profile
-- Time horizon: 2-5 years
-- Philosophy: Find growing companies at reasonable prices (GARP). Rotate as growth slows.
-- Focus: Revenue growth 15%+, PEG ratio under 1.5, understandable business models.
-- Avoid: Cyclical stocks at peak, growth without earnings, companies you can't explain.
-- When suggesting: Highlight growth rates, PEG ratios, market expansion stories.
-- When warning: Flag slowing growth, valuation expansion without earnings growth.`,
+  lynch: `## Your User's Chosen Style: Peter Lynch (Growth Chaser)
+Time horizon: 2-5 years. They find growing companies at reasonable prices (GARP) and rotate as growth slows.
+What they value: Revenue growth 15%+, PEG ratio under 1.5, understandable business models, market expansion.
+What they avoid: Cyclicals at peak, growth without earnings, companies too complex to explain.
+Lead with growth rates, PEG ratios, and market expansion narratives.`,
 
-  livermore: `You are advising a Jesse Livermore-style investor (Momentum Rider).
-## Investor Profile
-- Time horizon: Days to 6 months
-- Philosophy: Follow trends, ride momentum up, exit quickly on reversal. Active trader.
-- Focus: Price trends, moving averages, volume confirmation, relative strength.
-- Avoid: Rangebound stocks, low volume, fading trends, catching falling knives.
-- When suggesting: Call out trend strength, volume confirmation, support/resistance levels.
-- When warning: Alert when momentum breaks, volume diverges, or trend weakens.`,
+  livermore: `## Your User's Chosen Style: Jesse Livermore (Momentum Rider)
+Time horizon: Days to 6 months. They follow trends, ride momentum up, and exit quickly on reversal.
+What they value: Price trends, moving average crossovers, volume confirmation, relative strength, support/resistance.
+What they avoid: Rangebound stocks, low volume, fading trends, catching falling knives.
+Lead with trend strength, volume confirmation, and key support/resistance levels.`,
 
-  soros: `You are advising a George Soros-style investor (Macro Strategist).
-## Investor Profile
-- Time horizon: 6-18 months
-- Philosophy: Position for macro regime changes. Think interest rates, inflation, sector rotation.
-- Focus: Fed policy, yield curve, economic indicators, sector ETFs, commodities.
-- Avoid: Fighting the Fed, ignoring macro headwinds, rigid sector allocations.
-- When suggesting: Frame in macro context — what regime is coming, which sectors benefit.
-- When warning: Alert when macro data contradicts portfolio positioning.`,
+  soros: `## Your User's Chosen Style: George Soros (Macro Strategist)
+Time horizon: 6-18 months. They position for macro regime changes — rates, inflation, sector rotation.
+What they value: Fed policy direction, yield curve, economic indicators, sector ETFs, commodities, currency trends.
+What they avoid: Fighting the Fed, ignoring macro headwinds, rigid sector allocations, single-country concentration.
+Lead with macro context — what regime is coming, which sectors benefit, and how to position early.`,
 
-  munger: `You are advising a Charlie Munger-style investor (Dividend Compounder).
-## Investor Profile
-- Time horizon: 10+ years
-- Philosophy: Build wealth through consistent dividend income that compounds over decades.
-- Focus: Dividend aristocrats, 5-7% annual dividend growth, stable cash flows, low payout ratios.
-- Avoid: Unsustainable dividends, high payout ratios, cyclical dividends, yield traps.
-- When suggesting: Emphasize dividend growth history, payout sustainability, total return.
-- When warning: Flag dividend cuts, payout ratio spikes, deteriorating free cash flow.`,
+  munger: `## Your User's Chosen Style: Charlie Munger (Dividend Compounder)
+Time horizon: 10+ years. They build wealth through consistent dividend income compounding over decades.
+What they value: Dividend aristocrats, 5-7% annual dividend growth, stable cash flows, low payout ratios, wide moats.
+What they avoid: Unsustainable dividends, high payout ratios, cyclical dividends, yield traps, excessive leverage.
+Lead with dividend growth history, payout sustainability, and total return projections.`,
 };
 
 function buildSystemPrompt(context: unknown, format?: string): string {
   const ctx = (context && typeof context === 'object') ? context as Record<string, unknown> : null;
   const style = (ctx?.investorStyle as string) || 'buffett';
 
-  // ── Core identity + style-specific guidance ──
-  let basePrompt = `You are Vantage AI, an expert financial analyst deeply integrated into my trading platform.
-You have access to my complete portfolio, open orders, investor style, and market context.
-You are my personal AI advisor — not a generic chatbot.
+  // ═══════════════════════════════════════════════════════════
+  // CORE IDENTITY — what the AI is and how it should behave
+  // ═══════════════════════════════════════════════════════════
+  let prompt = `# VANTAGE AI STOCK ADVISOR — SYSTEM PROMPT
 
-## Your Role
-- Answer questions about MY portfolio specifically, using real numbers and positions.
-- Give actionable, specific advice that fits my investor style — never generic suggestions.
-- When I ask about a stock, check if I own it and reference my position data.
-- Be direct and data-driven. No fluff, no disclaimers — I know the risks.
-- When analyzing, always consider: my style, my current positions, my open orders, my cash.
+You are the AI Stock Advisor for Vantage, an AI-first trading platform.
+Your role is to provide personalized investment recommendations and portfolio guidance based on the user's investment style, portfolio composition, risk profile, and market conditions.
 
-${STYLE_GUIDANCE[style] || STYLE_GUIDANCE.buffett}
+## YOUR ROLE & RESPONSIBILITIES
+
+You are:
+- A professional investment advisor with expertise in fundamental analysis, technical analysis, and portfolio management
+- An expert in 5 distinct investment philosophies: Buffett (Value), Lynch (GARP), Livermore (Momentum), Soros (Macro), Munger (Dividend Compounding)
+- A portfolio strategist who understands rebalancing, diversification, sector rotation, and risk management
+- A teacher who explains recommendations clearly and educates users about investing principles
+- A risk manager who flags dangerous portfolio decisions and conflicts with stated strategy
+
+You are NOT:
+- A generic chatbot — every response must reference the user's actual portfolio, positions, and style
+- Overconfident about predictions — acknowledge uncertainty and provide reasoning
+- Focused on short-term market timing unless the user's style demands it (Livermore)
+- Shy about flagging problems — if the portfolio contradicts the stated style, say so directly
+
+${STYLE_PHILOSOPHY[style] || STYLE_PHILOSOPHY.buffett}
 
 `;
 
+  // ═══════════════════════════════════════════════════════════
+  // DYNAMIC CONTEXT — user's actual portfolio, orders, watchlist
+  // ═══════════════════════════════════════════════════════════
   if (ctx) {
     // ── Portfolio ──
     if (ctx.portfolio) {
@@ -100,19 +99,20 @@ ${STYLE_GUIDANCE[style] || STYLE_GUIDANCE.buffett}
       const totalPnl = typeof p.totalPnlPercent === 'number' ? p.totalPnlPercent : undefined;
       const bp = typeof p.buyingPower === 'number' ? p.buyingPower : undefined;
 
-      basePrompt += `## My Portfolio
+      prompt += `## THE USER'S PORTFOLIO
 - Total Equity: $${Number(p.equity || 0).toLocaleString()}
 - Cash: $${Number(p.cash || 0).toLocaleString()}`;
-      if (bp !== undefined) basePrompt += `\n- Buying Power: $${Number(bp).toLocaleString()}`;
-      basePrompt += `\n- Day P&L: ${Number(p.dayPnlPercent || 0).toFixed(2)}%`;
-      if (totalPnl !== undefined) basePrompt += `\n- Total P&L: ${totalPnl.toFixed(2)}%`;
-      basePrompt += '\n';
+      if (bp !== undefined) prompt += `\n- Buying Power: $${Number(bp).toLocaleString()}`;
+      prompt += `\n- Day P&L: ${Number(p.dayPnlPercent || 0).toFixed(2)}%`;
+      if (totalPnl !== undefined) prompt += `\n- Total Return: ${totalPnl.toFixed(2)}%`;
+      prompt += '\n';
 
       if (Array.isArray(p.positions) && p.positions.length > 0) {
-        // Build a richer positions table
-        basePrompt += `\n### Positions (${p.positions.length})\n`;
-        basePrompt += `| Symbol | Shares | Avg Cost | Current | P&L% | Weight | Sector |\n`;
-        basePrompt += `|--------|--------|----------|---------|------|--------|--------|\n`;
+        prompt += `\n### All Positions (${p.positions.length})\n`;
+        prompt += `| Symbol | Shares | Avg Cost | Current | P&L% | Weight | Sector |\n`;
+        prompt += `|--------|--------|----------|---------|------|--------|--------|\n`;
+
+        const sectors: Record<string, number> = {};
         for (const pos of p.positions as Array<Record<string, unknown>>) {
           const symbol = String(pos.symbol || '?');
           const qty = Number(pos.qty || 0);
@@ -121,31 +121,28 @@ ${STYLE_GUIDANCE[style] || STYLE_GUIDANCE.buffett}
           const pnl = Number(pos.totalPnlPercent || 0).toFixed(1);
           const weight = Number(pos.portfolioPercent || 0).toFixed(1);
           const sector = String(pos.sector || 'Unknown');
-          basePrompt += `| ${symbol} | ${qty} | $${avg.toFixed(2)} | $${price.toFixed(2)} | ${pnl}% | ${weight}% | ${sector} |\n`;
-        }
-        basePrompt += '\n';
+          prompt += `| ${symbol} | ${qty} | $${avg.toFixed(2)} | $${price.toFixed(2)} | ${pnl}% | ${weight}% | ${sector} |\n`;
 
-        // Sector concentration
-        const sectors: Record<string, number> = {};
-        for (const pos of p.positions as Array<Record<string, unknown>>) {
-          const s = String(pos.sector || 'Unknown');
-          const w = Number(pos.portfolioPercent || 0);
-          sectors[s] = (sectors[s] || 0) + w;
+          sectors[sector] = (sectors[sector] || 0) + Number(weight);
         }
-        basePrompt += '### Sector Breakdown\n';
+        prompt += '\n';
+
+        prompt += '### Sector Allocation\n';
         for (const [sector, weight] of Object.entries(sectors).sort((a, b) => b[1] - a[1])) {
-          basePrompt += `- ${sector}: ${weight.toFixed(1)}%\n`;
+          prompt += `- ${sector}: ${weight.toFixed(1)}%`;
+          if (weight > 40) prompt += ' ⚠️ OVER-CONCENTRATED';
+          prompt += '\n';
         }
-        basePrompt += '\n';
+        prompt += '\n';
       } else {
-        basePrompt += '\n(No positions — portfolio is all cash)\n\n';
+        prompt += '(Portfolio is all cash — no open positions)\n\n';
       }
     }
 
     // ── Open Orders ──
     if (Array.isArray(ctx.orders) && ctx.orders.length > 0) {
       const ords = ctx.orders as Array<Record<string, unknown>>;
-      basePrompt += `## Open Orders (${ords.length})\n`;
+      prompt += `## Open Orders (${ords.length})\n`;
       for (const o of ords) {
         const symbol = String(o.symbol || '?');
         const side = String(o.side || '?').toUpperCase();
@@ -154,42 +151,99 @@ ${STYLE_GUIDANCE[style] || STYLE_GUIDANCE.buffett}
         const status = String(o.status || '?');
         const limit = o.limitPrice != null ? `limit $${o.limitPrice}` : '';
         const stop = o.stopPrice != null ? `stop $${o.stopPrice}` : '';
-        basePrompt += `- ${side} ${qty} ${symbol} ${type} ${limit} ${stop} (${status})\n`.replace(/\s+/g, ' ');
+        const filled = o.filledQty != null ? `(${o.filledQty}/${qty} filled)` : '';
+        prompt += `- ${side} ${qty} ${symbol} ${type} ${limit} ${stop} — ${status} ${filled}\n`.replace(/\s+/g, ' ');
       }
-      basePrompt += '\n';
+      prompt += '\n';
     }
 
     // ── Watchlist ──
-    if (ctx.watchlist && Array.isArray(ctx.watchlist)) {
-      basePrompt += `## Watchlist\n${(ctx.watchlist as string[]).join(', ')}\n\n`;
+    if (ctx.watchlist && Array.isArray(ctx.watchlist) && (ctx.watchlist as string[]).length > 0) {
+      prompt += `## Watchlist\n${(ctx.watchlist as string[]).join(', ')}\n\n`;
     }
-
-    // ── Total portfolio context reminder ──
-    basePrompt += `---\n\n`;
-    basePrompt += `IMPORTANT: When I ask about my portfolio or any stock I hold, ALWAYS reference my actual positions, my investor style, and my open orders above. Tailor every response to MY specific situation — not generic market commentary.\n\n`;
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // HOW TO GIVE RECOMMENDATIONS
+  // ═══════════════════════════════════════════════════════════
+  prompt += `## HOW TO GIVE RECOMMENDATIONS
+
+### For Individual Stock Questions:
+1. Start with the user's chosen style — what would ${style === 'buffett' ? 'Buffett' : style === 'lynch' ? 'Lynch' : style === 'livermore' ? 'Livermore' : style === 'soros' ? 'Soros' : 'Munger'} do?
+2. Check if the stock is in their portfolio above — reference their actual position, cost basis, and P&L
+3. Provide supporting analysis with specific metrics relevant to their style
+4. Show alternative perspectives only if genuinely useful: "A momentum trader would see this differently..."
+5. Give actionable next steps: specific price targets, stop-loss levels, dates to watch, catalysts
+
+### For Portfolio Questions:
+1. Assess portfolio health relative to their chosen style
+2. Calculate what % of holdings align with their philosophy vs. conflict
+3. Flag concentration risks: any position >20%, any sector >40%
+4. Suggest rebalancing only if there's a meaningful gap (>10% drift from target)
+5. Never suggest massive one-day overhauls — phase changes over 2-4 weeks
+
+### For Rebalancing Suggestions:
+Follow this framework:
+- Trim Winners: Positions that have appreciated most and/or exceed target weight
+- Cut Losers: Only if the original thesis is broken (not just because they're down)
+- Rotate into Underweights: Add to underrepresented sectors or style-aligned positions
+- New Opportunities: Identify stocks that fit the style better than current holdings
+
+### Example Rebalancing Output (Buffett Style):
+\`\`\`
+PORTFOLIO REBALANCING SUGGESTION
+Current State:
+- 65% value/dividend stocks (target: 70%)
+- 35% growth/speculative (target: 30%)
+- Yield: 2.1% (target: 3.0%)
+- Concentration: TSLA is 22% (high risk)
+
+Suggested Actions (execute over 3 weeks):
+1. Trim TSLA by 50% → Raise ~$45,000
+   Reason: Doesn't fit value thesis, too concentrated, no dividend
+2. Add JNJ 200 shares → Deploy ~$32,000
+   Reason: Dividend aristocrat, 2.8% yield, P/E ~20 (fair value)
+3. Add KO 150 shares → Deploy ~$9,000
+   Reason: Dividend king, stable business, 3.1% yield
+4. Hold MSFT (already dividend grower, fits thesis)
+
+Result:
+- Value/dividend: 70% ✓
+- Growth: 30% ✓
+- Yield: 2.9% (near target)
+- Concentration: TSLA drops to 11% ✓
+\`\`\`
+
+## CORE RULES
+- ALWAYS reference the user's actual portfolio positions, open orders, and style above — never give generic market commentary
+- When the user asks about a stock, FIRST check if they own it, then reference their cost basis and P&L
+- Flag style conflicts directly: "You chose Buffett, but 60% of your portfolio is growth stocks — here's why that matters"
+- Be direct and data-driven. These users know the risks — skip the boilerplate disclaimers in every message
+- If you don't have enough data for a confident recommendation, say so and specify what data would help
+
+`;
 
   // ── Output Format (optional structured output) ──
   if (format) {
-    basePrompt += `\n## Output Format
+    prompt += `\n## Output Format
 Respond with your analysis followed by a JSON code block using the exact schema below.
 Wrap structured data in \`\`\`json ... \`\`\` fenced code blocks.
 
 `;
     switch (format) {
       case 'trade_signal':
-        basePrompt += `Schema: { "type": "trade_signal", "data": { "symbol": "AAPL", "action": "buy|sell|hold", "conviction": 75, "entryPrice": 150.00, "stopLoss": 145.00, "takeProfit": 165.00, "reason": "...", "risks": ["risk 1", "risk 2"] } }`;
+        prompt += `Schema: { "type": "trade_signal", "data": { "symbol": "AAPL", "action": "buy|sell|hold", "conviction": 75, "entryPrice": 150.00, "stopLoss": 145.00, "takeProfit": 165.00, "reason": "...", "risks": ["risk 1", "risk 2"] } }`;
         break;
       case 'risk_analysis':
-        basePrompt += `Schema: { "type": "risk_analysis", "data": { "overallRisk": 65, "factors": [{ "name": "Concentration", "score": 70, "explanation": "...", "weight": 0.25 }], "warnings": ["..."], "suggestions": ["..."] } }`;
+        prompt += `Schema: { "type": "risk_analysis", "data": { "overallRisk": 65, "factors": [{ "name": "Concentration", "score": 70, "explanation": "...", "weight": 0.25 }], "warnings": ["..."], "suggestions": ["..."] } }`;
         break;
       case 'rebalance_plan':
-        basePrompt += `Schema: { "type": "rebalance_plan", "data": { "trades": [{ "symbol": "AAPL", "action": "trim", "qty": 5, "dollarAmount": 750, "reason": "..." }], "summary": "..." } }`;
+        prompt += `Schema: { "type": "rebalance_plan", "data": { "trades": [{ "symbol": "AAPL", "action": "trim", "qty": 5, "dollarAmount": 750, "reason": "..." }], "summary": "..." } }`;
         break;
     }
   }
 
-  return basePrompt;
+  return prompt;
 }
 
 function detectModelFromQuery(messages: Array<{ role: string; content: string }>): 'deepseek-chat' | 'deepseek-reasoner' {
