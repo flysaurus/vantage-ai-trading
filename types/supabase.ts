@@ -176,25 +176,30 @@ export interface Database {
           id: string;
           user_id: string;
           symbol: string;
-          type: 'price_above' | 'price_below' | 'volume_spike' | 'technical';
-          threshold: number;
+          alert_type: 'price_above' | 'price_below' | 'percent_change';
+          target_value: number;
           is_active: boolean;
           triggered_at: string | null;
           created_at: string;
+          updated_at: string | null;
         };
         Insert: {
           id?: string;
           user_id: string;
           symbol: string;
-          type: 'price_above' | 'price_below' | 'volume_spike' | 'technical';
-          threshold: number;
+          alert_type: 'price_above' | 'price_below' | 'percent_change';
+          target_value: number;
           is_active?: boolean;
           triggered_at?: string | null;
           created_at?: string;
+          updated_at?: string | null;
         };
         Update: {
+          alert_type?: 'price_above' | 'price_below' | 'percent_change';
+          target_value?: number;
           is_active?: boolean;
           triggered_at?: string | null;
+          updated_at?: string | null;
         };
       };
       account_snapshots: {

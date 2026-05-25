@@ -114,12 +114,20 @@ CREATE TABLE IF NOT EXISTS alerts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   symbol TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('price_above', 'price_below', 'volume_spike', 'technical')),
-  threshold NUMERIC NOT NULL,
+  alert_type TEXT NOT NULL CHECK (alert_type IN ('price_above', 'price_below', 'percent_change')),
+  target_value NUMERIC NOT NULL,
   is_active BOOLEAN DEFAULT true,
   triggered_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS alert_type TEXT;
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS target_value NUMERIC;
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+-- Migrate old columns to new names
+UPDATE alerts SET alert_type = type WHERE alert_type IS NULL AND type IS NOT NULL;
+UPDATE alerts SET target_value = threshold WHERE target_value IS NULL AND threshold IS NOT NULL;
 
 CREATE INDEX idx_alerts_user ON alerts(user_id, is_active);
 
