@@ -31,21 +31,35 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
   };
 
   const handleConfirm = async () => {
-    if (!selectedStyle) return;
+    if (!selectedStyle) {
+      console.log('❌ [DEBUG onboarding] handleConfirm called but no style selected');
+      return;
+    }
+
+    console.log('👉 [DEBUG onboarding] handleConfirm — style:', selectedStyle);
+    console.log('👉 [DEBUG onboarding] handleConfirm — userId:', userId);
 
     setLoading(true);
     setError(null);
 
     try {
+      console.log('👉 [DEBUG onboarding] calling updateInvestorStyle...');
       await updateInvestorStyle(userId, selectedStyle);
+      console.log('✅ [DEBUG onboarding] updateInvestorStyle done');
+
+      console.log('👉 [DEBUG onboarding] calling completeOnboarding...');
       await completeOnboarding(userId);
+      console.log('✅ [DEBUG onboarding] completeOnboarding done');
+
       setStep('complete');
 
       // Auto-dismiss after brief celebration
       setTimeout(() => {
+        console.log('👉 [DEBUG onboarding] auto-dismissing onboarding');
         onComplete(selectedStyle!);
       }, 1500);
     } catch (err: any) {
+      console.log('❌ [DEBUG onboarding] error:', err?.message || err);
       setError(err?.message || 'Failed to save your style preference. Please try again.');
       setLoading(false);
     }

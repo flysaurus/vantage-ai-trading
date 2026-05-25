@@ -57,6 +57,8 @@ export async function updateInvestorStyle(
   userId: string,
   style: InvestorStyle,
 ): Promise<void> {
+  console.log('👉 [DEBUG updateInvestorStyle] sending POST to /api/db/users/update');
+  console.log('👉 [DEBUG updateInvestorStyle] payload:', { userId, investorStyle: style });
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
@@ -65,11 +67,16 @@ export async function updateInvestorStyle(
         investorStyle: style,
       }),
     });
+    console.log('👉 [DEBUG updateInvestorStyle] response status:', res.status);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      console.log('❌ [DEBUG updateInvestorStyle] failed:', res.status, err);
       console.warn('[users] updateInvestorStyle failed:', res.status, err.error);
+    } else {
+      console.log('✅ [DEBUG updateInvestorStyle] success');
     }
   } catch (err) {
+    console.log('❌ [DEBUG updateInvestorStyle] network error:', err);
     console.warn('[users] updateInvestorStyle error:', err);
   }
 }
@@ -78,6 +85,8 @@ export async function updateInvestorStyle(
  * Marks the user as having completed investor style onboarding via the API.
  */
 export async function completeOnboarding(userId: string): Promise<void> {
+  console.log('👉 [DEBUG completeOnboarding] sending POST to /api/db/users/update');
+  console.log('👉 [DEBUG completeOnboarding] payload:', { userId, investorStyleOnboarded: true });
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
@@ -86,11 +95,16 @@ export async function completeOnboarding(userId: string): Promise<void> {
         investorStyleOnboarded: true,
       }),
     });
+    console.log('👉 [DEBUG completeOnboarding] response status:', res.status);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      console.log('❌ [DEBUG completeOnboarding] failed:', res.status, err);
       console.warn('[users] completeOnboarding failed:', res.status, err.error);
+    } else {
+      console.log('✅ [DEBUG completeOnboarding] success');
     }
   } catch (err) {
+    console.log('❌ [DEBUG completeOnboarding] network error:', err);
     console.warn('[users] completeOnboarding error:', err);
   }
 }
