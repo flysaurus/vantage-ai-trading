@@ -1,6 +1,8 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Send, RefreshCw, AlertCircle, Trash2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
 import { ConvictionCard } from './ConvictionCard';
 
@@ -12,6 +14,67 @@ const SUGGESTIONS = [
   '⚙️ Rebalance',
   '📈 Technical Analysis',
 ];
+
+/** Custom markdown renderers — dark theme, compact, trading-appropriate */
+const MARKDOWN_COMPONENTS = {
+  h1: ({ children }: { children: React.ReactNode }) => (
+    <h1 style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', margin: '10px 0 4px', lineHeight: 1.3 }}>{children}</h1>
+  ),
+  h2: ({ children }: { children: React.ReactNode }) => (
+    <h2 style={{ fontSize: 13, fontWeight: 700, color: '#06b6d4', margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h2>
+  ),
+  h3: ({ children }: { children: React.ReactNode }) => (
+    <h3 style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', margin: '6px 0 2px', lineHeight: 1.3 }}>{children}</h3>
+  ),
+  p: ({ children }: { children: React.ReactNode }) => (
+    <p style={{ margin: '2px 0 6px', lineHeight: 1.5, color: '#cbd5e1' }}>{children}</p>
+  ),
+  strong: ({ children }: { children: React.ReactNode }) => (
+    <strong style={{ color: '#facc15', fontWeight: 700 }}>{children}</strong>
+  ),
+  code: ({ children, className }: { children: React.ReactNode; className?: string }) => {
+    // Inline code (tickers, prices)
+    if (!className) {
+      return <code style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', padding: '0 3px', borderRadius: 3, fontSize: 11, fontFamily: 'monospace' }}>{children}</code>;
+    }
+    return <code style={{ color: '#cbd5e1', fontSize: 10 }}>{children}</code>;
+  },
+  table: ({ children }: { children: React.ReactNode }) => (
+    <div style={{ overflowX: 'auto', margin: '4px 0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, color: '#cbd5e1' }}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }: { children: React.ReactNode }) => (
+    <thead>{children}</thead>
+  ),
+  tbody: ({ children }: { children: React.ReactNode }) => (
+    <tbody>{children}</tbody>
+  ),
+  tr: ({ children }: { children: React.ReactNode }) => (
+    <tr style={{ borderBottom: '1px solid #1e293b' }}>{children}</tr>
+  ),
+  th: ({ children }: { children: React.ReactNode }) => (
+    <th style={{ padding: '3px 6px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>{children}</th>
+  ),
+  td: ({ children }: { children: React.ReactNode }) => (
+    <td style={{ padding: '2px 6px', borderBottom: '1px solid #0f172a' }}>{children}</td>
+  ),
+  ul: ({ children }: { children: React.ReactNode }) => (
+    <ul style={{ margin: '2px 0', paddingLeft: 16, color: '#cbd5e1' }}>{children}</ul>
+  ),
+  ol: ({ children }: { children: React.ReactNode }) => (
+    <ol style={{ margin: '2px 0', paddingLeft: 16, color: '#cbd5e1' }}>{children}</ol>
+  ),
+  li: ({ children }: { children: React.ReactNode }) => (
+    <li style={{ marginBottom: 1, lineHeight: 1.4, fontSize: 11 }}>{children}</li>
+  ),
+  hr: () => <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '6px 0' }} />,
+  blockquote: ({ children }: { children: React.ReactNode }) => (
+    <blockquote style={{ borderLeft: '2px solid #06b6d4', paddingLeft: 8, margin: '4px 0', color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>{children}</blockquote>
+  ),
+};  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
 export function AIChat() {
   const {
@@ -29,10 +92,17 @@ export function AIChat() {
   const [input, setInput] = useState('');
   const [showCost, setShowCost] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-scroll to bottom when new messages arrive (only if already near bottom)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    if (isNearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   // Show cost info briefly after each response
@@ -75,12 +145,27 @@ export function AIChat() {
     inputRef.current?.focus();
   };
 
-  const lastAiMessage = [...messages].reverse().find(m => m.role === 'assistant');
-
   return (
-    <div style={{ paddingBottom: 80 }}>
-      {/* Messages */}
-      <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      maxHeight: 'calc(100vh - 180px)',
+    }}>
+      {/* ── Scrollable Messages ── */}
+      <div
+        ref={messagesContainerRef}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '12px 16px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          minHeight: 0,
+        }}
+        className="chat-messages"
+      >
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">🦊</div>
@@ -95,7 +180,11 @@ export function AIChat() {
           <div
             key={msg.id}
             className={`message ${msg.role}`}
-            style={{ display: 'flex', gap: 8, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+            }}
           >
             <div
               className={`avatar ${msg.role}`}
@@ -114,25 +203,39 @@ export function AIChat() {
             <div
               className="bubble"
               style={{
-                maxWidth: '85%', padding: '9px 11px', borderRadius: 12,
-                fontSize: 12, lineHeight: 1.45,
+                maxWidth: '85%',
+                padding: '9px 11px',
+                borderRadius: 12,
                 background: msg.role === 'assistant' ? '#1e293b' : '#06b6d4',
                 color: msg.role === 'assistant' ? '#f1f5f9' : 'white',
                 position: 'relative',
+                overflow: 'hidden',
               }}
             >
-              {/* AI response content with markdown-style formatting */}
-              <div className="message-content" style={{ whiteSpace: 'pre-wrap' }}>
-                {msg.content}
-              </div>
+              {/* Rich markdown rendering for AI messages */}
+              {msg.role === 'assistant' ? (
+                <div className="markdown-body" style={{ fontSize: 11, lineHeight: 1.5 }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={MARKDOWN_COMPONENTS as any}
+                  >
+                    {msg.content || '...'}
+                  </ReactMarkdown>
 
-              {/* Streaming cursor */}
-              {msg.role === 'assistant' && isLoading && idx === messages.length - 1 && (
-                <span className="cursor-blink" style={{
-                  display: 'inline-block', width: 6, height: 14,
-                  background: '#06b6d4', marginLeft: 2, verticalAlign: 'middle',
-                  animation: 'blink 1s step-end infinite',
-                }} />
+                  {/* Streaming cursor */}
+                  {isLoading && idx === messages.length - 1 && (
+                    <span className="cursor-blink" style={{
+                      display: 'inline-block', width: 6, height: 13,
+                      background: '#06b6d4', marginLeft: 2, verticalAlign: 'middle',
+                      animation: 'blink 1s step-end infinite',
+                    }} />
+                  )}
+                </div>
+              ) : (
+                /* User messages stay plain */
+                <div style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                  {msg.content}
+                </div>
               )}
 
               {/* Render embedded cards */}
@@ -203,10 +306,11 @@ export function AIChat() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input Area */}
+      {/* ── Sticky Input Area ── */}
       <div style={{
-        position: 'sticky', bottom: 0, left: 0, right: 0,
-        padding: '10px 16px', background: '#1e293b',
+        flexShrink: 0,
+        padding: '10px 16px 8px',
+        background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
         {/* Suggestions */}
@@ -229,7 +333,7 @@ export function AIChat() {
           ))}
         </div>
 
-        {/* Input */}
+        {/* Input row */}
         <div style={{ display: 'flex', gap: 6 }}>
           <input
             ref={inputRef}
@@ -261,30 +365,30 @@ export function AIChat() {
           >
             <Send size={16} />
           </button>
-          {messages.length > 0 && (
-            <button
-              onClick={() => {
-                if (confirm('Clear all chat messages?')) {
-                  clearChat();
-                }
-              }}
-              disabled={isLoading}
-              title="Clear chat history"
-              style={{
-                width: 34, height: 34,
-                background: 'transparent',
-                border: '1px solid #475569',
-                borderRadius: 8,
-                color: '#94a3b8',
-                cursor: isLoading ? 'default' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                opacity: isLoading ? 0.5 : 1,
-                flexShrink: 0,
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
+
+          {/* 🗑️ Always visible */}
+          <button
+            onClick={() => {
+              if (confirm('Clear all chat messages?')) {
+                clearChat();
+              }
+            }}
+            disabled={isLoading}
+            title="Clear chat history"
+            style={{
+              width: 34, height: 34,
+              background: 'transparent',
+              border: '1px solid #475569',
+              borderRadius: 8,
+              color: '#94a3b8',
+              cursor: isLoading ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              opacity: isLoading ? 0.5 : 1,
+              flexShrink: 0,
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
 
         {/* API status */}
@@ -321,9 +425,15 @@ export function AIChat() {
           margin: 0 auto;
           line-height: 1.5;
         }
-        .message-content strong {
-          color: var(--accent-cyan);
-          font-weight: 600;
+        .chat-messages::-webkit-scrollbar {
+          width: 4px;
+        }
+        .chat-messages::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+          background: #334155;
+          border-radius: 2px;
         }
       `}</style>
     </div>

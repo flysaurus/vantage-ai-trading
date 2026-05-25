@@ -8,6 +8,7 @@ import type {
 const STORAGE_KEYS = {
   watchlist: 'vantage:watchlist',
   indexSymbols: 'vantage:indexSymbols',
+  chatMessages: 'vantage:chatMessages',
 } as const;
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -166,20 +167,28 @@ interface ChatStore {
   clearChat: () => void;
 }
 
+const initialChatMessages = loadFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+
 export const useChatStore = create<ChatStore>((set) => ({
-  messages: [],
+  messages: initialChatMessages,
   isLoading: false,
   confidence: null,
   lastCost: 0,
   remainingCalls: 15,
   error: null,
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) =>
+    set((s) => {
+      const updated = [...s.messages, msg];
+      saveToStorage(STORAGE_KEYS.chatMessages, updated);
+      return { messages: updated };
+    }),
   appendToLast: (content) =>
     set((s) => {
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, content: last.content + content };
+        saveToStorage(STORAGE_KEYS.chatMessages, msgs);
       }
       return { messages: msgs };
     }),
@@ -189,6 +198,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       const last = msgs[msgs.length - 1];
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, ...updates };
+        saveToStorage(STORAGE_KEYS.chatMessages, msgs);
       }
       return { messages: msgs };
     }),
@@ -197,7 +207,10 @@ export const useChatStore = create<ChatStore>((set) => ({
   setLastCost: (cost) => set({ lastCost: cost }),
   setRemainingCalls: (calls) => set({ remainingCalls: calls }),
   setError: (error) => set({ error }),
-  clearChat: () => set({ messages: [] }),
+  clearChat: () => {
+    saveToStorage(STORAGE_KEYS.chatMessages, []);
+    set({ messages: [] });
+  },
 }));
 
 // ─── Order Form (Trade Tab) ───
