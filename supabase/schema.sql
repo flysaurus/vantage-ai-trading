@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 ALTER TABLE alerts ADD COLUMN IF NOT EXISTS alert_type TEXT;
 ALTER TABLE alerts ADD COLUMN IF NOT EXISTS target_value NUMERIC;
 ALTER TABLE alerts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS notification_channels TEXT[] DEFAULT ARRAY['in_app']::TEXT[];
 -- Migrate old columns to new names
 UPDATE alerts SET alert_type = type WHERE alert_type IS NULL AND type IS NOT NULL;
 UPDATE alerts SET target_value = threshold WHERE target_value IS NULL AND threshold IS NOT NULL;

@@ -6,6 +6,7 @@ import { getSession } from '@/lib/auth';
 const API_BASE = '/api/db/alerts';
 
 export type AlertType = 'price_above' | 'price_below' | 'percent_change';
+export type NotificationChannel = 'in_app' | 'email' | 'sms' | 'telegram';
 
 export interface Alert {
   id: string;
@@ -14,6 +15,7 @@ export interface Alert {
   alertType: AlertType;
   targetValue: number;
   isActive: boolean;
+  notificationChannels: NotificationChannel[];
   triggeredAt: string | null;
   createdAt: string;
   updatedAt?: string | null;
@@ -39,6 +41,7 @@ export async function createAlert(params: {
   symbol: string;
   alertType: AlertType;
   targetValue: number;
+  notificationChannels?: NotificationChannel[];
 }): Promise<Alert | null> {
   try {
     const res = await apiFetch(`${API_BASE}/create`, {

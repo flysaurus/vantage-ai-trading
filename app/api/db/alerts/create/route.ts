@@ -16,11 +16,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
     }
 
-    const { userId, symbol, alertType, targetValue } = body as {
+    const { userId, symbol, alertType, targetValue, notificationChannels } = body as {
       userId?: string;
       symbol?: string;
       alertType?: string;
       targetValue?: number;
+      notificationChannels?: string[];
     };
 
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
@@ -31,6 +32,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!['price_above', 'price_below', 'percent_change'].includes(alertType)) {
       return NextResponse.json({ error: 'alertType must be price_above, price_below, or percent_change' }, { status: 400 });
     }
+
+    // Default to in_app if no channels specified
+    const channels = notificationChannels?.length ? notificationChannels : ['in_app'];
 
     if (userId !== authUserId) {
       return NextResponse.json({ error: 'Cannot create alerts for other users' }, { status: 403 });
@@ -44,8 +48,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         alert_type: alertType,
         target_value: targetValue,
         is_active: true,
+        notification_channels: channels,
       })
-      .select('id, symbol, alert_type, target_value, is_active, triggered_at, created_at')
+      .select('id, symbol, alert_type, target_value, is_active, notification_channels, triggered_at, created_at')
       .single();
 
     if (error) {
@@ -59,6 +64,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       alertType: data.alert_type,
       targetValue: data.target_value,
       isActive: data.is_active,
+      notificationChannels: data.notification_channels || ['in_app'],
       triggeredAt: data.triggered_at,
       createdAt: data.created_at,
     });

@@ -21,7 +21,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     let query = (supabase as any)
       .from('alerts')
-      .select('id, user_id, symbol, alert_type, target_value, is_active, triggered_at, created_at, updated_at')
+      .select('id, user_id, symbol, alert_type, target_value, is_active, notification_channels, triggered_at, created_at, updated_at')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false });
 
@@ -46,6 +46,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       alertType: a.alert_type,
       targetValue: a.target_value,
       isActive: a.is_active,
+      notificationChannels: a.notification_channels || ['in_app'],
       triggeredAt: a.triggered_at,
       createdAt: a.created_at,
       updatedAt: a.updated_at,

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   getAlerts, createAlert, updateAlert, deleteAlert,
-  type Alert, type AlertType,
+  type Alert, type AlertType, type NotificationChannel,
 } from '@/lib/supabase/alerts';
 import {
   ArrowLeft, Plus, Bell, BellOff, Trash2, RefreshCcw,
@@ -94,13 +94,14 @@ export default function PriceAlertsPage() {
   };
 
   // ─── Create alert ─────────────────────────────────────────
-  const handleCreate = async (symbol: string, alertType: AlertType, targetValue: number) => {
+  const handleCreate = async (symbol: string, alertType: AlertType, targetValue: number, channels: NotificationChannel[]) => {
     if (!user || !symbol.trim()) return;
     const result = await createAlert({
       userId: user.id,
       symbol: symbol.trim().toUpperCase(),
       alertType,
       targetValue,
+      notificationChannels: channels,
     });
     if (result) {
       setAlerts(prev => [result, ...prev]);
@@ -273,9 +274,17 @@ export default function PriceAlertsPage() {
                   <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
                     {description}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
-                    {ALERT_TYPE_LABELS[alert.alertType].label} · Created {new Date(alert.createdAt).toLocaleDateString()}
-                    {alert.triggeredAt && ` · Triggered ${new Date(alert.triggeredAt).toLocaleDateString()}`}
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span>{ALERT_TYPE_LABELS[alert.alertType].label} · Created {new Date(alert.createdAt).toLocaleDateString()}</span>
+                    {alert.triggeredAt && <span>· Triggered {new Date(alert.triggeredAt).toLocaleDateString()}</span>}
+                    {/* Notification channels */}
+                    {alert.notificationChannels && alert.notificationChannels.length > 0 && (
+                      <span style={{ color: '#64748b' }}>
+                        {alert.notificationChannels.map(c =>
+                          c === 'email' ? '✉️' : c === 'sms' ? '📱' : c === 'telegram' ? '💬' : ''
+                        ).filter(Boolean).join(' ')}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -365,12 +374,13 @@ function CreateAlertModal({
   onSave,
   onClose,
 }: {
-  onSave: (symbol: string, alertType: AlertType, targetValue: number) => void;
+  onSave: (symbol: string, alertType: AlertType, targetValue: number, channels: NotificationChannel[]) => void;
   onClose: () => void;
 }) {
   const [symbol, setSymbol] = useState('');
   const [alertType, setAlertType] = useState<AlertType>('price_above');
   const [targetValue, setTargetValue] = useState('');
+  const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
   const [error, setError] = useState<string | null>(null);
 
   // Autocomplete
@@ -460,7 +470,7 @@ function CreateAlertModal({
     const value = parseFloat(targetValue);
     if (isNaN(value) || value <= 0) { setError('Enter a valid target value'); return; }
     if (alertType === 'percent_change' && value > 100) { setError('Percentage should be 0–100'); return; }
-    onSave(symbol, alertType, value);
+    onSave(symbol, alertType, value, channels);
   };
 
   const typeConfig = ALERT_TYPES.find(t => t.value === alertType);
@@ -611,6 +621,47 @@ function CreateAlertModal({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Notification Channels */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+            Notify via
+          </label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {([
+              { id: 'in_app' as NotificationChannel, label: '📱 In-App', alwaysOn: true },
+              { id: 'email' as NotificationChannel, label: '✉️ Email' },
+            ]).map(ch => (
+              <label
+                key={ch.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  padding: '6px 10px', borderRadius: 6, cursor: 'pointer',
+                  background: channels.includes(ch.id) ? '#0f3460' : '#1e293b',
+                  border: channels.includes(ch.id) ? '1px solid #3b82f6' : '1px solid #334155',
+                  fontSize: 12, color: '#e2e8f0',
+                  opacity: ch.alwaysOn ? 1 : undefined,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={channels.includes(ch.id)}
+                  disabled={ch.alwaysOn}
+                  onChange={() => {
+                    if (ch.alwaysOn) return;
+                    setChannels(prev =>
+                      prev.includes(ch.id)
+                        ? prev.filter(c => c !== ch.id)
+                        : [...prev, ch.id]
+                    );
+                  }}
+                  style={{ accentColor: '#3b82f6' }}
+                />
+                {ch.label}
+              </label>
+            ))}
           </div>
         </div>
 
