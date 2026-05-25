@@ -94,7 +94,7 @@ export function SettingsTab() {
         />
         <SettingsItem
           icon={Bell} title="Price Alerts" subtitle="5 active alerts" badge={2}
-          onClick={() => showToast('🔔 Alert manager coming soon')}
+          onClick={() => router.push('/price-alerts')}
         />
         <SettingsItem
           icon={Newspaper} title="News Feed" subtitle="AI-curated for your portfolio"
