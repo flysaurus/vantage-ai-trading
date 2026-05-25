@@ -244,68 +244,64 @@ export async function POST(request: NextRequest) {
     try {
       // ── Primary: DeepSeek ──
       if (deepseekKey) {
-        const tryDeepSeek = async () => {
-          try {
-            const dsRes = await fetch(DEEPSEEK_URL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${deepseekKey}`,
-              },
-              body: JSON.stringify({
-                model,
-                messages: chatMessages,
-                stream: true,
-                temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
-                max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
-              }),
-              // Reasoner can be slow — keep timeout under Vercel serverless limit
-              signal: AbortSignal.timeout(model === 'deepseek-reasoner' ? 25000 : 45000),
-            });
+        try {
+          const dsRes = await fetch(DEEPSEEK_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${deepseekKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              messages: chatMessages,
+              stream: true,
+              temperature: model === 'deepseek-reasoner' ? 0.3 : 0.7,
+              max_tokens: model === 'deepseek-reasoner' ? 4096 : 2048,
+            }),
+            signal: AbortSignal.timeout(model === 'deepseek-reasoner' ? 25000 : 60000),
+          });
 
-            if (dsRes.ok && dsRes.body) {
-              stream = dsRes.body;
-              usedModel = model;
-            } else {
-              const errBody = await dsRes.text().catch(() => '');
-              streamError = `DeepSeek ${model} ${dsRes.status}: ${errBody.slice(0, 200)}`;
-              console.warn(streamError);
-              // Retry with chat model if reasoner failed
-              if (model === 'deepseek-reasoner') {
-                console.warn('DeepSeek reasoner failed, trying chat model');
-                usedModel = 'deepseek-chat';
-                const ds2Res = await fetch(DEEPSEEK_URL, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${deepseekKey}`,
-                  },
-                  body: JSON.stringify({
-                    model: 'deepseek-chat',
-                    messages: chatMessages,
-                    stream: true,
-                    temperature: 0.7,
-                    max_tokens: 2048,
-                  }),
-                  signal: AbortSignal.timeout(35000),
-                });
-                if (ds2Res.ok && ds2Res.body) {
-                  stream = ds2Res.body;
-                  streamError = '';
-                } else {
-                  const err2Body = await ds2Res.text().catch(() => '');
-                  streamError = `DeepSeek chat fallback ${ds2Res.status}: ${err2Body.slice(0, 200)}`;
-                  console.warn(streamError);
-                }
+          if (dsRes.ok && dsRes.body) {
+            stream = dsRes.body;
+            usedModel = model;
+          } else {
+            const errBody = await dsRes.text().catch(() => '');
+            streamError = `DeepSeek ${model} ${dsRes.status}: ${errBody.slice(0, 200)}`;
+            console.error(streamError);
+            // Retry with chat model if reasoner failed
+            if (model === 'deepseek-reasoner') {
+              console.error('DeepSeek reasoner failed, trying chat model');
+              usedModel = 'deepseek-chat';
+              const ds2Res = await fetch(DEEPSEEK_URL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${deepseekKey}`,
+                },
+                body: JSON.stringify({
+                  model: 'deepseek-chat',
+                  messages: chatMessages,
+                  stream: true,
+                  temperature: 0.7,
+                  max_tokens: 2048,
+                }),
+                signal: AbortSignal.timeout(60000),
+              });
+              if (ds2Res.ok && ds2Res.body) {
+                stream = ds2Res.body;
+                streamError = '';
+              } else {
+                const err2Body = await ds2Res.text().catch(() => '');
+                streamError = `DeepSeek chat fallback ${ds2Res.status}: ${err2Body.slice(0, 200)}`;
+                console.error(streamError);
               }
             }
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            streamError = `DeepSeek fetch threw: ${msg}`;
-            console.warn(streamError, e instanceof Error ? e.stack : '');
           }
-        };
-        await tryDeepSeek();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          streamError = `DeepSeek fetch threw: ${msg}`;
+          console.error(streamError, e instanceof Error ? e.stack : '');
+        }
       }
 
       // Claude disabled — DeepSeek only (2026-05-25)
