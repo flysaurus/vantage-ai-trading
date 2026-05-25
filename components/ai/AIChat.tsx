@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Send, RefreshCw, AlertCircle } from 'lucide-react';
+import { Send, RefreshCw, AlertCircle, Trash2 } from 'lucide-react';
 import { useAIChat } from '@/hooks/useAIChat';
 import { ConvictionCard } from './ConvictionCard';
 
@@ -23,6 +23,7 @@ export function AIChat() {
     remainingCalls,
     error,
     setError,
+    clearChat,
   } = useAIChat();
 
   const [input, setInput] = useState('');
@@ -78,6 +79,42 @@ export function AIChat() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
+      {/* Header */}
+      {messages.length > 0 && (
+        <div style={{
+          padding: '8px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid #1e293b',
+        }}>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>Chat History</span>
+          <button
+            onClick={() => {
+              if (confirm('Clear all chat messages?')) {
+                clearChat();
+              }
+            }}
+            style={{
+              padding: '4px 8px',
+              background: 'transparent',
+              border: '1px solid #334155',
+              borderRadius: 4,
+              color: '#64748b',
+              cursor: 'pointer',
+              fontSize: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.15s',
+            }}
+            title="Clear chat history"
+          >
+            <Trash2 size={12} /> Clear
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
       <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.length === 0 && (
