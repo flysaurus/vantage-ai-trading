@@ -145,10 +145,22 @@ CREATE TABLE IF NOT EXISTS watchlists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL DEFAULT 'Default',
-  symbols JSONB NOT NULL DEFAULT '[]',
+  description TEXT,
+  stocks JSONB NOT NULL DEFAULT '[]'::jsonb,
+  is_default BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add columns if missing (for existing tables)
+ALTER TABLE watchlists ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE watchlists ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT false;
+-- Rename symbols->stocks if old name exists
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='watchlists' AND column_name='symbols') THEN
+    ALTER TABLE watchlists RENAME COLUMN symbols TO stocks;
+  END IF;
+END $$;
 
 CREATE INDEX idx_watchlists_user ON watchlists(user_id);
 
@@ -340,6 +352,8 @@ CREATE POLICY "watchlists_insert_own" ON watchlists
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "watchlists_update_own" ON watchlists
   FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "watchlists_delete_own" ON watchlists
+  FOR DELETE USING (auth.uid() = user_id);
 
 -- Market Cache (public read, server-only write)
 CREATE POLICY "cache_public_read" ON market_cache
