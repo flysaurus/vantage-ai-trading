@@ -25,36 +25,151 @@ const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 // ─── Helpers ───
 
+/** Style-specific analysis directives indexed by style ID */
+const STYLE_GUIDANCE: Record<string, string> = {
+  buffett: `You are advising a Warren Buffett-style investor (Value Hunter).
+## Investor Profile
+- Time horizon: 5-10+ years
+- Philosophy: Buy quality companies at fair prices, hold for decades, compound dividends.
+- Focus: Dividend-paying quality stocks, low P/E, competitive moats, strong balance sheets.
+- Avoid: Speculative trades, meme stocks, companies with no earnings, high debt.
+- When suggesting: Emphasize intrinsic value, margin of safety, durable competitive advantages.
+- When warning: Flag high P/E, excessive leverage, unproven business models.`,
+
+  lynch: `You are advising a Peter Lynch-style investor (Growth Chaser).
+## Investor Profile
+- Time horizon: 2-5 years
+- Philosophy: Find growing companies at reasonable prices (GARP). Rotate as growth slows.
+- Focus: Revenue growth 15%+, PEG ratio under 1.5, understandable business models.
+- Avoid: Cyclical stocks at peak, growth without earnings, companies you can't explain.
+- When suggesting: Highlight growth rates, PEG ratios, market expansion stories.
+- When warning: Flag slowing growth, valuation expansion without earnings growth.`,
+
+  livermore: `You are advising a Jesse Livermore-style investor (Momentum Rider).
+## Investor Profile
+- Time horizon: Days to 6 months
+- Philosophy: Follow trends, ride momentum up, exit quickly on reversal. Active trader.
+- Focus: Price trends, moving averages, volume confirmation, relative strength.
+- Avoid: Rangebound stocks, low volume, fading trends, catching falling knives.
+- When suggesting: Call out trend strength, volume confirmation, support/resistance levels.
+- When warning: Alert when momentum breaks, volume diverges, or trend weakens.`,
+
+  soros: `You are advising a George Soros-style investor (Macro Strategist).
+## Investor Profile
+- Time horizon: 6-18 months
+- Philosophy: Position for macro regime changes. Think interest rates, inflation, sector rotation.
+- Focus: Fed policy, yield curve, economic indicators, sector ETFs, commodities.
+- Avoid: Fighting the Fed, ignoring macro headwinds, rigid sector allocations.
+- When suggesting: Frame in macro context — what regime is coming, which sectors benefit.
+- When warning: Alert when macro data contradicts portfolio positioning.`,
+
+  munger: `You are advising a Charlie Munger-style investor (Dividend Compounder).
+## Investor Profile
+- Time horizon: 10+ years
+- Philosophy: Build wealth through consistent dividend income that compounds over decades.
+- Focus: Dividend aristocrats, 5-7% annual dividend growth, stable cash flows, low payout ratios.
+- Avoid: Unsustainable dividends, high payout ratios, cyclical dividends, yield traps.
+- When suggesting: Emphasize dividend growth history, payout sustainability, total return.
+- When warning: Flag dividend cuts, payout ratio spikes, deteriorating free cash flow.`,
+};
+
 function buildSystemPrompt(context: unknown, format?: string): string {
-  let basePrompt = `You are Vantage AI, an expert financial analyst assistant for a mobile trading app.
-You help users understand their portfolio, identify trading opportunities, and manage risk.
-Be concise, actionable, and specific. Use numbers and data when possible.
-Never give generic advice — always reference the user's actual portfolio and market data.
+  const ctx = (context && typeof context === 'object') ? context as Record<string, unknown> : null;
+  const style = (ctx?.investorStyle as string) || 'buffett';
+
+  // ── Core identity + style-specific guidance ──
+  let basePrompt = `You are Vantage AI, an expert financial analyst deeply integrated into my trading platform.
+You have access to my complete portfolio, open orders, investor style, and market context.
+You are my personal AI advisor — not a generic chatbot.
+
+## Your Role
+- Answer questions about MY portfolio specifically, using real numbers and positions.
+- Give actionable, specific advice that fits my investor style — never generic suggestions.
+- When I ask about a stock, check if I own it and reference my position data.
+- Be direct and data-driven. No fluff, no disclaimers — I know the risks.
+- When analyzing, always consider: my style, my current positions, my open orders, my cash.
+
+${STYLE_GUIDANCE[style] || STYLE_GUIDANCE.buffett}
 
 `;
 
-  if (context && typeof context === 'object') {
-    const ctx = context as Record<string, unknown>;
+  if (ctx) {
+    // ── Portfolio ──
     if (ctx.portfolio) {
       const p = ctx.portfolio as Record<string, unknown>;
-      basePrompt += `## Current Portfolio
-- Total equity: $${p.equity || 'unknown'}
-- Cash available: $${p.cash || 'unknown'}
-- Day P&L: ${p.dayPnlPercent || 0}%
-`;
+      const totalPnl = typeof p.totalPnlPercent === 'number' ? p.totalPnlPercent : undefined;
+      const bp = typeof p.buyingPower === 'number' ? p.buyingPower : undefined;
+
+      basePrompt += `## My Portfolio
+- Total Equity: $${Number(p.equity || 0).toLocaleString()}
+- Cash: $${Number(p.cash || 0).toLocaleString()}`;
+      if (bp !== undefined) basePrompt += `\n- Buying Power: $${Number(bp).toLocaleString()}`;
+      basePrompt += `\n- Day P&L: ${Number(p.dayPnlPercent || 0).toFixed(2)}%`;
+      if (totalPnl !== undefined) basePrompt += `\n- Total P&L: ${totalPnl.toFixed(2)}%`;
+      basePrompt += '\n';
 
       if (Array.isArray(p.positions) && p.positions.length > 0) {
-        basePrompt += `- Positions (${p.positions.length}):\n`;
+        // Build a richer positions table
+        basePrompt += `\n### Positions (${p.positions.length})\n`;
+        basePrompt += `| Symbol | Shares | Avg Cost | Current | P&L% | Weight | Sector |\n`;
+        basePrompt += `|--------|--------|----------|---------|------|--------|--------|\n`;
         for (const pos of p.positions as Array<Record<string, unknown>>) {
-          basePrompt += `  - ${pos.symbol}: ${pos.qty} shares at avg $${pos.avgCost} · Market $${pos.currentPrice} · P&L ${pos.totalPnlPercent}% · ${pos.portfolioPercent}% of portfolio · Sector: ${pos.sector || 'Unknown'}\n`;
+          const symbol = String(pos.symbol || '?');
+          const qty = Number(pos.qty || 0);
+          const avg = Number(pos.avgCost || 0);
+          const price = Number(pos.currentPrice || 0);
+          const pnl = Number(pos.totalPnlPercent || 0).toFixed(1);
+          const weight = Number(pos.portfolioPercent || 0).toFixed(1);
+          const sector = String(pos.sector || 'Unknown');
+          basePrompt += `| ${symbol} | ${qty} | $${avg.toFixed(2)} | $${price.toFixed(2)} | ${pnl}% | ${weight}% | ${sector} |\n`;
         }
+        basePrompt += '\n';
+
+        // Sector concentration
+        const sectors: Record<string, number> = {};
+        for (const pos of p.positions as Array<Record<string, unknown>>) {
+          const s = String(pos.sector || 'Unknown');
+          const w = Number(pos.portfolioPercent || 0);
+          sectors[s] = (sectors[s] || 0) + w;
+        }
+        basePrompt += '### Sector Breakdown\n';
+        for (const [sector, weight] of Object.entries(sectors).sort((a, b) => b[1] - a[1])) {
+          basePrompt += `- ${sector}: ${weight.toFixed(1)}%\n`;
+        }
+        basePrompt += '\n';
+      } else {
+        basePrompt += '\n(No positions — portfolio is all cash)\n\n';
       }
     }
-    if (ctx.watchlist && Array.isArray(ctx.watchlist)) {
-      basePrompt += `\n## Watchlist\n${(ctx.watchlist as string[]).join(', ')}\n`;
+
+    // ── Open Orders ──
+    if (Array.isArray(ctx.orders) && ctx.orders.length > 0) {
+      const ords = ctx.orders as Array<Record<string, unknown>>;
+      basePrompt += `## Open Orders (${ords.length})\n`;
+      for (const o of ords) {
+        const symbol = String(o.symbol || '?');
+        const side = String(o.side || '?').toUpperCase();
+        const type = String(o.type || 'market');
+        const qty = Number(o.qty || 0);
+        const status = String(o.status || '?');
+        const limit = o.limitPrice != null ? `limit $${o.limitPrice}` : '';
+        const stop = o.stopPrice != null ? `stop $${o.stopPrice}` : '';
+        basePrompt += `- ${side} ${qty} ${symbol} ${type} ${limit} ${stop} (${status})\n`.replace(/\s+/g, ' ');
+      }
+      basePrompt += '\n';
     }
+
+    // ── Watchlist ──
+    if (ctx.watchlist && Array.isArray(ctx.watchlist)) {
+      basePrompt += `## Watchlist\n${(ctx.watchlist as string[]).join(', ')}\n\n`;
+    }
+
+    // ── Total portfolio context reminder ──
+    basePrompt += `---\n\n`;
+    basePrompt += `IMPORTANT: When I ask about my portfolio or any stock I hold, ALWAYS reference my actual positions, my investor style, and my open orders above. Tailor every response to MY specific situation — not generic market commentary.\n\n`;
   }
 
+  // ── Output Format (optional structured output) ──
   if (format) {
     basePrompt += `\n## Output Format
 Respond with your analysis followed by a JSON code block using the exact schema below.

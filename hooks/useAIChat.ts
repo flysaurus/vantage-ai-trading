@@ -1,10 +1,14 @@
 import { useCallback, useRef } from 'react';
-import { useChatStore, usePortfolioStore } from '@/store';
+import { useChatStore, usePortfolioStore, useOrderStore } from '@/store';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { streamChat, getRemainingCalls, isRateLimited, estimateCost, estimateTokens, type ChatContext } from '@/lib/ai';
 import type { ChatMessage, AICardComponent } from '@/types';
 
 /**
  * AI Chat hook — manages streaming chat with cost tracking and caching.
+ *
+ * Passes full portfolio context, investor style, open orders, and
+ * market data as input to the AI for deeply personalized advice.
  */
 export function useAIChat() {
   const {
@@ -24,19 +28,46 @@ export function useAIChat() {
   } = useChatStore();
 
   const { account } = usePortfolioStore();
+  const { orders } = useOrderStore();
+  const { user } = useAuth();
   const abortRef = useRef<AbortController | null>(null);
 
   const buildContext = useCallback((): ChatContext | undefined => {
     if (!account) return undefined;
-    return {
+
+    const ctx: ChatContext = {
       portfolio: {
         cash: account.cash,
         equity: account.equity,
         positions: account.positions,
         dayPnlPercent: account.dayPnlPercent,
+        totalPnlPercent: account.totalPnlPercent,
+        buyingPower: account.buyingPower,
       },
     };
-  }, [account]);
+
+    // Investor style
+    if (user?.investorStyle) {
+      ctx.investorStyle = user.investorStyle;
+    }
+
+    // Open orders (limit to 20 to keep context manageable)
+    const openOrders = orders.filter(o => o.status === 'open' || o.status === 'pending');
+    if (openOrders.length > 0) {
+      ctx.orders = openOrders.slice(0, 20).map(o => ({
+        symbol: o.symbol,
+        side: o.side,
+        type: o.type,
+        qty: o.qty,
+        status: o.status,
+        filledQty: o.filledQty,
+        limitPrice: o.limitPrice,
+        stopPrice: o.stopPrice,
+      }));
+    }
+
+    return ctx;
+  }, [account, orders, user]);
 
   const sendMessage = useCallback(
     async (content: string) => {

@@ -28,10 +28,23 @@ export interface ChatContext {
     equity: number;
     positions: Position[];
     dayPnlPercent: number;
+    totalPnlPercent?: number;
+    buyingPower?: number;
   };
   marketData?: Record<string, unknown>;
   watchlist?: string[];
   confidenceBreakdown?: Record<string, unknown>;
+  investorStyle?: string;
+  orders?: Array<{
+    symbol: string;
+    side: string;
+    type: string;
+    qty: number;
+    status: string;
+    filledQty?: number;
+    limitPrice?: number;
+    stopPrice?: number;
+  }>;
 }
 
 export interface StreamCallbacks {
