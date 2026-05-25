@@ -86,16 +86,14 @@ export default function WatchlistsPage() {
       if (!res.ok) throw new Error('Failed to fetch quotes');
       const data = await res.json();
       const qs: Record<string, StockQuote> = {};
-      // data.quotes is { AAPL: { ap: askPrice }, ... }
+      // data.quotes format: { AAPL: { symbol, bid, ask, last, change, changePercent, ... } }
       const raw = data.quotes || data || {};
       for (const sym of Object.keys(raw)) {
         const q = raw[sym];
-        // Alpaca quote format: ap=ask, bp=bid, t=timestamp
-        // We also handle snapshots that may have latestTrade
-        const price = q.latestTrade?.p ?? q.ap ?? q.bp ?? null;
-        const prevClose = q.prevDailyBar?.c ?? q.dailyBar?.o ?? null;
-        const change = price && prevClose ? price - prevClose : null;
-        const changePercent = change && prevClose ? ((change / prevClose) * 100) : null;
+        // Market API returns: last, ask, bid, change, changePercent
+        const price = q.last ?? q.ask ?? q.bid ?? null;
+        const change = q.change ?? null;
+        const changePercent = q.changePercent ?? null;
         qs[sym] = { symbol: sym, price, change, changePercent };
       }
       setQuotes(qs);
