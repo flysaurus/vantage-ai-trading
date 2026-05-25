@@ -115,8 +115,8 @@ export function SettingsTab() {
         <SettingsItem
           icon={Star}
           title="Investor Style"
-          subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap to change`}
-          onClick={() => setShowStyleModal(true)}
+          subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap for details`}
+          onClick={() => router.push('/investor-style')}
         />
       </div>
 
