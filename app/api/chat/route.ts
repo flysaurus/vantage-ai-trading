@@ -418,6 +418,7 @@ export async function POST(request: NextRequest) {
         Connection: 'keep-alive',
         'X-Model-Used': usedModel,
         'X-Chat-Source': 'live',
+        'Access-Control-Expose-Headers': 'X-Chat-Source, X-Model-Used',
       },
     });
   } catch (error) {
@@ -467,6 +468,7 @@ async function handleFallback(request: NextRequest): Promise<NextResponse> {
       Connection: 'keep-alive',
       'X-Model-Used': 'fallback',
       'X-Chat-Source': 'fallback',
+      'Access-Control-Expose-Headers': 'X-Chat-Source, X-Model-Used',
     },
   });
 }
