@@ -221,6 +221,26 @@ export function SettingsTab() {
         </div>
       )}
 
+      {/* Sign Out */}
+      <div style={{ marginTop: 12 }}>
+        <button
+          onClick={async () => {
+            const { signOut } = await import('@/lib/auth');
+            await signOut();
+            window.location.href = '/login';
+          }}
+          style={{
+            width: '100%', padding: '12px',
+            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: 10, color: '#f87171', fontSize: 14, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}
+        >
+          Sign Out
+        </button>
+      </div>
+
       {/* App Info */}
       <div style={{ textAlign: 'center', marginTop: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 600, background: 'linear-gradient(135deg, #06b6d4, #0d9488)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
