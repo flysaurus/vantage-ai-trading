@@ -80,17 +80,25 @@ export interface Database {
           id: string;
           user_id: string;
           role: 'user' | 'assistant' | 'system';
+          message_type: 'user_message' | 'ai_response' | null;
           content: string;
+          investor_style: string | null;
+          related_stocks: string[] | null;
           metadata: Record<string, unknown>;
           created_at: string;
+          updated_at: string | null;
         };
         Insert: {
           id?: string;
           user_id: string;
-          role: 'user' | 'assistant' | 'system';
+          role?: 'user' | 'assistant' | 'system';
+          message_type?: 'user_message' | 'ai_response' | null;
           content: string;
+          investor_style?: string | null;
+          related_stocks?: string[] | null;
           metadata?: Record<string, unknown>;
           created_at?: string;
+          updated_at?: string | null;
         };
         Update: Record<string, unknown>;
       };

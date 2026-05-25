@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { useChatStore, usePortfolioStore, useOrderStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { streamChat, getRemainingCalls, isRateLimited, estimateCost, estimateTokens, type ChatContext } from '@/lib/ai';
+import { saveMessage } from '@/lib/supabase/chat';
 import type { ChatMessage, AICardComponent } from '@/types';
 
 /**
@@ -91,6 +92,16 @@ export function useAIChat() {
       };
       addMessage(userMsg);
 
+      // Persist to DB (fire-and-forget)
+      if (user?.id) {
+        saveMessage({
+          userId: user.id,
+          messageType: 'user_message',
+          content,
+          investorStyle: user.investorStyle || 'buffett',
+        });
+      }
+
       // Add empty assistant message (will be filled by streaming)
       const aiMsgId = crypto.randomUUID();
       const aiMsg: ChatMessage = {
@@ -136,6 +147,20 @@ export function useAIChat() {
             setLastCost(cost);
             setRemainingCalls(getRemainingCalls());
             setLoading(false);
+
+            // Persist AI response to DB (fire-and-forget)
+            if (user?.id) {
+              const state = useChatStore.getState();
+              const lastMsg = state.messages[state.messages.length - 1];
+              if (lastMsg?.content) {
+                saveMessage({
+                  userId: user.id,
+                  messageType: 'ai_response',
+                  content: lastMsg.content,
+                  investorStyle: user.investorStyle || 'buffett',
+                });
+              }
+            }
           },
           onError: (err: string) => {
             setError(err);

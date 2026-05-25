@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS chat_history (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Enhanced columns (add if missing)
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS message_type TEXT CHECK (message_type IN ('user_message', 'ai_response'));
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS investor_style TEXT;
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS related_stocks JSONB DEFAULT '[]';
+ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Migrate existing role to message_type for backward compat
+UPDATE chat_history SET message_type = CASE WHEN role = 'user' THEN 'user_message' WHEN role IN ('assistant', 'system') THEN 'ai_response' END WHERE message_type IS NULL;
+
 CREATE INDEX idx_chat_user_created ON chat_history(user_id, created_at DESC);
 
 -- ── Trade History ────────────────────────────────────────────
@@ -289,6 +298,10 @@ CREATE POLICY "chat_read_own" ON chat_history
   FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "chat_insert_own" ON chat_history
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "chat_update_own" ON chat_history
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "chat_delete_own" ON chat_history
+  FOR DELETE USING (auth.uid() = user_id);
 
 -- Trade History
 CREATE POLICY "trades_read_own" ON trade_history
