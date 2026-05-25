@@ -98,7 +98,7 @@ export function SettingsTab() {
         />
         <SettingsItem
           icon={Newspaper} title="News Feed" subtitle="AI-curated for your portfolio"
-          onClick={() => showToast('📰 News customization coming soon')}
+          onClick={() => router.push('/news-feed')}
         />
         <SettingsItem
           icon={CalendarDays} title="Earnings Calendar" subtitle="3 holdings reporting this week"
