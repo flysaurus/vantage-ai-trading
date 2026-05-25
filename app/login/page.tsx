@@ -42,53 +42,53 @@ export default function LoginPage() {
       setSubmitting(true);
       try {
         if (mode === 'signup') {
+          console.log('[login] Starting sign-up for', email.trim());
           const result = await doSignUp(email.trim(), password, displayName.trim() || undefined);
+          console.log('[login] Sign-up result:', { needsConfirmation: result.needsConfirmation, hasUser: !!result.user, hasSession: !!result.session });
           if (result.needsConfirmation) {
             setConfirmedEmail(email.trim());
             setConfirmationSent(true);
+            setSubmitting(false);
             return;
           }
           storeSession(result.session!);
           storeUser(result.user);
-          // Fire-and-forget: ensure public.users row exists (with in-memory token)
           import('@/lib/supabase/user').then(({ createUser }) => {
-            createUser({
-              email: result.user.email,
-              displayName: result.user.displayName,
-              token: result.session!.token,
-            });
+            createUser({ email: result.user.email, displayName: result.user.displayName, token: result.session!.token });
           });
+          console.log('[login] Sign-up success, navigating to /');
           router.push('/');
         } else {
+          console.log('[login] Starting sign-in for', email.trim());
           const result = await doSignIn(email.trim(), password);
+          console.log('[login] Sign-in result:', { hasUser: !!result.user, hasSession: !!result.session, userId: result.user?.id });
           storeSession(result.session);
           storeUser(result.user);
-          // Fire-and-forget: ensure public.users row exists (with in-memory token)
           import('@/lib/supabase/user').then(({ createUser }) => {
-            createUser({
-              email: result.user.email,
-              displayName: result.user.displayName,
-              token: result.session.token,
-            });
+            createUser({ email: result.user.email, displayName: result.user.displayName, token: result.session.token });
           });
+          console.log('[login] Sign-in success, navigating to /');
           router.push('/');
         }
       } catch (err: any) {
-        const msg = err?.message || 'Something went wrong.';
-        if (msg.toLowerCase().includes('invalid login') || msg.includes('Invalid'))
-          setError('Invalid email or password.');
-        else if (msg.toLowerCase().includes('not confirmed') || msg.includes('not verified'))
+        console.error('[login] Auth error:', err);
+        const msg = String(err?.message || err || 'Something went wrong.');
+        const low = msg.toLowerCase();
+        if (low.includes('invalid login') || low.includes('invalid credential') || low.includes('invalid email') || low.includes('user not found'))
+          setError('Invalid email or password. Please check and try again.');
+        else if (low.includes('not confirmed') || low.includes('not verified') || low.includes('email not confirmed'))
           setError('Email not verified yet. Check your inbox for the confirmation link.');
-        else if (msg.toLowerCase().includes('rate limit') || msg.includes('too many'))
-          setError('Too many attempts. Please wait a moment.');
-        else if (msg.toLowerCase().includes('already registered') || msg.includes('already exists')) {
-          setError('An account with this email already exists. Try signing in instead.');
+        else if (low.includes('rate limit') || low.includes('too many') || low.includes('429'))
+          setError('Too many attempts. Please wait a moment and try again.');
+        else if (low.includes('already registered') || low.includes('already exists') || low.includes('already signed up')) {
+          setError('An account with this email already exists. Please sign in.');
           setMode('signin');
-        }
-        else if (msg.toLowerCase().includes('network') || msg.includes('fetch'))
-          setError('Network error. Check your connection.');
+        } else if (low.includes('network') || low.includes('fetch') || low.includes('timeout'))
+          setError('Network error. Check your connection and try again.');
+        else if (low.includes('redirect') || low.includes('url not allowed'))
+          setError('Auth configuration error. Please try again or contact support.');
         else
-          setError(msg);
+          setError('Login failed: ' + msg);
       } finally {
         setSubmitting(false);
       }

@@ -69,20 +69,35 @@ export async function signIn(
   email: string,
   password: string
 ): Promise<{ user: User; session: VantageSession }> {
-  const supabase = createClient();
+  let supabase;
+  try {
+    supabase = createClient();
+  } catch (e: any) {
+    console.error('[auth.signIn] createClient failed:', e);
+    throw new Error('Auth client initialization failed. Please refresh the page.');
+  }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  let data, error;
+  try {
+    const result = await supabase.auth.signInWithPassword({ email, password });
+    data = result.data;
+    error = result.error;
+  } catch (e: any) {
+    console.error('[auth.signIn] Supabase call failed:', e);
+    throw new Error(String(e?.message || e?.toString() || 'Network error connecting to auth server.'));
+  }
 
   if (error) {
-    throw new Error(error.message);
+    console.error('[auth.signIn] Supabase returned error:', error.message, error.status);
+    throw new Error(String(error.message || 'Authentication failed'));
   }
 
-  if (!data.user || !data.session) {
-    throw new Error('Sign in failed — no user or session returned');
+  if (!data?.user || !data?.session) {
+    console.error('[auth.signIn] Missing user/session in response:', { hasUser: !!data?.user, hasSession: !!data?.session });
+    throw new Error('Sign in failed — server returned incomplete response.');
   }
+
+  console.log('[auth.signIn] Success:', { userId: data.user.id, email: data.user.email });
 
   const user: User = buildUser(data.user, email, undefined);
 
@@ -120,14 +135,15 @@ export async function signUp(
   if (error) {
     // User already exists (from a previous signup attempt) —
     // treat as "needs confirmation" instead of an error
-    if (error.message?.toLowerCase().includes('already registered') ||
-        error.message?.toLowerCase().includes('already exists') ||
-        error.message?.toLowerCase().includes('already signed up') ||
+    const errMsg = String(error.message || '').toLowerCase();
+    if (errMsg.includes('already registered') ||
+        errMsg.includes('already exists') ||
+        errMsg.includes('already signed up') ||
         error.status === 422) {
       // Account already exists — tell user to sign in, don't pretend to send email
       throw new Error('An account with this email already exists. Please sign in instead.');
     }
-    throw new Error(error.message);
+    throw new Error(String(error.message || 'Authentication failed'));
   }
 
   // Some Supabase configurations return null user/session on signUp
@@ -177,10 +193,11 @@ export async function resendConfirmation(
   });
 
   if (error) {
-    if (error.message?.includes('rate limit') || error.status === 429) {
+    const errMsg = String(error.message || '');
+    if (errMsg.includes('rate limit') || error.status === 429) {
       return { success: false, message: 'Please wait before requesting another email.' };
     }
-    if (error.message?.includes('already confirmed') || error.message?.includes('already verified')) {
+    if (errMsg.includes('already confirmed') || errMsg.includes('already verified')) {
       return { success: false, message: 'Email is already verified. Please sign in.' };
     }
     return { success: false, message: 'Unable to resend. Please try again later.' };
