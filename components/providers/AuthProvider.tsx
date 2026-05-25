@@ -124,7 +124,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
-  const supabaseRef = useRef(createClient());
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
+  // Lazy init — createClient() throws if called during SSR
 
   // ─── Reset inactivity timer ──────────────────────────────
   const resetInactivity = useCallback(() => {
@@ -138,13 +139,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     inactivityRef.current = setTimeout(async () => {
       if (mountedRef.current) {
-        await supabaseRef.current.auth.signOut();
+        await supabaseRef.current?.auth.signOut();
       }
     }, INACTIVITY_TIMEOUT);
   }, []);
 
   // ─── Auth state listener ─────────────────────────────────
   useEffect(() => {
+    // Lazy init — createClient() is browser-only
+    supabaseRef.current = createClient();
     const supabase = supabaseRef.current;
     mountedRef.current = true;
 
@@ -225,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ─── Auth methods ────────────────────────────────────────
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const supabase = supabaseRef.current;
+    const supabase = supabaseRef.current!;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       throw new Error(String(error.message || 'Authentication failed'));
@@ -237,7 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
-    const supabase = supabaseRef.current;
+    const supabase = supabaseRef.current!;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -258,13 +261,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    const supabase = supabaseRef.current;
+    const supabase = supabaseRef.current!;
     await supabase.auth.signOut();
     // onAuthStateChange will fire SIGNED_OUT
   }, []);
 
   const resendConfirmation = useCallback(async (email: string) => {
-    const supabase = supabaseRef.current;
+    const supabase = supabaseRef.current!;
     try {
       const { error } = await supabase.auth.resend({ type: 'signup', email });
       if (error) {
