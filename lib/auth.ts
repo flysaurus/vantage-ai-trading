@@ -17,31 +17,48 @@ const USER_KEY = 'vantage-user';
 
 // ─── Helpers ──────────────────────────────────────────────────
 
+/** Read onboarding + style from localStorage (persists across sessions). */
+function getLocalOnboarding(): { onboarded: boolean; style: InvestorStyle } {
+  if (typeof window === 'undefined') return { onboarded: false, style: 'buffett' };
+  try {
+    return {
+      onboarded: localStorage.getItem('vantage:onboarded') === 'true',
+      style: (localStorage.getItem('vantage:investorStyle') as InvestorStyle) || 'buffett',
+    };
+  } catch {
+    return { onboarded: false, style: 'buffett' };
+  }
+}
+
 function buildUser(
   su: { id: string; email?: string | null; created_at: string; user_metadata?: Record<string, unknown> },
   email: string,
   displayName?: string
 ): User {
+  const local = getLocalOnboarding();
   return {
     id: su.id,
     email: su.email || email,
     displayName: displayName || (su.user_metadata as any)?.display_name || email.split('@')[0],
     avatarUrl: (su.user_metadata as any)?.avatar_url,
-    investorStyle: ((su.user_metadata as any)?.investor_style as InvestorStyle) || 'buffett',
+    // Priority: Supabase metadata → localStorage → default
+    investorStyle: ((su.user_metadata as any)?.investor_style as InvestorStyle) || local.style || 'buffett',
     investorStyleSetAt: undefined,
-    investorStyleOnboarded: false,
+    // Priority: Supabase onboarded flag → localStorage → false
+    investorStyleOnboarded: !!(su.user_metadata as any)?.investor_style_onboarded || local.onboarded,
     createdAt: su.created_at,
   };
 }
 
 function placerUser(email: string, displayName?: string): User {
+  const local = getLocalOnboarding();
   return {
     id: '',
     email,
     displayName: displayName || email.split('@')[0],
-    investorStyle: 'buffett',
+    investorStyle: local.style || 'buffett',
     investorStyleSetAt: undefined,
-    investorStyleOnboarded: false,
+    investorStyleOnboarded: local.onboarded,
     createdAt: '',
   };
 }

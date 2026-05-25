@@ -83,14 +83,19 @@ function AppShell() {
             if (typeof window !== 'undefined') {
               localStorage.setItem('vantage:onboarded', 'true');
               localStorage.setItem('vantage:investorStyle', style);
+              // Also flush to sessionStorage so AuthProvider picks it up on reload
+              try {
+                const cached = getUser();
+                storeUser({
+                  id: cached?.id || '',
+                  email: cached?.email || '',
+                  displayName: cached?.displayName || 'Trader',
+                  investorStyle: style,
+                  investorStyleOnboarded: true,
+                  createdAt: cached?.createdAt || '',
+                });
+              } catch { /* ignore */ }
             }
-            // Also update sessionStorage cache (optional, nice-to-have)
-            try {
-              const cached = getUser();
-              if (cached) {
-                storeUser({ ...cached, investorStyleOnboarded: true, investorStyle: style });
-              }
-            } catch { /* ignore */ }
             setShowOnboarding(false);
             // Small delay to ensure localStorage flush before reload
             setTimeout(() => window.location.reload(), 100);
