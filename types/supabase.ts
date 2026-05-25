@@ -109,14 +109,21 @@ export interface Database {
           alpaca_order_id: string | null;
           symbol: string;
           side: 'buy' | 'sell';
+          action: 'buy' | 'sell' | null;
           type: string;
           qty: number;
+          quantity: number | null;
           filled_price: number | null;
+          price: number | null;
           total_value: number | null;
+          commission: number | null;
+          notes: string | null;
           status: string;
           bracket: Record<string, unknown> | null;
           ai_suggestion_id: string | null;
           created_at: string;
+          updated_at: string | null;
+          executed_at: string | null;
           filled_at: string | null;
         };
         Insert: {
@@ -124,15 +131,22 @@ export interface Database {
           user_id: string;
           alpaca_order_id?: string | null;
           symbol: string;
-          side: 'buy' | 'sell';
+          side?: 'buy' | 'sell';
+          action?: 'buy' | 'sell' | null;
           type?: string;
-          qty: number;
+          qty?: number;
+          quantity?: number | null;
           filled_price?: number | null;
+          price?: number | null;
           total_value?: number | null;
+          commission?: number | null;
+          notes?: string | null;
           status?: string;
           bracket?: Record<string, unknown> | null;
           ai_suggestion_id?: string | null;
           created_at?: string;
+          updated_at?: string | null;
+          executed_at?: string | null;
           filled_at?: string | null;
         };
         Update: Record<string, unknown>;
@@ -256,6 +270,41 @@ export interface Database {
           stocks?: Array<{ symbol: string; addedAt: string }>;
           is_default?: boolean;
           updated_at?: string;
+        };
+      };
+      strategies: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          investor_style: 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger' | null;
+          target_allocation: Record<string, number>;
+          stocks: string[];
+          performance_notes: string | null;
+          created_at: string;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          description?: string | null;
+          investor_style?: 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger' | null;
+          target_allocation?: Record<string, number>;
+          stocks?: string[];
+          performance_notes?: string | null;
+          created_at?: string;
+          updated_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          investor_style?: 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger' | null;
+          target_allocation?: Record<string, number>;
+          stocks?: string[];
+          performance_notes?: string | null;
+          updated_at?: string | null;
         };
       };
       market_cache: {

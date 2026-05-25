@@ -1,0 +1,26 @@
+// ─── GET /api/db/strategies/get-all?userId=<id> ───────────────
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
+import { createServerClient } from '@/lib/supabase';
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  try {
+    const { userId: authUserId } = await requireAuth(req);
+    const supabase = createServerClient();
+    const targetUserId = req.nextUrl.searchParams.get('userId') || authUserId;
+    if (targetUserId !== authUserId) return NextResponse.json({ error: 'Cannot fetch other users strategies' }, { status: 403 });
+
+    const { data, error } = await (supabase as any)
+      .from('strategies').select('id, user_id, name, description, investor_style, target_allocation, stocks, performance_notes, created_at, updated_at')
+      .eq('user_id', targetUserId).order('created_at', { ascending: false });
+
+    if (error) return NextResponse.json({ error: 'Failed to fetch strategies', detail: error.message }, { status: 500 });
+
+    return NextResponse.json({
+      strategies: (data || []).map((s: any) => ({ id: s.id, userId: s.user_id, name: s.name, description: s.description, investorStyle: s.investor_style, targetAllocation: s.target_allocation, stocks: s.stocks || [], performanceNotes: s.performance_notes, createdAt: s.created_at, updatedAt: s.updated_at })),
+    });
+  } catch (err: any) {
+    if (err?.name === 'AuthError') return NextResponse.json({ error: err.message }, { status: err.status || 401 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

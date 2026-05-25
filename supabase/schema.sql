@@ -77,16 +77,36 @@ CREATE TABLE IF NOT EXISTS trade_history (
   alpaca_order_id TEXT UNIQUE,
   symbol TEXT NOT NULL,
   side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+  action TEXT CHECK (action IN ('buy', 'sell')),
   type TEXT NOT NULL DEFAULT 'market',
   qty NUMERIC NOT NULL,
+  quantity NUMERIC,
   filled_price NUMERIC,
+  price NUMERIC,
   total_value NUMERIC,
-  status TEXT NOT NULL DEFAULT 'pending',
+  commission NUMERIC DEFAULT 0,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'filled',
   bracket JSONB,
   ai_suggestion_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  executed_at TIMESTAMPTZ DEFAULT NOW(),
   filled_at TIMESTAMPTZ
 );
+
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS action TEXT CHECK (action IN ('buy', 'sell'));
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS quantity NUMERIC;
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS price NUMERIC;
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS commission NUMERIC DEFAULT 0;
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS executed_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+-- Migrate old columns
+UPDATE trade_history SET action = side WHERE action IS NULL;
+UPDATE trade_history SET quantity = qty WHERE quantity IS NULL;
+UPDATE trade_history SET price = filled_price WHERE price IS NULL;
+UPDATE trade_history SET executed_at = COALESCE(filled_at, created_at) WHERE executed_at IS NULL;
 
 CREATE INDEX idx_trades_user ON trade_history(user_id, created_at DESC);
 CREATE INDEX idx_trades_symbol ON trade_history(symbol);
@@ -171,6 +191,22 @@ DO $$ BEGIN
 END $$;
 
 CREATE INDEX idx_watchlists_user ON watchlists(user_id);
+
+-- ── Strategies ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS strategies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  investor_style TEXT CHECK (investor_style IN ('buffett', 'lynch', 'livermore', 'soros', 'munger')),
+  target_allocation JSONB DEFAULT '{}'::jsonb,
+  stocks JSONB DEFAULT '[]'::jsonb,
+  performance_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_strategies_user ON strategies(user_id, created_at DESC);
 
 -- ── Market Cache (reduces API calls) ─────────────────────────
 CREATE TABLE IF NOT EXISTS market_cache (
@@ -296,6 +332,7 @@ ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE account_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watchlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE strategies ENABLE ROW LEVEL SECURITY;
 
 -- Users
 CREATE POLICY "users_read_own" ON users
@@ -328,6 +365,10 @@ CREATE POLICY "trades_read_own" ON trade_history
   FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "trades_insert_own" ON trade_history
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "trades_update_own" ON trade_history
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "trades_delete_own" ON trade_history
+  FOR DELETE USING (auth.uid() = user_id);
 
 -- AI Suggestions
 CREATE POLICY "suggestions_read_own" ON ai_suggestions
@@ -361,6 +402,16 @@ CREATE POLICY "watchlists_insert_own" ON watchlists
 CREATE POLICY "watchlists_update_own" ON watchlists
   FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "watchlists_delete_own" ON watchlists
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Strategies
+CREATE POLICY "strategies_read_own" ON strategies
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "strategies_insert_own" ON strategies
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "strategies_update_own" ON strategies
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "strategies_delete_own" ON strategies
   FOR DELETE USING (auth.uid() = user_id);
 
 -- Market Cache (public read, server-only write)
