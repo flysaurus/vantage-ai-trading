@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   ArrowLeft, Calendar, List, ChevronLeft, ChevronRight,
-  TrendingUp, TrendingDown, Minus, Clock, Filter, RefreshCcw,
+  TrendingUp, TrendingDown, Minus, Clock, RefreshCcw,
+  Search, X, ExternalLink, FileText,
 } from 'lucide-react';
 import type { EarningsEvent } from '@/app/api/earnings/route';
 
@@ -18,18 +19,11 @@ function formatCurrency(n: number | null): string {
   return `$${n.toFixed(2)}`;
 }
 
-function formatRevenue(n: number | null): string {
-  if (n == null) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  return `$${n.toFixed(0)}`;
-}
-
-type ResultStatus = 'beat' | 'miss' | 'inline' | 'upcoming' | 'no-report';
+type ResultStatus = 'beat' | 'miss' | 'inline' | 'upcoming' | 'no-data';
 
 function getStatus(e: EarningsEvent): ResultStatus {
   if (e.epsActual == null) return 'upcoming';
-  if (e.epsEstimate == null) return 'no-report';
+  if (e.epsEstimate == null) return 'no-data';
   const diff = e.epsActual - e.epsEstimate;
   if (Math.abs(diff) < 0.01) return 'inline';
   return diff > 0 ? 'beat' : 'miss';
@@ -40,8 +34,16 @@ const STATUS_STYLE: Record<ResultStatus, { bg: string; color: string; label: str
   miss:    { bg: 'rgba(239,68,68,0.1)',   color: '#ef4444', label: 'Miss',   icon: TrendingDown },
   inline:  { bg: 'rgba(250,204,21,0.1)',  color: '#facc15', label: 'Inline', icon: Minus },
   upcoming:{ bg: 'rgba(6,182,212,0.1)',   color: '#06b6d4', label: 'Upcoming', icon: Clock },
-  'no-report': { bg: 'rgba(100,116,139,0.08)', color: '#64748b', label: 'No Data', icon: Minus },
+  'no-data': { bg: 'rgba(100,116,139,0.08)', color: '#64748b', label: 'No Data', icon: Minus },
 };
+
+function edgarUrl(symbol: string): string {
+  return `https://www.sec.gov/cgi-bin/browse-edgar?CIK=${symbol}&action=getcompany`;
+}
+
+function marketBeatUrl(symbol: string): string {
+  return `https://www.marketbeat.com/stocks/NASDAQ/${symbol}/earnings/`;
+}
 
 // ─── Page ─────────────────────────────────────────────────────
 export default function EarningsCalendarPage() {
@@ -54,20 +56,26 @@ export default function EarningsCalendarPage() {
   // View state
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [statusFilter, setStatusFilter] = useState<ResultStatus | 'all'>('all');
-  const [filterMode, setFilterMode] = useState<'all' | 'my-stocks'>('all');
+
+  // Search / autocomplete
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState<Array<{ symbol: string; name?: string; price?: number }>>([]);
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
+  const searchTimer = useRef<NodeJS.Timeout | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Calendar navigation
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
-  const [calMonth, setCalMonth] = useState(now.getMonth()); // 0-indexed
+  const [calMonth, setCalMonth] = useState(now.getMonth());
 
   // ─── Load earnings ─────────────────────────────────────────
-  const loadEarnings = useCallback(async () => {
+  const loadEarnings = useCallback(async (query?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const url = filterMode === 'my-stocks' && user
-        ? `/api/earnings?symbols=portfolio&days=90`
+      const url = query
+        ? `/api/earnings?q=${encodeURIComponent(query)}&days=90`
         : '/api/earnings?days=90';
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed');
@@ -78,17 +86,47 @@ export default function EarningsCalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterMode, user]);
+  }, []);
 
   useEffect(() => { loadEarnings(); }, [loadEarnings]);
 
+  // ─── Symbol search autocomplete (for earnings symbols) ─────
+  const fetchSearchSuggestions = useCallback(async (q: string) => {
+    if (!q || q.length < 1) { setSearchSuggestions([]); setShowSearchSuggestions(false); return; }
+    try {
+      const res = await fetch(`/api/alpaca/symbols?q=${encodeURIComponent(q.toUpperCase())}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchSuggestions((data.results || []).slice(0, 8));
+        setShowSearchSuggestions(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => fetchSearchSuggestions(val), 200);
+  };
+
+  const selectSearchSymbol = async (sym: string) => {
+    setSearchQuery(sym);
+    setShowSearchSuggestions(false);
+    await loadEarnings(sym);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setShowSearchSuggestions(false);
+    loadEarnings();
+  };
+
   // ─── Derived data ──────────────────────────────────────────
   const filtered = useMemo(() => {
-    if (statusFilter === 'all') return earnings;
-    return earnings.filter(e => getStatus(e) === statusFilter);
+    let data = statusFilter === 'all' ? earnings : earnings.filter(e => getStatus(e) === statusFilter);
+    return data;
   }, [earnings, statusFilter]);
 
-  // Earnings grouped by date for calendar
   const earningsByDate = useMemo(() => {
     const map: Record<string, EarningsEvent[]> = {};
     earnings.forEach(e => {
@@ -98,7 +136,6 @@ export default function EarningsCalendarPage() {
     return map;
   }, [earnings]);
 
-  // Calendar grid
   const calGrid = useMemo(() => {
     const firstDay = new Date(calYear, calMonth, 1);
     const lastDay = new Date(calYear, calMonth + 1, 0);
@@ -106,18 +143,13 @@ export default function EarningsCalendarPage() {
     const totalDays = lastDay.getDate();
     const weeks: (number | null)[][] = [];
     let day = 1;
-
     for (let w = 0; w < 6 && day <= totalDays; w++) {
       const week: (number | null)[] = [];
       for (let d = 0; d < 7; d++) {
-        if ((w === 0 && d < startDow) || day > totalDays) {
-          week.push(null);
-        } else {
-          week.push(day++);
-        }
+        if ((w === 0 && d < startDow) || day > totalDays) week.push(null);
+        else week.push(day++);
       }
       weeks.push(week);
-      if (day > totalDays) break;
     }
     return weeks;
   }, [calYear, calMonth]);
@@ -129,6 +161,13 @@ export default function EarningsCalendarPage() {
     const d = String(day).padStart(2, '0');
     return `${calYear}-${m}-${d}`;
   }
+
+  const MONTH_START = dateKey(1).slice(0, 7);
+
+  // Stats
+  const upcomingCount = earnings.filter(e => getStatus(e) === 'upcoming').length;
+  const beatCount = earnings.filter(e => getStatus(e) === 'beat').length;
+  const missCount = earnings.filter(e => getStatus(e) === 'miss').length;
 
   // ─── Auth guard ───────────────────────────────────────────
   if (authLoading) {
@@ -151,26 +190,21 @@ export default function EarningsCalendarPage() {
     );
   }
 
-  // Stats
-  const upcomingCount = earnings.filter(e => getStatus(e) === 'upcoming').length;
-  const beatCount = earnings.filter(e => getStatus(e) === 'beat').length;
-  const missCount = earnings.filter(e => getStatus(e) === 'miss').length;
-
   return (
-    <div style={{ padding: '12px 16px 80px', minHeight: '100vh' }}>
+    <div style={{ padding: '12px 16px 80px', minHeight: '100dvh', overflowY: 'auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
           <ArrowLeft size={20} />
         </button>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Earnings Calendar</h1>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-            {upcomingCount} upcoming · {beatCount} beats · {missCount} misses
+            {upcomingCount} upcoming · {beatCount} beats · {missCount} misses · Source: Finnhub + SEC EDGAR
           </div>
         </div>
         <button
-          onClick={loadEarnings}
+          onClick={() => { clearSearch(); loadEarnings(); }}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 34, height: 34, borderRadius: 8,
@@ -183,9 +217,72 @@ export default function EarningsCalendarPage() {
         </button>
       </div>
 
+      {/* Search + Autocomplete */}
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
+          padding: '0 10px',
+        }}>
+          <Search size={14} style={{ color: '#64748b', flexShrink: 0 }} />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { selectSearchSymbol(searchQuery.toUpperCase()); }
+              else if (e.key === 'Escape') clearSearch();
+            }}
+            onFocus={() => { if (searchSuggestions.length > 0) setShowSearchSuggestions(true); }}
+            onBlur={() => setTimeout(() => setShowSearchSuggestions(false), 150)}
+            placeholder="Search by symbol (e.g. AAPL, MSFT)..."
+            style={{
+              flex: 1, padding: '9px 0', background: 'none', border: 'none',
+              color: '#e2e8f0', fontSize: 13, fontFamily: 'monospace', outline: 'none',
+            }}
+          />
+          {searchQuery && (
+            <button onClick={clearSearch} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 2 }}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {showSearchSuggestions && searchSuggestions.length > 0 && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+            background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
+            maxHeight: 200, overflowY: 'auto', marginTop: 2,
+          }}>
+            {searchSuggestions.map((s, i) => (
+              <div
+                key={s.symbol}
+                onMouseDown={() => selectSearchSymbol(s.symbol)}
+                style={{
+                  padding: '8px 12px', cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  borderBottom: i < searchSuggestions.length - 1 ? '1px solid #1e293b' : 'none',
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: '#e2e8f0' }}>{s.symbol}</span>
+                  <span style={{ fontSize: 10, color: '#64748b', marginLeft: 8 }}>
+                    {s.name?.substring(0, 35)}{(s.name?.length || 0) > 35 ? '…' : ''}
+                  </span>
+                </div>
+                {s.price != null && (
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4' }}>
+                    ${s.price.toFixed(2)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* View toggle + filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {/* Calendar/List toggle */}
         <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #334155' }}>
           <button
             onClick={() => setView('calendar')}
@@ -213,7 +310,6 @@ export default function EarningsCalendarPage() {
           </button>
         </div>
 
-        {/* Status filter pills */}
         <div style={{ display: 'flex', gap: 4 }}>
           {([
             { key: 'all', label: 'All' },
@@ -228,8 +324,7 @@ export default function EarningsCalendarPage() {
                 padding: '5px 10px', borderRadius: 6,
                 background: statusFilter === s.key ? '#06b6d4' : '#1e293b',
                 color: statusFilter === s.key ? '#0f172a' : 'var(--text-dim)',
-                border: '1px solid transparent',
-                fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                border: '1px solid transparent', fontSize: 10, fontWeight: 600, cursor: 'pointer',
               }}
             >
               {s.label}
@@ -238,11 +333,11 @@ export default function EarningsCalendarPage() {
         </div>
       </div>
 
-      {/* Error banner */}
+      {/* Error */}
       {error && (
         <div style={{ padding: '10px 14px', marginBottom: 12, borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{error}</span>
-          <button onClick={loadEarnings} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#06b6d4', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Retry</button>
+          <button onClick={() => loadEarnings()} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#06b6d4', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Retry</button>
         </div>
       )}
 
@@ -253,95 +348,61 @@ export default function EarningsCalendarPage() {
         </div>
       )}
 
-      {/* Calendar view */}
+      {/* ── Calendar View ────────────────────────────────────── */}
       {!loading && view === 'calendar' && (
         <div>
-          {/* Month nav */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, padding: '0 4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <button
-              onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); } else setCalMonth(calMonth - 1); }}
+              onClick={() => calMonth === 0 ? (setCalMonth(11), setCalYear(calYear - 1)) : setCalMonth(calMonth - 1)}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
             >
               <ChevronLeft size={18} />
             </button>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>
-              {MONTHS[calMonth]} {calYear}
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{MONTHS[calMonth]} {calYear}</div>
             <button
-              onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); } else setCalMonth(calMonth + 1); }}
+              onClick={() => calMonth === 11 ? (setCalMonth(0), setCalYear(calYear + 1)) : setCalMonth(calMonth + 1)}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
             >
               <ChevronRight size={18} />
             </button>
           </div>
 
-          {/* Calendar grid */}
-          <div style={{
-            background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
-            overflow: 'hidden',
-          }}>
-            {/* Day headers */}
+          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #334155' }}>
               {DAYS_SHORT.map(d => (
-                <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>
-                  {d}
-                </div>
+                <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{d}</div>
               ))}
             </div>
-
-            {/* Weeks */}
             {calGrid.map((week, wi) => (
               <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: wi < calGrid.length - 1 ? '1px solid #1e293b' : 'none' }}>
                 {week.map((day, di) => {
-                  if (day == null) {
-                    return <div key={di} style={{ aspectRatio: '1', background: '#0f172a' }} />;
-                  }
+                  if (day == null) return <div key={di} style={{ aspectRatio: '1', background: '#0f172a' }} />;
                   const dk = dateKey(day);
                   const events = earningsByDate[dk] || [];
                   const isToday = dk === today;
-                  const hasBeat = events.some(e => getStatus(e) === 'beat');
-                  const hasMiss = events.some(e => getStatus(e) === 'miss');
-                  const hasUpcoming = events.some(e => getStatus(e) === 'upcoming');
-                  const dotColor = hasBeat ? '#22c55e' : hasMiss ? '#ef4444' : hasUpcoming ? '#06b6d4' : 'transparent';
 
                   return (
                     <div
                       key={di}
-                      className="cal-cell"
                       style={{
-                        aspectRatio: '1',
+                        aspectRatio: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         background: isToday ? 'rgba(6,182,212,0.06)' : '#0f172a',
                         border: isToday ? '1px solid rgba(6,182,212,0.3)' : '1px solid transparent',
-                        borderRadius: isToday ? 4 : 0,
-                        padding: 4,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        cursor: events.length > 0 ? 'pointer' : 'default',
-                        position: 'relative',
+                        borderRadius: isToday ? 4 : 0, padding: 2,
                       }}
-                      title={events.map(e => `${e.symbol} ${getStatus(e).toUpperCase()}`).join('\n')}
                     >
-                      <span style={{
-                        fontSize: 11, fontWeight: isToday ? 700 : 500,
-                        color: isToday ? '#06b6d4' : 'var(--text-dim)',
-                      }}>
+                      <span style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? '#06b6d4' : 'var(--text-dim)' }}>
                         {day}
                       </span>
                       {events.length > 0 && (
                         <div style={{ display: 'flex', gap: 2, marginTop: 1 }}>
                           {events.slice(0, 3).map((e, i) => (
-                            <div
-                              key={i}
-                              style={{
-                                width: 5, height: 5, borderRadius: '50%',
-                                background: getStatus(e) === 'beat' ? '#22c55e' :
-                                  getStatus(e) === 'miss' ? '#ef4444' :
-                                  getStatus(e) === 'upcoming' ? '#06b6d4' : '#64748b',
-                              }}
-                            />
+                            <div key={i} style={{
+                              width: 4, height: 4, borderRadius: '50%',
+                              background: getStatus(e) === 'beat' ? '#22c55e' : getStatus(e) === 'miss' ? '#ef4444' : '#06b6d4',
+                            }}/>
                           ))}
-                          {events.length > 3 && (
-                            <span style={{ fontSize: 7, color: 'var(--text-muted)', lineHeight: 1 }}>+{events.length - 3}</span>
-                          )}
+                          {events.length > 3 && <span style={{ fontSize: 7, color: 'var(--text-muted)', lineHeight: 1 }}>+{events.length - 3}</span>}
                         </div>
                       )}
                     </div>
@@ -351,29 +412,30 @@ export default function EarningsCalendarPage() {
             ))}
           </div>
 
-          {/* Earnings list for this month */}
+          {/* Month earnings list */}
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
-              {MONTHS[calMonth]} {calYear} Earnings
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>{MONTHS[calMonth]} {calYear} Earnings</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{filtered.filter(e => e.date.startsWith(MONTH_START)).length} reports</span>
             </div>
-            {filtered.filter(e => e.date.startsWith(dateKey(1).slice(0, 7))).length === 0 ? (
+            {filtered.filter(e => e.date.startsWith(MONTH_START)).length === 0 ? (
               <div style={{ textAlign: 'center', padding: 24, fontSize: 12, color: 'var(--text-muted)', background: '#1e293b', border: '1px solid #334155', borderRadius: 10 }}>
                 No earnings reported for this month.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {filtered
-                  .filter(e => e.date.startsWith(dateKey(1).slice(0, 7)))
-                  .map(e => <EarningsRow key={`${e.symbol}-${e.date}-${e.quarter}`} event={e} />)}
+                {filtered.filter(e => e.date.startsWith(MONTH_START)).slice(0, 50).map(e => (
+                  <EarningsRow key={`${e.symbol}-${e.date}-${e.quarter}`} event={e} />
+                ))}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* List view */}
+      {/* ── List View ─────────────────────────────────────────── */}
       {!loading && view === 'list' && (
-        <div>
+        <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {filtered.length === 0 ? (
             <div style={{
               textAlign: 'center', padding: '60px 20px',
@@ -381,11 +443,18 @@ export default function EarningsCalendarPage() {
             }}>
               <Calendar size={40} style={{ color: '#475569', marginBottom: 12 }} />
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No earnings found</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Try changing filters or date range</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Try changing filters or search for a symbol</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {filtered.map(e => <EarningsRow key={`${e.symbol}-${e.date}-${e.quarter}`} event={e} />)}
+              {filtered.slice(0, 200).map(e => (
+                <EarningsRow key={`${e.symbol}-${e.date}-${e.quarter}`} event={e} />
+              ))}
+              {filtered.length > 200 && (
+                <div style={{ textAlign: 'center', padding: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+                  Showing 200 of {filtered.length} results. Use search to narrow down.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -394,7 +463,6 @@ export default function EarningsCalendarPage() {
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
-        .cal-cell:hover { background: #1e293b !important; }
       `}</style>
     </div>
   );
@@ -405,46 +473,38 @@ function EarningsRow({ event }: { event: EarningsEvent }) {
   const status = getStatus(event);
   const s = STATUS_STYLE[status];
   const Icon = s.icon;
-  const surprise = event.epsEstimate != null && event.epsActual != null
+  const surprise = event.epsEstimate != null && event.epsActual != null && event.epsEstimate !== 0
     ? (((event.epsActual - event.epsEstimate) / Math.abs(event.epsEstimate)) * 100)
     : null;
 
   return (
     <div
-      className="earnings-row"
       style={{
         background: s.bg, border: `1px solid ${status === 'upcoming' ? 'rgba(6,182,212,0.15)' : '#334155'}`,
-        borderRadius: 10, padding: '10px 12px',
-        opacity: status === 'no-report' ? 0.5 : 1,
+        borderRadius: 10, padding: '12px',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* Status icon */}
+      {/* Top row: symbol, status, links */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+          width: 30, height: 30, borderRadius: 7, flexShrink: 0,
           background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <Icon size={14} style={{ color: s.color }} />
+          <Icon size={13} style={{ color: s.color }} />
         </div>
-
-        {/* Main info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '-0.5px' }}>
               {event.symbol}
             </span>
-            <span style={{
-              padding: '1px 6px', borderRadius: 4,
-              background: s.bg, color: s.color,
-              fontSize: 9, fontWeight: 700,
-            }}>
+            <span style={{ padding: '1px 6px', borderRadius: 4, background: s.bg, color: s.color, fontSize: 9, fontWeight: 700 }}>
               {s.label}
             </span>
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
               Q{event.quarter} {event.year}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1 }}>
             {new Date(event.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
             {event.hour !== 'unknown' && (
               <span style={{ color: 'var(--text-muted)' }}>
@@ -453,36 +513,84 @@ function EarningsRow({ event }: { event: EarningsEvent }) {
             )}
           </div>
         </div>
+        {/* External links */}
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          <a href={edgarUrl(event.symbol)} target="_blank" rel="noopener"
+            style={{ color: '#64748b', fontSize: 10, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
+            title="SEC EDGAR filings"
+          >
+            <FileText size={10} /> SEC
+          </a>
+          <a href={marketBeatUrl(event.symbol)} target="_blank" rel="noopener"
+            style={{ color: '#64748b', fontSize: 10, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
+            title="MarketBeat earnings"
+          >
+            <ExternalLink size={10} /> MB
+          </a>
+        </div>
+      </div>
 
-        {/* EPS detail */}
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-            <span style={{ color: 'var(--text-dim)' }}>EPS </span>
-            <span style={{ color: event.epsActual != null ? '#e2e8f0' : 'var(--text-muted)' }}>
+      {/* EPS Comparison */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 11 }}>
+        {/* Consensus Estimate */}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 2 }}>Consensus EPS</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontWeight: 600, color: event.epsEstimate != null ? '#94a3b8' : 'var(--text-muted)' }}>
+              {formatCurrency(event.epsEstimate)}
+            </span>
+            <span style={{ fontSize: 9, color: '#475569' }}>Finnhub</span>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 24, background: '#334155', flexShrink: 0 }} />
+
+        {/* Actual EPS */}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 2 }}>Actual EPS</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{
+              fontWeight: 600,
+              color: event.epsActual != null
+                ? (event.epsEstimate != null
+                  ? (event.epsActual > event.epsEstimate ? '#22c55e' : event.epsActual < event.epsEstimate ? '#ef4444' : '#e2e8f0')
+                  : '#e2e8f0')
+                : 'var(--text-muted)',
+            }}>
               {formatCurrency(event.epsActual)}
             </span>
-            {event.epsEstimate != null && (
-              <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
-                {' vs '}{formatCurrency(event.epsEstimate)}
+            {surprise != null && (
+              <span style={{ color: surprise >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: 10 }}>
+                {surprise >= 0 ? '+' : ''}{surprise.toFixed(1)}%
               </span>
             )}
           </div>
-          {surprise != null && (
-            <div style={{
-              fontSize: 10, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: surprise >= 0 ? '#22c55e' : '#ef4444',
-            }}>
-              {surprise >= 0 ? '+' : ''}{surprise.toFixed(1)}%
-              {surprise >= 0 ? ' ▲' : ' ▼'}
-            </div>
-          )}
-          {event.revenueActual != null && (
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
-              Rev {formatRevenue(event.revenueActual)}
-            </div>
-          )}
+        </div>
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 24, background: '#334155', flexShrink: 0 }} />
+
+        {/* Surprise */}
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 2 }}>Surprise</div>
+          <div style={{ color: surprise != null ? (surprise > 0 ? '#22c55e' : '#ef4444') : 'var(--text-muted)', fontWeight: 600 }}>
+            {surprise != null ? `${surprise > 0 ? '▲' : '▼'} ${Math.abs(surprise).toFixed(1)}%` : '—'}
+          </div>
         </div>
       </div>
+
+      {/* Revenue (if available) */}
+      {(event.revenueEstimate != null || event.revenueActual != null) && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(51,65,85,0.4)', fontSize: 10, display: 'flex', gap: 8 }}>
+          {event.revenueEstimate != null && (
+            <span style={{ color: 'var(--text-muted)' }}>Rev est: <strong style={{ color: '#94a3b8' }}>${(event.revenueEstimate / 1e9).toFixed(2)}B</strong></span>
+          )}
+          {event.revenueActual != null && (
+            <span style={{ color: 'var(--text-muted)' }}>Rev actual: <strong style={{ color: '#94a3b8' }}>${(event.revenueActual / 1e9).toFixed(2)}B</strong></span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
