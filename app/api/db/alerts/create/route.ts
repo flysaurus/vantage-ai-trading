@@ -40,18 +40,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Cannot create alerts for other users' }, { status: 403 });
     }
 
-    const { data, error } = await (supabase as any)
+    // Try insert with notification_channels, fall back without if column doesn't exist
+    const insertPayload: Record<string, any> = {
+      user_id: userId,
+      symbol: symbol.trim().toUpperCase(),
+      alert_type: alertType,
+      target_value: targetValue,
+      is_active: true,
+    };
+    if (channels && channels.length > 1) {
+      insertPayload.notification_channels = channels;
+    }
+
+    let { data, error } = await (supabase as any)
       .from('alerts')
-      .insert({
-        user_id: userId,
-        symbol: symbol.trim().toUpperCase(),
-        alert_type: alertType,
-        target_value: targetValue,
-        is_active: true,
-        notification_channels: channels,
-      })
-      .select('id, symbol, alert_type, target_value, is_active, notification_channels, triggered_at, created_at')
+      .insert(insertPayload)
+      .select('id, symbol, alert_type, target_value, is_active, triggered_at, created_at')
       .single();
+
+    // If column doesn't exist, retry without notification_channels
+    if (error && error.message?.includes('notification_channels')) {
+      console.warn('[alerts/create] notification_channels column not found, retrying without');
+      const retry = await (supabase as any)
+        .from('alerts')
+        .insert({
+          user_id: userId,
+          symbol: symbol.trim().toUpperCase(),
+          alert_type: alertType,
+          target_value: targetValue,
+          is_active: true,
+        })
+        .select('id, symbol, alert_type, target_value, is_active, triggered_at, created_at')
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       console.error('[alerts/create] Insert failed:', error.message);
