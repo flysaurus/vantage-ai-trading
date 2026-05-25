@@ -328,9 +328,10 @@ export async function requireAuth(
   const token = authHeader.slice(7);
 
   try {
-    // Verify the token with Supabase — use server client
-    // since API routes run server-side
-    const supabase = createServerClient();
+    // Verify the token with Supabase — use anon key client for auth
+    // (service_role bypasses JWT verification; anon key validates properly)
+    const { createAuthClient } = await import('@/lib/supabase');
+    const supabase = createAuthClient();
     const { data, error } = await supabase.auth.getUser(token);
 
     if (error || !data.user) {

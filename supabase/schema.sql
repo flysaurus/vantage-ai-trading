@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS investor_style TEXT DEFAULT 'buffett';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS investor_style_set_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS investor_style_onboarded BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 DO $$
 BEGIN
@@ -274,6 +275,10 @@ CREATE POLICY "users_insert_own" ON users
   FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "users_update_own" ON users
   FOR UPDATE USING (auth.uid() = id);
+-- Soft-delete only: users can't truly delete, just mark deleted_at
+CREATE POLICY "users_soft_delete_own" ON users
+  FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 -- Vault (restricted — no direct SELECT/INSERT/UPDATE from client)
 CREATE POLICY "vault_no_direct_access" ON vault

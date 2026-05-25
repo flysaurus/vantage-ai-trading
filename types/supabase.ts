@@ -17,6 +17,7 @@ export interface Database {
           investor_style: 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger';
           investor_style_set_at: string | null;
           investor_style_onboarded: boolean;
+          deleted_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -28,6 +29,7 @@ export interface Database {
           investor_style?: 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger';
           investor_style_set_at?: string | null;
           investor_style_onboarded?: boolean;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -39,6 +41,7 @@ export interface Database {
           investor_style?: 'buffett' | 'lynch' | 'livermore' | 'soros' | 'munger';
           investor_style_set_at?: string | null;
           investor_style_onboarded?: boolean;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -318,6 +321,9 @@ export interface Database {
         };
       };
     };
+    Views: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
     Functions: {
       vault_store_keys: {
         Args: {

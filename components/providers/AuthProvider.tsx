@@ -159,6 +159,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(result.user);
     setSession(result.session);
     storeUser(result.user);
+
+    // Ensure user row exists in DB (create if missing)
+    if (result.user?.id) {
+      import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
+        getUserProfile(result.user!.id).then((existing) => {
+          if (!existing && result.user?.email) {
+            createUser({
+              email: result.user.email,
+              displayName: result.user.displayName,
+            });
+          }
+        });
+      });
+    }
   }, []);
 
   const signUp = useCallback(
@@ -170,6 +184,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(result.user);
       setSession(result.session);
       storeUser(result.user);
+
+      // Create user row in DB
+      if (result.user?.id) {
+        import('@/lib/supabase/user').then(({ createUser }) => {
+          createUser({
+            email: result.user!.email,
+            displayName: result.user!.displayName,
+          });
+        });
+      }
     },
     []
   );

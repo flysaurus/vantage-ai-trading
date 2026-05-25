@@ -38,6 +38,36 @@ export function createClient(): SupabaseClient<Database> {
   );
 }
 
+// ─── Server Auth Verification Client ────────────────────────
+// Uses the ANON key (not service_role) to verify user JWTs.
+// This is the correct key for auth.getUser(token) calls.
+
+let _authClient: SupabaseClient<Database> | null = null;
+
+export function createAuthClient(): SupabaseClient<Database> {
+  if (typeof window !== 'undefined') {
+    throw new Error('createAuthClient() must only be called server-side.');
+  }
+
+  if (_authClient) return _authClient;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    throw new Error('Missing Supabase environment variables.');
+  }
+
+  _authClient = createSupabaseClient<Database>(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  return _authClient;
+}
+
 // ─── Server Client ───────────────────────────────────────────
 // Uses service_role key. ONLY for server-side: API routes,
 // server components, RPC calls, vault operations.
