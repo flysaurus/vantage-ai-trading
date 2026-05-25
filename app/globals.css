@@ -20,6 +20,7 @@
   --accent-purple: #8b5cf6;
   --accent-orange: #f59e0b;
   --accent-pink: #ec4899;
+  --sidebar-width: 220px;
 }
 
 /* ─── Base ─── */
@@ -30,7 +31,6 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
   background: var(--bg-deep); 
   color: var(--text-primary);
-  overflow: hidden;
 }
 
 /* ─── App Shell (mobile-first) ─── */
@@ -38,13 +38,13 @@ html, body {
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  max-width: 430px;
-  margin: 0 auto;
+  max-width: 100%;
+  margin: 0;
   background: var(--bg-primary);
   position: relative;
 }
 
-/* ─── iOS Safari: reserve space for browser URL bar at bottom ─── */
+/* iOS Safari: reserve space for browser URL bar at bottom */
 @supports (-webkit-touch-callout: none) {
   .app-shell {
     height: calc(100dvh - 44px);
@@ -152,11 +152,12 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  min-height: 0; /* flex child scroll fix */
 }
 .content-area::-webkit-scrollbar { width: 4px; }
 .content-area::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
 
-/* ─── Bottom Nav ─── */
+/* ─── Bottom Nav (mobile) ─── */
 .bottom-nav {
   height: 60px;
   background: var(--bg-secondary);
@@ -168,7 +169,6 @@ html, body {
   padding-bottom: env(safe-area-inset-bottom, 8px);
 }
 
-/* iOS Safari — extra padding for browser URL bar at bottom */
 @supports (-webkit-touch-callout: none) {
   .bottom-nav {
     padding-bottom: max(env(safe-area-inset-bottom, 8px), 16px);
@@ -187,6 +187,9 @@ html, body {
   transition: color 0.2s;
   flex: 1;
   padding: 4px 0;
+  background: none;
+  border: none;
+  font-family: inherit;
 }
 .nav-item.active { color: var(--accent-cyan); }
 .nav-icon { font-size: 20px; line-height: 1; }
@@ -201,6 +204,71 @@ html, body {
   border-radius: 8px;
   font-weight: 700;
   line-height: 1.3;
+}
+
+/* ─── Desktop Sidebar ─── */
+.desktop-sidebar {
+  display: none; /* hidden on mobile */
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  padding: 20px 20px 16px;
+  font-weight: 800;
+  font-size: 20px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-teal));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  text-align: left;
+}
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+.sidebar-item.active {
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--accent-cyan);
+}
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-version {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 /* ─── Utility ─── */
@@ -269,18 +337,112 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
-/* ─── Desktop: center the phone frame ─── */
+/* ═══════════════════════════════════════════════════════════════
+   Tablet (768px+)
+   Wider layout, still BottomNav. Centered content.
+   ═══════════════════════════════════════════════════════════════ */
 @media (min-width: 768px) {
-  body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
   .app-shell {
-    border-radius: 24px;
-    border: 8px solid #1a1a1a;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    height: min(852px, 95dvh);
-    max-height: 852px;
+    max-width: 720px;
+    margin: 0 auto;
+    border-left: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .app-header {
+    padding: 12px 24px;
+  }
+
+  .indexes-bar {
+    padding: 8px 24px;
+    gap: 12px;
+  }
+
+  .watchlist-bar {
+    padding: 8px 24px;
+    gap: 12px;
+  }
+
+  .content-area {
+    padding: 16px 24px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Desktop (1024px+)
+   Sidebar replaces BottomNav. Full-width content.
+   ═══════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  body {
+    overflow: hidden;
+  }
+
+  .app-shell {
+    max-width: 100%;
+    margin: 0;
+    flex-direction: row;
+    border: none;
+  }
+
+  .desktop-sidebar {
+    display: flex;
+  }
+
+  /* Header only applies to the right panel on desktop */
+  .app-shell > .app-header {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  /* Wrap main content area */
+  .main-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+
+  .content-area {
+    padding: 24px 32px;
+  }
+
+  .indexes-bar {
+    padding: 10px 32px;
+    gap: 16px;
+  }
+
+  .watchlist-bar {
+    padding: 10px 32px;
+    gap: 16px;
+  }
+
+  .app-header {
+    padding: 12px 32px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Wide Desktop (1400px+)
+   Even more breathing room, potential multi-column.
+   ═══════════════════════════════════════════════════════════════ */
+@media (min-width: 1400px) {
+  .content-area {
+    padding: 24px 48px;
+  }
+
+  .indexes-bar {
+    padding: 10px 48px;
+  }
+
+  .watchlist-bar {
+    padding: 10px 48px;
+  }
+
+  .app-header {
+    padding: 12px 48px;
   }
 }
