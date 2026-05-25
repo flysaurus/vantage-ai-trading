@@ -44,6 +44,13 @@ html, body {
   position: relative;
 }
 
+/* ─── iOS Safari: reserve space for browser URL bar at bottom ─── */
+@supports (-webkit-touch-callout: none) {
+  .app-shell {
+    height: calc(100dvh - 44px);
+  }
+}
+
 /* ─── Header ─── */
 .app-header {
   padding: 10px 16px;
@@ -158,7 +165,14 @@ html, body {
   justify-content: space-around;
   align-items: center;
   flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 8px);
+}
+
+/* iOS Safari — extra padding for browser URL bar at bottom */
+@supports (-webkit-touch-callout: none) {
+  .bottom-nav {
+    padding-bottom: max(env(safe-area-inset-bottom, 8px), 16px);
+  }
 }
 
 .nav-item {

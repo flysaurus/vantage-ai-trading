@@ -85,8 +85,10 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
           borderRadius: 14,
           maxWidth: 480,
           width: '100%',
-          maxHeight: '90vh',
-          overflow: 'hidden',
+          maxHeight: '90dvh',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {step === 'welcome' && (
