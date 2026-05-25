@@ -12,7 +12,7 @@ import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { OrdersTab } from '@/components/orders/OrdersTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import { BrokerProvider } from '@/components/providers/BrokerProvider';
-import { AuthProvider, useAuth } from '@/components/providers/AuthProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { getUser, storeUser } from '@/lib/auth';
 import { useTabStore } from '@/store';
@@ -107,9 +107,5 @@ function AppShell() {
 }
 
 export default function Home() {
-  return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
-  );
+  return <AppShell />;
 }
