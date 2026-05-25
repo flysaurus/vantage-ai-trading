@@ -417,6 +417,7 @@ export async function POST(request: NextRequest) {
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Model-Used': usedModel,
+        'X-Chat-Source': 'live',
       },
     });
   } catch (error) {
@@ -464,7 +465,8 @@ async function handleFallback(request: NextRequest): Promise<NextResponse> {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
-      'X-Model-Used': 'unconfigured',
+      'X-Model-Used': 'fallback',
+      'X-Chat-Source': 'fallback',
     },
   });
 }

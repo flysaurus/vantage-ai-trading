@@ -233,8 +233,14 @@ export async function streamChat(
       body: JSON.stringify({ messages, context }),
     });
 
+    // Diagnostic: check response headers
+    const chatSource = res.headers.get('X-Chat-Source') || 'unknown';
+    const modelUsed = res.headers.get('X-Model-Used') || 'unknown';
+    console.log(`[VantageChat] Source: ${chatSource} | Model: ${modelUsed} | HTTP: ${res.status}`);
+
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({ error: 'Unknown error' }));
+      console.error('[VantageChat] Non-OK response:', errBody);
       callbacks.onError(errBody.error || `API error (${res.status})`);
       return;
     }
@@ -250,6 +256,7 @@ export async function streamChat(
     let tokensUsed = { input: 0, output: 0 };
     let totalCost = 0;
     const cards: AICardComponent[] = [];
+    let firstTokenLogged = false;
 
     let buffer = '';
 
@@ -274,6 +281,10 @@ export async function streamChat(
 
             switch (parsed.event) {
               case 'token': {
+                if (!firstTokenLogged) {
+                  console.log(`[VantageChat] First token: "${parsed.content.slice(0, 40)}"`);
+                  firstTokenLogged = true;
+                }
                 fullText += parsed.content;
                 callbacks.onToken(parsed.content);
                 break;
