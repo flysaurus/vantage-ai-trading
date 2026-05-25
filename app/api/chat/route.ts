@@ -209,10 +209,22 @@ function sendSSE(
  * Strip lone surrogates and other invalid Unicode from strings.
  * Prevents DeepSeek 400: "lone leading surrogate in hex escape" errors
  * caused by corrupted data in stored chat history.
+ *
+ * Uses hex integer comparison (0xD800=55296, 0xDFFF=57343) to avoid storing
+ * lone surrogate codepoints in the source file — they are invalid in UTF-8
+ * and cause file corruption on disk.
  */
 function sanitizeUnicode(str: string): string {
-  // Replace lone surrogates (invalid UTF-16) with replacement character
-  return str.replace(/[�-�]/g, '�');
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code >= 0xD800 && code <= 0xDFFF) {
+      result += String.fromCharCode(0xFFFD);
+    } else {
+      result += str[i];
+    }
+  }
+  return result;
 }
 
 export async function POST(request: NextRequest) {
