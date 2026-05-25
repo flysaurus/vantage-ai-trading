@@ -5,13 +5,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, UserPlus, Mail, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-react';
 import { signIn as doSignIn, signUp as doSignUp, storeSession, storeUser, resendConfirmation } from '@/lib/auth';
 
 export default function LoginPage() {
-  const router = useRouter();
-
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,7 +54,7 @@ export default function LoginPage() {
             createUser({ email: result.user.email, displayName: result.user.displayName, token: result.session!.token });
           });
           console.log('[login] Sign-up success, navigating to /');
-          router.push('/');
+          window.location.href = '/';
         } else {
           console.log('[login] Starting sign-in for', email.trim());
           const result = await doSignIn(email.trim(), password);
@@ -68,7 +65,7 @@ export default function LoginPage() {
             createUser({ email: result.user.email, displayName: result.user.displayName, token: result.session.token });
           });
           console.log('[login] Sign-in success, navigating to /');
-          router.push('/');
+          window.location.href = '/';
         }
       } catch (err: any) {
         console.error('[login] Auth error:', err);
@@ -93,7 +90,7 @@ export default function LoginPage() {
         setSubmitting(false);
       }
     },
-    [email, password, displayName, mode, router]
+    [email, password, displayName, mode]
   );
 
   // ─── Resend ──────────────────────────────────────────────────
