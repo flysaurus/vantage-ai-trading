@@ -168,6 +168,22 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
 
 CREATE INDEX idx_snapshots_user ON account_snapshots(user_id, snapshot_at DESC);
 
+-- ── Metrics (portfolio snapshots for historical charts) ──────
+CREATE TABLE IF NOT EXISTS metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  total_value NUMERIC(15,2),
+  total_gain NUMERIC(15,2),
+  total_return NUMERIC(10,4),
+  portfolio_yield NUMERIC(10,4),
+  avg_pe NUMERIC(10,2),
+  concentration_risk NUMERIC(5,2),
+  recorded_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_metrics_user ON metrics(user_id, recorded_at DESC);
+
 -- ── Watchlists ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS watchlists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -333,6 +349,7 @@ ALTER TABLE account_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watchlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_analysis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE strategies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE metrics ENABLE ROW LEVEL SECURITY;
 
 -- Users
 CREATE POLICY "users_read_own" ON users
@@ -412,6 +429,20 @@ CREATE POLICY "strategies_insert_own" ON strategies
 CREATE POLICY "strategies_update_own" ON strategies
   FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "strategies_delete_own" ON strategies
+-- Metrics
+CREATE POLICY "metrics_read_own" ON metrics
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "metrics_insert_own" ON metrics
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "metrics_delete_own" ON metrics
+  FOR DELETE USING (auth.uid() = user_id);
+  FOR DELETE USING (auth.uid() = user_id);
+-- Metrics
+CREATE POLICY "metrics_read_own" ON metrics
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "metrics_insert_own" ON metrics
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "metrics_delete_own" ON metrics
   FOR DELETE USING (auth.uid() = user_id);
 
 -- Market Cache (public read, server-only write)

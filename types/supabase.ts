@@ -272,6 +272,33 @@ export interface Database {
           updated_at?: string;
         };
       };
+      metrics: {
+        Row: {
+          id: string;
+          user_id: string;
+          total_value: number;
+          total_gain: number;
+          total_return: number;
+          portfolio_yield: number;
+          avg_pe: number;
+          concentration_risk: number;
+          recorded_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          total_value: number;
+          total_gain: number;
+          total_return: number;
+          portfolio_yield?: number;
+          avg_pe?: number;
+          concentration_risk?: number;
+          recorded_at?: string;
+          created_at?: string;
+        };
+        Update: Record<string, unknown>;
+      };
       strategies: {
         Row: {
           id: string;
