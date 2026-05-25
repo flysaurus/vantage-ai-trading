@@ -79,10 +79,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         getUserProfile(storedUser.id).then((profile) => {
           if (!mounted) return;
           if (!profile) {
-            // No DB row yet — create it now (sign-up through login page can skip this)
+            // No DB row yet — create it now (pass stored session token to avoid sessionStorage dependency)
             createUser({
               email: storedUser.email,
               displayName: storedUser.displayName,
+              token: stored.token,
             }).then((created) => {
               if (!mounted || !created) return;
               // Created — keep existing user data as-is
@@ -148,10 +149,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             getUserProfile(u.id).then((profile) => {
               if (!mounted) return;
               if (!profile) {
-                // No DB row yet — create it
+                // No DB row yet — create it using stored session token
                 createUser({
                   email: u.email,
                   displayName: u.displayName,
+                  token: stored.token,
                 }).then((created) => {
                   if (!mounted || !created) return;
                   // Created — keep existing user data as-is
@@ -225,13 +227,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storeUser(result.user);
 
     // Ensure user row exists in DB (create if missing)
-    if (result.user?.id) {
+    if (result.user?.id && result.session) {
+      const { token } = result.session; // narrow for TS
       import('@/lib/supabase/user').then(({ getUserProfile, createUser }) => {
         getUserProfile(result.user!.id).then((existing) => {
           if (!existing && result.user?.email) {
+            console.log('👉 [AuthProvider] Creating public.users row with in-memory token');
             createUser({
               email: result.user.email,
               displayName: result.user.displayName,
+              token, // pass token directly, don't rely on sessionStorage
             });
           }
         });
@@ -250,11 +255,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       storeUser(result.user);
 
       // Create user row in DB
-      if (result.user?.id) {
+      if (result.user?.id && result.session) {
+        const { token } = result.session; // narrow for TS
         import('@/lib/supabase/user').then(({ createUser }) => {
+          console.log('👉 [AuthProvider] signUp: Creating public.users row with in-memory token');
           createUser({
             email: result.user!.email,
             displayName: result.user!.displayName,
+            token,
           });
         });
       }

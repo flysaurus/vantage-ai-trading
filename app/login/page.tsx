@@ -50,11 +50,27 @@ export default function LoginPage() {
           }
           storeSession(result.session!);
           storeUser(result.user);
+          // Fire-and-forget: ensure public.users row exists (with in-memory token)
+          import('@/lib/supabase/user').then(({ createUser }) => {
+            createUser({
+              email: result.user.email,
+              displayName: result.user.displayName,
+              token: result.session!.token,
+            });
+          });
           router.push('/');
         } else {
           const result = await doSignIn(email.trim(), password);
           storeSession(result.session);
           storeUser(result.user);
+          // Fire-and-forget: ensure public.users row exists (with in-memory token)
+          import('@/lib/supabase/user').then(({ createUser }) => {
+            createUser({
+              email: result.user.email,
+              displayName: result.user.displayName,
+              token: result.session.token,
+            });
+          });
           router.push('/');
         }
       } catch (err: any) {

@@ -116,11 +116,24 @@ export async function createUser(params: {
   email: string;
   displayName?: string;
   avatarUrl?: string;
+  token?: string; // optional override — pass in-memory token to avoid sessionStorage dependency
 }): Promise<{ id: string } | null> {
   try {
-    const res = await apiFetch(`${API_BASE}/create`, {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (params.token) {
+      headers['Authorization'] = `Bearer ${params.token}`;
+    } else {
+      const session = getSession();
+      if (session?.token) headers['Authorization'] = `Bearer ${session.token}`;
+    }
+    const res = await fetch(`${API_BASE}/create`, {
       method: 'POST',
-      body: JSON.stringify(params),
+      headers,
+      body: JSON.stringify({
+        email: params.email,
+        displayName: params.displayName,
+        avatarUrl: params.avatarUrl,
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

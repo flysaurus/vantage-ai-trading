@@ -5,7 +5,6 @@
 // NEVER expose SUPABASE_SERVICE_ROLE_KEY to the browser.
 // NEVER import createServerClient in client components.
 
-import { createBrowserClient } from '@supabase/ssr';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
@@ -22,14 +21,15 @@ export function createClient(): SupabaseClient<Database> {
     );
   }
 
-  return createBrowserClient<Database>(
+  // Use plain @supabase/supabase-js in browser (no SSR cookie handling).
+  // Vantage manages tokens manually via sessionStorage, NOT cookies.
+  // This avoids iOS Safari issues with @supabase/ssr cookie adapters.
+  return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
         storageKey: 'vantage-auth-token',
-        // Use sessionStorage for token storage (cleared on tab close)
-        // We manage tokens manually — Supabase's built-in cookie storage is disabled
         autoRefreshToken: false,
         persistSession: false,
         detectSessionInUrl: false,
