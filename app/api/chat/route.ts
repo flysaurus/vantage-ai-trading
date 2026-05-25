@@ -308,8 +308,9 @@ export async function POST(request: NextRequest) {
         throw new Error('DeepSeek unreachable');
       }
     } catch (err) {
-      console.error('AI provider error:', err);
-      return handleFallback(request);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('AI provider error:', errorMsg);
+      return handleFallback(request, errorMsg);
     }
 
     // Build SSE stream
@@ -418,7 +419,7 @@ export async function POST(request: NextRequest) {
         Connection: 'keep-alive',
         'X-Model-Used': usedModel,
         'X-Chat-Source': 'live',
-        'Access-Control-Expose-Headers': 'X-Chat-Source, X-Model-Used',
+        'Access-Control-Expose-Headers': 'X-Chat-Source, X-Model-Used, X-Chat-Error',
       },
     });
   } catch (error) {
@@ -431,14 +432,14 @@ export async function POST(request: NextRequest) {
  * Graceful fallback when AI provider is not configured.
  * Returns a single honest message — no fake data, no pretending.
  */
-async function handleFallback(request: NextRequest): Promise<NextResponse> {
+async function handleFallback(request: NextRequest, errorDetail?: string): Promise<NextResponse> {
   const deepseekSet = !!process.env.DEEPSEEK_API_KEY;
   
   let responseText: string;
   if (!deepseekSet) {
     responseText = 'AI is not configured. Add a DeepSeek API key to enable portfolio analysis, trade signals, and market insights.\n\nYou can still view your portfolio, monitor trades, and place orders — AI-powered analysis will be available once configured.';
   } else {
-    responseText = 'AI service temporarily unavailable. DeepSeek is currently unreachable. This might be a temporary network issue — try again in a moment.\n\nYour portfolio, trades, and orders are unaffected.';
+    responseText = 'DeepSeek is currently unreachable. This might be a temporary network issue — try again in a moment.\n\nYour portfolio, trades, and orders are unaffected.';
   }
 
   const encoder = new TextEncoder();
@@ -468,7 +469,8 @@ async function handleFallback(request: NextRequest): Promise<NextResponse> {
       Connection: 'keep-alive',
       'X-Model-Used': 'fallback',
       'X-Chat-Source': 'fallback',
-      'Access-Control-Expose-Headers': 'X-Chat-Source, X-Model-Used',
+      'X-Chat-Error': errorDetail || 'unknown',
+      'Access-Control-Expose-Headers': 'X-Chat-Source, X-Model-Used, X-Chat-Error',
     },
   });
 }

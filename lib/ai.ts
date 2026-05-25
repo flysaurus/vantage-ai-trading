@@ -236,7 +236,8 @@ export async function streamChat(
     // Diagnostic: check response headers
     const chatSource = res.headers.get('X-Chat-Source') || 'unknown';
     const modelUsed = res.headers.get('X-Model-Used') || 'unknown';
-    console.log(`[VantageChat] Source: ${chatSource} | Model: ${modelUsed} | HTTP: ${res.status}`);
+    const chatError = res.headers.get('X-Chat-Error') || '';
+    console.log(`[VantageChat] Source: ${chatSource} | Model: ${modelUsed} | HTTP: ${res.status}${chatError ? ` | Error: ${chatError}` : ''}`);
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({ error: 'Unknown error' }));
