@@ -221,3 +221,20 @@ export interface VantageSession {
   expiresAt: number; // Unix timestamp in seconds
   userId: string;
 }
+
+// ─── Earnings ────────────────────────────────────────────────
+export interface EarningsEvent {
+  symbol: string;
+  name?: string;
+  date: string;         // YYYY-MM-DD
+  hour: 'bmo' | 'amc' | 'unknown';
+  year: number;
+  quarter: number;
+  epsEstimate: number | null;
+  epsActual: number | null;
+  revenueEstimate: number | null;
+  revenueActual: number | null;
+  reportDate: string | null;
+  beat: boolean | null;
+  source: string;
+}

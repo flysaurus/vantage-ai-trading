@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -9,7 +9,7 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, RefreshCcw,
   Search, X, ExternalLink, FileText,
 } from 'lucide-react';
-import type { EarningsEvent } from '@/app/api/earnings/route';
+import type { EarningsEvent } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -46,8 +46,66 @@ function marketBeatUrl(symbol: string): string {
   return `https://www.marketbeat.com/stocks/NASDAQ/${symbol}/earnings/`;
 }
 
+// ─── Error Boundary ──────────────────────────────────────────
+class EarningsErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; errorMsg: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMsg: error.message || String(error) };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[EarningsCalendar] Crash:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          height: '100dvh', overflowY: 'auto', padding: '40px 20px 120px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            textAlign: 'center', padding: '32px 24px', borderRadius: 12,
+            background: '#1e293b', border: '1px solid #334155', maxWidth: 380,
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#ef4444' }}>
+              Something went wrong
+            </div>
+            <div style={{
+              fontSize: 11, color: 'var(--text-muted)', marginBottom: 16,
+              padding: '8px 12px', background: '#0f172a', borderRadius: 6,
+              fontFamily: 'monospace', wordBreak: 'break-all',
+            }}>
+              {this.state.errorMsg}
+            </div>
+            <button
+              onClick={() => this.setState({ hasError: false, errorMsg: '' })}
+              style={{
+                padding: '8px 20px', borderRadius: 8, border: 'none',
+                background: '#06b6d4', color: '#0f172a', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────
-export default function EarningsCalendarPage() {
+function EarningsCalendarPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { account } = usePortfolio();
   const router = useRouter();
@@ -666,5 +724,14 @@ function EarningsRow({ event }: { event: EarningsEvent }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Default export wrapped in error boundary ────────────────
+export default function EarningsCalendarPageWrapper() {
+  return (
+    <EarningsErrorBoundary>
+      <EarningsCalendarPage />
+    </EarningsErrorBoundary>
   );
 }

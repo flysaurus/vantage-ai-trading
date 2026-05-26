@@ -6,6 +6,7 @@
 // GET /api/earnings?status=beat — filter by result status
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { EarningsEvent } from '@/types';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
@@ -77,22 +78,6 @@ function isUSStock(symbol: string): boolean {
     }
   }
   return false;
-}
-
-export interface EarningsEvent {
-  symbol: string;
-  name?: string;
-  date: string;         // YYYY-MM-DD
-  hour: 'bmo' | 'amc' | 'unknown';
-  year: number;
-  quarter: number;
-  epsEstimate: number | null;
-  epsActual: number | null;
-  revenueEstimate: number | null;
-  revenueActual: number | null;
-  reportDate: string | null;   // actual report filing date
-  beat: boolean | null;        // true=beat, false=miss, null=no estimate
-  source: string;              // data source
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
