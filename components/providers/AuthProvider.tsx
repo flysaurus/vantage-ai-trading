@@ -95,8 +95,27 @@ async function syncUserProfile(u: User, token: string, setUser: (u: User) => voi
     const profile = await getUserProfile(u.id);
     if (!mounted()) { setSynced(true); return; }
     if (!profile) {
-      // No DB row yet — create it
-      await createUser({ email: u.email, displayName: u.displayName, token }).catch(() => {});
+      // No DB row yet — create it, but if create fails user still has valid profile
+      const created = await createUser({ email: u.email, displayName: u.displayName, token }).catch(() => null);
+      if (created) {
+        // New user created, no DB profile to merge
+        setSynced(true);
+        return;
+      }
+      // Create failed (likely already exists) — retry fetch once
+      const retryProfile = await getUserProfile(u.id).catch(() => null);
+      if (retryProfile) {
+        // Merge the retried profile
+        const m: User = {
+          ...u,
+          investorStyle: (retryProfile.investorStyle || u.investorStyle) as InvestorStyle,
+          investorStyleOnboarded: retryProfile.investorStyleOnboarded ?? u.investorStyleOnboarded,
+        };
+        setUser(m);
+        storeUser(m);
+        if (m.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+        if (m.investorStyle) localStorage.setItem('vantage:investorStyle', m.investorStyle);
+      }
       setSynced(true);
       return;
     }
@@ -224,7 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     resetInactivity();
 
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
     events.forEach(e => window.addEventListener(e, resetInactivity, { passive: true }));
 
     return () => {
