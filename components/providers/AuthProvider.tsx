@@ -210,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = supabaseRef.current;
     mountedRef.current = true;
 
-    // Get initial session (Supabase SDK reads from localStorage automatically)
+    // Get initial session (Supabase SDK reads from sessionStorage automatically)
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       if (!mountedRef.current) return;
       if (s) {

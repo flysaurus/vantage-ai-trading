@@ -1,6 +1,6 @@
 // ─── Supabase Client Setup ────────────────────────────────────
 // Supabase SDK manages session lifecycle: persistSession stores in
-// localStorage, autoRefreshToken handles refresh before expiry.
+// sessionStorage, autoRefreshToken handles refresh before expiry.
 // AuthProvider syncs a parallel copy (vantage-session) for sync accessors.
 //
 // NEVER expose SUPABASE_SERVICE_ROLE_KEY to the browser.
@@ -12,7 +12,42 @@ import type { Database } from '@/types/supabase';
 
 // ─── Browser Client ──────────────────────────────────────────
 // Uses NEXT_PUBLIC anon key. Safe to use everywhere.
-// Session tokens are sent via Authorization header, NOT cookies.
+// Session stored in sessionStorage — survives page refreshes but
+// is cleared when the browser/tab is closed. No auto-login across
+// browser sessions. 10-min inactivity timer handles idle logout.
+
+/** Custom sessionStorage adapter for Supabase SDK. */
+function sessionStorageAdapter(): Storage {
+  if (typeof window === 'undefined') {
+    // SSR fallback — never actually used because createClient()
+    // throws during SSR, but needed to satisfy the type
+    return {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      clear: () => {},
+      get length() { return 0; },
+      key: () => null,
+    };
+  }
+  return {
+    getItem: (key: string) => sessionStorage.getItem(key),
+    setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
+    removeItem: (key: string) => sessionStorage.removeItem(key),
+    clear: () => {
+      // Only clear Vantage keys, not all sessionStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k?.startsWith('vantage')) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    },
+    get length() { return sessionStorage.length; },
+    key: (index: number) => sessionStorage.key(index),
+  };
+}
 
 export function createClient(): SupabaseClient<Database> {
   if (typeof window === 'undefined') {
@@ -31,6 +66,7 @@ export function createClient(): SupabaseClient<Database> {
     {
       auth: {
         storageKey: 'vantage-auth-token',
+        storage: sessionStorageAdapter(),
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,

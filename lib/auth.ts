@@ -2,7 +2,7 @@
 // Session lifecycle managed by Supabase SDK (autoRefreshToken, persistSession).
 // This file provides: sync token accessors, user profile cache, and API middleware.
 //
-// getSession() reads a parallel localStorage copy synced by AuthProvider.
+// getSession() reads a parallel sessionStorage copy synced by AuthProvider.
 // Supabase SDK handles actual login/refresh/logout via onAuthStateChange.
 
 import { createAuthClient } from './supabase';
@@ -16,7 +16,7 @@ const USER_KEY = 'vantage-user';
 export function getSession(): VantageSession | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
+    const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const session: VantageSession = JSON.parse(raw);
     if (session.expiresAt && session.expiresAt < Math.floor(Date.now() / 1000)) {
@@ -33,7 +33,7 @@ export function getSession(): VantageSession | null {
 export function storeSession(session: VantageSession): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   } catch {
     // Storage full or disabled — non-critical
   }
@@ -42,7 +42,7 @@ export function storeSession(session: VantageSession): void {
 export function clearSession(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
   } catch {
     // Ignore
   }
