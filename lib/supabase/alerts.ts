@@ -30,7 +30,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   if (session?.token) {
     headers['Authorization'] = `Bearer ${session.token}`;
   }
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, cache: 'no-store' });
 }
 
 /**

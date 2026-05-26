@@ -5,11 +5,10 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { getWatchlists } from '@/lib/supabase/watchlists';
 import { getAlerts } from '@/lib/supabase/alerts';
-import type { InvestorStyle } from '@/types';
 import { 
   Star, Bell, Newspaper, CalendarDays, Search, 
   History, Target, CreditCard, Plug, Settings2, HelpCircle,
-  ChevronRight, Building2, CircleDot, Plus, Check
+  ChevronRight, Building2, CircleDot, Plus, Check, TrendingUp
 } from 'lucide-react';
 import type { BrokerId } from '@/types/broker';
 
@@ -17,11 +16,16 @@ interface SettingsItemProps {
   icon: typeof Star;
   title: string;
   subtitle: string;
-  badge?: number;
+  badge?: number | string;
+  badgeColor?: string;
   onClick?: () => void;
 }
 
-function SettingsItem({ icon: Icon, title, subtitle, badge, onClick }: SettingsItemProps) {
+function capitalizeStyle(style: string): string {
+  return style.charAt(0).toUpperCase() + style.slice(1);
+}
+
+function SettingsItem({ icon: Icon, title, subtitle, badge, badgeColor, onClick }: SettingsItemProps) {
   return (
     <div
       onClick={onClick}
@@ -41,8 +45,8 @@ function SettingsItem({ icon: Icon, title, subtitle, badge, onClick }: SettingsI
         <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>
       </div>
-      {badge ? (
-        <span style={{ background: '#ef4444', color: 'white', fontSize: 9, padding: '2px 6px', borderRadius: 8, fontWeight: 700 }}>
+      {badge !== undefined && badge !== '' ? (
+        <span style={{ background: badgeColor || '#ef4444', color: 'white', fontSize: 9, padding: '2px 6px', borderRadius: 8, fontWeight: 700 }}>
           {badge}
         </span>
       ) : null}
@@ -72,16 +76,15 @@ export function SettingsTab() {
   const router = useRouter();
   const { account } = usePortfolio();
   const [showBrokers, setShowBrokers] = useState(false);
-  const [investorStyle, setInvestorStyle] = useState<InvestorStyle>(
-    user?.investorStyle || 'buffett'
-  );
+
   // Toast notification for items not yet built
   const [toast, setToast] = useState<string | null>(null);
 
   // Real counts from DB
   const [watchlistCount, setWatchlistCount] = useState(0);
   const [watchlistSymbolCount, setWatchlistSymbolCount] = useState(0);
-  const [alertCount, setAlertCount] = useState(0);
+  const [activeAlertCount, setActiveAlertCount] = useState(0);
+  const [triggeredAlertCount, setTriggeredAlertCount] = useState(0);
 
   const connectedBroker = BROKERS.find(b => b.status === 'connected');
 
@@ -97,8 +100,9 @@ export function SettingsTab() {
       setWatchlistCount(wls.length);
       setWatchlistSymbolCount(wls.reduce((sum, w) => sum + (w.stocks?.length || 0), 0));
     }).catch(() => {});
-    getAlerts(user.id).then(alerts => {
-      setAlertCount(alerts.length);
+    getAlerts(user.id, true).then(alerts => {
+      setActiveAlertCount(alerts.length);
+      setTriggeredAlertCount(alerts.filter(a => a.triggeredAt).length);
     }).catch(() => {});
   }, [user]);
 
@@ -106,18 +110,16 @@ export function SettingsTab() {
 
   return (
     <div style={{ padding: '12px 16px 120px' }}>
-      {/* Investor Style — top-level global account setting */}
-      <div className="section">
+      {/* Portfolio & Research */}
+      <div className="section" style={{ marginTop: 0 }}>
         <SettingsItem
-          icon={Star}
+          icon={TrendingUp}
           title="Investor Style"
-          subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap for details`}
+          subtitle={user?.investorStyle ? `${capitalizeStyle(user.investorStyle)} · Tap to change` : 'Tap to set your style'}
+          badge={user?.investorStyle ? capitalizeStyle(user.investorStyle) : undefined}
+          badgeColor="#06b6d4"
           onClick={() => router.push('/investor-style')}
         />
-      </div>
-
-      {/* Portfolio & Research */}
-      <div className="section" style={{ marginTop: 12 }}>
         <SettingsItem
           icon={Star} title="Watchlists"
           subtitle={`${watchlistCount} list${watchlistCount !== 1 ? 's' : ''} · ${watchlistSymbolCount} symbol${watchlistSymbolCount !== 1 ? 's' : ''}`}
@@ -125,8 +127,9 @@ export function SettingsTab() {
         />
         <SettingsItem
           icon={Bell} title="Price Alerts"
-          subtitle={`${alertCount} active alert${alertCount !== 1 ? 's' : ''}`}
-          badge={alertCount > 0 ? alertCount : undefined}
+          subtitle={activeAlertCount === 0 ? 'No active alerts' : `${activeAlertCount} active alert${activeAlertCount !== 1 ? 's' : ''}`}
+          badge={triggeredAlertCount > 0 ? triggeredAlertCount : undefined}
+          badgeColor="#ef4444"
           onClick={() => router.push('/price-alerts')}
         />
         <SettingsItem

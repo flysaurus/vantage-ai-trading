@@ -98,7 +98,7 @@ export default function InvestorStylePage() {
   }
 
   return (
-    <div style={{ padding: '12px 16px 120px', minHeight: '100dvh' }}>
+    <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>

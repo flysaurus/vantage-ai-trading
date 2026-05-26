@@ -59,7 +59,7 @@ function AppShell() {
       <Header />
       <MarketBar />
       <WatchlistBar />
-      <div className="content-area">
+      <div className="content-area" key={activeTab}>
         {React.createElement(TAB_COMPONENTS[activeTab])}
       </div>
       {!isDesktop && <BottomNav />}
