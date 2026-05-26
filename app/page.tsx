@@ -42,16 +42,44 @@ function AppShell() {
 
   // Show onboarding for authenticated users who haven't set their style.
   // Only after DB profile sync completes — avoids flash before DB value is known.
+  // Race condition fix: check investorStyle too. If user has a non-default style
+  // (Buffett, Bogle, etc.) they clearly completed onboarding even if the boolean
+  // flag is stale. Also double-check localStorage after a 500ms buffer to
+  // catch cases where DB sync writes to localStorage after the effect fires.
   useEffect(() => {
     if (!user || !profileSynced) return;
+
+    // Check: DB flag, localStorage flag, OR non-default style
     const localStorageOnboarded = typeof window !== 'undefined'
       ? localStorage.getItem('vantage:onboarded') === 'true'
       : false;
-    if (user.investorStyleOnboarded || localStorageOnboarded) {
+    const hasNonDefaultStyle = user.investorStyle && user.investorStyle !== 'buffett';
+
+    if (user.investorStyleOnboarded || localStorageOnboarded || hasNonDefaultStyle) {
       setShowOnboarding(false);
+      // If they have a non-default style but the flag wasn't set, fix it in the DB now
+      if (hasNonDefaultStyle && !user.investorStyleOnboarded) {
+        import('@/lib/supabase/user').then(({ completeOnboarding }) =>
+          completeOnboarding(user.id).catch(() => {})
+        );
+        localStorage.setItem('vantage:onboarded', 'true');
+      }
       return;
     }
-    setShowOnboarding(true);
+
+    // Buffer: wait 500ms then re-check localStorage (DB sync may write it late)
+    const buffer = setTimeout(() => {
+      const lateCheck = typeof window !== 'undefined'
+        ? localStorage.getItem('vantage:onboarded') === 'true'
+        : false;
+      if (lateCheck) {
+        setShowOnboarding(false);
+        return;
+      }
+      setShowOnboarding(true);
+    }, 500);
+
+    return () => clearTimeout(buffer);
   }, [user, profileSynced]);
 
   const mainContent = (

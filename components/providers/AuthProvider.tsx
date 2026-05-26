@@ -94,48 +94,61 @@ function toVantageSession(session: Session): VantageSession {
 async function syncUserProfile(u: User, token: string, setUser: (u: User) => void, mounted: () => boolean, setSynced: (v: boolean) => void) {
   try {
     const { getUserProfile, createUser } = await import('@/lib/supabase/user');
-    const profile = await getUserProfile(u.id);
+    let profile = await getUserProfile(u.id);
     if (!mounted()) { setSynced(true); return; }
+
     if (!profile) {
-      // No DB row yet — create it, but if create fails user still has valid profile
+      // No DB row yet — create it
       const created = await createUser({ email: u.email, displayName: u.displayName, token }).catch(() => null);
+      if (!mounted()) return;
+
       if (created) {
-        // New user created, no DB profile to merge
+        // New user created — no DB profile to merge.
+        // If they have a non-default style from local, persist it.
+        if (u.investorStyle && u.investorStyle !== 'buffett') {
+          localStorage.setItem('vantage:onboarded', 'true');
+          localStorage.setItem('vantage:investorStyle', u.investorStyle);
+        }
         setSynced(true);
         return;
       }
+
       // Create failed (likely already exists) — retry fetch once
-      const retryProfile = await getUserProfile(u.id).catch(() => null);
-      if (retryProfile) {
-        // Merge the retried profile
-        const m: User = {
-          ...u,
-          investorStyle: (retryProfile.investorStyle || u.investorStyle) as InvestorStyle,
-          investorStyleOnboarded: retryProfile.investorStyleOnboarded ?? u.investorStyleOnboarded,
-        };
-        setUser(m);
-        storeUser(m);
-        if (m.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
-        if (m.investorStyle) localStorage.setItem('vantage:investorStyle', m.investorStyle);
-      }
-      setSynced(true);
-      return;
+      profile = await getUserProfile(u.id).catch(() => null);
+      if (!mounted()) { setSynced(true); return; }
     }
+
     // Merge DB values (source of truth for onboarding)
-    const merged: User = {
-      ...u,
-      investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
-      investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
-    };
+    const merged: User = profile
+      ? {
+          ...u,
+          investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
+          investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
+        }
+      : u; // Both fetches failed — keep what we have, but check local
+
+    // Fallback: if DB didn't confirm onboarding but localStorage says yes, trust localStorage
+    if (!merged.investorStyleOnboarded && typeof window !== 'undefined') {
+      if (localStorage.getItem('vantage:onboarded') === 'true') {
+        merged.investorStyleOnboarded = true;
+      }
+    }
+
     setUser(merged);
     storeUser(merged);
-    // Sync localStorage
     if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
     if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
     setSynced(true);
   } catch {
+    // DB sync is non-critical — trust what we have
+    if (!u.investorStyleOnboarded && typeof window !== 'undefined') {
+      if (localStorage.getItem('vantage:onboarded') === 'true') {
+        u = { ...u, investorStyleOnboarded: true };
+        setUser(u);
+        storeUser(u);
+      }
+    }
     setSynced(true);
-    // DB sync is non-critical
   }
 }
 
