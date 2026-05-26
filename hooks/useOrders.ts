@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOrderStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { syncFilledOrders } from '@/lib/supabase/trades';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -18,6 +20,7 @@ export function useOrders() {
   const { orders, setOrders, addOrder, updateOrder, activeFilter } =
     useOrderStore();
   const { broker, connected } = useBroker();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +101,21 @@ export function useOrders() {
 
       setOrders(mappedOrders);
       setLoading(false);
+
+      // Sync filled orders to trade_history table (fire-and-forget, deduplicated)
+      if (user?.id && filledOrders.length > 0) {
+        syncFilledOrders(
+          user.id,
+          filledOrders.map(o => ({
+            id: o.id,
+            symbol: o.symbol,
+            side: o.side as 'buy' | 'sell',
+            filledQty: o.filledQty,
+            filledPrice: o.filledPrice ?? 0,
+            createdAt: o.createdAt,
+          })),
+        ).catch(() => {/* fire-and-forget: errors are logged in createTrade */});
+      }
     } catch (err) {
       if (!mountedRef.current) return;
 
