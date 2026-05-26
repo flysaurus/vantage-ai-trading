@@ -2,6 +2,12 @@
 // Supabase SDK manages session lifecycle (autoRefreshToken, persistSession).
 // AuthProvider subscribes to onAuthStateChange for real-time updates.
 // 10-minute inactivity timeout with 1-minute warning before logout.
+//
+// LOADING GUARANTEE:
+//   isLoading stays true until the DB user profile is fetched and merged.
+//   This eliminates the race condition where onboarding check runs before
+//   investorStyleOnboarded is confirmed from the database.
+//   Pages gate on isDataLoaded to ensure user data is complete.
 
 'use client';
 
@@ -28,7 +34,8 @@ interface AuthContextValue {
   session: VantageSession | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  profileSynced: boolean;
+  /** True ONLY when DB user profile is confirmed — gates onboarding check. */
+  isDataLoaded: boolean;
   inactivityWarning: boolean;
   inactivityCountdown: number;
   signIn: (email: string, password: string) => Promise<void>;
@@ -42,7 +49,7 @@ const AuthContext = createContext<AuthContextValue>({
   session: null,
   isLoading: true,
   isAuthenticated: false,
-  profileSynced: false,
+  isDataLoaded: false,
   inactivityWarning: false,
   inactivityCountdown: 0,
   signIn: async () => {},
@@ -90,12 +97,22 @@ function toVantageSession(session: Session): VantageSession {
   };
 }
 
-/** Sync DB profile for a user — create if missing, merge if exists. */
-async function syncUserProfile(u: User, token: string, setUser: (u: User) => void, mounted: () => boolean, setSynced: (v: boolean) => void) {
+/**
+ * Sync DB profile for a user — create if missing, merge if exists.
+ * Calls `onComplete()` (sets isDataLoaded + isLoading) after merge.
+ * NEVER calls onComplete before the user object reflects DB-verified data.
+ */
+async function syncUserProfile(
+  u: User,
+  token: string,
+  setUser: (u: User) => void,
+  mounted: () => boolean,
+  onComplete: () => void,
+) {
   try {
     const { getUserProfile, createUser } = await import('@/lib/supabase/user');
     let profile = await getUserProfile(u.id);
-    if (!mounted()) { setSynced(true); return; }
+    if (!mounted()) return;
 
     if (!profile) {
       // No DB row yet — create it
@@ -103,19 +120,18 @@ async function syncUserProfile(u: User, token: string, setUser: (u: User) => voi
       if (!mounted()) return;
 
       if (created) {
-        // New user created — no DB profile to merge.
-        // If they have a non-default style from local, persist it.
+        // New user — no profile to merge. Persist local style if non-default.
         if (u.investorStyle && u.investorStyle !== 'buffett') {
           localStorage.setItem('vantage:onboarded', 'true');
           localStorage.setItem('vantage:investorStyle', u.investorStyle);
         }
-        setSynced(true);
+        onComplete();
         return;
       }
 
       // Create failed (likely already exists) — retry fetch once
       profile = await getUserProfile(u.id).catch(() => null);
-      if (!mounted()) { setSynced(true); return; }
+      if (!mounted()) return;
     }
 
     // Merge DB values (source of truth for onboarding)
@@ -125,9 +141,9 @@ async function syncUserProfile(u: User, token: string, setUser: (u: User) => voi
           investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
           investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
         }
-      : u; // Both fetches failed — keep what we have, but check local
+      : u; // Both fetches failed — keep what we have
 
-    // Fallback: if DB didn't confirm onboarding but localStorage says yes, trust localStorage
+    // Fallback: if DB didn't confirm but localStorage says yes, trust localStorage
     if (!merged.investorStyleOnboarded && typeof window !== 'undefined') {
       if (localStorage.getItem('vantage:onboarded') === 'true') {
         merged.investorStyleOnboarded = true;
@@ -138,17 +154,17 @@ async function syncUserProfile(u: User, token: string, setUser: (u: User) => voi
     storeUser(merged);
     if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
     if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
-    setSynced(true);
   } catch {
-    // DB sync is non-critical — trust what we have
+    // DB sync failed — trust what we have, check localStorage
     if (!u.investorStyleOnboarded && typeof window !== 'undefined') {
       if (localStorage.getItem('vantage:onboarded') === 'true') {
-        u = { ...u, investorStyleOnboarded: true };
-        setUser(u);
-        storeUser(u);
+        const fixed = { ...u, investorStyleOnboarded: true };
+        setUser(fixed);
+        storeUser(fixed);
       }
     }
-    setSynced(true);
+  } finally {
+    onComplete();
   }
 }
 
@@ -158,14 +174,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<VantageSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [inactivityWarning, setInactivityWarning] = useState(false);
-  const [profileSynced, setProfileSynced] = useState(false);
 
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
-  // Lazy init — createClient() throws if called during SSR
 
   // ─── Reset inactivity timer ──────────────────────────────
   const [countdown, setCountdown] = useState(0);
@@ -181,7 +196,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     warningRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
       setInactivityWarning(true);
-      // Start countdown from 60 seconds
       let remaining = 60;
       setCountdown(remaining);
       countdownInterval.current = setInterval(() => {
@@ -198,27 +212,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     inactivityRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
       if (countdownInterval.current) clearInterval(countdownInterval.current);
-      // Force sign-out via Supabase SDK and hard redirect as fallback
       const doSignOut = async () => {
         try {
-          if (supabaseRef.current) {
-            await supabaseRef.current.auth.signOut();
-          }
+          if (supabaseRef.current) await supabaseRef.current.auth.signOut();
         } catch (err) {
           console.error('[AuthProvider] Sign-out error during inactivity timeout:', err);
         }
-        // Fallback: hard redirect even if signOut had issues
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
+        if (typeof window !== 'undefined') window.location.href = '/login';
       };
       doSignOut();
     }, INACTIVITY_TIMEOUT);
   }, []);
 
+  // ─── Data-loaded callback (shared between initial load + onAuthStateChange) ──
+  const markDataLoaded = useCallback(() => {
+    if (!mountedRef.current) return;
+    setIsDataLoaded(true);
+    setIsLoading(false);
+  }, []);
+
   // ─── Auth state listener ─────────────────────────────────
   useEffect(() => {
-    // Lazy init — createClient() is browser-only
     supabaseRef.current = createClient();
     const supabase = supabaseRef.current;
     mountedRef.current = true;
@@ -232,15 +246,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(u);
         setSession(vs);
         storeUser(u);
-        storeSession(vs); // parallel copy for sync accessors
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, setProfileSynced);
+        storeSession(vs);
+        // ✅ isLoading stays true — DB sync callback will clear it
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded);
       } else {
-        setProfileSynced(true);
+        // No session — nothing to sync, we're done loading
+        setIsDataLoaded(true);
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
-    // Subscribe to auth state changes (login, logout, token refresh, user update)
+    // Subscribe to auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (!mountedRef.current) return;
 
@@ -250,7 +266,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearUser();
         clearSession();
         setInactivityWarning(false);
-        setProfileSynced(false);
+        setIsDataLoaded(false);
+        setIsLoading(false);
         return;
       }
 
@@ -269,7 +286,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(vs);
         storeUser(u);
         storeSession(vs);
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, setProfileSynced);
+        // ✅ isLoading stays true — DB sync callback will clear it
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded);
       }
     });
 
@@ -277,7 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mountedRef.current = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [markDataLoaded]);
 
   // ─── Inactivity tracking (only when authenticated) ───────
   useEffect(() => {
@@ -305,13 +323,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const supabase = supabaseRef.current!;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      throw new Error(String(error.message || 'Authentication failed'));
-    }
-    if (!data?.user || !data?.session) {
-      throw new Error('Sign in failed — server returned incomplete response.');
-    }
-    // onAuthStateChange will fire SIGNED_IN — no need to set state here
+    if (error) throw new Error(String(error.message || 'Authentication failed'));
+    if (!data?.user || !data?.session) throw new Error('Sign in failed — server returned incomplete response.');
+    // onAuthStateChange fires SIGNED_IN → syncUserProfile → markDataLoaded
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
@@ -329,16 +343,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw new Error(String(error.message || 'Authentication failed'));
     }
-    if (!data.user || !data.session) {
-      return { needsConfirmation: true };
-    }
-    // onAuthStateChange will fire SIGNED_IN
+    if (!data.user || !data.session) return { needsConfirmation: true };
   }, []);
 
   const signOut = useCallback(async () => {
     const supabase = supabaseRef.current!;
     await supabase.auth.signOut();
-    // onAuthStateChange will fire SIGNED_OUT
   }, []);
 
   const resendConfirmation = useCallback(async (email: string) => {
@@ -366,7 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     isLoading,
     isAuthenticated: !!user && !!session,
-    profileSynced,
+    isDataLoaded,
     inactivityWarning,
     inactivityCountdown: countdown,
     signIn,
