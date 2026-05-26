@@ -92,12 +92,30 @@ export default function TradeHistoryPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 25;
 
-  // ─── Load trades ──────────────────────────────────────────
-  const loadTrades = useCallback(async () => {
+  // ─── Sync from Alpaca then load trades ──────────────────
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  const syncThenLoad = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     setError(null);
     try {
+      // 1. Sync filled orders from Alpaca to trade_history
+      const session = (await import('@/lib/auth')).getSession();
+      const syncRes = await fetch('/api/db/trade-history/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+        },
+        body: JSON.stringify({ userId: user.id, limit: 100 }),
+      });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        setSyncStatus(syncData.message || `Synced ${syncData.synced || 0} trades`);
+      }
+
+      // 2. Load trades from DB
       const data = await getTrades(user.id, 500, 0);
       setTrades(data.trades || []);
       setTotal(data.total || 0);
@@ -108,7 +126,7 @@ export default function TradeHistoryPage() {
     }
   }, [user]);
 
-  useEffect(() => { loadTrades(); }, [loadTrades]);
+  useEffect(() => { syncThenLoad(); }, [syncThenLoad]);
 
   // ─── P&L Stats ────────────────────────────────────────────
   const pnlMap = useMemo(() => computePnL(trades), [trades]);
@@ -220,10 +238,13 @@ export default function TradeHistoryPage() {
           <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Trade History</h1>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
             {total} trades · {stats.uniqueSymbols} symbols
+            {syncStatus && (
+              <span style={{ color: '#22c55e', marginLeft: 8 }}>{syncStatus}</span>
+            )}
           </div>
         </div>
         <button
-          onClick={loadTrades}
+          onClick={syncThenLoad}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 34, height: 34, borderRadius: 8,
@@ -304,7 +325,7 @@ export default function TradeHistoryPage() {
       {error && (
         <div style={{ padding: '10px 14px', marginBottom: 10, borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{error}</span>
-          <button onClick={loadTrades} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#06b6d4', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Retry</button>
+          <button onClick={syncThenLoad} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#06b6d4', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Retry</button>
         </div>
       )}
 
