@@ -28,6 +28,7 @@ interface AuthContextValue {
   session: VantageSession | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  profileSynced: boolean;
   inactivityWarning: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ needsConfirmation: boolean } | void>;
@@ -40,6 +41,7 @@ const AuthContext = createContext<AuthContextValue>({
   session: null,
   isLoading: true,
   isAuthenticated: false,
+  profileSynced: false,
   inactivityWarning: false,
   signIn: async () => {},
   signUp: async () => {},
@@ -87,14 +89,15 @@ function toVantageSession(session: Session): VantageSession {
 }
 
 /** Sync DB profile for a user — create if missing, merge if exists. */
-async function syncUserProfile(u: User, token: string, setUser: (u: User) => void, mounted: () => boolean) {
+async function syncUserProfile(u: User, token: string, setUser: (u: User) => void, mounted: () => boolean, setSynced: (v: boolean) => void) {
   try {
     const { getUserProfile, createUser } = await import('@/lib/supabase/user');
     const profile = await getUserProfile(u.id);
-    if (!mounted()) return;
+    if (!mounted()) { setSynced(true); return; }
     if (!profile) {
       // No DB row yet — create it
       await createUser({ email: u.email, displayName: u.displayName, token }).catch(() => {});
+      setSynced(true);
       return;
     }
     // Merge DB values (source of truth for onboarding)
@@ -108,7 +111,9 @@ async function syncUserProfile(u: User, token: string, setUser: (u: User) => voi
     // Sync localStorage
     if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
     if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
+    setSynced(true);
   } catch {
+    setSynced(true);
     // DB sync is non-critical
   }
 }
@@ -120,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<VantageSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [inactivityWarning, setInactivityWarning] = useState(false);
+  const [profileSynced, setProfileSynced] = useState(false);
 
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
@@ -161,7 +167,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(vs);
         storeUser(u);
         storeSession(vs); // parallel copy for sync accessors
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current);
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, setProfileSynced);
+      } else {
+        setProfileSynced(true);
       }
       setIsLoading(false);
     });
@@ -176,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearUser();
         clearSession();
         setInactivityWarning(false);
+        setProfileSynced(false);
         return;
       }
 
@@ -194,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(vs);
         storeUser(u);
         storeSession(vs);
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current);
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, setProfileSynced);
       }
     });
 
@@ -291,6 +300,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     isLoading,
     isAuthenticated: !!user && !!session,
+    profileSynced,
     inactivityWarning,
     signIn,
     signUp,

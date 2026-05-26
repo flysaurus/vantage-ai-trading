@@ -28,7 +28,7 @@ const TAB_COMPONENTS: Record<TabId, React.FC> = {
 
 function AppShell() {
   const { activeTab } = useTabStore();
-  const { user } = useAuth();
+  const { user, profileSynced } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -40,16 +40,19 @@ function AppShell() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Show onboarding for authenticated users who haven't set their style
+  // Show onboarding for authenticated users who haven't set their style.
+  // Only after DB profile sync completes — avoids flash before DB value is known.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !profileSynced) return;
     const localStorageOnboarded = typeof window !== 'undefined'
       ? localStorage.getItem('vantage:onboarded') === 'true'
       : false;
-    if (!user.investorStyleOnboarded && !localStorageOnboarded) {
-      setShowOnboarding(true);
+    if (user.investorStyleOnboarded || localStorageOnboarded) {
+      setShowOnboarding(false);
+      return;
     }
-  }, [user]);
+    setShowOnboarding(true);
+  }, [user, profileSynced]);
 
   const mainContent = (
     <>

@@ -221,6 +221,19 @@ export function SettingsTab() {
         </div>
       )}
 
+      {/* Investor Style Selector (always visible) */}
+      {user && (
+        <div ref={styleSelectorRef}>
+          <InvestorStyleSelector
+            userId={user.id}
+            currentStyle={investorStyle}
+            onStyleChanged={(newStyle) => setInvestorStyle(newStyle)}
+            externalShowModal={showStyleModal}
+            onModalClosed={() => setShowStyleModal(false)}
+          />
+        </div>
+      )}
+
       {/* Sign Out */}
       <div style={{ marginTop: 12 }}>
         <button
@@ -249,19 +262,6 @@ export function SettingsTab() {
           AI-First · Mobile-First · Built with ❤️
         </div>
       </div>
-
-      {/* Investor Style Selector (always visible) */}
-      {user && (
-        <div ref={styleSelectorRef}>
-          <InvestorStyleSelector
-            userId={user.id}
-            currentStyle={investorStyle}
-            onStyleChanged={(newStyle) => setInvestorStyle(newStyle)}
-            externalShowModal={showStyleModal}
-            onModalClosed={() => setShowStyleModal(false)}
-          />
-        </div>
-      )}
 
       <style jsx>{`
         .section {
