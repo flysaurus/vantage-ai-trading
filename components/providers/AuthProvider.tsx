@@ -36,6 +36,8 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   /** True ONLY when DB user profile is confirmed — gates onboarding check. */
   isDataLoaded: boolean;
+  /** True when the user's DB profile row doesn't exist — account invalid. */
+  profileNotFound: boolean;
   inactivityWarning: boolean;
   inactivityCountdown: number;
   signIn: (email: string, password: string) => Promise<void>;
@@ -50,6 +52,7 @@ const AuthContext = createContext<AuthContextValue>({
   isLoading: true,
   isAuthenticated: false,
   isDataLoaded: false,
+  profileNotFound: false,
   inactivityWarning: false,
   inactivityCountdown: 0,
   signIn: async () => {},
@@ -98,9 +101,10 @@ function toVantageSession(session: Session): VantageSession {
 }
 
 /**
- * Sync DB profile for a user — create if missing, merge if exists.
- * Calls `onComplete()` (sets isDataLoaded + isLoading) after merge.
- * NEVER calls onComplete before the user object reflects DB-verified data.
+ * Sync DB profile for a user — FETCH ONLY, never auto-create.
+ * If the profile doesn't exist in public.users, reports via onProfileNotFound.
+ * The users table is authoritative: no row → no account.
+ * Calls `onComplete()` (sets isDataLoaded + isLoading) when done.
  */
 async function syncUserProfile(
   u: User,
@@ -108,40 +112,26 @@ async function syncUserProfile(
   setUser: (u: User) => void,
   mounted: () => boolean,
   onComplete: () => void,
+  onProfileNotFound: () => void,
 ) {
   try {
-    const { getUserProfile, createUser } = await import('@/lib/supabase/user');
-    let profile = await getUserProfile(u.id);
+    const { getUserProfile } = await import('@/lib/supabase/user');
+    const profile = await getUserProfile(u.id);
     if (!mounted()) return;
 
     if (!profile) {
-      // No DB row yet — create it
-      const created = await createUser({ email: u.email, displayName: u.displayName, token }).catch(() => null);
-      if (!mounted()) return;
-
-      if (created) {
-        // New user — no profile to merge. Persist local style if non-default.
-        if (u.investorStyle && u.investorStyle !== 'buffett') {
-          localStorage.setItem('vantage:onboarded', 'true');
-          localStorage.setItem('vantage:investorStyle', u.investorStyle);
-        }
-        onComplete();
-        return;
-      }
-
-      // Create failed (likely already exists) — retry fetch once
-      profile = await getUserProfile(u.id).catch(() => null);
-      if (!mounted()) return;
+      // No DB row — user doesn't exist in our system
+      onProfileNotFound();
+      onComplete();
+      return;
     }
 
     // Merge DB values (source of truth for onboarding)
-    const merged: User = profile
-      ? {
-          ...u,
-          investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
-          investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
-        }
-      : u; // Both fetches failed — keep what we have
+    const merged: User = {
+      ...u,
+      investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
+      investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
+    };
 
     // Fallback: if DB didn't confirm but localStorage says yes, trust localStorage
     if (!merged.investorStyleOnboarded && typeof window !== 'undefined') {
@@ -175,6 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<VantageSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [profileNotFound, setProfileNotFound] = useState(false);
   const [inactivityWarning, setInactivityWarning] = useState(false);
 
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
@@ -231,6 +222,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
+  const markProfileNotFound = useCallback(() => {
+    if (!mountedRef.current) return;
+    setProfileNotFound(true);
+  }, []);
+
   // ─── Auth state listener ─────────────────────────────────
   useEffect(() => {
     supabaseRef.current = createClient();
@@ -247,10 +243,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(vs);
         storeUser(u);
         storeSession(vs);
+        setProfileNotFound(false);
         // ✅ isLoading stays true — DB sync callback will clear it
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded);
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
       } else {
         // No session — nothing to sync, we're done loading
+        setProfileNotFound(false);
         setIsDataLoaded(true);
         setIsLoading(false);
       }
@@ -267,6 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearSession();
         setInactivityWarning(false);
         setIsDataLoaded(false);
+        setProfileNotFound(false);
         setIsLoading(false);
         return;
       }
@@ -286,8 +285,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(vs);
         storeUser(u);
         storeSession(vs);
+        setProfileNotFound(false);
         // ✅ isLoading stays true — DB sync callback will clear it
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded);
+        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
       }
     });
 
@@ -344,6 +344,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(String(error.message || 'Authentication failed'));
     }
     if (!data.user || !data.session) return { needsConfirmation: true };
+    // Explicitly create the DB user row — syncUserProfile no longer auto-creates
+    try {
+      const { createUser } = await import('@/lib/supabase/user');
+      await createUser({
+        email,
+        displayName: displayName || email.split('@')[0],
+        token: data.session.access_token,
+      });
+    } catch { /* non-critical — syncUserProfile will retry-fetch on next mount */ }
+    // onAuthStateChange will fire SIGNED_IN → syncUserProfile → merge
   }, []);
 
   const signOut = useCallback(async () => {
@@ -377,6 +387,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isAuthenticated: !!user && !!session,
     isDataLoaded,
+    profileNotFound,
     inactivityWarning,
     inactivityCountdown: countdown,
     signIn,

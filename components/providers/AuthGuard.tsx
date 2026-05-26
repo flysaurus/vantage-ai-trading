@@ -12,7 +12,7 @@ import { useAuth } from './AuthProvider';
 const PUBLIC_PATHS = ['/login', '/login-test'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, profileNotFound } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -26,6 +26,38 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Public pages render immediately
   if (isPublic) return <>{children}</>;
+
+  // DB profile missing — user doesn't exist in our system
+  if (profileNotFound) {
+    return (
+      <div style={{
+        height: '100dvh', display: 'flex',
+        flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', background: '#0f172a',
+        color: '#e2e8f0', padding: 32, textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔐</div>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>Account Not Found</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 360, margin: '0 0 24px' }}>
+          Your login is valid but no account data exists in our system.
+          This may happen if your account was removed or hasn&apos;t been fully created.
+        </p>
+        <button
+          onClick={() => {
+            import('@/lib/supabase').then(m => m.createClient().auth.signOut());
+            window.location.href = '/login';
+          }}
+          style={{
+            padding: '10px 24px', borderRadius: 8,
+            border: '1px solid #475569', background: '#1e293b',
+            color: '#e2e8f0', cursor: 'pointer', fontSize: 14,
+          }}
+        >
+          Back to Login
+        </button>
+      </div>
+    );
+  }
 
   // Protected — show loading screen while auth + DB sync in progress
   if (isLoading || !isAuthenticated) {
