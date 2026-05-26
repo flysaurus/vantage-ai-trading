@@ -9,11 +9,21 @@
 // from server env, not hardcoded.
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 
 const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
 const ALPACA_LIVE = 'https://api.alpaca.markets';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
+  // Require authentication — prevents anonymous access to Alpaca credentials
+  try {
+    await requireAuth(_req);
+  } catch (err: any) {
+    if (err?.name === 'AuthError') {
+      return NextResponse.json({ error: err.message }, { status: err.status || 401 });
+    }
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const keyId = process.env.ALPACA_API_KEY_ID;
     const secretKey = process.env.ALPACA_SECRET_KEY;

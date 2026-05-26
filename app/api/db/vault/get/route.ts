@@ -3,7 +3,12 @@ import { requireAuth } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase';
 
 function getEncryptionKey(): string {
-  return process.env.VAULT_ENCRYPTION_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'vantage-default-secret';
+  // Must use a dedicated server-side secret — never fall back to public keys
+  const key = process.env.VAULT_ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error('VAULT_ENCRYPTION_KEY environment variable is required but not configured');
+  }
+  return key;
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {

@@ -74,13 +74,11 @@ function isTriggered(
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // Require a shared secret for cron security
+  // Require Bearer token matching CRON_SECRET — don't accept query params (leaks in server logs)
   const authHeader = req.headers.get('authorization') || '';
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const cronSecret = bearerToken
-    || req.nextUrl.searchParams.get('secret')
-    || req.nextUrl.searchParams.get('cron_secret');
   const expected = process.env.CRON_SECRET || '';
-  if (!expected || cronSecret !== expected) {
+  if (!expected || bearerToken !== expected) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
