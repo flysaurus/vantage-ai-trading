@@ -472,9 +472,10 @@ function StyleChangeModal({
         maxWidth: 520, width: '100%', maxHeight: '90vh',
         display: 'flex', flexDirection: 'column',
       }}>
-        {/* Header */}
+        {/* Header — fixed, doesn't scroll */}
         <div style={{
-          padding: '18px 20px 14px', borderBottom: '1px solid #1e293b',
+          flexShrink: 0, padding: '18px 20px 14px',
+          borderBottom: '1px solid #1e293b',
           background: '#0f172a', borderRadius: '14px 14px 0 0',
         }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Choose Your Style</div>
@@ -483,8 +484,8 @@ function StyleChangeModal({
           </div>
         </div>
 
-        {/* Styles */}
-        <div style={{ padding: '14px 20px', overflowY: 'auto', maxHeight: '50vh' }}>
+        {/* Styles — scrollable, fills remaining space */}
+        <div style={{ flex: 1, padding: '14px 20px', overflowY: 'auto' }}>
           {styles.map(s => {
             const selected = tempStyle === s.id;
             return (
@@ -526,7 +527,7 @@ function StyleChangeModal({
         {/* Warning */}
         {changing && (
           <div style={{
-            margin: '0 20px 10px', padding: 10, borderRadius: 8,
+            flexShrink: 0, margin: '0 20px 10px', padding: 10, borderRadius: 8,
             background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)',
             fontSize: 11, color: '#06b6d4',
           }}>
@@ -534,9 +535,10 @@ function StyleChangeModal({
           </div>
         )}
 
-        {/* Footer */}
+        {/* Footer — fixed at bottom, never hidden */}
         <div style={{
-          padding: '14px 20px', borderTop: '1px solid #1e293b',
+          flexShrink: 0, padding: '14px 20px',
+          borderTop: '1px solid #1e293b',
           display: 'flex', gap: 10, borderRadius: '0 0 14px 14px',
         }}>
           <button onClick={onClose} disabled={updating} style={{
