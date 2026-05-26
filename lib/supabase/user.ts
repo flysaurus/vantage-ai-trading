@@ -76,6 +76,7 @@ export async function updateInvestorStyle(
 
 /**
  * Marks the user as having completed investor style onboarding via the API.
+ * Also sets investor_style_set_at to now if not already set.
  */
 export async function completeOnboarding(userId: string): Promise<void> {
   try {
@@ -84,6 +85,7 @@ export async function completeOnboarding(userId: string): Promise<void> {
       body: JSON.stringify({
         userId,
         investorStyleOnboarded: true,
+        investorStyleSetAt: new Date().toISOString(),
       }),
     });
     if (!res.ok) {

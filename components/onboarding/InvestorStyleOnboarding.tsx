@@ -37,6 +37,7 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
     setError(null);
 
     try {
+      // Save style + mark onboarded in DB (single conceptual transaction)
       await updateInvestorStyle(userId, selectedStyle);
       await completeOnboarding(userId);
 
@@ -81,8 +82,11 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
         {step === 'welcome' && (
           <OnboardingWelcome
             onNext={() => setStep('selection')}
-            onSkip={() => {
-              // Skip saves default style + onboarded flag so it never re-triggers
+            onSkip={async () => {
+              // Skip saves default style + onboarded flag to DB so it never re-triggers
+              try {
+                await completeOnboarding(userId);
+              } catch { /* non-critical */ }
               onComplete('buffett');
             }}
           />

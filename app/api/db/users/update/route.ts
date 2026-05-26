@@ -27,6 +27,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       avatarUrl,
       investorStyle,
       investorStyleOnboarded,
+      investorStyleSetAt,
     } = body as {
       userId?: string;
       email?: string;
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       avatarUrl?: string;
       investorStyle?: string;
       investorStyleOnboarded?: boolean;
+      investorStyleSetAt?: string;
     };
 
     if (!userId) {
@@ -70,6 +72,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     if (investorStyleOnboarded !== undefined) {
       updates.investor_style_onboarded = investorStyleOnboarded;
+      // Auto-set timestamp when onboarding is completed, unless explicitly provided
+      if (investorStyleOnboarded && !updates.investor_style_set_at) {
+        updates.investor_style_set_at = investorStyleSetAt || new Date().toISOString();
+      }
     }
 
     if (Object.keys(updates).length === 0) {
