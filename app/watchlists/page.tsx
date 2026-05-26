@@ -232,7 +232,7 @@ export default function WatchlistsPage() {
   }
 
   return (
-    <div style={{ padding: '12px 16px 80px', minHeight: '100vh' }}>
+    <div style={{ padding: '12px 16px 120px', minHeight: '100dvh' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
