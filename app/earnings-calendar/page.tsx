@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import {
   ArrowLeft, Calendar, List, ChevronLeft, ChevronRight,
   TrendingUp, TrendingDown, Minus, Clock, RefreshCcw,
@@ -48,14 +49,16 @@ function marketBeatUrl(symbol: string): string {
 // ─── Page ─────────────────────────────────────────────────────
 export default function EarningsCalendarPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { account } = usePortfolio();
   const router = useRouter();
   const [earnings, setEarnings] = useState<EarningsEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // View state
-  const [view, setView] = useState<'calendar' | 'list'>('calendar');
+  const [view, setView] = useState<'calendar' | 'list'>('list');
   const [statusFilter, setStatusFilter] = useState<ResultStatus | 'all'>('all');
+  const [holdingsOnly, setHoldingsOnly] = useState(false);
 
   // Search / autocomplete
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +71,17 @@ export default function EarningsCalendarPage() {
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
+
+  // Date range for calendar view
+  const todayStr = new Date().toISOString().split('T')[0];
+  const future = new Date(); future.setMonth(future.getMonth() + 3);
+  const [dateFrom, setDateFrom] = useState(todayStr);
+  const [dateTo, setDateTo] = useState(future.toISOString().split('T')[0]);
+
+  // Holdings symbols for filtering
+  const holdingSymbols = useMemo(() => {
+    return new Set((account?.positions || []).map(p => p.symbol?.toUpperCase() || '').filter(Boolean));
+  }, [account?.positions]);
 
   // ─── Load earnings ─────────────────────────────────────────
   const loadEarnings = useCallback(async (query?: string) => {
@@ -124,8 +138,14 @@ export default function EarningsCalendarPage() {
   // ─── Derived data ──────────────────────────────────────────
   const filtered = useMemo(() => {
     let data = statusFilter === 'all' ? earnings : earnings.filter(e => getStatus(e) === statusFilter);
+    if (holdingsOnly && holdingSymbols.size > 0) {
+      data = data.filter(e => holdingSymbols.has(e.symbol.toUpperCase()));
+    }
+    if (view === 'calendar') {
+      data = data.filter(e => e.date >= dateFrom && e.date <= dateTo);
+    }
     return data;
-  }, [earnings, statusFilter]);
+  }, [earnings, statusFilter, holdingsOnly, holdingSymbols, view, dateFrom, dateTo]);
 
   const earningsByDate = useMemo(() => {
     const map: Record<string, EarningsEvent[]> = {};
@@ -168,6 +188,9 @@ export default function EarningsCalendarPage() {
   const upcomingCount = earnings.filter(e => getStatus(e) === 'upcoming').length;
   const beatCount = earnings.filter(e => getStatus(e) === 'beat').length;
   const missCount = earnings.filter(e => getStatus(e) === 'miss').length;
+  const holdingsEarnings = holdingSymbols.size > 0
+    ? earnings.filter(e => holdingSymbols.has(e.symbol.toUpperCase()) && getStatus(e) === 'upcoming').length
+    : 0;
 
   // ─── Auth guard ───────────────────────────────────────────
   if (authLoading) {
@@ -200,7 +223,9 @@ export default function EarningsCalendarPage() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Earnings Calendar</h1>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-            {upcomingCount} upcoming · {beatCount} beats · {missCount} misses · Source: Finnhub + SEC EDGAR
+            {upcomingCount} upcoming · {beatCount} beats · {missCount} misses
+            {holdingsEarnings > 0 && ` · ${holdingsEarnings} in your holdings`}
+            {' · Source: Finnhub + SEC EDGAR'}
           </div>
         </div>
         <button
@@ -310,6 +335,22 @@ export default function EarningsCalendarPage() {
           </button>
         </div>
 
+        {/* Holdings-only toggle */}
+        {holdingSymbols.size > 0 && (
+          <button
+            onClick={() => setHoldingsOnly(!holdingsOnly)}
+            style={{
+              padding: '5px 10px', borderRadius: 6,
+              background: holdingsOnly ? '#06b6d4' : '#1e293b',
+              color: holdingsOnly ? '#0f172a' : 'var(--text-dim)',
+              border: '1px solid transparent', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            {holdingsOnly ? '✓ Holdings' : 'My Holdings'}
+          </button>
+        )}
+
         <div style={{ display: 'flex', gap: 4 }}>
           {([
             { key: 'all', label: 'All' },
@@ -351,6 +392,37 @@ export default function EarningsCalendarPage() {
       {/* ── Calendar View ────────────────────────────────────── */}
       {!loading && view === 'calendar' && (
         <div>
+          {/* Date range selection */}
+          <div style={{
+            marginBottom: 12, padding: '10px 12px', borderRadius: 10,
+            background: '#1e293b', border: '1px solid #334155',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <Calendar size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              style={{
+                flex: 1, padding: '5px 6px', borderRadius: 6,
+                background: '#0f172a', border: '1px solid #334155',
+                color: '#e2e8f0', fontSize: 11, fontFamily: 'inherit',
+              }}
+            />
+            <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              style={{
+                flex: 1, padding: '5px 6px', borderRadius: 6,
+                background: '#0f172a', border: '1px solid #334155',
+                color: '#e2e8f0', fontSize: 11, fontFamily: 'inherit',
+              }}
+            />
+          </div>
+
+          {/* Month navigation */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <button
               onClick={() => calMonth === 0 ? (setCalMonth(11), setCalYear(calYear - 1)) : setCalMonth(calMonth - 1)}
@@ -412,19 +484,21 @@ export default function EarningsCalendarPage() {
             ))}
           </div>
 
-          {/* Month earnings list */}
+          {/* Date range earnings list */}
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>{MONTHS[calMonth]} {calYear} Earnings</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{filtered.filter(e => e.date.startsWith(MONTH_START)).length} reports</span>
+              <span>Earnings ({dateFrom} – {dateTo})</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{filtered.length} reports</span>
             </div>
-            {filtered.filter(e => e.date.startsWith(MONTH_START)).length === 0 ? (
+            {filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 24, fontSize: 12, color: 'var(--text-muted)', background: '#1e293b', border: '1px solid #334155', borderRadius: 10 }}>
-                No earnings reported for this month.
+                {holdingsOnly
+                  ? 'No earnings found for your holdings in this date range.'
+                  : 'No earnings found for this date range.'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {filtered.filter(e => e.date.startsWith(MONTH_START)).slice(0, 50).map(e => (
+                {filtered.slice(0, 50).map(e => (
                   <EarningsRow key={`${e.symbol}-${e.date}-${e.quarter}`} event={e} />
                 ))}
               </div>
@@ -435,7 +509,7 @@ export default function EarningsCalendarPage() {
 
       {/* ── List View ─────────────────────────────────────────── */}
       {!loading && view === 'list' && (
-        <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div>
           {filtered.length === 0 ? (
             <div style={{
               textAlign: 'center', padding: '60px 20px',

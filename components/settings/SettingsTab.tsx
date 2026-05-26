@@ -1,8 +1,10 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { InvestorStyleSelector } from '@/components/settings/InvestorStyleSelector';
+import { usePortfolio } from '@/hooks/usePortfolio';
+import { getWatchlists } from '@/lib/supabase/watchlists';
+import { getAlerts } from '@/lib/supabase/alerts';
 import type { InvestorStyle } from '@/types';
 import { 
   Star, Bell, Newspaper, CalendarDays, Search, 
@@ -68,14 +70,18 @@ const BROKERS: BrokerItem[] = [
 export function SettingsTab() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const { account } = usePortfolio();
   const [showBrokers, setShowBrokers] = useState(false);
-  const [showStyleModal, setShowStyleModal] = useState(false);
   const [investorStyle, setInvestorStyle] = useState<InvestorStyle>(
     user?.investorStyle || 'buffett'
   );
   // Toast notification for items not yet built
   const [toast, setToast] = useState<string | null>(null);
-  const styleSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Real counts from DB
+  const [watchlistCount, setWatchlistCount] = useState(0);
+  const [watchlistSymbolCount, setWatchlistSymbolCount] = useState(0);
+  const [alertCount, setAlertCount] = useState(0);
 
   const connectedBroker = BROKERS.find(b => b.status === 'connected');
 
@@ -84,16 +90,43 @@ export function SettingsTab() {
     setTimeout(() => setToast(null), 2000);
   }, []);
 
+  // Load real watchlist and alert counts
+  useEffect(() => {
+    if (!user) return;
+    getWatchlists(user.id).then(wls => {
+      setWatchlistCount(wls.length);
+      setWatchlistSymbolCount(wls.reduce((sum, w) => sum + (w.stocks?.length || 0), 0));
+    }).catch(() => {});
+    getAlerts(user.id).then(alerts => {
+      setAlertCount(alerts.length);
+    }).catch(() => {});
+  }, [user]);
+
+  const holdingsCount = account?.positions?.length || 0;
+
   return (
-    <div style={{ padding: '12px 16px 80px' }}>
-      {/* Portfolio & Research */}
+    <div style={{ padding: '12px 16px 120px' }}>
+      {/* Investor Style — top-level global account setting */}
       <div className="section">
         <SettingsItem
-          icon={Star} title="Watchlists" subtitle="3 lists · 24 symbols"
+          icon={Star}
+          title="Investor Style"
+          subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap for details`}
+          onClick={() => router.push('/investor-style')}
+        />
+      </div>
+
+      {/* Portfolio & Research */}
+      <div className="section" style={{ marginTop: 12 }}>
+        <SettingsItem
+          icon={Star} title="Watchlists"
+          subtitle={`${watchlistCount} list${watchlistCount !== 1 ? 's' : ''} · ${watchlistSymbolCount} symbol${watchlistSymbolCount !== 1 ? 's' : ''}`}
           onClick={() => router.push('/watchlists')}
         />
         <SettingsItem
-          icon={Bell} title="Price Alerts" subtitle="5 active alerts" badge={2}
+          icon={Bell} title="Price Alerts"
+          subtitle={`${alertCount} active alert${alertCount !== 1 ? 's' : ''}`}
+          badge={alertCount > 0 ? alertCount : undefined}
           onClick={() => router.push('/price-alerts')}
         />
         <SettingsItem
@@ -101,22 +134,13 @@ export function SettingsTab() {
           onClick={() => router.push('/news-feed')}
         />
         <SettingsItem
-          icon={CalendarDays} title="Earnings Calendar" subtitle="3 holdings reporting this week"
+          icon={CalendarDays} title="Earnings Calendar"
+          subtitle={holdingsCount > 0 ? `${holdingsCount} holding${holdingsCount !== 1 ? 's' : ''} tracked` : 'Track holdings earnings'}
           onClick={() => router.push('/earnings-calendar')}
         />
         <SettingsItem
           icon={Search} title="Stock Screener" subtitle="Find new opportunities"
           onClick={() => router.push('/stock-screener')}
-        />
-      </div>
-
-      {/* Investor Style */}
-      <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem
-          icon={Star}
-          title="Investor Style"
-          subtitle={`${investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1)} · Tap for details`}
-          onClick={() => router.push('/investor-style')}
         />
       </div>
 
@@ -218,19 +242,6 @@ export function SettingsTab() {
             <Plus size={14} />
             Request a broker
           </div>
-        </div>
-      )}
-
-      {/* Investor Style Selector (always visible) */}
-      {user && (
-        <div ref={styleSelectorRef}>
-          <InvestorStyleSelector
-            userId={user.id}
-            currentStyle={investorStyle}
-            onStyleChanged={(newStyle) => setInvestorStyle(newStyle)}
-            externalShowModal={showStyleModal}
-            onModalClosed={() => setShowStyleModal(false)}
-          />
         </div>
       )}
 
