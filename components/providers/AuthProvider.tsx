@@ -30,6 +30,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   profileSynced: boolean;
   inactivityWarning: boolean;
+  inactivityCountdown: number;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ needsConfirmation: boolean } | void>;
   signOut: () => Promise<void>;
@@ -43,6 +44,7 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthenticated: false,
   profileSynced: false,
   inactivityWarning: false,
+  inactivityCountdown: 0,
   signIn: async () => {},
   signUp: async () => {},
   signOut: async () => {},
@@ -153,19 +155,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Lazy init — createClient() throws if called during SSR
 
   // ─── Reset inactivity timer ──────────────────────────────
+  const [countdown, setCountdown] = useState(0);
+  const countdownInterval = useRef<NodeJS.Timeout | null>(null);
+
   const resetInactivity = useCallback(() => {
     setInactivityWarning(false);
+    setCountdown(0);
     if (warningRef.current) clearTimeout(warningRef.current);
     if (inactivityRef.current) clearTimeout(inactivityRef.current);
+    if (countdownInterval.current) clearInterval(countdownInterval.current);
 
     warningRef.current = setTimeout(() => {
-      if (mountedRef.current) setInactivityWarning(true);
+      if (!mountedRef.current) return;
+      setInactivityWarning(true);
+      // Start countdown from 60 seconds
+      let remaining = 60;
+      setCountdown(remaining);
+      countdownInterval.current = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          if (countdownInterval.current) clearInterval(countdownInterval.current);
+          setCountdown(0);
+        } else {
+          setCountdown(remaining);
+        }
+      }, 1000);
     }, INACTIVITY_TIMEOUT - WARNING_BEFORE);
 
-    inactivityRef.current = setTimeout(async () => {
-      if (mountedRef.current) {
-        await supabaseRef.current?.auth.signOut();
-      }
+    inactivityRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      if (countdownInterval.current) clearInterval(countdownInterval.current);
+      // Force sign-out via Supabase SDK and hard redirect as fallback
+      const doSignOut = async () => {
+        try {
+          if (supabaseRef.current) {
+            await supabaseRef.current.auth.signOut();
+          }
+        } catch (err) {
+          console.error('[AuthProvider] Sign-out error during inactivity timeout:', err);
+        }
+        // Fallback: hard redirect even if signOut had issues
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+      };
+      doSignOut();
     }, INACTIVITY_TIMEOUT);
   }, []);
 
@@ -321,6 +355,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user && !!session,
     profileSynced,
     inactivityWarning,
+    inactivityCountdown: countdown,
     signIn,
     signUp,
     signOut,

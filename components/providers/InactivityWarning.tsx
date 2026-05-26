@@ -7,7 +7,7 @@
 import { useAuth } from './AuthProvider';
 
 export function InactivityWarning() {
-  const { inactivityWarning } = useAuth();
+  const { inactivityWarning, inactivityCountdown } = useAuth();
 
   if (!inactivityWarning) return null;
 
@@ -27,10 +27,14 @@ export function InactivityWarning() {
       fontWeight: 600,
       backdropFilter: 'blur(8px)',
       whiteSpace: 'nowrap',
-      pointerEvents: 'none',
+      pointerEvents: 'auto',
+      cursor: 'pointer',
       animation: 'fadeIn 0.3s ease-out',
+    }} onClick={() => {
+      // Tapping the warning resets the timer (user is active!)
+      window.dispatchEvent(new Event('click'));
     }}>
-      ⏰ You&apos;ll be logged out in 1 minute due to inactivity
+      ⏰ Logging out in <strong>{inactivityCountdown || 60}s</strong> — tap to stay
     </div>
   );
 }
