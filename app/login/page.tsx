@@ -4,12 +4,16 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Eye, EyeOff, LogIn, UserPlus, Mail, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function LoginPage() {
-  const { signIn: doSignIn, signUp: doSignUp, resendConfirmation } = useAuth();
+  const router = useRouter();
+  const { signIn: doSignIn, signUp: doSignUp, resendConfirmation, user: authUser, isAuthenticated, isDataLoaded, profileNotFound } = useAuth();
+
+  const BUILD = '31230bf-2026-05-27T03:20Z';
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -23,6 +27,14 @@ export default function LoginPage() {
   const [confirmedEmail, setConfirmedEmail] = useState('');
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  // Auto-redirect to / only after DB sync completes and profile is valid
+  useEffect(() => {
+    console.log('[login] Auth state — authenticated:', isAuthenticated, 'dataLoaded:', isDataLoaded, 'profileNotFound:', profileNotFound, 'BUILD:', BUILD);
+    if (isAuthenticated && isDataLoaded && !profileNotFound) {
+      router.replace('/');
+    }
+  }, [isAuthenticated, isDataLoaded, profileNotFound, router]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -48,13 +60,10 @@ export default function LoginPage() {
             setSubmitting(false);
             return;
           }
-          // onAuthStateChange will handle session + redirect will be triggered
-          // by AuthGuard switching from loading → authenticated
-          window.location.href = '/';
+          // AuthGuard will redirect once isDataLoaded && isAuthenticated
         } else {
           await doSignIn(email.trim(), password);
-          // Auth succeeds → onAuthStateChange fires SIGNED_IN → AuthGuard renders children
-          window.location.href = '/';
+          // AuthGuard will redirect once isDataLoaded && isAuthenticated
         }
       } catch (err: any) {
         const msg = String(err?.message || err || 'Something went wrong.');
@@ -158,6 +167,13 @@ export default function LoginPage() {
         </div>
         <p className="tagline">AI-first trading, in your pocket</p>
 
+        {profileNotFound && (
+          <div className="err" style={{marginBottom: 16, background: 'rgba(248,113,113,.15)', borderColor: 'rgba(248,113,113,.3)'}}>
+            <ShieldCheck size={14} />
+            <span><strong>Account not found in our system.</strong> This email has no DB profile. Contact support or create a new account.</span>
+          </div>
+        )}
+
         <div className="tabs">
           <button className={`tab ${mode === 'signin' ? 'on' : ''}`} onClick={() => { setMode('signin'); setError(null); }} disabled={submitting}>Sign In</button>
           <button className={`tab ${mode === 'signup' ? 'on' : ''}`} onClick={() => { setMode('signup'); setError(null); }} disabled={submitting}>Sign Up</button>
@@ -215,6 +231,7 @@ export default function LoginPage() {
             <>Already have an account? <button type="button" className="link" onClick={() => { setMode('signin'); setError(null); }}>Sign in</button></>
           )}
         </div>
+        <div style={{textAlign:'center', marginTop: 12, fontSize: 10, color: '#475569'}}>build: {BUILD}</div>
       </div>
 
       <style jsx>{`
