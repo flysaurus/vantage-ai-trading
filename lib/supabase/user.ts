@@ -31,7 +31,10 @@ export async function getUserProfile(userId: string): Promise<User | null> {
     console.log('[getUserProfile] API status:', res.status, 'for', userId);
     if (!res.ok) {
       if (res.status === 404) return null;
-      console.warn('[users] getUserProfile failed:', res.status);
+      // Read error body for diagnostics
+      let detail = '';
+      try { const body = await res.json(); detail = body?.detail || body?.error || ''; } catch {}
+      console.warn('[users] getUserProfile failed:', res.status, detail);
       return null;
     }
     const data = await res.json();

@@ -36,9 +36,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .maybeSingle();
 
     if (error) {
-      console.error('[users/get] Query failed:', error.message);
+      console.error('[users/get] Query failed:', error.message, error.code, error.details);
       return NextResponse.json(
-        { error: 'Failed to fetch user', detail: error.message },
+        { error: 'Failed to fetch user', detail: error.message, code: error.code, hint: error.hint },
         { status: 500 }
       );
     }
