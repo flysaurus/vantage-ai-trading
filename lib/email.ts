@@ -4,8 +4,16 @@
 
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY || '');
-const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage-ai-trading.vercel.app';
+let _resend: Resend | null = null;
+
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY || '');
+  }
+  return _resend;
+}
+
+const FROM_EMAIL = (process.env.FROM_EMAIL as string) || 'noreply@vantage-ai-trading.vercel.app';
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   if (!process.env.RESEND_API_KEY) {
@@ -14,7 +22,7 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: FROM_EMAIL,
       to,
       subject,
