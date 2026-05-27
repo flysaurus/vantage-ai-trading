@@ -93,28 +93,34 @@ export async function authSignup(email: string, password: string, displayName: s
 
     // Step 5: Send verification email (best-effort — don't fail signup if email fails)
     let emailSent = false;
+    let previewUrl: string | undefined;
     try {
       const emailHTML = getVerificationEmailHTML(token, email);
-      await sendEmail({
+      const result = await sendEmail({
         to: email,
         subject: 'Verify Your Vantage Account',
         html: emailHTML,
       });
       emailSent = true;
+      previewUrl = result.previewUrl || undefined;
       console.log('✅ Verification email sent');
     } catch (emailErr: any) {
       console.error('⚠️ Failed to send verification email:', emailErr.message);
       // Don't throw — user was created successfully, email delivery is secondary
     }
 
+    // Return token when email wasn't delivered to a real inbox (Ethereal or failed)
+    const includeToken = !emailSent || !!previewUrl;
+
     return {
       success: true,
       userId: newUser.id,
       email,
       emailSent,
-      verificationToken: emailSent ? undefined : token, // Return token when email fails (dev/debug)
+      ...(includeToken && { verificationToken: token }),
+      ...(previewUrl && { previewUrl }),
       message: emailSent
-        ? 'Account created! Check your email to verify.'
+        ? (previewUrl ? 'Account created! Email sent to Ethereal (preview in console).' : 'Account created! Check your email to verify.')
         : 'Account created! Use the verificationToken to verify via /api/auth/verify-email.',
     };
   } catch (err) {

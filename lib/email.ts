@@ -1,56 +1,67 @@
-// ─── Email Service (Gmail SMTP via Nodemailer) ─────────────────
-// Zero third-party services. Uses your Gmail account + app password.
-// No domain verification, no IP whitelist, no credit card, no limits.
+// ─── Email Service (Ethereal + Nodemailer) ─────────────────────
+// Development: Ethereal fake SMTP (zero config, emails visible at ethereal.email)
+// Production:  Set SMTP_HOST/PORT/USER/PASS env vars for any real SMTP provider.
 //
-// Setup:
-// 1. Enable 2FA on your Google account (myaccount.google.com/security)
-// 2. Generate App Password: Security → 2-Step Verification → App Passwords
-//    Select "Mail" + "Other (Vantage)" → copy the 16-char password
-// 3. Set GMAIL_USER + GMAIL_APP_PASSWORD env vars on Vercel
-//
-// Limits: Gmail allows 500 emails/day (personal), 2000/day (Workspace)
+// Zero signups. Zero domain verification. Just works.
 
 import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 
-const GMAIL_USER = process.env.GMAIL_USER || '';
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || GMAIL_USER;
+const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage.test';
 const FROM_NAME = 'Vantage';
 
-let _transporter: nodemailer.Transporter | null = null;
+let _transporter: Transporter | null = null;
 
-function getTransporter(): nodemailer.Transporter {
+async function getTransporter(): Promise<Transporter> {
   if (!_transporter) {
-    _transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // TLS via STARTTLS
-      auth: {
-        user: GMAIL_USER,
-        pass: GMAIL_APP_PASSWORD,
-      },
-    });
+    const smtpHost = process.env.SMTP_HOST;
+
+    if (smtpHost) {
+      // Production: real SMTP
+      _transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: process.env.SMTP_USER || '',
+          pass: process.env.SMTP_PASS || '',
+        },
+      });
+    } else {
+      // Development: Ethereal fake SMTP
+      const testAccount = await nodemailer.createTestAccount();
+      console.log('[email] 🔧 Using Ethereal test account:', testAccount.user);
+      _transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
   }
   return _transporter;
 }
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    const msg = 'GMAIL_USER or GMAIL_APP_PASSWORD not set';
-    console.warn('[email] ⚠️', msg, '— skipping email send');
-    throw new Error(msg);
-  }
-
   try {
-    const info = await getTransporter().sendMail({
+    const transporter = await getTransporter();
+    const info = await transporter.sendMail({
       from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
       to,
       subject,
       html,
     });
 
+    // Ethereal provides a preview URL to view the email
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) {
+      console.log('[email] ✅ Preview:', previewUrl);
+    }
     console.log('[email] ✅ Sent to', to, '(id:', info.messageId, ')');
-    return { success: true, id: info.messageId };
+    return { success: true, id: info.messageId, previewUrl };
   } catch (err: any) {
     console.error('[email] ❌ Send failed:', err.message);
     throw err;
