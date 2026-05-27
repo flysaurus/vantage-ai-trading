@@ -36,8 +36,9 @@ function getTransporter(): nodemailer.Transporter {
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    console.warn('[email] ⚠️ Gmail SMTP not configured — skipping email send');
-    return { success: false, error: 'GMAIL_USER or GMAIL_APP_PASSWORD not set' };
+    const msg = 'GMAIL_USER or GMAIL_APP_PASSWORD not set';
+    console.warn('[email] ⚠️', msg, '— skipping email send');
+    throw new Error(msg);
   }
 
   try {
