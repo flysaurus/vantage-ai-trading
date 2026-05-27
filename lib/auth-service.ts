@@ -47,11 +47,10 @@ export async function authSignup(email: string, password: string, displayName: s
     const { hash, salt } = await hashPassword(password);
     console.log('✅ Password hashed');
 
-    // Step 3: Create user in database
+    // Step 3: Create user in database (DB generates UUID via default)
     const { data: newUser, error: userError } = await supabase
       .from('users')
       .insert([{
-        id: undefined, // let DB generate UUID
         email,
         password_hash: hash,
         password_salt: salt,
