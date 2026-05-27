@@ -50,6 +50,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         email,
         display_name: displayName || email?.split('@')[0] || null,
         avatar_url: avatarUrl || null,
+        auth_provider: 'email',
       })
       .select('id, email, display_name, avatar_url, created_at')
       .single();

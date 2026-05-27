@@ -29,7 +29,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const { data, error } = await (supabase as any)
       .from('users')
       .select(
-        'id, email, display_name, investor_style, investor_style_set_at, investor_style_onboarded, created_at, updated_at'
+        'id, email, display_name, avatar_url, investor_style, investor_style_set_at, investor_style_onboarded, created_at, updated_at'
       )
       .eq('id', targetUserId)
       .maybeSingle();
@@ -53,6 +53,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       id: data.id,
       email: data.email,
       displayName: data.display_name,
+      avatarUrl: data.avatar_url || null,
       investorStyle: data.investor_style || 'buffett',
       investorStyleSetAt: data.investor_style_set_at || null,
       investorStyleOnboarded: data.investor_style_onboarded ?? false,

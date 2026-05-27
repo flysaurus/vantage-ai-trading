@@ -42,11 +42,12 @@ export async function getUserProfile(userId: string): Promise<User | null> {
       id: data.id,
       email: data.email,
       displayName: data.displayName,
+      avatarUrl: data.avatarUrl || undefined,
       investorStyle: data.investorStyle || 'buffett',
-      investorStyleSetAt: data.investorStyleSetAt || null,
+      investorStyleSetAt: data.investorStyleSetAt || undefined,
       investorStyleOnboarded: data.investorStyleOnboarded ?? false,
       createdAt: data.createdAt,
-      updatedAt: data.updatedAt || null,
+      updatedAt: data.updatedAt || undefined,
     };
   } catch (err) {
     console.warn('[users] getUserProfile error:', err);
