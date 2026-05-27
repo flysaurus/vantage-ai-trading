@@ -112,9 +112,10 @@ export async function authSignup(email: string, password: string, displayName: s
       userId: newUser.id,
       email,
       emailSent,
+      verificationToken: emailSent ? undefined : token, // Return token when email fails (dev/debug)
       message: emailSent
         ? 'Account created! Check your email to verify.'
-        : 'Account created! Email delivery failed — verify domain on Resend.',
+        : 'Account created! Use the verificationToken to verify via /api/auth/verify-email.',
     };
   } catch (err) {
     console.error('❌ Signup error:', err);
