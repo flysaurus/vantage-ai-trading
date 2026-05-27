@@ -214,6 +214,7 @@ export interface User {
   investorStyleSetAt?: string;
   investorStyleOnboarded: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface VantageSession {
