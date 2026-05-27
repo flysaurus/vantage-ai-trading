@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic'; // never cache — DB is source of truth
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     // Verify auth
@@ -42,8 +44,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     if (!data) {
+      console.log('[users/get] No user found for id:', targetUserId);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    console.log('[users/get] User found:', data.email);
 
     return NextResponse.json({
       id: data.id,

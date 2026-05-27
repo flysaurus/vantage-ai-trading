@@ -28,6 +28,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 export async function getUserProfile(userId: string): Promise<User | null> {
   try {
     const res = await apiFetch(`${API_BASE}/get?id=${encodeURIComponent(userId)}`);
+    console.log('[getUserProfile] API status:', res.status, 'for', userId);
     if (!res.ok) {
       if (res.status === 404) return null;
       console.warn('[users] getUserProfile failed:', res.status);

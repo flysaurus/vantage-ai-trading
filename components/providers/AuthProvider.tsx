@@ -118,15 +118,18 @@ async function syncUserProfile(
 
   try {
     const { getUserProfile } = await import('@/lib/supabase/user');
+    console.log('[syncUserProfile] Fetching DB profile for', u.id);
     profile = await getUserProfile(u.id);
-  } catch {
-    // Dynamic import or network error — treat as profile not found
+  } catch (err) {
+    console.error('[syncUserProfile] Import or fetch error:', err);
   }
 
   if (!mounted()) return;
 
+  console.log('[syncUserProfile] Profile result:', profile ? 'FOUND' : 'NOT FOUND');
+
   if (!profile) {
-    // No DB row OR fetch failed — user doesn't exist in our system
+    console.log('[syncUserProfile] BLOCKING — no DB row, calling onProfileNotFound');
     onProfileNotFound();
     onComplete();
     return;
