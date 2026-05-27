@@ -44,7 +44,7 @@ export async function getUserProfile(userId: string): Promise<User | null> {
       displayName: data.displayName,
       avatarUrl: data.avatarUrl,
       investorStyle: data.investorStyle || 'buffett',
-      investorStyleSetAt: data.investorStyleSetAt,
+      investorStyleSetAt: data.investorStyleSetAt || null,
       investorStyleOnboarded: data.investorStyleOnboarded ?? false,
       createdAt: data.createdAt,
     };
