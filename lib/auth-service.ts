@@ -91,21 +91,30 @@ export async function authSignup(email: string, password: string, displayName: s
 
     console.log('✅ Verification token created');
 
-    // Step 5: Send verification email
-    const emailHTML = getVerificationEmailHTML(token, email);
-    await sendEmail({
-      to: email,
-      subject: 'Verify Your Vantage Account',
-      html: emailHTML,
-    });
-
-    console.log('✅ Verification email sent');
+    // Step 5: Send verification email (best-effort — don't fail signup if email fails)
+    let emailSent = false;
+    try {
+      const emailHTML = getVerificationEmailHTML(token, email);
+      await sendEmail({
+        to: email,
+        subject: 'Verify Your Vantage Account',
+        html: emailHTML,
+      });
+      emailSent = true;
+      console.log('✅ Verification email sent');
+    } catch (emailErr: any) {
+      console.error('⚠️ Failed to send verification email:', emailErr.message);
+      // Don't throw — user was created successfully, email delivery is secondary
+    }
 
     return {
       success: true,
       userId: newUser.id,
       email,
-      message: 'Account created! Check your email to verify.',
+      emailSent,
+      message: emailSent
+        ? 'Account created! Check your email to verify.'
+        : 'Account created! Email delivery failed — verify domain on Resend.',
     };
   } catch (err) {
     console.error('❌ Signup error:', err);
