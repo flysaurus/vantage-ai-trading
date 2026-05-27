@@ -67,8 +67,8 @@ export async function authSignup(email: string, password: string, displayName: s
       .single();
 
     if (userError) {
-      console.error('❌ User creation error:', userError);
-      throw new Error('Failed to create user');
+      console.error('❌ User creation error — code:', userError.code, 'message:', userError.message, 'details:', userError.details, 'hint:', userError.hint);
+      throw new Error(`Failed to create user: ${userError.message} (code: ${userError.code}, hint: ${userError.hint || 'none'})`);
     }
 
     console.log('✅ User created:', newUser.id);
@@ -86,8 +86,8 @@ export async function authSignup(email: string, password: string, displayName: s
       }]);
 
     if (tokenError) {
-      console.error('❌ Token creation error:', tokenError);
-      throw new Error('Failed to create verification token');
+      console.error('❌ Token creation error — code:', tokenError.code, 'message:', tokenError.message);
+      throw new Error(`Failed to create verification token: ${tokenError.message}`);
     }
 
     console.log('✅ Verification token created');
