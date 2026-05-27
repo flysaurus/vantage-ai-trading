@@ -1,37 +1,35 @@
-// ─── Email Service (Mailgun) ────────────────────────────────────
-// Uses Mailgun HTTP API for transactional emails (verification, password reset).
-// Free tier: 100 emails/day on sandbox domain. No npm SDK needed.
+// ─── Email Service (Brevo) ─────────────────────────────────────
+// Uses Brevo (Sendinblue) HTTP API for transactional emails.
+// Free tier: 300 emails/day forever, no credit card, no domain DNS.
+// Env vars: BREVO_API_KEY, FROM_EMAIL
 //
-// Env vars: MAILGUN_API_KEY, MAILGUN_DOMAIN, FROM_EMAIL
+// Setup: brevo.com → sign up → "SMTP & API" → API Keys → copy key
+// Then verify your sender email in "Senders & IP" → Add Email
 
-const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || '';
-const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || `noreply@${MAILGUN_DOMAIN}`;
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage.test';
+const FROM_NAME = 'Vantage';
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
-    console.warn('[email] ⚠️ Mailgun not configured — skipping email send');
-    return { success: false, error: 'MAILGUN_API_KEY or MAILGUN_DOMAIN not set' };
+  if (!BREVO_API_KEY) {
+    console.warn('[email] ⚠️ BREVO_API_KEY not set — skipping email send');
+    return { success: false, error: 'BREVO_API_KEY not configured' };
   }
 
-  const formData = new URLSearchParams();
-  formData.append('from', FROM_EMAIL);
-  formData.append('to', to);
-  formData.append('subject', subject);
-  formData.append('html', html);
-
   try {
-    const resp = await fetch(
-      `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64')}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      }
-    );
+    const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: FROM_NAME, email: FROM_EMAIL },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+    });
 
     const body = await resp.json();
 
@@ -40,8 +38,8 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
       throw new Error(body.message || 'Failed to send email');
     }
 
-    console.log('[email] ✅ Sent to', to, '(id:', body.id, ')');
-    return { success: true, id: body.id };
+    console.log('[email] ✅ Sent to', to, '(id:', body.messageId, ')');
+    return { success: true, id: body.messageId };
   } catch (err: any) {
     console.error('[email] ❌ Unexpected error:', err.message);
     throw err;
