@@ -65,9 +65,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (err?.name === 'AuthError') {
       return NextResponse.json({ error: err.message }, { status: err.status || 401 });
     }
-    console.error('[users/get] Unexpected error:', err);
+    const detail = err?.message || String(err);
+    console.error('[users/get] Unexpected error:', detail);
+    // Missing env vars on preview deploys trigger createServerClient() to throw
+    if (detail.includes('Missing Supabase environment variables')) {
+      return NextResponse.json(
+        { error: 'Server configuration error — missing Supabase env vars', detail },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
-      { error: 'Internal server error', detail: err?.message },
+      { error: 'Internal server error', detail },
       { status: 500 }
     );
   }
