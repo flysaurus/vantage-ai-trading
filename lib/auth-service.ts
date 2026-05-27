@@ -220,7 +220,7 @@ export async function authLogin(email: string, password: string) {
   try {
     const supabase = db();
 
-    // Step 1: Check if email verified
+    // Step 1: Find user + verify password (check password first — don't leak verification status)
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, email_verified, password_hash, status, two_factor_enabled')
@@ -232,16 +232,7 @@ export async function authLogin(email: string, password: string) {
       throw new Error('Invalid email or password');
     }
 
-    if (!user.email_verified) {
-      console.log('❌ Email not verified');
-      throw new Error('Please verify your email before logging in');
-    }
-
-    if (user.status !== 'active') {
-      throw new Error('Your account is not active');
-    }
-
-    // Step 2: Verify password
+    // Verify password BEFORE checking email_verified — so wrong password always shows "Invalid credentials"
     const passwordMatch = await verifyPassword(password, user.password_hash);
 
     if (!passwordMatch) {
@@ -261,6 +252,16 @@ export async function authLogin(email: string, password: string) {
     }
 
     console.log('✅ Password verified');
+
+    // Step 2: Check email verification and account status (password was correct)
+    if (!user.email_verified) {
+      console.log('❌ Email not verified');
+      throw new Error('Please verify your email before logging in');
+    }
+
+    if (user.status !== 'active') {
+      throw new Error('Your account is not active');
+    }
 
     // Step 3: Check if 2FA enabled
     if (user.two_factor_enabled) {
