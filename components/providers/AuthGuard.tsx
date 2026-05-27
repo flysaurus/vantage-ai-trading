@@ -2,6 +2,7 @@
 // Wraps protected pages. Redirects to /login if no valid session.
 // Shows loading screen while isLoading (covers auth check + DB sync).
 // Skips public paths (login, login-test) to avoid redirect loops.
+// Redirects to onboarding if investorStyleOnboarded is false.
 
 'use client';
 
@@ -10,13 +11,21 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 
 const PUBLIC_PATHS = ['/login', '/login-test'];
+const ONBOARDING_PATH = '/investor-style';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, profileNotFound } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    isDataLoaded,
+    profileNotFound,
+    user,
+  } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const isPublic = PUBLIC_PATHS.includes(pathname);
+  const isOnboarding = pathname === ONBOARDING_PATH;
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isPublic) {
@@ -24,8 +33,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, isAuthenticated, isPublic, router]);
 
+  // Onboarding redirect — only after data is loaded (DB confirmed onboarding status)
+  useEffect(() => {
+    if (isDataLoaded && user && !user.investorStyleOnboarded && !isOnboarding) {
+      router.replace(ONBOARDING_PATH);
+    }
+  }, [isDataLoaded, user, isOnboarding, router]);
+
   // Public pages render immediately
   if (isPublic) return <>{children}</>;
+
+  // Onboarding page — always render (its own guard prevents access if already onboarded)
+  if (isOnboarding) return <>{children}</>;
 
   // DB profile missing — user doesn't exist in our system
   if (profileNotFound) {
