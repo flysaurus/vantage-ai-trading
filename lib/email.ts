@@ -1,45 +1,47 @@
-// ─── Email Service (Brevo) ─────────────────────────────────────
-// Uses Brevo (Sendinblue) HTTP API for transactional emails.
-// Free tier: 300 emails/day forever, no credit card, no domain DNS.
-// Env vars: BREVO_API_KEY, FROM_EMAIL
+// ─── Email Service (SendGrid) ───────────────────────────────────
+// Uses SendGrid Mail Send API v3 for transactional emails.
+// Free tier: 100 emails/day forever, no credit card, no IP whitelist.
+// Env vars: SENDGRID_API_KEY, FROM_EMAIL
 //
-// Setup: brevo.com → sign up → "SMTP & API" → API Keys → copy key
-// Then verify your sender email in "Senders & IP" → Add Email
+// Setup:
+// 1. sign up at sendgrid.com → free tier
+// 2. Settings → API Keys → Create API Key → "Restricted Access" → "Mail Send"
+// 3. Settings → Sender Authentication → "Verify a Single Sender" → verify your email
 
-const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
 const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage.test';
 const FROM_NAME = 'Vantage';
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!BREVO_API_KEY) {
-    console.warn('[email] ⚠️ BREVO_API_KEY not set — skipping email send');
-    return { success: false, error: 'BREVO_API_KEY not configured' };
+  if (!SENDGRID_API_KEY) {
+    console.warn('[email] ⚠️ SENDGRID_API_KEY not set — skipping email send');
+    return { success: false, error: 'SENDGRID_API_KEY not configured' };
   }
 
   try {
-    const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
-        'api-key': BREVO_API_KEY,
+        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sender: { name: FROM_NAME, email: FROM_EMAIL },
-        to: [{ email: to }],
+        personalizations: [{ to: [{ email: to }] }],
+        from: { name: FROM_NAME, email: FROM_EMAIL },
         subject,
-        htmlContent: html,
+        content: [{ type: 'text/html', value: html }],
       }),
     });
 
-    const body = await resp.json();
-
     if (!resp.ok) {
-      console.error('[email] ❌ Send failed:', body.message || body);
-      throw new Error(body.message || 'Failed to send email');
+      const body = await resp.json();
+      const msg = body.errors?.[0]?.message || resp.statusText;
+      console.error('[email] ❌ Send failed:', msg);
+      throw new Error(msg);
     }
 
-    console.log('[email] ✅ Sent to', to, '(id:', body.messageId, ')');
-    return { success: true, id: body.messageId };
+    console.log('[email] ✅ Sent to', to);
+    return { success: true };
   } catch (err: any) {
     console.error('[email] ❌ Unexpected error:', err.message);
     throw err;
