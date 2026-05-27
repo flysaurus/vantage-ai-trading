@@ -7,6 +7,8 @@ import { createServerClient } from '@/lib/supabase';
 import { hashPassword, verifyPassword, generateToken, encryptData, decryptData } from '@/lib/crypto';
 import { sendEmail, getVerificationEmailHTML, getPasswordResetEmailHTML } from '@/lib/email';
 import { v4 as uuidv4 } from 'uuid';
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
 
 // ─── Resolve the Supabase client once at the top ─────────────────
 // createServerClient is safe because auth-service is only used in API routes / server components.
@@ -464,4 +466,227 @@ export async function authResetPassword(email: string, token: string, newPasswor
     console.error('❌ Reset password error:', err);
     throw err;
   }
+}
+
+// ============================================================================
+// 2FA — BACKUP CODES (helper)
+// ============================================================================
+
+function generateBackupCodes(count: number = 10): string[] {
+  const codes: string[] = [];
+  for (let i = 0; i < count; i++) {
+    codes.push(
+      Math.random()
+        .toString(36)
+        .substring(2, 10)
+        .toUpperCase()
+    );
+  }
+  return codes;
+}
+
+// ============================================================================
+// 2FA — GENERATE SECRET & QR CODE
+// ============================================================================
+
+export async function generate2FASecret(email: string) {
+  console.log('👉 [2FA] Generating secret for:', email);
+
+  const secret = speakeasy.generateSecret({
+    name: `Vantage (${email})`,
+    issuer: 'Vantage',
+    length: 32,
+  });
+
+  if (!secret.otpauth_url) {
+    throw new Error('Failed to generate 2FA secret');
+  }
+
+  const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+
+  console.log('✅ 2FA secret generated');
+
+  return {
+    secret: secret.base32,
+    qrCode,
+    manualEntryKey: secret.base32,
+    backupCodes: generateBackupCodes(),
+  };
+}
+
+// ============================================================================
+// 2FA — ENABLE FOR USER
+// ============================================================================
+
+export async function enable2FA(
+  userId: string,
+  secret: string,
+  totpCode: string,
+  backupCodes: string[]
+) {
+  console.log('👉 [2FA] Enabling 2FA for user:', userId);
+
+  const supabase = db();
+
+  // Verify the code first
+  const isValid = speakeasy.totp.verify({
+    secret,
+    encoding: 'base32',
+    token: totpCode,
+    window: 2,
+  });
+
+  if (!isValid) {
+    throw new Error('Invalid 2FA verification code');
+  }
+
+  console.log('✅ 2FA code verified');
+
+  const encryptedSecret = encryptData(secret);
+  const encryptedBackupCodes = encryptData(JSON.stringify(backupCodes));
+
+  const { error } = await supabase.from('two_factor_auth').upsert({
+    user_id: userId,
+    totp_secret_encrypted: encryptedSecret,
+    backup_codes_encrypted: encryptedBackupCodes,
+    is_enabled: true,
+    verified_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    console.error('❌ 2FA enable DB error:', error);
+    throw new Error(`Failed to enable 2FA: ${error.message}`);
+  }
+
+  await supabase
+    .from('users')
+    .update({ two_factor_enabled: true })
+    .eq('id', userId);
+
+  console.log('✅ 2FA enabled');
+
+  return {
+    success: true,
+    message: '2FA has been enabled successfully',
+    backupCodes,
+  };
+}
+
+// ============================================================================
+// 2FA — VERIFY TOTP CODE
+// ============================================================================
+
+export async function verify2FACode(
+  userId: string,
+  totpCode: string
+): Promise<boolean> {
+  console.log('👉 [2FA] Verifying code for user:', userId);
+
+  const supabase = db();
+
+  const { data: twoFaRecord, error } = await supabase
+    .from('two_factor_auth')
+    .select('totp_secret_encrypted')
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !twoFaRecord) {
+    console.error('❌ 2FA record not found');
+    return false;
+  }
+
+  const secret = decryptData(twoFaRecord.totp_secret_encrypted);
+  const valid = speakeasy.totp.verify({
+    secret,
+    encoding: 'base32',
+    token: totpCode,
+    window: 2,
+  });
+
+  console.log(valid ? '✅ 2FA code valid' : '❌ 2FA code invalid');
+  return valid;
+}
+
+// ============================================================================
+// 2FA — DISABLE
+// ============================================================================
+
+export async function disable2FA(userId: string, password: string) {
+  console.log('👉 [2FA] Disabling 2FA for user:', userId);
+
+  const supabase = db();
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('password_hash')
+    .eq('id', userId)
+    .single();
+
+  if (userError || !user) {
+    throw new Error('User not found');
+  }
+
+  const passwordMatch = await verifyPassword(password, user.password_hash);
+  if (!passwordMatch) {
+    throw new Error('Invalid password');
+  }
+
+  await supabase
+    .from('two_factor_auth')
+    .update({ is_enabled: false })
+    .eq('user_id', userId);
+
+  await supabase
+    .from('users')
+    .update({ two_factor_enabled: false })
+    .eq('id', userId);
+
+  console.log('✅ 2FA disabled');
+
+  return { success: true, message: '2FA has been disabled' };
+}
+
+// ============================================================================
+// 2FA — VERIFY BACKUP CODE
+// ============================================================================
+
+export async function verifyBackupCode(
+  userId: string,
+  backupCode: string
+): Promise<boolean> {
+  console.log('👉 [2FA] Verifying backup code for user:', userId);
+
+  const supabase = db();
+
+  const { data: twoFaRecord, error } = await supabase
+    .from('two_factor_auth')
+    .select('backup_codes_encrypted')
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !twoFaRecord) {
+    console.error('❌ 2FA record not found');
+    return false;
+  }
+
+  const backupCodes: string[] = JSON.parse(
+    decryptData(twoFaRecord.backup_codes_encrypted)
+  );
+
+  const codeIndex = backupCodes.indexOf(backupCode);
+  if (codeIndex === -1) {
+    return false;
+  }
+
+  // Remove used code
+  backupCodes.splice(codeIndex, 1);
+  const encrypted = encryptData(JSON.stringify(backupCodes));
+
+  await supabase
+    .from('two_factor_auth')
+    .update({ backup_codes_encrypted: encrypted })
+    .eq('user_id', userId);
+
+  console.log('✅ Backup code verified and consumed');
+  return true;
 }
