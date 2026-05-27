@@ -1,49 +1,57 @@
-// ─── Email Service (SendGrid) ───────────────────────────────────
-// Uses SendGrid Mail Send API v3 for transactional emails.
-// Free tier: 100 emails/day forever, no credit card, no IP whitelist.
-// Env vars: SENDGRID_API_KEY, FROM_EMAIL
+// ─── Email Service (Gmail SMTP via Nodemailer) ─────────────────
+// Zero third-party services. Uses your Gmail account + app password.
+// No domain verification, no IP whitelist, no credit card, no limits.
 //
 // Setup:
-// 1. sign up at sendgrid.com → free tier
-// 2. Settings → API Keys → Create API Key → "Restricted Access" → "Mail Send"
-// 3. Settings → Sender Authentication → "Verify a Single Sender" → verify your email
+// 1. Enable 2FA on your Google account (myaccount.google.com/security)
+// 2. Generate App Password: Security → 2-Step Verification → App Passwords
+//    Select "Mail" + "Other (Vantage)" → copy the 16-char password
+// 3. Set GMAIL_USER + GMAIL_APP_PASSWORD env vars on Vercel
+//
+// Limits: Gmail allows 500 emails/day (personal), 2000/day (Workspace)
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage.test';
+import nodemailer from 'nodemailer';
+
+const GMAIL_USER = process.env.GMAIL_USER || '';
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
+const FROM_EMAIL = process.env.FROM_EMAIL || GMAIL_USER;
 const FROM_NAME = 'Vantage';
 
+let _transporter: nodemailer.Transporter | null = null;
+
+function getTransporter(): nodemailer.Transporter {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // TLS via STARTTLS
+      auth: {
+        user: GMAIL_USER,
+        pass: GMAIL_APP_PASSWORD,
+      },
+    });
+  }
+  return _transporter;
+}
+
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!SENDGRID_API_KEY) {
-    console.warn('[email] ⚠️ SENDGRID_API_KEY not set — skipping email send');
-    return { success: false, error: 'SENDGRID_API_KEY not configured' };
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    console.warn('[email] ⚠️ Gmail SMTP not configured — skipping email send');
+    return { success: false, error: 'GMAIL_USER or GMAIL_APP_PASSWORD not set' };
   }
 
   try {
-    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: to }] }],
-        from: { name: FROM_NAME, email: FROM_EMAIL },
-        subject,
-        content: [{ type: 'text/html', value: html }],
-      }),
+    const info = await getTransporter().sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to,
+      subject,
+      html,
     });
 
-    if (!resp.ok) {
-      const body = await resp.json();
-      const msg = body.errors?.[0]?.message || resp.statusText;
-      console.error('[email] ❌ Send failed:', msg);
-      throw new Error(msg);
-    }
-
-    console.log('[email] ✅ Sent to', to);
-    return { success: true };
+    console.log('[email] ✅ Sent to', to, '(id:', info.messageId, ')');
+    return { success: true, id: info.messageId };
   } catch (err: any) {
-    console.error('[email] ❌ Unexpected error:', err.message);
+    console.error('[email] ❌ Send failed:', err.message);
     throw err;
   }
 }
