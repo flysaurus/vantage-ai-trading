@@ -286,6 +286,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storeUser(u);
         storeSession(vs);
         setProfileNotFound(false);
+        // Lock UI until DB sync completes — prevent flash before profileNotFound check
+        setIsLoading(true);
+        setIsDataLoaded(false);
         // ✅ isLoading stays true — DB sync callback will clear it
         syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
       }
