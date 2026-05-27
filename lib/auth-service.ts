@@ -82,7 +82,7 @@ export async function authSignup(email: string, password: string, displayName: s
     const { error: tokenError } = await supabase
       .from('email_verification_tokens')
       .insert([{
-        user_id: newUser.id,
+        user_id: userId,
         token_hash: tokenHash,
         token_salt: tokenSalt,
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -118,7 +118,7 @@ export async function authSignup(email: string, password: string, displayName: s
 
     return {
       success: true,
-      userId: newUser.id,
+      userId: userId,
       email,
       emailSent,
       ...(includeToken && { verificationToken: token }),
