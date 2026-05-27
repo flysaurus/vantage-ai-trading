@@ -49,8 +49,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         user_id: loginResult.userId,
         session_token_hash: sessionTokenHash,
         session_token_salt: crypto.randomBytes(16).toString('hex'),
-        user_agent: req.headers.get('user-agent') || null,
-        ip_address: req.headers.get('x-forwarded-for') || null,
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
       }]);
 
