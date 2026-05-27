@@ -102,7 +102,7 @@ function toVantageSession(session: Session): VantageSession {
 
 /**
  * Sync DB profile for a user — FETCH ONLY, never auto-create.
- * If the profile doesn't exist in public.users, reports via onProfileNotFound.
+ * If the profile doesn't exist or can't be fetched, reports via onProfileNotFound.
  * The users table is authoritative: no row → no account.
  * Calls `onComplete()` (sets isDataLoaded + isLoading) when done.
  */
@@ -114,48 +114,44 @@ async function syncUserProfile(
   onComplete: () => void,
   onProfileNotFound: () => void,
 ) {
+  let profile: User | null = null;
+
   try {
     const { getUserProfile } = await import('@/lib/supabase/user');
-    const profile = await getUserProfile(u.id);
-    if (!mounted()) return;
-
-    if (!profile) {
-      // No DB row — user doesn't exist in our system
-      onProfileNotFound();
-      onComplete();
-      return;
-    }
-
-    // Merge DB values (source of truth for onboarding)
-    const merged: User = {
-      ...u,
-      investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
-      investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
-    };
-
-    // Fallback: if DB didn't confirm but localStorage says yes, trust localStorage
-    if (!merged.investorStyleOnboarded && typeof window !== 'undefined') {
-      if (localStorage.getItem('vantage:onboarded') === 'true') {
-        merged.investorStyleOnboarded = true;
-      }
-    }
-
-    setUser(merged);
-    storeUser(merged);
-    if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
-    if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
+    profile = await getUserProfile(u.id);
   } catch {
-    // DB sync failed — trust what we have, check localStorage
-    if (!u.investorStyleOnboarded && typeof window !== 'undefined') {
-      if (localStorage.getItem('vantage:onboarded') === 'true') {
-        const fixed = { ...u, investorStyleOnboarded: true };
-        setUser(fixed);
-        storeUser(fixed);
-      }
-    }
-  } finally {
-    onComplete();
+    // Dynamic import or network error — treat as profile not found
   }
+
+  if (!mounted()) return;
+
+  if (!profile) {
+    // No DB row OR fetch failed — user doesn't exist in our system
+    onProfileNotFound();
+    onComplete();
+    return;
+  }
+
+  // Merge DB values (source of truth for onboarding)
+  const merged: User = {
+    ...u,
+    investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
+    investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
+  };
+
+  // Fallback: if DB didn't confirm but localStorage says yes, trust localStorage
+  if (!merged.investorStyleOnboarded && typeof window !== 'undefined') {
+    if (localStorage.getItem('vantage:onboarded') === 'true') {
+      merged.investorStyleOnboarded = true;
+    }
+  }
+
+  setUser(merged);
+  storeUser(merged);
+  if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+  if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
+
+  onComplete();
 }
 
 // ─── Provider Component ──────────────────────────────────────
