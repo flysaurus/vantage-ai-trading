@@ -1,14 +1,22 @@
-// ─── Email Service (Ethereal + Nodemailer) ─────────────────────
-// Development: Ethereal fake SMTP (zero config, emails visible at ethereal.email)
-// Production:  Set SMTP_HOST/PORT/USER/PASS env vars for any real SMTP provider.
+// ─── Email Service ─────────────────────────────────────────────
+// Priority: SendGrid API → SMTP → Ethereal (dev fallback)
 //
-// Zero signups. Zero domain verification. Just works.
+// SendGrid (production): SENDGRID_API_KEY + FROM_EMAIL
+//   - 100/day free forever, scales to paid plans
+//   - Setup: sendgrid.com → API Keys → create "Mail Send" key
+//   - Also verify a sender email: Settings → Sender Authentication
+//
+// SMTP (any provider): SMTP_HOST/PORT/USER/PASS
+// Ethereal (dev): zero config, preview at ethereal.email
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
 const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage.test';
 const FROM_NAME = 'Vantage';
+
+// ── Transporter ──
 
 let _transporter: Transporter | null = null;
 
@@ -17,7 +25,6 @@ async function getTransporter(): Promise<Transporter> {
     const smtpHost = process.env.SMTP_HOST;
 
     if (smtpHost) {
-      // Production: real SMTP
       _transporter = nodemailer.createTransport({
         host: smtpHost,
         port: parseInt(process.env.SMTP_PORT || '587'),
@@ -28,44 +35,73 @@ async function getTransporter(): Promise<Transporter> {
         },
       });
     } else {
-      // Development: Ethereal fake SMTP
+      // Dev: Ethereal fake SMTP
       const testAccount = await nodemailer.createTestAccount();
-      console.log('[email] 🔧 Using Ethereal test account:', testAccount.user);
+      console.log('[email] 🔧 Ethereal:', testAccount.user);
       _transporter = nodemailer.createTransport({
         host: 'smtp.ethereal.email',
         port: 587,
         secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
+        auth: { user: testAccount.user, pass: testAccount.pass },
       });
     }
   }
   return _transporter;
 }
 
-export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  try {
-    const transporter = await getTransporter();
-    const info = await transporter.sendMail({
-      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-      to,
-      subject,
-      html,
-    });
+// ── Send ──
 
-    // Ethereal provides a preview URL to view the email
-    const previewUrl = nodemailer.getTestMessageUrl(info);
-    if (previewUrl) {
-      console.log('[email] ✅ Preview:', previewUrl);
-    }
-    console.log('[email] ✅ Sent to', to, '(id:', info.messageId, ')');
-    return { success: true, id: info.messageId, previewUrl };
-  } catch (err: any) {
-    console.error('[email] ❌ Send failed:', err.message);
-    throw err;
+export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+  // Production: SendGrid REST API (preferred)
+  if (SENDGRID_API_KEY) {
+    return sendViaSendGrid({ to, subject, html });
   }
+
+  // Dev: SMTP / Ethereal
+  return sendViaSMTP({ to, subject, html });
+}
+
+async function sendViaSendGrid({ to, subject, html }: { to: string; subject: string; html: string }) {
+  const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }] }],
+      from: { name: FROM_NAME, email: FROM_EMAIL },
+      subject,
+      content: [{ type: 'text/html', value: html }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const body = await resp.json();
+    const msg = body.errors?.[0]?.message || resp.statusText;
+    console.error('[email] SendGrid failed:', msg);
+    throw new Error(msg);
+  }
+
+  console.log('[email] ✅ SendGrid →', to);
+  return { success: true, previewUrl: undefined as string | undefined };
+}
+
+async function sendViaSMTP({ to, subject, html }: { to: string; subject: string; html: string }) {
+  const transporter = await getTransporter();
+  const info = await transporter.sendMail({
+    from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+    to,
+    subject,
+    html,
+  });
+
+  const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
+  if (previewUrl) {
+    console.log('[email] 🔗 Preview:', previewUrl);
+  }
+  console.log('[email] ✅ SMTP →', to, '(id:', info.messageId, ')');
+  return { success: true, id: info.messageId, previewUrl };
 }
 
 // ─── Email Templates ───────────────────────────────────────────
