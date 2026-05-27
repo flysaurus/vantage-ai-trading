@@ -6,6 +6,7 @@
 import { createServerClient } from '@/lib/supabase';
 import { hashPassword, verifyPassword, generateToken, encryptData, decryptData } from '@/lib/crypto';
 import { sendEmail, getVerificationEmailHTML, getPasswordResetEmailHTML } from '@/lib/email';
+import { v4 as uuidv4 } from 'uuid';
 
 // ─── Resolve the Supabase client once at the top ─────────────────
 // createServerClient is safe because auth-service is only used in API routes / server components.
@@ -47,10 +48,13 @@ export async function authSignup(email: string, password: string, displayName: s
     const { hash, salt } = await hashPassword(password);
     console.log('✅ Password hashed');
 
-    // Step 3: Create user in database (DB generates UUID via default)
+    // Step 3: Create user in database
+    const userId = uuidv4();
+
     const { data: newUser, error: userError } = await supabase
       .from('users')
       .insert([{
+        id: userId,
         email,
         password_hash: hash,
         password_salt: salt,
