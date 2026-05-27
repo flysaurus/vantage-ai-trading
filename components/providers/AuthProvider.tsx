@@ -102,59 +102,58 @@ function toVantageSession(session: Session): VantageSession {
 
 /**
  * Sync DB profile for a user — FETCH ONLY, never auto-create.
- * If the profile doesn't exist or can't be fetched, reports via onProfileNotFound.
+ * Uses direct Supabase query (getUserData) — no REST API middleman.
  * The users table is authoritative: no row → no account.
  * Calls `onComplete()` (sets isDataLoaded + isLoading) when done.
+ * FAIL-CLOSED: any error → onProfileNotFound() → denied.
  */
 async function syncUserProfile(
   u: User,
-  token: string,
   setUser: (u: User) => void,
   mounted: () => boolean,
   onComplete: () => void,
   onProfileNotFound: () => void,
 ) {
-  let profile: User | null = null;
-
   try {
-    const { getUserProfile } = await import('@/lib/supabase/user');
+    const { getUserData } = await import('@/lib/supabase-auth');
     console.log('[syncUserProfile] Fetching DB profile for', u.id);
-    profile = await getUserProfile(u.id);
+    const profile = await getUserData(u.id);
+
+    if (!mounted()) return;
+
+    console.log('[syncUserProfile] Profile result:', profile ? 'FOUND' : 'NOT FOUND');
+
+    if (!profile) {
+      console.log('[syncUserProfile] BLOCKING — no DB row, calling onProfileNotFound');
+      onProfileNotFound();
+      onComplete();
+      return;
+    }
+
+    // Merge DB values (source of truth for onboarding)
+    const merged: User = {
+      ...u,
+      displayName: profile.displayName || u.displayName,
+      avatarUrl: profile.avatarUrl || u.avatarUrl,
+      investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
+      investorStyleOnboarded: profile.investorStyleOnboarded,
+      investorStyleSetAt: profile.investorStyleSetAt || undefined,
+    };
+
+    setUser(merged);
+    storeUser(merged);
+    if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+    if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
+
+    console.log('[syncUserProfile] ✅ Profile merged — access granted');
+    onComplete();
   } catch (err) {
-    console.error('[syncUserProfile] Import or fetch error:', err);
-  }
-
-  if (!mounted()) return;
-
-  console.log('[syncUserProfile] Profile result:', profile ? 'FOUND' : 'NOT FOUND');
-
-  if (!profile) {
-    console.log('[syncUserProfile] BLOCKING — no DB row, calling onProfileNotFound');
+    console.error('[syncUserProfile] FAIL-CLOSED — error blocking access:', err);
+    if (!mounted()) return;
+    // Any error → deny access (fail-closed)
     onProfileNotFound();
     onComplete();
-    return;
   }
-
-  // Merge DB values (source of truth for onboarding)
-  const merged: User = {
-    ...u,
-    investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
-    investorStyleOnboarded: profile.investorStyleOnboarded ?? u.investorStyleOnboarded,
-  };
-
-  // Fallback: if DB didn't confirm but localStorage says yes, trust localStorage
-  if (!merged.investorStyleOnboarded && typeof window !== 'undefined') {
-    if (localStorage.getItem('vantage:onboarded') === 'true') {
-      merged.investorStyleOnboarded = true;
-    }
-  }
-
-  setUser(merged);
-  storeUser(merged);
-  if (merged.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
-  if (merged.investorStyle) localStorage.setItem('vantage:investorStyle', merged.investorStyle);
-
-  onComplete();
 }
 
 // ─── Provider Component ──────────────────────────────────────
@@ -244,7 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storeSession(vs);
         setProfileNotFound(false);
         // ✅ isLoading stays true — DB sync callback will clear it
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
+        syncUserProfile(u, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
       } else {
         // No session — nothing to sync, we're done loading
         setProfileNotFound(false);
@@ -289,7 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(true);
         setIsDataLoaded(false);
         // ✅ isLoading stays true — DB sync callback will clear it
-        syncUserProfile(u, s.access_token, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
+        syncUserProfile(u, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
       }
     });
 
@@ -346,15 +345,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(String(error.message || 'Authentication failed'));
     }
     if (!data.user || !data.session) return { needsConfirmation: true };
-    // Explicitly create the DB user row — syncUserProfile no longer auto-creates
+    // Explicitly create the DB user row via direct Supabase call
     try {
-      const { createUser } = await import('@/lib/supabase/user');
-      await createUser({
-        email,
-        displayName: displayName || email.split('@')[0],
-        token: data.session.access_token,
+      const { createOrUpdateUserRecord } = await import('@/lib/supabase-auth');
+      await createOrUpdateUserRecord({
+        id: data.user.id,
+        email: data.user.email!,
+        user_metadata: data.user.user_metadata,
+        app_metadata: data.user.app_metadata,
       });
-    } catch { /* non-critical — syncUserProfile will retry-fetch on next mount */ }
+    } catch (err) {
+      console.error('[signUp] Failed to create DB user record:', err);
+      throw new Error('Account created but profile setup failed. Please try signing in.');
+    }
     // onAuthStateChange will fire SIGNED_IN → syncUserProfile → merge
   }, []);
 

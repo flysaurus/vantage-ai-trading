@@ -38,6 +38,10 @@ CREATE POLICY "Users can read own data" ON public.users
 CREATE POLICY "Users can update own data" ON public.users
   FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
+-- Policy: Users can insert their own row (for signup/create flow)
+CREATE POLICY "Users can insert own row" ON public.users
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
 -- Service role bypasses RLS by default in Supabase, but explicit policy = self-documenting
 CREATE POLICY "Service role can do everything" ON public.users
   USING (auth.role() = 'service_role');
