@@ -191,3 +191,33 @@ export async function verifyUserExists(userId: string): Promise<boolean> {
 
   return true;
 }
+
+/**
+ * Update user investor style and set onboarded flag.
+ */
+export async function updateInvestorStyle(
+  userId: string,
+  style: string,
+  onboarded: boolean = true,
+): Promise<void> {
+  if (!userId) throw new Error('[supabase-auth] updateInvestorStyle: no userId');
+
+  const supabase = createClient();
+  const db = supabase as any;
+
+  const { error } = await db
+    .from('users')
+    .update({
+      investor_style: style,
+      investor_style_set_at: new Date().toISOString(),
+      investor_style_onboarded: onboarded,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`[supabase-auth] Update investor style failed: ${error.message}`);
+  }
+
+  console.log('[supabase-auth] ✅ Investor style updated:', style);
+}
