@@ -14,7 +14,6 @@ import { SettingsTab } from '@/components/settings/SettingsTab';
 import { BrokerProvider } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
-import { getUser, storeUser } from '@/lib/auth';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 
@@ -63,6 +62,14 @@ function AppShell() {
     setShowOnboarding(true);
   }, [user, isDataLoaded]);
 
+  // 🔒 HARD GATE: Don't render ANY dashboard content until DB profile is confirmed.
+  // Prevents cascading 401/500 API errors from dashboard components
+  // that mount before auth synchronization completes.
+  // AuthGuard handles the loading spinner and error screens above this.
+  if (!isDataLoaded || !user) {
+    return null;
+  }
+
   const mainContent = (
     <>
       <Header />
@@ -83,32 +90,8 @@ function AppShell() {
       </div>
 
       {/* Onboarding Overlay */}
-      {showOnboarding && user && (
-        <InvestorStyleOnboarding
-          userId={user.id}
-          onComplete={(style) => {
-            // Persist immediately — localStorage is synchronous, survives everything
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('vantage:onboarded', 'true');
-              localStorage.setItem('vantage:investorStyle', style);
-              // Also flush to sessionStorage so AuthProvider picks it up on reload
-              try {
-                const cached = getUser();
-                storeUser({
-                  id: cached?.id || '',
-                  email: cached?.email || '',
-                  displayName: cached?.displayName || 'Trader',
-                  investorStyle: style,
-                  investorStyleOnboarded: true,
-                  createdAt: cached?.createdAt || '',
-                });
-              } catch { /* ignore */ }
-            }
-            setShowOnboarding(false);
-            // Small delay to ensure localStorage flush before reload
-            setTimeout(() => window.location.reload(), 100);
-          }}
-        />
+      {showOnboarding && (
+        <InvestorStyleOnboarding />
       )}
     </BrokerProvider>
   );

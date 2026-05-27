@@ -6,7 +6,7 @@
 // Supabase SDK handles actual login/refresh/logout via onAuthStateChange.
 
 import { createAuthClient } from './supabase';
-import type { VantageSession, User } from '@/types';
+import type { VantageSession, User, InvestorStyle } from '@/types';
 
 const SESSION_KEY = 'vantage-session';
 const USER_KEY = 'vantage-user';
@@ -77,6 +77,47 @@ export function clearUser(): void {
   } catch {
     // Ignore
   }
+}
+
+// ─── Auth Initialization (Hard Block) ─────────────────────────
+// Users MUST exist in the users table or they cannot proceed.
+// Called by AuthProvider on every auth state change.
+// The server endpoint checks email confirmation before creating DB rows.
+
+interface VerifyUserResult {
+  success: boolean;
+  action: 'created' | 'verified';
+  user: {
+    id: string;
+    email: string;
+    investorStyleOnboarded: boolean;
+  };
+}
+
+export async function initializeAuth(): Promise<VerifyUserResult> {
+  const session = getSession();
+  if (!session?.token) {
+    throw new Error('No active session');
+  }
+
+  const res = await fetch('/api/auth/verify-user', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const message = body?.error || body?.details || `Verification failed (${res.status})`;
+    console.error('[initializeAuth] ❌ Verify-user failed:', res.status, message);
+    throw new Error(message);
+  }
+
+  const data: VerifyUserResult = await res.json();
+  console.log('[initializeAuth] ✅ User', data.action, '| onboarded:', data.user.investorStyleOnboarded);
+  return data;
 }
 
 // ─── API Route Middleware ─────────────────────────────────────

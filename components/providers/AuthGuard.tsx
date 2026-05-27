@@ -19,6 +19,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     isLoading,
     isDataLoaded,
     profileNotFound,
+    error,
     user,
   } = useAuth();
   const router = useRouter();
@@ -55,12 +56,23 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         justifyContent: 'center', background: '#0f172a',
         color: '#e2e8f0', padding: 32, textAlign: 'center',
       }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔐</div>
-        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>Account Not Found</h2>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 360, margin: '0 0 24px' }}>
-          Your login is valid but no account data exists in our system.
-          This may happen if your account was removed or hasn&apos;t been fully created.
-        </p>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>
+          {error ? '❌' : '🔐'}
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>
+          {error ? 'Authentication Failed' : 'Account Not Found'}
+        </h2>
+        {error && (
+          <p style={{ fontSize: 13, color: '#fca5a5', lineHeight: 1.5, maxWidth: 360, margin: '0 0 24px', padding: '10px 16px', background: 'rgba(239,68,68,0.1)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)' }}>
+            {error}
+          </p>
+        )}
+        {!error && (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 360, margin: '0 0 24px' }}>
+            Your login is valid but no account data exists in our system.
+            This may happen if your account was removed or hasn&apos;t been fully created.
+          </p>
+        )}
         <button
           onClick={() => {
             import('@/lib/supabase').then(m => m.createClient().auth.signOut());
@@ -72,7 +84,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             color: '#e2e8f0', cursor: 'pointer', fontSize: 14,
           }}
         >
-          Back to Login
+          Go to Login
         </button>
       </div>
     );

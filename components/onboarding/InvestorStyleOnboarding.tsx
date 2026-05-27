@@ -1,21 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { OnboardingWelcome } from './OnboardingWelcome';
 import { OnboardingStyleSelection } from './OnboardingStyleSelection';
 import { OnboardingConfirmation } from './OnboardingConfirmation';
-import { completeOnboarding } from '@/lib/supabase/user';
-import { updateInvestorStyle } from '@/lib/supabase/user';
+import { updateInvestorStyle } from '@/lib/supabase-auth';
 import type { InvestorStyle } from '@/types';
 
 type OnboardingStep = 'welcome' | 'selection' | 'confirmation' | 'complete';
 
-interface Props {
-  userId: string;
-  onComplete: (style: InvestorStyle) => void;
-}
-
-export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
+export function InvestorStyleOnboarding() {
+  const router = useRouter();
+  const { user } = useAuth();
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,27 +29,60 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
   };
 
   const handleConfirm = async () => {
-    if (!selectedStyle) return;
+    if (!user || !selectedStyle) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      // Save style + mark onboarded in DB (single conceptual transaction)
-      await updateInvestorStyle(userId, selectedStyle);
-      await completeOnboarding(userId);
+      // Save to users table with updateInvestorStyle (sets onboarded flag)
+      await updateInvestorStyle(user.id, selectedStyle, true);
+
+      // Persist to localStorage for fast reload checks
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vantage:onboarded', 'true');
+        localStorage.setItem('vantage:investorStyle', selectedStyle);
+      }
 
       setStep('complete');
 
-      // Auto-dismiss after brief celebration
+      // Brief celebration then redirect to app
       setTimeout(() => {
-        onComplete(selectedStyle!);
+        router.push('/');
       }, 1500);
     } catch (err: any) {
-      setError(err?.message || 'Failed to save your style preference. Please try again.');
+      setError(err?.message || 'Failed to save. Please try again.');
       setLoading(false);
     }
   };
+
+  const handleSkip = async () => {
+    if (!user) {
+      router.push('/');
+      return;
+    }
+
+    try {
+      // Save default style + onboarded flag so it never re-triggers
+      await updateInvestorStyle(user.id, 'buffett', true);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vantage:onboarded', 'true');
+        localStorage.setItem('vantage:investorStyle', 'buffett');
+      }
+    } catch {
+      // Non-critical — still redirect
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vantage:onboarded', 'true');
+      }
+    }
+
+    router.push('/');
+  };
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div
@@ -82,13 +113,7 @@ export function InvestorStyleOnboarding({ userId, onComplete }: Props) {
         {step === 'welcome' && (
           <OnboardingWelcome
             onNext={() => setStep('selection')}
-            onSkip={async () => {
-              // Skip saves default style + onboarded flag to DB so it never re-triggers
-              try {
-                await completeOnboarding(userId);
-              } catch { /* non-critical */ }
-              onComplete('buffett');
-            }}
+            onSkip={handleSkip}
           />
         )}
 

@@ -38,6 +38,8 @@ interface AuthContextValue {
   isDataLoaded: boolean;
   /** True when the user's DB profile row doesn't exist — account invalid. */
   profileNotFound: boolean;
+  /** Authentication or verification error message. */
+  error: string | null;
   inactivityWarning: boolean;
   inactivityCountdown: number;
   signIn: (email: string, password: string) => Promise<void>;
@@ -53,6 +55,7 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthenticated: false,
   isDataLoaded: false,
   profileNotFound: false,
+  error: null,
   inactivityWarning: false,
   inactivityCountdown: 0,
   signIn: async () => {},
@@ -101,11 +104,11 @@ function toVantageSession(session: Session): VantageSession {
 }
 
 /**
- * Sync DB profile for a user — FETCH ONLY, never auto-create.
- * Uses direct Supabase query (getUserData) — no REST API middleman.
- * The users table is authoritative: no row → no account.
- * Calls `onComplete()` (sets isDataLoaded + isLoading) when done.
- * FAIL-CLOSED: any error → onProfileNotFound() → denied.
+ * Sync DB profile for a user — full initialization flow.
+ * 1. Calls verify-user API (auto-creates DB row if missing, checks status).
+ * 2. Fetches full user profile from /api/db/users/get.
+ * 3. Merges DB values into user state (DB is source of truth).
+ * Any failure → fail-closed → onProfileNotFound() → denied.
  */
 async function syncUserProfile(
   u: User,
@@ -113,31 +116,46 @@ async function syncUserProfile(
   mounted: () => boolean,
   onComplete: () => void,
   onProfileNotFound: () => void,
+  setError: (msg: string) => void,
 ) {
   try {
-    const { getUserData } = await import('@/lib/supabase-auth');
-    console.log('[syncUserProfile] Fetching DB profile for', u.id);
-    const profile = await getUserData(u.id);
+    const { initializeAuth, getSession } = await import('@/lib/auth');
+
+    // Step 1: Verify user exists in users table (auto-creates if missing)
+    console.log('[syncUserProfile] Step 1: Verifying user in users table...');
+    const verifyResult = await initializeAuth();
 
     if (!mounted()) return;
+    console.log('[syncUserProfile] ✅ User', verifyResult.action, '| onboarded:', verifyResult.user.investorStyleOnboarded);
 
-    console.log('[syncUserProfile] Profile result:', profile ? 'FOUND' : 'NOT FOUND');
+    // Step 2: Fetch full user profile from DB
+    console.log('[syncUserProfile] Step 2: Loading user data from users table...');
+    const session = getSession();
+    const userDataRes = await fetch(`/api/db/users/get?id=${u.id}`, {
+      headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {},
+    });
 
-    if (!profile) {
-      console.log('[syncUserProfile] BLOCKING — no DB row, calling onProfileNotFound');
+    if (!userDataRes.ok) {
+      console.error('[syncUserProfile] ❌ Failed to load user data:', userDataRes.status);
+      if (!mounted()) return;
       onProfileNotFound();
       onComplete();
       return;
     }
 
-    // Merge DB values (source of truth for onboarding)
+    const userData = await userDataRes.json();
+    console.log('[syncUserProfile] ✅ User data loaded:', userData.email);
+
+    if (!mounted()) return;
+
+    // Step 3: Merge DB values (source of truth)
     const merged: User = {
       ...u,
-      displayName: profile.displayName || u.displayName,
-      avatarUrl: profile.avatarUrl || u.avatarUrl,
-      investorStyle: (profile.investorStyle || u.investorStyle) as InvestorStyle,
-      investorStyleOnboarded: profile.investorStyleOnboarded,
-      investorStyleSetAt: profile.investorStyleSetAt || undefined,
+      displayName: userData.displayName || u.displayName,
+      avatarUrl: userData.avatarUrl || u.avatarUrl,
+      investorStyle: (userData.investorStyle || u.investorStyle) as InvestorStyle,
+      investorStyleOnboarded: userData.investorStyleOnboarded === true,
+      investorStyleSetAt: userData.investorStyleSetAt || undefined,
     };
 
     setUser(merged);
@@ -148,9 +166,11 @@ async function syncUserProfile(
     console.log('[syncUserProfile] ✅ Profile merged — access granted');
     onComplete();
   } catch (err) {
-    console.error('[syncUserProfile] FAIL-CLOSED — error blocking access:', err);
+    const msg = err instanceof Error ? err.message : 'Authentication error. Please try again.';
+    console.error('[syncUserProfile] FAIL-CLOSED — error blocking access:', msg);
     if (!mounted()) return;
-    // Any error → deny access (fail-closed)
+    setError(msg);
+    // Any error → deny access (fail-closed: inactive account, server error, network outage)
     onProfileNotFound();
     onComplete();
   }
@@ -164,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [profileNotFound, setProfileNotFound] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [inactivityWarning, setInactivityWarning] = useState(false);
 
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
@@ -243,10 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storeSession(vs);
         setProfileNotFound(false);
         // ✅ isLoading stays true — DB sync callback will clear it
-        syncUserProfile(u, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
+        syncUserProfile(u, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound, setError);
       } else {
         // No session — nothing to sync, we're done loading
         setProfileNotFound(false);
+        setError(null);
         setIsDataLoaded(true);
         setIsLoading(false);
       }
@@ -264,6 +286,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setInactivityWarning(false);
         setIsDataLoaded(false);
         setProfileNotFound(false);
+        setError(null);
         setIsLoading(false);
         return;
       }
@@ -288,7 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(true);
         setIsDataLoaded(false);
         // ✅ isLoading stays true — DB sync callback will clear it
-        syncUserProfile(u, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound);
+        syncUserProfile(u, setUser, () => mountedRef.current, markDataLoaded, markProfileNotFound, setError);
       }
     });
 
@@ -344,21 +367,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw new Error(String(error.message || 'Authentication failed'));
     }
+    // If no session returned, Supabase requires email confirmation — tell the UI
     if (!data.user || !data.session) return { needsConfirmation: true };
-    // Explicitly create the DB user row via direct Supabase call
-    try {
-      const { createOrUpdateUserRecord } = await import('@/lib/supabase-auth');
-      await createOrUpdateUserRecord({
-        id: data.user.id,
-        email: data.user.email!,
-        user_metadata: data.user.user_metadata,
-        app_metadata: data.user.app_metadata,
-      });
-    } catch (err) {
-      console.error('[signUp] Failed to create DB user record:', err);
-      throw new Error('Account created but profile setup failed. Please try signing in.');
-    }
-    // onAuthStateChange will fire SIGNED_IN → syncUserProfile → merge
+    // Session returned (email pre-confirmed or confirmation disabled).
+    // DB record will be created by verify-user on next auth check — NOT here.
+    // onAuthStateChange fires SIGNED_IN → syncUserProfile → verify-user
   }, []);
 
   const signOut = useCallback(async () => {
@@ -393,6 +406,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user && !!session,
     isDataLoaded,
     profileNotFound,
+    error,
     inactivityWarning,
     inactivityCountdown: countdown,
     signIn,
