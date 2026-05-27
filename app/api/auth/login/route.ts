@@ -44,7 +44,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const sessionTokenHash = hashSessionToken(sessionToken);
 
     const { error: sessionError } = await (supabase as any)
-      .from('sessions')
+      .from('user_sessions')
       .insert([{
         user_id: loginResult.userId,
         session_token_hash: sessionTokenHash,

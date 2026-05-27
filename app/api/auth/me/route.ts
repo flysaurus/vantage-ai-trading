@@ -21,7 +21,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Find session
     const { data: session, error: sessionError } = await (supabase as any)
-      .from('sessions')
+      .from('user_sessions')
       .select('user_id, expires_at')
       .eq('session_token_hash', sessionTokenHash)
       .single();
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Update last activity
     await (supabase as any)
-      .from('sessions')
+      .from('user_sessions')
       .update({ last_activity_at: new Date().toISOString() })
       .eq('user_id', session.user_id);
 

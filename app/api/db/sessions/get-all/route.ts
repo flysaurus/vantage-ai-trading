@@ -8,7 +8,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const supabase = createServerClient();
     const targetUserId = req.nextUrl.searchParams.get('userId') || authUserId;
     if (targetUserId !== authUserId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const { data, error } = await (supabase as any).from('sessions')
+    const { data, error } = await (supabase as any).from('user_sessions')
       .select('id, token, ip_address, user_agent, expires_at, created_at')
       .eq('user_id', targetUserId).order('created_at', { ascending: false });
     if (error) return NextResponse.json({ error: 'Failed to fetch sessions', detail: error.message }, { status: 500 });

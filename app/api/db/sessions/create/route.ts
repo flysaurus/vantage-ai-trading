@@ -13,7 +13,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!token) return NextResponse.json({ error: 'token required' }, { status: 400 });
     if (!expiresAt) return NextResponse.json({ error: 'expiresAt required' }, { status: 400 });
     if (userId !== authUserId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const { data, error } = await (supabase as any).from('sessions').insert({
+    const { data, error } = await (supabase as any).from('user_sessions').insert({
       user_id: userId, token, ip_address: ipAddress || null,
       user_agent: userAgent || null, expires_at: expiresAt,
     }).select('id, user_id, expires_at, created_at').single();

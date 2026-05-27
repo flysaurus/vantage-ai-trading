@@ -12,10 +12,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
     if (userId !== authUserId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const { data: existing } = await (supabase as any).from('sessions').select('id, user_id').eq('id', sessionId).maybeSingle();
+    const { data: existing } = await (supabase as any).from('user_sessions').select('id, user_id').eq('id', sessionId).maybeSingle();
     if (!existing) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     if (existing.user_id !== authUserId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const { error } = await (supabase as any).from('sessions').delete().eq('id', sessionId);
+    const { error } = await (supabase as any).from('user_sessions').delete().eq('id', sessionId);
     if (error) return NextResponse.json({ error: 'Failed to delete session', detail: error.message }, { status: 500 });
     return NextResponse.json({ success: true });
   } catch (err: any) {

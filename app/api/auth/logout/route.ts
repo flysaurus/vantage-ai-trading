@@ -16,7 +16,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const sessionTokenHash = hashSessionToken(sessionToken);
 
       await (supabase as any)
-        .from('sessions')
+        .from('user_sessions')
         .delete()
         .eq('session_token_hash', sessionTokenHash);
 
