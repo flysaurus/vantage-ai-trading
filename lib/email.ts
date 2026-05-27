@@ -1,43 +1,49 @@
-// ─── Email Service ──────────────────────────────────────────────
-// Uses Resend for transactional emails: verification, password reset, 2FA codes.
-// API key: RESEND_API_KEY in environment variables.
+// ─── Email Service (Mailgun) ────────────────────────────────────
+// Uses Mailgun HTTP API for transactional emails (verification, password reset).
+// Free tier: 100 emails/day on sandbox domain. No npm SDK needed.
+//
+// Env vars: MAILGUN_API_KEY, MAILGUN_DOMAIN, FROM_EMAIL
 
-import { Resend } from 'resend';
-
-let _resend: Resend | null = null;
-
-function getResend(): Resend {
-  if (!_resend) {
-    _resend = new Resend(process.env.RESEND_API_KEY || '');
-  }
-  return _resend;
-}
-
-const FROM_EMAIL = (process.env.FROM_EMAIL as string) || 'noreply@vantage-ai-trading.vercel.app';
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || '';
+const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || '';
+const FROM_EMAIL = process.env.FROM_EMAIL || `noreply@${MAILGUN_DOMAIN}`;
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('[email] ⚠️ RESEND_API_KEY not set — skipping email send');
-    return { success: false, error: 'RESEND_API_KEY not configured' };
+  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
+    console.warn('[email] ⚠️ Mailgun not configured — skipping email send');
+    return { success: false, error: 'MAILGUN_API_KEY or MAILGUN_DOMAIN not set' };
   }
 
-  try {
-    const { data, error } = await getResend().emails.send({
-      from: FROM_EMAIL,
-      to,
-      subject,
-      html,
-    });
+  const formData = new URLSearchParams();
+  formData.append('from', FROM_EMAIL);
+  formData.append('to', to);
+  formData.append('subject', subject);
+  formData.append('html', html);
 
-    if (error) {
-      console.error('[email] ❌ Send failed:', error);
-      throw new Error(error.message || 'Failed to send email');
+  try {
+    const resp = await fetch(
+      `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      }
+    );
+
+    const body = await resp.json();
+
+    if (!resp.ok) {
+      console.error('[email] ❌ Send failed:', body.message || body);
+      throw new Error(body.message || 'Failed to send email');
     }
 
-    console.log('[email] ✅ Sent to', to, '(id:', data?.id, ')');
-    return { success: true, id: data?.id };
-  } catch (err) {
-    console.error('[email] ❌ Unexpected error:', err);
+    console.log('[email] ✅ Sent to', to, '(id:', body.id, ')');
+    return { success: true, id: body.id };
+  } catch (err: any) {
+    console.error('[email] ❌ Unexpected error:', err.message);
     throw err;
   }
 }
@@ -45,7 +51,8 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
 // ─── Email Templates ───────────────────────────────────────────
 
 export function getVerificationEmailHTML(token: string, email: string): string {
-  const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/verify?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const verifyUrl = `${appUrl}/auth/verify?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
 <html>
@@ -61,7 +68,8 @@ export function getVerificationEmailHTML(token: string, email: string): string {
 }
 
 export function getPasswordResetEmailHTML(token: string, email: string): string {
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const resetUrl = `${appUrl}/auth/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
 <html>
