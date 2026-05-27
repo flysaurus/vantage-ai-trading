@@ -56,7 +56,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (sessionError) {
       console.error('❌ Session creation error:', sessionError);
-      throw new Error('Failed to create session');
+      throw new Error(`Failed to create session: ${sessionError.message} (code: ${sessionError.code}, hint: ${sessionError.hint || 'none'})`);
     }
 
     console.log('✅ Session created');
