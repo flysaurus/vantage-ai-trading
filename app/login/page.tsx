@@ -27,6 +27,8 @@ export default function LoginPage() {
   const [verificationToken, setVerificationToken] = useState('');
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
 
   // 2FA
   const [requires2FA, setRequires2FA] = useState(false);
@@ -223,6 +225,30 @@ export default function LoginPage() {
     }
   };
 
+  const handleVerifyNow = async () => {
+    setVerifying(true);
+    setVerifyError('');
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: confirmedEmail, token: verificationToken }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setResendMessage('✅ Email verified! Redirecting to sign in...');
+        setTimeout(() => setConfirmationSent(false), 1500);
+      } else {
+        setVerifyError(data.error || 'Verification failed');
+      }
+    } catch {
+      setVerifyError('Network error. Please try again.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   // ─── 2FA Screen ──────────────────────────────────────────────
 
   if (requires2FA) {
@@ -309,16 +335,24 @@ export default function LoginPage() {
           {verificationToken && (
             <div style={{
               textAlign: 'left', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)',
-              borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12, color: '#facc15',
+              borderRadius: 10, padding: 12, marginBottom: 16,
             }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Email not arriving?</div>
-              <a
-                href={`/verify-email?token=${encodeURIComponent(verificationToken)}&email=${encodeURIComponent(confirmedEmail)}`}
-                target="_blank"
-                style={{ color: '#06b6d4', textDecoration: 'underline', fontSize: 11, wordBreak: 'break-all' }}
+              <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12, color: '#facc15' }}>⚠️ Email not arriving?</div>
+              <p style={{ color: '#94a3b8', fontSize: 11, margin: '0 0 10px' }}>Verify instantly without email:</p>
+              <button
+                onClick={handleVerifyNow}
+                disabled={verifying}
+                style={{
+                  width: '100%', padding: 10, background: verifying ? '#0e7490' : '#06b6d4',
+                  border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600,
+                  cursor: verifying ? 'not-allowed' : 'pointer', transition: 'all .2s',
+                }}
               >
-                Click here to verify manually
-              </a>
+                {verifying ? 'Verifying...' : '✅ Verify Now'}
+              </button>
+              {verifyError && (
+                <p style={{ color: '#ef4444', fontSize: 11, marginTop: 8 }}>{verifyError}</p>
+              )}
             </div>
           )}
           {resendMessage && (
