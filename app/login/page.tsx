@@ -24,6 +24,7 @@ export default function LoginPage() {
   // Signup confirmation sent
   const [confirmationSent, setConfirmationSent] = useState(false);
   const [confirmedEmail, setConfirmedEmail] = useState('');
+  const [verificationToken, setVerificationToken] = useState('');
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
 
@@ -96,16 +97,12 @@ export default function LoginPage() {
         }
 
         // If email was sent (SendGrid), show confirmation screen
-        if (data.emailSent) {
+        // Verification token always included for manual fallback
+        if (data.emailSent || data.userId) {
           setConfirmedEmail(email.trim());
-          setConfirmationSent(true);
-          setSubmitting(false);
-          return;
-        }
-
-        // For dev/test with no email, may get a token directly
-        if (data.userId) {
-          setConfirmedEmail(email.trim());
+          if (data.verificationToken) {
+            setVerificationToken(data.verificationToken);
+          }
           setConfirmationSent(true);
           setSubmitting(false);
           return;
@@ -297,6 +294,21 @@ export default function LoginPage() {
               <span className="n" style={{ width: 22, height: 22, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(6,182,212,.15)', borderRadius: '50%', color: '#06b6d4', fontSize: 12, fontWeight: 700 }}>3</span> Return here and sign in
             </div>
           </div>
+          {verificationToken && (
+            <div style={{
+              textAlign: 'left', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)',
+              borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12, color: '#facc15',
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Email not arriving?</div>
+              <a
+                href={`/verify-email?token=${encodeURIComponent(verificationToken)}&email=${encodeURIComponent(confirmedEmail)}`}
+                target="_blank"
+                style={{ color: '#06b6d4', textDecoration: 'underline', fontSize: 11, wordBreak: 'break-all' }}
+              >
+                Click here to verify manually
+              </a>
+            </div>
+          )}
           {resendMessage && (
             <div style={{ padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12, background: resendMessage.includes('resent') ? 'rgba(34,197,94,.1)' : 'rgba(250,204,21,.1)', border: resendMessage.includes('resent') ? '1px solid rgba(34,197,94,.2)' : '1px solid rgba(250,204,21,.2)', color: resendMessage.includes('resent') ? '#22c55e' : '#facc15' }}>
               {resendMessage}

@@ -134,8 +134,8 @@ export async function authSignup(email: string, password: string, displayName: s
       // Don't throw — user was created successfully, email delivery is secondary
     }
 
-    // Return token when email wasn't delivered to a real inbox (Ethereal or failed)
-    const includeToken = !emailSent || !!previewUrl;
+    // Always return token — email deliverability is unreliable with Gmail FROM_EMAIL
+    const includeToken = true;
 
     return {
       success: true,
