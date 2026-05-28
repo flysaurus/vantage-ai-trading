@@ -1,15 +1,15 @@
--- ─── verify_user_email RPC ────────────────────────────────────
+-- ─── verify_user_email_now ────────────────────────────────────
 -- Run in Supabase Dashboard → SQL Editor
--- Used by authVerifyEmail as last-resort update strategy
+-- Used by authVerifyEmail to update email_verified ON public.users
+-- SECURITY DEFINER + set search_path = '' ensures it runs with
+-- creator's privileges and is immune to search_path attacks.
 
-CREATE OR REPLACE FUNCTION verify_user_email(p_user_id UUID)
+CREATE OR REPLACE FUNCTION verify_user_email_now(p_user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-DECLARE
-  affected INTEGER;
 BEGIN
   UPDATE public.users
   SET
@@ -18,12 +18,9 @@ BEGIN
     updated_at = NOW()
   WHERE id = p_user_id;
 
-  GET DIAGNOSTICS affected = ROW_COUNT;
-
-  IF affected > 0 THEN
-    RETURN TRUE;
-  ELSE
-    RETURN FALSE;
-  END IF;
+  RETURN FOUND;
 END;
 $$;
+
+-- Grant execute to allow service_role access
+GRANT EXECUTE ON FUNCTION verify_user_email_now(UUID) TO service_role;

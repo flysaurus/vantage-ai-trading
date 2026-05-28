@@ -213,98 +213,33 @@ export async function authVerifyEmail(email: string, token: string) {
     throw new Error('Invalid verification token');
   }
 
-  // Step 5: UPDATE users — TWO STRATEGIES to guarantee persistence
-  // Strategy A: Supabase JS client
-  // Strategy B: Direct HTTP PATCH to PostgREST REST API (bypasses JS client)
+  // Step 5: Call RPC function to update email_verified
   const verifiedAt = new Date().toISOString();
-  console.log('📋 Step 5 — Updating user', user.id, 'email_verified=true at', verifiedAt);
+  console.log('🔹 Step 5 — Calling RPC verify_user_email_now for', user.id);
 
-  let updateSucceeded = false;
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('verify_user_email_now', {
+    p_user_id: user.id,
+  });
 
-  // Strategy A: JS client
-  const { data: updatedUser, error: updateError } = await supabase
-    .from('users')
-    .update({
-      email_verified: true,
-      email_verified_at: verifiedAt,
-      updated_at: verifiedAt,
-    })
-    .eq('id', user.id)
-    .eq('email', email)
-    .select('id, email_verified, email_verified_at')
-    .single();
+  console.log('🔹 Step 5 — RPC result:', rpcResult, '| error:', rpcError?.message || 'none');
 
-  console.log('📋 Step 5A (JS client) — result:', updatedUser ? `verified=${updatedUser.email_verified}` : 'NULL', '| err:', updateError?.message || 'none');
-
-  if (!updateError && updatedUser?.email_verified) {
-    updateSucceeded = true;
+  if (rpcError) {
+    throw new Error(`Failed to verify email: ${rpcError.message}`);
   }
 
-  // Strategy B: Direct PostgREST PATCH (fallback if JS client did not work)
-  if (!updateSucceeded) {
-    console.log('⚠️ Step 5B — JS client update did not persist, trying direct REST API...');
-    try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-      const restRes = await fetch(
-        `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(user.id)}&email=eq.${encodeURIComponent(email)}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': serviceKey,
-            'Authorization': `Bearer ${serviceKey}`,
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify({
-            email_verified: true,
-            email_verified_at: verifiedAt,
-            updated_at: verifiedAt,
-          }),
-        }
-      );
-      const restResult = await restRes.json();
-      console.log('📋 Step 5B (REST API) — status:', restRes.status, '| body:', JSON.stringify(restResult).substring(0, 200));
-      if (restRes.ok && Array.isArray(restResult) && restResult.length > 0 && restResult[0].email_verified) {
-        updateSucceeded = true;
-        console.log('✅ Step 5B — REST API update succeeded!');
-      }
-    } catch (restErr: any) {
-      console.error('❌ Step 5B — REST API error:', restErr.message);
-    }
-  }
-
-  // Strategy C: Raw SQL via RPC (last resort)
-  if (!updateSucceeded) {
-    console.log('⚠️ Step 5C — Trying raw SQL RPC...');
-    try {
-      const { error: rpcError } = await supabase.rpc('verify_user_email', {
-        p_user_id: user.id,
-      });
-      console.log('📋 Step 5C (RPC) — err:', rpcError?.message || 'none');
-      if (!rpcError) updateSucceeded = true;
-    } catch (rpcErr: any) {
-      console.error('❌ Step 5C — RPC error:', rpcErr.message);
-    }
-  }
-
-  // Step 5d: Double-check by re-reading the row
-  console.log('📋 Step 5d — Re-reading row to confirm persistence...');
+  // Step 5b: Re-read to confirm
   const { data: recheck, error: recheckError } = await supabase
     .from('users')
     .select('email_verified, email_verified_at')
     .eq('id', user.id)
     .single();
 
-  console.log('📋 Step 5d — Re-check:', 'verified:', recheck?.email_verified, '| at:', recheck?.email_verified_at, '| err:', recheckError?.message || 'none');
+  console.log('🔹 Step 5b — Recheck:', recheck?.email_verified, '|', recheck?.email_verified_at, '| err:', recheckError?.message || 'none');
 
   if (!recheck?.email_verified) {
-    console.error('❌ Step 5d — CRITICAL: email_verified still false after ALL update strategies!');
-    console.error('   User ID:', user.id, 'Email:', email);
-    console.error('   This means the database is rejecting or rolling back the update.');
-    console.error('   Check Supabase Dashboard → SQL Editor and run:');
-    console.error(`   SELECT email_verified, email_verified_at FROM users WHERE id = '${user.id}';`);
-    throw new Error('Failed to verify email: database did not persist the update after 3 strategies');
+    console.error('❌ Step 5b — CRITICAL: email_verified is still false!');
+    console.error('   Check Supabase: SELECT * FROM users WHERE id = \'' + user.id + '\'');
+    throw new Error('Email verification failed: database did not update');
   }
 
   // Step 6: Delete the used token
