@@ -187,7 +187,6 @@ export async function regenerateVerificationToken(email: string) {
       user_id: user.id,
       token_hash: tokenHash,
       token_salt: tokenSalt,
-      token_type: 'email',
       expires_at: expiresAt,
     });
 
