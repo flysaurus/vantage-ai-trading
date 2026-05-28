@@ -33,9 +33,40 @@ export default function LoginPage() {
   const [twoFACode, setTwoFACode] = useState('');
   const [loading2FA, setLoading2FA] = useState(false);
 
+  // ─── Display Name Validation ──────────────────────────────
+
+  const NAME_MIN = 2;
+  const NAME_MAX = 50;
+  const NAME_REGEX = /^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF][a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s\-'.]*$/;
+
+  function validateDisplayName(name: string): string | null {
+    const trimmed = name.trim();
+    if (mode !== 'signup') return null;
+    if (!trimmed) return 'Full name is required.';
+    if (trimmed.length < NAME_MIN) return `Name must be at least ${NAME_MIN} characters.`;
+    if (trimmed.length > NAME_MAX) return `Name must be under ${NAME_MAX} characters.`;
+    if (!/^[a-zA-Z]/.test(trimmed)) return 'Name must start with a letter.';
+    if (!NAME_REGEX.test(trimmed)) return 'Name can only contain letters, spaces, hyphens, and apostrophes.';
+    if (trimmed.split(/\s+/).filter(Boolean).length < 1) return 'Please enter your full name.';
+    return null;
+  }
+
+  const displayNameError = mode === 'signup' ? validateDisplayName(displayName) : null;
+
+  // ─── Submit ────────────────────────────────────────────────
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validate name for signup
+    if (mode === 'signup') {
+      const nameErr = validateDisplayName(displayName);
+      if (nameErr) {
+        setError(nameErr);
+        return;
+      }
+    }
 
     if (!email.trim() || !password) {
       setError('Please enter your email and password.');
@@ -55,7 +86,7 @@ export default function LoginPage() {
           body: JSON.stringify({
             email: email.trim(),
             password,
-            displayName: displayName.trim() || undefined,
+            displayName: displayName.trim(),
           }),
         });
         const data = await res.json();
@@ -315,16 +346,33 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {mode === 'signup' && (
             <div className="field" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label className="lbl" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '.5px' }}>Display Name</label>
+              <label className="lbl" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '.5px' }}>Full Name <span style={{ color: '#f87171' }}>*</span></label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name"
+                placeholder="John Smith"
                 autoComplete="name"
+                required
                 disabled={submitting}
-                style={{ width: '100%', padding: '10px 12px', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 14, outline: 'none' }}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: '#0f172a',
+                  border: `1px solid ${displayName && displayNameError ? '#f87171' : '#334155'}`,
+                  borderRadius: 8,
+                  color: '#f1f5f9',
+                  fontSize: 14,
+                  outline: 'none',
+                }}
               />
+              {displayName && displayNameError ? (
+                <p style={{ fontSize: 11, color: '#f87171', margin: '2px 0 0' }}>{displayNameError}</p>
+              ) : displayName.length >= 2 && !displayNameError ? (
+                <p style={{ fontSize: 11, color: '#22c55e', margin: '2px 0 0' }}>✓ Looking good</p>
+              ) : (
+                <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0' }}>Enter your first and last name</p>
+              )}
             </div>
           )}
           <div className="field" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

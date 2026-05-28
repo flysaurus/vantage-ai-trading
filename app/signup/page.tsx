@@ -14,6 +14,26 @@ export default function SignupPage() {
   const [success, setSuccess] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
 
+  // ─── Name Validation ──────────────────────────────────────
+
+  const NAME_MIN = 2;
+  const NAME_MAX = 50;
+  const NAME_REGEX = /^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF][a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s\-'.]*$/;
+
+  function getDisplayNameError(name: string): string | null {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Full name is required.';
+    if (trimmed.length < NAME_MIN) return `Name must be at least ${NAME_MIN} characters.`;
+    if (trimmed.length > NAME_MAX) return `Name must be under ${NAME_MAX} characters.`;
+    if (!/^[a-zA-Z]/.test(trimmed)) return 'Name must start with a letter.';
+    if (!NAME_REGEX.test(trimmed)) return 'Name can only contain letters, spaces, hyphens, and apostrophes.';
+    return null;
+  }
+
+  const displayNameError = getDisplayNameError(displayName);
+
+  // ─── Submit ────────────────────────────────────────────────
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -22,6 +42,12 @@ export default function SignupPage() {
     console.log('👉 [SIGNUP] Attempting signup:', email);
 
     try {
+      // Validate name
+      const nameErr = getDisplayNameError(displayName);
+      if (nameErr) {
+        throw new Error(nameErr);
+      }
+
       if (!email || !password) {
         throw new Error('Email and password required');
       }
@@ -37,7 +63,7 @@ export default function SignupPage() {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName }),
+        body: JSON.stringify({ email, password, displayName: displayName.trim() }),
       });
 
       const data = await response.json();
@@ -118,16 +144,26 @@ export default function SignupPage() {
           <form onSubmit={handleSignup} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Full Name (optional)
+                Full Name <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="John Doe"
-                className="w-full bg-slate-800 text-white px-4 py-2.5 rounded-lg border border-slate-700 focus:border-cyan-500 focus:outline-none transition"
+                placeholder="John Smith"
+                required
+                className={`w-full bg-slate-800 text-white px-4 py-2.5 rounded-lg border focus:border-cyan-500 focus:outline-none transition ${
+                  displayName && displayNameError ? 'border-red-500' : 'border-slate-700'
+                }`}
                 disabled={loading}
               />
+              {displayName && displayNameError ? (
+                <p className="text-xs text-red-400 mt-1">{displayNameError}</p>
+              ) : displayName.length >= 2 && !displayNameError ? (
+                <p className="text-xs text-green-400 mt-1">✓ Looking good</p>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">Enter your first and last name</p>
+              )}
             </div>
 
             <div>
