@@ -221,13 +221,14 @@ export async function authVerifyEmail(email: string, token: string) {
     p_user_id: user.id,
   });
 
-  console.log('🔹 Step 5 — RPC result:', rpcResult, '| error:', rpcError?.message || 'none');
+  console.log('🔹 Step 5 — RPC result:', rpcResult, '| error:', rpcError?.message || 'none', '| code:', rpcError?.code || 'none', '| details:', rpcError?.details || 'none');
 
   if (rpcError || rpcResult !== true) {
+    console.error('❌ RPC FAILED — full error:', JSON.stringify(rpcError));
     throw new Error(
       rpcError
-        ? `Verification failed: ${rpcError.message}. Did you create the verify_user_email_now function in SQL Editor?`
-        : 'Verification failed: RPC returned false (no row updated)'
+        ? `Verification failed — RPC error [${rpcError.code}]: ${rpcError.message}. Try running the SQL directly.`
+        : 'Verification failed — RPC returned false (no row updated). Check user ID matches.'
     );
   }
 
