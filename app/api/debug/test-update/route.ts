@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 
+function db() { return createServerClient() as any; }
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const url = new URL(req.url);
   const userId = url.searchParams.get('userId');
@@ -17,10 +19,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const results: Record<string, any> = {};
-  const supabase = createServerClient();
+  
 
   // 1. Read current state
-  const { data: before } = await supabase.from('users')
+  const { data: before } = await db().from('users')
     .select('id, email, email_verified, email_verified_at').eq('id', userId).single();
   results.before = before;
 
@@ -33,21 +35,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // 2. Try JS client .update()
-  const u1 = await supabase.from('users')
+  const u1 = await db().from('users')
     .update({ email_verified: true, email_verified_at: new Date().toISOString() })
     .eq('id', userId)
     .select('email_verified');
   results.jsUpdate = { error: u1.error?.message || null, data: u1.data };
 
   // Reset
-  await supabase.from('users').update({ email_verified: false, email_verified_at: null }).eq('id', userId);
+  await db().from('users').update({ email_verified: false, email_verified_at: null }).eq('id', userId);
 
   // 3. Try RPC
-  const u2 = await supabase.rpc('verify_user_email_now', { p_user_id: userId });
+  const u2 = await db().rpc('verify_user_email_now', { p_user_id: userId });
   results.rpc = { error: (u2 as any).error?.message || null, data: u2.data };
 
   // Reset
-  await supabase.from('users').update({ email_verified: false, email_verified_at: null }).eq('id', userId);
+  await db().from('users').update({ email_verified: false, email_verified_at: null }).eq('id', userId);
 
   // 4. Try direct REST PATCH
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -68,7 +70,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // Reset
-  await supabase.from('users').update({ email_verified: false, email_verified_at: null }).eq('id', userId);
+  await db().from('users').update({ email_verified: false, email_verified_at: null }).eq('id', userId);
 
   // 5. Try direct RPC via fetch
   try {
@@ -87,7 +89,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // Final state
-  const { data: after } = await supabase.from('users')
+  const { data: after } = await db().from('users')
     .select('email_verified, email_verified_at').eq('id', userId).single();
   results.after = after;
 
