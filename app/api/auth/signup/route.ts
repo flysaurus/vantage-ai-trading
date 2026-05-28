@@ -17,8 +17,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Validate display name
+  const name = (displayName || '').trim();
+  if (!name) {
+    return NextResponse.json(
+      { error: 'Full name is required.' },
+      { status: 400 }
+    );
+  }
+  if (name.length < 2) {
+    return NextResponse.json(
+      { error: 'Name must be at least 2 characters.' },
+      { status: 400 }
+    );
+  }
+  if (name.length > 50) {
+    return NextResponse.json(
+      { error: 'Name must be under 50 characters.' },
+      { status: 400 }
+    );
+  }
+  if (!/^[a-zA-Z]/.test(name)) {
+    return NextResponse.json(
+      { error: 'Name must start with a letter.' },
+      { status: 400 }
+    );
+  }
+  if (!/^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF][a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s\-'.]*$/.test(name)) {
+    return NextResponse.json(
+      { error: 'Name can only contain letters, spaces, hyphens, and apostrophes.' },
+      { status: 400 }
+    );
+  }
+
   try {
-    const result = await authSignup(email, password, displayName);
+    const result = await authSignup(email, password, name);
     console.log('✅ Signup successful');
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {

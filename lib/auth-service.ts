@@ -28,6 +28,17 @@ export async function authSignup(email: string, password: string, displayName: s
     throw new Error('Email and password required');
   }
 
+  const name = (displayName || '').trim();
+  if (!name) {
+    throw new Error('Full name is required.');
+  }
+  if (name.length < 2) {
+    throw new Error('Name must be at least 2 characters.');
+  }
+  if (name.length > 50) {
+    throw new Error('Name must be under 50 characters.');
+  }
+
   if (password.length < 8) {
     throw new Error('Password must be at least 8 characters');
   }
@@ -60,7 +71,7 @@ export async function authSignup(email: string, password: string, displayName: s
         email,
         password_hash: hash,
         password_salt: salt,
-        display_name: displayName || email.split('@')[0],
+        display_name: name,
         email_verified: false,
         status: 'active',
         investor_style: 'buffett',
