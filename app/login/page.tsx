@@ -195,15 +195,27 @@ export default function LoginPage() {
     setResending(true);
     setResendMessage(null);
     try {
-      const res = await fetch('/api/auth/signup', {
+      const res = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: confirmedEmail, resend: true }),
+        body: JSON.stringify({ email: confirmedEmail }),
       });
       const data = await res.json();
+
+      if (data.alreadyVerified) {
+        setResendMessage('Email already verified! Redirecting to login...');
+        setTimeout(() => setConfirmationSent(false), 2000);
+        return;
+      }
+
+      // Store token for manual verify link
+      if (data.verificationToken) {
+        setVerificationToken(data.verificationToken);
+      }
+
       setResendMessage(data.emailSent
         ? 'Verification email resent! Check your inbox.'
-        : 'Email sent. If you don\'t see it, check spam.');
+        : 'New verification link generated.');
     } catch {
       setResendMessage('Unable to resend. Please try again later.');
     } finally {

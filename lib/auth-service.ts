@@ -155,6 +155,74 @@ export async function authSignup(email: string, password: string, displayName: s
 }
 
 // ============================================================================
+// REGENERATE VERIFICATION TOKEN (for existing unverified users)
+// ============================================================================
+
+export async function regenerateVerificationToken(email: string) {
+  const supabase = db();
+
+  // 1. Find user
+  const { data: user, error: userErr } = await supabase
+    .from('users')
+    .select('id, email_verified, email')
+    .eq('email', email)
+    .single();
+
+  if (userErr || !user) {
+    throw new Error('No account found with this email.');
+  }
+
+  if (user.email_verified) {
+    return { success: true, alreadyVerified: true, message: 'Email already verified. You can log in.' };
+  }
+
+  // 2. Generate new token
+  const { token, hash: tokenHash, salt: tokenSalt } = generateToken();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  // 3. Save token
+  const { error: insertErr } = await supabase
+    .from('email_verification_tokens')
+    .insert({
+      user_id: user.id,
+      token_hash: tokenHash,
+      token_salt: tokenSalt,
+      token_type: 'email',
+      expires_at: expiresAt,
+    });
+
+  if (insertErr) {
+    console.error('❌ Failed to save verification token:', insertErr.message, insertErr.code, insertErr.details);
+    throw new Error('Failed to generate verification token.');
+  }
+
+  // 4. Try to send email (best effort)
+  let emailSent = false;
+  try {
+    const emailHTML = getVerificationEmailHTML(token, email);
+    await sendEmail({
+      to: email,
+      subject: 'Verify Your Vantage Account',
+      html: emailHTML,
+    });
+    emailSent = true;
+    console.log('✅ Verification email resent');
+  } catch (emailErr: any) {
+    console.error('⚠️ Failed to resend verification email:', emailErr.message);
+  }
+
+  return {
+    success: true,
+    email,
+    emailSent,
+    verificationToken: token,
+    message: emailSent
+      ? 'Verification email resent! Check your inbox.'
+      : 'New verification link generated (email delivery unavailable).',
+  };
+}
+
+// ============================================================================
 // VERIFY EMAIL
 // ============================================================================
 
