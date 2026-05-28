@@ -63,10 +63,21 @@ function VerifyEmailContent() {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="bg-slate-900 rounded-lg p-8 border border-slate-700 text-center">
-            <div className="w-12 h-12 rounded-full border-3 border-slate-700 border-t-cyan-400 animate-spin mx-auto mb-4" />
-            <h1 className="text-xl font-bold text-white mb-2">Verifying Email</h1>
-            <p className="text-slate-400 text-sm">Please wait while we verify your email address...</p>
+          <div className="bg-slate-900 rounded-lg p-8 border border-slate-700">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-8 h-8 border-4 border-slate-700 border-t-cyan-500 rounded-full animate-spin"></div>
+              </div>
+
+              <h1 className="text-2xl font-bold text-white mb-2">Verifying Email</h1>
+              <p className="text-slate-400">Please wait while we verify your email address...</p>
+
+              <div className="mt-8 space-y-2">
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-cyan-500 animate-pulse"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -150,34 +161,25 @@ function VerifyEmailContent() {
             <h1 className="text-2xl font-bold text-white mb-2">Verification Failed</h1>
             <p className="text-slate-400 mb-6">{error}</p>
 
-            <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 mb-6">
-              <p className="text-slate-300 text-sm">
-                The verification link may have expired or already been used.
-                Please sign up again or contact support.
+            <div className="space-y-3">
+              <p className="text-slate-400 text-sm">
+                The verification link may have expired. Try signing up again.
               </p>
-            </div>
 
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-6 py-2.5 rounded-lg transition"
-              >
-                Try Again
-              </button>
-
-              <Link
-                href="/signup"
-                className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold px-6 py-2.5 rounded-lg transition text-center"
-              >
-                Sign Up Again
-              </Link>
-
-              <Link
-                href="/login"
-                className="text-cyan-400 hover:text-cyan-300 text-sm font-medium mt-2"
-              >
-                Go to Login
-              </Link>
+              <div className="flex gap-3">
+                <Link
+                  href="/signup"
+                  className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-4 py-2.5 rounded-lg transition text-center"
+                >
+                  Sign Up Again
+                </Link>
+                <Link
+                  href="/login"
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2.5 rounded-lg transition text-center"
+                >
+                  Go to Login
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -192,10 +194,14 @@ export default function VerifyEmailPage() {
       fallback={
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
           <div className="w-full max-w-md">
-            <div className="bg-slate-900 rounded-lg p-8 border border-slate-700 text-center">
-              <div className="w-12 h-12 rounded-full border-3 border-slate-700 border-t-cyan-400 animate-spin mx-auto mb-4" />
-              <h1 className="text-xl font-bold text-white mb-2">Loading</h1>
-              <p className="text-slate-400 text-sm">Preparing verification...</p>
+            <div className="bg-slate-900 rounded-lg p-8 border border-slate-700">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <div className="w-8 h-8 border-4 border-slate-700 border-t-cyan-500 rounded-full animate-spin"></div>
+                </div>
+                <h1 className="text-2xl font-bold text-white mb-2">Verifying Email</h1>
+                <p className="text-slate-400">Loading verification page...</p>
+              </div>
             </div>
           </div>
         </div>
