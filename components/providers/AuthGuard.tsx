@@ -10,7 +10,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 
-const PUBLIC_PATHS = ['/login', '/login-test'];
+const PUBLIC_PATHS = ['/login', '/login-test', '/signup', '/verify-email', '/forgot-password', '/reset-password'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
