@@ -20,6 +20,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Password strength validation (server-side enforcement)
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+  }
+  if (!/[A-Z]/.test(password)) {
+    return NextResponse.json({ error: 'Password must include at least one capital letter (A-Z).' }, { status: 400 });
+  }
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    return NextResponse.json({ error: 'Password must include at least one special character (e.g. !@#$%).' }, { status: 400 });
+  }
+
   // Validate display name
   const name = (displayName || '').trim();
   if (!name) {

@@ -42,6 +42,12 @@ export async function authSignup(email: string, password: string, displayName: s
   if (password.length < 8) {
     throw new Error('Password must be at least 8 characters');
   }
+  if (!/[A-Z]/.test(password)) {
+    throw new Error('Password must include at least one capital letter');
+  }
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    throw new Error('Password must include at least one special character');
+  }
 
   try {
     // Step 1: Check if user already exists

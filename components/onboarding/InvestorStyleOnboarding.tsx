@@ -53,6 +53,7 @@ export function InvestorStyleOnboarding() {
         inset: 0,
         zIndex: 9999,
         background: 'rgba(0,0,0,0.85)',
+        overflowY: 'auto',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -66,10 +67,7 @@ export function InvestorStyleOnboarding() {
           borderRadius: 14,
           maxWidth: 480,
           width: '100%',
-          maxHeight: '90dvh',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
+          margin: 'auto',
         }}
       >
         {complete ? (

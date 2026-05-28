@@ -52,8 +52,18 @@ export default function SignupPage() {
         throw new Error('Email and password required');
       }
 
+      if (!password) {
+        throw new Error('Password is required');
+      }
+
       if (password.length < 8) {
         throw new Error('Password must be at least 8 characters');
+      }
+      if (!/[A-Z]/.test(password)) {
+        throw new Error('Password must include at least one capital letter');
+      }
+      if (!/[^a-zA-Z0-9]/.test(password)) {
+        throw new Error('Password must include at least one special character');
       }
 
       if (!email.includes('@')) {
@@ -190,7 +200,17 @@ export default function SignupPage() {
                 disabled={loading}
                 required
               />
-              <p className="text-xs text-slate-400 mt-1">At least 8 characters</p>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {[
+                  { ok: password.length >= 8, label: '8+ chars' },
+                  { ok: /[A-Z]/.test(password), label: '1 capital' },
+                  { ok: /[^a-zA-Z0-9]/.test(password), label: '1 special' },
+                ].map((hint, i) => (
+                  <span key={i} className={`text-xs px-2 py-0.5 rounded border ${hint.ok ? 'bg-green-900/20 border-green-700/30 text-green-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                    {hint.ok ? '✓' : '○'} {hint.label}
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-3">

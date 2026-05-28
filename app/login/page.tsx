@@ -75,8 +75,18 @@ export default function LoginPage() {
       setError('Please enter your email and password.');
       return;
     }
+
+    // Password strength validation
     if (password.length < 8) {
       setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setError('Password must include at least one capital letter (A-Z).');
+      return;
+    }
+    if (!/[^a-zA-Z0-9]/.test(password)) {
+      setError('Password must include at least one special character (e.g. !@#$%).');
       return;
     }
 
@@ -473,6 +483,24 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
+            {mode === 'signup' && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                {[
+                  { ok: password.length >= 8, label: '8+ chars' },
+                  { ok: /[A-Z]/.test(password), label: '1 capital' },
+                  { ok: /[^a-zA-Z0-9]/.test(password), label: '1 special' },
+                ].map((hint, i) => (
+                  <span key={i} style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 4,
+                    background: hint.ok ? 'rgba(34,197,94,0.1)' : 'rgba(100,116,139,0.1)',
+                    border: hint.ok ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(100,116,139,0.15)',
+                    color: hint.ok ? '#22c55e' : '#64748b',
+                  }}>
+                    {hint.ok ? '✓' : '○'} {hint.label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {error && (

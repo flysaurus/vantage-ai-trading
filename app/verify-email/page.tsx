@@ -4,8 +4,6 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-type DebugStep = { step: string; status: 'ok' | 'fail' | 'info'; detail: string; time: string };
-
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -13,33 +11,20 @@ function VerifyEmailContent() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [email, setEmail] = useState('');
-  const [debug, setDebug] = useState<DebugStep[]>([]);
-
-  const now = () => new Date().toISOString().slice(11, 23);
-
-  const addStep = (step: string, status: 'ok' | 'fail' | 'info', detail: string) => {
-    setDebug(prev => [...prev, { step, status, detail, time: now() }]);
-  };
 
   useEffect(() => {
     const verifyEmail = async () => {
       try {
-        // Step 1: Read URL params
         const token = searchParams.get('token');
         const emailParam = searchParams.get('email');
-        addStep('Read URL params', 'info', `token=${token?.slice(0,12) || 'MISSING'}... email=${emailParam || 'MISSING'}`);
 
         if (!token || !emailParam) {
-          addStep('Validation', 'fail', 'Missing token or email in URL');
-          throw new Error('Invalid verification link — missing token or email');
+          throw new Error('Invalid verification link');
         }
 
         const decodedEmail = decodeURIComponent(emailParam);
         setEmail(decodedEmail);
-        addStep('Decode email', 'ok', `email="${decodedEmail}" token_len=${token.length}`);
 
-        // Step 2: Call API
-        addStep('Calling API', 'info', `POST /api/auth/verify-email`);
         const response = await fetch('/api/auth/verify-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -47,24 +32,17 @@ function VerifyEmailContent() {
         });
 
         const data = await response.json();
-        addStep('API response', response.ok ? 'ok' : 'fail',
-          `status=${response.status} ok=${response.ok} body=${JSON.stringify(data).slice(0, 200)}`);
 
         if (!response.ok) {
-          const errEmail = data.verifiedEmail || emailParam;
-          throw new Error(`${data.error || 'Email verification failed'} (email used: ${errEmail})`);
+          throw new Error(data.error || 'Email verification failed');
         }
 
-        addStep('Verification result', 'ok', `success=${data.success} email=${data.verifiedEmail}`);
-        console.log('✅ Email verified');
         setSuccess(true);
 
         setTimeout(() => {
           router.push('/login');
         }, 3000);
       } catch (err: any) {
-        addStep('Error caught', 'fail', err.message);
-        console.error('❌ Verification error:', err.message);
         setError(err.message || 'Email verification failed');
       } finally {
         setLoading(false);
@@ -74,7 +52,6 @@ function VerifyEmailContent() {
     verifyEmail();
   }, [searchParams, router]);
 
-  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -86,18 +63,6 @@ function VerifyEmailContent() {
               </div>
               <h1 className="text-2xl font-bold text-white mb-2">Verifying Email</h1>
               <p className="text-slate-400">Please wait while we verify your email address...</p>
-              {/* Debug trace visible during loading */}
-              <div className="mt-4 text-left border border-slate-700 rounded-lg p-3 bg-slate-950">
-                <p className="text-xs text-cyan-400 font-mono mb-2">📋 Debug Trace:</p>
-                {debug.map((d, i) => (
-                  <div key={i} className="text-xs font-mono mb-1">
-                    <span className={d.status === 'ok' ? 'text-green-400' : d.status === 'fail' ? 'text-red-400' : 'text-slate-400'}>
-                      [{d.time}] {d.status === 'ok' ? '✅' : d.status === 'fail' ? '❌' : 'ℹ️'} {d.step}
-                    </span>
-                    <span className="text-slate-500 ml-1">{d.detail}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>
@@ -105,7 +70,6 @@ function VerifyEmailContent() {
     );
   }
 
-  // Success State
   if (success) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -121,21 +85,13 @@ function VerifyEmailContent() {
               <p className="text-slate-400 mb-6">
                 Your email <span className="text-cyan-400 font-medium">{email}</span> has been verified successfully.
               </p>
+              <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 mb-6">
+                <p className="text-slate-300 text-sm">You can now log in with your email and password.</p>
+              </div>
+              <p className="text-slate-400 text-sm mb-6">Redirecting to login in 3 seconds...</p>
               <Link href="/login" className="inline-block bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-6 py-2.5 rounded-lg transition">
                 Go to Login Now →
               </Link>
-              {/* Debug trace */}
-              <div className="mt-4 text-left border border-slate-700 rounded-lg p-3 bg-slate-950">
-                <p className="text-xs text-cyan-400 font-mono mb-2">📋 Debug Trace (success):</p>
-                {debug.map((d, i) => (
-                  <div key={i} className="text-xs font-mono mb-1">
-                    <span className={d.status === 'ok' ? 'text-green-400' : d.status === 'fail' ? 'text-red-400' : 'text-slate-400'}>
-                      [{d.time}] {d.status === 'ok' ? '✅' : d.status === 'fail' ? '❌' : 'ℹ️'} {d.step}
-                    </span>
-                    <span className="text-slate-500 ml-1">{d.detail}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>
@@ -143,7 +99,6 @@ function VerifyEmailContent() {
     );
   }
 
-  // Error State
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -155,23 +110,9 @@ function VerifyEmailContent() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">Verification Failed</h1>
-            <p className="text-slate-400 mb-2">{error}</p>
-            {email && (
-              <p className="text-cyan-400 text-xs mb-4">Email being verified: {email}</p>
-            )}
-            {/* Debug trace */}
-            <div className="mt-2 text-left border border-slate-700 rounded-lg p-3 bg-slate-950 mb-4">
-              <p className="text-xs text-cyan-400 font-mono mb-2">📋 Debug Trace (error):</p>
-              {debug.map((d, i) => (
-                <div key={i} className="text-xs font-mono mb-1">
-                  <span className={d.status === 'ok' ? 'text-green-400' : d.status === 'fail' ? 'text-red-400' : 'text-slate-400'}>
-                    [{d.time}] {d.status === 'ok' ? '✅' : d.status === 'fail' ? '❌' : 'ℹ️'} {d.step}
-                  </span>
-                  <span className="text-slate-500 ml-1">{d.detail}</span>
-                </div>
-              ))}
-            </div>
+            <p className="text-slate-400 mb-6">{error}</p>
             <div className="space-y-3">
+              <p className="text-slate-400 text-sm">The verification link may have expired. Try signing up again.</p>
               <div className="flex gap-3">
                 <Link href="/signup" className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-4 py-2.5 rounded-lg transition text-center">
                   Sign Up Again
