@@ -48,18 +48,26 @@ export async function authSignup(email: string, password: string, displayName: s
     const supabase = db();
     const { data: existing } = await supabase
       .from('users')
-      .select('id')
+      .select('id, password_hash, email_verified')
       .eq('email', email)
       .maybeSingle();
 
     if (existing) {
-      console.error('❌ User already exists');
-      throw new Error('Email already registered');
+      // If the existing account has no password_hash, it's from before custom auth.
+      // Delete it so the user can re-register.
+      if (!existing.password_hash) {
+        console.log('⚠️ Existing user has no password_hash — deleting stale record for re-registration');
+        await supabase.from('users').delete().eq('id', existing.id);
+        await supabase.from('email_verification_tokens').delete().eq('user_id', existing.id);
+      } else {
+        console.error('❌ User already exists with valid password');
+        throw new Error('Email already registered');
+      }
     }
 
     // Step 2: Hash password
     const { hash, salt } = await hashPassword(password);
-    console.log('✅ Password hashed');
+    console.log('✅ Password hashed — hash length:', hash.length, '| salt length:', salt.length, '| hash prefix:', hash.substring(0, 15));
 
     // Step 3: Create user in database
     const userId = uuidv4();
@@ -264,6 +272,15 @@ export async function authLogin(email: string, password: string) {
     if (userError) {
       console.log('❌ User not found');
       throw new Error('Invalid email or password');
+    }
+
+    console.log('📋 [AUTH-SERVICE] Login — user found | email_verified:', user.email_verified, '| password_hash length:', user.password_hash?.length, '| has 2FA:', user.two_factor_enabled);
+
+    // Defensive: if password_hash is empty (account from before custom auth migration),
+    // tell the user to re-register instead of crashing
+    if (!user.password_hash || user.password_hash.length < 20) {
+      console.error('❌ [AUTH-SERVICE] Login — password_hash empty or invalid. Account predates custom auth.');
+      throw new Error('This account was created before the password system was set up. Please sign up again with the same email.');
     }
 
     // Verify password BEFORE checking email_verified — so wrong password always shows "Invalid credentials"
