@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { OnboardingStyleSelection } from './OnboardingStyleSelection';
 import { updateInvestorStyle } from '@/lib/supabase-auth';
 import type { InvestorStyle } from '@/types';
 
 export function InvestorStyleOnboarding() {
-  const router = useRouter();
   const { user } = useAuth();
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,7 +33,8 @@ export function InvestorStyleOnboarding() {
       setComplete(true);
 
       setTimeout(() => {
-        router.push('/');
+        // Force full page reload so AuthProvider re-fetches user with onboarded=true
+        window.location.href = '/';
       }, 1500);
     } catch (err: any) {
       setError(err?.message || 'Failed to save. Please try again.');

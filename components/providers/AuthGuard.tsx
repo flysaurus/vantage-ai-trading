@@ -11,7 +11,6 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 
 const PUBLIC_PATHS = ['/login', '/login-test'];
-const ONBOARDING_PATH = '/investor-style';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
@@ -26,7 +25,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const isPublic = PUBLIC_PATHS.includes(pathname);
-  const isOnboarding = pathname === ONBOARDING_PATH;
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isPublic) {
@@ -34,18 +32,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, isAuthenticated, isPublic, router]);
 
-  // Onboarding redirect — only after data is loaded (DB confirmed onboarding status)
-  useEffect(() => {
-    if (isDataLoaded && user && !user.investorStyleOnboarded && !isOnboarding) {
-      router.replace(ONBOARDING_PATH);
-    }
-  }, [isDataLoaded, user, isOnboarding, router]);
+  // Onboarding — handled by in-app modal overlay on the main page
+  // Do NOT redirect to /investor-style for first-time users
+  // The onboarding modal in AppShell manages the first-time flow
 
   // Public pages render immediately
   if (isPublic) return <>{children}</>;
-
-  // Onboarding page — always render (its own guard prevents access if already onboarded)
-  if (isOnboarding) return <>{children}</>;
 
   // DB profile missing — user doesn't exist in our system
   if (profileNotFound) {
