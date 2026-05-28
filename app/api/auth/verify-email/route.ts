@@ -1,13 +1,39 @@
-// ─── POST /api/auth/verify-email ────────────────────────────────
+// ─── GET+POST /api/auth/verify-email ────────────────────────────
 // Verifies a user's email address using the token from the verification link.
+// GET: direct link click (email clients) — redirects to frontend with same params
+// POST: JS-based verification from /verify-email page
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authVerifyEmail } from '@/lib/auth-service';
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const { email, token } = await req.json().catch(() => ({}));
+// GET handler — redirect to frontend verify-email page preserving params
+// This ensures the link works even from plain email clients (no JS needed for redirect)
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get('token');
+  const email = url.searchParams.get('email');
 
-  console.log('👉 [API] Verify email:', email);
+  console.log('👉 [API-GET] Verify email redirect:', email);
+
+  if (!email || !token) {
+    // Redirect to frontend page without params — it will show error
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin;
+    return NextResponse.redirect(`${appUrl}/verify-email`);
+  }
+
+  // Redirect to frontend page with the params intact
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin;
+  const redirectUrl = `${appUrl}/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  console.log('👉 [API-GET] Redirecting to:', redirectUrl);
+  return NextResponse.redirect(redirectUrl);
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  const body = await req.json().catch(() => ({}));
+  const email = body.email;
+  const token = body.token;
+
+  console.log('👉 [API-POST] Verify email:', email, 'token length:', token?.length);
 
   if (!email || !token) {
     return NextResponse.json(
