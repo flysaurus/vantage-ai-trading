@@ -213,34 +213,54 @@ export async function authVerifyEmail(email: string, token: string) {
     throw new Error('Invalid verification token');
   }
 
-  // Step 5: Call RPC function to update email_verified
+  // Step 5: Update email_verified — RPC then JS client fallback
   const verifiedAt = new Date().toISOString();
-  console.log('🔹 Step 5 — Calling RPC verify_user_email_now for', user.id);
+  console.log('🔹 Step 5 — Verifying user', user.id);
 
-  const { data: rpcResult, error: rpcError } = await supabase.rpc('verify_user_email_now', {
-    p_user_id: user.id,
-  });
-
-  console.log('🔹 Step 5 — RPC result:', rpcResult, '| error:', rpcError?.message || 'none');
-
-  if (rpcError) {
-    throw new Error(`Failed to verify email: ${rpcError.message}`);
+  // Strategy A: RPC (requires verify_user_email_now function in DB)
+  let rpcWorked = false;
+  try {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('verify_user_email_now', {
+      p_user_id: user.id,
+    });
+    console.log('🔹 Step 5A — RPC result:', rpcResult, '| error:', rpcError?.message || 'none');
+    if (!rpcError && rpcResult === true) rpcWorked = true;
+  } catch (rpcErr: any) {
+    console.log('🔹 Step 5A — RPC threw (function likely missing):', rpcErr.message);
   }
 
-  // Step 5b: Re-read to confirm
+  // Strategy B: JS client update (ALWAYS runs after RPC — belt and suspenders)
+  console.log('🔹 Step 5B — JS client update...');
+  const { data: updated, error: jsError } = await supabase
+    .from('users')
+    .update({
+      email_verified: true,
+      email_verified_at: verifiedAt,
+      updated_at: verifiedAt,
+    })
+    .eq('id', user.id)
+    .select('id, email_verified')
+    .single();
+  console.log('🔹 Step 5B — JS client result:', updated?.email_verified, '| error:', jsError?.message || 'none');
+
+  // Step 5c: Re-read to confirm persistence
   const { data: recheck, error: recheckError } = await supabase
     .from('users')
     .select('email_verified, email_verified_at')
     .eq('id', user.id)
     .single();
 
-  console.log('🔹 Step 5b — Recheck:', recheck?.email_verified, '|', recheck?.email_verified_at, '| err:', recheckError?.message || 'none');
+  console.log('🔹 Step 5c — Recheck:', recheck?.email_verified, '|', recheck?.email_verified_at, '| err:', recheckError?.message || 'none');
 
   if (!recheck?.email_verified) {
-    console.error('❌ Step 5b — CRITICAL: email_verified is still false!');
-    console.error('   Check Supabase: SELECT * FROM users WHERE id = \'' + user.id + '\'');
-    throw new Error('Email verification failed: database did not update');
+    console.error('❌ Step 5c — CRITICAL: email_verified still false!');
+    console.error('   Both RPC and JS client update ran. Neither persisted.');
+    console.error('   User:', user.id, 'Email:', email);
+    throw new Error('Email verification failed: database did not update. Run this SQL to manually verify:' +
+      ' UPDATE public.users SET email_verified=true, email_verified_at=NOW() WHERE id=\'' + user.id + '\';');
   }
+
+  console.log('✅ Step 5 — email_verified confirmed TRUE');
 
   // Step 6: Delete the used token
   const { error: deleteError } = await supabase
