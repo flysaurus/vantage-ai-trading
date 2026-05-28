@@ -6,9 +6,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authSignup } from '@/lib/auth-service';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const { email, password, displayName } = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+  const email = body.email;
+  const password = body.password;
+  const displayName = body.displayName;
 
-  console.log('👉 [API] Signup request:', email);
+  console.log('👉 [API] Signup request:', email, '| hasPassword:', !!password, '| hasName:', !!displayName);
 
   if (!email || !password) {
     return NextResponse.json(
@@ -20,6 +23,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Validate display name
   const name = (displayName || '').trim();
   if (!name) {
+    console.log('❌ [API] Signup rejected: no display name');
     return NextResponse.json(
       { error: 'Full name is required.' },
       { status: 400 }
