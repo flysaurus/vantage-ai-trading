@@ -240,9 +240,9 @@ export async function authVerifyEmail(email: string, token: string) {
     updateSucceeded = true;
   }
 
-  // Strategy B: Direct PostgREST PATCH (fallback if JS client didn't work)
+  // Strategy B: Direct PostgREST PATCH (fallback if JS client did not work)
   if (!updateSucceeded) {
-    console.log('⚠️ Step 5B — JS client update didn't persist, trying direct REST API...');
+    console.log('⚠️ Step 5B — JS client update did not persist, trying direct REST API...');
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
