@@ -213,24 +213,54 @@ export async function authVerifyEmail(email: string, token: string) {
     throw new Error('Invalid verification token');
   }
 
-  // Step 5: Update via RPC only (PostgREST PATCH on this table silently fails)
+  // Step 5: Update via direct HTTP call to PostgREST RPC endpoint
+  // (Bypassing supabase.rpc() — raw fetch avoids any JS client issues)
   const verifiedAt = new Date().toISOString();
-  console.log('🔹 Step 5 — RPC verify_user_email_now for', user.id);
+  console.log('🔹 Step 5 — Direct RPC call for', user.id);
 
-  const { data: rpcResult, error: rpcError } = await supabase.rpc('verify_user_email_now', {
-    p_user_id: user.id,
-  });
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  console.log('🔹 Step 5 — RPC result:', rpcResult, '| error:', rpcError?.message || 'none', '| code:', rpcError?.code || 'none', '| details:', rpcError?.details || 'none');
+  let rpcSuccess = false;
 
-  if (rpcError || rpcResult !== true) {
-    console.error('❌ RPC FAILED — full error:', JSON.stringify(rpcError));
-    throw new Error(
-      rpcError
-        ? `Verification failed — RPC error [${rpcError.code}]: ${rpcError.message}. Try running the SQL directly.`
-        : 'Verification failed — RPC returned false (no row updated). Check user ID matches.'
-    );
+  // Strategy A: Direct HTTP POST to /rest/v1/rpc/
+  try {
+    console.log('🔹 Step 5A — HTTP POST to', `${supabaseUrl}/rest/v1/rpc/verify_user_email_now`);
+    const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/verify_user_email_now`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ p_user_id: user.id }),
+    });
+    const rpcBody = await rpcRes.text();
+    console.log('🔹 Step 5A — HTTP status:', rpcRes.status, '| body:', rpcBody);
+    if (rpcRes.ok && rpcBody === 'true') {
+      rpcSuccess = true;
+    }
+  } catch (e: any) {
+    console.error('🔹 Step 5A — HTTP fetch threw:', e.message);
   }
+
+  // Strategy B: supabase.rpc() as fallback
+  if (!rpcSuccess) {
+    try {
+      console.log('🔹 Step 5B — Trying supabase.rpc()...');
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('verify_user_email_now', { p_user_id: user.id });
+      console.log('🔹 Step 5B — rpc result:', rpcData, '| err:', rpcErr?.message || 'none', '| code:', rpcErr?.code || 'none');
+      if (!rpcErr && rpcData === true) rpcSuccess = true;
+    } catch (e: any) {
+      console.error('🔹 Step 5B — rpc threw:', e.message);
+    }
+  }
+
+  if (!rpcSuccess) {
+    throw new Error('Verification failed — both direct HTTP and supabase.rpc() failed. Check Vercel logs.');
+  }
+
+  // Step 5b: Confirm persistence
 
   // Step 5b: Confirm persistence
   const { data: recheck, error: recheckError } = await supabase
