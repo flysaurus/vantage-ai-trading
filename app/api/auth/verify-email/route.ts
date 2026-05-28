@@ -22,12 +22,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  let email = '';
   try {
     const body = await req.json().catch(() => ({}));
-    const email = String(body.email || '').trim();
+    email = String(body.email || '').trim();
     const token = String(body.token || '').trim();
 
-    console.log('👉 [verify-email API] POST for:', email);
+    console.log('👉 [verify-email API] POST — email:', email, '| token_len:', token.length, '| token_first8:', token.substring(0,8));
 
     if (!email || !token) {
       return NextResponse.json({ error: 'Email and token required' }, { status: 400 });
@@ -36,25 +37,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const result = await authVerifyEmail(email, token);
 
     console.log('✅ [verify-email API] Success:', email);
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json({ ...result, verifiedEmail: email }, { status: 200 });
 
   } catch (err: any) {
     const msg = String(err?.message || '');
     console.error('❌ [verify-email API] Error:', msg);
 
     if (msg.includes('already verified')) {
-      return NextResponse.json({ error: msg, alreadyVerified: true }, { status: 200 });
+      return NextResponse.json({ error: msg, alreadyVerified: true, verifiedEmail: email }, { status: 200 });
     }
     if (msg.includes('expired')) {
-      return NextResponse.json({ error: 'Verification link has expired. Please sign up again.' }, { status: 410 });
+      return NextResponse.json({ error: 'Verification link has expired. Please sign up again.', verifiedEmail: email }, { status: 410 });
     }
     if (msg.includes('not found')) {
-      return NextResponse.json({ error: 'Invalid verification link. Please sign up again.' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid verification link. Please sign up again.', verifiedEmail: email }, { status: 400 });
     }
     if (msg.includes('Invalid')) {
-      return NextResponse.json({ error: 'Invalid verification token. Please sign up again.' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid verification token. Please sign up again.', verifiedEmail: email }, { status: 400 });
     }
 
-    return NextResponse.json({ error: msg || 'Verification failed' }, { status: 500 });
+    return NextResponse.json({ error: msg || 'Verification failed', verifiedEmail: email }, { status: 500 });
   }
 }

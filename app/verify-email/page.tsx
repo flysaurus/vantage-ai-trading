@@ -37,8 +37,11 @@ function VerifyEmailContent() {
 
         const data = await response.json();
 
+        console.log('📋 [VERIFY-EMAIL] Response — ok:', response.ok, '| data:', data);
+
         if (!response.ok) {
-          throw new Error(data.error || 'Email verification failed');
+          const errEmail = data.verifiedEmail || emailParam;
+          throw new Error(`${data.error || 'Email verification failed'} (email used: ${errEmail})`);
         }
 
         console.log('✅ Email verified');
@@ -159,7 +162,12 @@ function VerifyEmailContent() {
             </div>
 
             <h1 className="text-2xl font-bold text-white mb-2">Verification Failed</h1>
-            <p className="text-slate-400 mb-6">{error}</p>
+            <p className="text-slate-400 mb-2">{error}</p>
+            {email && (
+              <p className="text-cyan-400 text-xs mb-4">
+                Email being verified: {email}
+              </p>
+            )}
 
             <div className="space-y-3">
               <p className="text-slate-400 text-sm">
