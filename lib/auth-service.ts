@@ -161,95 +161,114 @@ export async function authSignup(email: string, password: string, displayName: s
 export async function authVerifyEmail(email: string, token: string) {
   console.log('👉 [AUTH-SERVICE] Verify email:', email, '| token first 8:', token?.substring(0, 8));
 
-  try {
-    const supabase = db();
+  const supabase = db();
 
-    // Step 1: Find user
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, email_verified, password_hash')
-      .eq('email', email)
-      .single();
+  // Step 1: Find user
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('id, email, email_verified, password_hash')
+    .eq('email', email)
+    .single();
 
-    console.log('📋 [AUTH-SERVICE] User lookup — found:', !!user, '| email_verified:', user?.email_verified, '| has password_hash:', !!user?.password_hash);
+  console.log('📋 Step 1 — User lookup:', user ? `found id=${user.id} verified=${user.email_verified}` : 'NOT FOUND');
 
-    if (userError) {
-      console.error('❌ [AUTH-SERVICE] User not found:', userError.message, userError.code);
-      throw new Error('User not found');
-    }
-
-    if (user.email_verified) {
-      throw new Error('Email already verified');
-    }
-
-    // Step 2: Find token
-    const { data: tokenRecord, error: tokenError } = await supabase
-      .from('email_verification_tokens')
-      .select('token_hash, token_salt, expires_at')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    console.log('📋 [AUTH-SERVICE] Token lookup — found:', !!tokenRecord, '| error:', tokenError?.message);
-
-    if (tokenError || !tokenRecord) {
-      console.error('❌ [AUTH-SERVICE] Token not found:', tokenError?.message, '| userId:', user.id);
-      throw new Error('Verification token not found');
-    }
-
-    // Step 3: Verify token hasn't expired
-    const now = new Date();
-    const expires = new Date(tokenRecord.expires_at);
-    console.log('📋 [AUTH-SERVICE] Token expires:', expires.toISOString(), '| now:', now.toISOString(), '| expired:', expires < now);
-
-    if (expires < now) {
-      throw new Error('Verification link has expired');
-    }
-
-    // Step 4: Verify token matches
-    const { verifyToken } = await import('@/lib/crypto');
-    const isValid = verifyToken(token, tokenRecord.token_hash, tokenRecord.token_salt);
-    console.log('📋 [AUTH-SERVICE] Token validation:', isValid ? '✅ VALID' : '❌ INVALID');
-
-    if (!isValid) {
-      throw new Error('Invalid verification token');
-    }
-
-    // Step 5: Mark email as verified
-    const updatePayload = {
-      email_verified: true,
-      email_verified_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    console.log('📋 [AUTH-SERVICE] Updating user:', user.id, 'with:', JSON.stringify(updatePayload));
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update(updatePayload)
-      .eq('id', user.id);
-
-    if (updateError) {
-      console.error('❌ [AUTH-SERVICE] Update failed:', updateError.message, updateError.code, updateError.details);
-      throw new Error('Failed to verify email');
-    }
-
-    console.log('✅ [AUTH-SERVICE] User updated — email_verified set to true');
-
-    // Step 6: Delete used token
-    await supabase
-      .from('email_verification_tokens')
-      .delete()
-      .eq('user_id', user.id);
-
-    console.log('✅ Email verified');
-
-    return {
-      success: true,
-      message: 'Email verified! You can now log in.',
-    };
-  } catch (err) {
-    console.error('❌ Verify email error:', err);
-    throw err;
+  if (userError || !user) {
+    throw new Error('User not found');
   }
+
+  if (user.email_verified) {
+    throw new Error('Email already verified');
+  }
+
+  // Step 2: Find token for this user
+  const { data: tokenRecord, error: tokenError } = await supabase
+    .from('email_verification_tokens')
+    .select('id, token_hash, token_salt, expires_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  console.log('📋 Step 2 — Token lookup:', tokenRecord ? 'FOUND' : 'NOT FOUND', tokenError?.message || '');
+
+  if (tokenError || !tokenRecord) {
+    throw new Error('Verification token not found');
+  }
+
+  // Step 3: Check expiry
+  const now = new Date();
+  const expires = new Date(tokenRecord.expires_at);
+  console.log('📋 Step 3 — Token expiry check | expires:', expires.toISOString(), '| now:', now.toISOString(), '| expired:', expires < now);
+
+  if (expires < now) {
+    throw new Error('Verification link has expired');
+  }
+
+  // Step 4: Verify token PBKDF2 match
+  const { verifyToken } = await import('@/lib/crypto');
+  const isValid = verifyToken(token, tokenRecord.token_hash, tokenRecord.token_salt);
+  console.log('📋 Step 4 — Token validation:', isValid ? '✅ MATCH' : '❌ MISMATCH');
+
+  if (!isValid) {
+    throw new Error('Invalid verification token');
+  }
+
+  // Step 5: UPDATE users — set email_verified = true + timestamp
+  const verifiedAt = new Date().toISOString();
+  console.log('📋 Step 5 — Updating user', user.id, 'email_verified=true at', verifiedAt);
+
+  const { data: updatedUser, error: updateError } = await supabase
+    .from('users')
+    .update({
+      email_verified: true,
+      email_verified_at: verifiedAt,
+      updated_at: verifiedAt,
+    })
+    .eq('id', user.id)
+    .eq('email', email)
+    .select('id, email_verified, email_verified_at')
+    .single();
+
+  if (updateError) {
+    console.error('❌ Step 5 — Update error:', updateError.code, updateError.message, updateError.details);
+    throw new Error('Failed to verify email: ' + updateError.message);
+  }
+
+  if (!updatedUser) {
+    console.error('❌ Step 5 — No row returned from update');
+    throw new Error('Failed to verify email: no user updated');
+  }
+
+  console.log('📋 Step 5 — Update result:', 'email_verified =', updatedUser.email_verified, '| email_verified_at =', updatedUser.email_verified_at);
+
+  // Step 5b: Double-check by re-reading the row
+  const { data: recheck, error: recheckError } = await supabase
+    .from('users')
+    .select('email_verified, email_verified_at')
+    .eq('id', user.id)
+    .single();
+
+  console.log('📋 Step 5b — Re-check:', 'verified:', recheck?.email_verified, '| at:', recheck?.email_verified_at, '| err:', recheckError?.message || 'none');
+
+  if (!recheck?.email_verified) {
+    console.error('❌ Step 5b — CRITICAL: email_verified still false after update!');
+    throw new Error('Failed to verify email: database did not persist the update');
+  }
+
+  // Step 6: Delete the used token
+  const { error: deleteError } = await supabase
+    .from('email_verification_tokens')
+    .delete()
+    .eq('id', tokenRecord.id);
+
+  console.log('📋 Step 6 — Token deleted:', deleteError ? 'FAILED: ' + deleteError.message : 'OK');
+
+  console.log('✅ [AUTH-SERVICE] Email fully verified for user', user.id);
+
+  return {
+    success: true,
+    message: 'Email verified! You can now log in.',
+  };
 }
 
 // ============================================================================
