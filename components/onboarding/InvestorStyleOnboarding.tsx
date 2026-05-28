@@ -3,50 +3,37 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { OnboardingWelcome } from './OnboardingWelcome';
 import { OnboardingStyleSelection } from './OnboardingStyleSelection';
-import { OnboardingConfirmation } from './OnboardingConfirmation';
 import { updateInvestorStyle } from '@/lib/supabase-auth';
 import type { InvestorStyle } from '@/types';
-
-type OnboardingStep = 'welcome' | 'selection' | 'confirmation' | 'complete';
 
 export function InvestorStyleOnboarding() {
   const router = useRouter();
   const { user } = useAuth();
-  const [step, setStep] = useState<OnboardingStep>('welcome');
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [complete, setComplete] = useState(false);
 
-  const handleSelectStyle = (style: InvestorStyle) => {
-    setSelectedStyle(style);
-    setStep('confirmation');
-  };
+  const handleAccept = async () => {
+    if (!user) return;
 
-  const handleBack = () => {
-    setStep('selection');
-  };
-
-  const handleConfirm = async () => {
-    if (!user || !selectedStyle) return;
+    // If no style selected, default to Buffett
+    const style = selectedStyle || 'buffett';
 
     setLoading(true);
     setError(null);
 
     try {
-      // Save to users table with updateInvestorStyle (sets onboarded flag)
-      await updateInvestorStyle(user.id, selectedStyle, true);
+      await updateInvestorStyle(user.id, style, true);
 
-      // Persist to localStorage for fast reload checks
       if (typeof window !== 'undefined') {
         localStorage.setItem('vantage:onboarded', 'true');
-        localStorage.setItem('vantage:investorStyle', selectedStyle);
+        localStorage.setItem('vantage:investorStyle', style);
       }
 
-      setStep('complete');
+      setComplete(true);
 
-      // Brief celebration then redirect to app
       setTimeout(() => {
         router.push('/');
       }, 1500);
@@ -54,30 +41,6 @@ export function InvestorStyleOnboarding() {
       setError(err?.message || 'Failed to save. Please try again.');
       setLoading(false);
     }
-  };
-
-  const handleSkip = async () => {
-    if (!user) {
-      router.push('/');
-      return;
-    }
-
-    try {
-      // Save default style + onboarded flag so it never re-triggers
-      await updateInvestorStyle(user.id, 'buffett', true);
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('vantage:onboarded', 'true');
-        localStorage.setItem('vantage:investorStyle', 'buffett');
-      }
-    } catch {
-      // Non-critical — still redirect
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('vantage:onboarded', 'true');
-      }
-    }
-
-    router.push('/');
   };
 
   if (!user) {
@@ -110,31 +73,7 @@ export function InvestorStyleOnboarding() {
           flexDirection: 'column',
         }}
       >
-        {step === 'welcome' && (
-          <OnboardingWelcome
-            onNext={() => setStep('selection')}
-            onSkip={handleSkip}
-          />
-        )}
-
-        {step === 'selection' && (
-          <OnboardingStyleSelection
-            onSelectStyle={handleSelectStyle}
-            error={error}
-          />
-        )}
-
-        {step === 'confirmation' && selectedStyle && (
-          <OnboardingConfirmation
-            selectedStyle={selectedStyle}
-            onConfirm={handleConfirm}
-            onBack={handleBack}
-            loading={loading}
-            error={error}
-          />
-        )}
-
-        {step === 'complete' && (
+        {complete ? (
           <div style={{ padding: '48px 32px', textAlign: 'center' }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>✨</div>
             <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px' }}>
@@ -146,6 +85,14 @@ export function InvestorStyleOnboarding() {
               Personalizing your dashboard...
             </p>
           </div>
+        ) : (
+          <OnboardingStyleSelection
+            selectedStyle={selectedStyle}
+            onSelectStyle={setSelectedStyle}
+            onAccept={handleAccept}
+            loading={loading}
+            error={error}
+          />
         )}
       </div>
     </div>

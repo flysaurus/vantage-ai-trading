@@ -11,7 +11,7 @@ import type { InvestorStyle } from '@/types';
 import type { StyleDef } from '@/components/onboarding/styles';
 import type { Position, User } from '@/types';
 import {
-  ArrowLeft, RefreshCcw, Shield, AlertTriangle, Info,
+  RefreshCcw, Shield, AlertTriangle, Info,
   TrendingUp, CheckCircle, XCircle,
 } from 'lucide-react';
 
@@ -100,15 +100,10 @@ export default function InvestorStylePage() {
   return (
     <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
-          <ArrowLeft size={20} />
-        </button>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Investor Style</h1>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-            All analysis filtered through your investment philosophy
-          </div>
+      <div style={{ marginBottom: 14 }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Investor Style</h1>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+          All analysis filtered through your investment philosophy
         </div>
       </div>
 

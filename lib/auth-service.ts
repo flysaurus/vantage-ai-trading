@@ -82,7 +82,7 @@ export async function authSignup(email: string, password: string, displayName: s
         display_name: name,
         email_verified: false,
         status: 'active',
-        investor_style: 'buffett',
+        investor_style: null,
         investor_style_onboarded: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
