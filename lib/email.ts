@@ -60,16 +60,19 @@ async function getTransporter(): Promise<Transporter> {
 // ── Send ──
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+  // Strip HTML tags for plain-text fallback (boosts deliverability)
+  const text = html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+
   // Production: SendGrid REST API (preferred)
   if (SENDGRID_API_KEY) {
-    return sendViaSendGrid({ to, subject, html });
+    return sendViaSendGrid({ to, subject, html, text });
   }
 
   // Dev: SMTP / Ethereal
-  return sendViaSMTP({ to, subject, html });
+  return sendViaSMTP({ to, subject, html, text });
 }
 
-async function sendViaSendGrid({ to, subject, html }: { to: string; subject: string; html: string }) {
+async function sendViaSendGrid({ to, subject, html, text }: { to: string; subject: string; html: string; text: string }) {
   const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -77,10 +80,23 @@ async function sendViaSendGrid({ to, subject, html }: { to: string; subject: str
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
+      personalizations: [{
+        to: [{ email: to }],
+      }],
       from: { name: FROM_NAME, email: FROM_EMAIL },
+      reply_to: { name: FROM_NAME, email: FROM_EMAIL },
       subject,
-      content: [{ type: 'text/html', value: html }],
+      content: [
+        { type: 'text/plain', value: text },
+        { type: 'text/html', value: html },
+      ],
+      mail_settings: {
+        bypass_list_management: { enable: false },
+      },
+      tracking_settings: {
+        click_tracking: { enable: false },
+        open_tracking: { enable: false },
+      },
     }),
   });
 
@@ -95,12 +111,13 @@ async function sendViaSendGrid({ to, subject, html }: { to: string; subject: str
   return { success: true, previewUrl: undefined as string | undefined };
 }
 
-async function sendViaSMTP({ to, subject, html }: { to: string; subject: string; html: string }) {
+async function sendViaSMTP({ to, subject, html, text }: { to: string; subject: string; html: string; text: string }) {
   const transporter = await getTransporter();
   const info = await transporter.sendMail({
     from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
     to,
     subject,
+    text,
     html,
   });
 
@@ -119,14 +136,41 @@ export function getVerificationEmailHTML(token: string, email: string): string {
   const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-  <h2 style="color: #06b6d4;">Vantage</h2>
-  <h3>Verify your email address</h3>
-  <p>Click the button below to verify your email and activate your Vantage account:</p>
-  <a href="${verifyUrl}" style="display: inline-block; background: #06b6d4; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">Verify Email</a>
-  <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">This link expires in 24 hours. If you didn't create this account, you can ignore this email.</p>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your email — Vantage</title>
+</head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,&apos;Segoe UI&apos;,Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="background:#1e293b;border-radius:12px;overflow:hidden;">
+        <tr><td style="padding:32px 32px 0;">
+          <p style="font-size:28px;font-weight:800;color:#06b6d4;margin:0;letter-spacing:-0.5px;">Vantage</p>
+          <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">AI-first trading, in your pocket</p>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <h2 style="color:#f1f5f9;font-size:20px;margin:0 0 12px;">Verify your email address</h2>
+          <p style="color:#cbd5e1;font-size:15px;line-height:1.6;margin:0 0 24px;">Click the button below to verify your email and activate your Vantage account:</p>
+          <table cellpadding="0" cellspacing="0">
+            <tr><td align="center" style="border-radius:8px;background:#06b6d4;">
+              <a href="${verifyUrl}" style="display:inline-block;padding:14px 32px;color:#fff;font-size:15px;font-weight:600;text-decoration:none;">Verify Email</a>
+            </td></tr>
+          </table>
+          <p style="color:#64748b;font-size:13px;line-height:1.5;margin:24px 0 0;">
+            This link expires in 24 hours. If you didn&apos;t create this account, you can ignore this email.
+          </p>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#0f172a;border-top:1px solid #334155;">
+          <p style="color:#475569;font-size:11px;margin:0;line-height:1.4;">
+            Vantage &middot; AI-first trading platform<br>
+            This is an automated message. Please do not reply to this email.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>`;
 }
@@ -136,14 +180,41 @@ export function getPasswordResetEmailHTML(token: string, email: string): string 
   const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-  <h2 style="color: #06b6d4;">Vantage</h2>
-  <h3>Reset your password</h3>
-  <p>Click the button below to reset your password. This link expires in 1 hour:</p>
-  <a href="${resetUrl}" style="display: inline-block; background: #06b6d4; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">Reset Password</a>
-  <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">If you didn't request this, you can safely ignore this email.</p>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset your password — Vantage</title>
+</head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,&apos;Segoe UI&apos;,Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="background:#1e293b;border-radius:12px;overflow:hidden;">
+        <tr><td style="padding:32px 32px 0;">
+          <p style="font-size:28px;font-weight:800;color:#06b6d4;margin:0;letter-spacing:-0.5px;">Vantage</p>
+          <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">AI-first trading, in your pocket</p>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <h2 style="color:#f1f5f9;font-size:20px;margin:0 0 12px;">Reset your password</h2>
+          <p style="color:#cbd5e1;font-size:15px;line-height:1.6;margin:0 0 24px;">You requested a password reset. Click the button below to set a new password. This link expires in 1 hour:</p>
+          <table cellpadding="0" cellspacing="0">
+            <tr><td align="center" style="border-radius:8px;background:#06b6d4;">
+              <a href="${resetUrl}" style="display:inline-block;padding:14px 32px;color:#fff;font-size:15px;font-weight:600;text-decoration:none;">Reset Password</a>
+            </td></tr>
+          </table>
+          <p style="color:#64748b;font-size:13px;line-height:1.5;margin:24px 0 0;">
+            If you didn&apos;t request a password reset, you can safely ignore this email — your password won&apos;t change.
+          </p>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#0f172a;border-top:1px solid #334155;">
+          <p style="color:#475569;font-size:11px;margin:0;line-height:1.4;">
+            Vantage &middot; AI-first trading platform<br>
+            This is an automated message. Please do not reply to this email.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>`;
 }
