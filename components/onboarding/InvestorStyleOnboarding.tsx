@@ -5,14 +5,13 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { OnboardingStyleSelection } from './OnboardingStyleSelection';
 import { BrokerSelection } from './BrokerSelection';
 import { BrokerCredentials } from './BrokerCredentials';
-import { updateInvestorStyle } from '@/lib/supabase-auth';
 import type { InvestorStyle } from '@/types';
 import type { BrokerId } from '@/types/broker';
 
 type OnboardingStep = 'style' | 'broker' | 'credentials';
 
 export function InvestorStyleOnboarding() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [step, setStep] = useState<OnboardingStep>('style');
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);
   const [selectedBrokerId, setSelectedBrokerId] = useState<BrokerId | null>(null);
@@ -30,7 +29,26 @@ export function InvestorStyleOnboarding() {
     setError(null);
 
     try {
-      await updateInvestorStyle(user.id, style, true);
+      // Use the API route (server-side service role) — NOT the browser
+      // Supabase client (anon key, no JWT, blocked by RLS).
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.token) {
+        headers['Authorization'] = `Bearer ${session.token}`;
+      }
+      const res = await fetch('/api/db/users/update', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          userId: user.id,
+          investorStyle: style,
+          investorStyleOnboarded: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as any));
+        throw new Error(data?.error || 'Failed to save. Please try again.');
+      }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('vantage:onboarded', 'true');
@@ -64,9 +82,13 @@ export function InvestorStyleOnboarding() {
     setError(null);
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.token) {
+        headers['Authorization'] = `Bearer ${session.token}`;
+      }
       const res = await fetch('/api/broker/connect', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           brokerId: selectedBrokerId,
           apiKey: credentials.apiKey,
