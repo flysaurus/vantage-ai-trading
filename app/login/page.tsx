@@ -140,7 +140,9 @@ export default function LoginPage() {
         }
 
         // Direct login — redirect
-        router.replace('/');
+        // Using full page reload (not router) to guarantee the session cookie
+        // is processed before /api/auth/me is called on the dashboard.
+        window.location.href = '/';
       }
     } catch (err: any) {
       const msg = String(err?.message || err || 'Something went wrong.');
@@ -193,7 +195,8 @@ export default function LoginPage() {
         throw new Error(sessionData.error || 'Failed to create session');
       }
 
-      router.replace('/');
+      // Full page reload to guarantee session cookie is processed
+      window.location.href = '/';
     } catch (err: any) {
       setError(err.message || '2FA verification failed');
     } finally {
