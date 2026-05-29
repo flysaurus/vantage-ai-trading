@@ -5,7 +5,7 @@
 // getSession() reads a parallel sessionStorage copy synced by AuthProvider.
 // Supabase SDK handles actual login/refresh/logout via onAuthStateChange.
 
-import { createAuthClient } from './supabase';
+import { createAuthClient, createServerClient } from './supabase';
 import type { VantageSession, User, InvestorStyle } from '@/types';
 
 const SESSION_KEY = 'vantage-session';
@@ -132,24 +132,66 @@ export class AuthError extends Error {
 }
 
 /**
- * Validates a session token from an Authorization header.
- * For use in API route handlers.
+ * Validates a session token from an Authorization header (Bearer) OR
+ * the HTTP-only session cookie. Both paths are supported so browser-side
+ * fetch() calls work without JavaScript-visible tokens.
  */
 export async function requireAuth(
   request: Request
 ): Promise<{ userId: string; token: string }> {
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+
+  // ── Path A: Bearer token (Supabase JWT) ──
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    try {
+      const supabase = createAuthClient();
+      const { data, error } = await supabase.auth.getUser(token);
+      if (error || !data.user) {
+        throw new AuthError('Invalid or expired token', 401);
+      }
+      return { userId: data.user.id, token };
+    } catch (err) {
+      if (err instanceof AuthError) throw err;
+      throw new AuthError('Authentication failed', 401);
+    }
+  }
+
+  // ── Path B: HTTP-only session cookie (custom auth) ──
+  const sessionToken = request.headers.get('cookie')
+    ?.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('session='))
+    ?.slice('session='.length);
+
+  if (!sessionToken) {
     throw new AuthError('Missing or invalid Authorization header', 401);
   }
-  const token = authHeader.slice(7);
+
   try {
-    const supabase = createAuthClient();
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) {
-      throw new AuthError('Invalid or expired token', 401);
+    // Hash the session token for DB lookup (Web Crypto API)
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(sessionToken));
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const sessionHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const supabase = createServerClient();
+
+    const { data: session, error: sessionError } = await (supabase as any)
+      .from('user_sessions')
+      .select('user_id, expires_at')
+      .eq('session_token_hash', sessionHash)
+      .single();
+
+    if (sessionError || !session) {
+      throw new AuthError('Invalid session', 401);
     }
-    return { userId: data.user.id, token };
+
+    if (new Date(session.expires_at) < new Date()) {
+      throw new AuthError('Session expired', 401);
+    }
+
+    return { userId: session.user_id, token: sessionToken };
   } catch (err) {
     if (err instanceof AuthError) throw err;
     throw new AuthError('Authentication failed', 401);
