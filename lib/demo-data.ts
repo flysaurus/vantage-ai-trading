@@ -12,6 +12,7 @@ import type {
   MarketIndex,
   Quote,
   SectorAllocation,
+  Order,
 } from '@/types';
 import type { InvestorStyle } from '@/types';
 
@@ -296,4 +297,90 @@ export function getDemoInsight(account: AccountSummary): string {
     worstPnl && worstPnl.totalPnl < 0 ? `Biggest laggard: ${worstPnl.symbol} (${worstPnl.totalPnlPercent.toFixed(1)}%).` : '',
     `Total return: ${account.totalPnl >= 0 ? '+' : ''}${Math.round(account.totalPnl).toLocaleString()} (${account.totalPnlPercent >= 0 ? '+' : ''}${account.totalPnlPercent.toFixed(1)}%).`,
   ].filter(Boolean).join(' ');
+}
+
+// ─── Demo Orders ──────────────────────────────────────────────
+// Generates realistic filled buy orders for each position in the
+// demo portfolio. Orders are spread over several months with varied
+// types (market/limit), prices near avgCost, and timestamps.
+
+function id(symbol: string, n: number): string {
+  return `demo-${symbol.toLowerCase()}-${n}`;
+}
+
+function daysAgo(d: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - d);
+  // Add some time-of-day variation
+  date.setHours(10 + Math.floor(Math.random() * 6), Math.floor(Math.random() * 60));
+  return date.toISOString();
+}
+
+export function getDemoOrders(style: string): Order[] {
+  const positions = DEMO_PORTFOLIOS[style as InvestorStyle]?.positions
+    ?? DEMO_PORTFOLIOS.buffett.positions;
+
+  // Map of symbol → position for quick lookup
+  const posMap = new Map(positions.map(p => [p.symbol, p]));
+
+  const orders: Order[] = [];
+
+  for (const pos of positions) {
+    // Each position gets 1–3 buy orders (some split into multiple fills)
+    const orderCount = pos.qty > 50 ? 2 + (pos.symbol.length % 2) : 1;
+    const remaining = pos.qty;
+    const fills: { qty: number; price: number; daysBack: number; type: Order['type'] }[] = [];
+
+    if (orderCount === 1) {
+      fills.push({
+        qty: pos.qty,
+        price: pos.avgCost,
+        daysBack: 30 + Math.floor(Math.random() * 90),
+        type: 'market',
+      });
+    } else if (orderCount === 2) {
+      const q1 = Math.floor(pos.qty * 0.6);
+      const q2 = pos.qty - q1;
+      fills.push(
+        { qty: q1, price: pos.avgCost - (Math.random() * 2 - 1), daysBack: 60 + Math.floor(Math.random() * 60), type: 'limit' },
+        { qty: q2, price: pos.avgCost + (Math.random() * 2 - 1), daysBack: 20 + Math.floor(Math.random() * 40), type: 'market' },
+      );
+    } else {
+      const q1 = Math.floor(pos.qty * 0.4);
+      const q2 = Math.floor(pos.qty * 0.35);
+      const q3 = pos.qty - q1 - q2;
+      fills.push(
+        { qty: q1, price: pos.avgCost - (Math.random() * 3), daysBack: 80 + Math.floor(Math.random() * 60), type: 'limit' },
+        { qty: q2, price: pos.avgCost + (Math.random() * 2 - 1), daysBack: 40 + Math.floor(Math.random() * 30), type: 'market' },
+        { qty: q3, price: pos.avgCost + (Math.random() * 2 - 1), daysBack: 10 + Math.floor(Math.random() * 20), type: 'market' },
+      );
+    }
+
+    let orderIdx = 0;
+    for (const f of fills) {
+      orderIdx++;
+      const orderId = id(pos.symbol, orderIdx);
+      const createdAt = daysAgo(f.daysBack);
+      const totalValue = f.qty * f.price;
+      orders.push({
+        id: orderId,
+        symbol: pos.symbol,
+        side: 'buy',
+        type: f.type,
+        status: 'filled',
+        qty: f.qty,
+        filledQty: f.qty,
+        limitPrice: f.type === 'limit' ? Number(f.price.toFixed(2)) : undefined,
+        filledPrice: Number(f.price.toFixed(2)),
+        totalValue: Number(totalValue.toFixed(2)),
+        timeInForce: f.type === 'limit' ? 'gtc' : 'day',
+        createdAt,
+        updatedAt: createdAt,
+      });
+    }
+  }
+
+  // Sort newest first
+  orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return orders;
 }

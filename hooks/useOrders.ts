@@ -10,6 +10,7 @@ import { useOrderStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { syncFilledOrders } from '@/lib/supabase/trades';
+import { getDemoOrders } from '@/lib/demo-data';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -157,11 +158,17 @@ export function useOrders() {
     [broker, updateOrder]
   );
 
-  // Initial load
+  // Initial load — live data or demo fallback
   useEffect(() => {
     mountedRef.current = true;
     if (isConnected) {
       refresh();
+    } else if (user) {
+      // Load demo orders based on investor style
+      const demoOrders = getDemoOrders(user.investorStyle || 'buffett');
+      setOrders(demoOrders);
+      setLoading(false);
+      setError(null);
     }
     return () => {
       mountedRef.current = false;
@@ -169,7 +176,7 @@ export function useOrders() {
         clearTimeout(retryTimer.current);
       }
     };
-  }, [isConnected, refresh]);
+  }, [isConnected, user, refresh, setOrders]);
 
   // Periodic refresh for active orders
   useEffect(() => {
