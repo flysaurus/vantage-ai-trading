@@ -9,11 +9,15 @@ export default function BrokerKeysHelp() {
 
   return (
     <div style={{
-      height: '100dvh',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       padding: 16,
       paddingBottom: 32,
       background: '#0a0e27',
-      overflowY: 'scroll',
+      overflowY: 'auto',
       WebkitOverflowScrolling: 'touch',
     }}>
       <div style={{ maxWidth: 420, margin: '0 auto', width: '100%' }}>

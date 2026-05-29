@@ -54,7 +54,7 @@ function VerifyEmailContent() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
           <div style={{ width: 64, height: 64, background: 'rgba(6,182,212,.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <div style={{ width: 32, height: 32, border: '4px solid #1e293b', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin .6s linear infinite' }} />
@@ -68,7 +68,7 @@ function VerifyEmailContent() {
 
   if (success) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
           <div style={{ width: 64, height: 64, background: 'rgba(34,197,94,.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <svg style={{ width: 32, height: 32, color: '#22c55e' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,7 +92,7 @@ function VerifyEmailContent() {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
       <div style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
         <div style={{ width: 64, height: 64, background: 'rgba(248,113,113,.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <svg style={{ width: 32, height: 32, color: '#f87171' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,7 +118,7 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
           <div style={{ width: 64, height: 64, background: 'rgba(6,182,212,.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <div style={{ width: 32, height: 32, border: '4px solid #1e293b', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin .6s linear infinite' }} />

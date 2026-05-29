@@ -235,7 +235,7 @@ export default function LoginPage() {
 
   if (requires2FA) {
     return (
-      <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+      <div className="page" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div className="card" style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', animation: 'fadeIn .4s ease-out' }}>
           <div className="icon-circle" style={{ width: 56, height: 56, margin: '0 auto 20px', background: 'rgba(6,182,212,.1)', border: '2px solid rgba(6,182,212,.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06b6d4' }}>
             <ShieldCheck size={28} />
@@ -291,7 +291,7 @@ export default function LoginPage() {
 
   if (confirmationSent) {
     return (
-      <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+      <div className="page" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div className="card" style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
           <button className="back-btn" onClick={() => { setConfirmationSent(false); setError(null); }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', marginBottom: 24 }}>
@@ -335,7 +335,7 @@ export default function LoginPage() {
   // ─── Login / Sign Up Form ───────────────────────────────────
 
   return (
-    <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
+    <div className="page" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
       <div className="card" style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', animation: 'fadeIn .4s ease-out' }}>
         <div className="logo" style={{ textAlign: 'center', marginBottom: 4 }}>
           <span className="logo-text" style={{ fontSize: 32, fontWeight: 800, background: 'linear-gradient(135deg,#06b6d4,#0d9488)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-.5px' }}>Vantage</span>
