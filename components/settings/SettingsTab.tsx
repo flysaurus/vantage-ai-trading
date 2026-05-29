@@ -80,6 +80,7 @@ export function SettingsTab() {
   const { isConnected, brokerId, accountPreview, environment } = useBroker();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [brokerExpanded, setBrokerExpanded] = useState(false);
 
   // Toast notification for items not yet built
   const [toast, setToast] = useState<string | null>(null);
@@ -203,123 +204,141 @@ export function SettingsTab() {
 
       {/* Broker Connection */}
       <div className="section" style={{ marginTop: 12 }}>
-        <div style={{
-          padding: '12px',
-          borderBottom: '1px solid #0f172a',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 8,
-              background: 'rgba(6,182,212,0.1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Plug size={16} style={{ color: '#06b6d4' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Broker Connection</div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                {brokerSubtitle}
-              </div>
-            </div>
-            <div style={{
-              width: 10, height: 10, borderRadius: '50%',
-              background: isConnected ? '#22c55e' : '#64748b',
-              boxShadow: isConnected ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
-              flexShrink: 0,
-            }} />
+        <div
+          onClick={() => setBrokerExpanded(!brokerExpanded)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: 12,
+            cursor: 'pointer', borderBottom: brokerExpanded ? '1px solid #0f172a' : 'none',
+          }}
+        >
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'rgba(6,182,212,0.1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Plug size={16} style={{ color: '#06b6d4' }} />
           </div>
-
-          {/* Account Preview (shown when connected) */}
-          {isConnected && accountPreview && (
-            <div style={{
-              marginTop: 8,
-              padding: '10px 12px',
-              borderRadius: 8,
-              background: '#0f172a',
-              border: '1px solid #1e293b',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 8,
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Equity</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>
-                  ${accountPreview.equity?.toLocaleString() ?? '—'}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Buying Power</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>
-                  ${accountPreview.buyingPower?.toLocaleString() ?? '—'}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: accountPreview.status === 'active' ? '#4ade80' : '#fbbf24' }}>
-                  {accountPreview.status ?? '—'}
-                </div>
-              </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Connected Brokers</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+              {brokerSubtitle}
             </div>
-          )}
+          </div>
+          <div style={{
+            width: 10, height: 10, borderRadius: '50%',
+            background: isConnected ? '#22c55e' : '#64748b',
+            boxShadow: isConnected ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+            flexShrink: 0,
+          }} />
+          <ChevronRight
+            size={14}
+            style={{
+              color: '#64748b',
+              transform: brokerExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s',
+            }}
+          />
+        </div>
 
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button
-              onClick={handleChangeBroker}
-              style={{
-                flex: 1,
-                padding: '8px 0',
+        {/* Expandable Details */}
+        {brokerExpanded && (
+          <div style={{ padding: '0 12px 12px' }}>
+            {/* Account Preview (shown when connected) */}
+            {isConnected && accountPreview ? (
+              <div style={{
+                padding: '10px 12px',
                 borderRadius: 8,
-                border: '1px solid #334155',
-                background: 'transparent',
-                color: '#94a3b8',
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              {isConnected ? 'Change Broker' : 'Connect Broker'}
-            </button>
-            {isConnected && (
+                background: '#0f172a',
+                border: '1px solid #1e293b',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 8,
+                marginBottom: 10,
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Equity</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>
+                    ${accountPreview.equity?.toLocaleString() ?? '—'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Buying Power</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>
+                    ${accountPreview.buyingPower?.toLocaleString() ?? '—'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: accountPreview.status === 'active' ? '#4ade80' : '#fbbf24' }}>
+                    {accountPreview.status ?? '—'}
+                  </div>
+                </div>
+              </div>
+            ) : isConnected ? null : (
+              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px', lineHeight: 1.5 }}>
+                Connect your brokerage account to see your portfolio, positions, and start trading.
+              </p>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={() => setShowDisconnectConfirm(true)}
+                onClick={handleChangeBroker}
                 style={{
                   flex: 1,
                   padding: '8px 0',
                   borderRadius: 8,
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  background: 'rgba(239,68,68,0.08)',
-                  color: '#f87171',
+                  border: '1px solid #334155',
+                  background: 'transparent',
+                  color: '#94a3b8',
                   fontSize: 11,
                   fontWeight: 600,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
               >
-                Disconnect
+                {isConnected ? 'Change Broker' : 'Connect Broker'}
               </button>
-            )}
-          </div>
+              {isConnected && (
+                <button
+                  onClick={() => setShowDisconnectConfirm(true)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    borderRadius: 8,
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    background: 'rgba(239,68,68,0.08)',
+                    color: '#f87171',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
 
-          {/* Security Link */}
-          <div style={{ marginTop: 10, fontSize: 10 }}>
-            <a
-              href="/security"
-              style={{
-                color: '#06b6d4',
-                textDecoration: 'none',
-                fontWeight: 500,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <Shield size={12} />
-              Learn about how we secure your data →
-            </a>
+            {/* Security Link */}
+            <div style={{ marginTop: 10, fontSize: 10 }}>
+              <a
+                href="/security"
+                style={{
+                  color: '#06b6d4',
+                  textDecoration: 'none',
+                  fontWeight: 500,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Shield size={12} />
+                Learn about how we secure your data →
+              </a>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* System */}

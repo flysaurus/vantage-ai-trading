@@ -158,7 +158,16 @@ export function useMarketData() {
   // Initial data load
   useEffect(() => {
     if (!isConnected) {
-      setMarketOpen(false);
+      // Time-based fallback when no broker connected
+      const now = new Date();
+      const day = now.getUTCDay();
+      const h = now.getUTCHours();
+      const m = now.getUTCMinutes();
+      // US market: 9:30 AM - 4:00 PM ET Mon-Fri (13:30-20:00 UTC during DST)
+      const isOpen = day >= 1 && day <= 5
+        && (h > 13 || (h === 13 && m >= 30))
+        && !(h > 20 || (h === 20 && m > 0));
+      setMarketOpen(isOpen);
       return;
     }
 
