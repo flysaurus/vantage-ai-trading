@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useMarketStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { getDemoIndexes, getDemoQuotes } from '@/lib/demo-data';
+import { getDemoIndexes, getDemoQuotes, getAllDemoSymbols, getDemoIndexesWithPrices, getDemoQuotesWithPrices } from '@/lib/demo-data';
 import type { MarketIndex, Quote, WatchlistItem } from '@/types';
 
 // Indices and watchlist are now persisted in the market store (localStorage).
@@ -28,6 +28,7 @@ export function useMarketData() {
   const { broker, isConnected } = useBroker();
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsCleanup = useRef<(() => void) | null>(null);
+  const mountedRef = useRef(true);
 
   // Fetch index data and market status
   const fetchMarketData = useCallback(async () => {
@@ -170,14 +171,29 @@ export function useMarketData() {
         && !(h > 20 || (h === 20 && m > 0));
       setMarketOpen(isOpen);
 
-      // Populate demo market data
-      const demoIndexes = getDemoIndexes();
-      setIndexes(demoIndexes);
-
-      const demoQuotes = getDemoQuotes();
-      for (const [symbol, quote] of Object.entries(demoQuotes)) {
-        updateQuote(symbol, quote);
-      }
+      // Populate demo market data with real prices (fallback to hardcoded)
+      const symbols = getAllDemoSymbols();
+      fetch('/api/market/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols }),
+      })
+        .then(res => res.ok ? res.json() : Promise.reject(res))
+        .then(data => ({
+          indexes: data?.quotes ? getDemoIndexesWithPrices(data.quotes) : getDemoIndexes(),
+          quotes: data?.quotes ? getDemoQuotesWithPrices(data.quotes) : getDemoQuotes(),
+        }))
+        .catch(() => ({
+          indexes: getDemoIndexes(),
+          quotes: getDemoQuotes(),
+        }))
+        .then(({ indexes, quotes }) => {
+          if (!mountedRef.current) return;
+          setIndexes(indexes);
+          for (const [symbol, quote] of Object.entries(quotes)) {
+            updateQuote(symbol, quote);
+          }
+        });
       return;
     }
 
@@ -193,6 +209,7 @@ export function useMarketData() {
     });
 
     return () => {
+      mountedRef.current = false;
       wsCleanup.current?.();
       if (pollInterval.current) {
         clearInterval(pollInterval.current);

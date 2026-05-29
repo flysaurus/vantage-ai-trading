@@ -384,3 +384,169 @@ export function getDemoOrders(style: string): Order[] {
   orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return orders;
 }
+
+// ─── Real-Price Overlays ─────────────────────────────────────
+// These functions accept real market prices fetched from the API
+// and overlay them onto the demo portfolio structures.
+
+type PriceData = Record<string, {
+  price: number;
+  change: number;
+  changePercent: number;
+  previousClose: number;
+}>;
+
+/**
+ * Get just the symbols for a style (to fetch real prices).
+ */
+export function getDemoSymbols(style: InvestorStyle): string[] {
+  const portfolio = DEMO_PORTFOLIOS[style];
+  if (!portfolio) return DEMO_PORTFOLIOS.buffett.positions.map(p => p.symbol);
+  return portfolio.positions.map(p => p.symbol);
+}
+
+/**
+ * Get all unique symbols across all portfolios + indexes.
+ */
+export function getAllDemoSymbols(): string[] {
+  const seen = new Set<string>();
+  for (const style of Object.values(DEMO_PORTFOLIOS)) {
+    for (const pos of style.positions) {
+      seen.add(pos.symbol);
+    }
+  }
+  // Add index symbols
+  for (const idx of DEMO_INDEXES) {
+    seen.add(idx.symbol);
+  }
+  return [...seen];
+}
+
+/**
+ * Build an AccountSummary with real prices overlaid on demo positions.
+ * Falls back to hardcoded prices for symbols not in the price data.
+ */
+export function getDemoAccountWithPrices(
+  style: InvestorStyle,
+  prices: PriceData,
+): AccountSummary | null {
+  const portfolio = DEMO_PORTFOLIOS[style];
+  if (!portfolio) return null;
+
+  const positions: Position[] = portfolio.positions.map((p) => {
+    const quote = prices[p.symbol];
+    const currentPrice = quote?.price ?? p.currentPrice;
+    const dayChangePx = quote?.change ?? p.dayChange;
+    const dayChangePct = quote?.changePercent ?? p.dayChangePercent;
+
+    const marketValue = Math.round(p.qty * currentPrice * 100) / 100;
+    const dayChange = Math.round(p.qty * dayChangePx * 100) / 100;
+    const totalPnl = Math.round(p.qty * (currentPrice - p.avgCost) * 100) / 100;
+    const totalPnlPercent = p.avgCost > 0
+      ? Math.round(((currentPrice - p.avgCost) / p.avgCost) * 10000) / 100
+      : 0;
+
+    return {
+      symbol: p.symbol,
+      name: p.name,
+      qty: p.qty,
+      avgCost: p.avgCost,
+      currentPrice,
+      marketValue,
+      dayChange,
+      dayChangePercent: Math.round(dayChangePct * 100) / 100,
+      totalPnl,
+      totalPnlPercent,
+      portfolioPercent: 0,
+      sector: p.sector,
+    };
+  });
+
+  const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
+  const totalCost = positions.reduce((s, p) => s + p.qty * p.avgCost, 0);
+  const totalPnl = totalValue - totalCost;
+  const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+
+  for (const pos of positions) {
+    pos.portfolioPercent = totalValue > 0 ? (pos.marketValue / totalValue) * 100 : 0;
+  }
+
+  const dayPnl = positions.reduce((s, p) => s + p.dayChange, 0);
+  const dayPnlPercent = totalValue > 0 ? (dayPnl / (totalValue - dayPnl)) * 100 : 0;
+
+  const equity = totalValue;
+  const cash = Math.round(equity * 0.12 * 100) / 100;
+  const buyingPower = Math.round(equity * 1.5 * 100) / 100;
+
+  return {
+    equity,
+    buyingPower,
+    cash,
+    dayPnl: Math.round(dayPnl * 100) / 100,
+    dayPnlPercent: Math.round(dayPnlPercent * 100) / 100,
+    totalPnl: Math.round(totalPnl * 100) / 100,
+    totalPnlPercent: Math.round(totalPnlPercent * 100) / 100,
+    positions,
+  };
+}
+
+/**
+ * Build demo indexes with real prices overlaid.
+ */
+export function getDemoIndexesWithPrices(prices: PriceData): MarketIndex[] {
+  return DEMO_INDEXES.map(idx => {
+    const quote = prices[idx.symbol];
+    if (!quote) return idx;
+    return {
+      symbol: idx.symbol,
+      price: quote.price,
+      change: quote.change,
+      changePercent: Math.round(quote.changePercent * 100) / 100,
+    };
+  });
+}
+
+/**
+ * Build demo quotes with real prices overlaid.
+ */
+export function getDemoQuotesWithPrices(prices: PriceData): Record<string, Quote> {
+  const quotes: Record<string, Quote> = {};
+  const seen = new Set<string>();
+
+  for (const style of Object.values(DEMO_PORTFOLIOS)) {
+    for (const pos of style.positions) {
+      if (seen.has(pos.symbol)) continue;
+      seen.add(pos.symbol);
+      const quote = prices[pos.symbol];
+      quotes[pos.symbol] = {
+        symbol: pos.symbol,
+        bid: (quote?.price ?? pos.currentPrice) - 0.25,
+        ask: (quote?.price ?? pos.currentPrice) + 0.25,
+        last: quote?.price ?? pos.currentPrice,
+        change: quote?.change ?? pos.dayChange,
+        changePercent: quote?.changePercent ?? pos.dayChangePercent,
+        volume: Math.floor(Math.random() * 10_000_000) + 500_000,
+        high52w: Math.round((quote?.price ?? pos.currentPrice) * 1.25 * 100) / 100,
+        low52w: Math.round((quote?.price ?? pos.currentPrice) * 0.70 * 100) / 100,
+      };
+    }
+  }
+
+  for (const idx of DEMO_INDEXES) {
+    if (quotes[idx.symbol]) continue;
+    const quote = prices[idx.symbol];
+    quotes[idx.symbol] = {
+      symbol: idx.symbol,
+      bid: (quote?.price ?? idx.price) - 0.50,
+      ask: (quote?.price ?? idx.price) + 0.50,
+      last: quote?.price ?? idx.price,
+      change: quote?.change ?? idx.change,
+      changePercent: quote?.changePercent ?? idx.changePercent,
+      volume: Math.floor(Math.random() * 50_000_000) + 10_000_000,
+      high52w: Math.round((quote?.price ?? idx.price) * 1.2 * 100) / 100,
+      low52w: Math.round((quote?.price ?? idx.price) * 0.8 * 100) / 100,
+    };
+  }
+
+  return quotes;
+}
