@@ -9,11 +9,11 @@ export default function SecurityPage() {
 
   return (
     <div style={{
-      minHeight: '100dvh',
+      height: '100dvh',
       padding: 16,
       paddingBottom: 32,
       background: '#0a0e27',
-      overflowY: 'auto',
+      overflowY: 'scroll',
       WebkitOverflowScrolling: 'touch',
     }}>
       <div style={{ maxWidth: 420, margin: '0 auto', width: '100%' }}>
