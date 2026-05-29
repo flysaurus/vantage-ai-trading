@@ -86,7 +86,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('users')
       .update(updates)
       .eq('id', userId)
-      .is('deleted_at', null)
       .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, updated_at')
       .single();
 
