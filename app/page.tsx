@@ -43,9 +43,15 @@ function AppShell() {
   // isDataLoaded guarantees user.investorStyleOnboarded is confirmed from DB —
   // no race condition possible: this effect fires only AFTER DB sync completes.
   useEffect(() => {
-    if (!user || !isDataLoaded) return;
+    console.log('[Onboarding Check] user:', !!user, 'isDataLoaded:', isDataLoaded, 'user.investorStyleOnboarded:', user?.investorStyleOnboarded, 'localStorage:"vantage:onboarded":', typeof window !== 'undefined' ? localStorage.getItem('vantage:onboarded') : 'n/a');
+
+    if (!user || !isDataLoaded) {
+      console.log('[Onboarding Check] SKIP: no user or not data loaded');
+      return;
+    }
 
     if (user.investorStyleOnboarded) {
+      console.log('[Onboarding Check] SKIP: investorStyleOnboarded is TRUE');
       setShowOnboarding(false);
       return;
     }
@@ -55,10 +61,12 @@ function AppShell() {
       ? localStorage.getItem('vantage:onboarded') === 'true'
       : false;
     if (localStorageOnboarded) {
+      console.log('[Onboarding Check] SKIP: localStorage vantage:onboarded = true');
       setShowOnboarding(false);
       return;
     }
 
+    console.log('[Onboarding Check] ✅ SHOWING onboarding');
     setShowOnboarding(true);
   }, [user, isDataLoaded]);
 

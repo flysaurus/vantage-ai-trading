@@ -158,6 +158,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const local = getLocalOnboarding();
         const cached = getUser();
 
+        console.log('[AuthProvider] /me response — investorStyleOnboarded:', data.user.investorStyleOnboarded, '| investorStyle:', data.user.investorStyle, '| local.onboarded:', local.onboarded, '| cached?.investorStyleOnboarded:', cached?.investorStyleOnboarded);
+
         const u: User = {
           id: data.user.id,
           email: data.user.email,
@@ -168,6 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           investorStyleOnboarded: data.user.investorStyleOnboarded === true,
           createdAt: data.user.createdAt || '',
         };
+
+        console.log('[AuthProvider] Built user — investorStyleOnboarded:', u.investorStyleOnboarded, '| will set localStorage:"vantage:onboarded":', u.investorStyleOnboarded);
 
         const vs: VantageSession = {
           token: '', // HTTP-only cookie — token not exposed to JS
