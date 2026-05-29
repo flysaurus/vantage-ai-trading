@@ -78,8 +78,23 @@ function AppShell() {
     return null;
   }
 
+  // ── DEBUG: Will be removed after onboarding issue is resolved ──
+  const dbgOnboarded = typeof window !== 'undefined' ? localStorage.getItem('vantage:onboarded') : null;
+  const dbgStyle = typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null;
+
   const mainContent = (
     <>
+      {/* DEBUG BANNER — remove after onboarding fix confirmed */}
+      <div style={{
+        background: '#7c3aed', color: 'white', padding: '8px 12px',
+        fontSize: 11, fontWeight: 600, textAlign: 'center', lineHeight: 1.5,
+        fontFamily: 'monospace',
+      }}>
+        🐛 userOnboarded={String(user.investorStyleOnboarded)} |
+        lsOnboarded={JSON.stringify(dbgOnboarded)} |
+        lsStyle={JSON.stringify(dbgStyle)} |
+        showModal={String(showOnboarding)}
+      </div>
       <Header />
       <MarketBar />
       <WatchlistBar />
