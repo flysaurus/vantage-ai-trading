@@ -158,8 +158,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const local = getLocalOnboarding();
         const cached = getUser();
 
-        console.log('[AuthProvider] /me response — investorStyleOnboarded:', data.user.investorStyleOnboarded, '| investorStyle:', data.user.investorStyle, '| local.onboarded:', local.onboarded, '| cached?.investorStyleOnboarded:', cached?.investorStyleOnboarded);
-
         const u: User = {
           id: data.user.id,
           email: data.user.email,
@@ -171,7 +169,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: data.user.createdAt || '',
         };
 
-        console.log('[AuthProvider] Built user — investorStyleOnboarded:', u.investorStyleOnboarded, '| will set localStorage:"vantage:onboarded":', u.investorStyleOnboarded);
+        // Sync localStorage with authoritative API state.
+        // If API says NOT onboarded, clear any stale flag from prior sessions.
+        if (u.investorStyleOnboarded) {
+          localStorage.setItem('vantage:onboarded', 'true');
+        } else {
+          localStorage.removeItem('vantage:onboarded');
+        }
+        if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
 
         const vs: VantageSession = {
           token: '', // HTTP-only cookie — token not exposed to JS
@@ -290,7 +295,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfileNotFound(false);
     setError(null);
 
-    if (u.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
+    if (u.investorStyleOnboarded) {
+      localStorage.setItem('vantage:onboarded', 'true');
+    } else {
+      localStorage.removeItem('vantage:onboarded');
+    }
     if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
 
     setIsDataLoaded(true);

@@ -40,33 +40,23 @@ function AppShell() {
   }, []);
 
   // Show onboarding for authenticated users who haven't set their style.
-  // isDataLoaded guarantees user.investorStyleOnboarded is confirmed from DB —
-  // no race condition possible: this effect fires only AFTER DB sync completes.
+  // The API (/api/auth/me) is the authoritative source — localStorage is only
+  // a cache, and when the API says the user hasn't been onboarded, we clear
+  // any stale localStorage to prevent it from blocking the modal.
   useEffect(() => {
-    console.log('[Onboarding Check] user:', !!user, 'isDataLoaded:', isDataLoaded, 'user.investorStyleOnboarded:', user?.investorStyleOnboarded, 'localStorage:"vantage:onboarded":', typeof window !== 'undefined' ? localStorage.getItem('vantage:onboarded') : 'n/a');
-
-    if (!user || !isDataLoaded) {
-      console.log('[Onboarding Check] SKIP: no user or not data loaded');
-      return;
-    }
+    if (!user || !isDataLoaded) return;
 
     if (user.investorStyleOnboarded) {
-      console.log('[Onboarding Check] SKIP: investorStyleOnboarded is TRUE');
       setShowOnboarding(false);
       return;
     }
 
-    // Double-check localStorage as belt-and-suspenders
-    const localStorageOnboarded = typeof window !== 'undefined'
-      ? localStorage.getItem('vantage:onboarded') === 'true'
-      : false;
-    if (localStorageOnboarded) {
-      console.log('[Onboarding Check] SKIP: localStorage vantage:onboarded = true');
-      setShowOnboarding(false);
-      return;
+    // API says not onboarded — clear any stale localStorage that might
+    // have been set by a prior testing session or corrupt cache.
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('vantage:onboarded');
     }
 
-    console.log('[Onboarding Check] ✅ SHOWING onboarding');
     setShowOnboarding(true);
   }, [user, isDataLoaded]);
 
@@ -78,23 +68,8 @@ function AppShell() {
     return null;
   }
 
-  // ── DEBUG: Will be removed after onboarding issue is resolved ──
-  const dbgOnboarded = typeof window !== 'undefined' ? localStorage.getItem('vantage:onboarded') : null;
-  const dbgStyle = typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null;
-
   const mainContent = (
     <>
-      {/* DEBUG BANNER — remove after onboarding fix confirmed */}
-      <div style={{
-        background: '#7c3aed', color: 'white', padding: '8px 12px',
-        fontSize: 11, fontWeight: 600, textAlign: 'center', lineHeight: 1.5,
-        fontFamily: 'monospace',
-      }}>
-        🐛 userOnboarded={String(user.investorStyleOnboarded)} |
-        lsOnboarded={JSON.stringify(dbgOnboarded)} |
-        lsStyle={JSON.stringify(dbgStyle)} |
-        showModal={String(showOnboarding)}
-      </div>
       <Header />
       <MarketBar />
       <WatchlistBar />

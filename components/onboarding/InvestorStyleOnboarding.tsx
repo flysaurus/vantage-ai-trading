@@ -12,7 +12,6 @@ import type { BrokerId } from '@/types/broker';
 type OnboardingStep = 'style' | 'broker' | 'credentials';
 
 export function InvestorStyleOnboarding() {
-  console.log('[InvestorStyleOnboarding] 🦊 RENDERING');
   const { user } = useAuth();
   const [step, setStep] = useState<OnboardingStep>('style');
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);

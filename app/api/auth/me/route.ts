@@ -55,7 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .update({ last_activity_at: new Date().toISOString() })
       .eq('user_id', session.user_id);
 
-    console.log('✅ User found:', user.email, '| investor_style:', user.investor_style, '| investor_style_onboarded:', user.investor_style_onboarded, '| type:', typeof user.investor_style_onboarded);
+    console.log('✅ User found:', user.email);
 
     return NextResponse.json({
       success: true,
