@@ -1,49 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase';
-
-function getEncryptionKey(): string {
-  // Must use a dedicated server-side secret — never fall back to public keys
-  const key = process.env.VAULT_ENCRYPTION_KEY;
-  if (!key) {
-    throw new Error('VAULT_ENCRYPTION_KEY environment variable is required but not configured');
-  }
-  return key;
-}
+import { storeCredentials } from '@/lib/vault';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { userId: authUserId } = await requireAuth(req);
-    const supabase = createServerClient();
+
     const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
-    const { userId, keyName, value } = body as { userId?: string; keyName?: string; value?: string };
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
-    if (!keyName?.trim()) return NextResponse.json({ error: 'keyName required' }, { status: 400 });
-    if (!value) return NextResponse.json({ error: 'value required' }, { status: 400 });
-    if (userId !== authUserId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!body) {
+      return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
+    }
 
-    // Encrypt with AES using crypto-js
-    const CryptoJS = await import('crypto-js');
-    const encKey = getEncryptionKey();
-    const encrypted = CryptoJS.AES.encrypt(value, encKey).toString();
+    const { userId, brokerId, credentials } = body as {
+      userId?: string;
+      brokerId?: string;
+      credentials?: Record<string, unknown>;
+    };
 
-    // Map keyName to existing vault column or store as generic
-    const now = new Date().toISOString();
-    const isApiKey = keyName.toUpperCase() === 'ALPACA_API_KEY';
-    const isSecret = keyName.toUpperCase() === 'ALPACA_SECRET_KEY';
+    if (!userId) {
+      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    }
+    if (!brokerId) {
+      return NextResponse.json({ error: 'brokerId required' }, { status: 400 });
+    }
+    if (!credentials || typeof credentials !== 'object') {
+      return NextResponse.json({ error: 'credentials object required' }, { status: 400 });
+    }
+    if (userId !== authUserId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
-    const upsertPayload: Record<string, any> = { user_id: userId, updated_at: now };
-    if (isApiKey) upsertPayload.encrypted_api_key = encrypted;
-    else if (isSecret) upsertPayload.encrypted_secret_key = encrypted;
-    else upsertPayload.master_password_hash = `${keyName}:${encrypted}`;
+    // Encrypt and store credentials — this is the only path to persist keys
+    await storeCredentials(userId, brokerId, credentials);
 
-    const { error } = await (supabase as any).from('vault').upsert(upsertPayload, { onConflict: 'user_id' });
-    if (error) return NextResponse.json({ error: 'Failed to save secret', detail: error.message }, { status: 500 });
-
-    return NextResponse.json({ success: true, keyName });
-  } catch (err: any) {
-    if (err?.name === 'AuthError') return NextResponse.json({ error: err.message }, { status: err.status || 401 });
+    return NextResponse.json({ success: true, brokerId });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AuthError') {
+      const authErr = err as Error & { status?: number };
+      return NextResponse.json({ error: authErr.message }, { status: authErr.status || 401 });
+    }
+    console.error('[Vault Save API] Error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

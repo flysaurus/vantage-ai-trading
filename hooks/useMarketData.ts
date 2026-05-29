@@ -24,13 +24,13 @@ export function useMarketData() {
     watchlist,
   } = useMarketStore();
 
-  const { broker, connected } = useBroker();
+  const { broker, isConnected } = useBroker();
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsCleanup = useRef<(() => void) | null>(null);
 
   // Fetch index data and market status
   const fetchMarketData = useCallback(async () => {
-    if (!broker || !connected) return;
+    if (!broker || !isConnected) return;
 
     try {
       const [quotesResp, marketStatus] = await Promise.all([
@@ -67,11 +67,11 @@ export function useMarketData() {
     } catch (err) {
       console.warn('[useMarketData] Failed to fetch index data:', err);
     }
-  }, [broker, connected, setIndexes, setMarketOpen, updateQuote]);
+  }, [broker, isConnected, setIndexes, setMarketOpen, updateQuote]);
 
   // Fetch watchlist quotes
   const fetchWatchlist = useCallback(async () => {
-    if (!broker || !connected || watchlist.length === 0) return;
+    if (!broker || !isConnected || watchlist.length === 0) return;
 
     try {
       const symbols = watchlist.map((w) => w.symbol);
@@ -106,11 +106,11 @@ export function useMarketData() {
     } catch (err) {
       console.warn('[useMarketData] Failed to fetch watchlist:', err);
     }
-  }, [broker, connected, watchlist, setWatchlist, updateQuote]);
+  }, [broker, isConnected, watchlist, setWatchlist, updateQuote]);
 
   // WebSocket streaming for live quotes on all tracked symbols
   const setupStreaming = useCallback(() => {
-    if (!broker || !connected) return;
+    if (!broker || !isConnected) return;
 
     const store = useMarketStore.getState();
     const allSymbols = [
@@ -153,11 +153,11 @@ export function useMarketData() {
     } catch (err) {
       console.warn('[useMarketData] WebSocket setup failed:', err);
     }
-  }, [broker, connected, updateQuote, setIndexes]);
+  }, [broker, isConnected, updateQuote, setIndexes]);
 
   // Initial data load
   useEffect(() => {
-    if (!connected) {
+    if (!isConnected) {
       setMarketOpen(false);
       return;
     }
@@ -180,7 +180,7 @@ export function useMarketData() {
       }
       pollInterval.current = null;
     };
-  }, [connected]);
+  }, [isConnected]);
 
   const getQuote = useCallback(
     (symbol: string): Quote | undefined => {

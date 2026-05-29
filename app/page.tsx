@@ -83,7 +83,7 @@ function AppShell() {
   );
 
   return (
-    <BrokerProvider brokerId="alpaca" config={{ environment: 'paper' }}>
+    <BrokerProvider>
       <div className="app-shell">
         {isDesktop && <DesktopSidebar />}
         {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}

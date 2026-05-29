@@ -19,7 +19,7 @@ const RETRY_DELAY = 3000;
 export function useOrders() {
   const { orders, setOrders, addOrder, updateOrder, activeFilter } =
     useOrderStore();
-  const { broker, connected } = useBroker();
+  const { broker, isConnected } = useBroker();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function useOrders() {
   });
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!broker || !connected) return;
+    if (!broker || !isConnected) return;
 
     try {
       setLoading(true);
@@ -130,7 +130,7 @@ export function useOrders() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, connected, setOrders]);
+  }, [broker, isConnected, setOrders]);
 
   const placeOrder = useCallback(
     async (
@@ -160,7 +160,7 @@ export function useOrders() {
   // Initial load
   useEffect(() => {
     mountedRef.current = true;
-    if (connected) {
+    if (isConnected) {
       refresh();
     }
     return () => {
@@ -169,7 +169,7 @@ export function useOrders() {
         clearTimeout(retryTimer.current);
       }
     };
-  }, [connected, refresh]);
+  }, [isConnected, refresh]);
 
   // Periodic refresh for active orders
   useEffect(() => {

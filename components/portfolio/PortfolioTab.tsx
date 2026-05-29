@@ -3,9 +3,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
+import { useBroker } from '@/components/providers/BrokerProvider';
 
 export function PortfolioTab() {
   const { account, loading, error, refresh } = usePortfolio();
+  const { isConnected, brokerId } = useBroker();
   const store = usePortfolioStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showSellPanel, setShowSellPanel] = useState(false);
@@ -176,6 +178,45 @@ export function PortfolioTab() {
         return list.sort((a, b) => b.portfolioPercent - a.portfolioPercent);
     }
   })();
+
+  // No broker connected — empty CTA state
+  if (!isConnected) {
+    return (
+      <div style={{ padding: '80px 16px 80px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔌</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+          No Broker Connected
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 320, marginBottom: 20 }}>
+          Connect your brokerage account to see your portfolio, positions, and trading data.
+        </div>
+        <button
+          onClick={() => {
+            // Clear onboarding flags so the flow re-opens
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('vantage:onboarded');
+              localStorage.removeItem('vantage:brokerSkipped');
+              localStorage.removeItem('vantage:brokerConnected');
+              window.location.reload();
+            }
+          }}
+          style={{
+            padding: '12px 28px',
+            background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+            border: 'none',
+            borderRadius: 10,
+            color: '#0f172a',
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Connect Broker
+        </button>
+      </div>
+    );
+  }
 
   // Loading state — skeleton shimmer
   if (loading && !account) {

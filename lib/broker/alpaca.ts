@@ -1,7 +1,10 @@
 // ─── Alpaca Broker Adapter ─────────────────────────────────────
 // Implements BrokerAdapter for Alpaca Markets.
-// All REST calls route through /api/alpaca/ proxy (server-side keys).
-// WebSocket streaming uses auth payload from /api/alpaca/session.
+// All REST calls route through /api/broker/proxy/ (multi-broker proxy).
+// WebSocket streaming uses auth payload from /api/broker/session.
+//
+// No env var dependencies — credentials come from the vault via
+// the session endpoint, which decrypts per-user keys server-side.
 
 import type {
   BrokerAdapter,
@@ -22,6 +25,7 @@ import type {
 interface SessionPayload {
   configured: boolean;
   connected: boolean;
+  brokerId: string;
   environment: string;
   environmentUrl: string;
   message?: string;
@@ -44,8 +48,9 @@ export class AlpacaAdapter implements BrokerAdapter {
   async connect(config: BrokerConfig): Promise<void> {
     this.config = config;
 
-    // Get session from server (verifies connectivity, returns WS auth)
-    const res = await fetch('/api/alpaca/session');
+    // Get session from multi-broker session endpoint
+    // This decrypts credentials from the vault and verifies connectivity
+    const res = await fetch('/api/broker/session');
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Session init failed' }));
@@ -55,7 +60,9 @@ export class AlpacaAdapter implements BrokerAdapter {
     this.session = await res.json() as SessionPayload;
 
     if (!this.session.connected) {
-      throw new Error(`Failed to connect to Alpaca: ${this.session.message || 'Unknown error'}`);
+      throw new Error(
+        `Failed to connect to Alpaca: ${this.session.message || 'Unknown error'}`
+      );
     }
   }
 
@@ -72,13 +79,13 @@ export class AlpacaAdapter implements BrokerAdapter {
     return this.session?.connected === true;
   }
 
-  // ─── REST API Proxy ────────────────────────────────────────
+  // ─── REST API Proxy (multi-broker) ─────────────────────────
 
   private async api<T>(
     path: string,
     options?: { method?: string; body?: unknown }
   ): Promise<T> {
-    const res = await fetch(`/api/alpaca/${path.replace(/^\//, '')}`, {
+    const res = await fetch(`/api/broker/proxy/${path.replace(/^\//, '')}`, {
       method: options?.method || 'GET',
       headers: { 'Content-Type': 'application/json' },
       body: options?.body ? JSON.stringify(options.body) : undefined,
@@ -95,9 +102,7 @@ export class AlpacaAdapter implements BrokerAdapter {
         );
       }
 
-      throw new Error(
-        data.message || data.error || `API error ${res.status}`
-      );
+      throw new Error(data.message || data.error || `API error ${res.status}`);
     }
 
     return res.json();
@@ -163,7 +168,7 @@ export class AlpacaAdapter implements BrokerAdapter {
       totalPnl: parseFloat(String(p.unrealized_pl)) || 0,
       totalPnlPercent:
         parseFloat(String(p.unrealized_plpc)) * 100 || 0,
-      portfolioPercent: parseFloat(String(p.market_value)) || 0, // calculated later
+      portfolioPercent: parseFloat(String(p.market_value)) || 0,
       sector: undefined,
       currency:
         p.asset_class === 'crypto'
@@ -286,9 +291,8 @@ export class AlpacaAdapter implements BrokerAdapter {
   }
 
   async getQuotes(symbols: string[]): Promise<BrokerQuote[]> {
-    // Use the market endpoint for batch quotes
     const symList = symbols.map((s) => encodeURIComponent(s)).join(',');
-    const res = await fetch(`/api/alpaca/market?symbols=${symList}`);
+    const res = await fetch(`/api/broker/proxy/market?symbols=${symList}`);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Quote fetch failed' }));
@@ -310,7 +314,7 @@ export class AlpacaAdapter implements BrokerAdapter {
     if (params.end) query.set('end', params.end);
     if (params.limit) query.set('limit', String(params.limit));
 
-    const res = await fetch(`/api/alpaca/market?${query}`);
+    const res = await fetch(`/api/broker/proxy/market?${query}`);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Bar fetch failed' }));
@@ -331,7 +335,6 @@ export class AlpacaAdapter implements BrokerAdapter {
         session: (raw.is_open ? 'regular' : 'closed') as MarketStatus['session'],
       };
     } catch {
-      // Use session's cached market status on error
       return {
         isOpen: this.session?.marketOpen ?? false,
         session: this.session?.marketOpen ? 'regular' : 'closed',
@@ -380,8 +383,6 @@ export class AlpacaAdapter implements BrokerAdapter {
     const ws = new WebSocket(wsUrl);
     this.ws = ws;
 
-    let authenticated = false;
-
     ws.onopen = () => {
       ws.send(
         JSON.stringify({
@@ -395,12 +396,9 @@ export class AlpacaAdapter implements BrokerAdapter {
     ws.onmessage = (event) => {
       const raw = JSON.parse(event.data);
 
-      // Handle auth response
       if (Array.isArray(raw) && raw[0]?.T === 'success') {
         const msg = raw[0];
         if (msg.msg === 'authenticated') {
-          authenticated = true;
-          // Subscribe to requested symbols
           ws.send(
             JSON.stringify({
               action: 'subscribe',
@@ -411,7 +409,6 @@ export class AlpacaAdapter implements BrokerAdapter {
         return;
       }
 
-      // Handle quote updates
       if (Array.isArray(raw)) {
         for (const msg of raw) {
           if (msg.T === 'q') {
@@ -445,7 +442,7 @@ export class AlpacaAdapter implements BrokerAdapter {
     };
 
     const cleanup = () => {
-      if (authenticated && ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === WebSocket.OPEN) {
         ws.send(
           JSON.stringify({ action: 'unsubscribe', quotes: symbols })
         );

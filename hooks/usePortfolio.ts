@@ -239,14 +239,14 @@ const RETRY_DELAY = 3000;
 export function usePortfolio() {
   const store = usePortfolioStore();
   const { account, setAccount, setLoading, updatePosition } = store;
-  const { broker, connected } = useBroker();
+  const { broker, isConnected } = useBroker();
   const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!broker || !connected) return;
+    if (!broker || !isConnected) return;
 
     try {
       setLoading(true);
@@ -357,12 +357,12 @@ export function usePortfolio() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, connected, setAccount, setLoading]);
+  }, [broker, isConnected, setAccount, setLoading]);
 
   // Initial load
   useEffect(() => {
     mountedRef.current = true;
-    if (connected) {
+    if (isConnected) {
       refresh();
     }
     return () => {
@@ -371,7 +371,7 @@ export function usePortfolio() {
         clearTimeout(retryTimer.current);
       }
     };
-  }, [connected, refresh]);
+  }, [isConnected, refresh]);
 
   // Periodic refresh
   useEffect(() => {

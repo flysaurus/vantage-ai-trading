@@ -27,8 +27,6 @@ export default function LoginPage() {
   const [verificationToken, setVerificationToken] = useState('');
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState('');
 
   // 2FA
   const [requires2FA, setRequires2FA] = useState(false);
@@ -220,11 +218,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Store token for manual verify link
-      if (data.verificationToken) {
-        setVerificationToken(data.verificationToken);
-      }
-
       setResendMessage(data.emailSent
         ? 'Verification email resent! Check your inbox.'
         : 'New verification link generated.');
@@ -235,35 +228,11 @@ export default function LoginPage() {
     }
   };
 
-  const handleVerifyNow = async () => {
-    setVerifying(true);
-    setVerifyError('');
-    try {
-      const res = await fetch('/api/auth/verify-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: confirmedEmail, token: verificationToken }),
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setResendMessage('✅ Email verified! Redirecting to sign in...');
-        setTimeout(() => setConfirmationSent(false), 1500);
-      } else {
-        setVerifyError(data.error || 'Verification failed');
-      }
-    } catch {
-      setVerifyError('Network error. Please try again.');
-    } finally {
-      setVerifying(false);
-    }
-  };
-
   // ─── 2FA Screen ──────────────────────────────────────────────
 
   if (requires2FA) {
     return (
-      <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27' }}>
+      <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div className="card" style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', animation: 'fadeIn .4s ease-out' }}>
           <div className="icon-circle" style={{ width: 56, height: 56, margin: '0 auto 20px', background: 'rgba(6,182,212,.1)', border: '2px solid rgba(6,182,212,.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06b6d4' }}>
             <ShieldCheck size={28} />
@@ -319,7 +288,7 @@ export default function LoginPage() {
 
   if (confirmationSent) {
     return (
-      <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27' }}>
+      <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
         <div className="card" style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', textAlign: 'center' }}>
           <button className="back-btn" onClick={() => { setConfirmationSent(false); setError(null); }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', marginBottom: 24 }}>
@@ -342,29 +311,7 @@ export default function LoginPage() {
               <span className="n" style={{ width: 22, height: 22, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(6,182,212,.15)', borderRadius: '50%', color: '#06b6d4', fontSize: 12, fontWeight: 700 }}>3</span> Return here and sign in
             </div>
           </div>
-          {verificationToken && (
-            <div style={{
-              textAlign: 'left', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)',
-              borderRadius: 10, padding: 12, marginBottom: 16,
-            }}>
-              <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12, color: '#facc15' }}>⚠️ Email not arriving?</div>
-              <p style={{ color: '#94a3b8', fontSize: 11, margin: '0 0 10px' }}>Verify instantly without email:</p>
-              <button
-                onClick={handleVerifyNow}
-                disabled={verifying}
-                style={{
-                  width: '100%', padding: 10, background: verifying ? '#0e7490' : '#06b6d4',
-                  border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600,
-                  cursor: verifying ? 'not-allowed' : 'pointer', transition: 'all .2s',
-                }}
-              >
-                {verifying ? 'Verifying...' : '✅ Verify Now'}
-              </button>
-              {verifyError && (
-                <p style={{ color: '#ef4444', fontSize: 11, marginTop: 8 }}>{verifyError}</p>
-              )}
-            </div>
-          )}
+
           {resendMessage && (
             <div style={{ padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12, background: resendMessage.includes('resent') ? 'rgba(34,197,94,.1)' : 'rgba(250,204,21,.1)', border: resendMessage.includes('resent') ? '1px solid rgba(34,197,94,.2)' : '1px solid rgba(250,204,21,.2)', color: resendMessage.includes('resent') ? '#22c55e' : '#facc15' }}>
               {resendMessage}
@@ -385,7 +332,7 @@ export default function LoginPage() {
   // ─── Login / Sign Up Form ───────────────────────────────────
 
   return (
-    <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27' }}>
+    <div className="page" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#0a0e27', overflowY: 'auto' }}>
       <div className="card" style={{ width: '100%', maxWidth: 380, background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: '32px 24px', animation: 'fadeIn .4s ease-out' }}>
         <div className="logo" style={{ textAlign: 'center', marginBottom: 4 }}>
           <span className="logo-text" style={{ fontSize: 32, fontWeight: 800, background: 'linear-gradient(135deg,#06b6d4,#0d9488)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-.5px' }}>Vantage</span>

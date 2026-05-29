@@ -34,7 +34,7 @@ const RECONNECT_DELAY = 3000;
 const MAX_RECONNECTS = 5;
 
 export function useLiveQuotes(initialSymbols: string[] = []): UseLiveQuotesResult {
-  const { broker, connected: brokerConnected } = useBroker();
+  const { broker, isConnected: brokerConnected } = useBroker();
   const [quotes, setQuotes] = useState<Map<string, LiveQuote>>(new Map());
   const [wsConnected, setWsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);

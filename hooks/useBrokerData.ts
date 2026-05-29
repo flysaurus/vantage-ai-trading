@@ -35,7 +35,7 @@ const RETRY_BASE_DELAY = 2000;
 const MAX_RETRY_ATTEMPTS = 3;
 
 export function useBrokerData(): BrokerDataState & BrokerDataActions {
-  const { broker, connected } = useBroker();
+  const { broker, isConnected } = useBroker();
   const [state, setState] = useState<BrokerDataState>({
     account: null,
     positions: [],
@@ -49,7 +49,7 @@ export function useBrokerData(): BrokerDataState & BrokerDataActions {
   const mountedRef = useRef(true);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!broker || !connected) return;
+    if (!broker || !isConnected) return;
 
     try {
       setState((s) => ({ ...s, error: null }));
@@ -112,18 +112,18 @@ export function useBrokerData(): BrokerDataState & BrokerDataActions {
         error: message,
       }));
     }
-  }, [broker, connected]);
+  }, [broker, isConnected]);
 
   // Initial load
   useEffect(() => {
     mountedRef.current = true;
-    if (connected) {
+    if (isConnected) {
       refresh();
     }
     return () => {
       mountedRef.current = false;
     };
-  }, [connected, refresh]);
+  }, [isConnected, refresh]);
 
   // Auto-refresh when market is open
   useEffect(() => {

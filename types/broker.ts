@@ -7,6 +7,59 @@
 
 export type BrokerId = 'alpaca' | 'ibkr' | 'schwab' | 'robinhood' | 'tastytrade';
 
+// ─── Broker Credential Types ──────────────────────────────────
+
+export interface AlpacaCredentials {
+  brokerId: 'alpaca';
+  apiKey: string;
+  secretKey: string;
+  environment: 'paper' | 'live';
+}
+
+export interface TastytradeCredentials {
+  brokerId: 'tastytrade';
+  apiKey: string;
+  secretKey: string;
+  environment: 'sandbox' | 'live';
+}
+
+export interface IBKRCredentials {
+  brokerId: 'ibkr';
+  username: string;
+  password: string;
+  gatewayUrl: string;
+}
+
+export interface SchwabCredentials {
+  brokerId: 'schwab';
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface RobinhoodCredentials {
+  brokerId: 'robinhood';
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export type BrokerCredentials =
+  | AlpacaCredentials
+  | TastytradeCredentials
+  | IBKRCredentials
+  | SchwabCredentials
+  | RobinhoodCredentials;
+
+export interface VaultEntry {
+  userId: string;
+  brokerId: BrokerId;
+  encryptedCredentials: string;
+  credentialHash: string;
+  isConnected: boolean;
+  connectedAt: string;
+}
+
 export interface BrokerConfig {
   id: BrokerId;
   name: string;

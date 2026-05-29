@@ -1,18 +1,24 @@
 // ─── Broker Registry ──────────────────────────────────────────
 // Manages broker adapter registration and lookup.
 // The app uses `useBroker()` hook — never imports a specific adapter.
+//
+// Dynamically discovers the active broker from the vault via
+// /api/broker/status. Falls back gracefully if no broker is connected.
 
 import type { BrokerAdapter, BrokerId, BrokerRegistry } from '@/types/broker';
 import { AlpacaAdapter } from './alpaca';
+import { TastytradeAdapter } from './tastytrade';
 
 class BrokerRegistryImpl implements BrokerRegistry {
   private adapters = new Map<BrokerId, BrokerAdapter>();
 
   constructor() {
-    // Register built-in adapters
+    // Register all available adapters
     this.register(new AlpacaAdapter());
+    this.register(new TastytradeAdapter());
     // Future: this.register(new IBKRAdapter());
     // Future: this.register(new SchwabAdapter());
+    // Future: this.register(new RobinhoodAdapter());
   }
 
   register(adapter: BrokerAdapter): void {
@@ -31,8 +37,14 @@ class BrokerRegistryImpl implements BrokerRegistry {
 // Singleton — one registry for the app
 export const brokerRegistry = new BrokerRegistryImpl();
 
-// Convenience: get the currently active broker
-// In the future, this reads from user settings/preferences
+// ─── Active Broker Management ─────────────────────────────────
+// The active broker is discovered dynamically from the vault.
+// In the client, BrokerProvider calls /api/broker/status on mount
+// to determine which broker is connected and initializes it.
+//
+// The static fallback (getActiveBroker/setActiveBroker) is useful
+// for server-side contexts or when the status check hasn't completed.
+
 let _activeId: BrokerId = 'alpaca';
 
 export function getActiveBroker(): BrokerAdapter {

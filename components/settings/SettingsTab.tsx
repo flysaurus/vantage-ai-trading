@@ -2,13 +2,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useBroker } from '@/components/providers/BrokerProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { getWatchlists } from '@/lib/supabase/watchlists';
 import { getAlerts } from '@/lib/supabase/alerts';
 import { 
   Star, Bell, Newspaper, CalendarDays, Search, 
   History, Target, CreditCard, Plug, Settings2, HelpCircle,
-  ChevronRight, Building2, CircleDot, Plus, Check, TrendingUp
+  ChevronRight, Building2, CircleDot, TrendingUp,
+  AlertTriangle, Shield
 } from 'lucide-react';
 import type { BrokerId } from '@/types/broker';
 
@@ -55,27 +57,29 @@ function SettingsItem({ icon: Icon, title, subtitle, badge, badgeColor, onClick 
   );
 }
 
-interface BrokerItem {
-  id: BrokerId;
-  name: string;
-  status: 'connected' | 'disconnected' | 'coming_soon';
-  logo?: string;
-  description: string;
-}
+const BROKER_EMOJIS: Record<string, string> = {
+  alpaca: '🦙',
+  tastytrade: '🍝',
+  ibkr: '🏦',
+  schwab: '📊',
+  robinhood: '🌮',
+};
 
-const BROKERS: BrokerItem[] = [
-  { id: 'alpaca', name: 'Alpaca Markets', status: 'connected', description: 'Paper trading active' },
-  { id: 'ibkr', name: 'Interactive Brokers', status: 'coming_soon', description: 'Coming in Q3 2026' },
-  { id: 'tastytrade', name: 'tastytrade', status: 'coming_soon', description: 'Coming in Q3 2026' },
-  { id: 'schwab', name: 'Charles Schwab', status: 'coming_soon', description: 'Coming in Q4 2026' },
-  { id: 'robinhood', name: 'Robinhood', status: 'coming_soon', description: 'Coming in Q4 2026' },
-];
+const BROKER_NAMES: Record<string, string> = {
+  alpaca: 'Alpaca Markets',
+  tastytrade: 'tastytrade',
+  ibkr: 'Interactive Brokers',
+  schwab: 'Charles Schwab',
+  robinhood: 'Robinhood',
+};
 
 export function SettingsTab() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const { account } = usePortfolio();
-  const [showBrokers, setShowBrokers] = useState(false);
+  const { isConnected, brokerId, accountPreview, environment } = useBroker();
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   // Toast notification for items not yet built
   const [toast, setToast] = useState<string | null>(null);
@@ -85,8 +89,6 @@ export function SettingsTab() {
   const [watchlistSymbolCount, setWatchlistSymbolCount] = useState(0);
   const [activeAlertCount, setActiveAlertCount] = useState(0);
   const [triggeredAlertCount, setTriggeredAlertCount] = useState(0);
-
-  const connectedBroker = BROKERS.find(b => b.status === 'connected');
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -107,6 +109,46 @@ export function SettingsTab() {
   }, [user]);
 
   const holdingsCount = account?.positions?.length || 0;
+
+  const handleDisconnect = async () => {
+    if (!brokerId || !isConnected) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/broker/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brokerId }),
+      });
+      if (res.ok) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('vantage:brokerConnected');
+          localStorage.removeItem('vantage:brokerId');
+        }
+        setShowDisconnectConfirm(false);
+        // Reload so BrokerProvider re-checks status
+        window.location.reload();
+      } else {
+        showToast('Failed to disconnect. Please try again.');
+      }
+    } catch {
+      showToast('Network error. Please try again.');
+    }
+    setDisconnecting(false);
+  };
+
+  const handleChangeBroker = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('vantage:onboarded');
+      localStorage.removeItem('vantage:brokerSkipped');
+      localStorage.removeItem('vantage:brokerConnected');
+      localStorage.removeItem('vantage:brokerId');
+      window.location.reload();
+    }
+  };
+
+  const brokerSubtitle = isConnected && brokerId
+    ? `${BROKER_EMOJIS[brokerId] || ''} ${BROKER_NAMES[brokerId] || brokerId} · ${environment || 'Connected'}`
+    : 'Not connected';
 
   return (
     <div style={{ padding: '12px 16px 120px' }}>
@@ -159,17 +201,132 @@ export function SettingsTab() {
         />
       </div>
 
+      {/* Broker Connection */}
+      <div className="section" style={{ marginTop: 12 }}>
+        <div style={{
+          padding: '12px',
+          borderBottom: '1px solid #0f172a',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: 'rgba(6,182,212,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Plug size={16} style={{ color: '#06b6d4' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Broker Connection</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                {brokerSubtitle}
+              </div>
+            </div>
+            <div style={{
+              width: 10, height: 10, borderRadius: '50%',
+              background: isConnected ? '#22c55e' : '#64748b',
+              boxShadow: isConnected ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+              flexShrink: 0,
+            }} />
+          </div>
+
+          {/* Account Preview (shown when connected) */}
+          {isConnected && accountPreview && (
+            <div style={{
+              marginTop: 8,
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: '#0f172a',
+              border: '1px solid #1e293b',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 8,
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Equity</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>
+                  ${accountPreview.equity?.toLocaleString() ?? '—'}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Buying Power</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>
+                  ${accountPreview.buyingPower?.toLocaleString() ?? '—'}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: accountPreview.status === 'active' ? '#4ade80' : '#fbbf24' }}>
+                  {accountPreview.status ?? '—'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button
+              onClick={handleChangeBroker}
+              style={{
+                flex: 1,
+                padding: '8px 0',
+                borderRadius: 8,
+                border: '1px solid #334155',
+                background: 'transparent',
+                color: '#94a3b8',
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {isConnected ? 'Change Broker' : 'Connect Broker'}
+            </button>
+            {isConnected && (
+              <button
+                onClick={() => setShowDisconnectConfirm(true)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  borderRadius: 8,
+                  border: '1px solid rgba(239,68,68,0.3)',
+                  background: 'rgba(239,68,68,0.08)',
+                  color: '#f87171',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+
+          {/* Security Link */}
+          <div style={{ marginTop: 10, fontSize: 10 }}>
+            <a
+              href="/security"
+              style={{
+                color: '#06b6d4',
+                textDecoration: 'none',
+                fontWeight: 500,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Shield size={12} />
+              Learn about how we secure your data →
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* System */}
       <div className="section" style={{ marginTop: 12 }}>
         <SettingsItem
           icon={CreditCard} title="Account & Funding" subtitle="Deposits, withdrawals, tax docs"
           onClick={() => showToast('💳 Account management coming soon')}
-        />
-        <SettingsItem 
-          icon={Plug} 
-          title="Connected Brokers" 
-          subtitle={connectedBroker ? `${connectedBroker.name} · ${connectedBroker.description}` : 'Not connected'}
-          onClick={() => setShowBrokers(!showBrokers)}
         />
         <SettingsItem
           icon={Settings2} title="Preferences" subtitle="Appearance, notifications & security"
@@ -194,58 +351,73 @@ export function SettingsTab() {
         </div>
       )}
 
-      {/* Broker Selector */}
-      {showBrokers && (
-        <div className="section" style={{ marginTop: 12 }}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid #0f172a', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
-            CHOOSE YOUR BROKER
-          </div>
-          {BROKERS.map((b) => (
-            <div
-              key={b.id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: 14,
-                cursor: b.status === 'coming_soon' ? 'default' : 'pointer',
-                borderBottom: '1px solid #0f172a',
-                opacity: b.status === 'coming_soon' ? 0.5 : 1,
-              }}
-            >
-              <div style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: b.status === 'connected' ? 'rgba(6,182,212,0.15)' : 'rgba(100,116,139,0.1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Building2 size={18} style={{ color: b.status === 'connected' ? '#06b6d4' : '#64748b' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {b.name}
-                  {b.status === 'connected' && <CircleDot size={10} style={{ color: '#22c55e' }} />}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {b.status === 'coming_soon' ? (
-                    <span style={{ color: 'var(--accent-teal)' }}>{b.description}</span>
-                  ) : b.description}
-                </div>
-              </div>
-              {b.status === 'coming_soon' && (
-                <span style={{ fontSize: 9, color: '#64748b', background: 'rgba(100,116,139,0.15)', padding: '2px 8px', borderRadius: 6 }}>
-                  SOON
-                </span>
-              )}
-            </div>
-          ))}
+      {/* Disconnect Confirmation Modal */}
+      {showDisconnectConfirm && (
+        <>
           <div
+            onClick={() => setShowDisconnectConfirm(false)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: 14,
-              cursor: 'pointer', color: '#06b6d4', fontSize: 13, fontWeight: 600,
-              borderBottom: 'none',
+              position: 'fixed', inset: 0,
+              background: 'rgba(0,0,0,0.6)', zIndex: 100,
             }}
-          >
-            <Plus size={14} />
-            Request a broker
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: '#1e293b', border: '1px solid #334155',
+            borderRadius: 16, zIndex: 101,
+            width: '92%', maxWidth: 400,
+            padding: 24,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <AlertTriangle size={24} style={{ color: '#fbbf24' }} />
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Disconnect Broker?</h3>
+            </div>
+            <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, margin: '0 0 20px' }}>
+              Are you sure? This will permanently remove your broker connection.
+              All portfolio data will stop updating.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setShowDisconnectConfirm(false)}
+                disabled={disconnecting}
+                style={{
+                  flex: 1,
+                  padding: '10px 0',
+                  borderRadius: 8,
+                  border: '1px solid #334155',
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                style={{
+                  flex: 1,
+                  padding: '10px 0',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: 'rgba(239,68,68,0.9)',
+                  color: 'white',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: disconnecting ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                  opacity: disconnecting ? 0.7 : 1,
+                }}
+              >
+                {disconnecting ? 'Disconnecting...' : 'Yes, Disconnect'}
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Sign Out */}

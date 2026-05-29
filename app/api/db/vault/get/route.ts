@@ -1,54 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase';
-
-function getEncryptionKey(): string {
-  // Must use a dedicated server-side secret — never fall back to public keys
-  const key = process.env.VAULT_ENCRYPTION_KEY;
-  if (!key) {
-    throw new Error('VAULT_ENCRYPTION_KEY environment variable is required but not configured');
-  }
-  return key;
-}
+import { getConnectionStatus } from '@/lib/vault';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const { userId: authUserId } = await requireAuth(req);
-    const supabase = createServerClient();
-    const keyName = req.nextUrl.searchParams.get('keyName');
     const targetUserId = req.nextUrl.searchParams.get('userId') || authUserId;
-    if (!keyName?.trim()) return NextResponse.json({ error: 'keyName required' }, { status: 400 });
-    if (targetUserId !== authUserId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { data, error } = await (supabase as any).from('vault')
-      .select('encrypted_api_key, encrypted_secret_key, master_password_hash')
-      .eq('user_id', targetUserId).maybeSingle();
-    if (error) return NextResponse.json({ error: 'Failed to fetch vault', detail: error.message }, { status: 500 });
-    if (!data) return NextResponse.json({ error: 'No vault entry found' }, { status: 404 });
-
-    const isApiKey = keyName.toUpperCase() === 'ALPACA_API_KEY';
-    const isSecret = keyName.toUpperCase() === 'ALPACA_SECRET_KEY';
-    let encrypted: string | null = null;
-
-    if (isApiKey) encrypted = data.encrypted_api_key;
-    else if (isSecret) encrypted = data.encrypted_secret_key;
-    else {
-      // generic: stored as "keyName:encrypted" in master_password_hash
-      const hash = data.master_password_hash || '';
-      if (hash.startsWith(`${keyName}:`)) encrypted = hash.slice(keyName.length + 1);
-      else encrypted = null;
+    if (targetUserId !== authUserId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (!encrypted) return NextResponse.json({ error: `Secret '${keyName}' not found` }, { status: 404 });
+    // Return connection status WITHOUT ever decrypting credentials
+    const status = await getConnectionStatus(targetUserId);
 
-    // Decrypt with AES
-    const CryptoJS = await import('crypto-js');
-    const encKey = getEncryptionKey();
-    const decrypted = CryptoJS.AES.decrypt(encrypted, encKey).toString(CryptoJS.enc.Utf8);
-
-    return NextResponse.json({ keyName, value: decrypted });
-  } catch (err: any) {
-    if (err?.name === 'AuthError') return NextResponse.json({ error: err.message }, { status: err.status || 401 });
+    return NextResponse.json({
+      connected: status.connected,
+      brokerId: status.brokerId,
+      connectedAt: status.connectedAt,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AuthError') {
+      const authErr = err as Error & { status?: number };
+      return NextResponse.json({ error: authErr.message }, { status: authErr.status || 401 });
+    }
+    console.error('[Vault Get API] Error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
