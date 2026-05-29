@@ -18,6 +18,9 @@ import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 
+// Module-level: survives in-app navigation but resets on full page load (login)
+let brokerGateDismissedThisSession = false;
+
 const TAB_COMPONENTS: Record<TabId, React.FC> = {
   ai: AITab,
   trade: TradeTab,
@@ -58,12 +61,13 @@ function AppShell() {
     setShowOnboarding(true);
   }, [user, isDataLoaded]);
 
-  // Step 2: Broker gate — if onboarded but no broker, show gate every login
+  // Step 2: Broker gate — if onboarded but no broker, show gate every login.
+  // Gate stays dismissed for the rest of the session (survives in-app navigation).
   useEffect(() => {
     if (!user || !isDataLoaded || showOnboarding) return;
     if (!isInitialized) return; // still checking /api/broker/status
 
-    if (!isConnected) {
+    if (!isConnected && !brokerGateDismissedThisSession) {
       setShowBrokerGate(true);
     }
   }, [user, isDataLoaded, showOnboarding, isInitialized, isConnected]);
@@ -78,11 +82,15 @@ function AppShell() {
     return <InvestorStyleOnboarding />;
   }
 
-  // Broker gate — shown every login until broker is connected
+  // Broker gate — shown every login until broker is connected.
+  // Dismissed for session via module-level variable.
   if (showBrokerGate) {
     return (
       <BrokerGate
-        onDismiss={() => setShowBrokerGate(false)}
+        onDismiss={() => {
+          setShowBrokerGate(false);
+          brokerGateDismissedThisSession = true;
+        }}
       />
     );
   }
