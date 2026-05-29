@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useMarketStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { getDemoIndexes, getDemoQuotes } from '@/lib/demo-data';
 import type { MarketIndex, Quote, WatchlistItem } from '@/types';
 
 // Indices and watchlist are now persisted in the market store (localStorage).
@@ -168,6 +169,15 @@ export function useMarketData() {
         && (h > 13 || (h === 13 && m >= 30))
         && !(h > 20 || (h === 20 && m > 0));
       setMarketOpen(isOpen);
+
+      // Populate demo market data
+      const demoIndexes = getDemoIndexes();
+      setIndexes(demoIndexes);
+
+      const demoQuotes = getDemoQuotes();
+      for (const [symbol, quote] of Object.entries(demoQuotes)) {
+        updateQuote(symbol, quote);
+      }
       return;
     }
 

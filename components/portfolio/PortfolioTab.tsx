@@ -4,6 +4,7 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { DemoBanner } from '@/components/shared/DemoBanner';
 
 export function PortfolioTab() {
   const { account, loading, error, refresh } = usePortfolio();
@@ -179,41 +180,91 @@ export function PortfolioTab() {
     }
   })();
 
-  // No broker connected — empty CTA state
+  // No broker connected — show demo portfolio with banner
   if (!isConnected) {
+    const demoAccount = account;
+    if (!demoAccount) {
+      return (
+        <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Loading demo portfolio…
+        </div>
+      );
+    }
+
     return (
-      <div style={{ padding: '80px 16px 80px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔌</div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-          No Broker Connected
+      <div style={{ padding: '12px 16px 80px' }}>
+        <DemoBanner />
+
+        {/* Account Summary */}
+        <div className="card" style={{ marginBottom: 12 }}>
+          <AccountSummaryCard account={demoAccount} />
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 320, marginBottom: 20 }}>
-          Connect your brokerage account to see your portfolio, positions, and trading data.
+
+        {/* Positions list */}
+        {sortedPositions.map((pos) => (
+          <div key={pos.symbol} className="card" style={{ marginBottom: 8, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{pos.symbol}</div>
+                <div style={{ fontSize: 10, color: '#94a3b8' }}>{pos.qty} shares · {pos.sector}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: '#f1f5f9' }}>
+                  ${pos.marketValue.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 10, color: pos.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
+                  {pos.totalPnl >= 0 ? '+' : ''}${Math.round(pos.totalPnl).toLocaleString()} ({pos.totalPnlPercent >= 0 ? '+' : ''}{pos.totalPnlPercent.toFixed(1)}%)
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Sector Allocation */}
+        {account.positions.length > 0 && (
+          <SectorAllocation positions={account.positions} />
+        )}
+
+        {/* Bottom CTA */}
+        <div style={{
+          marginTop: 16,
+          padding: '16px',
+          background: 'rgba(6,182,212,0.06)',
+          border: '1px solid rgba(6,182,212,0.2)',
+          borderRadius: 12,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4', marginBottom: 8 }}>
+            Ready to see your real portfolio?
+          </div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 12 }}>
+            Connect your broker to replace this demo data with live positions, P&L, and trading.
+          </div>
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.location.reload();
+              }
+            }}
+            style={{
+              padding: '10px 24px',
+              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+              border: 'none',
+              borderRadius: 8,
+              color: '#0f172a',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Connect Broker
+          </button>
         </div>
-        <button
-          onClick={() => {
-            // Clear onboarding flags so the flow re-opens
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('vantage:onboarded');
-              localStorage.removeItem('vantage:brokerSkipped');
-              localStorage.removeItem('vantage:brokerConnected');
-              window.location.reload();
-            }
-          }}
-          style={{
-            padding: '12px 28px',
-            background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-            border: 'none',
-            borderRadius: 10,
-            color: '#0f172a',
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          Connect Broker
-        </button>
+
+        <style jsx>{`
+          .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+        `}</style>
       </div>
     );
   }

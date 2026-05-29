@@ -3,12 +3,15 @@ import { useState } from 'react';
 import { useMarketStore, useOrderFormStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { useBroker } from '@/components/providers/BrokerProvider';
+import { DemoBanner } from '@/components/shared/DemoBanner';
 import { SymbolSearch } from './SymbolSearch';
 
 export function TradeTab() {
   const { quotes } = useMarketStore();
   const { form, updateForm } = useOrderFormStore();
   const { account } = usePortfolio();
+  const { isConnected } = useBroker();
 
   // Initialize hook
   useMarketData();
@@ -30,6 +33,7 @@ export function TradeTab() {
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
+      {!isConnected && <DemoBanner />}
       {/* Search */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <SymbolSearch

@@ -3,11 +3,14 @@ import { useMemo } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useMarketStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useBroker } from '@/components/providers/BrokerProvider';
+import { getDemoInsight } from '@/lib/demo-data';
 import { INVESTOR_STYLES } from '@/components/onboarding/styles';
 import { ConfidenceRing } from './ConfidenceRing';
 import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
+import { DemoBanner } from '@/components/shared/DemoBanner';
 
 function generateInsight(account: import('@/types').AccountSummary | null): string | null {
   if (!account || account.positions.length === 0) return null;
@@ -63,7 +66,14 @@ export function AITab() {
   const { account } = usePortfolio();
   const { isMarketOpen } = useMarketStore();
   const { user } = useAuth();
-  const insight = useMemo(() => generateInsight(account), [account]);
+  const { isConnected } = useBroker();
+
+  const insight = useMemo(() => {
+    if (account && !isConnected) {
+      return getDemoInsight(account);
+    }
+    return generateInsight(account);
+  }, [account, isConnected]);
 
   // Resolve investor style from auth (fallback to localStorage if sessionStorage missing)
   const investorStyle: string = (() => {
@@ -78,6 +88,7 @@ export function AITab() {
   return (
     <>
       <ConfidenceRing />
+      {!isConnected && <div style={{ padding: '0 16px' }}><DemoBanner /></div>}
       {/* Investor Style Badge */}
       {styleDef && (
         <div style={{ padding: '0 16px', marginBottom: 4 }}>

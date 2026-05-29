@@ -16,6 +16,8 @@ interface BrokerContextValue {
   broker: BrokerAdapter | null;
   brokerId: BrokerId | null;
   isConnected: boolean;
+  /** True once the initial /api/broker/status check has completed (even if no broker). */
+  isInitialized: boolean;
   accountPreview: {
     id: string;
     equity: number;
@@ -29,6 +31,7 @@ const BrokerContext = createContext<BrokerContextValue>({
   broker: null,
   brokerId: null,
   isConnected: false,
+  isInitialized: false,
   accountPreview: null,
   environment: null,
 });
@@ -141,6 +144,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
         broker,
         brokerId,
         isConnected,
+        isInitialized: initialized,
         accountPreview,
         environment,
       }}

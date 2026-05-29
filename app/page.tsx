@@ -11,9 +11,10 @@ import { TradeTab } from '@/components/trade/TradeTab';
 import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { OrdersTab } from '@/components/orders/OrdersTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
-import { BrokerProvider } from '@/components/providers/BrokerProvider';
+import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
+import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 
@@ -28,10 +29,12 @@ const TAB_COMPONENTS: Record<TabId, React.FC> = {
 function AppShell() {
   const { activeTab } = useTabStore();
   const { user, isDataLoaded } = useAuth();
+  const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showBrokerGate, setShowBrokerGate] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
-  // Detect desktop width for sidebar vs bottom nav
+  // Detect desktop width
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024);
     check();
@@ -39,10 +42,7 @@ function AppShell() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Show onboarding for authenticated users who haven't set their style.
-  // The API (/api/auth/me) is the authoritative source — localStorage is only
-  // a cache, and when the API says the user hasn't been onboarded, we clear
-  // any stale localStorage to prevent it from blocking the modal.
+  // Step 1: Style onboarding check
   useEffect(() => {
     if (!user || !isDataLoaded) return;
 
@@ -51,8 +51,6 @@ function AppShell() {
       return;
     }
 
-    // API says not onboarded — clear any stale localStorage that might
-    // have been set by a prior testing session or corrupt cache.
     if (typeof window !== 'undefined') {
       localStorage.removeItem('vantage:onboarded');
     }
@@ -60,12 +58,33 @@ function AppShell() {
     setShowOnboarding(true);
   }, [user, isDataLoaded]);
 
+  // Step 2: Broker gate — if onboarded but no broker, show gate every login
+  useEffect(() => {
+    if (!user || !isDataLoaded || showOnboarding) return;
+    if (!isInitialized) return; // still checking /api/broker/status
+
+    if (!isConnected) {
+      setShowBrokerGate(true);
+    }
+  }, [user, isDataLoaded, showOnboarding, isInitialized, isConnected]);
+
   // 🔒 HARD GATE: Don't render ANY dashboard content until DB profile is confirmed.
-  // Prevents cascading 401/500 API errors from dashboard components
-  // that mount before auth synchronization completes.
-  // AuthGuard handles the loading spinner and error screens above this.
   if (!isDataLoaded || !user) {
     return null;
+  }
+
+  // Onboarding overlay
+  if (showOnboarding) {
+    return <InvestorStyleOnboarding />;
+  }
+
+  // Broker gate — shown every login until broker is connected
+  if (showBrokerGate) {
+    return (
+      <BrokerGate
+        onDismiss={() => setShowBrokerGate(false)}
+      />
+    );
   }
 
   const mainContent = (
@@ -81,20 +100,17 @@ function AppShell() {
   );
 
   return (
-    <BrokerProvider>
-      <div className="app-shell">
-        {isDesktop && <DesktopSidebar />}
-        {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
-      </div>
-
-      {/* Onboarding Overlay */}
-      {showOnboarding && (
-        <InvestorStyleOnboarding />
-      )}
-    </BrokerProvider>
+    <div className="app-shell">
+      {isDesktop && <DesktopSidebar />}
+      {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
+    </div>
   );
 }
 
 export default function Home() {
-  return <AppShell />;
+  return (
+    <BrokerProvider>
+      <AppShell />
+    </BrokerProvider>
+  );
 }

@@ -2,6 +2,8 @@
 import { useOrders } from '@/hooks/useOrders';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useOrderStore, useTabStore } from '@/store';
+import { useBroker } from '@/components/providers/BrokerProvider';
+import { DemoBanner } from '@/components/shared/DemoBanner';
 import { BarChart3 } from 'lucide-react';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 
@@ -12,6 +14,7 @@ export function OrdersTab() {
   const { activeFilter, setFilter } = useOrderStore();
   const { setTab } = useTabStore();
   const { account } = usePortfolio();
+  const { isConnected } = useBroker();
 
   // useOrders hook already pre-filters by activeFilter (open includes pending/partially_filled)
 
@@ -90,6 +93,7 @@ export function OrdersTab() {
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
+      {!isConnected && <DemoBanner />}
       {/* Account Summary */}
       {account && (
         <div style={{ marginBottom: 12 }}>

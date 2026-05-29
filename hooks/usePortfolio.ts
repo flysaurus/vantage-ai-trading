@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePortfolioStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { getDemoAccount, getDemoSectorAllocations } from '@/lib/demo-data';
 import type {
   AccountSummary,
   Position,
@@ -240,10 +242,26 @@ export function usePortfolio() {
   const store = usePortfolioStore();
   const { account, setAccount, setLoading, updatePosition } = store;
   const { broker, isConnected } = useBroker();
+  const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Demo data when no broker connected ────────────────────
+  useEffect(() => {
+    if (isConnected) return;
+
+    const style = user?.investorStyle || 'buffett';
+    const demoAccount = getDemoAccount(style);
+    if (demoAccount) {
+      const allocations = getDemoSectorAllocations(demoAccount);
+      setAccount({
+        ...demoAccount,
+        sectorAllocations: allocations,
+      } as AccountSummary & { sectorAllocations: SectorAllocation[] });
+    }
+  }, [isConnected, user?.investorStyle, setAccount]);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!broker || !isConnected) return;
