@@ -1,0 +1,123 @@
+Category,ID,Test Name,Precondition,Steps,Expected Result,Pass/Fail,Actual Result,Notes
+AUTH,A1,Complete New User Signup,"No account exists","1. Navigate to /signup
+2. Enter email + password + display name
+3. Submit
+4. Check inbox → click verification link
+5. Enter email + password on /login?verified=true
+6. Login succeeds",InvestorStyleOnboarding overlay appears with style selection screen,,,
+AUTH,A2,Existing User Login (onboarded + broker),User is onboarded and broker is connected,"1. Navigate to /login
+2. Enter email + password
+3. Login succeeds","Dashboard renders immediately. No gate overlay. No DemoBanner on any tab. Live broker data visible.",,,
+AUTH,A3,Existing User Login (onboarded + NO broker),User is onboarded but NO broker connected,"1. Navigate to /login
+2. Enter email + password","BrokerGate overlay appears (broker selection with X button). Skip → Dashboard with DemoBanner on all tabs. Logout → Login again → Gate reappears.",,,
+AUTH,A4,Session Expiry (10 min inactivity),Logged in and idle for 10 minutes,"1. Wait 9 minutes
+2. Wait 10 minutes","At 9 min: inactivity warning with countdown. At 10 min: redirected to /login.",,,
+AUTH,A5,Direct URL Access While Authenticated,Logged in,"1. Navigate to /security
+2. Navigate to /investor-style","/security loads standalone. /investor-style shows page or redirects.",,,
+AUTH,A6,Login Redirect (Full Page Reload),Any logged-in state,"1. Login successfully
+2. Check browser network tab","window.location.href = '/' fires (full reload, not soft SPA nav). Session cookie processed before /api/auth/me.",,,
+ONBOARD,B1,Style Selection → Default (Buffett),"New user, onboarding shown","1. Select NO style card
+2. Tap ""Accept Selected Style""","Style saved as 'buffett'. Step advances to broker selection (5 broker cards). localStorage: vantage:onboarded='true', vantage:investorStyle='buffett'.",,,
+ONBOARD,B2,Style Selection → Explicit (Lynch),"New user, onboarding shown","1. Tap Peter Lynch card
+2. Verify card highlights
+3. Tap ""Accept Peter Lynch""","Card highlights with cyan border + checkmark. investorStyle='lynch' saved. Step advances to broker selection.",,,
+ONBOARD,B3,Style Selection → Livermore,New user,"1. Tap Jesse Livermore card
+2. Accept","Style saved as 'livermore'. Advances to broker step.",,,
+ONBOARD,B4,Style Selection → Soros,New user,"1. Tap George Soros card
+2. Accept","Style saved as 'soros'. Advances to broker step.",,,
+ONBOARD,B5,Style Selection → Munger,New user,"1. Tap Charlie Munger card
+2. Accept","Style saved as 'munger'. Advances to broker step.",,,
+ONBOARD,B6,"Style Selection → ""Start with Buffett"" shortcut",New user,"1. Scroll to bottom
+2. Tap ""Start with Warren Buffett"" link","Buffett auto-selected then auto-accepted after brief highlight. Advances to broker step.",,,
+ONBOARD,B7,Broker Selection → Skip (during onboarding),"On step='broker' in onboarding","1. Tap ""Skip for now""","window.location.href='/' fires. localStorage 'vantage:brokerSkipped'='true'. After reload: BrokerGate appears (Gate 3).",,,
+ONBOARD,B8,Broker Selection → Connect Alpaca (during onboarding),"Valid Alpaca paper keys","1. Tap Alpaca card
+2. Enter API Key + Secret Key + toggle Paper
+3. Tap Connect","Step advances to credentials form. On success: ""✨ All Set!"" screen → auto-reload after 1.5s. Dashboard shows LIVE broker data, no DemoBanner.",,,
+ONBOARD,B9,Broker Selection → Connect Tastytrade (during onboarding),"Valid Tastytrade keys","1. Tap Tastytrade card
+2. Enter API Key + Secret Key + toggle
+3. Tap Connect","Same flow as Alpaca. On success: live dashboard.",,,
+ONBOARD,B10,Broker Credentials → Wrong Keys,"On step='credentials'","1. Enter invalid/bogus API keys
+2. Tap Connect","Red inline error message appears. User stays on credentials form (can retry). Button shows error state, not loading.",,,
+ONBOARD,B11,Broker Credentials → Back to Selection,"On step='credentials' for any broker","1. Tap ""← Back"" link","Returns to broker selection step. All 5 broker cards visible. Previously selected broker shown normally.",,,
+ONBOARD,B12,Coming Soon Brokers Disabled,On step='broker',"1. Tap IBKR card
+2. Tap Robinhood card
+3. Tap Schwab card","All three disabled: opacity 0.45, cursor default, ""SOON"" badge visible, no action on click.",,,
+ONBOARD,B13,Onboarding → Style Save Network Error,"New user, API unreachable","1. Select a style
+2. Disconnect network
+3. Tap Accept","Error message shown. User stays on style step. Can retry when network restored.",,,
+GATE,C1,BrokerGate Appears Every Login,"Onboarded, NO broker, logged out","1. Login → Gate appears → Skip
+2. Logout
+3. Login again","BrokerGate appears EVERY login (not one-time skip). Must connect broker to stop it.",,,
+GATE,C2,BrokerGate Disappears After Connect,BrokerGate showing,"1. Select broker → enter valid credentials → Connect
+2. Wait for reload
+3. Logout → login","After connect+reload: Dashboard renders, no gate. After logout+login: Still no gate (broker persists).",,,
+GATE,C3,BrokerGate Reappears After Disconnect,"Broker connected, dashboard visible","1. Settings → Broker Connection → Disconnect → Confirm
+2. Wait for reload","Gate 3 fires → BrokerGate appears. BrokerProvider detects isConnected=false.",,,
+GATE,C4,BrokerGate Skip (X Button),BrokerGate showing,"1. Tap X button (top-right)","Gate dismissed for this session. Dashboard renders with demo data. Gate WILL reappear next login.",,,
+GATE,C5,BrokerGate Skip (Skip Link),BrokerGate showing,"1. Scroll down → tap ""Skip for now""","Same behavior as X button: dismiss for session. Gate reappears next login.",,,
+DEMO,D1,"Demo Portfolio → Buffett (Value Hunter)","Onboarded: buffett, no broker","1. Skip/dismiss broker gate
+2. Go to Portfolio tab","DemoBanner: ""Demo Data · Warren Buffett · Value Hunter"". 7 positions: AAPL, KO, AXP, BAC, PG, JNJ, BRK.B. Total ~$148,650. Sector allocation bar visible.",,,
+DEMO,D2,"Demo Portfolio → Lynch (Growth Chaser)","Onboarded: lynch, no broker","1. Portfolio tab","DemoBanner: ""Demo Data · Peter Lynch · Growth Chaser"". 7 positions: MSFT, NVDA, META, AMZN, GOOGL, CRM. Total ~$243,900.",,,
+DEMO,D3,"Demo Portfolio → Livermore (Momentum Rider)","Onboarded: livermore, no broker","1. Portfolio tab","DemoBanner: ""Demo Data · Jesse Livermore · Momentum Rider"". 7 positions: TSLA, MSTR, SMCI, COIN, RKLB, PLTR. Total ~$102,650. Higher volatility day changes.",,,
+DEMO,D4,"Demo Portfolio → Soros (Macro Strategist)","Onboarded: soros, no broker","1. Portfolio tab","DemoBanner: ""Demo Data · George Soros · Macro Strategist"". 7 positions: GLD, XLE, XLF, TLT, DIA, TQQQ. Total ~$198,400. ETF-heavy.",,,
+DEMO,D5,"Demo Portfolio → Munger (Dividend Compounder)","Onboarded: munger, no broker","1. Portfolio tab","DemoBanner: ""Demo Data · Charlie Munger · Dividend Compounder"". 7 positions: JNJ, PG, KO, PEP, MCD, O, VZ. Total ~$296,500. Dividend aristocrats.",,,
+DEMO,D6,Style Change Updates Demo Portfolio,"Style: buffett, no broker","1. Settings → Investor Style → Change → select Jesse Livermore
+2. Refresh
+3. Portfolio tab","DemoBanner now shows Livermore. Portfolio shows momentum stocks (TSLA etc) instead of value stocks.",,,
+DEMO,D7,Demo Market Data (Indexes),No broker,"1. Check MarketBar","SPY $562.80, QQQ $485.40, IWM $218.30, DIA $452.00. Time-based OPEN/CLOSED indicator.",,,
+DEMO,D8,Demo Market Data (Quotes),No broker,"1. Trade tab → search for AAPL","Quote card shows $195.20, change +$2.30 (+1.19%). All demo portfolio symbols quotable.",,,
+DEMO,D9,DemoBanner on All Tabs,No broker,"1. AI tab
+2. Portfolio tab
+3. Trade tab
+4. Orders tab","DemoBanner visible on ALL four tabs. Purple gradient. Shows investor style name + ""connect your broker"" message.",,,
+DEMO,D10,DemoBanner HIDDEN With Broker,Broker connected,"1. Check all 5 tabs","NO DemoBanner on AI, Portfolio, Trade, Orders, or Settings. Only real data shown.",,,
+DEMO,D11,Demo AI Insights,No broker,"1. AI tab","Shows demo insight text specific to investor style. Account summary card with demo values. Style badge visible.",,,
+DEMO,D12,Demo Portfolio Connect CTA,No broker,"1. Portfolio tab → scroll to bottom","""Connect Your Broker"" call-to-action visible. Encourages switching to real data.",,,
+LIVE,E1,Live Data Replaces Demo Data,"Demo data showing, then connect broker","1. Connect broker via Gate or Settings
+2. After reload, check tabs","All demo data gone. Portfolio shows real account. MarketBar shows live prices. No DemoBanner anywhere.",,,
+LIVE,E2,Portfolio Tab With Real Positions,"Broker connected, positions exist","1. Portfolio tab","AccountSummaryCard with real equity/buyingPower. Real positions with market values. Sector allocation from real holdings. P&L chart loads.",,,
+LIVE,E3,Trade Tab With Broker,Broker connected,"1. Search for symbol
+2. Set side/type/qty
+3. Place Order","Live quote card with bid/ask/volume/52w range. Order placement feedback (success or error).",,,
+LIVE,E4,Orders Tab With Broker,Broker connected,"1. Orders tab","Account summary visible. Order history if any. Real data, no demo banner.",,,
+EDGE,F1,API /auth/me Returns 500,Server error on session check,"1. Login
+2. /api/auth/me returns 500","AuthProvider: isDataLoaded=true, user=null. AuthGuard redirects to /login. Graceful degradation, no crash.",,,
+EDGE,F2,API /broker/status Returns 500,"Logged in, broker status API fails","1. App loads
+2. /api/broker/status fails","BrokerProvider: isInitialized=true, isConnected=false. BrokerGate shown. User can retry connecting.",,,
+EDGE,F3,Network Drop During Broker Connect,"On credentials step","1. Enter valid keys
+2. Drop network
+3. Tap Connect","Error message shown (network error). User stays on credentials form. No partial state.",,,
+EDGE,F4,Stale localStorage After Account Switch,"Old localStorage: vantage:onboarded='true', New account: NOT onboarded","1. Login with new account
+2. Check if onboarding appears","AuthProvider removes stale 'vantage:onboarded'. Onboarding appears (Gate 2 fires). BIDIRECTIONAL SYNC verified.",,,
+EDGE,F5,Market Status – Weekend (no broker),"No broker, Saturday 14:00 UTC","1. Check MarketBar","Shows ""CLOSED"". Time-based fallback: day 6/0 = weekend = closed.",,,
+EDGE,F6,Market Status – Weekday Open (no broker),"No broker, Tuesday 15:00 UTC","1. Check MarketBar","Shows ""OPEN"". Time-based fallback: Mon-Fri 13:30-20:00 UTC = open.",,,
+EDGE,F7,Market Status – After Hours (no broker),"No broker, Tuesday 21:00 UTC","1. Check MarketBar","Shows ""CLOSED"". Time-based fallback: after 20:00 UTC = closed.",,,
+EDGE,F8,Desktop Layout (≥1024px),Window width 1200px,"1. Check layout","DesktopSidebar visible (left). Main panel fills remaining space. BottomNav hidden. Same gate logic as mobile.",,,
+EDGE,F9,Mobile Layout (<1024px),Window width 600px,"1. Check layout","BottomNav visible (5 tabs). Header at top. DesktopSidebar hidden. All gates identical behavior.",,,
+EDGE,F10,Empty Positions (Broker With No Holdings),"Broker connected, 0 positions","1. Portfolio tab","Portfolio tab shows empty state (""No positions yet"") rather than crashing. Account summary still visible.",,,
+SEC,G1,No API Keys in Browser Storage,Broker connected,"1. DevTools → Application → Local Storage
+2. DevTools → Network → /api/broker/session","NO API keys or secret keys in localStorage. /api/broker/session response contains NO decrypted credentials (only adapter tokens).",,,
+SEC,G2,Disconnect = Hard Delete,Broker connected,"1. Settings → Broker → Disconnect → Confirm
+2. Check Supabase vault table","POST /api/broker/disconnect fires. Vault row DELETED (not soft-deleted). BrokerProvider: isConnected=false.",,,
+SEC,G3,"Vault GET Never Returns Credentials",Broker connected,"1. DevTools console: fetch('/api/db/vault/get')
+2. Inspect response","Response returns connection status only (connected: true, brokerId). NO keyId, encryptedData, or credential data.",,,
+SEC,G4,Security Page Accessible & Accurate,Any state,"1. Navigate to /security
+2. Read content","Security page explains encryption principles WITHOUT exposing implementation details (no library names, no algorithm modes).",,,
+UI,H1,Security Page Scrollable (Mobile),Mobile device or emulator,"1. Navigate to /security
+2. Scroll","Page scrolls vertically. Smooth on iOS (WebkitOverflowScrolling). Close (X) button at top navigates to /.",,,
+UI,H2,Help/Broker-Keys Page Scrollable (Mobile),Mobile device,"1. Navigate to /help/broker-keys
+2. Scroll","Page scrolls vertically. Close button visible. Alpaca section, Tastytrade section, security reminders all readable.",,,
+UI,H3,Verify-Email Styling Matches Login,Navigate to /verify-email,"1. Compare card width, radius, padding, colors with /login","Card width 380px. border-radius 16px. Same dark background (#0f172a). Same input styles. No yellow ""Email not arriving"" banner.",,,
+UI,H4,Login Page Confirmation Screen,After signup or resend,"1. Navigate to /login
+2. Check for absence of ""Email not arriving?"" banner","No yellow warning box. Clean confirmation screen with green check icon. Resend button available if needed.",,,
+UI,H5,Settings – All Menu Items Clickable,Logged in,"1. Settings tab
+2. Tap Investor Style row
+3. Tap Broker Connection row
+4. Tap all other rows","Investor Style expands. Broker Connection expands (chevron rotates). All rows are tappable, none are dummy/static.",,,
+UI,H6,Settings – Broker Row (Connected),Broker connected,"1. Settings → Broker Connection
+2. Tap row to expand","Shows broker name + status (green dot). Account preview: equity, buying power, account status. Change Broker + Disconnect buttons. Security link.",,,
+UI,H7,Settings – Broker Row (Disconnected),No broker,"1. Settings → Broker Connection
+2. Tap row to expand","Shows ""No broker connected"" prompt. ""Connect a Broker"" button. Encourages connection.",,,
+UI,H8,Error Boundary (Page-Level),Trigger a render error,"1. Cause an error in a page component","Custom error page shown with error name, message, and stack trace. NOT the generic Next.js ""client-side exception"" overlay.",,,
+UI,H9,Scrollability on Auth Pages,On /login, /signup, /verify-email,"1. Shrink viewport height
+2. Scroll","All auth pages scroll vertically (overflowY: 'auto'). No content trapped off-screen.",,,
