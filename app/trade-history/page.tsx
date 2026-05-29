@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
+import { getDemoOrders } from '@/lib/demo-data';
 import { getTrades, type Trade } from '@/lib/supabase/trades';
+import type { Order, InvestorStyle } from '@/types';
 import {
   ArrowLeft, TrendingUp, TrendingDown, BarChart3, DollarSign,
   Activity, ChevronDown, ChevronUp, RefreshCcw, X,
@@ -71,9 +74,26 @@ function computePnL(trades: Trade[]): Map<string, { avgCost: number; totalPnL: n
   return result;
 }
 
-// ─── Page ─────────────────────────────────────────────────────
-export default function TradeHistoryPage() {
+// ─── Convert demo Order → Trade ──────────────────────────────
+function orderToTrade(o: Order): Trade {
+  return {
+    id: o.id,
+    symbol: o.symbol,
+    action: o.side as 'buy' | 'sell',
+    quantity: o.filledQty ?? o.qty,
+    price: o.filledPrice ?? 0,
+    totalValue: o.totalValue ?? 0,
+    commission: null,
+    notes: null,
+    executedAt: o.createdAt,
+    createdAt: o.createdAt,
+  };
+}
+
+// ─── Inner Page (needs BrokerProvider context) ────────────────
+function TradeHistoryPageInner() {
   const { user, isLoading: authLoading } = useAuth();
+  const { isConnected } = useBroker();
   const router = useRouter();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [total, setTotal] = useState(0);
@@ -92,13 +112,34 @@ export default function TradeHistoryPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 25;
 
-  // ─── Sync from Alpaca then load trades ──────────────────
+  // ─── Load trades: demo when no broker, real from Alpaca+DB otherwise ──
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   const syncThenLoad = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     setError(null);
+
+    // If no broker connected, use demo orders
+    if (!isConnected) {
+      try {
+        const style = (user.investorStyle || 'buffett') as InvestorStyle;
+        const demoOrders = getDemoOrders(style);
+        const demoTrades = demoOrders.map(orderToTrade);
+        setTrades(demoTrades);
+        setTotal(demoTrades.length);
+        setIsDemo(true);
+        setSyncStatus('Demo mode · Connect a broker for real trades');
+      } catch {
+        setError('Failed to load demo trade history');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    setIsDemo(false);
     try {
       // 1. Sync filled orders from Alpaca to trade_history
       const session = (await import('@/lib/auth')).getSession();
@@ -124,7 +165,7 @@ export default function TradeHistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, isConnected]);
 
   useEffect(() => { syncThenLoad(); }, [syncThenLoad]);
 
@@ -231,15 +272,26 @@ export default function TradeHistoryPage() {
     <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
-          <ArrowLeft size={20} />
+        <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
+          <X size={20} />
         </button>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Trade History</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Trade History</h1>
+            {isDemo && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                background: 'linear-gradient(135deg, rgba(147,51,234,0.3), rgba(6,182,212,0.25))',
+                color: '#c084fc', border: '1px solid rgba(147,51,234,0.3)',
+              }}>
+                DEMO
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
             {total} trades · {stats.uniqueSymbols} symbols
             {syncStatus && (
-              <span style={{ color: '#22c55e', marginLeft: 8 }}>{syncStatus}</span>
+              <span style={{ color: isDemo ? '#c084fc' : '#22c55e', marginLeft: 8 }}>{syncStatus}</span>
             )}
           </div>
         </div>
@@ -481,4 +533,12 @@ function MiniStat({ label, value, color }: { label: string; value: string; color
 
 function Th({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   return <th onClick={onClick} style={onClick ? undefined : { cursor: 'default' }}>{children}</th>;
+}
+
+export default function TradeHistoryPage() {
+  return (
+    <BrokerProvider>
+      <TradeHistoryPageInner />
+    </BrokerProvider>
+  );
 }
