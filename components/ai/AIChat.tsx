@@ -8,12 +8,12 @@ import { useAIChat } from '@/hooks/useAIChat';
 import { ConvictionCard } from './ConvictionCard';
 
 const SUGGESTIONS = [
-  '🔍 Research',
-  '📊 Risk Check',
-  '💡 Trade Ideas',
-  '📰 Market News',
-  '⚙️ Rebalance',
-  '📈 Technical Analysis',
+  { label: '🔍 Research', prompt: 'Research' },
+  { label: '📊 Risk Check', prompt: 'Check my portfolio risk' },
+  { label: '💡 Trade Ideas', prompt: 'Trade ideas' },
+  { label: '📰 Market News', prompt: 'Market news' },
+  { label: '⚙️ Rebalance', prompt: 'Should I rebalance my portfolio?', direct: true },
+  { label: '📈 Technical', prompt: 'Technical analysis' },
 ];
 
 /** Custom markdown renderers — dark theme, compact, trading-appropriate */
@@ -424,17 +424,23 @@ export function AIChat() {
           className="no-scrollbar">
           {SUGGESTIONS.map((s) => (
             <button
-              key={s}
-              onClick={() => handleSuggestion(s)}
-              disabled={isLoading}
+              key={s.label}
+              onClick={() => {
+                if ((s as any).direct) {
+                  sendMessage((s as any).prompt, responseMode);
+                } else {
+                  handleSuggestion((s as any).prompt || (s as any).label || s);
+                }
+              }}
+              disabled={isLoading || remainingCalls === 0}
               style={{
                 padding: '5px 9px', background: '#334155', border: 'none',
-                borderRadius: 4, color: '#cbd5e1', cursor: isLoading ? 'default' : 'pointer',
+                borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
                 fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
-                opacity: isLoading ? 0.5 : 1,
+                opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
               }}
             >
-              {s}
+              {s.label}
             </button>
           ))}
         </div>

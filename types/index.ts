@@ -121,6 +121,7 @@ export interface AICardComponent {
   price?: number;
   metrics?: Record<string, number | string>;
   actions?: AIAction[];
+  data?: Record<string, any>;
 }
 
 export interface AIAction {

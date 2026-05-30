@@ -431,6 +431,7 @@ function tryParseCards(text: string): Array<{
     price?: number;
     metrics?: Record<string, number | string>;
     actions?: Array<{ label: string; action: string; params?: Record<string, string | number> }>;
+    data?: Record<string, any>;
   }> = [];
 
   const jsonBlockRegex = /```json\s*\n([\s\S]*?)```/g;
@@ -491,6 +492,15 @@ function tryParseCards(text: string): Array<{
                 type: 'rebalance',
                 title: 'Rebalance Plan',
                 reason: d.trades.map((t: { symbol: string; action: string; reason: string }) => `${t.symbol}: ${t.action} — ${t.reason}`).join('\n'),
+                data: {
+                  trades: d.trades.map((t: any) => ({
+                    symbol: t.symbol,
+                    action: t.action,
+                    shares: t.qty || 0,
+                    estimatedValue: t.dollarAmount || 0,
+                  })),
+                  summary: d.summary || '',
+                },
                 actions: [{ label: 'Execute Plan', action: 'rebalance' }],
               });
             }

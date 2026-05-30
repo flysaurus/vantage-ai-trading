@@ -240,11 +240,17 @@ export default function RebalancingPage() {
             }));
             setEditedOrders(orders);
             setAutoMode('auto');
+          } else {
+            // Session not found — clear the stale session ID
+            setSessionId(null);
           }
           setSessionLoading(false);
         })
-        .catch(() => setSessionLoading(false));
-      return; // Skip normal init while session loads
+        .catch(() => {
+          setSessionId(null);
+          setSessionLoading(false);
+        });
+      // Don't return early — let portfolio loading continue in parallel
     }
 
     // Skip normal init if waiting for session
