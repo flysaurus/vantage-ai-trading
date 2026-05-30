@@ -5,7 +5,7 @@
   "outputDirectory": ".next",
   "crons": [
     {
-      "path": "/api/alerts/check",
+      "path": "/api/cron",
       "schedule": "0 14 * * 1-5"
     }
   ],
