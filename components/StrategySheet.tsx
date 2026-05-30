@@ -128,7 +128,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           borderTop: '1px solid #334155',
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
-          maxHeight: '60vh',
+          maxHeight: '85vh',
           display: 'flex',
           flexDirection: 'column',
           animation: 'strategySlideUp 0.3s ease-out',
@@ -148,7 +148,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
         </div>
 
         {/* Scrollable Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 32px' }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <span style={{ fontSize: 28 }}>{content.icon}</span>
@@ -186,7 +186,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
         {/* Sticky Execute Button */}
         <div
           style={{
-            padding: '12px 16px 16px',
+            padding: '12px 16px 96px',
             borderTop: '1px solid #334155',
             background: 'linear-gradient(to top, #1e293b, rgba(30,41,59,0.95))',
           }}
