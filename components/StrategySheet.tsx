@@ -367,7 +367,8 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           <button
             onClick={() => {
               onClose();
-              router.push(`/strategies/setup/${ROUTE_SLUGS[strategy] || strategy}`);
+              const slug = ROUTE_SLUGS[strategy] || strategy;
+              setTimeout(() => router.push(`/strategies/setup/${slug}`), 150);
             }}
             style={{
               width: '100%',

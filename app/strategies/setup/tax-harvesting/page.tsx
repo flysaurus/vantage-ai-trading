@@ -205,7 +205,7 @@ export default function TaxHarvestingPage() {
 
       {/* ─── Section 1: Portfolio Overview ───────────── */}
       <Section icon={<Activity size={12} />} label="Portfolio Overview">
-        {portfolioLoading ? (
+        {portfolioLoading && !account ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
             <div style={{ width: 16, height: 16, border: '2px solid #334155', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spinTX 0.6s linear infinite' }} />
             Loading portfolio data...
