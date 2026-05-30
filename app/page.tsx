@@ -77,6 +77,12 @@ function AppShell() {
     return null;
   }
 
+  // Wait for broker status check before rendering anything.
+  // Prevents dashboard flicker when broker gate needs to appear.
+  if (!isInitialized) {
+    return null;
+  }
+
   // Onboarding overlay
   if (showOnboarding) {
     return <InvestorStyleOnboarding />;
