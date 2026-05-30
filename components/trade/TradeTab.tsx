@@ -1,6 +1,5 @@
 'use client';
-import { useRouter } from 'next/navigation';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -8,6 +7,7 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { DemoBanner } from '@/components/shared/DemoBanner';
 import { SymbolSearch } from './SymbolSearch';
 import { addPendingDemoOrder } from '@/lib/demo-orders';
+import StrategySheet from '@/components/StrategySheet';
 
 export function TradeTab() {
   const { quotes } = useMarketStore();
@@ -24,25 +24,19 @@ export function TradeTab() {
   const [orderError, setOrderError] = useState('');
   const [orderSuccess, setOrderSuccess] = useState('');
 
-  const router = useRouter();
   const { setTab } = useTabStore();
 
   // ─── Strategy Bottom Sheet ───────────────────────────────
-  const STRATEGIES = [
-    { key: 'dca', icon: '🔄', label: 'DCA', desc: 'Automatically invest a fixed amount on a regular schedule to average out market volatility.' },
-    { key: 'rebalance', icon: '⚖️', label: 'Rebalance', desc: 'Restore your portfolio to target allocations when drift exceeds your threshold.' },
-    { key: 'momentum', icon: '🚀', label: 'Momentum', desc: 'Rotate into top-performing stocks based on recent returns and trend strength.' },
-    { key: 'meanreversion', icon: '📉', label: 'Mean Reversion', desc: 'Buy when oversold, sell when overbought using Z-scores and Bollinger Bands.' },
-    { key: 'taxharvest', icon: '🧾', label: 'Tax Harvest', desc: 'Identify tax-loss harvesting opportunities to offset realized gains.' },
-  ];
+  const STRATEGY_KEYS = ['dca', 'rebalance', 'momentum', 'meanreversion', 'taxharvest'] as const;
+  const STRATEGY_LABELS: Record<string, { icon: string; label: string }> = {
+    dca: { icon: '🔄', label: 'DCA' },
+    rebalance: { icon: '⚖️', label: 'Rebalance' },
+    momentum: { icon: '🚀', label: 'Momentum' },
+    meanreversion: { icon: '📉', label: 'Mean Reversion' },
+    taxharvest: { icon: '🧾', label: 'Tax Harvest' },
+  };
   const [strategySheet, setStrategySheet] = useState<string | null>(null);
-  const touchStartY = useRef(0);
   const closeSheet = useCallback(() => setStrategySheet(null), []);
-  const openSheet = useCallback((key: string) => setStrategySheet(key === strategySheet ? null : key), [strategySheet]);
-  const onSheetTouchStart = useCallback((e: React.TouchEvent) => { touchStartY.current = e.touches[0].clientY; }, []);
-  const onSheetTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (e.changedTouches[0].clientY - touchStartY.current > 80) closeSheet();
-  }, [closeSheet]);
   // ─── End Strategy Bottom Sheet ───────────────────────────
 
   const quote = quotes[searchSymbol.toUpperCase()];
@@ -68,12 +62,13 @@ export function TradeTab() {
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          {STRATEGIES.map((s) => {
-            const isActive = strategySheet === s.key;
+          {STRATEGY_KEYS.map((key) => {
+            const isActive = strategySheet === key;
+            const s = STRATEGY_LABELS[key];
             return (
               <button
-                key={s.key}
-                onClick={() => openSheet(s.key)}
+                key={key}
+                onClick={() => setStrategySheet(key === strategySheet ? null : key)}
                 style={{
                   flexShrink: 0,
                   display: 'flex',
@@ -512,95 +507,13 @@ export function TradeTab() {
           gap: 8px;
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       `}</style>
 
-      {/* ─── Strategy Bottom Sheet ───────────────────── */}
-      {strategySheet && (
-        <>
-          <div
-            onClick={closeSheet}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 1000,
-              background: 'rgba(0,0,0,0.6)',
-              backdropFilter: 'blur(2px)',
-              animation: 'fadeIn 0.2s ease-out',
-            }}
-          />
-          <div
-            onTouchStart={onSheetTouchStart}
-            onTouchEnd={onSheetTouchEnd}
-            style={{
-              position: 'fixed',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 1001,
-              background: '#1e293b',
-              borderTop: '1px solid #334155',
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              padding: '4px 16px 24px',
-              maxHeight: '50vh',
-              overflowY: 'auto',
-              animation: 'slideUp 0.25s ease-out',
-              boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
-            }}
-          >
-            <div
-              style={{
-                width: 36, height: 4, borderRadius: 2,
-                background: '#475569', margin: '8px auto 16px',
-              }}
-            />
-            {(() => {
-              const strat = STRATEGIES.find(s => s.key === strategySheet);
-              if (!strat) return null;
-              return (
-                <>
-                  <div style={{ fontSize: 24, marginBottom: 4 }}>{strat.icon}</div>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: '0 0 6px' }}>
-                    {strat.label}
-                  </h3>
-                  <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, margin: '0 0 16px' }}>
-                    {strat.desc}
-                  </p>
-                  <div style={{
-                    background: '#0f172a', borderRadius: 10, padding: 14,
-                    marginBottom: 12, border: '1px solid #334155',
-                  }}>
-                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', fontWeight: 600 }}>
-                      Configuration
-                    </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
-                      Strategy configuration is available in the{' '}
-                      <span
-                        onClick={() => { closeSheet(); router.push('/strategies'); }}
-                        style={{ color: '#06b6d4', cursor: 'pointer', fontWeight: 600 }}
-                      >
-                        Strategies page
-                      </span>.
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { closeSheet(); router.push('/strategies'); }}
-                    style={{
-                      width: '100%', padding: 12,
-                      background: 'linear-gradient(135deg, #06b6d4, #0d9488)',
-                      border: 'none', borderRadius: 10,
-                      color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer',
-                    }}
-                  >
-                    Configure {strat.label}
-                  </button>
-                </>
-              );
-            })()}
-          </div>
-        </>
-      )}
+      <StrategySheet
+        strategy={strategySheet}
+        onClose={closeSheet}
+        onExecute={closeSheet}
+      />
     </div>
   );
 }
