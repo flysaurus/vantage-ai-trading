@@ -157,6 +157,14 @@ export default function RebalancingPage() {
   const [toast, setToast] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Auto-prepare orders
+  const [autoMode, setAutoMode] = useState<'auto' | 'manual'>('auto');
+  const [editedOrders, setEditedOrders] = useState<Array<Trade & { orderType: string; limitPrice?: number }>>([]);
+  const [editingOrderIdx, setEditingOrderIdx] = useState<number | null>(null);
+  const [queueSaved, setQueueSaved] = useState(false);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [execProgress, setExecProgress] = useState('');
+
   // Section 4: alert toggle
   const [alertOnDrift, setAlertOnDrift] = useState(false);
   const [driftThreshold, setDriftThreshold] = useState(5);
@@ -340,8 +348,135 @@ export default function RebalancingPage() {
     setTargetsSaved(false);
   };
 
+  // Sync edited orders when trades change
+  useEffect(() => {
+    if (trades.length > 0) {
+      setEditedOrders(prev => {
+        // Keep existing edits if same trades, otherwise reset
+        const prevMap = new Map(prev.map(o => [`${o.symbol}-${o.action}`, o]));
+        return trades.map(t => {
+          const key = `${t.symbol}-${t.action}`;
+          const existing = prevMap.get(key);
+          return existing ? { ...existing, estimatedValue: t.estimatedValue, shares: existing.shares || t.shares } : { ...t, orderType: 'market' };
+        });
+      });
+    } else {
+      setEditedOrders([]);
+    }
+  }, [trades]);
+
+  // Load saved queue on mount
+  useEffect(() => {
+    fetch('/api/strategies/rebalancing/saved-queue')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.saved?.orders?.length) {
+          setEditedOrders(data.saved.orders.map((o: any) => ({
+            symbol: o.symbol,
+            name: o.name,
+            action: o.action,
+            shares: o.shares,
+            estimatedValue: o.estimatedValue,
+            currentPrice: o.currentPrice || 0,
+            orderType: o.orderType || 'market',
+            limitPrice: o.limitPrice || undefined,
+          })));
+          setQueueSaved(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-prepare helpers
+  const buyOrders = editedOrders.filter(o => o.action === 'BUY');
+  const sellOrders = editedOrders.filter(o => o.action === 'SELL');
+  const totalBuys = buyOrders.reduce((s, o) => s + o.estimatedValue, 0);
+  const totalSells = sellOrders.reduce((s, o) => s + o.estimatedValue, 0);
+  const netCashImpact = totalBuys - totalSells;
+
+  const updateOrder = (idx: number, updates: Partial<typeof editedOrders[0]>) => {
+    setEditedOrders(prev => prev.map((o, i) => i === idx ? { ...o, ...updates } : o));
+  };
+
+  const handleSaveQueue = async () => {
+    setQueueLoading(true);
+    try {
+      const res = await fetch('/api/strategies/rebalancing/save-queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orders: editedOrders,
+          summary: { totalBuys, totalSells, netCashImpact, orderCount: editedOrders.length },
+        }),
+      });
+      if (res.ok) {
+        setQueueSaved(true);
+        setToast('✓ Queue saved');
+      } else {
+        const err = await res.json();
+        setToast(err.error || 'Save failed');
+      }
+    } catch {
+      setToast('Network error');
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
+  const executeQueue = async () => {
+    setConfirmOpen(false);
+    setSubmitting(true);
+    try {
+      const total = editedOrders.length;
+      setExecProgress(`Placing order 1 of ${total}...`);
+
+      // Call the execute API with all orders
+      const res = await fetch('/api/strategies/rebalancing/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trades: editedOrders.map(o => ({
+            symbol: o.symbol,
+            action: o.action === 'BUY' ? 'buy' : 'sell',
+            shares: o.shares,
+            estimatedValue: o.estimatedValue,
+          })),
+          targetAllocations: targets,
+          alertOnDrift,
+          driftThreshold,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setExecProgress('');
+        setToast(err.error || 'Execution failed');
+        return;
+      }
+
+      // Simulated progress for UX
+      for (let i = 1; i <= total; i++) {
+        setExecProgress(`Placing order ${i} of ${total}... ✅`);
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      setExecProgress('');
+      setToast(`✓ ${total} orders placed`);
+      setTimeout(() => router.back(), 1500);
+    } catch {
+      setExecProgress('');
+      setToast('Network error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    setConfirmOpen(true);
+    if (autoMode === 'auto' && editedOrders.length > 0) {
+      setConfirmOpen(true);
+    } else {
+      setConfirmOpen(true);
+    }
   };
 
   const executeRebalance = async () => {
@@ -396,29 +531,67 @@ export default function RebalancingPage() {
       {confirmOpen && (
         <div onClick={() => setConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 24, maxWidth: 360, width: '100%' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>Confirm Rebalance</div>
-            <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 8 }}>
-              This will place <strong style={{ color: '#f1f5f9' }}>{trades.length} trades</strong> totaling <strong style={{ color: '#f1f5f9' }}>${totalTradeValue.toFixed(2)}</strong>.
-            </div>
-            <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
-              {trades.map((t, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1e293b', fontSize: 12, color: '#cbd5e1' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: t.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.action === 'BUY' ? '#4ade80' : '#f87171' }}>
-                    {t.action}
-                  </span>
-                  <span style={{ fontWeight: 600 }}>{t.symbol}</span>
-                  <span style={{ color: '#94a3b8' }}>{t.shares} shares · ${t.estimatedValue.toFixed(2)}</span>
+            {autoMode === 'auto' && editedOrders.length > 0 ? (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>Execute Order Queue</div>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
+                  This will place <strong style={{ color: '#f1f5f9' }}>{editedOrders.length} orders</strong>:
                 </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                Cancel
-              </button>
-              <button onClick={executeRebalance} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                Execute
-              </button>
-            </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+                  {editedOrders.map((o, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1e293b', fontSize: 12, color: '#cbd5e1' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: o.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: o.action === 'BUY' ? '#4ade80' : '#f87171' }}>
+                        {o.action}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>{o.symbol}</span>
+                      <span style={{ color: '#94a3b8' }}>{o.shares} shares · ${o.estimatedValue.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: '8px 12px', background: 'rgba(6,182,212,0.06)', borderRadius: 8, marginBottom: 16, fontSize: 12, color: '#94a3b8' }}>
+                  Net cash impact: <strong style={{ color: netCashImpact > 0 ? '#f87171' : '#4ade80' }}>{netCashImpact > 0 ? '+' : ''}{netCashImpact.toFixed(2)}</strong>
+                </div>
+                {execProgress && (
+                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(6,182,212,0.1)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#06b6d4', textAlign: 'center' }}>
+                    {execProgress}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Cancel
+                  </button>
+                  <button onClick={executeQueue} disabled={submitting} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                    {submitting ? 'Executing...' : 'Execute All'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>Confirm Rebalance</div>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 8 }}>
+                  This will place <strong style={{ color: '#f1f5f9' }}>{trades.length} trades</strong> totaling <strong style={{ color: '#f1f5f9' }}>${totalTradeValue.toFixed(2)}</strong>.
+                </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+                  {trades.map((t, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1e293b', fontSize: 12, color: '#cbd5e1' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: t.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.action === 'BUY' ? '#4ade80' : '#f87171' }}>
+                        {t.action}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>{t.symbol}</span>
+                      <span style={{ color: '#94a3b8' }}>{t.shares} shares · ${t.estimatedValue.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Cancel
+                  </button>
+                  <button onClick={executeRebalance} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Execute
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -661,6 +834,211 @@ export default function RebalancingPage() {
         </Section>
       )}
 
+      {/* ─── Section 3.5: Auto-Prepare Orders ──────── */}
+      {isBalanced && hasAnyTrade && (
+        <Section icon={<span style={{ fontSize: 14 }}>🤖</span>} label="Auto-Prepare Orders">
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 14px' }}>
+            Would you like Vantage to prepare all rebalancing orders for you?
+          </p>
+
+          {/* Option A & B cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            <button
+              onClick={() => setAutoMode('auto')}
+              style={{
+                padding: 14,
+                background: autoMode === 'auto' ? 'rgba(6,182,212,0.06)' : '#1e293b',
+                border: `1px solid ${autoMode === 'auto' ? '#06b6d4' : '#334155'}`,
+                borderRadius: 10,
+                textAlign: 'left' as const,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 700, color: autoMode === 'auto' ? '#06b6d4' : '#f1f5f9', marginBottom: 4 }}>
+                Prepare All Orders for Me
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
+                All buy and sell orders will be queued and ready to execute in one tap. You review before anything executes.
+              </div>
+            </button>
+
+            <button
+              onClick={() => setAutoMode('manual')}
+              style={{
+                padding: 14,
+                background: autoMode === 'manual' ? 'rgba(6,182,212,0.06)' : '#1e293b',
+                border: `1px solid ${autoMode === 'manual' ? '#06b6d4' : '#334155'}`,
+                borderRadius: 10,
+                textAlign: 'left' as const,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 700, color: autoMode === 'manual' ? '#06b6d4' : '#f1f5f9', marginBottom: 4 }}>
+                I&apos;ll Place Orders Manually
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
+                Orders will be shown as suggestions. You place each one individually in the Trade tab.
+              </div>
+            </button>
+          </div>
+
+          {/* — Option A: Order Queue — */}
+          {autoMode === 'auto' && editedOrders.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                Order Queue
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {editedOrders.map((order, i) => {
+                  const isEditing = editingOrderIdx === i;
+                  return (
+                    <div key={`${order.symbol}-${order.action}-${i}`} style={{ padding: '10px 12px', background: '#0f172a', border: `1px solid ${isEditing ? '#06b6d4' : '#1e293b'}`, borderRadius: 8 }}>
+                      {/* Order row */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: order.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: order.action === 'BUY' ? '#4ade80' : '#f87171' }}>
+                            {order.action}
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{order.symbol}</span>
+                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{order.shares} shares</span>
+                          <span style={{ fontSize: 11, color: '#64748b' }}>~${order.estimatedValue.toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.1)', padding: '2px 8px', borderRadius: 4 }}>
+                            {order.orderType === 'limit' ? `Limit $${(order.limitPrice || 0).toFixed(2)}` : order.orderType === 'stop' ? 'Stop' : 'Market'}
+                          </span>
+                          <button
+                            onClick={() => setEditingOrderIdx(isEditing ? null : i)}
+                            style={{ padding: '3px 10px', fontSize: 10, fontWeight: 600, background: 'none', border: '1px solid #334155', borderRadius: 4, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}
+                          >
+                            {isEditing ? 'Done' : 'Edit'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Inline editor */}
+                      {isEditing && (
+                        <div style={{ marginTop: 10, padding: '10px 12px', background: '#1e293b', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', minWidth: 56 }}>Type</span>
+                            <select
+                              value={order.orderType}
+                              onChange={e => updateOrder(i, { orderType: e.target.value })}
+                              style={{ padding: '4px 8px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#f1f5f9', fontSize: 12, fontFamily: 'inherit' }}
+                            >
+                              <option value="market">Market</option>
+                              <option value="limit">Limit</option>
+                              <option value="stop">Stop</option>
+                            </select>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', minWidth: 56 }}>Shares</span>
+                            <input
+                              type="number"
+                              min={0.01}
+                              step={0.01}
+                              value={order.shares}
+                              onChange={e => {
+                                const shares = parseFloat(e.target.value) || 0;
+                                updateOrder(i, { shares, estimatedValue: shares * order.currentPrice });
+                              }}
+                              style={{ width: 80, padding: '4px 8px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#f1f5f9', fontSize: 12, fontFamily: 'inherit' }}
+                            />
+                          </div>
+                          {(order.orderType === 'limit' || order.orderType === 'stop') && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', minWidth: 56 }}>
+                                {order.orderType === 'limit' ? 'Limit $' : 'Stop $'}
+                              </span>
+                              <input
+                                type="number"
+                                min={0.01}
+                                step={0.01}
+                                value={order.limitPrice || order.currentPrice || ''}
+                                onChange={e => updateOrder(i, { limitPrice: parseFloat(e.target.value) || undefined })}
+                                placeholder={String(order.currentPrice)}
+                                style={{ width: 80, padding: '4px 8px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#f1f5f9', fontSize: 12, fontFamily: 'inherit' }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Queue Summary */}
+              <div style={{ padding: '12px 14px', background: '#1e293b', border: '1px solid #334155', borderRadius: 10, marginTop: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12, color: '#94a3b8' }}>
+                  <span>Total Buys</span>
+                  <span style={{ fontWeight: 600, color: '#4ade80' }}>{buyOrders.length} orders · ${totalBuys.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12, color: '#94a3b8' }}>
+                  <span>Total Sells</span>
+                  <span style={{ fontWeight: 600, color: '#f87171' }}>{sellOrders.length} orders · ${totalSells.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, paddingTop: 6, borderTop: '1px solid #334155' }}>
+                  <span style={{ color: '#94a3b8' }}>Net Cash Impact</span>
+                  <span style={{ fontWeight: 700, color: netCashImpact > 0 ? '#f87171' : '#4ade80' }}>
+                    {netCashImpact > 0 ? '+' : ''}{netCashImpact.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Queue action buttons */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <button
+                  onClick={handleSaveQueue}
+                  disabled={queueLoading || queueSaved}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: queueSaved ? '#22c55e' : 'none',
+                    border: '1px solid #334155',
+                    borderRadius: 8,
+                    color: queueSaved ? '#0f172a' : '#94a3b8',
+                    fontSize: 12, fontWeight: 600,
+                    cursor: queueSaved ? 'default' : 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {queueLoading ? 'Saving...' : queueSaved ? '✓ Queue Saved' : '💾 Save Queue for Later'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* — Option B: Manual trade buttons — */}
+          {autoMode === 'manual' && trades.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                Place Individually
+              </div>
+              {trades.map((t, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', marginBottom: 6, background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: t.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.action === 'BUY' ? '#4ade80' : '#f87171' }}>
+                      {t.action}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{t.symbol}</span>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{t.shares} shares</span>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/?tab=trade&symbol=${t.symbol}`)}
+                    style={{ padding: '6px 14px', fontSize: 11, fontWeight: 700, background: 'linear-gradient(135deg, #06b6d4, #0d9488)', border: 'none', borderRadius: 8, color: '#0f172a', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Trade →
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+        </Section>
+      )}
+
       {/* ─── Section 4: Rebalance Triggers ──────────── */}
       <Section icon={<AlertTriangle size={12} />} label="Rebalance Triggers">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0' }}>
@@ -707,20 +1085,37 @@ export default function RebalancingPage() {
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            onClick={handleSubmit}
-            disabled={!isBalanced || !hasAnyTrade || submitting || !isConnected}
-            style={{
-              flex: 1, padding: 14, borderRadius: 10, border: 'none',
-              background: isBalanced && hasAnyTrade && !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
-              color: isBalanced && hasAnyTrade && !submitting && isConnected ? '#0f172a' : '#64748b',
-              fontSize: 15, fontWeight: 700,
-              cursor: isBalanced && hasAnyTrade && !submitting && isConnected ? 'pointer' : 'not-allowed',
-              fontFamily: 'inherit', transition: 'all 0.2s ease',
-            }}
-          >
-            {submitting ? 'Executing...' : isConnected ? 'Approve & Rebalance' : 'Connect Broker to Execute'}
-          </button>
+          {autoMode === 'auto' && editedOrders.length > 0 ? (
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || !isConnected}
+              style={{
+                flex: 1, padding: 14, borderRadius: 10, border: 'none',
+                background: !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+                color: !submitting && isConnected ? '#0f172a' : '#64748b',
+                fontSize: 15, fontWeight: 700,
+                cursor: !submitting && isConnected ? 'pointer' : 'not-allowed',
+                fontFamily: 'inherit', transition: 'all 0.2s ease',
+              }}
+            >
+              {submitting ? 'Executing...' : isConnected ? `Execute All ${editedOrders.length} Orders` : 'Connect Broker to Execute'}
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!isBalanced || !hasAnyTrade || submitting || !isConnected}
+              style={{
+                flex: 1, padding: 14, borderRadius: 10, border: 'none',
+                background: isBalanced && hasAnyTrade && !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+                color: isBalanced && hasAnyTrade && !submitting && isConnected ? '#0f172a' : '#64748b',
+                fontSize: 15, fontWeight: 700,
+                cursor: isBalanced && hasAnyTrade && !submitting && isConnected ? 'pointer' : 'not-allowed',
+                fontFamily: 'inherit', transition: 'all 0.2s ease',
+              }}
+            >
+              {submitting ? 'Executing...' : isConnected ? 'Approve & Rebalance' : 'Connect Broker to Execute'}
+            </button>
+          )}
           <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
