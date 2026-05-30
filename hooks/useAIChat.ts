@@ -221,10 +221,12 @@ export function useAIChat() {
             const msgs = [...state.messages];
             const lastMsg = msgs[msgs.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
+              // Strip JSON code blocks from displayed content
+              const cleanContent = lastMsg.content.replace(/```json\s*\n[\s\S]*?```\n?/g, '').trim();
               useChatStore.setState({
                 messages: msgs.map((m) =>
                   m.id === lastMsg.id
-                    ? { ...m, rebalanceSession: session }
+                    ? { ...m, content: cleanContent, rebalanceSession: session }
                     : m
                 ),
               });

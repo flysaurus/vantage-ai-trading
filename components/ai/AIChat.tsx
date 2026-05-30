@@ -254,8 +254,8 @@ export function AIChat() {
                 </div>
               )}
 
-              {/* Render embedded cards */}
-              {msg.components && msg.components.length > 0 && (
+              {/* Render embedded cards (suppress when rebalance session card is shown) */}
+              {msg.components && msg.components.length > 0 && !msg.rebalanceSession && (
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {msg.components.map((card, ci) => (
                     <ConvictionCard key={`${msg.id}-card-${ci}`} card={card} />
