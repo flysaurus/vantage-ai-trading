@@ -124,7 +124,7 @@ export function useAIChat() {
   }, [account, orders, user]);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, responseMode?: string) => {
       if (!content.trim() || isLoading) return;
 
       // Rate limit check
@@ -215,6 +215,21 @@ export function useAIChat() {
               }
             }
           },
+          onSession: (session) => {
+            // Attach rebalance session to the last AI message
+            const state = useChatStore.getState();
+            const msgs = [...state.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              useChatStore.setState({
+                messages: msgs.map((m) =>
+                  m.id === lastMsg.id
+                    ? { ...m, rebalanceSession: session }
+                    : m
+                ),
+              });
+            }
+          },
           onError: (err: string) => {
             setError(err);
             setLoading(false);
@@ -232,7 +247,7 @@ export function useAIChat() {
               });
             }
           },
-        });
+        }, responseMode);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Connection failed');
         setLoading(false);

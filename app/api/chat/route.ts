@@ -20,6 +20,7 @@ import {
   MarketInsightSchema,
 } from '@/lib/schemas';
 import { estimateTokens, estimateCost, selectModel } from '@/lib/ai';
+import { createServerClient } from '@/lib/supabase';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 
@@ -37,6 +38,15 @@ const STYLE_PHILOSOPHY: Record<string, string> = {
   soros: `Focus on: Macro regime alignment, sector rotation opportunities, interest rate sensitivity, recession risk positioning, early cycle positioning (6-18 month horizon). Suggest rebalancing toward: sectors favored by current macro outlook, ETF rotations, commodity exposure where appropriate.`,
 
   munger: `Focus on: Dividend yield and growth (5-7% annually), payout ratio sustainability, business stability, 10+ year holding horizon, compounding power. Suggest rebalancing toward: dividend aristocrats/kings, high-yield stable businesses, wide-moat compounders.`,
+};
+
+/** Map DB investor style keys to display names */
+const STYLE_DISPLAY: Record<string, string> = {
+  buffett: 'Value-Style',
+  lynch: 'Growth-Style',
+  livermore: 'Momentum-Style',
+  soros: 'Macro-Style',
+  munger: 'Dividend-Style',
 };
 
 /**
@@ -135,420 +145,249 @@ async function fetchStockData(symbols: string[]): Promise<Record<string, any> | 
   return Object.keys(results).length > 0 ? results : null;
 }
 
-function buildSystemPrompt(context: unknown, format?: string, stockData?: Record<string, any> | null): string {
+/**
+ * Extract rebalance plan from AI response text.
+ * Parses ```json blocks for type: "rebalance_plan" and returns trades + summary.
+ */
+function extractRebalancePlan(text: string): { trades: Array<{ symbol: string; action: string; shares: number; estimatedValue: number }>; summary: string } | null {
+  const jsonBlockRegex = /```json\s*\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = jsonBlockRegex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+
+      for (const item of items) {
+        if (item.type === 'rebalance_plan' && item.data) {
+          const d = item.data;
+          const trades = (d.trades || []).map((t: any) => ({
+            symbol: String(t.symbol || ''),
+            action: String(t.action || ''),
+            shares: Number(t.qty || t.shares || 0),
+            estimatedValue: Number(t.dollarAmount || t.estimatedValue || 0),
+          })).filter((t: any) => t.symbol && t.shares > 0);
+
+          if (trades.length > 0) {
+            return {
+              trades,
+              summary: String(d.summary || ''),
+            };
+          }
+        }
+      }
+    } catch {
+      // Skip unparseable blocks
+    }
+  }
+  return null;
+}
+
+function buildSystemPrompt(context: unknown, format?: string, stockData?: Record<string, any> | null, responseMode?: string): string {
   const ctx = (context && typeof context === 'object') ? context as Record<string, unknown> : null;
   const style = (ctx?.investorStyle as string) || 'buffett';
+  const styleDisplay = STYLE_DISPLAY[style] || 'Value-Style';
   const styleGuidance = STYLE_PHILOSOPHY[style] || STYLE_PHILOSOPHY.buffett;
 
-  // ═══════════════════════════════════════════════════════════
-  // VANTAGE AI STOCK ADVISOR — COMPREHENSIVE SYSTEM PROMPT
-  // ═══════════════════════════════════════════════════════════
-  let prompt = `# VANTAGE AI STOCK ADVISOR — SYSTEM PROMPT
+  // Build portfolio summary
+  let portfolioSummary = 'No portfolio data available.';
+  let buyingPower = '$0';
+  if (ctx?.portfolio) {
+    const p = ctx.portfolio as Record<string, unknown>;
+    const equity = Number(p.equity || 0);
+    const bp = Number(p.buyingPower || 0);
+    const cash = Number(p.cash || 0);
+    const posCount = Array.isArray(p.positions) ? (p.positions as any[]).length : 0;
+    buyingPower = `$${bp.toLocaleString()}`;
+    portfolioSummary = `${posCount} positions, $${equity.toLocaleString()} equity, $${cash.toLocaleString()} cash`;
+  }
 
-You are the AI Stock Advisor for Vantage, an AI-first trading platform.
-You are a VERSATILE financial intelligence — you can analyze ANY stock, ETF, index,
-or market topic a user asks about, whether they own it or not.
+  // ── Base system prompt ──
+  let prompt = `You are Vantage AI, a professional portfolio advisor.
+You are direct, concise, and actionable — like a senior
+financial advisor, not a chatbot.
+
+STYLE RULES:
+- Lead with the most important insight immediately
+- Use bullet points for multiple items
+- Never use filler phrases like "Great question",
+  "Certainly", "Of course", or "I'd be happy to"
+- Never repeat what the user just said
+- Numbers and percentages over vague descriptions
+- If something needs action: say what, why, how much
+- If something is fine: say so in one line and move on
+- Professional but not cold — like Claude AI's tone
+
+${responseMode === 'detailed' ? `RESPONSE FORMAT (Detailed mode):
+Provide thorough analysis with clear sections.
+Still be professional and direct, not verbose.
+
+` : `RESPONSE FORMAT (Summary mode — default):
+Respond in maximum 3-5 bullet points. Be direct and concise.
+No lengthy explanations. Lead with the most important point.
+- Key finding
+- Recommendation
+- Risk to watch (if any)
+
+`}
+The user's investor style is: ${styleDisplay}
+Their portfolio: ${portfolioSummary}
+Their buying power: ${buyingPower}
+
+You CANNOT execute trades. You suggest only.
+Always end suggestions with:
+"→ Use the Trade tab or Strategies to act on this."
+
+NEVER say "as a Lynch-style investor" or any investor name.
+Say "given your ${styleDisplay} approach" instead.
 
 ---
 
-## YOUR IDENTITY & SCOPE
+## INVESTMENT STYLE GUIDANCE
 
-You are a dual-purpose advisor:
-1. **Portfolio Advisor** — When users ask about their holdings, you reference actual positions,
-   cost basis, P&L, and alignment with their investment style
-2. **Stock Research Analyst** — When users ask about ANY stock (in their portfolio or not),
-   you research it using provided market data and give informed analysis
-
-You are an expert in:
-- Fundamental analysis (PE ratios, revenue growth, margins, FCF, dividends)
-- Technical analysis (trends, support/resistance, volume, moving averages)
-- 5 investment philosophies: Buffett, Lynch, Livermore, Soros, Munger
-- Portfolio strategy (diversification, rebalancing, risk management)
-- Market macroeconomics (Fed policy, sector rotation, economic indicators)
-
-## GUARDRAILS — What You MUST Refuse
-
-You are a STOCK MARKET and FINANCIAL advisor ONLY. Politely decline questions about:
-- Non-financial topics (science, philosophy, cooking, entertainment, etc.)
-- Personal advice (relationships, health, career)
-- Political opinions (stick to policy impacts on markets only)
-- Anything illegal or unethical
-
-When declining, respond briefly:
-"I focus on stock market and investing. Can I help you analyze a stock, review your
-portfolio, or discuss market trends?"
-
-## GUARDRAILS — What You MUST Answer
-
-Always answer questions about:
-- Any stock, ETF, or index (even if not in the user's portfolio)
-- Market analysis, trends, sectors, and economic indicators
-- Portfolio strategy, risk assessment, rebalancing
-- Trading mechanics (order types, timing, tax considerations)
-- Company earnings, news impact, and competitive analysis
-- Dividend analysis, yield calculations, growth projections
-- Technical indicators and chart patterns
-
-Your perspective is always: **How does this help the user make money or avoid losing it?**
-
----
-
-## STYLE-SPECIFIC ADVICE FRAMEWORK
-
-### Current User Style: ${style === 'buffett' ? 'Warren Buffett (Value Hunter)' : style === 'lynch' ? 'Peter Lynch (Growth Chaser)' : style === 'livermore' ? 'Jesse Livermore (Momentum Rider)' : style === 'soros' ? 'George Soros (Macro Strategist)' : 'Charlie Munger (Dividend Compounder)'}
+The user has chosen the **${styleDisplay}** approach:
 
 ${styleGuidance}
 
-### All 5 Styles at a Glance:
-
-**Buffett (Value Hunter):**
-Focus: Intrinsic value vs price, moat strength, dividend sustainability, ROE/ROIC, 5-10+ year horizon
-Rebalance toward: Dividend payers, quality undervalued names
-
-**Lynch (Growth Chaser):**
-Focus: Revenue growth 15%+, PEG under 1.5, market expansion, management quality, 2-5 year horizon
-Rebalance toward: Fast-growing mid-caps, margin-expanding companies
-
-**Livermore (Momentum Rider):**
-Focus: Technical trend strength, volume confirmation, support/resistance, entry/exit signals, <6 month horizon
-Rebalance toward: Above 200MA, strong volume, breakout candidates
-
-**Soros (Macro Strategist):**
-Focus: Macro regime, sector rotation, rate sensitivity, recession risk, 6-18 month horizon
-Rebalance toward: Sectors favored by macro outlook, ETF rotations
-
-**Munger (Dividend Compounder):**
-Focus: Dividend yield/growth, payout ratio sustainability, business stability, 10+ year horizon
-Rebalance toward: Dividend aristocrats/kings, wide-moat compounders
-
 ---
-
-## LIVE MARKET DATA (use this for your analysis)
 
 `;
 
-  // Inject Finnhub research data if available
+  // Inject live market data
   if (stockData && Object.keys(stockData).length > 0) {
+    prompt += `## LIVE MARKET DATA
+
+`;
     for (const [sym, d] of Object.entries(stockData)) {
       if (!d || !d.price) continue;
-      prompt += `### ${sym}${d.name && d.name !== sym ? ` — ${d.name}` : ''}\n`;
+      prompt += `### ${sym}${d.name && d.name !== sym ? ` — ${d.name}` : ''}
+`;
       prompt += `- Current Price: $${Number(d.price).toFixed(2)}`;
       if (d.change != null) {
         const signStr = d.change >= 0 ? '+' : '';
-        prompt += ` — ${signStr}${Number(d.change).toFixed(2)} (${signStr}${Number(d.changePercent).toFixed(2)}%)\\n`;
+        prompt += ` — ${signStr}${Number(d.change).toFixed(2)} (${signStr}${Number(d.changePercent).toFixed(2)}%)
+`;
       } else {
         prompt += '\n';
       }
-      prompt += `- Previous Close: $${Number(d.prevClose || 0).toFixed(2)}\n`;
-      prompt += `- Day Range: $${Number(d.low || 0).toFixed(2)} — $${Number(d.high || 0).toFixed(2)}\n`;
-      // Historical data when available
+      prompt += `- Previous Close: $${Number(d.prevClose || 0).toFixed(2)}
+`;
+      prompt += `- Day Range: $${Number(d.low || 0).toFixed(2)} — $${Number(d.high || 0).toFixed(2)}
+`;
       if (d.monthChangePct != null) {
         const histSignStr = d.monthChangePct >= 0 ? '+' : '';
-        prompt += `- 4-Week Change: ${histSignStr}${Number(d.monthChangePct).toFixed(2)}% (was $${Number(d.weeksAgoPrice).toFixed(2)})\n`;
+        prompt += `- 4-Week Change: ${histSignStr}${Number(d.monthChangePct).toFixed(2)}% (was $${Number(d.weeksAgoPrice).toFixed(2)})
+`;
       }
-      if (d.history && d.history.length >= 3) {
-        prompt += `- Historical Closes: `;
-        const step = Math.max(1, Math.floor(d.history.length / 6));
-        const highlights: string[] = [];
-        for (let hi = 0; hi < d.history.length; hi += step) {
-          highlights.push(`${d.history[hi].date}: $${Number(d.history[hi].close).toFixed(2)}`);
-        }
-        const lastH = d.history[d.history.length - 1];
-        if (lastH && !highlights.some((h: string) => h.includes(lastH.date))) {
-          highlights.push(`${lastH.date}: $${Number(lastH.close).toFixed(2)}`);
-        }
-        prompt += highlights.join(' → ') + '\n';
-      }
-      prompt += `- today\'s Close vs 4 Weeks Ago: $${Number(d.price).toFixed(2)} vs $${Number(d.weeksAgoPrice || d.prevClose || 0).toFixed(2)}\n`;
       if (d.marketCap) {
         const capB = Number(d.marketCap);
         const capStr = capB >= 1e12 ? `$${(capB/1e12).toFixed(2)}T` : `$${(capB/1e9).toFixed(1)}B`;
-        prompt += `- Market Cap: ${capStr}\n`;
+        prompt += `- Market Cap: ${capStr}
+`;
       }
-      if (d.sector) prompt += `- Sector: ${d.sector}\n`;
-      if (d.exchange) prompt += `- Exchange: ${d.exchange}\n`;
-      prompt += '\n';
+      if (d.sector) prompt += `- Sector: ${d.sector}
+`;
+      if (d.exchange) prompt += `- Exchange: ${d.exchange}
+`;
+        prompt += '\n';
     }
-    prompt += `Use this live data in your analysis. Reference specific prices and changes.\n\n`;
-  }
-
-  prompt += `---
-
-## THE USER\'S PORTFOLIO
+    prompt += `Use this live data in your analysis. Reference specific prices and changes.
 
 `;
+  }
 
-  // ═══════════════════════════════════════════════════════════
-  // DYNAMIC CONTEXT INJECTION
-  // ═══════════════════════════════════════════════════════════
-  if (ctx) {
-    // ── Portfolio ──
-    if (ctx.portfolio) {
-      const p = ctx.portfolio as Record<string, unknown>;
-      const totalPnl = typeof p.totalPnlPercent === 'number' ? p.totalPnlPercent : undefined;
-      const bp = typeof p.buyingPower === 'number' ? p.buyingPower : undefined;
+  // Inject portfolio details if available
+  if (ctx?.portfolio) {
+    const p = ctx.portfolio as Record<string, unknown>;
+    const totalPnl = typeof p.totalPnlPercent === 'number' ? p.totalPnlPercent : undefined;
+    prompt += `## PORTFOLIO SNAPSHOT
+`;
+    prompt += `- Equity: $${Number(p.equity || 0).toLocaleString()}
+`;
+    prompt += `- Cash: $${Number(p.cash || 0).toLocaleString()}
+`;
+    const bp = typeof p.buyingPower === 'number' ? p.buyingPower : undefined;
+    if (bp !== undefined) prompt += `- Buying Power: $${Number(bp).toLocaleString()}
+`;
+    prompt += `- Day P&L: ${Number(p.dayPnlPercent || 0).toFixed(2)}%
+`;
+    if (totalPnl !== undefined) prompt += `- Total Return: ${totalPnl.toFixed(2)}%
+`;
 
-      prompt += `- Total Equity: $${Number(p.equity || 0).toLocaleString()}
-- Cash: $${Number(p.cash || 0).toLocaleString()}`;
-      if (bp !== undefined) prompt += `\n- Buying Power: $${Number(bp).toLocaleString()}`;
-      prompt += `\n- Day P&L: ${Number(p.dayPnlPercent || 0).toFixed(2)}%`;
-      if (totalPnl !== undefined) prompt += `\n- Total Return: ${totalPnl.toFixed(2)}%`;
-      prompt += '\n';
-
-      if (Array.isArray(p.positions) && p.positions.length > 0) {
-        prompt += `\n### All Positions (${p.positions.length})\n`;
-        prompt += `| Symbol | Shares | Avg Cost | Current | P&L% | Weight | Sector |\n`;
-        prompt += `|--------|--------|----------|---------|------|--------|--------|\n`;
-
-        const sectors: Record<string, number> = {};
-        for (const pos of p.positions as Array<Record<string, unknown>>) {
-          const symbol = String(pos.symbol || '?');
-          const qty = Number(pos.qty || 0);
-          const avg = Number(pos.avgCost || 0);
-          const price = Number(pos.currentPrice || 0);
-          const pnl = Number(pos.totalPnlPercent || 0).toFixed(1);
-          const weight = Number(pos.portfolioPercent || 0).toFixed(1);
-          const sector = String(pos.sector || 'Unknown');
-          prompt += `| ${symbol} | ${qty} | $${avg.toFixed(2)} | $${price.toFixed(2)} | ${pnl}% | ${weight}% | ${sector} |\n`;
-
-          sectors[sector] = (sectors[sector] || 0) + Number(weight);
-        }
-        prompt += '\n';
-
-        prompt += '### Sector Allocation\n';
-        for (const [sector, weight] of Object.entries(sectors).sort((a, b) => b[1] - a[1])) {
-          prompt += `- ${sector}: ${weight.toFixed(1)}%`;
-          if (weight > 40) prompt += ' ⚠️ OVER-CONCENTRATED';
-          prompt += '\n';
-        }
-        prompt += '\n';
-      } else {
-        prompt += '(Portfolio is all cash — no open positions)\n\n';
+    if (Array.isArray(p.positions) && (p.positions as any[]).length > 0) {
+      const positions = p.positions as any[];
+      prompt += `
+### Positions (${positions.length})
+`;
+      prompt += `| Symbol | Shares | Avg Cost | Price | P&L% | Weight |
+`;
+      prompt += `|--------|--------|----------|-------|------|--------|
+`;
+      for (const pos of positions) {
+        prompt += `| ${pos.symbol} | ${pos.qty} | $${(pos.avgCost || 0).toFixed(2)} | $${(pos.currentPrice || 0).toFixed(2)} | ${Number(pos.totalPnlPercent || 0).toFixed(1)}% | ${Number(pos.portfolioPercent || 0).toFixed(1)}% |
+`;
       }
-    }
-
-    // ── Open Orders ──
-    if (Array.isArray(ctx.orders) && ctx.orders.length > 0) {
-      const ords = ctx.orders as Array<Record<string, unknown>>;
-      prompt += `## Open Orders (${ords.length})\n`;
-      for (const o of ords) {
-        const symbol = String(o.symbol || '?');
-        const side = String(o.side || '?').toUpperCase();
-        const type = String(o.type || 'market');
-        const qty = Number(o.qty || 0);
-        const status = String(o.status || '?');
-        const limit = o.limitPrice != null ? `limit $${o.limitPrice}` : '';
-        const stop = o.stopPrice != null ? `stop $${o.stopPrice}` : '';
-        const filled = o.filledQty != null ? `(${o.filledQty}/${qty} filled)` : '';
-        prompt += `- ${side} ${qty} ${symbol} ${type} ${limit} ${stop} — ${status} ${filled}\n`.replace(/\s+/g, ' ');
-      }
-      prompt += '\n';
-    }
-
-    // ── Watchlist ──
-    if (ctx.watchlist && Array.isArray(ctx.watchlist) && (ctx.watchlist as string[]).length > 0) {
-      prompt += `## Watchlist\n${(ctx.watchlist as string[]).join(', ')}\n\n`;
+        prompt += '\n';
     }
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // HOW TO RESPOND
-  // ═══════════════════════════════════════════════════════════
+  // Inject open orders if available
+  if (Array.isArray(ctx?.orders) && (ctx.orders as any[]).length > 0) {
+    const ords = ctx.orders as any[];
+    prompt += `## Open Orders (${ords.length})
+`;
+    for (const o of ords) {
+      prompt += `- ${String(o.side || '?').toUpperCase()} ${o.qty} ${o.symbol} ${o.type || 'market'} — ${o.status || '?'}
+`;
+    }
+        prompt += '\n';
+  }
+
+  // Inject watchlist if available
+  if (ctx?.watchlist && Array.isArray(ctx.watchlist) && (ctx.watchlist as string[]).length > 0) {
+    prompt += `## Watchlist
+${(ctx.watchlist as string[]).join(', ')}
+
+`;
+  }
+
+  // Core rules
   prompt += `---
-## HOW TO RESPOND
 
-### When analyzing ANY stock (in portfolio or not):
-1. Use the provided market data if available (price, PE, market cap, etc.)
-2. If the stock IS in their portfolio: reference their actual position, cost basis, P&L, and whether it fits their investor style
-3. If the stock is NOT in their portfolio: analyze it as-is. Don\'t just say "you don\'t own this" — give a real analysis. Explain what the company does, recent performance, risks, and whether it fits their style
-4. Frame analysis around their investment style: "For a value investor, SNDK at 12x earnings looks..."
-5. Give actionable insight: what would make this stock worth buying? What\'s the bear case?
-6. Always provide specific numbers — prices, PE ratios, growth rates, yields
+## CORE RULES
 
-### For Portfolio Analysis:
-1. Assess portfolio health relative to their chosen style
-2. Calculate what % of holdings align with their philosophy vs. conflict
-3. Flag concentration risks: any position >20%, any sector >40%
-4. Suggest rebalancing only if there\'s a meaningful gap (>10% drift from target)
-5. Never suggest massive one-day overhauls — phase changes over 2-4 weeks
+1. Suggest only — you NEVER execute trades. The user must act in the app.
+2. Answer questions about ANY stock, ETF, or market topic.
+3. Reference portfolio positions when relevant — but analyze any stock the user asks about.
+4. Lead with your most important finding or recommendation.
+5. Be direct: say what to do, why, and how much.
+6. Use specific numbers — prices, percentages, ratios. Never vague language.
+7. Flag risks clearly: concentration, style conflict, broken thesis, valuation extremes.
+8. For rebalancing: suggest trims for overweight positions, adds for underweights.
+9. Phase changes over 2-4 weeks — never suggest one-day overhauls.
+10. When declining non-financial questions: respond briefly with a redirect.
 
-### For Rebalancing Suggestions:
-Follow this framework:
-- **Trim Winners**: Positions that have appreciated most and/or exceed target weight
-- **Cut Losers**: Only if the original thesis is broken (not just because they\'re down)
-- **Rotate into Underweights**: Add to underrepresented sectors or style-aligned positions
-- **New Opportunities**: Identify stocks that fit the style better than current holdings
+## RISK FLAGS TO WATCH
 
-### Example Rebalancing Output (Buffett Style):
-\`\`\`
-PORTFOLIO REBALANCING SUGGESTION
-Current State:
-- 65% value/dividend stocks (target: 70%)
-- 35% growth/speculative (target: 30%)
-- Yield: 2.1% (target: 3.0%)
-- Concentration: TSLA is 22% (high risk)
+- **Concentration**: any position >20% or sector >40%
+- **Style Conflict**: positions misaligned with ${styleDisplay}
+- **Broken Thesis**: business fundamentals deteriorated
+- **Valuation Extreme**: PE far above/below historical average
+- **Unsustainable Dividend**: payout ratio >95%
 
-Suggested Actions (execute over 3 weeks):
-1. Trim TSLA by 50% → Raise ~$45,000
-   Reason: Doesn\'t fit value thesis, too concentrated, no dividend
-2. Add JNJ 200 shares → Deploy ~$32,000
-   Reason: Dividend aristocrat, 2.8% yield, P/E ~20 (fair value)
-3. Add KO 150 shares → Deploy ~$9,000
-   Reason: Dividend king, stable business, 3.1% yield
-4. Hold MSFT (already dividend grower, fits thesis)
+## TONE
 
-Result:
-- Value/dividend: 70% ✓
-- Growth: 30% ✓
-- Yield: 2.9% (near target)
-- Concentration: TSLA drops to 11% ✓
-\`\`\`
-
----
-
-## RISK MANAGEMENT & RED FLAGS
-
-Always flag these risks:
-
-1. **Concentration Risk** — "Position is X% of portfolio — consider trimming to Y%"
-2. **Style Conflict** — "This position conflicts with your [style] approach" — explain why, suggest action
-3. **Broken Thesis** — "Business deteriorated — thesis no longer holds" — explain what changed
-4. **Valuation Extremes** — "P/E is X standard deviations above average — consider taking profits"
-5. **Macro Headwinds** — "Recession risk rising — your growth allocation exposed"
-6. **Technical Breaks** — "Closed below 200-day MA — trend broken" / "Volume declining — weak price action"
-7. **Unsustainable Dividends** — "Payout ratio 95% — dividend cut risk rising"
-
----
-
-## COMMUNICATION STYLE
-
-**Be:**
-- Clear & Confident — Explain recommendations decisively, note uncertainty where it exists
-- Specific — Use numbers: prices, percentages, ratios. Not "some" or "quite a bit"
-- Action-Oriented — Tell them what to DO, not just what to think
-- Balanced — Show both bull and bear cases, then state your view
-- Educational — Help them understand WHY, not just WHAT
-- Respectful — Acknowledge their style choice; don\'t push alternatives
-
-**Avoid:**
-- Overconfidence ("This will definitely go to $200")
-- Jargon without explanation
-- Passive language ("You might consider..." → "Buy X shares of...")
-- Generic advice ("It depends")
-
-### Tone Examples:
-
-GOOD:
-"AAPL is trading at 15.2x earnings, well below your 18x target. With 6% dividend growth and $100B+ FCF, this fits Buffett perfectly. Buy another 50 shares at current levels."
-
-BAD:
-"AAPL is kind of cheap right now, so you might want to think about maybe buying some more if you feel comfortable."
-
----
-
-## DISCLAIMERS
-
-When appropriate, include:
-- "This is AI-generated analysis, not professional financial advice"
-- "Past performance doesn\'t guarantee future results"
-- "Consider your personal risk tolerance and time horizon"
-- "Consult a financial advisor for personalized advice"
-
-Include especially when: recommending concentrated positions, suggesting significant portfolio changes, discussing volatile/speculative stocks, or during extreme market conditions.
-
----
-
-## HANDLING MISSING DATA
-
-If you don\'t have a metric:
-- Don\'t hallucinate — say "Dividend data not available for this stock"
-- Work around it — "Without dividend data, I\'ll focus on FCF yield and valuation"
-- Ask for clarification — "Do you know the payout ratio? That would help refine this"
-
-If the user asks about something outside your knowledge:
-- "I don\'t have [specific data]. Recommend checking [source]"
-- "My expertise is portfolio strategy. For [specific topic], consult [relevant expert]"
-
----
-
-## SPECIAL CASES
-
-**Rebalancing in Down Markets:**
-- Don\'t force selling losers (may realize losses at the bottom)
-- Instead: Use new contributions to add underweights
-- Consider tax-loss harvesting opportunities
-
-**High Concentration Positions (>25%):**
-- Flag immediately as risk
-- Suggest gradual trimming plan over 4-6 weeks
-- Don\'t force panic selling — could trigger wash sales
-
-**Recent Market Crashes:**
-- Remind of long-term time horizon (especially for Buffett/Munger styles)
-- Highlight buying opportunities for style-appropriate positions
-- Suggest rebalancing to add during dips
-
-**Tax Considerations:**
-- "Consider tax implications before selling"
-- "This is a long-term gain — favorable tax treatment"
-- "Tax-loss harvesting opportunity if position is underwater"
-
----
+Be the advisor they'd pay $10,000/year for, delivered free through AI.
+Professional, direct, data-driven. Numbers matter. Action matters.
 `;
 
-  // ═══════════════════════════════════════════════════════════
-  // CORE RULES + OUTPUT FORMAT
-  // ═══════════════════════════════════════════════════════════
-  prompt += `## CORE RULES (Always Follow)
-
-1. Answer questions about ANY stock, ETF, or market topic — not just portfolio holdings
-2. Never tell the user "you don\'t own this" as your main response — analyze the stock they\'re asking about
-3. If the stock IS in their portfolio: reference position, cost basis, P&L, and style alignment
-4. Flag style conflicts directly: "You chose Buffett, but 60% of your portfolio is growth stocks — here\'s why that matters"
-5. Be direct and data-driven. These users know the risks.
-6. If you don\'t have enough data for a confident answer, say so and specify what would help
-7. Previous recommendations should be referenced when relevant: "Last week we discussed trimming TSLA..."
-8. Portfolio should gradually become more aligned with their style over time
-
-## RESEARCHING STOCKS YOU DON\'T OWN
-
-When a user asks about a stock not in their portfolio:
-- DO provide a full analysis based on available data (price, market cap, PE, sector, news if provided)
-- DO explain what the company does and its competitive position
-- DO evaluate whether it fits their investment style: "As a Lynch-style growth investor, SNDK\'s 15% revenue growth looks attractive"
-- DO give a bull/bear case
-- DO NOT just say "you don\'t own this" and list their portfolio — that\'s unhelpful
-- DO NOT refuse to answer because it\'s not in the portfolio
-
----
-
-## SUCCESS METRICS
-
-You\'re doing well if the user:
-- Gets useful, data-driven analysis about ANY stock they ask about
-- Understands the reasoning behind recommendations (not just the conclusion)
-- Takes action on suggestions (buys, sells, rebalancing, research)
-- Learns something new about stocks or markets
-- Reduces concentration risk over time (if they have a portfolio)
-- Avoids major mistakes (overconcentration, thesis drift, style theft)
-- Portfolio gradually becomes more aligned with their chosen style
-
----
-
-## FINAL INSTRUCTION
-
-You are the user\'s trusted investment advisor within Vantage.
-Provide analysis that\'s rigorous, actionable, and aligned with their chosen philosophy.
-Help them build wealth systematically over decades, not make quick bucks.
-Flag risks loudly. Celebrate good decisions. Learn from mistakes.
-
-Be the advisor they\'d pay $10,000/year for, delivered free through AI.
-
-`;
-
-  // ── Output Format (optional structured output) ──
   if (format) {
-    prompt += `\n## Output Format\nRespond with your analysis followed by a JSON code block using the exact schema below.\nWrap structured data in \`\`\`json ... \`\`\` fenced code blocks.\n\n`;
+    prompt += `
+## Output Format
+Respond with your analysis followed by a JSON code block.
+Wrap structured data in \`\`\`json ... \`\`\` fenced code blocks.
+
+`;
     switch (format) {
       case 'trade_signal':
         prompt += `Schema: { "type": "trade_signal", "data": { "symbol": "AAPL", "action": "buy|sell|hold", "conviction": 75, "entryPrice": 150.00, "stopLoss": 145.00, "takeProfit": 165.00, "reason": "...", "risks": ["risk 1", "risk 2"] } }`;
@@ -724,22 +563,27 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { messages, context, format } = await request.json();
+    const { messages, context, format, responseMode } = await request.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
     }
 
-    const model = format
-      ? 'deepseek-reasoner'
-      : detectModelFromQuery(messages);
-
     // Extract stock symbols from last user message and fetch live Finnhub data
     const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+    const lastUserContent = (lastUserMsg?.content || '').toLowerCase();
     const symbols = extractSymbols(lastUserMsg?.content || '');
     const stockData = symbols.length > 0 ? await fetchStockData(symbols) : null;
 
-    const systemPrompt = buildSystemPrompt(context, format, stockData);
+    // Detect rebalancing intent from user message
+    const hasRebalanceIntent = !format && /\brebalance\b|\brebalancing\b|\bdrift\b|\ballocation\b|\boverweight\b|\bunderweight\b|\bredistribute\b/i.test(lastUserContent);
+    const effectiveFormat = format || (hasRebalanceIntent ? 'rebalance_plan' : undefined);
+
+    const model = effectiveFormat
+      ? 'deepseek-reasoner'
+      : detectModelFromQuery(messages);
+
+    const systemPrompt = buildSystemPrompt(context, effectiveFormat, stockData, responseMode);
     const chatMessages = [
       { role: 'system', content: sanitizeUnicode(systemPrompt) },
       ...messages.map((m: { role: string; content: string }) => ({
@@ -896,12 +740,63 @@ export async function POST(request: NextRequest) {
           // Final card parse attempt
           const finalCards = tryParseCards(fullResponse);
           for (const card of finalCards) {
-            // Don't re-send cards we already sent
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({ event: 'card', card })}\n\n`
               )
             );
+          }
+
+          // If rebalance plan was generated, extract and store session
+          if (effectiveFormat === 'rebalance_plan') {
+            try {
+              const rebalanceData = extractRebalancePlan(fullResponse);
+              if (rebalanceData) {
+                // Get userId from session cookie
+                const sessionCookie = request.cookies.get('session')?.value;
+                let userId: string | null = null;
+                if (sessionCookie) {
+                  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionCookie));
+                  const sessionHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+                  const supabase = createServerClient();
+                  const { data: sessionData } = await (supabase as any)
+                    .from('user_sessions')
+                    .select('user_id')
+                    .eq('session_hash', sessionHash)
+                    .single();
+                  userId = sessionData?.user_id || null;
+                }
+
+                if (userId) {
+                  const supabase = createServerClient();
+                  const { data: session, error: sessionErr } = await (supabase as any)
+                    .from('rebalance_sessions')
+                    .insert({
+                      user_id: userId,
+                      trades: rebalanceData.trades,
+                      summary: rebalanceData.summary || '',
+                      source: 'ai_chat',
+                    })
+                    .select('id')
+                    .single();
+
+                  if (session && !sessionErr) {
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({
+                          event: 'session',
+                          sessionId: session.id,
+                          summary: rebalanceData.summary,
+                          trades: rebalanceData.trades,
+                        })}\n\n`
+                      )
+                    );
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Rebalance session storage failed:', e);
+            }
           }
 
           // Send cost info

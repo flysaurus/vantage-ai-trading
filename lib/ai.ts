@@ -52,6 +52,7 @@ export interface StreamCallbacks {
   onCard: (card: AICardComponent) => void;
   onDone: (tokens: { input: number; output: number }, cost: number) => void;
   onError: (error: string) => void;
+  onSession?: (session: { sessionId: string; summary: string; trades: Array<{ symbol: string; action: string; shares: number; estimatedValue: number }> }) => void;
 }
 
 export interface ChatResult {
@@ -210,7 +211,8 @@ export function selectModel(messages: Array<{ role: string; content: string }>):
 export async function streamChat(
   messages: Array<{ role: string; content: string }>,
   context: ChatContext | undefined,
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  responseMode?: string
 ): Promise<void> {
   // Check cache first
   if (context) {
@@ -243,7 +245,7 @@ export async function streamChat(
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, context }),
+      body: JSON.stringify({ messages, context, responseMode }),
     });
 
     // Diagnostic: check response headers
@@ -313,6 +315,16 @@ export async function streamChat(
               case 'cost': {
                 tokensUsed = parsed.tokens;
                 totalCost = parsed.cost;
+                break;
+              }
+              case 'session': {
+                if (parsed.sessionId && callbacks.onSession) {
+                  callbacks.onSession({
+                    sessionId: parsed.sessionId,
+                    summary: parsed.summary || '',
+                    trades: parsed.trades || [],
+                  });
+                }
                 break;
               }
               case 'error': {

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, RefreshCw, AlertCircle, Trash2 } from 'lucide-react';
+import { Send, RefreshCw, AlertCircle, Trash2, AlignLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
@@ -92,6 +92,7 @@ export function AIChat() {
   } = useAIChat();
 
   const [input, setInput] = useState('');
+  const [responseMode, setResponseMode] = useState<'summary' | 'detailed'>('summary');
   const [showCost, setShowCost] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -131,7 +132,7 @@ export function AIChat() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.prompt) {
-        sendMessage(detail.prompt);
+        sendMessage(detail.prompt, responseMode);
       }
     };
     window.addEventListener('vantage-ai-suggestion', handler);
@@ -140,7 +141,7 @@ export function AIChat() {
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
-    sendMessage(input.trim());
+    sendMessage(input.trim(), responseMode);
     setInput('');
   };
 
@@ -184,6 +185,9 @@ export function AIChat() {
             <div className="empty-title">Ask Vantage AI</div>
             <div className="empty-subtitle">
               Real-time portfolio analysis, trade signals, and market insights — powered by DeepSeek.
+            </div>
+            <div className="empty-disclaimer">
+              ⚠️ Advisory only. Vantage AI does not execute trades.
             </div>
           </div>
         )}
@@ -259,8 +263,52 @@ export function AIChat() {
                 </div>
               )}
 
-              {/* Rebalance action button — detect keywords in AI response */}
-              {msg.role === 'assistant' && !isLoading && (() => {
+              {/* Rebalance session card — structured plan from AI */}
+              {msg.role === 'assistant' && !isLoading && msg.rebalanceSession && (() => {
+                const session = msg.rebalanceSession;
+                const tradeCount = session.trades?.length || 0;
+                const totalValue = session.trades?.reduce((sum: number, t: any) => sum + (t.estimatedValue || 0), 0) || 0;
+                const buys = session.trades?.filter((t: any) => t.action === 'buy' || t.action === 'add') || [];
+                const sells = session.trades?.filter((t: any) => t.action === 'sell' || t.action === 'trim') || [];
+                return (
+                  <div style={{
+                    marginTop: 10,
+                    padding: '12px 14px',
+                    background: '#1e293b',
+                    border: '1px solid #06b6d4',
+                    borderRadius: 10,
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
+                      📊 Rebalance Plan Ready
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
+                      {tradeCount} trades · Est. ${totalValue.toLocaleString()}
+                      {buys.length > 0 && ` · ${buys.length} buys`}
+                      {sells.length > 0 && ` · ${sells.length} sells`}
+                    </div>
+                    <button
+                      onClick={() => router.push(`/strategies/setup/rebalancing?session=${session.sessionId}&source=ai`)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 16px',
+                        background: '#06b6d4',
+                        border: 'none',
+                        borderRadius: 8,
+                        color: 'white',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      Push to Rebalance →
+                    </button>
+                  </div>
+                );
+              })()}
+
+              {/* Fallback: keyword-based rebalance link (no structured session) */}
+              {msg.role === 'assistant' && !isLoading && !msg.rebalanceSession && (() => {
                 const text = (msg.content || '').toLowerCase();
                 const hasRebalance = /\brebalance\b|\brebalancing\b|\bdrift\b|\ballocation target\b/i.test(text);
                 if (!hasRebalance) return null;
@@ -351,6 +399,20 @@ export function AIChat() {
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
+        {/* NO EXECUTION disclaimer banner */}
+        <div style={{
+          padding: '6px 10px',
+          marginBottom: 8,
+          background: 'rgba(248,113,113,0.08)',
+          border: '1px solid rgba(248,113,113,0.2)',
+          borderRadius: 6,
+          fontSize: 10,
+          color: '#fca5a5',
+          textAlign: 'center',
+          fontWeight: 500,
+        }}>
+          ⚠️ NO EXECUTION — Vantage AI advises only. All trades must be placed manually in the Trade tab or Strategies.
+        </div>
         {/* Suggestions */}
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}
           className="no-scrollbar">
@@ -402,6 +464,28 @@ export function AIChat() {
             }}
           >
             <Send size={16} />
+          </button>
+
+          {/* Response mode toggle — Summary / Detailed */}
+          <button
+            onClick={() => setResponseMode(m => m === 'summary' ? 'detailed' : 'summary')}
+            disabled={isLoading}
+            title={responseMode === 'summary' ? 'Switch to Detailed mode' : 'Switch to Summary mode'}
+            style={{
+              width: 34, height: 34,
+              background: responseMode === 'detailed' ? 'rgba(6,182,212,0.15)' : 'transparent',
+              border: responseMode === 'detailed' ? '1px solid #06b6d4' : '1px solid #475569',
+              borderRadius: 8,
+              color: responseMode === 'detailed' ? '#06b6d4' : '#94a3b8',
+              cursor: isLoading ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              opacity: isLoading ? 0.5 : 1,
+              flexShrink: 0,
+              fontSize: 10,
+              fontWeight: 600,
+            }}
+          >
+            <AlignLeft size={14} />
           </button>
 
           {/* 🗑️ Always visible */}
@@ -462,6 +546,12 @@ export function AIChat() {
           max-width: 260px;
           margin: 0 auto;
           line-height: 1.5;
+        }
+        .empty-disclaimer {
+          font-size: 9px;
+          color: #fca5a5;
+          margin-top: 8px;
+          font-weight: 500;
         }
         .chat-messages::-webkit-scrollbar {
           width: 4px;

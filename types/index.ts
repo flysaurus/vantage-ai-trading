@@ -100,7 +100,14 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   components?: AICardComponent[];
+  rebalanceSession?: RebalanceSession;
   timestamp: number;
+}
+
+export interface RebalanceSession {
+  sessionId: string;
+  summary: string;
+  trades: Array<{ symbol: string; action: string; shares: number; estimatedValue: number }>;
 }
 
 export type AICardType = 'buy_signal' | 'sell_signal' | 'risk_analysis' | 'insight' | 'rebalance';

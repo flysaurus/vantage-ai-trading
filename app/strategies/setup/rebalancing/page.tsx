@@ -151,6 +151,8 @@ export default function RebalancingPage() {
   const [savingTargets, setSavingTargets] = useState(false);
   const [targetsSaved, setTargetsSaved] = useState(false);
   const [fromAi, setFromAi] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
 
   // Section 3: trade preview
   const [submitting, setSubmitting] = useState(false);
@@ -171,11 +173,43 @@ export default function RebalancingPage() {
 
   // Initialize targets from saved allocations or current positions
   useEffect(() => {
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const sid = params?.get('session');
+
     // Check if opened from AI Advisor
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('source') === 'ai') setFromAi(true);
+    if (params?.get('source') === 'ai') setFromAi(true);
+
+    // Load session data if present
+    if (sid && !sessionId) {
+      setSessionId(sid);
+      setSessionLoading(true);
+      setFromAi(true);
+      fetch(`/api/strategies/rebalancing/session?id=${sid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.trades?.length) {
+            // Pre-fill edited orders from session trades
+            const orders = data.trades.map((t: any) => ({
+              symbol: t.symbol,
+              name: t.symbol,
+              action: t.action === 'trim' || t.action === 'sell' ? 'SELL' as const : 'BUY' as const,
+              shares: t.shares,
+              estimatedValue: t.estimatedValue,
+              currentPrice: t.shares > 0 ? t.estimatedValue / t.shares : 0,
+              orderType: 'market' as const,
+              isAiSuggested: true,
+            }));
+            setEditedOrders(orders);
+            setAutoMode('auto');
+          }
+          setSessionLoading(false);
+        })
+        .catch(() => setSessionLoading(false));
+      return; // Skip normal init while session loads
     }
+
+    // Skip normal init if waiting for session
+    if (sessionLoading) return;
 
     // Load saved target allocations if available
     fetch('/api/strategies/rebalancing/saved')
@@ -611,7 +645,7 @@ export default function RebalancingPage() {
         {fromAi && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: 8, fontSize: 12, color: '#06b6d4', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>💡</span>
-            <span>Opened from AI Advisor</span>
+            <span>{sessionId ? 'Populated from AI Advisor' : 'Opened from AI Advisor'}</span>
           </div>
         )}
       </div>
@@ -903,6 +937,9 @@ export default function RebalancingPage() {
                             {order.action}
                           </span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{order.symbol}</span>
+                          {(order as any).isAiSuggested && (
+                            <span style={{ fontSize: 9, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.12)', padding: '2px 6px', borderRadius: 3 }}>AI Suggested</span>
+                          )}
                           <span style={{ fontSize: 12, color: '#94a3b8' }}>{order.shares} shares</span>
                           <span style={{ fontSize: 11, color: '#64748b' }}>~${order.estimatedValue.toFixed(2)}</span>
                         </div>
@@ -1085,7 +1122,35 @@ export default function RebalancingPage() {
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {autoMode === 'auto' && editedOrders.length > 0 ? (
+          {sessionId ? (
+            <>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !isConnected}
+                style={{
+                  flex: 1, padding: 14, borderRadius: 10, border: 'none',
+                  background: !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+                  color: !submitting && isConnected ? '#0f172a' : '#64748b',
+                  fontSize: 15, fontWeight: 700,
+                  cursor: !submitting && isConnected ? 'pointer' : 'not-allowed',
+                  fontFamily: 'inherit', transition: 'all 0.2s ease',
+                }}
+              >
+                {submitting ? 'Executing...' : isConnected ? 'Execute Rebalance' : 'Connect Broker to Execute'}
+              </button>
+              <button
+                onClick={() => {
+                  setSessionId(null);
+                  setFromAi(false);
+                  setEditedOrders([]);
+                  setAutoMode('auto');
+                }}
+                style={{ padding: '14px 16px', fontSize: 13, fontWeight: 600, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+              >
+                Edit Allocations
+              </button>
+            </>
+          ) : autoMode === 'auto' && editedOrders.length > 0 ? (
             <button
               onClick={handleSubmit}
               disabled={submitting || !isConnected}
