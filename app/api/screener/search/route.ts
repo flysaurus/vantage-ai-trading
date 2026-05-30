@@ -187,12 +187,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const symbols = buildUniverse(filters.sector);
     console.log(`[screener] Universe: ${symbols.length} stocks (sector: ${filters.sector || 'all'})`);
 
-    // ─── 1. Fetch profiles with proper rate limiting ─────────
-    // Finnhub free tier: 60 calls/min. Batch 3 parallel calls every 3s
-    // = 1 call/sec = 60/min (right at the cap). Scan up to 30 stocks (~30s).
+    // ─── 1. Fetch profiles with rate-limited batching ──────────
+    // Finnhub free tier: 60 calls/min but tolerates burst (old code made
+    // 50 calls/sec and still got 58 profiles before blocking). Strategy:
+    // 3 parallel + 1.5s delay = ~2 calls/sec burst, 44 total ≈ ~44/min.
+    // 30 profiles in ~15s. Well within Vercel's 55s maxDuration.
     const MAX_PROFILES = 30;
     const batchSize = 3;
-    const batchDelayMs = 3100; // 3.1s between batches → ~58 calls/min
+    const batchDelayMs = 1500;
     const profiles: any[] = [];
 
     const toScan = symbols.slice(0, MAX_PROFILES);
@@ -278,11 +280,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.log(`[screener] After filters: ${results.length} matches`);
 
     // ─── 3. Enrich with metrics (PE, div yield, 52wk, price) ─
-    // Same pacing: 2 calls every 2.1s. Top 14 results (~15s).
-    const MAX_ENRICH = 14;
+    // Same pacing: 3 calls every 1.5s. Top 15 results (~7.5s).
+    const MAX_ENRICH = 15;
     const topResults = results.slice(0, MAX_ENRICH);
-    for (let i = 0; i < topResults.length; i += 2) {
-      const batch = topResults.slice(i, i + 2);
+    for (let i = 0; i < topResults.length; i += 3) {
+      const batch = topResults.slice(i, i + 3);
       const metricResults = await Promise.allSettled(
         batch.map(r =>
           fetch(
@@ -305,8 +307,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
         if (m.currentPrice != null) batch[j].price = m.currentPrice;
       }
-      if (i + 2 < topResults.length) {
-        await new Promise(r => setTimeout(r, 2100));
+      if (i + 3 < topResults.length) {
+        await new Promise(r => setTimeout(r, 1500));
       }
     }
 
