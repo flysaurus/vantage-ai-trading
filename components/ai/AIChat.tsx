@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Send, RefreshCw, AlertCircle, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -77,6 +78,7 @@ const MARKDOWN_COMPONENTS = {
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
 export function AIChat() {
+  const router = useRouter();
   const {
     messages,
     isLoading,
@@ -256,6 +258,32 @@ export function AIChat() {
                   ))}
                 </div>
               )}
+
+              {/* Rebalance action button — detect keywords in AI response */}
+              {msg.role === 'assistant' && !isLoading && (() => {
+                const text = (msg.content || '').toLowerCase();
+                const hasRebalance = /\brebalance\b|\brebalancing\b|\bdrift\b|\ballocation target\b/i.test(text);
+                if (!hasRebalance) return null;
+                return (
+                  <button
+                    onClick={() => router.push('/strategies/setup/rebalancing?source=ai')}
+                    style={{
+                      width: '100%', marginTop: 10,
+                      padding: '10px 16px',
+                      background: '#1e293b',
+                      border: '1px solid #06b6d4',
+                      borderRadius: 8,
+                      color: '#06b6d4',
+                      fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      textAlign: 'left',
+                    }}
+                  >
+                    📊 Open Rebalancing →
+                  </button>
+                );
+              })()}
 
               {/* Cost indicator on last AI message */}
               {msg.role === 'assistant' && idx === messages.length - 1 && lastCost > 0 && showCost && (

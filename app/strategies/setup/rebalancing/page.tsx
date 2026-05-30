@@ -147,6 +147,11 @@ export default function RebalancingPage() {
   const [addingSymbol, setAddingSymbol] = useState('');
   const [showAddAsset, setShowAddAsset] = useState(false);
 
+  // Section 2b: save/load targets
+  const [savingTargets, setSavingTargets] = useState(false);
+  const [targetsSaved, setTargetsSaved] = useState(false);
+  const [fromAi, setFromAi] = useState(false);
+
   // Section 3: trade preview
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState('');
@@ -156,16 +161,51 @@ export default function RebalancingPage() {
   const [alertOnDrift, setAlertOnDrift] = useState(false);
   const [driftThreshold, setDriftThreshold] = useState(5);
 
-  // Initialize targets from current positions
+  // Initialize targets from saved allocations or current positions
   useEffect(() => {
-    if (positions.length && Object.keys(targets).length === 0) {
-      const init: Record<string, number> = {};
-      positions.forEach(p => {
-        const pct = p.portfolioPercent ?? ((p.marketValue / totalValue) * 100);
-        init[p.symbol] = Math.round(pct * 100) / 100;
-      });
-      setTargets(init);
+    // Check if opened from AI Advisor
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('source') === 'ai') setFromAi(true);
     }
+
+    // Load saved target allocations if available
+    fetch('/api/strategies/rebalancing/saved')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.saved?.targetAllocations?.length) {
+          const saved = data.saved;
+          const alloc: Record<string, number> = {};
+          saved.targetAllocations.forEach((t: any) => {
+            alloc[t.symbol] = t.targetPercent;
+          });
+          setTargets(alloc);
+          setAlertOnDrift(saved.alertEnabled || false);
+          setDriftThreshold(saved.driftThreshold || 5);
+          setTargetsSaved(true);
+          return;
+        }
+        // Fallback: init from current positions
+        if (positions.length && Object.keys(targets).length === 0) {
+          const init: Record<string, number> = {};
+          positions.forEach(p => {
+            const pct = p.portfolioPercent ?? ((p.marketValue / totalValue) * 100);
+            init[p.symbol] = Math.round(pct * 100) / 100;
+          });
+          setTargets(init);
+        }
+      })
+      .catch(() => {
+        // Fallback on error
+        if (positions.length && Object.keys(targets).length === 0) {
+          const init: Record<string, number> = {};
+          positions.forEach(p => {
+            const pct = p.portfolioPercent ?? ((p.marketValue / totalValue) * 100);
+            init[p.symbol] = Math.round(pct * 100) / 100;
+          });
+          setTargets(init);
+        }
+      });
   }, [positions, totalValue]);
 
   // Derived values
@@ -247,6 +287,37 @@ export default function RebalancingPage() {
       delete next[symbol];
       return next;
     });
+    setTargetsSaved(false);
+  };
+
+  const handleSaveTargets = async () => {
+    setSavingTargets(true);
+    try {
+      const targetAllocations = Object.entries(targets).map(([symbol, targetPercent]) => ({
+        symbol,
+        targetPercent: Math.round(targetPercent * 100) / 100,
+      }));
+      const res = await fetch('/api/strategies/rebalancing/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetAllocations,
+          driftThreshold,
+          alertEnabled: alertOnDrift,
+        }),
+      });
+      if (res.ok) {
+        setTargetsSaved(true);
+        setToast('✓ Allocation saved');
+      } else {
+        const err = await res.json();
+        setToast(err.error || 'Save failed');
+      }
+    } catch {
+      setToast('Network error');
+    } finally {
+      setSavingTargets(false);
+    }
   };
 
   const handleQuickFill = (presetKey: string) => {
@@ -351,6 +422,12 @@ export default function RebalancingPage() {
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9', margin: '0 0 6px' }}>Portfolio Rebalancing</h1>
         <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Restore your target allocation</p>
+        {fromAi && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: 8, fontSize: 12, color: '#06b6d4', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>💡</span>
+            <span>Opened from AI Advisor</span>
+          </div>
+        )}
       </div>
 
       {/* ─── Section 1: Current Portfolio ───────────── */}
@@ -473,7 +550,21 @@ export default function RebalancingPage() {
           </button>
         )}
 
-        {/* Running total */}
+        {/* Save Allocation button */}
+        <button
+          onClick={handleSaveTargets}
+          disabled={savingTargets || !isBalanced || Object.keys(targets).length === 0}
+          style={{
+            width: '100%', padding: '10px 14px',
+            background: targetsSaved ? '#22c55e' : savingTargets ? '#475569' : '#1e293b',
+            border: `1px solid ${targetsSaved ? '#22c55e' : '#334155'}`,
+            borderRadius: 8, color: targetsSaved ? '#0f172a' : savingTargets ? '#64748b' : '#94a3b8',
+            fontSize: 12, fontWeight: 700, cursor: savingTargets ? 'wait' : 'pointer',
+            fontFamily: 'inherit', marginBottom: 8,
+          }}
+        >
+          {savingTargets ? 'Saving...' : targetsSaved ? '✓ Allocation Saved' : '💾 Save Allocation'}
+        </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#1e293b', border: `1px solid ${isBalanced ? '#22c55e' : '#ef4444'}`, borderRadius: 8, marginBottom: 12 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Total Allocation</span>
           <span style={{ fontSize: 16, fontWeight: 800, color: isBalanced ? '#4ade80' : '#f87171' }}>
