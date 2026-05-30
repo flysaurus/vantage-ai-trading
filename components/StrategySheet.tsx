@@ -97,6 +97,15 @@ const STRATEGIES: Record<string, StrategyContent> = {
   },
 };
 
+// Route slug mapping — strategy keys → URL paths
+const ROUTE_SLUGS: Record<string, string> = {
+  dca: 'dca',
+  rebalancing: 'rebalancing',
+  taxharvest: 'tax-harvesting',
+  momentum: 'momentum',
+  meanreversion: 'mean-reversion',
+};
+
 export default function StrategySheet({ strategy, onClose, onExecute }: StrategySheetProps) {
   const router = useRouter();
   const scrollY = useRef(0);
@@ -358,7 +367,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           <button
             onClick={() => {
               onClose();
-              router.push(`/strategies/setup/${strategy}`);
+              router.push(`/strategies/setup/${ROUTE_SLUGS[strategy] || strategy}`);
             }}
             style={{
               width: '100%',
