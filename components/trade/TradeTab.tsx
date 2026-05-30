@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
-import { useMarketStore, useOrderFormStore } from '@/store';
+import { useRouter } from 'next/navigation';
+import { useState, useCallback, useRef } from 'react';
+import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
@@ -26,6 +27,27 @@ export function TradeTab() {
   const [submitting, setSubmitting] = useState(false);
   const [orderError, setOrderError] = useState('');
   const [orderSuccess, setOrderSuccess] = useState('');
+
+  const router = useRouter();
+  const { setTab } = useTabStore();
+
+  // ─── Strategy Bottom Sheet ───────────────────────────────
+  const STRATEGIES = [
+    { key: 'dca', icon: '🔄', label: 'DCA', desc: 'Automatically invest a fixed amount on a regular schedule to average out market volatility.' },
+    { key: 'rebalance', icon: '⚖️', label: 'Rebalance', desc: 'Restore your portfolio to target allocations when drift exceeds your threshold.' },
+    { key: 'momentum', icon: '🚀', label: 'Momentum', desc: 'Rotate into top-performing stocks based on recent returns and trend strength.' },
+    { key: 'meanreversion', icon: '📉', label: 'Mean Reversion', desc: 'Buy when oversold, sell when overbought using Z-scores and Bollinger Bands.' },
+    { key: 'taxharvest', icon: '🧾', label: 'Tax Harvest', desc: 'Identify tax-loss harvesting opportunities to offset realized gains.' },
+  ];
+  const [strategySheet, setStrategySheet] = useState<string | null>(null);
+  const touchStartY = useRef(0);
+  const closeSheet = useCallback(() => setStrategySheet(null), []);
+  const openSheet = useCallback((key: string) => setStrategySheet(key === strategySheet ? null : key), [strategySheet]);
+  const onSheetTouchStart = useCallback((e: React.TouchEvent) => { touchStartY.current = e.touches[0].clientY; }, []);
+  const onSheetTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (e.changedTouches[0].clientY - touchStartY.current > 80) closeSheet();
+  }, [closeSheet]);
+  // ─── End Strategy Bottom Sheet ───────────────────────────
 
   const quote = quotes[searchSymbol.toUpperCase()];
   const isBuy = form.side === 'buy';
@@ -89,6 +111,77 @@ export function TradeTab() {
         </div>
       </div>
       )}
+
+      {/* 📊 Strategies */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          📊 Strategies
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            overflowX: 'auto',
+            paddingBottom: 4,
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {STRATEGIES.map((s) => {
+            const isActive = strategySheet === s.key;
+            return (
+              <button
+                key={s.key}
+                onClick={() => openSheet(s.key)}
+                style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 14px',
+                  borderRadius: 9999,
+                  border: '1.5px solid #06b6d4',
+                  background: isActive ? '#06b6d4' : '#1e293b',
+                  color: isActive ? '#0f172a' : '#e2e8f0',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <span style={{ fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Plan Trades */}
+      <button
+        onClick={() => setTab('ai')}
+        style={{
+          width: '100%',
+          padding: 10,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          background: 'rgba(6, 182, 212, 0.1)',
+          border: '1px dashed rgba(6, 182, 212, 0.3)',
+          borderRadius: 8,
+          color: '#06b6d4',
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: 12,
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ fontSize: 16 }}>📊</span>
+        Plan Trades with AI
+      </button>
 
       {/* Order Form */}
       <div className="card">
@@ -375,7 +468,96 @@ export function TradeTab() {
           display: flex;
           gap: 8px;
         }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       `}</style>
+
+      {/* ─── Strategy Bottom Sheet ───────────────────── */}
+      {strategySheet && (
+        <>
+          <div
+            onClick={closeSheet}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              background: 'rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(2px)',
+              animation: 'fadeIn 0.2s ease-out',
+            }}
+          />
+          <div
+            onTouchStart={onSheetTouchStart}
+            onTouchEnd={onSheetTouchEnd}
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 1001,
+              background: '#1e293b',
+              borderTop: '1px solid #334155',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: '4px 16px 24px',
+              maxHeight: '50vh',
+              overflowY: 'auto',
+              animation: 'slideUp 0.25s ease-out',
+              boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+            }}
+          >
+            <div
+              style={{
+                width: 36, height: 4, borderRadius: 2,
+                background: '#475569', margin: '8px auto 16px',
+              }}
+            />
+            {(() => {
+              const strat = STRATEGIES.find(s => s.key === strategySheet);
+              if (!strat) return null;
+              return (
+                <>
+                  <div style={{ fontSize: 24, marginBottom: 4 }}>{strat.icon}</div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: '0 0 6px' }}>
+                    {strat.label}
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, margin: '0 0 16px' }}>
+                    {strat.desc}
+                  </p>
+                  <div style={{
+                    background: '#0f172a', borderRadius: 10, padding: 14,
+                    marginBottom: 12, border: '1px solid #334155',
+                  }}>
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', fontWeight: 600 }}>
+                      Configuration
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+                      Strategy configuration is available in the{' '}
+                      <span
+                        onClick={() => { closeSheet(); router.push('/strategies'); }}
+                        style={{ color: '#06b6d4', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Strategies page
+                      </span>.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { closeSheet(); router.push('/strategies'); }}
+                    style={{
+                      width: '100%', padding: 12,
+                      background: 'linear-gradient(135deg, #06b6d4, #0d9488)',
+                      border: 'none', borderRadius: 10,
+                      color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer',
+                    }}
+                  >
+                    Configure {strat.label}
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
     </div>
   );
 }
