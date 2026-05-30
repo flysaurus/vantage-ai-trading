@@ -7,6 +7,7 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { DemoBanner } from '@/components/shared/DemoBanner';
 import { SymbolSearch } from './SymbolSearch';
+import { addPendingDemoOrder } from '@/lib/demo-orders';
 
 export function TradeTab() {
   const { quotes } = useMarketStore();
@@ -17,13 +18,8 @@ export function TradeTab() {
   // Initialize hook
   useMarketData();
 
-  // Default to largest position, or empty if no holdings
-  const defaultSymbol = (() => {
-    if (!account?.positions?.length) return '';
-    const largest = account.positions.sort((a, b) => b.marketValue - a.marketValue)[0];
-    return largest.symbol;
-  })();
-  const [searchSymbol, setSearchSymbol] = useState(defaultSymbol);
+  // Default to empty — user picks a symbol
+  const [searchSymbol, setSearchSymbol] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [orderError, setOrderError] = useState('');
   const [orderSuccess, setOrderSuccess] = useState('');
@@ -372,27 +368,29 @@ export function TradeTab() {
           </div>
         )}
 
-        {/* Summary */}
+        {/* Summary — only when a symbol is selected */}
+        {searchSymbol && quote ? (
         <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, marginBottom: 12 }}>
           {[
-            ['Est. Cost', '$498.75'],
+            ['Est. Cost', `$${(form.qty * quote.last).toFixed(2)}`],
             ['Commission', '$0.00'],
-            ['Max Loss', '-$6.65'],
-            ['Max Gain', '+$26.60'],
-            ['Risk/Reward', '1 : 4.0'],
           ].map(([label, val]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
               <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-              <span style={{ fontWeight: 600, color: val.startsWith('+') ? '#4ade80' : val.startsWith('-') ? '#f87171' : '#f1f5f9' }}>
+              <span style={{ fontWeight: 600, color: '#f1f5f9' }}>
                 {val}
               </span>
             </div>
           ))}
-          <div style={{ borderTop: '1px solid #334155', paddingTop: 8, marginTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Buying Power After</span>
-            <span style={{ fontWeight: 700 }}>$24,001.25</span>
+        </div>
+        ) : (
+        <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Buying Power</span>
+            <span style={{ fontWeight: 600, color: '#f1f5f9' }}>$24,500</span>
           </div>
         </div>
+        )}
 
         {/* Submit */}
         <button
@@ -405,6 +403,34 @@ export function TradeTab() {
             try {
               const qty = form.qtyType === 'dollars' && quote ? Math.floor(form.qty / quote.last) : form.qty;
               if (!qty || qty <= 0) { setOrderError('Enter a valid quantity'); setSubmitting(false); return; }
+
+              // ─── Demo mode: store locally as pending ──────────
+              if (!isConnected) {
+                const price = quote?.last ?? 0;
+                const totalValue = qty * price;
+                const demoOrder: any = {
+                  id: `demo-${sym.toUpperCase()}-${Date.now()}`,
+                  symbol: sym.toUpperCase(),
+                  side: form.side,
+                  type: form.type,
+                  status: 'pending',
+                  qty,
+                  filledQty: 0,
+                  limitPrice: form.type === 'limit' ? form.limitPrice : undefined,
+                  fillPrice: undefined,
+                  totalValue: form.type === 'market' ? totalValue : undefined,
+                  timeInForce: form.timeInForce,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                };
+                addPendingDemoOrder(demoOrder);
+                setOrderSuccess('✓ Order accepted · Will execute when market opens');
+                updateForm({ qty: 0, limitPrice: undefined, stopPrice: undefined, stopLoss: undefined, takeProfit: undefined });
+                setSubmitting(false);
+                return;
+              }
+
+              // ─── Connected mode: proxy to Alpaca ─────────────
               const body: any = {
                 symbol: sym.toUpperCase(),
                 qty,

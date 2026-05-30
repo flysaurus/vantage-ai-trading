@@ -11,6 +11,7 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { syncFilledOrders } from '@/lib/supabase/trades';
 import { getDemoOrders } from '@/lib/demo-data';
+import { getPendingDemoOrders } from '@/lib/demo-orders';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -166,7 +167,10 @@ export function useOrders() {
     } else if (user) {
       // Load demo orders based on investor style
       const demoOrders = getDemoOrders(user.investorStyle || 'buffett');
-      setOrders(demoOrders);
+      // Merge in any user-placed pending demo orders from localStorage
+      const pendingOrders = getPendingDemoOrders();
+      const merged = [...pendingOrders, ...demoOrders];
+      setOrders(merged);
       setLoading(false);
       setError(null);
     }
