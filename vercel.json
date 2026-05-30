@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/alerts/check",
-      "schedule": "*/10 13-20 * * 1-5"
+      "schedule": "0 14 * * 1-5"
     }
   ],
   "functions": {
