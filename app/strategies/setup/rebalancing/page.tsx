@@ -298,10 +298,17 @@ export default function RebalancingPage() {
 
       {/* ─── Section 1: Current Portfolio ───────────── */}
       <Section icon={<Activity size={12} />} label="Current Portfolio">
-        {!isConnected ? (
-          <div style={{ fontSize: 12, color: '#64748b', padding: '8px 0' }}>No positions found. Connect your broker first.</div>
-        ) : totalValue <= 0 ? (
-          <div style={{ fontSize: 12, color: '#64748b', padding: '8px 0' }}>No positions found. Connect your broker first.</div>
+        {totalValue <= 0 || positions.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#94a3b8', padding: '8px 0', lineHeight: 1.6 }}>
+            {!isConnected ? (
+              <>
+                No positions found. Connect your broker to see live holdings,<br />
+                or use demo data to explore the rebalancing tool.
+              </>
+            ) : (
+              'No positions found in your connected account.'
+            )}
+          </div>
         ) : (
           <>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#f1f5f9', marginBottom: 12 }}>
@@ -514,20 +521,26 @@ export default function RebalancingPage() {
 
       {/* ─── Bottom Bar ────────────────────────────── */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, #0f172a 80%, rgba(15,23,42,0.95))', padding: '12px 16px 64px', borderTop: '1px solid #1e293b' }}>
+        {/* Demo mode warning */}
+        {!isConnected && (
+          <div style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
+            ⚠️ Demo mode — connect broker to execute live trades
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             onClick={handleSubmit}
-            disabled={!isBalanced || !hasAnyTrade || submitting}
+            disabled={!isBalanced || !hasAnyTrade || submitting || !isConnected}
             style={{
               flex: 1, padding: 14, borderRadius: 10, border: 'none',
-              background: isBalanced && hasAnyTrade && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
-              color: isBalanced && hasAnyTrade && !submitting ? '#0f172a' : '#64748b',
+              background: isBalanced && hasAnyTrade && !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+              color: isBalanced && hasAnyTrade && !submitting && isConnected ? '#0f172a' : '#64748b',
               fontSize: 15, fontWeight: 700,
-              cursor: isBalanced && hasAnyTrade && !submitting ? 'pointer' : 'not-allowed',
+              cursor: isBalanced && hasAnyTrade && !submitting && isConnected ? 'pointer' : 'not-allowed',
               fontFamily: 'inherit', transition: 'all 0.2s ease',
             }}
           >
-            {submitting ? 'Executing...' : 'Approve & Rebalance'}
+            {submitting ? 'Executing...' : isConnected ? 'Approve & Rebalance' : 'Connect Broker to Execute'}
           </button>
           <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel

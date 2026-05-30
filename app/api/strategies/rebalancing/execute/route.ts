@@ -1,5 +1,6 @@
 // ─── POST /api/strategies/rebalancing/execute ───────────────
 // Executes rebalancing trades via Alpaca proxy + saves record.
+// Requires a connected broker — returns 400 in demo mode.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
