@@ -131,12 +131,13 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           maxHeight: '85vh',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
           animation: 'strategySlideUp 0.3s ease-out',
           boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
         }}
       >
         {/* Drag Handle */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 6px' }}>
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px 0 6px' }}>
           <div
             style={{
               width: 36,
@@ -145,10 +146,35 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
               background: '#475569',
             }}
           />
+          {/* X Close Button */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            style={{
+              position: 'absolute',
+              right: 4,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              fontSize: 18,
+              cursor: 'pointer',
+              borderRadius: 6,
+              fontFamily: 'inherit',
+            }}
+            aria-label="Close"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Scrollable Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 32px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 16px 32px' }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <span style={{ fontSize: 28 }}>{content.icon}</span>
