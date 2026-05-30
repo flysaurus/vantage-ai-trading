@@ -70,14 +70,39 @@ async function fetchStockData(symbols: string[]): Promise<Record<string, any> | 
 
   const fetchSymbolData = async (symbol: string) => {
     try {
-      const [quoteRes, profileRes] = await Promise.all([
+      const now = Math.floor(Date.now() / 1000);
+      const fourWeeksAgo = now - 28 * 24 * 60 * 60;
+
+      const [quoteRes, profileRes, candleRes] = await Promise.all([
         fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`),
         fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${apiKey}`),
+        fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${fourWeeksAgo}&to=${now}&token=${apiKey}`),
       ]);
       const quote = quoteRes.ok ? await quoteRes.json().catch(() => ({})) : {};
       const profile = profileRes.ok ? await profileRes.json().catch(() => ({})) : {};
+      const candle = candleRes.ok ? await candleRes.json().catch(() => ({})) : {};
       
       if (!quote.c || quote.c === 0) return null; // No valid quote data
+
+      // Parse historical candles
+      const history: { date: string; close: number }[] = [];
+      if (candle.s === 'ok' && Array.isArray(candle.c) && Array.isArray(candle.t)) {
+        for (let i = 0; i < Math.min(candle.c.length, candle.t.length); i++) {
+          const date = new Date(candle.t[i] * 1000).toISOString().split('T')[0];
+          history.push({ date, close: candle.c[i] });
+        }
+      }
+
+      // Calculate historical changes
+      let weeksAgoPrice: number | null = null;
+      let monthChangePct: number | null = null;
+      if (history.length >= 2) {
+        const oldest = history[0];
+        weeksAgoPrice = oldest.close;
+        if (weeksAgoPrice > 0) {
+          monthChangePct = ((quote.c - weeksAgoPrice) / weeksAgoPrice) * 100;
+        }
+      }
       
       return {
         symbol,
@@ -92,6 +117,9 @@ async function fetchStockData(symbols: string[]): Promise<Record<string, any> | 
         marketCap: profile.marketCapitalization,
         sector: profile.finnhubIndustry,
         exchange: profile.exchange,
+        weeksAgoPrice,
+        monthChangePct,
+        history,
       };
     } catch {
       return null;
@@ -213,6 +241,25 @@ Rebalance toward: Dividend aristocrats/kings, wide-moat compounders
       }
       prompt += `- Previous Close: $${Number(d.prevClose || 0).toFixed(2)}\n`;
       prompt += `- Day Range: $${Number(d.low || 0).toFixed(2)} — $${Number(d.high || 0).toFixed(2)}\n`;
+      // Historical data when available
+      if (d.monthChangePct != null) {
+        const histSignStr = d.monthChangePct >= 0 ? '+' : '';
+        prompt += `- 4-Week Change: ${histSignStr}${Number(d.monthChangePct).toFixed(2)}% (was $${Number(d.weeksAgoPrice).toFixed(2)})\n`;
+      }
+      if (d.history && d.history.length >= 3) {
+        prompt += `- Historical Closes: `;
+        const step = Math.max(1, Math.floor(d.history.length / 6));
+        const highlights: string[] = [];
+        for (let hi = 0; hi < d.history.length; hi += step) {
+          highlights.push(`${d.history[hi].date}: $${Number(d.history[hi].close).toFixed(2)}`);
+        }
+        const lastH = d.history[d.history.length - 1];
+        if (lastH && !highlights.some((h: string) => h.includes(lastH.date))) {
+          highlights.push(`${lastH.date}: $${Number(lastH.close).toFixed(2)}`);
+        }
+        prompt += highlights.join(' → ') + '\n';
+      }
+      prompt += `- today\'s Close vs 4 Weeks Ago: $${Number(d.price).toFixed(2)} vs $${Number(d.weeksAgoPrice || d.prevClose || 0).toFixed(2)}\n`;
       if (d.marketCap) {
         const capB = Number(d.marketCap);
         const capStr = capB >= 1e12 ? `$${(capB/1e12).toFixed(2)}T` : `$${(capB/1e9).toFixed(1)}B`;
