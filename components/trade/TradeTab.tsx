@@ -52,61 +52,6 @@ export function TradeTab() {
   return (
     <div style={{ padding: '12px 16px 80px' }}>
       {!isConnected && <DemoBanner />}
-      {/* Search */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <SymbolSearch
-          value={searchSymbol}
-          onChange={(sym) => { setSearchSymbol(sym); updateForm({ symbol: sym }); }}
-          onInputChange={(text) => setSearchSymbol(text)}
-          positions={holdings}
-        />
-      </div>
-
-      {/* Stock Card */}
-      {quote && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{quote.symbol}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Corporation</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>${quote.last.toFixed(2)}</div>
-              <div className={quote.changePercent >= 0 ? 'up' : 'down'} style={{ fontSize: 12, fontWeight: 600 }}>
-                {quote.change >= 0 ? '+' : ''}{quote.change.toFixed(2)} ({quote.changePercent.toFixed(2)}%)
-              </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, paddingTop: 10, borderTop: '1px solid #334155' }}>
-            {[
-              ['Bid', `$${quote.bid.toFixed(2)}`],
-              ['Ask', `$${quote.ask.toFixed(2)}`],
-              ['Volume', `${(quote.volume / 1e6).toFixed(1)}M`],
-              ['52W H', `$${quote.high52w}`],
-            ].map(([label, val]) => (
-              <div key={label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
-                <div style={{ fontSize: 11, fontWeight: 600 }}>{val}</div>
-              </div>
-            ))}
-          </div>
-
-        </div>
-      )}
-
-      {/* AI Suggestion — contextual */}
-      {quote && (
-      <div className="ai-suggestion">
-        <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>✨</div>
-        <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.4 }}>
-          <strong style={{ color: '#06b6d4' }}>{quote.symbol}</strong> — ${quote.last.toFixed(2)} · {' '}
-          {quote.changePercent >= 0 ? '↑' : '↓'} {Math.abs(quote.changePercent).toFixed(2)}% today
-          {quote.bid && quote.ask && <span> · Spread ${(quote.ask - quote.bid).toFixed(2)}</span>}
-        </div>
-      </div>
-      )}
 
       {/* 📊 Strategies */}
       <div style={{ marginBottom: 12 }}>
@@ -154,7 +99,7 @@ export function TradeTab() {
         </div>
       </div>
 
-      {/* Plan Trades */}
+      {/* Plan Trades with AI */}
       <button
         onClick={() => setTab('ai')}
         style={{
@@ -178,6 +123,78 @@ export function TradeTab() {
         <span style={{ fontSize: 16 }}>📊</span>
         Plan Trades with AI
       </button>
+
+      {/* ─── Divider ──────────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          margin: '8px 0 16px',
+        }}
+      >
+        <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, transparent, #334155)' }} />
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 1.5 }}>
+          Research & Place Order
+        </span>
+        <div style={{ flex: 1, height: 1, background: 'linear-gradient(to left, transparent, #334155)' }} />
+      </div>
+
+      {/* Search */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <SymbolSearch
+          value={searchSymbol}
+          onChange={(sym) => { setSearchSymbol(sym); updateForm({ symbol: sym }); }}
+          onInputChange={(text) => setSearchSymbol(text)}
+          positions={holdings}
+        />
+      </div>
+
+      {/* Stock Card */}
+      {searchSymbol && quote && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{quote.symbol}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Corporation</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>${quote.last.toFixed(2)}</div>
+              <div className={quote.changePercent >= 0 ? 'up' : 'down'} style={{ fontSize: 12, fontWeight: 600 }}>
+                {quote.change >= 0 ? '+' : ''}{quote.change.toFixed(2)} ({quote.changePercent.toFixed(2)}%)
+              </div>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, paddingTop: 10, borderTop: '1px solid #334155' }}>
+            {[
+              ['Bid', `$${quote.bid.toFixed(2)}`],
+              ['Ask', `$${quote.ask.toFixed(2)}`],
+              ['Volume', `${(quote.volume / 1e6).toFixed(1)}M`],
+              ['52W H', `$${quote.high52w}`],
+            ].map(([label, val]) => (
+              <div key={label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 11, fontWeight: 600 }}>{val}</div>
+              </div>
+            ))}
+          </div>
+
+        </div>
+      )}
+
+      {/* AI Suggestion — contextual */}
+      {quote && (
+      <div className="ai-suggestion">
+        <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>✨</div>
+        <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.4 }}>
+          <strong style={{ color: '#06b6d4' }}>{quote.symbol}</strong> — ${quote.last.toFixed(2)} · {' '}
+          {quote.changePercent >= 0 ? '↑' : '↓'} {Math.abs(quote.changePercent).toFixed(2)}% today
+          {quote.bid && quote.ask && <span> · Spread ${(quote.ask - quote.bid).toFixed(2)}</span>}
+        </div>
+      </div>
+      )}
 
       {/* Order Form */}
       <div className="card">
