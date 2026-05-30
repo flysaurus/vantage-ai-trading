@@ -27,7 +27,10 @@ export function TradeTab() {
   const { setTab } = useTabStore();
 
   // ─── Strategy Bottom Sheet ───────────────────────────────
-  const STRATEGY_KEYS = ['dca', 'rebalance', 'momentum', 'meanreversion', 'taxharvest'] as const;
+  const STRATEGY_ROWS = [
+    ['dca', 'rebalance', 'momentum'],
+    ['meanreversion', 'taxharvest'],
+  ];
   const STRATEGY_LABELS: Record<string, { icon: string; label: string }> = {
     dca: { icon: '🔄', label: 'DCA' },
     rebalance: { icon: '⚖️', label: 'Rebalance' },
@@ -55,20 +58,19 @@ export function TradeTab() {
         <div
           style={{
             display: 'flex',
-            gap: 8,
-            overflowX: 'auto',
-            paddingBottom: 4,
-            scrollbarWidth: 'none',
-            WebkitOverflowScrolling: 'touch',
+            flexDirection: 'column',
+            gap: 6,
           }}
         >
-          {STRATEGY_KEYS.map((key) => {
-            const isActive = strategySheet === key;
-            const s = STRATEGY_LABELS[key];
-            return (
-              <button
-                key={key}
-                onClick={() => setStrategySheet(key === strategySheet ? null : key)}
+          {STRATEGY_ROWS.map((row, rowIdx) => (
+            <div key={rowIdx} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {row.map((key) => {
+                const isActive = strategySheet === key;
+                const s = STRATEGY_LABELS[key];
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setStrategySheet(key === strategySheet ? null : key)}
                 style={{
                   flexShrink: 0,
                   display: 'flex',
@@ -92,6 +94,8 @@ export function TradeTab() {
             );
           })}
         </div>
+      ))}
+    </div>
       </div>
 
       {/* Plan Trades with AI */}
