@@ -95,6 +95,16 @@ export function AIChat() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Scroll to latest message on mount (always open at the bottom)
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Small delay for DOM render
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      }, 100);
+    }
+  }, []); // Only on mount
+
   // Auto-scroll to bottom when new messages arrive (only if already near bottom)
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -396,7 +406,7 @@ export function AIChat() {
           textAlign: 'center', fontSize: 9, color: '#475569',
           marginTop: 6,
         }}>
-          Powered by DeepSeek · Responses may contain errors
+          Powered by AI · Responses may contain errors. History of last 5 responses kept.
         </div>
       </div>
 

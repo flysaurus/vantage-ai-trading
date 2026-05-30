@@ -178,7 +178,12 @@ export const useChatStore = create<ChatStore>((set) => ({
   error: null,
   addMessage: (msg) =>
     set((s) => {
-      const updated = [...s.messages, msg];
+      const MAX_MESSAGES = 10; // 5 user prompts + 5 AI responses
+      let updated = [...s.messages, msg];
+      // Trim oldest messages if we exceed the limit
+      if (updated.length > MAX_MESSAGES) {
+        updated = updated.slice(updated.length - MAX_MESSAGES);
+      }
       saveToStorage(STORAGE_KEYS.chatMessages, updated);
       return { messages: updated };
     }),

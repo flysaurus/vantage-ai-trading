@@ -48,7 +48,17 @@ export function useAIChat() {
     const local = typeof window !== 'undefined'
       ? localStorage.getItem(CHAT_STORAGE_KEY)
       : null;
-    if (local) return; // Already have messages locally
+    if (local) {
+      // Trim existing localStorage messages to last 10 (5 prompts + 5 responses)
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 10) {
+          const trimmed = parsed.slice(-10);
+          localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(trimmed));
+        }
+      } catch {}
+      return;
+    }
 
     getMessages(user.id, 200, 0).then((result) => {
       if (!result?.messages?.length) return;
@@ -65,10 +75,13 @@ export function useAIChat() {
 
       if (dbMessages.length === 0) return;
 
+      // Keep only last 10 messages (5 prompts + 5 responses)
+      const trimmed = dbMessages.slice(-10);
+
       // Populate store + persist to localStorage
-      useChatStore.setState({ messages: dbMessages });
+      useChatStore.setState({ messages: trimmed });
       if (typeof window !== 'undefined') {
-        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(dbMessages));
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(trimmed));
       }
     }).catch(() => {}); // Non-fatal — stay with empty chat
   }, [user?.id]);
