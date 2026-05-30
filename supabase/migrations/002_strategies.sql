@@ -18,3 +18,23 @@ CREATE TABLE public.strategies (
 
 CREATE INDEX strategies_user_id_idx ON public.strategies(user_id);
 CREATE INDEX strategies_type_idx ON public.strategies(type);
+
+-- Row-level security
+ALTER TABLE public.strategies ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own strategies"
+  ON public.strategies FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Users can insert own strategies"
+  ON public.strategies FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users can update own strategies"
+  ON public.strategies FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users can delete own strategies"
+  ON public.strategies FOR DELETE
+  USING (user_id = auth.uid());
