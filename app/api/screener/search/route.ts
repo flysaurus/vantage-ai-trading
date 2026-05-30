@@ -188,11 +188,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.log(`[screener] Universe: ${symbols.length} stocks (sector: ${filters.sector || 'all'})`);
 
     // ─── 1. Fetch profiles with proper rate limiting ─────────
-    // Finnhub free tier: 60 calls/min. Strategy: 2 parallel calls every 2.2s
-    // = ~1 call/sec = ~55 calls/min. Scan up to 40 stocks (~44s).
-    const MAX_PROFILES = 40;
-    const batchSize = 2;
-    const batchDelayMs = 2200; // 2.2s between batches → ~55 calls/min
+    // Finnhub free tier: 60 calls/min. Batch 3 parallel calls every 3s
+    // = 1 call/sec = 60/min (right at the cap). Scan up to 30 stocks (~30s).
+    const MAX_PROFILES = 30;
+    const batchSize = 3;
+    const batchDelayMs = 3100; // 3.1s between batches → ~58 calls/min
     const profiles: any[] = [];
 
     const toScan = symbols.slice(0, MAX_PROFILES);
@@ -278,8 +278,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.log(`[screener] After filters: ${results.length} matches`);
 
     // ─── 3. Enrich with metrics (PE, div yield, 52wk, price) ─
-    // Only enrich top 25 to preserve API quota
-    const MAX_ENRICH = 25;
+    // Same pacing: 2 calls every 2.1s. Top 14 results (~15s).
+    const MAX_ENRICH = 14;
     const topResults = results.slice(0, MAX_ENRICH);
     for (let i = 0; i < topResults.length; i += 2) {
       const batch = topResults.slice(i, i + 2);
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (m.currentPrice != null) batch[j].price = m.currentPrice;
       }
       if (i + 2 < topResults.length) {
-        await new Promise(r => setTimeout(r, 2200));
+        await new Promise(r => setTimeout(r, 2100));
       }
     }
 
