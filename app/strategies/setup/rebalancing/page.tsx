@@ -370,7 +370,7 @@ export default function RebalancingPage() {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 220px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 300px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
       {/* Toast */}
       {toast && (
