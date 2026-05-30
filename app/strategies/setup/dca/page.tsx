@@ -100,6 +100,7 @@ export default function DcaSetupPage() {
   // Section 6
   const [existingSchedules, setExistingSchedules] = useState<DcaSchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(true);
+  const [editingSchedule, setEditingSchedule] = useState<DcaSchedule | null>(null);
 
   // Submission
   const [submitting, setSubmitting] = useState(false);
@@ -167,6 +168,34 @@ export default function DcaSetupPage() {
     else setQuantityError('');
   };
 
+  // ─── Edit a schedule (populate form) ───────────────────
+  const editSchedule = (sched: DcaSchedule) => {
+    setEditingSchedule(sched);
+    setSelectedSymbol(sched.symbol);
+    handleSymbolSelect(sched.symbol);
+    const c = sched.config;
+    if (c.investBy === 'shares') {
+      setInvestBy('shares');
+      setQuantity(String(c.quantity || ''));
+    } else {
+      setInvestBy('amount');
+      setAmount(String(c.amount || ''));
+    }
+    setFrequency(c.frequency as Frequency);
+    setDayOfWeek(c.dayOfWeek || null);
+    setDayOfMonth(c.dayOfMonth || null);
+    setStartDate(c.startDate || todayStr());
+    if (c.endDate) {
+      setRunIndefinitely(false);
+      setEndDate(c.endDate);
+    } else {
+      setRunIndefinitely(true);
+      setEndDate('');
+    }
+    // Scroll to top
+    window.scrollTo(0, 0);
+  };
+
   // ─── Cancel a schedule ──────────────────────────────────
   const cancelSchedule = async (id: string) => {
     try {
@@ -179,12 +208,14 @@ export default function DcaSetupPage() {
 
   // ─── Submit ─────────────────────────────────────────────
   const handleSubmit = async () => {
-    const parsedAmount = investBy === 'amount' ? parseFloat(amount) : 0;
-    const parsedQty = investBy === 'shares' ? parseFloat(quantity) : 0;
-    if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate) return;
+    if (!selectedSymbol || !frequency || !startDate) return;
 
     setSubmitting(true);
     try {
+      const parsedAmount = investBy === 'amount' ? parseFloat(amount) : 0;
+      const parsedQty = investBy === 'shares' ? parseFloat(quantity) : 0;
+      if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate) { setSubmitting(false); return; }
+
       const body: Record<string, any> = {
         symbol: selectedSymbol,
         amount: parsedAmount,
@@ -200,20 +231,33 @@ export default function DcaSetupPage() {
       if (frequency === 'monthly' && dayOfMonth) body.dayOfMonth = dayOfMonth;
       if (!runIndefinitely && endDate) body.endDate = endDate;
 
-      const res = await fetch('/api/strategies/dca/create', {
-        method: 'POST',
+      const isUpdate = !!editingSchedule;
+      const url = isUpdate ? '/api/strategies/dca/update' : '/api/strategies/dca/create';
+      const method = isUpdate ? 'PUT' : 'POST';
+      if (isUpdate) body.scheduleId = editingSchedule.id;
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        setToast(err.error || 'Failed to create schedule');
+        setToast(err.error || 'Failed to save schedule');
         return;
       }
 
-      setToast(`✓ DCA scheduled for ${selectedSymbol}`);
-      setTimeout(() => router.back(), 1200);
+      const data = await res.json();
+      setToast(`✓ DCA ${isUpdate ? 'updated' : 'scheduled'} for ${selectedSymbol}`);
+
+      // Reload schedules and reset editing
+      if (isUpdate) {
+        setExistingSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, symbol: selectedSymbol, config: { ...s.config, ...body } } : s));
+        setEditingSchedule(null);
+      } else {
+        setTimeout(() => router.back(), 1200);
+      }
     } catch {
       setToast('Network error. Please try again.');
     } finally {
@@ -257,7 +301,7 @@ export default function DcaSetupPage() {
 
   // ─── Render ─────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 160px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 180px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, animation: 'dcaToastIn 0.25s ease-out' }}>
@@ -423,16 +467,21 @@ export default function DcaSetupPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {existingSchedules.map(s => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a', border: `1px solid ${editingSchedule?.id === s.id ? '#06b6d4' : '#334155'}`, borderRadius: 8 }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{s.symbol}</div>
                   <div style={{ fontSize: 11, color: '#94a3b8' }}>
                     {s.config.investBy === 'shares' ? `${s.config.quantity || '?'} shares` : `$${s.config.amount}`} · {s.config.frequency}{s.config.dayOfWeek ? ` (${DAY_LABELS[s.config.dayOfWeek] || s.config.dayOfWeek})` : ''}{s.config.dayOfMonth ? ` (${DATE_LABELS[s.config.dayOfMonth] || s.config.dayOfMonth})` : ''}
                   </div>
                 </div>
-                <button onClick={() => cancelSchedule(s.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  Cancel
-                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => editSchedule(s)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: editingSchedule?.id === s.id ? '#06b6d4' : 'none', border: `1px solid ${editingSchedule?.id === s.id ? '#06b6d4' : '#475569'}`, borderRadius: 6, color: editingSchedule?.id === s.id ? '#0f172a' : '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {editingSchedule?.id === s.id ? 'Editing' : 'Edit'}
+                  </button>
+                  <button onClick={() => cancelSchedule(s.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -443,10 +492,10 @@ export default function DcaSetupPage() {
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, #0f172a 80%, rgba(15,23,42,0.95))', padding: '12px 16px 64px', borderTop: '1px solid #1e293b' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155', color: canSubmit && !submitting ? '#0f172a' : '#64748b', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
-            {submitting ? 'Scheduling...' : 'Schedule DCA'}
+            {submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA'}
           </button>
-          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-            Cancel
+          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setRunIndefinitely(true); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            {editingSchedule ? 'Cancel Edit' : 'Cancel'}
           </button>
         </div>
       </div>
