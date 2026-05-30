@@ -1,4 +1,5 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useOrders } from '@/hooks/useOrders';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useOrderStore, useTabStore } from '@/store';
@@ -11,6 +12,7 @@ import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 
 export function OrdersTab() {
+  const router = useRouter();
   const { orders, allOrders, loading, error, refresh, cancelOrder } = useOrders();
   const { activeFilter, setFilter } = useOrderStore();
   const { setTab } = useTabStore();
@@ -129,6 +131,28 @@ export function OrdersTab() {
       >
         <BarChart3 size={16} />
         Plan Trades with AI
+      </button>
+
+      {/* View all strategies */}
+      <button
+        onClick={() => router.push('/strategies')}
+        style={{
+          width: '100%',
+          padding: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'transparent',
+          border: 'none',
+          color: '#64748b',
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: 12,
+          fontFamily: 'inherit',
+        }}
+      >
+        View all strategies →
       </button>
 
       {/* Filters */}

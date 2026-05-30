@@ -379,6 +379,27 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           >
             Execute →
           </button>
+          <button
+            onClick={() => {
+              onClose();
+              router.push('/strategies');
+            }}
+            style={{
+              width: '100%',
+              padding: 10,
+              marginTop: 8,
+              border: '1px solid #334155',
+              borderRadius: 10,
+              background: 'transparent',
+              color: '#06b6d4',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            View all strategies →
+          </button>
         </div>
       </div>
 

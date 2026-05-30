@@ -1,5 +1,6 @@
 'use client';
 import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -10,6 +11,7 @@ import { addPendingDemoOrder } from '@/lib/demo-orders';
 import StrategySheet from '@/components/StrategySheet';
 
 export function TradeTab() {
+  const router = useRouter();
   const { quotes } = useMarketStore();
   const { form, updateForm } = useOrderFormStore();
   const { account } = usePortfolio();
@@ -187,6 +189,29 @@ export function TradeTab() {
       >
         <span style={{ fontSize: 16 }}>📊</span>
         Plan Trades with AI
+      </button>
+
+      {/* View all strategies */}
+      <button
+        onClick={() => router.push('/strategies')}
+        style={{
+          width: '100%',
+          padding: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          background: 'transparent',
+          border: 'none',
+          color: '#64748b',
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: 12,
+          fontFamily: 'inherit',
+        }}
+      >
+        View all strategies →
       </button>
 
       {/* ─── Divider ──────────────────────────────── */}
