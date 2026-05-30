@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface StrategySheetProps {
   strategy: string | null;
@@ -96,6 +96,16 @@ const STRATEGIES: Record<string, StrategyContent> = {
 };
 
 export default function StrategySheet({ strategy, onClose, onExecute }: StrategySheetProps) {
+  // Lock body scroll when sheet is open
+  useEffect(() => {
+    if (strategy) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [strategy]);
+
   if (!strategy) return null;
 
   const content = STRATEGIES[strategy];
@@ -109,7 +119,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
         style={{
           position: 'fixed',
           inset: 0,
-          zIndex: 1000,
+          zIndex: 50,
           background: 'rgba(0,0,0,0.6)',
           backdropFilter: 'blur(2px)',
           animation: 'strategyFadeIn 0.2s ease-out',
@@ -123,63 +133,47 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: 1001,
-          background: '#1e293b',
-          borderTop: '1px solid #334155',
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          maxHeight: '85vh',
+          zIndex: 50,
+          height: '80vh',
+          background: '#0f172a',
+          borderTopLeftRadius: 14,
+          borderTopRightRadius: 14,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
           animation: 'strategySlideUp 0.3s ease-out',
           boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
         }}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag Handle */}
-        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px 0 6px' }}>
+        {/* ─── Header (non-scrolling) ────────────────────── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '12px 16px 8px',
+            borderBottom: '1px solid #1e293b',
+            flexShrink: 0,
+            position: 'relative',
+          }}
+        >
+          {/* Drag Handle */}
           <div
             style={{
+              position: 'absolute',
+              top: 8,
+              left: '50%',
+              transform: 'translateX(-50%)',
               width: 36,
               height: 4,
               borderRadius: 2,
               background: '#475569',
             }}
           />
-          {/* X Close Button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            style={{
-              position: 'absolute',
-              right: 4,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              fontSize: 18,
-              cursor: 'pointer',
-              borderRadius: 6,
-              fontFamily: 'inherit',
-            }}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Scrollable Body */}
-        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 16px 32px' }}>
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: 28 }}>{content.icon}</span>
-            <div style={{ flex: 1 }}>
-              <h3 style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9', margin: '0 0 3px' }}>
+          {/* Icon + Name */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+            <span style={{ fontSize: 26 }}>{content.icon}</span>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>
                 {content.label}
               </h3>
               <span
@@ -192,29 +186,144 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
                   border: '1px solid rgba(6,182,212,0.25)',
                   borderRadius: 4,
                   padding: '2px 8px',
+                  marginTop: 4,
                 }}
               >
                 Best for: {content.bestFor}
               </span>
             </div>
           </div>
-
-          {/* Section: What is it? */}
-          <Section title="💡 What is it?" body={content.what} />
-
-          {/* Section: When to use */}
-          <Section title="📋 When to use" bullets={content.when} />
-
-          {/* Section: Risks */}
-          <Section title="⚠️ Risks" bullets={content.risks} />
+          {/* X Close */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            style={{
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: 8,
+              color: '#94a3b8',
+              fontSize: 16,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              flexShrink: 0,
+              marginLeft: 8,
+            }}
+            aria-label="Close"
+          >
+            ✕
+          </button>
         </div>
 
-        {/* Sticky Execute Button */}
+        {/* ─── Content (scrollable) ──────────────────────── */}
         <div
           style={{
-            padding: '12px 16px 96px',
-            borderTop: '1px solid #334155',
-            background: 'linear-gradient(to top, #1e293b, rgba(30,41,59,0.95))',
+            flex: 1,
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            padding: '16px 16px 24px',
+          }}
+        >
+          {/* What is it? */}
+          <div
+            style={{
+              background: '#1e293b',
+              borderRadius: 10,
+              padding: 14,
+              marginBottom: 10,
+              border: '1px solid #334155',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#06b6d4',
+                marginBottom: 8,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              💡 What is it?
+            </div>
+            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
+              {content.what}
+            </p>
+          </div>
+
+          {/* When to use */}
+          <div
+            style={{
+              background: '#1e293b',
+              borderRadius: 10,
+              padding: 14,
+              marginBottom: 10,
+              border: '1px solid #334155',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#06b6d4',
+                marginBottom: 8,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              📋 When to use
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {content.when.map((b, i) => (
+                <li key={i} style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.5, marginBottom: 4 }}>
+                  {b}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Risks */}
+          <div
+            style={{
+              background: '#1e293b',
+              borderRadius: 10,
+              padding: 14,
+              marginBottom: 10,
+              border: '1px solid #334155',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#06b6d4',
+                marginBottom: 8,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              ⚠️ Risks
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {content.risks.map((b, i) => (
+                <li key={i} style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.5, marginBottom: 4 }}>
+                  {b}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* ─── Execute Button (non-scrolling) ────────────── */}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '12px 16px 80px',
+            borderTop: '1px solid #1e293b',
+            background: '#0f172a',
           }}
         >
           <button
@@ -253,55 +362,5 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
         }
       `}</style>
     </>
-  );
-}
-
-// ─── Reusable Section ──────────────────────────────────────
-function Section({
-  title,
-  body,
-  bullets,
-}: {
-  title: string;
-  body?: string;
-  bullets?: string[];
-}) {
-  return (
-    <div
-      style={{
-        background: '#0f172a',
-        borderRadius: 10,
-        padding: 14,
-        marginBottom: 10,
-        border: '1px solid #334155',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: '#06b6d4',
-          marginBottom: 8,
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
-        }}
-      >
-        {title}
-      </div>
-      {body && (
-        <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
-          {body}
-        </p>
-      )}
-      {bullets && (
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {bullets.map((b, i) => (
-            <li key={i} style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.5, marginBottom: 4 }}>
-              {b}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
