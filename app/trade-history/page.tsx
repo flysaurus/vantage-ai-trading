@@ -93,7 +93,7 @@ function orderToTrade(o: Order): Trade {
 // ─── Inner Page (needs BrokerProvider context) ────────────────
 function TradeHistoryPageInner() {
   const { user, isLoading: authLoading } = useAuth();
-  const { isConnected } = useBroker();
+  const { isConnected, isInitialized } = useBroker();
   const router = useRouter();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [total, setTotal] = useState(0);
@@ -118,6 +118,8 @@ function TradeHistoryPageInner() {
 
   const syncThenLoad = useCallback(async () => {
     if (!user) return;
+    // Wait for broker status check to complete before deciding demo vs live
+    if (!isInitialized) return;
     setLoading(true);
     setError(null);
 
@@ -165,7 +167,7 @@ function TradeHistoryPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [user, isConnected]);
+  }, [user, isConnected, isInitialized]);
 
   useEffect(() => { syncThenLoad(); }, [syncThenLoad]);
 
@@ -386,8 +388,13 @@ function TradeHistoryPageInner() {
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>Loading trade history...</div>
       )}
 
+      {/* Waiting for broker check */}
+      {!loading && !isInitialized && (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>Checking broker status...</div>
+      )}
+
       {/* Empty */}
-      {!loading && trades.length === 0 && !error && (
+      {!loading && isInitialized && trades.length === 0 && !error && (
         <div style={{ textAlign: 'center', padding: '60px 20px', background: '#1e293b', border: '1px solid #334155', borderRadius: 12 }}>
           <Activity size={40} style={{ color: '#475569', marginBottom: 12 }} />
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No trades yet</div>
