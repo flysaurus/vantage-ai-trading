@@ -3,8 +3,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
-import { usePortfolio } from '@/hooks/usePortfolio';
-import { useBroker } from '@/components/providers/BrokerProvider';
+import { usePortfolioStore } from '@/store';
+import { getDemoSymbols, getDemoAccount } from '@/lib/demo-data';
+import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -78,14 +79,68 @@ interface Trade {
 
 export default function RebalancingPage() {
   const router = useRouter();
-  const { account, loading: portfolioLoading } = usePortfolio();
-  const { isConnected } = useBroker();
 
-  // ── Show spinner only while account is null (no data at all) ──
+  // Read account from global Zustand store (populated by usePortfolio elsewhere)
+  const storeAccount = usePortfolioStore(s => s.account) as (AccountSummary & { sectorAllocations?: any[] }) | null;
+  const [account, setAccount] = useState<(AccountSummary & { sectorAllocations?: any[] }) | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  // ── Load portfolio data (demo or broker) ──
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      // Check broker status
+      try {
+        const res = await fetch('/api/broker/status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsConnected(data.isConnected || false);
+        }
+      } catch { /* keep false */ }
+
+      // If store already has data from usePortfolio (on main dashboard), use it
+      if (storeAccount && storeAccount.positions?.length > 0) {
+        if (!cancelled) {
+          setAccount(storeAccount);
+          setDataLoading(false);
+        }
+        return;
+      }
+
+      // Fallback: load demo data directly
+      try {
+        const symbols = getDemoSymbols('buffett');
+        const res = await fetch('/api/market/quotes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols }),
+        });
+        if (!res.ok) throw new Error('Market data unavailable');
+        const data = await res.json();
+        const demo = getDemoAccount('buffett', data.quotes || {});
+        if (!cancelled) {
+          setAccount(demo as any);
+          setDataLoading(false);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setLoadError(e.message || 'Failed to load');
+          setDataLoading(false);
+        }
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [storeAccount]);
+
   const positions = account?.positions ?? [];
   const totalValue = account?.equity ?? 0;
   const buyingPower = account?.buyingPower ?? 0;
-  const dataReady = account !== null;
+  const dataReady = !dataLoading;
 
   // Section 2: target allocations
   const [targets, setTargets] = useState<Record<string, number>>({});
@@ -302,8 +357,14 @@ export default function RebalancingPage() {
       <Section icon={<Activity size={12} />} label="Current Portfolio">
         {!dataReady ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
-            <div style={{ width: 16, height: 16, border: '2px solid #334155', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
-            Loading portfolio data...
+            {loadError ? (
+              <span style={{ color: '#f87171' }}>{loadError}</span>
+            ) : (
+              <>
+                <div style={{ width: 16, height: 16, border: '2px solid #334155', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                Loading portfolio data...
+              </>
+            )}
           </div>
         ) : totalValue <= 0 || positions.length === 0 ? (
           <div style={{ fontSize: 12, color: '#94a3b8', padding: '8px 0', lineHeight: 1.6 }}>
