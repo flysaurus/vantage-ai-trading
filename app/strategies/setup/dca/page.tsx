@@ -208,13 +208,14 @@ export default function DcaSetupPage() {
 
   // ─── Submit ─────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!selectedSymbol || !frequency || !startDate) return;
-
     setSubmitting(true);
     try {
       const parsedAmount = investBy === 'amount' ? parseFloat(amount) : 0;
       const parsedQty = investBy === 'shares' ? parseFloat(quantity) : 0;
-      if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate) { setSubmitting(false); return; }
+      if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate) {
+        setSubmitting(false);
+        return;
+      }
 
       const body: Record<string, any> = {
         symbol: selectedSymbol,
