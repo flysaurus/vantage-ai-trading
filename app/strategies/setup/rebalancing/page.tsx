@@ -282,6 +282,7 @@ export default function RebalancingPage() {
   const handleAddAsset = (symbol: string) => {
     if (!symbol || targetSelected(symbol)) return;
     setTargets(prev => ({ ...prev, [symbol.toUpperCase()]: 0 }));
+    setTargetsSaved(false);
     setAddingSymbol('');
     setShowAddAsset(false);
     setTimeout(() => {
@@ -336,6 +337,7 @@ export default function RebalancingPage() {
     if (!preset) return;
     const filled = preset.fill(symbolList);
     setTargets(filled);
+    setTargetsSaved(false);
   };
 
   const handleSubmit = async () => {
