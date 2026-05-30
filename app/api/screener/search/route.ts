@@ -1,7 +1,11 @@
 // ─── POST /api/screener/search ────────────────────────────────
-// Stock screener using Finnhub profile2 (free tier) against a
-// curated universe of 400+ major US stocks and ETFs.
-// No premium endpoints required — uses only profile2 + stock/metric.
+// Stock screener using Finnhub profile2 + metric (both free tier).
+// Scans a curated universe of top US stocks/ETFs against user filters.
+//
+// Finnhub free tier: 60 calls/min. We pace at ~1 call/sec (batchSize=2
+// every 2200ms) to stay safely under the limit. Max 40 profiles per request
+// (~44s) — the curated list puts sector-matching candidates first so even
+// if we don't scan all 400+, the most relevant stocks are profiled first.
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -11,86 +15,112 @@ function getToken(): string {
   return process.env.FINNHUB_IO_API_KEY || '';
 }
 
-// ─── Curated US stock universe (S&P 500 top constituents + popular ETFs) ─
-// Finnhub's /stock/symbol requires a premium plan. This static list
-// covers the vast majority of what retail traders screen for.
-const STOCK_UNIVERSE = [
-  // Mega-cap tech
-  'AAPL','MSFT','GOOGL','GOOG','AMZN','NVDA','META','TSLA','AVGO','ORCL',
-  'ADBE','CRM','CSCO','INTC','AMD','QCOM','TXN','IBM','NOW','INTU',
-  'UBER','ABNB','SNOW','PLTR','SQ','SHOP','NET','DDOG','CRWD','ZS',
-  'PANW','FTNT','OKTA','MDB','SNPS','CDNS','WDAY','ADSK','TEAM','ZM',
-  // Financial Services
-  'JPM','BAC','WFC','C','GS','MS','BLK','SCHW','AXP','V','MA',
-  'PYPL','COF','USB','PNC','TFC','BK','STT','AMP','DFS','ALLY',
-  'SOFI','HOOD','ICE','CME','MCO','SPGI','AIG','MET','PRU','TRV',
-  'ALL','PGR','CB','AFL','MKTX','FIS','FISV','GPN','TROW','NTRS',
-  // Healthcare
-  'JNJ','UNH','PFE','MRK','ABBV','ABT','TMO','DHR','LLY','BMY',
-  'AMGN','GILD','ISRG','REGN','VRTX','BIIB','ZTS','CVS','CI','HUM',
-  'ELV','CNC','MRNA','DXCM','IDXX','IQV','A','WAT','MTD','ILMN',
-  // Consumer / Retail
-  'AMZN','WMT','COST','HD','MCD','NKE','LOW','SBUX','TGT','TJX',
-  'ROST','DG','DLTR','ORLY','AZO','ULTA','LULU','DHI','LEN','PHM',
-  'BKNG','MAR','HLT','CMG','YUM','DPZ','MELI','EBAY','ETSY','W',
-  // Industrials / Energy / Materials
-  'XOM','CVX','COP','EOG','SLB','PSX','MPC','VLO','OXY','HES',
-  'CAT','DE','GE','BA','LMT','RTX','HON','UPS','FDX','UNP',
-  'CSX','NSC','ITW','EMR','ROK','PH','ETN','CMI','PCAR','DOV',
-  'LIN','APD','ECL','SHW','FCX','NEM','DOW','DD','NUE','STLD',
-  // Utilities / Real Estate
-  'NEE','DUK','SO','D','AEP','EXC','SRE','XEL','ED','PEG',
-  'AMT','PLD','EQIX','CCI','SPG','PSA','O','WELL','AVB','EQR',
-  // Communication / Media
-  'DIS','NFLX','CMCSA','VZ','T','TMUS','CHTR','WBD','PARA','LYV',
-  // ETFs
-  'SPY','QQQ','IWM','DIA','XLF','XLK','XLE','XLV','XLI','XLY',
-  'XLU','XLP','XLB','XLC','XLRE','VTI','VOO','VT','BND','AGG',
-  'GLD','SLV','USO','UNG','TLT','HYG','LQD','ARKK','SOXX','SMH',
-  // More large-caps to round out 400+
-  'ADP','ADI','AEP','AFL','AJG','AKAM','ALB','ALGN','ALLE','AMAT',
-  'AME','AMP','ANET','ANSS','AOS','APA','APO','APP','ARES','ATO',
-  'AVB','AVGO','AVY','AXON','AZPN','BALL','BAX','BBY','BDX','BEN',
-  'BG','BKR','BRO','BSX','BURL','BX','CAG','CAH','CARR','CBRE',
-  'CCL','CDW','CE','CEG','CF','CFG','CHD','CHRW','CINF','CL',
-  'CLX','CMS','CNP','COO','CPB','CPRT','CPT','CRL','CSGP','CTAS',
-  'CTLT','CTRA','CTSH','CTVA','CVNA','DAL','DAY','DD','DELL','DFS',
-  'DGX','DHI','DHR','DKS','DLTR','DOV','DRI','DT','DTE','DUK',
-  'DVA','DVN','DXC','EA','EBAY','ECL','ED','EFX','EG','EIX',
-  'EL','EMR','ENPH','EPAM','EQH','EQT','ERIE','ES','ESS','ETR',
-  'EVRG','EW','EXC','EXPD','EXPE','F','FANG','FAST','FDS','FE',
-  'FFIV','FICO','FIS','FITB','FLNC','FMC','FND','FOX','FOXA','FSLR',
-  'FTV','GD','GEHC','GEN','GIS','GNRC','GRMN','GWW','HAL','HAS',
-  'HBAN','HCA','HD','HIG','HII','HLT','HOLX','HPE','HPQ','HRL',
-  'HSIC','HSY','HUBB','HWM','IEX','IFF','INCY','INVH','IP','IPG',
-  'IQV','IR','IRM','IT','ITT','IVZ','J','JBHT','JCI','JKHY',
-  'JNPR','K','KDP','KEY','KEYS','KHC','KIM','KKR','KLAC','KMB',
-  'KMI','KMX','KO','KR','KVUE','L','LDOS','LEG','LEN','LH',
-  'LHX','LKQ','LNT','LRCX','LUV','LW','LYB','LYV','M','MA',
-  'MAA','MAS','MCHP','MCK','MCO','MDLZ','MGM','MHK','MKC','MKTX',
-  'MLM','MMC','MMM','MNST','MO','MOH','MOS','MPC','MPWR','MRK',
-  'MRNA','MRO','MS','MSCI','MSI','MTB','MTCH','MTD','MU','NDAQ',
-  'NDSN','NEE','NEM','NI','NKE','NOC','NOW','NRG','NTAP','NTRS',
-  'NUE','NVDA','NVR','NWL','NXPI','O','ODFL','OKE','OMC','ON',
-  'ORCL','OTIS','OXY','PARA','PAYC','PAYX','PCAR','PCG','PEAK',
-  'PEG','PEP','PFE','PFG','PG','PGR','PH','PHM','PKG','PLD',
-  'PLTR','PM','PNR','PNW','PODD','POOL','PPG','PPL','PTC','PWR',
-  'PXD','QCOM','QRVO','RCL','REG','REGN','RF','RGA','RJF','RMD',
-  'ROK','ROP','ROST','RPM','RPRX','RSG','RTX','SBAC','SBUX','SJM',
-  'SLB','SMCI','SNA','SNPS','SO','SOLV','SPG','SPGI','SRE','STE',
-  'STLD','STT','STX','STZ','SWK','SWKS','SYF','SYK','SYY','T',
-  'TAP','TDG','TDY','TEAM','TECH','TEL','TER','TFC','TFX','TGT',
-  'TJX','TMO','TMUS','TPR','TRGP','TRMB','TROW','TRU','TRV','TSCO',
-  'TSLA','TSN','TT','TTD','TTWO','TWLO','TXN','TXT','TYL','U',
-  'UAL','UDR','UHS','ULTA','UNH','UNM','UNP','UPS','URI','USB',
-  'V','VFC','VICI','VLO','VLTO','VMC','VNO','VRSK','VRSN','VRTX',
-  'VST','VTR','VTRS','VZ','WAB','WAT','WBA','WBD','WDC','WEC',
-  'WELL','WFC','WHR','WM','WMB','WMT','WRB','WST','WTW','WY',
-  'XEL','XOM','XPO','XYL','YUM','ZBH','ZBRA','ZION','ZTS',
-];
+// ─── Curated US stock universe ────────────────────────────────
+// S&P 500 constituents, Nasdaq 100, major ETFs. Grouped by sector so
+// we can smart-order: sector-matching stocks profiled first.
+const SECTOR_STOCKS: Record<string, string[]> = {
+  technology: [
+    'AAPL','MSFT','NVDA','AVGO','ORCL','ADBE','CRM','CSCO','AMD','QCOM',
+    'TXN','IBM','NOW','INTU','UBER','ABNB','SNOW','PLTR','SQ','SHOP',
+    'NET','DDOG','CRWD','ZS','PANW','FTNT','OKTA','MDB','SNPS','CDNS',
+    'WDAY','ADSK','TEAM','ZM','AMAT','ADI','ANET','ANSS','AKAM','DELL',
+    'FICO','FFIV','GEN','HPQ','HPE','JNPR','KEYS','KLAC','LRCX','MCHP',
+    'MPWR','MSI','MU','NTAP','NXPI','ON','QRVO','SMCI','STX','SWKS',
+    'TEL','TER','TYL','VRSN','ZBRA',
+  ],
+  'financial services': [
+    'JPM','BAC','WFC','C','GS','MS','BLK','SCHW','AXP','V','MA',
+    'PYPL','COF','USB','PNC','TFC','BK','STT','AMP','DFS','ALLY',
+    'SOFI','HOOD','ICE','CME','MCO','SPGI','AIG','MET','PRU','TRV',
+    'ALL','PGR','CB','AFL','MKTX','FIS','FISV','GPN','TROW','NTRS',
+    'BX','KKR','APO','ARES','BEN','IVZ','NDAQ','RJF','SYF','CFG',
+    'HBAN','KEY','MTB','RF','ZION','FITB',
+  ],
+  healthcare: [
+    'JNJ','UNH','PFE','MRK','ABBV','ABT','TMO','DHR','LLY','BMY',
+    'AMGN','GILD','ISRG','REGN','VRTX','BIIB','ZTS','CVS','CI','HUM',
+    'ELV','CNC','MRNA','DXCM','IDXX','IQV','A','WAT','MTD','ILMN',
+    'BSX','BAX','BDX','CAH','DGX','GEHC','HCA','HOLX','HSIC','INCY',
+    'LH','MCK','MOH','PODD','RMD','SOLV','STE','SYK','TECH','TFX',
+    'UHS','WST','ZBH','EW','RPRX','VTRS','CTLT',
+  ],
+  consumer: [
+    'AMZN','WMT','COST','HD','MCD','NKE','LOW','SBUX','TGT','TJX',
+    'ROST','DG','DLTR','ORLY','AZO','ULTA','LULU','DHI','LEN','PHM',
+    'BKNG','MAR','HLT','CMG','YUM','DPZ','MELI','EBAY','ETSY','W',
+    'TSLA','F','GM','RCL','CCL','NCLH','DAL','UAL','LUV','EXPE',
+    'BBY','KMX','DRI','DPZ','YUM','MGM','WYNN','LKQ','POOL','TPR',
+    'EL','HAS','LEG','MHK','NVR','RL','TAP','VFC','WHR',
+  ],
+  industrials: [
+    'CAT','DE','GE','BA','LMT','RTX','HON','UPS','FDX','UNP',
+    'CSX','NSC','ITW','EMR','ROK','PH','ETN','CMI','PCAR','DOV',
+    'ADP','PAYX','CPRT','FAST','GWW','IR','OTIS','AME','AXON','CARR',
+    'DAL','DOV','EFX','GNRC','HII','HUBB','HWM','IEX','ITT','JBHT',
+    'JCI','LHX','MMM','NDSN','PNR','PWR','RSG','SWK','TDG','TT',
+    'TXT','URI','VLTO','WAB','WM','XYL',
+  ],
+  energy: [
+    'XOM','CVX','COP','EOG','SLB','PSX','MPC','VLO','OXY','HES',
+    'APA','BKR','CTRA','DVN','EQT','FANG','HAL','KMI','MRO','OKE',
+    'PXD','TRGP','VST','WMB','XOM','APA',
+  ],
+  utilities: [
+    'NEE','DUK','SO','D','AEP','EXC','SRE','XEL','ED','PEG',
+    'AES','ATO','CMS','CNP','DTE','DUK','EIX','ES','ETR','EVRG',
+    'FE','LNT','NI','NRG','PCG','PNW','PPL','WEC',
+  ],
+  'real estate': [
+    'AMT','PLD','EQIX','CCI','SPG','PSA','O','WELL','AVB','EQR',
+    'ARE','BXP','CPT','DLR','ESS','EXR','FRT','HST','INVH','IRM',
+    'KIM','MAA','PEAK','REG','SBAC','UDR','VICI','VNO','VTR','WY',
+  ],
+  materials: [
+    'LIN','APD','ECL','SHW','FCX','NEM','DOW','DD','NUE','STLD',
+    'ALB','BALL','CE','CF','CLF','CTVA','EMN','FMC','IFF','IP',
+    'MLM','MOS','PKG','PPG','RPM','VMC','WRK',
+  ],
+  'media & entertainment': [
+    'DIS','NFLX','CMCSA','VZ','T','TMUS','CHTR','WBD','PARA','LYV',
+    'EA','FOX','FOXA','IPG','LYV','MTCH','NWL','OMC','TTWO','WBD',
+  ],
+  etf: [
+    'SPY','QQQ','IWM','DIA','XLF','XLK','XLE','XLV','XLI','XLY',
+    'XLU','XLP','XLB','XLC','XLRE','VTI','VOO','VT','BND','AGG',
+    'GLD','SLV','USO','UNG','TLT','HYG','LQD','ARKK','SOXX','SMH',
+    'IWF','IWB','IWD','IVE','IJH','IJR','IYR','VNQ','XLG','RSP',
+    'TQQQ','SQQQ','UCO','SCO','EWZ','FXI','EEM','EFA','VWO',
+  ],
+};
 
-// Deduplicate
-const UNIVERSE = [...new Set(STOCK_UNIVERSE)];
+// Build flat list: sector-matching groups first, rest after
+function buildUniverse(sector?: string): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  // If a sector is specified, put those stocks FIRST so they get profiled
+  // before Finnhub rate limits kick in
+  const sectorOrder = Object.keys(SECTOR_STOCKS);
+  if (sector) {
+    const sl = sector.toLowerCase();
+    // Move matching sector to front
+    const idx = sectorOrder.findIndex(s => s.includes(sl) || sl.includes(s));
+    if (idx >= 0) {
+      sectorOrder.splice(idx, 1);
+      sectorOrder.unshift(Object.keys(SECTOR_STOCKS)[idx]);
+    }
+  }
+
+  for (const sectorKey of sectorOrder) {
+    for (const sym of SECTOR_STOCKS[sectorKey] || []) {
+      if (!seen.has(sym)) {
+        seen.add(sym);
+        ordered.push(sym);
+      }
+    }
+  }
+  return ordered;
+}
 
 export interface ScreenerFilters {
   marketCap?: 'micro' | 'small' | 'mid' | 'large' | 'mega';
@@ -147,26 +177,28 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const token = getToken();
   if (!token) {
-    return NextResponse.json({ error: 'Finnhub not configured' }, { status: 503 });
+    return NextResponse.json({ error: 'Finnhub not configured', status: 503 }, { status: 200 });
   }
 
   try {
     const filters: ScreenerFilters = await req.json().catch(() => ({}));
 
-    const symbols = UNIVERSE; // ~420 stocks — use our curated list
-    console.log(`[screener] Scanning ${symbols.length} stocks`);
+    // Smart-order: put sector-matching stocks first
+    const symbols = buildUniverse(filters.sector);
+    console.log(`[screener] Universe: ${symbols.length} stocks (sector: ${filters.sector || 'all'})`);
 
-    if (!symbols.length) {
-      return NextResponse.json({ results: [], total: 0, scanned: 0, message: 'No symbols available' });
-    }
-
-    // ─── 1. Fetch profiles in parallel batches of 10 ─────────
-    const batchSize = 10;
+    // ─── 1. Fetch profiles with proper rate limiting ─────────
+    // Finnhub free tier: 60 calls/min. Strategy: 2 parallel calls every 2.2s
+    // = ~1 call/sec = ~55 calls/min. Scan up to 40 stocks (~44s).
+    const MAX_PROFILES = 40;
+    const batchSize = 2;
+    const batchDelayMs = 2200; // 2.2s between batches → ~55 calls/min
     const profiles: any[] = [];
-    const failed: string[] = [];
 
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
+    const toScan = symbols.slice(0, MAX_PROFILES);
+
+    for (let i = 0; i < toScan.length; i += batchSize) {
+      const batch = toScan.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(sym =>
           fetch(
@@ -175,35 +207,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           ).then(r => r.ok ? r.json() : null).catch(() => null)
         )
       );
-      let batchFound = 0;
       for (let j = 0; j < results.length; j++) {
         const r = results[j];
         if (r.status === 'fulfilled' && r.value?.ticker) {
           profiles.push(r.value);
-          batchFound++;
         }
       }
-      // Rate limit: 200ms between batches (keeps well under 60/min)
-      if (i + batchSize < symbols.length) {
-        await new Promise(r => setTimeout(r, 200));
+      // Pace to stay under rate limit
+      if (i + batchSize < toScan.length) {
+        await new Promise(r => setTimeout(r, batchDelayMs));
       }
     }
 
-    console.log(`[screener] Got ${profiles.length} profiles`);
+    console.log(`[screener] Got ${profiles.length} profiles from ${toScan.length} scanned`);
 
     // ─── 2. Apply sector + market cap filters ─────────────────
     const sectorFilter = filters.sector?.toLowerCase();
     let keywords: string[] | null = null;
     if (sectorFilter) {
-      // Find matching keywords for this sector
       for (const [key, kws] of Object.entries(SECTOR_KEYWORDS)) {
         if (key.includes(sectorFilter) || sectorFilter.includes(key)) {
           keywords = kws;
           break;
         }
       }
-      // If no exact match, use the sector name directly
-      if (!keywords && filters.sector) keywords = [filters.sector];
+      if (!keywords) keywords = [filters.sector!];
     }
 
     const results: ScreenerResult[] = [];
@@ -227,9 +255,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
 
       // Market cap filter
-      if (filters.marketCap) {
+      if (filters.marketCap && marketCap != null) {
         const [lo, hi] = MARKET_CAP_RANGES[filters.marketCap] || [0, Infinity];
-        if (marketCap == null || marketCap < lo || marketCap > hi) continue;
+        if (marketCap < lo || marketCap > hi) continue;
       }
 
       results.push({
@@ -249,10 +277,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     console.log(`[screener] After filters: ${results.length} matches`);
 
-    // ─── 3. Enrich with metrics for top 40 matches ────────────
-    const topResults = results.slice(0, 40);
-    for (let i = 0; i < topResults.length; i += 3) {
-      const batch = topResults.slice(i, i + 3);
+    // ─── 3. Enrich with metrics (PE, div yield, 52wk, price) ─
+    // Only enrich top 25 to preserve API quota
+    const MAX_ENRICH = 25;
+    const topResults = results.slice(0, MAX_ENRICH);
+    for (let i = 0; i < topResults.length; i += 2) {
+      const batch = topResults.slice(i, i + 2);
       const metricResults = await Promise.allSettled(
         batch.map(r =>
           fetch(
@@ -275,7 +305,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
         if (m.currentPrice != null) batch[j].price = m.currentPrice;
       }
-      if (i + 3 < topResults.length) await new Promise(r => setTimeout(r, 150));
+      if (i + 2 < topResults.length) {
+        await new Promise(r => setTimeout(r, 2200));
+      }
     }
 
     // ─── 4. Apply numeric filters on enriched results ─────────
