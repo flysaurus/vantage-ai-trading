@@ -33,48 +33,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'alertType must be price_above, price_below, or percent_change' }, { status: 400 });
     }
 
-    // Default to in_app if no channels specified
-    const channels = notificationChannels?.length ? notificationChannels : ['in_app'];
-
     if (userId !== authUserId) {
       return NextResponse.json({ error: 'Cannot create alerts for other users' }, { status: 403 });
     }
 
-    // Try insert with notification_channels, fall back without if column doesn't exist
+    const channels = notificationChannels?.length ? notificationChannels : ['in_app'];
+
+    // Production DB uses 'type' and 'threshold' column names
     const insertPayload: Record<string, any> = {
       user_id: userId,
       symbol: symbol.trim().toUpperCase(),
-      alert_type: alertType,
-      target_value: targetValue,
+      type: alertType,
+      threshold: targetValue,
       is_active: true,
     };
-    if (channels && channels.length > 1) {
+    if (channels.length > 1) {
       insertPayload.notification_channels = channels;
     }
 
-    let { data, error } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from('alerts')
       .insert(insertPayload)
-      .select('id, symbol, alert_type, target_value, is_active, triggered_at, created_at')
+      .select('id, symbol, type, threshold, is_active, notification_channels, triggered_at, created_at')
       .single();
-
-    // If column doesn't exist, retry without notification_channels
-    if (error && error.message?.includes('notification_channels')) {
-      console.warn('[alerts/create] notification_channels column not found, retrying without');
-      const retry = await (supabase as any)
-        .from('alerts')
-        .insert({
-          user_id: userId,
-          symbol: symbol.trim().toUpperCase(),
-          alert_type: alertType,
-          target_value: targetValue,
-          is_active: true,
-        })
-        .select('id, symbol, alert_type, target_value, is_active, triggered_at, created_at')
-        .single();
-      data = retry.data;
-      error = retry.error;
-    }
 
     if (error) {
       console.error('[alerts/create] Insert failed:', error.message);
@@ -84,8 +65,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       id: data.id,
       symbol: data.symbol,
-      alertType: data.alert_type,
-      targetValue: data.target_value,
+      alertType: data.type,
+      targetValue: data.threshold,
       isActive: data.is_active,
       notificationChannels: data.notification_channels || ['in_app'],
       triggeredAt: data.triggered_at,

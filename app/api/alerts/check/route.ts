@@ -19,8 +19,8 @@ type AlertRow = {
   id: string;
   user_id: string;
   symbol: string;
-  alert_type: 'price_above' | 'price_below' | 'percent_change';
-  target_value: number;
+  type: 'price_above' | 'price_below' | 'percent_change';
+  threshold: number;
   notification_channels: string[];
 };
 
@@ -50,16 +50,16 @@ function isTriggered(
   price: number,
   prevClose: number,
 ): boolean {
-  switch (alert.alert_type) {
+  switch (alert.type) {
     case 'price_above':
-      return price >= alert.target_value;
+      return price >= alert.threshold;
     case 'price_below':
-      return price <= alert.target_value;
+      return price <= alert.threshold;
     case 'percent_change': {
       if (prevClose <= 0) return false;
       const changePct = ((price - prevClose) / prevClose) * 100;
       const absChange = Math.abs(changePct);
-      const absTarget = Math.abs(alert.target_value);
+      const absTarget = Math.abs(alert.threshold);
       return absChange >= absTarget;
     }
     default:
@@ -133,10 +133,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch active alerts (untriggered only)
+    // Fetch active alerts — production DB uses 'type' and 'threshold'
     let query = (supabase as any)
       .from('alerts')
-      .select('id, user_id, symbol, alert_type, target_value, notification_channels')
+      .select('id, user_id, symbol, type, threshold, notification_channels')
       .eq('is_active', true)
       .is('triggered_at', null);
 
@@ -194,7 +194,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             alert_id: alert.id,
             type: 'price_alert',
             title: `Price Alert: ${alert.symbol}`,
-            body: `${alert.symbol} ${alert.alert_type === 'price_above' ? 'above' : alert.alert_type === 'price_below' ? 'below' : 'changed by'} ${alert.target_value} → Current: $${priceData.price.toFixed(2)}`,
+            body: `${alert.symbol} ${alert.type === 'price_above' ? 'above' : alert.type === 'price_below' ? 'below' : 'changed by'} ${alert.threshold} → Current: $${priceData.price.toFixed(2)}`,
             is_read: false,
           });
 
@@ -204,8 +204,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           symbol: alert.symbol,
           price: priceData.price,
           prevClose: priceData.prevClose,
-          alertType: alert.alert_type,
-          targetValue: alert.target_value,
+          alertType: alert.type,
+          targetValue: alert.threshold,
           channels: alert.notification_channels || ['in_app'],
         });
       }

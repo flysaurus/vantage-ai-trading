@@ -46,16 +46,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Cannot update other users alerts' }, { status: 403 });
     }
 
-    // Build update
+    // Build update — production DB uses 'threshold' not 'target_value'
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (isActive !== undefined) updates.is_active = isActive;
-    if (targetValue !== undefined) updates.target_value = targetValue;
+    if (targetValue !== undefined) updates.threshold = targetValue;
 
     const { data, error } = await (supabase as any)
       .from('alerts')
       .update(updates)
       .eq('id', alertId)
-      .select('id, alert_type, target_value, is_active, updated_at')
+      .select('id, type, threshold, is_active, updated_at')
       .single();
 
     if (error) {
@@ -65,8 +65,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       id: data.id,
-      alertType: data.alert_type,
-      targetValue: data.target_value,
+      alertType: data.type,
+      targetValue: data.threshold,
       isActive: data.is_active,
       updatedAt: data.updated_at,
     });

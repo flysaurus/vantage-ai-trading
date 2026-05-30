@@ -21,13 +21,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Cannot fetch other users alerts' }, { status: 403 });
     }
 
+    // Production DB uses 'type' and 'threshold' column names
     let query = (supabase as any)
       .from('alerts')
-      .select('id, user_id, symbol, alert_type, target_value, is_active, triggered_at, created_at, updated_at')
+      .select('id, user_id, symbol, type, threshold, is_active, notification_channels, triggered_at, created_at, updated_at')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false });
 
-    // Optional: filter by active status
     if (isActiveParam === 'true') {
       query = query.eq('is_active', true);
     } else if (isActiveParam === 'false') {
@@ -45,8 +45,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       id: a.id,
       userId: a.user_id,
       symbol: a.symbol,
-      alertType: a.alert_type,
-      targetValue: a.target_value,
+      alertType: a.type,
+      targetValue: a.threshold,
       isActive: a.is_active,
       notificationChannels: a.notification_channels || ['in_app'],
       triggeredAt: a.triggered_at,
