@@ -181,16 +181,26 @@ export function useAIChat() {
           },
           onCard: (card: AICardComponent) => {
             // Add card to the last message's components
-            // We access the store directly to get latest state
             const state = useChatStore.getState();
             const msgs = [...state.messages];
             const lastMsg = msgs[msgs.length - 1];
             if (lastMsg && lastMsg.role === 'assistant') {
               const existingComponents = lastMsg.components || [];
+              // Check if this is a rebalance plan card with trade data — client-side session
+              const isRebalance = card.type === 'rebalance' && (card as any).data?.trades?.length > 0;
               useChatStore.setState({
                 messages: msgs.map((m) =>
                   m.id === lastMsg.id
-                    ? { ...m, components: [...existingComponents, card] }
+                    ? {
+                        ...m,
+                        components: [...existingComponents, card],
+                        // Create client-side session from rebalance card data (no DB needed)
+                        rebalanceSession: isRebalance ? {
+                          sessionId: `local-${Date.now()}`,
+                          summary: (card as any).data?.summary || '',
+                          trades: (card as any).data?.trades || [],
+                        } : m.rebalanceSession || undefined,
+                      }
                     : m
                 ),
               });

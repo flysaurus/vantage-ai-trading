@@ -287,7 +287,13 @@ export function AIChat() {
                       {sells.length > 0 && ` · ${sells.length} sells`}
                     </div>
                     <button
-                      onClick={() => router.push(`/strategies/setup/rebalancing?session=${session.sessionId}&source=ai`)}
+                      onClick={() => {
+                        const isLocal = session.sessionId?.startsWith('local-');
+                        const url = isLocal
+                          ? `/strategies/setup/rebalancing?source=ai&trades=${encodeURIComponent(JSON.stringify(session.trades))}`
+                          : `/strategies/setup/rebalancing?session=${session.sessionId}&source=ai`;
+                        router.push(url);
+                      }}
                       style={{
                         width: '100%',
                         padding: '10px 16px',

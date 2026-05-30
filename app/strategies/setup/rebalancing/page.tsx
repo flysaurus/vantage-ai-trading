@@ -90,14 +90,16 @@ export default function RebalancingPage() {
   // ── Load portfolio data (demo or broker) ──
   useEffect(() => {
     let cancelled = false;
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 10000);
 
     async function load() {
       // Check broker status
       try {
-        const res = await fetch('/api/broker/status');
+        const res = await fetch('/api/broker/status', { signal: abortController.signal });
         if (res.ok) {
           const data = await res.json();
-          setIsConnected(data.isConnected || false);
+          if (!cancelled) setIsConnected(data.isConnected || false);
         }
       } catch { /* keep false */ }
 
@@ -117,6 +119,7 @@ export default function RebalancingPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbols }),
+          signal: abortController.signal,
         });
         if (!res.ok) throw new Error('Market data unavailable');
         const data = await res.json();
@@ -127,14 +130,18 @@ export default function RebalancingPage() {
         }
       } catch (e: any) {
         if (!cancelled) {
-          setLoadError(e.message || 'Failed to load');
+          setLoadError(e.name === 'AbortError' ? 'Portfolio data timed out — please refresh' : (e.message || 'Failed to load portfolio'));
           setDataLoading(false);
         }
       }
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      abortController.abort();
+    };
   }, [storeAccount]);
 
   const positions = account?.positions ?? [];
@@ -175,11 +182,37 @@ export default function RebalancingPage() {
   useEffect(() => {
     const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     const sid = params?.get('session');
+    const tradesParam = params?.get('trades');
 
     // Check if opened from AI Advisor
     if (params?.get('source') === 'ai') setFromAi(true);
 
-    // Load session data if present
+    // Load client-side session from URL trades param (no DB needed)
+    if (tradesParam && !sessionId && !sid) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(tradesParam));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessionId('local');
+          setFromAi(true);
+          const orders = parsed.map((t: any) => ({
+            symbol: t.symbol,
+            name: t.symbol,
+            action: t.action === 'trim' || t.action === 'sell' ? 'SELL' as const : 'BUY' as const,
+            shares: Number(t.shares || t.qty || 0),
+            estimatedValue: Number(t.estimatedValue || t.dollarAmount || 0),
+            currentPrice: Number(t.shares || t.qty) > 0 ? Number(t.estimatedValue || t.dollarAmount) / Number(t.shares || t.qty) : 0,
+            orderType: 'market' as const,
+            isAiSuggested: true,
+          })).filter((o: any) => o.symbol && o.shares > 0);
+          if (orders.length > 0) {
+            setEditedOrders(orders);
+            setAutoMode('auto');
+          }
+        }
+      } catch { /* invalid JSON, skip */ }
+    }
+
+    // Load session data from DB if present
     if (sid && !sessionId) {
       setSessionId(sid);
       setSessionLoading(true);
@@ -655,7 +688,24 @@ export default function RebalancingPage() {
         {!dataReady ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
             {loadError ? (
-              <span style={{ color: '#f87171' }}>{loadError}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ color: '#f87171' }}>{loadError}</span>
+                <button
+                  onClick={() => {
+                    setDataLoading(true);
+                    setLoadError('');
+                    // Force re-trigger the useEffect by temporarily clearing storeAccount ref
+                    window.location.reload();
+                  }}
+                  style={{
+                    padding: '6px 14px', fontSize: 11, fontWeight: 600,
+                    background: '#1e293b', border: '1px solid #334155', borderRadius: 6,
+                    color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  ↻ Retry
+                </button>
+              </div>
             ) : (
               <>
                 <div style={{ width: 16, height: 16, border: '2px solid #334155', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
