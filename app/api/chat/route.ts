@@ -39,7 +39,75 @@ const STYLE_PHILOSOPHY: Record<string, string> = {
   munger: `Focus on: Dividend yield and growth (5-7% annually), payout ratio sustainability, business stability, 10+ year holding horizon, compounding power. Suggest rebalancing toward: dividend aristocrats/kings, high-yield stable businesses, wide-moat compounders.`,
 };
 
-function buildSystemPrompt(context: unknown, format?: string): string {
+/**
+ * Extract stock symbols from a text query.
+ * Matches 1-5 char uppercase tickers, excluding common English words and known false positives.
+ */
+const FAKE_TICKERS = new Set([
+  'I', 'A', 'AM', 'AN', 'AS', 'AT', 'BE', 'BY', 'DO', 'GO', 'HE', 'HI', 'IF', 'IN',
+  'IS', 'IT', 'ME', 'MY', 'NO', 'OF', 'OK', 'ON', 'OR', 'SO', 'TO', 'US', 'WE',
+  'ALL', 'AND', 'ARE', 'CAN', 'CEO', 'DID', 'END', 'EPS', 'ETA', 'FOR', 'GDP',
+  'HAS', 'HOW', 'IPO', 'ITS', 'LOW', 'NEW', 'NOT', 'NOW', 'OUR', 'OUT', 'PE',
+  'PUT', 'THE', 'TOO', 'WAS', 'WAY', 'WHO', 'WHY', 'WOW', 'YOY',
+  'ABOUT', 'AFTER', 'AGAIN', 'EVERY', 'PRICE', 'SINCE', 'STOCK', 'THERE',
+  'THEIR', 'THESE', 'THINK', 'TRADE', 'TREND', 'VALUE', 'WHICH', 'WOULD',
+  'CHANGE', 'MARKET', 'MONEY', 'NEWS', 'GROWTH',
+]);
+
+function extractSymbols(text: string): string[] {
+  if (!text) return [];
+  const matches = text.toUpperCase().match(/\b[A-Z]{1,5}\b/g) || [];
+  return [...new Set(matches.filter(s => !FAKE_TICKERS.has(s)))];
+}
+
+/** Fetch Finnhub quote + profile for a symbol. Returns null on failure. */
+async function fetchStockData(symbols: string[]): Promise<Record<string, any> | null> {
+  const apiKey = process.env.FINNHUB_IO_API_KEY;
+  if (!apiKey || symbols.length === 0) return null;
+
+  const results: Record<string, any> = {};
+  const uniqueSymbols = [...new Set(symbols)].slice(0, 5); // Limit to 5 stocks max
+
+  const fetchSymbolData = async (symbol: string) => {
+    try {
+      const [quoteRes, profileRes] = await Promise.all([
+        fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`),
+        fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${apiKey}`),
+      ]);
+      const quote = quoteRes.ok ? await quoteRes.json().catch(() => ({})) : {};
+      const profile = profileRes.ok ? await profileRes.json().catch(() => ({})) : {};
+      
+      if (!quote.c || quote.c === 0) return null; // No valid quote data
+      
+      return {
+        symbol,
+        price: quote.c,
+        change: quote.d,
+        changePercent: quote.dp,
+        high: quote.h,
+        low: quote.l,
+        open: quote.o,
+        prevClose: quote.pc,
+        name: profile.name || symbol,
+        marketCap: profile.marketCapitalization,
+        sector: profile.finnhubIndustry,
+        exchange: profile.exchange,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  // Fetch sequentially to respect Finnhub rate limits
+  for (const symbol of uniqueSymbols) {
+    const data = await fetchSymbolData(symbol);
+    if (data) results[symbol] = data;
+  }
+
+  return Object.keys(results).length > 0 ? results : null;
+}
+
+function buildSystemPrompt(context: unknown, format?: string, stockData?: Record<string, any> | null): string {
   const ctx = (context && typeof context === 'object') ? context as Record<string, unknown> : null;
   const style = (ctx?.investorStyle as string) || 'buffett';
   const styleGuidance = STYLE_PHILOSOPHY[style] || STYLE_PHILOSOPHY.buffett;
@@ -127,6 +195,38 @@ Rebalance toward: Dividend aristocrats/kings, wide-moat compounders
 
 ---
 
+## LIVE MARKET DATA (use this for your analysis)
+
+`;
+
+  // Inject Finnhub research data if available
+  if (stockData && Object.keys(stockData).length > 0) {
+    for (const [sym, d] of Object.entries(stockData)) {
+      if (!d || !d.price) continue;
+      prompt += `### ${sym}${d.name && d.name !== sym ? ` — ${d.name}` : ''}\n`;
+      prompt += `- Current Price: $${Number(d.price).toFixed(2)}`;
+      if (d.change != null) {
+        const signStr = d.change >= 0 ? '+' : '';
+        prompt += ` — ${signStr}${Number(d.change).toFixed(2)} (${signStr}${Number(d.changePercent).toFixed(2)}%)\\n`;
+      } else {
+        prompt += '\n';
+      }
+      prompt += `- Previous Close: $${Number(d.prevClose || 0).toFixed(2)}\n`;
+      prompt += `- Day Range: $${Number(d.low || 0).toFixed(2)} — $${Number(d.high || 0).toFixed(2)}\n`;
+      if (d.marketCap) {
+        const capB = Number(d.marketCap);
+        const capStr = capB >= 1e12 ? `$${(capB/1e12).toFixed(2)}T` : `$${(capB/1e9).toFixed(1)}B`;
+        prompt += `- Market Cap: ${capStr}\n`;
+      }
+      if (d.sector) prompt += `- Sector: ${d.sector}\n`;
+      if (d.exchange) prompt += `- Exchange: ${d.exchange}\n`;
+      prompt += '\n';
+    }
+    prompt += `Use this live data in your analysis. Reference specific prices and changes.\n\n`;
+  }
+
+  prompt += `---
+
 ## THE USER\'S PORTFOLIO
 
 `;
@@ -205,17 +305,18 @@ Rebalance toward: Dividend aristocrats/kings, wide-moat compounders
   }
 
   // ═══════════════════════════════════════════════════════════
-  // HOW TO GIVE RECOMMENDATIONS
+  // HOW TO RESPOND
   // ═══════════════════════════════════════════════════════════
   prompt += `---
-## HOW TO GIVE RECOMMENDATIONS
+## HOW TO RESPOND
 
-### For Individual Stock Analysis:
-1. Start with the user\'s chosen style — what would their advisor say?
-2. Check if the stock is in their portfolio — reference actual position, cost basis, and P&L
-3. Provide supporting analysis with specific metrics relevant to their style
-4. Show alternative perspectives only if genuinely useful: "A momentum trader would see this differently..."
-5. Give actionable next steps: specific price targets, stop-loss levels, catalysts to watch
+### When analyzing ANY stock (in portfolio or not):
+1. Use the provided market data if available (price, PE, market cap, etc.)
+2. If the stock IS in their portfolio: reference their actual position, cost basis, P&L, and whether it fits their investor style
+3. If the stock is NOT in their portfolio: analyze it as-is. Don\'t just say "you don\'t own this" — give a real analysis. Explain what the company does, recent performance, risks, and whether it fits their style
+4. Frame analysis around their investment style: "For a value investor, SNDK at 12x earnings looks..."
+5. Give actionable insight: what would make this stock worth buying? What\'s the bear case?
+6. Always provide specific numbers — prices, PE ratios, growth rates, yields
 
 ### For Portfolio Analysis:
 1. Assess portfolio health relative to their chosen style
@@ -353,23 +454,35 @@ If the user asks about something outside your knowledge:
   // ═══════════════════════════════════════════════════════════
   prompt += `## CORE RULES (Always Follow)
 
-1. ALWAYS reference the user\'s actual portfolio positions, open orders, and style above
-2. When the user asks about a stock, FIRST check if they own it, then reference their cost basis and P&L
-3. Flag style conflicts directly: "You chose Buffett, but 60% of your portfolio is growth stocks — here\'s why that matters"
-4. Be direct and data-driven. These users know the risks.
-5. If you don\'t have enough data for a confident recommendation, say so and specify what data would help
-6. Previous recommendations should be referenced when relevant: "Last week we discussed trimming TSLA..."
-7. Portfolio should gradually become more aligned with their style over time
+1. Answer questions about ANY stock, ETF, or market topic — not just portfolio holdings
+2. Never tell the user "you don\'t own this" as your main response — analyze the stock they\'re asking about
+3. If the stock IS in their portfolio: reference position, cost basis, P&L, and style alignment
+4. Flag style conflicts directly: "You chose Buffett, but 60% of your portfolio is growth stocks — here\'s why that matters"
+5. Be direct and data-driven. These users know the risks.
+6. If you don\'t have enough data for a confident answer, say so and specify what would help
+7. Previous recommendations should be referenced when relevant: "Last week we discussed trimming TSLA..."
+8. Portfolio should gradually become more aligned with their style over time
+
+## RESEARCHING STOCKS YOU DON\'T OWN
+
+When a user asks about a stock not in their portfolio:
+- DO provide a full analysis based on available data (price, market cap, PE, sector, news if provided)
+- DO explain what the company does and its competitive position
+- DO evaluate whether it fits their investment style: "As a Lynch-style growth investor, SNDK\'s 15% revenue growth looks attractive"
+- DO give a bull/bear case
+- DO NOT just say "you don\'t own this" and list their portfolio — that\'s unhelpful
+- DO NOT refuse to answer because it\'s not in the portfolio
 
 ---
 
 ## SUCCESS METRICS
 
 You\'re doing well if the user:
-- Feels confident in their portfolio direction
+- Gets useful, data-driven analysis about ANY stock they ask about
 - Understands the reasoning behind recommendations (not just the conclusion)
-- Takes action on suggestions (buys, sells, rebalancing)
-- Reduces concentration risk over time
+- Takes action on suggestions (buys, sells, rebalancing, research)
+- Learns something new about stocks or markets
+- Reduces concentration risk over time (if they have a portfolio)
 - Avoids major mistakes (overconcentration, thesis drift, style theft)
 - Portfolio gradually becomes more aligned with their chosen style
 
@@ -574,7 +687,12 @@ export async function POST(request: NextRequest) {
       ? 'deepseek-reasoner'
       : detectModelFromQuery(messages);
 
-    const systemPrompt = buildSystemPrompt(context, format);
+    // Extract stock symbols from last user message and fetch live Finnhub data
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+    const symbols = extractSymbols(lastUserMsg?.content || '');
+    const stockData = symbols.length > 0 ? await fetchStockData(symbols) : null;
+
+    const systemPrompt = buildSystemPrompt(context, format, stockData);
     const chatMessages = [
       { role: 'system', content: sanitizeUnicode(systemPrompt) },
       ...messages.map((m: { role: string; content: string }) => ({

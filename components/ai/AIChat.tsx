@@ -341,7 +341,7 @@ export function AIChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything about your portfolio..."
+            placeholder="Ask anything about stocks, markets, or your portfolio..."
             disabled={isLoading || remainingCalls === 0}
             style={{
               flex: 1, padding: '9px 11px',
