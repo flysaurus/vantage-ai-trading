@@ -311,9 +311,14 @@ export default function DcaSetupPage() {
 
       {/* ─── Header ───────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
-        <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', marginBottom: 16, fontFamily: 'inherit' }}>
-          <ArrowLeft size={16} /> Back
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+            <ArrowLeft size={16} /> Back
+          </button>
+          <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#06b6d4', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+            View strategies →
+          </button>
+        </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9', margin: '0 0 6px' }}>Dollar Cost Averaging</h1>
         <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Automate recurring investments</p>
       </div>
