@@ -114,16 +114,22 @@ export default function RebalancingPage() {
 
       // Fallback: load demo data directly
       try {
-        const symbols = getDemoSymbols('buffett');
-        const res = await fetch('/api/market/quotes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols }),
-          signal: abortController.signal,
-        });
-        if (!res.ok) throw new Error('Market data unavailable');
-        const data = await res.json();
-        const demo = getDemoAccount('buffett', data.quotes || {});
+        let livePrices: Record<string, any> = {};
+        try {
+          const symbols = getDemoSymbols('buffett');
+          const res = await fetch('/api/market/quotes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols }),
+            signal: abortController.signal,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            livePrices = data.quotes || {};
+          }
+        } catch { /* use built-in prices if live fetch fails */ }
+
+        const demo = getDemoAccount('buffett', livePrices);
         if (!cancelled) {
           setAccount(demo as any);
           setDataLoading(false);
@@ -493,11 +499,25 @@ export default function RebalancingPage() {
   const executeQueue = async () => {
     setConfirmOpen(false);
     setSubmitting(true);
+
+    // Demo mode: simulate order placement
+    if (!isConnected) {
+      const total = editedOrders.length;
+      for (let i = 0; i < total; i++) {
+        setExecProgress(`Placing order ${i + 1} of ${total}...`);
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setExecProgress('');
+      setToast(`✓ ${total} orders simulated (demo mode)`);
+      setSubmitting(false);
+      setTimeout(() => router.back(), 1500);
+      return;
+    }
+
+    // Live: call execute API
     try {
       const total = editedOrders.length;
       setExecProgress(`Placing order 1 of ${total}...`);
-
-      // Call the execute API with all orders
       const res = await fetch('/api/strategies/rebalancing/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -513,20 +533,17 @@ export default function RebalancingPage() {
           driftThreshold,
         }),
       });
-
       if (!res.ok) {
         const err = await res.json();
         setExecProgress('');
         setToast(err.error || 'Execution failed');
+        setSubmitting(false);
         return;
       }
-
-      // Simulated progress for UX
       for (let i = 1; i <= total; i++) {
-        setExecProgress(`Placing order ${i} of ${total}... ✅`);
+        setExecProgress(`Order ${i} of ${total} confirmed ✅`);
         await new Promise(r => setTimeout(r, 300));
       }
-
       setExecProgress('');
       setToast(`✓ ${total} orders placed`);
       setTimeout(() => router.back(), 1500);
@@ -549,6 +566,17 @@ export default function RebalancingPage() {
   const executeRebalance = async () => {
     setConfirmOpen(false);
     setSubmitting(true);
+
+    // Demo mode: simulate
+    if (!isConnected) {
+      await new Promise(r => setTimeout(r, 800));
+      setToast(`✓ ${trades.length} orders simulated (demo mode)`);
+      setSubmitting(false);
+      setTimeout(() => router.back(), 1500);
+      return;
+    }
+
+    // Live: call execute API
     try {
       const body = {
         trades: trades.map(t => ({
@@ -561,19 +589,17 @@ export default function RebalancingPage() {
         alertOnDrift,
         driftThreshold,
       };
-
       const res = await fetch('/api/strategies/rebalancing/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-
       if (!res.ok) {
         const err = await res.json();
         setToast(err.error || 'Rebalance failed');
+        setSubmitting(false);
         return;
       }
-
       setToast('✓ Rebalancing orders placed');
       setTimeout(() => router.back(), 1500);
     } catch {
@@ -594,30 +620,61 @@ export default function RebalancingPage() {
         </div>
       )}
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Modal — Order Summary */}
       {confirmOpen && (
         <div onClick={() => setConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 24, maxWidth: 360, width: '100%' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 24, maxWidth: 400, width: '100%', maxHeight: '80vh', overflowY: 'auto' }}>
             {autoMode === 'auto' && editedOrders.length > 0 ? (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>Execute Order Queue</div>
-                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
-                  This will place <strong style={{ color: '#f1f5f9' }}>{editedOrders.length} orders</strong>:
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 16 }}>
+                  {isConnected ? 'Orders will be placed via Alpaca' : 'Demo mode — orders simulated'}
                 </div>
-                <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+
+                {/* Order summary table */}
+                <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #1e293b' }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                    <span style={{ flex: 0.5 }}>Action</span>
+                    <span style={{ flex: 0.7 }}>Symbol</span>
+                    <span style={{ flex: 0.6, textAlign: 'right' }}>Qty</span>
+                    <span style={{ flex: 0.7, textAlign: 'right' }}>Price</span>
+                    <span style={{ flex: 0.8, textAlign: 'right' }}>Amount</span>
+                    <span style={{ flex: 0.7, textAlign: 'right' }}>Type</span>
+                  </div>
+                  {/* Rows */}
                   {editedOrders.map((o, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1e293b', fontSize: 12, color: '#cbd5e1' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: o.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: o.action === 'BUY' ? '#4ade80' : '#f87171' }}>
-                        {o.action}
+                    <div key={i} style={{ display: 'flex', padding: '8px 10px', fontSize: 12, color: '#cbd5e1', background: i % 2 === 0 ? '#1e293b' : '#162032', alignItems: 'center' }}>
+                      <span style={{ flex: 0.5, fontWeight: 700, color: o.action === 'BUY' ? '#4ade80' : '#f87171' }}>
+                        {o.action === 'BUY' ? 'Buy' : 'Sell'}
                       </span>
-                      <span style={{ fontWeight: 600 }}>{o.symbol}</span>
-                      <span style={{ color: '#94a3b8' }}>{o.shares} shares · ${o.estimatedValue.toFixed(2)}</span>
+                      <span style={{ flex: 0.7, fontWeight: 700 }}>{o.symbol}</span>
+                      <span style={{ flex: 0.6, textAlign: 'right' }}>{o.shares}</span>
+                      <span style={{ flex: 0.7, textAlign: 'right', color: '#94a3b8' }}>
+                        ${o.currentPrice > 0 ? o.currentPrice.toFixed(2) : (o.shares > 0 ? (o.estimatedValue / o.shares).toFixed(2) : '—')}
+                      </span>
+                      <span style={{ flex: 0.8, textAlign: 'right', fontWeight: 600 }}>
+                        ${o.estimatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span style={{ flex: 0.7, textAlign: 'right' }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.1)', padding: '2px 6px', borderRadius: 3 }}>
+                          {o.orderType === 'market' ? 'Market' : o.orderType === 'limit' ? 'Limit' : 'Stop'}
+                        </span>
+                      </span>
                     </div>
                   ))}
                 </div>
-                <div style={{ padding: '8px 12px', background: 'rgba(6,182,212,0.06)', borderRadius: 8, marginBottom: 16, fontSize: 12, color: '#94a3b8' }}>
-                  Net cash impact: <strong style={{ color: netCashImpact > 0 ? '#f87171' : '#4ade80' }}>{netCashImpact > 0 ? '+' : ''}{netCashImpact.toFixed(2)}</strong>
+
+                {/* Totals */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(6,182,212,0.06)', borderRadius: 8, marginBottom: 16, fontSize: 11, color: '#94a3b8' }}>
+                  <span>{editedOrders.length} orders</span>
+                  <span>
+                    <span style={{ color: netCashImpact > 0 ? '#f87171' : '#4ade80', fontWeight: 600 }}>
+                      Net: {netCashImpact > 0 ? '+' : ''}${netCashImpact.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </span>
                 </div>
+
                 {execProgress && (
                   <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(6,182,212,0.1)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#06b6d4', textAlign: 'center' }}>
                     {execProgress}
@@ -627,34 +684,54 @@ export default function RebalancingPage() {
                   <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                     Cancel
                   </button>
-                  <button onClick={executeQueue} disabled={submitting} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
-                    {submitting ? 'Executing...' : 'Execute All'}
+                  <button onClick={executeQueue} disabled={submitting} style={{ flex: 1.5, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                    {submitting ? 'Placing Orders...' : 'Execute Rebalance'}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 12 }}>Confirm Rebalance</div>
-                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 8 }}>
-                  This will place <strong style={{ color: '#f1f5f9' }}>{trades.length} trades</strong> totaling <strong style={{ color: '#f1f5f9' }}>${totalTradeValue.toFixed(2)}</strong>.
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 16 }}>
+                  {isConnected ? 'Orders will be placed via Alpaca' : 'Demo mode — orders simulated'}
                 </div>
-                <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+                <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #1e293b' }}>
+                  <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                    <span style={{ flex: 0.5 }}>Action</span>
+                    <span style={{ flex: 0.7 }}>Symbol</span>
+                    <span style={{ flex: 0.6, textAlign: 'right' }}>Qty</span>
+                    <span style={{ flex: 0.7, textAlign: 'right' }}>Price</span>
+                    <span style={{ flex: 0.8, textAlign: 'right' }}>Amount</span>
+                    <span style={{ flex: 0.7, textAlign: 'right' }}>Type</span>
+                  </div>
                   {trades.map((t, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1e293b', fontSize: 12, color: '#cbd5e1' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: t.action === 'BUY' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: t.action === 'BUY' ? '#4ade80' : '#f87171' }}>
-                        {t.action}
+                    <div key={i} style={{ display: 'flex', padding: '8px 10px', fontSize: 12, color: '#cbd5e1', background: i % 2 === 0 ? '#1e293b' : '#162032', alignItems: 'center' }}>
+                      <span style={{ flex: 0.5, fontWeight: 700, color: t.action === 'BUY' ? '#4ade80' : '#f87171' }}>
+                        {t.action === 'BUY' ? 'Buy' : 'Sell'}
                       </span>
-                      <span style={{ fontWeight: 600 }}>{t.symbol}</span>
-                      <span style={{ color: '#94a3b8' }}>{t.shares} shares · ${t.estimatedValue.toFixed(2)}</span>
+                      <span style={{ flex: 0.7, fontWeight: 700 }}>{t.symbol}</span>
+                      <span style={{ flex: 0.6, textAlign: 'right' }}>{t.shares}</span>
+                      <span style={{ flex: 0.7, textAlign: 'right', color: '#94a3b8' }}>
+                        ${t.currentPrice > 0 ? t.currentPrice.toFixed(2) : '—'}
+                      </span>
+                      <span style={{ flex: 0.8, textAlign: 'right', fontWeight: 600 }}>
+                        ${t.estimatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span style={{ flex: 0.7, textAlign: 'right' }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.1)', padding: '2px 6px', borderRadius: 3 }}>Market</span>
+                      </span>
                     </div>
                   ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(6,182,212,0.06)', borderRadius: 8, marginBottom: 16, fontSize: 11, color: '#94a3b8' }}>
+                  <span>{trades.length} trades · ${totalTradeValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => setConfirmOpen(false)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #475569', background: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                     Cancel
                   </button>
-                  <button onClick={executeRebalance} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Execute
+                  <button onClick={executeRebalance} disabled={submitting} style={{ flex: 1.5, padding: 10, borderRadius: 8, border: 'none', background: submitting ? '#334155' : 'linear-gradient(135deg, #06b6d4, #0d9488)', color: submitting ? '#64748b' : '#0f172a', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                    {submitting ? 'Placing Orders...' : 'Execute Rebalance'}
                   </button>
                 </div>
               </>
@@ -1168,7 +1245,7 @@ export default function RebalancingPage() {
         {/* Demo mode warning */}
         {!isConnected && (
           <div style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
-            ⚠️ Demo mode — connect broker to execute live trades
+            ⚠️ Demo mode — orders will be simulated
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1176,17 +1253,17 @@ export default function RebalancingPage() {
             <>
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !isConnected}
+                disabled={submitting}
                 style={{
                   flex: 1, padding: 14, borderRadius: 10, border: 'none',
-                  background: !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
-                  color: !submitting && isConnected ? '#0f172a' : '#64748b',
+                  background: !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+                  color: !submitting ? '#0f172a' : '#64748b',
                   fontSize: 15, fontWeight: 700,
-                  cursor: !submitting && isConnected ? 'pointer' : 'not-allowed',
+                  cursor: !submitting ? 'pointer' : 'not-allowed',
                   fontFamily: 'inherit', transition: 'all 0.2s ease',
                 }}
               >
-                {submitting ? 'Executing...' : isConnected ? 'Execute Rebalance' : 'Connect Broker to Execute'}
+                {submitting ? 'Executing...' : 'Execute Rebalance'}
               </button>
               <button
                 onClick={() => {
@@ -1203,32 +1280,32 @@ export default function RebalancingPage() {
           ) : autoMode === 'auto' && editedOrders.length > 0 ? (
             <button
               onClick={handleSubmit}
-              disabled={submitting || !isConnected}
+              disabled={submitting}
               style={{
                 flex: 1, padding: 14, borderRadius: 10, border: 'none',
-                background: !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
-                color: !submitting && isConnected ? '#0f172a' : '#64748b',
+                background: !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+                color: !submitting ? '#0f172a' : '#64748b',
                 fontSize: 15, fontWeight: 700,
-                cursor: !submitting && isConnected ? 'pointer' : 'not-allowed',
+                cursor: !submitting ? 'pointer' : 'not-allowed',
                 fontFamily: 'inherit', transition: 'all 0.2s ease',
               }}
             >
-              {submitting ? 'Executing...' : isConnected ? `Execute All ${editedOrders.length} Orders` : 'Connect Broker to Execute'}
+              {submitting ? 'Executing...' : 'Execute Rebalance'}
             </button>
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!isBalanced || !hasAnyTrade || submitting || !isConnected}
+              disabled={!isBalanced || !hasAnyTrade || submitting}
               style={{
                 flex: 1, padding: 14, borderRadius: 10, border: 'none',
-                background: isBalanced && hasAnyTrade && !submitting && isConnected ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
-                color: isBalanced && hasAnyTrade && !submitting && isConnected ? '#0f172a' : '#64748b',
+                background: isBalanced && hasAnyTrade && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155',
+                color: isBalanced && hasAnyTrade && !submitting ? '#0f172a' : '#64748b',
                 fontSize: 15, fontWeight: 700,
-                cursor: isBalanced && hasAnyTrade && !submitting && isConnected ? 'pointer' : 'not-allowed',
+                cursor: isBalanced && hasAnyTrade && !submitting ? 'pointer' : 'not-allowed',
                 fontFamily: 'inherit', transition: 'all 0.2s ease',
               }}
             >
-              {submitting ? 'Executing...' : isConnected ? 'Approve & Rebalance' : 'Connect Broker to Execute'}
+              {submitting ? 'Executing...' : 'Execute Rebalance'}
             </button>
           )}
           <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
