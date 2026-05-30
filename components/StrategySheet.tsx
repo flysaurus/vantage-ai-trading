@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 
 interface StrategySheetProps {
   strategy: string | null;
@@ -97,6 +98,7 @@ const STRATEGIES: Record<string, StrategyContent> = {
 };
 
 export default function StrategySheet({ strategy, onClose, onExecute }: StrategySheetProps) {
+  const router = useRouter();
   const scrollY = useRef(0);
 
   // Lock body scroll when sheet opens, restore on close
@@ -354,7 +356,10 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           }}
         >
           <button
-            onClick={onExecute}
+            onClick={() => {
+              onClose();
+              router.push(`/strategies/setup/${strategy}`);
+            }}
             style={{
               width: '100%',
               padding: 14,
