@@ -1,0 +1,175 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Settings2, Bell, Shield, Eye, X, ChevronRight } from 'lucide-react';
+
+// ─── localStorage keys ───────────────────────────────────────
+const PREFS_KEY = 'vantage:preferences';
+
+interface PrefsData {
+  emailAlerts: boolean;
+  alertFrequency: 'instant' | 'daily' | 'weekly';
+}
+
+function loadPrefs(): PrefsData {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { emailAlerts: true, alertFrequency: 'instant' };
+}
+
+function savePrefs(prefs: PrefsData) {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+}
+
+// ─── Page ────────────────────────────────────────────────────
+export default function PreferencesPage() {
+  const router = useRouter();
+  const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
+
+  useEffect(() => {
+    savePrefs(prefs);
+  }, [prefs]);
+
+  const toggleAlerts = () => setPrefs(p => ({ ...p, emailAlerts: !p.emailAlerts }));
+
+  const setFrequency = (freq: 'instant' | 'daily' | 'weekly') => {
+    setPrefs(p => ({ ...p, alertFrequency: freq }));
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      padding: 16, paddingBottom: 32,
+      background: '#0a0e27',
+      overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+    }}>
+      <div style={{ maxWidth: 420, margin: '0 auto', width: '100%' }}>
+        <div style={{
+          background: '#0f172a', border: '1px solid #334155',
+          borderRadius: 16, padding: '32px 24px',
+        }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Settings2 size={18} style={{ color: '#f59e0b' }} />
+              </div>
+              <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Preferences</h1>
+            </div>
+            <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Notifications */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              Notifications
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, marginBottom: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Bell size={15} style={{ color: '#06b6d4' }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Email Alerts</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>Receive notifications for orders, alerts, and market events</div>
+                </div>
+              </div>
+              <div
+                onClick={toggleAlerts}
+                style={{
+                  width: 44, height: 26, borderRadius: 13, cursor: 'pointer',
+                  background: prefs.emailAlerts ? '#06b6d4' : '#334155',
+                  position: 'relative', flexShrink: 0, transition: 'background 0.2s',
+                }}
+              >
+                <div style={{
+                  width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                  position: 'absolute', top: 3,
+                  left: prefs.emailAlerts ? 21 : 3,
+                  transition: 'left 0.2s',
+                }} />
+              </div>
+            </div>
+
+            {prefs.emailAlerts && (
+              <div style={{ padding: '6px 14px 0' }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>Alert Frequency</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['instant', 'daily', 'weekly'] as const).map(freq => (
+                    <button
+                      key={freq}
+                      onClick={() => setFrequency(freq)}
+                      style={{
+                        flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                        border: prefs.alertFrequency === freq ? '1px solid #06b6d4' : '1px solid #1e293b',
+                        background: prefs.alertFrequency === freq ? 'rgba(6,182,212,0.1)' : '#0f172a',
+                        color: prefs.alertFrequency === freq ? '#06b6d4' : '#64748b',
+                        cursor: 'pointer', textTransform: 'capitalize',
+                      }}
+                    >
+                      {freq}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Appearance */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              Appearance
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Eye size={15} style={{ color: '#8b5cf6' }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Theme</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>Dark mode (additional themes coming soon)</div>
+                </div>
+              </div>
+              <span style={{ fontSize: 11, color: '#475569', padding: '4px 10px', borderRadius: 6, background: '#1e293b', border: '1px solid #334155' }}>Dark</span>
+            </div>
+          </div>
+
+          {/* Security */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              Security
+            </div>
+            <div
+              onClick={() => router.push('/security')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Shield size={15} style={{ color: '#22c55e' }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Security & Encryption</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>How your data and broker keys are protected</div>
+                </div>
+              </div>
+              <ChevronRight size={14} style={{ color: '#475569' }} />
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', marginTop: 8 }}>
+            Preferences are saved locally on this device.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

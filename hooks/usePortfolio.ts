@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePortfolioStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { getDemoAccount, getDemoSectorAllocations, getDemoSymbols, getDemoAccountWithPrices } from '@/lib/demo-data';
+import { getDemoAccount, getDemoSectorAllocations, getDemoSymbols } from '@/lib/demo-data';
 import type {
   AccountSummary,
   Position,
@@ -255,7 +255,6 @@ export function usePortfolio() {
     const style = user?.investorStyle || 'buffett';
     const symbols = getDemoSymbols(style as any);
 
-    // Try fetching real market prices, fall back to hardcoded
     fetch('/api/market/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -263,19 +262,19 @@ export function usePortfolio() {
     })
       .then(res => res.ok ? res.json() : Promise.reject(res))
       .then(data => {
-        if (data?.quotes) {
-          return getDemoAccountWithPrices(style as any, data.quotes);
-        }
-        throw new Error('No quotes in response');
-      })
-      .catch(() => getDemoAccount(style as any)) // fallback to hardcoded
-      .then(demoAccount => {
-        if (!demoAccount || !mountedRef.current) return;
+        if (!data?.quotes || !mountedRef.current) return;
+        const demoAccount = getDemoAccount(style as any, data.quotes);
+        if (!demoAccount) return;
         const allocations = getDemoSectorAllocations(demoAccount);
         setAccount({
           ...demoAccount,
           sectorAllocations: allocations,
         } as AccountSummary & { sectorAllocations: SectorAllocation[] });
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setError('Market data unavailable. Please try again.');
+        }
       });
   }, [isConnected, user?.investorStyle, setAccount]);
 

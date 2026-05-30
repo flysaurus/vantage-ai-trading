@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useMarketStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { getDemoIndexes, getDemoQuotes, getAllDemoSymbols, getDemoIndexesWithPrices, getDemoQuotesWithPrices } from '@/lib/demo-data';
+import { getDemoIndexes, getDemoQuotes, getAllDemoSymbols } from '@/lib/demo-data';
 import type { MarketIndex, Quote, WatchlistItem } from '@/types';
 
 // Indices and watchlist are now persisted in the market store (localStorage).
@@ -171,7 +171,7 @@ export function useMarketData() {
         && !(h > 20 || (h === 20 && m > 0));
       setMarketOpen(isOpen);
 
-      // Populate demo market data with real prices (fallback to hardcoded)
+      // Populate demo market data from Finnhub (no hardcoded fallback)
       const symbols = getAllDemoSymbols();
       fetch('/api/market/quotes', {
         method: 'POST',
@@ -179,20 +179,17 @@ export function useMarketData() {
         body: JSON.stringify({ symbols }),
       })
         .then(res => res.ok ? res.json() : Promise.reject(res))
-        .then(data => ({
-          indexes: data?.quotes ? getDemoIndexesWithPrices(data.quotes) : getDemoIndexes(),
-          quotes: data?.quotes ? getDemoQuotesWithPrices(data.quotes) : getDemoQuotes(),
-        }))
-        .catch(() => ({
-          indexes: getDemoIndexes(),
-          quotes: getDemoQuotes(),
-        }))
-        .then(({ indexes, quotes }) => {
-          if (!mountedRef.current) return;
+        .then(data => {
+          if (!data?.quotes || !mountedRef.current) return;
+          const indexes = getDemoIndexes(data.quotes);
+          const quotes = getDemoQuotes(data.quotes);
           setIndexes(indexes);
           for (const [symbol, quote] of Object.entries(quotes)) {
             updateQuote(symbol, quote);
           }
+        })
+        .catch(() => {
+          // Silently fail — market bar shows "—" for unavailable prices
         });
       return;
     }

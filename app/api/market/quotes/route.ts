@@ -1,6 +1,6 @@
-// ─── Market Quotes API ──────────────────────────────────────────
-// Fetches real-time quotes from Yahoo Finance (free, no API key).
-// Used for demo mode to show real market prices with made-up positions.
+// ─── Market Quotes API (Finnhub) ──────────────────────────────
+// Fetches real-time quotes from Finnhub.io for demo/fallback mode.
+// Finnhub free tier: 60 API calls/min, supports stocks + ETFs.
 //
 // POST /api/market/quotes
 // Body: { symbols: string[] }
@@ -9,12 +9,82 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-interface YahooQuote {
-  symbol: string;
-  regularMarketPrice: number;
-  regularMarketChange: number;
-  regularMarketChangePercent: number;
-  regularMarketPreviousClose: number;
+const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY;
+
+interface FinnhubQuote {
+  c: number;  // Current price
+  d: number;  // Change
+  dp: number; // Percent change
+  h: number;  // High price of the day
+  l: number;  // Low price of the day
+  o: number;  // Open price of the day
+  pc: number; // Previous close price
+  t: number;  // Timestamp
+}
+
+async function fetchQuote(symbol: string): Promise<{ symbol: string; price: number; change: number; changePercent: number; previousClose: number } | null> {
+  if (!FINNHUB_KEY) {
+    console.error('[Market Quotes] FINNHUB_IO_API_KEY not set');
+    return null;
+  }
+
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
+      { next: { revalidate: 60 } },
+    );
+
+    if (!res.ok) {
+      console.error(`[Market Quotes] Finnhub returned ${res.status} for ${symbol}`);
+      return null;
+    }
+
+    const data: FinnhubQuote = await res.json();
+
+    // Finnhub returns all zeros for invalid/unknown symbols
+    if (data.c === 0 && data.pc === 0) {
+      return null;
+    }
+
+    return {
+      symbol,
+      price: data.c,
+      change: data.d ?? 0,
+      changePercent: data.dp ?? 0,
+      previousClose: data.pc,
+    };
+  } catch (err) {
+    console.error(`[Market Quotes] Error fetching ${symbol}:`, err);
+    return null;
+  }
+}
+
+// Fetch in concurrent batches to stay within rate limit
+async function fetchBatch(symbols: string[], concurrency = 10): Promise<Map<string, { price: number; change: number; changePercent: number; previousClose: number }>> {
+  const results = new Map<string, { price: number; change: number; changePercent: number; previousClose: number }>();
+
+  for (let i = 0; i < symbols.length; i += concurrency) {
+    const batch = symbols.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(fetchQuote));
+
+    for (const result of batchResults) {
+      if (result.status === 'fulfilled' && result.value) {
+        results.set(result.value.symbol, {
+          price: result.value.price,
+          change: result.value.change,
+          changePercent: result.value.changePercent,
+          previousClose: result.value.previousClose,
+        });
+      }
+    }
+
+    // Small delay between batches to be nice to the API
+    if (i + concurrency < symbols.length) {
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  return results;
 }
 
 export async function POST(request: Request) {
@@ -25,35 +95,19 @@ export async function POST(request: Request) {
       return Response.json({ error: 'symbols array required' }, { status: 400 });
     }
 
-    // Validate symbols (basic sanity check)
-    const clean = symbols.map((s: string) => String(s).trim().toUpperCase()).filter(Boolean);
+    if (!FINNHUB_KEY) {
+      return Response.json({ error: 'Finnhub API key not configured' }, { status: 503 });
+    }
+
+    // Validate and deduplicate symbols
+    const clean = [...new Set(symbols.map((s: string) => String(s).trim().toUpperCase()).filter(Boolean))];
     if (clean.length === 0) {
       return Response.json({ error: 'No valid symbols' }, { status: 400 });
     }
 
-    // Fetch from Yahoo Finance v7 quote endpoint
-    const yahooUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${clean.join(',')}`;
+    const results = await fetchBatch(clean);
 
-    const res = await fetch(yahooUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Vantage/1.0)',
-      },
-      next: { revalidate: 60 }, // Cache for 60 seconds
-    });
-
-    if (!res.ok) {
-      console.error('[Market Quotes] Yahoo returned', res.status);
-      return Response.json({ error: 'Failed to fetch quotes' }, { status: 502 });
-    }
-
-    const data = await res.json();
-    const result = data?.quoteResponse?.result as YahooQuote[] | undefined;
-
-    if (!result || result.length === 0) {
-      return Response.json({ error: 'No quote data returned' }, { status: 502 });
-    }
-
-    // Build the quotes map
+    // Convert Map to plain object
     const quotes: Record<string, {
       price: number;
       change: number;
@@ -61,13 +115,8 @@ export async function POST(request: Request) {
       previousClose: number;
     }> = {};
 
-    for (const q of result) {
-      quotes[q.symbol] = {
-        price: q.regularMarketPrice ?? 0,
-        change: q.regularMarketChange ?? 0,
-        changePercent: q.regularMarketChangePercent ?? 0,
-        previousClose: q.regularMarketPreviousClose ?? 0,
-      };
+    for (const [symbol, data] of results) {
+      quotes[symbol] = data;
     }
 
     return Response.json({ quotes });

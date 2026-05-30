@@ -198,7 +198,7 @@ export function SettingsTab() {
         />
         <SettingsItem
           icon={Target} title="Goals & Targets" subtitle="Track financial milestones"
-          onClick={() => showToast('🎯 Goal tracking coming soon')}
+          onClick={() => router.push('/goals')}
         />
       </div>
 
@@ -345,15 +345,15 @@ export function SettingsTab() {
       <div className="section" style={{ marginTop: 12 }}>
         <SettingsItem
           icon={CreditCard} title="Account & Funding" subtitle="Deposits, withdrawals, tax docs"
-          onClick={() => showToast('💳 Account management coming soon')}
+          onClick={() => router.push('/account')}
         />
         <SettingsItem
           icon={Settings2} title="Preferences" subtitle="Appearance, notifications & security"
-          onClick={() => showToast('⚙️ Preferences coming soon')}
+          onClick={() => router.push('/preferences')}
         />
         <SettingsItem
           icon={HelpCircle} title="Help & Support" subtitle="Documentation & contact"
-          onClick={() => showToast('📚 Help center coming soon')}
+          onClick={() => router.push('/help')}
         />
       </div>
 
