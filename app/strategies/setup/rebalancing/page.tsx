@@ -81,9 +81,11 @@ export default function RebalancingPage() {
   const { account, loading: portfolioLoading } = usePortfolio();
   const { isConnected } = useBroker();
 
+  // ── Show spinner only while account is null (no data at all) ──
   const positions = account?.positions ?? [];
   const totalValue = account?.equity ?? 0;
   const buyingPower = account?.buyingPower ?? 0;
+  const dataReady = account !== null;
 
   // Section 2: target allocations
   const [targets, setTargets] = useState<Record<string, number>>({});
@@ -242,7 +244,7 @@ export default function RebalancingPage() {
 
   // ─── Render ──────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 180px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#0f172a', color: '#f1f5f9', padding: '16px 16px 220px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
       {/* Toast */}
       {toast && (
@@ -298,7 +300,7 @@ export default function RebalancingPage() {
 
       {/* ─── Section 1: Current Portfolio ───────────── */}
       <Section icon={<Activity size={12} />} label="Current Portfolio">
-        {portfolioLoading && !account ? (
+        {!dataReady ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
             <div style={{ width: 16, height: 16, border: '2px solid #334155', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
             Loading portfolio data...
@@ -525,7 +527,7 @@ export default function RebalancingPage() {
       </Section>
 
       {/* ─── Bottom Bar ────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, #0f172a 80%, rgba(15,23,42,0.95))', padding: '12px 16px 64px', borderTop: '1px solid #1e293b' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: 'linear-gradient(to top, #0f172a 80%, rgba(15,23,42,0.95))', padding: '12px 16px 84px', borderTop: '1px solid #1e293b' }}>
         {/* Demo mode warning */}
         {!isConnected && (
           <div style={{ fontSize: 10, color: '#fbbf24', textAlign: 'center', marginBottom: 8, fontWeight: 500 }}>
