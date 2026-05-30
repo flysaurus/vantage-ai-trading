@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
@@ -39,7 +39,18 @@ export function TradeTab() {
     taxharvest: { icon: '🧾', label: 'Tax Harvest' },
   };
   const [strategySheet, setStrategySheet] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const closeSheet = useCallback(() => setStrategySheet(null), []);
+
+  // Disabled strategies — show "Soon" badge + toast, don't open sheet
+  const DISABLED = new Set(['momentum', 'meanreversion']);
+
+  // Auto-dismiss toast after 2s
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2000);
+    return () => clearTimeout(t);
+  }, [toast]);
   // ─── End Strategy Bottom Sheet ───────────────────────────
 
   const quote = quotes[searchSymbol.toUpperCase()];
@@ -66,37 +77,92 @@ export function TradeTab() {
             <div key={rowIdx} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {row.map((key) => {
                 const isActive = strategySheet === key;
+                const disabled = DISABLED.has(key);
                 const s = STRATEGY_LABELS[key];
                 return (
                   <button
                     key={key}
-                    onClick={() => setStrategySheet(key === strategySheet ? null : key)}
-                style={{
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 14px',
-                  borderRadius: 9999,
-                  border: '1.5px solid #06b6d4',
-                  background: isActive ? '#06b6d4' : '#1e293b',
-                  color: isActive ? '#0f172a' : '#e2e8f0',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span style={{ fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
-                {s.label}
-              </button>
-            );
-          })}
+                    onClick={() => {
+                      if (disabled) {
+                        setToast('Coming in next update');
+                        return;
+                      }
+                      setStrategySheet(key === strategySheet ? null : key);
+                    }}
+                    style={{
+                      position: 'relative',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 14px',
+                      borderRadius: 9999,
+                      border: disabled ? '1px solid #475569' : '1.5px solid #06b6d4',
+                      background: isActive && !disabled ? '#06b6d4' : '#1e293b',
+                      color: disabled ? '#94a3b8' : isActive ? '#0f172a' : '#e2e8f0',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.15s ease',
+                      opacity: disabled ? 0.4 : 1,
+                    }}
+                  >
+                    <span style={{ fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
+                    {s.label}
+                    {disabled && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: -6,
+                          right: -4,
+                          fontSize: 8,
+                          fontWeight: 700,
+                          color: '#64748b',
+                          background: '#1e293b',
+                          padding: '1px 5px',
+                          borderRadius: 4,
+                          border: '1px solid #334155',
+                          lineHeight: 1.4,
+                          letterSpacing: 0.3,
+                        }}
+                      >
+                        Soon
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
         </div>
       ))}
     </div>
       </div>
+
+      {/* Toast for disabled strategies */}
+      {toast && (
+        <div
+          style={{
+            textAlign: 'center',
+            marginBottom: 12,
+            animation: 'toastIn 0.2s ease-out',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: 6,
+              padding: '6px 16px',
+            }}
+          >
+            {toast}
+          </span>
+        </div>
+      )}
 
       {/* Plan Trades with AI */}
       <button
@@ -511,6 +577,7 @@ export function TradeTab() {
           gap: 8px;
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
       <StrategySheet
