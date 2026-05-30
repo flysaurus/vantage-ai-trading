@@ -74,18 +74,20 @@ export default function LoginPage() {
       return;
     }
 
-    // Password strength validation
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      setError('Password must include at least one capital letter (A-Z).');
-      return;
-    }
-    if (!/[^a-zA-Z0-9]/.test(password)) {
-      setError('Password must include at least one special character (e.g. !@#$%).');
-      return;
+    // Password strength validation (signup only, not signin)
+    if (mode === 'signup') {
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters.');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        setError('Password must include at least one capital letter (A-Z).');
+        return;
+      }
+      if (!/[^a-zA-Z0-9]/.test(password)) {
+        setError('Password must include at least one special character (e.g. !@#$%).');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -147,7 +149,11 @@ export default function LoginPage() {
     } catch (err: any) {
       const msg = String(err?.message || err || 'Something went wrong.');
       const low = msg.toLowerCase();
-      if (low.includes('invalid email') || low.includes('invalid credential') || low.includes('not found'))
+      if (low.includes('no account') || low.includes('not registered') || low.includes('sign up'))
+        setError('No account found with this email. Please sign up.');
+      else if (low.includes('incorrect password') || low.includes('wrong password'))
+        setError('Incorrect password. Please try again.');
+      else if (low.includes('invalid email') || low.includes('invalid credential') || low.includes('not found'))
         setError('Invalid email or password. Please check and try again.');
       else if (low.includes('not verified') || low.includes('verify your email'))
         setError('Email not verified yet. Check your inbox for the confirmation link.');

@@ -385,7 +385,7 @@ export async function authLogin(email: string, password: string) {
 
     if (userError) {
       console.log('❌ User not found');
-      throw new Error('Invalid email or password');
+      throw new Error('No account found with this email. Please sign up.');
     }
 
     console.log('📋 [AUTH-SERVICE] Login — user found | email_verified:', user.email_verified, '| password_hash length:', user.password_hash?.length, '| has 2FA:', user.two_factor_enabled);
@@ -409,11 +409,11 @@ export async function authLogin(email: string, password: string) {
         .insert([{
           email,
           success: false,
-          failure_reason: 'Invalid password',
+          failure_reason: 'Wrong password',
           attempted_at: new Date().toISOString(),
         }]);
 
-      throw new Error('Invalid email or password');
+      throw new Error('Incorrect password. Please try again.');
     }
 
     console.log('✅ Password verified');

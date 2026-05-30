@@ -82,7 +82,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.error('❌ Login error:', err.message);
 
     const msg = String(err.message || '');
-    if (msg.includes('Invalid email or password')) {
+    if (msg.includes('Incorrect password') || msg.includes('Invalid email or password') || msg.includes('No account found')) {
       return NextResponse.json({ error: msg }, { status: 401 });
     }
     if (msg.includes('verify your email')) {
