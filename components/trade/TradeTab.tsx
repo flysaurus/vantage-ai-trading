@@ -30,12 +30,12 @@ export function TradeTab() {
 
   // ─── Strategy Bottom Sheet ───────────────────────────────
   const STRATEGY_ROWS = [
-    ['dca', 'rebalance', 'momentum'],
+    ['dca', 'rebalancing', 'momentum'],
     ['meanreversion', 'taxharvest'],
   ];
   const STRATEGY_LABELS: Record<string, { icon: string; label: string }> = {
     dca: { icon: '🔄', label: 'DCA' },
-    rebalance: { icon: '⚖️', label: 'Rebalance' },
+    rebalancing: { icon: '⚖️', label: 'Rebalance' },
     momentum: { icon: '🚀', label: 'Momentum' },
     meanreversion: { icon: '📉', label: 'Mean Reversion' },
     taxharvest: { icon: '🧾', label: 'Tax Harvest' },

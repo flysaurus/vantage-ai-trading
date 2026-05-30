@@ -35,7 +35,7 @@ const STRATEGIES: Record<string, StrategyContent> = {
       'Requires discipline during downturns',
     ],
   },
-  rebalance: {
+  rebalancing: {
     icon: '⚖️',
     label: 'Portfolio Rebalancing',
     bestFor: 'Diversified portfolios',

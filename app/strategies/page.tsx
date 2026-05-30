@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, TrendingUp, Activity } from 'lucide-react';
 
 const STRATEGIES = [
   { key: 'dca', name: 'Dollar Cost Averaging', icon: '🔄', desc: 'Invest a fixed amount on a recurring schedule', path: '/strategies/setup/dca', available: true },
-  { key: 'rebalance', name: 'Portfolio Rebalancing', icon: '⚖️', desc: 'Restore target allocations when drift exceeds threshold', path: '/strategies/setup/rebalance', available: false },
+  { key: 'rebalancing', name: 'Portfolio Rebalancing', icon: '⚖️', desc: 'Restore target allocations when drift exceeds threshold', path: '/strategies/setup/rebalancing', available: false },
   { key: 'momentum', name: 'Momentum Rotation', icon: '🚀', desc: 'Rotate into top-performing assets based on momentum scores', path: '/strategies/setup/momentum', available: false },
   { key: 'meanreversion', name: 'Mean Reversion', icon: '📉', desc: 'Buy oversold, sell overbought based on z-scores', path: '/strategies/setup/meanreversion', available: false },
   { key: 'taxharvest', name: 'Tax Loss Harvesting', icon: '🧾', desc: 'Harvest losses to offset capital gains', path: '/strategies/setup/taxharvest', available: false },
