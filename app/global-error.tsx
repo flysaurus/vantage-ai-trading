@@ -13,6 +13,21 @@ export default function GlobalError({
     console.error('[Global Error Boundary]', error);
   }, [error]);
 
+  // ChunkLoadError: the chunk file doesn't exist on the server anymore
+  // (new deployment has different chunk hashes). Only fix is a full reload.
+  const isChunkError =
+    error.name === 'ChunkLoadError' ||
+    (error.message || '').includes('Loading chunk') ||
+    (error.message || '').includes('Loading CSS chunk');
+
+  const handleReset = () => {
+    if (isChunkError) {
+      window.location.reload();
+    } else {
+      reset();
+    }
+  };
+
   return (
     <html lang="en">
       <head>
@@ -38,9 +53,13 @@ export default function GlobalError({
           maxWidth: 480,
           width: '100%',
         }}>
-          <h2 style={{ color: '#ef4444', fontSize: 18, margin: '0 0 4px' }}>⚠️ Fatal Error</h2>
+          <h2 style={{ color: '#ef4444', fontSize: 18, margin: '0 0 4px' }}>
+            {isChunkError ? '⚠️ New Version Available' : '⚠️ Fatal Error'}
+          </h2>
           <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 16px' }}>
-            Layout-level crash — error boundary caught it.
+            {isChunkError
+              ? 'The app was updated while you had it open. A quick refresh will get you back on track.'
+              : 'Layout-level crash — error boundary caught it.'}
           </p>
           <div style={{
             background: '#1a0a0a',
@@ -63,7 +82,7 @@ export default function GlobalError({
             )}
           </div>
           <button
-            onClick={reset}
+            onClick={handleReset}
             style={{
               width: '100%',
               padding: 14,
@@ -76,7 +95,7 @@ export default function GlobalError({
               cursor: 'pointer',
             }}
           >
-            Try Again
+            {isChunkError ? 'Reload App' : 'Try Again'}
           </button>
         </div>
       </body>
