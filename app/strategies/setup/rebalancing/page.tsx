@@ -555,12 +555,20 @@ export default function RebalancingPage() {
           onClick={handleSaveTargets}
           disabled={savingTargets || !isBalanced || Object.keys(targets).length === 0}
           style={{
-            width: '100%', padding: '10px 14px',
-            background: targetsSaved ? '#22c55e' : savingTargets ? '#475569' : '#1e293b',
-            border: `1px solid ${targetsSaved ? '#22c55e' : '#334155'}`,
-            borderRadius: 8, color: targetsSaved ? '#0f172a' : savingTargets ? '#64748b' : '#94a3b8',
-            fontSize: 12, fontWeight: 700, cursor: savingTargets ? 'wait' : 'pointer',
+            width: '100%', padding: '12px 16px',
+            background: targetsSaved
+              ? '#22c55e'
+              : savingTargets
+                ? '#475569'
+                : 'linear-gradient(135deg, #06b6d4, #0d9488)',
+            border: targetsSaved ? '1px solid #22c55e' : 'none',
+            borderRadius: 10,
+            color: targetsSaved ? '#0f172a' : '#0f172a',
+            fontSize: 14, fontWeight: 700,
+            cursor: savingTargets ? 'wait' : !isBalanced || Object.keys(targets).length === 0 ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit', marginBottom: 8,
+            opacity: !isBalanced || Object.keys(targets).length === 0 ? 0.4 : 1,
+            boxShadow: targetsSaved ? 'none' : '0 2px 12px rgba(6,182,212,0.25)',
           }}
         >
           {savingTargets ? 'Saving...' : targetsSaved ? '✓ Allocation Saved' : '💾 Save Allocation'}
