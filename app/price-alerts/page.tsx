@@ -94,18 +94,35 @@ export default function PriceAlertsPage() {
   };
 
   // ─── Create alert ─────────────────────────────────────────
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const handleCreate = async (symbol: string, alertType: AlertType, targetValue: number, channels: NotificationChannel[]) => {
     if (!user || !symbol.trim()) return;
-    const result = await createAlert({
-      userId: user.id,
-      symbol: symbol.trim().toUpperCase(),
-      alertType,
-      targetValue,
-      notificationChannels: channels,
-    });
-    if (result) {
-      setAlerts(prev => [result, ...prev]);
-      setShowCreate(false);
+    setSaving(true);
+    setCreateError(null);
+    try {
+      const result = await createAlert({
+        userId: user.id,
+        symbol: symbol.trim().toUpperCase(),
+        alertType,
+        targetValue,
+        notificationChannels: channels,
+      });
+      if (result) {
+        if (result.error) {
+          setCreateError(result.error);
+        } else {
+          setAlerts(prev => [result, ...prev]);
+          setShowCreate(false);
+          setCreateError(null);
+        }
+      } else {
+        setCreateError('Failed to create alert. Check your connection and try again.');
+      }
+    } catch (err: any) {
+      setCreateError(err?.message || 'Unexpected error creating alert');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -327,7 +344,9 @@ export default function PriceAlertsPage() {
       {showCreate && (
         <CreateAlertModal
           onSave={handleCreate}
-          onClose={() => setShowCreate(false)}
+          onClose={() => { setShowCreate(false); setCreateError(null); }}
+          serverError={createError}
+          saving={saving}
         />
       )}
 
@@ -373,9 +392,13 @@ export default function PriceAlertsPage() {
 function CreateAlertModal({
   onSave,
   onClose,
+  serverError,
+  saving,
 }: {
   onSave: (symbol: string, alertType: AlertType, targetValue: number, channels: NotificationChannel[]) => void;
   onClose: () => void;
+  serverError?: string | null;
+  saving?: boolean;
 }) {
   const [symbol, setSymbol] = useState('');
   const [alertType, setAlertType] = useState<AlertType>('price_above');
@@ -733,16 +756,23 @@ function CreateAlertModal({
         )}
 
         {/* Buttons */}
+        {/* Server error */}
+        {serverError && (
+          <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5', fontSize: 11 }}>
+            {serverError}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'transparent', border: '1px solid #475569', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={onClose} disabled={saving} style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'transparent', border: '1px solid #475569', color: 'var(--text-dim)', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.5 : 1 }}>
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!symbol.trim() || !targetValue}
-            style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: '#06b6d4', color: '#0f172a', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (symbol.trim() && targetValue) ? 1 : 0.4 }}
+            disabled={!symbol.trim() || !targetValue || saving}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: '#06b6d4', color: '#0f172a', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (symbol.trim() && targetValue && !saving) ? 1 : 0.4 }}
           >
-            Create Alert
+            {saving ? 'Creating...' : 'Create Alert'}
           </button>
         </div>
       </div>

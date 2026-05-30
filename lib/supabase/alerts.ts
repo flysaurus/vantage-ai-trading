@@ -42,7 +42,7 @@ export async function createAlert(params: {
   alertType: AlertType;
   targetValue: number;
   notificationChannels?: NotificationChannel[];
-}): Promise<Alert | null> {
+}): Promise<(Alert & { error?: string }) | null> {
   try {
     const res = await apiFetch(`${API_BASE}/create`, {
       method: 'POST',
@@ -50,13 +50,14 @@ export async function createAlert(params: {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      console.warn('[alerts] create failed:', res.status, err.error);
-      return null;
+      const msg = err?.error || err?.detail || `HTTP ${res.status}`;
+      console.warn('[alerts] create failed:', res.status, msg);
+      return { error: msg } as any;
     }
     return await res.json();
-  } catch (err) {
-    console.warn('[alerts] create error:', err);
-    return null;
+  } catch (err: any) {
+    console.warn('[alerts] create error:', err?.message || err);
+    return { error: err?.message || 'Network error' } as any;
   }
 }
 
