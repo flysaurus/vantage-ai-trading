@@ -31,7 +31,7 @@ interface StockDetails {
 interface DcaSchedule {
   id: string;
   symbol: string;
-  config: { amount: number; frequency: string; dayOfWeek?: string; dayOfMonth?: string; startDate: string; endDate?: string };
+  config: { amount: number; frequency: string; dayOfWeek?: string; dayOfMonth?: string; startDate: string; endDate?: string; investBy?: string; quantity?: number };
   createdAt: string;
 }
 
