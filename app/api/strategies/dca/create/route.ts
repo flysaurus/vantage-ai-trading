@@ -28,6 +28,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       dayOfMonth,
       startDate,
       endDate,
+      investBy,
+      quantity,
     } = body as {
       symbol?: string;
       amount?: number;
@@ -36,6 +38,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       dayOfMonth?: string;
       startDate?: string;
       endDate?: string | null;
+      investBy?: string;
+      quantity?: number;
     };
 
     // ─── Validation ─────────────────────────────────────────
@@ -67,7 +71,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       amount,
       frequency,
       startDate,
+      investBy: investBy || 'amount',
     };
+
+    if (investBy === 'shares' && quantity) config.quantity = quantity;
 
     if (dayOfWeek) config.dayOfWeek = dayOfWeek;
     if (dayOfMonth) config.dayOfMonth = dayOfMonth;

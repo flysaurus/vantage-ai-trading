@@ -81,8 +81,11 @@ export default function DcaSetupPage() {
   const [stockError, setStockError] = useState<string | null>(null);
 
   // Section 2
+  const [investBy, setInvestBy] = useState<'amount' | 'shares'>('amount');
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [quantityError, setQuantityError] = useState('');
 
   // Section 3
   const [frequency, setFrequency] = useState<Frequency | null>(null);
@@ -150,6 +153,20 @@ export default function DcaSetupPage() {
     else setAmountError('');
   };
 
+  // ─── Quantity validation ───────────────────────────────
+  const handleQuantity = (val: string) => {
+    const cleaned = val.replace(/[^0-9.]/g, '');
+    setQuantity(cleaned);
+    const n = parseFloat(cleaned);
+    if (cleaned && (isNaN(n) || n <= 0)) setQuantityError('Enter at least 1 share');
+    else if (!Number.isInteger(n) && cleaned.includes('.')) {
+      // Allow fractional shares (e.g. 1.5) — but flag as fractional
+      if (n < 0.01) setQuantityError('Minimum 0.01 shares');
+      else setQuantityError('');
+    }
+    else setQuantityError('');
+  };
+
   // ─── Cancel a schedule ──────────────────────────────────
   const cancelSchedule = async (id: string) => {
     try {
@@ -162,8 +179,9 @@ export default function DcaSetupPage() {
 
   // ─── Submit ─────────────────────────────────────────────
   const handleSubmit = async () => {
-    const parsedAmount = parseFloat(amount);
-    if (!selectedSymbol || !parsedAmount || !frequency || !startDate) return;
+    const parsedAmount = investBy === 'amount' ? parseFloat(amount) : 0;
+    const parsedQty = investBy === 'shares' ? parseFloat(quantity) : 0;
+    if (!selectedSymbol || (!parsedAmount && !parsedQty) || !frequency || !startDate) return;
 
     setSubmitting(true);
     try {
@@ -172,7 +190,12 @@ export default function DcaSetupPage() {
         amount: parsedAmount,
         frequency,
         startDate,
+        investBy,
       };
+      if (investBy === 'shares') {
+        body.quantity = parsedQty;
+        body.amount = price ? Math.round(parsedQty * price * 100) / 100 : 0;
+      }
       if ((frequency === 'weekly' || frequency === 'biweekly') && dayOfWeek) body.dayOfWeek = dayOfWeek;
       if (frequency === 'monthly' && dayOfMonth) body.dayOfMonth = dayOfMonth;
       if (!runIndefinitely && endDate) body.endDate = endDate;
@@ -200,7 +223,11 @@ export default function DcaSetupPage() {
 
   // ─── Derived values for preview ─────────────────────────
   const price = stockDetails?.price ?? null;
-  const estShares = price && parseFloat(amount) ? (parseFloat(amount) / price).toFixed(4) : null;
+  const isAmountMode = investBy === 'amount';
+  const isSharesMode = investBy === 'shares';
+  const effectiveAmount = isAmountMode ? parseFloat(amount) : (price && parseFloat(quantity) ? parseFloat(quantity) * price : 0);
+  const estShares = price && parseFloat(amount) && isAmountMode ? (parseFloat(amount) / price).toFixed(4) : null;
+  const estCost = price && parseFloat(quantity) && isSharesMode ? `$${(parseFloat(quantity) * price).toFixed(2)}` : null;
 
   const monthsRunning = (() => {
     const start = new Date(startDate + 'T00:00:00');
@@ -209,7 +236,7 @@ export default function DcaSetupPage() {
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / (30.44 * 24 * 60 * 60 * 1000)));
   })();
 
-  const totalInvested = parseFloat(amount) ? `$${(parseFloat(amount) * getEstimatedOrderCount(frequency, monthsRunning)).toFixed(2)}` : null;
+  const totalInvested = effectiveAmount > 0 ? `$${(effectiveAmount * getEstimatedOrderCount(frequency, monthsRunning)).toFixed(2)}` : null;
 
   function getEstimatedOrderCount(freq: Frequency | null, months: number): number {
     if (!freq) return 0;
@@ -223,7 +250,7 @@ export default function DcaSetupPage() {
 
   const estOrders = getEstimatedOrderCount(frequency, monthsRunning);
 
-  const canSubmit = selectedSymbol && parseFloat(amount) >= 1 && !amountError && frequency && startDate;
+  const canSubmit = selectedSymbol && ((isAmountMode && parseFloat(amount) >= 1 && !amountError) || (isSharesMode && parseFloat(quantity) >= 0.01 && !quantityError)) && frequency && startDate;
 
   const position = holdings.find(p => p.symbol === selectedSymbol);
   const changeColor = (stockDetails?.changePercent ?? 0) >= 0 ? '#4ade80' : '#f87171';
@@ -257,15 +284,50 @@ export default function DcaSetupPage() {
 
       {/* ─── Section 2: Investment Amount ───────────── */}
       <Section icon={<DollarSign size={12} />} label="How much per investment?">
-        <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmount(e.target.value)} placeholder="$0" style={{ width: '100%', padding: '12px 14px', background: '#1e293b', border: `1px solid ${amountError ? '#f87171' : '#334155'}`, borderRadius: 8, color: '#f1f5f9', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
-        {amountError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{amountError}</div>}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          {AMOUNT_CHIPS.map(c => (
-            <button key={c} onClick={() => { setAmount(c.toString()); setAmountError(''); }} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: amount === c.toString() ? '#06b6d4' : '#1e293b', color: amount === c.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
-              ${c}
+        {/* Amount vs Shares toggle */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {(['amount', 'shares'] as const).map(mode => (
+            <button key={mode} onClick={() => { setInvestBy(mode); setAmountError(''); setQuantityError(''); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: investBy === mode ? '#06b6d4' : '#1e293b', color: investBy === mode ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {mode === 'amount' ? '💵 Dollar Amount' : '📊 Shares'}
             </button>
           ))}
         </div>
+
+        {isAmountMode ? (
+          <>
+            <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmount(e.target.value)} placeholder="$0" style={{ width: '100%', padding: '12px 14px', background: '#1e293b', border: `1px solid ${amountError ? '#f87171' : '#334155'}`, borderRadius: 8, color: '#f1f5f9', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
+            {amountError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{amountError}</div>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {AMOUNT_CHIPS.map(c => (
+                <button key={c} onClick={() => { setAmount(c.toString()); setAmountError(''); }} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: amount === c.toString() ? '#06b6d4' : '#1e293b', color: amount === c.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ${c}
+                </button>
+              ))}
+            </div>
+            {price && parseFloat(amount) >= 1 && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+                ≈ <strong style={{ color: '#e2e8f0' }}>{(parseFloat(amount) / price).toFixed(4)}</strong> shares at {fmtCurrency(price)}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <input type="text" inputMode="decimal" value={quantity} onChange={e => handleQuantity(e.target.value)} placeholder="0" style={{ width: '100%', padding: '12px 14px', background: '#1e293b', border: `1px solid ${quantityError ? '#f87171' : '#334155'}`, borderRadius: 8, color: '#f1f5f9', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
+            {quantityError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{quantityError}</div>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {[1, 5, 10, 25, 50].map(n => (
+                <button key={n} onClick={() => { setQuantity(n.toString()); setQuantityError(''); }} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 9999, border: '1px solid #334155', background: quantity === n.toString() ? '#06b6d4' : '#1e293b', color: quantity === n.toString() ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {n} shares
+                </button>
+              ))}
+            </div>
+            {price && parseFloat(quantity) >= 0.01 && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+                ≈ <strong style={{ color: '#e2e8f0' }}>{fmtCurrency(parseFloat(quantity) * price)}</strong> at {fmtCurrency(price)}/share
+              </div>
+            )}
+          </>
+        )}
       </Section>
 
       {/* ─── Section 3: Frequency ───────────────────── */}
@@ -335,15 +397,16 @@ export default function DcaSetupPage() {
       </Section>
 
       {/* ─── Section 5: Preview ──────────────────────── */}
-      {selectedSymbol && parseFloat(amount) >= 1 && frequency && (
+      {selectedSymbol && effectiveAmount > 0 && frequency && (
         <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16, marginBottom: 20 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             <Clock size={12} style={{ marginRight: 6, display: 'inline' }} />Preview
           </div>
-          {estShares && <PreviewRow label="Estimated shares per order" value={`${estShares} @ ${fmtCurrency(price)}`} />}
+          {isAmountMode && estShares && <PreviewRow label="Est. shares per order" value={`${estShares} @ ${fmtCurrency(price)}`} />}
+          {isSharesMode && estCost && <PreviewRow label="Est. cost per order" value={`${estCost} @ ${fmtCurrency(price)}/share`} />}
           {totalInvested && <PreviewRow label={`Total invested (${monthsRunning}mo)`} value={totalInvested} />}
           {!runIndefinitely && endDate && estOrders > 0 && <PreviewRow label="Orders scheduled" value={estOrders.toString()} />}
-          {buyingPower > 0 && parseFloat(amount) > buyingPower * 0.1 && (
+          {buyingPower > 0 && isAmountMode && parseFloat(amount) > buyingPower * 0.1 && (
             <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 6, fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>
               ⚠️ Amount exceeds 10% of buying power (${buyingPower.toFixed(2)})
             </div>
@@ -364,7 +427,7 @@ export default function DcaSetupPage() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{s.symbol}</div>
                   <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                    ${s.config.amount} · {s.config.frequency}{s.config.dayOfWeek ? ` (${DAY_LABELS[s.config.dayOfWeek] || s.config.dayOfWeek})` : ''}{s.config.dayOfMonth ? ` (${DATE_LABELS[s.config.dayOfMonth] || s.config.dayOfMonth})` : ''}
+                    {s.config.investBy === 'shares' ? `${s.config.quantity || '?'} shares` : `$${s.config.amount}`} · {s.config.frequency}{s.config.dayOfWeek ? ` (${DAY_LABELS[s.config.dayOfWeek] || s.config.dayOfWeek})` : ''}{s.config.dayOfMonth ? ` (${DATE_LABELS[s.config.dayOfMonth] || s.config.dayOfMonth})` : ''}
                   </div>
                 </div>
                 <button onClick={() => cancelSchedule(s.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontFamily: 'inherit' }}>
