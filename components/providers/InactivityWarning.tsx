@@ -7,9 +7,9 @@
 import { useAuth } from './AuthProvider';
 
 export function InactivityWarning() {
-  const { inactivityWarning, inactivityCountdown } = useAuth();
+  const { inactivityWarning, inactivityCountdown, isAuthenticated } = useAuth();
 
-  if (!inactivityWarning) return null;
+  if (!inactivityWarning || !isAuthenticated) return null;
 
   return (
     <div style={{
