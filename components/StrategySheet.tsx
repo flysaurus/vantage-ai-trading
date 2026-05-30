@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 interface StrategySheetProps {
   strategy: string | null;
@@ -96,14 +97,38 @@ const STRATEGIES: Record<string, StrategyContent> = {
 };
 
 export default function StrategySheet({ strategy, onClose, onExecute }: StrategySheetProps) {
-  // Lock body scroll when sheet is open
+  const scrollY = useRef(0);
+
+  // Lock body scroll when sheet opens, restore on close
   useEffect(() => {
-    if (strategy) {
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = '';
-      };
-    }
+    if (!strategy) return;
+
+    scrollY.current = window.scrollY;
+    const root = document.documentElement;
+    const body = document.body;
+
+    // Save current styles
+    const prevBodyPos = body.style.position;
+    const prevBodyTop = body.style.top;
+    const prevBodyWidth = body.style.width;
+    const prevBodyOverflow = body.style.overflow;
+    const prevRootOverflow = root.style.overflow;
+
+    // Lock scroll
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY.current}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+    root.style.overflow = 'hidden';
+
+    return () => {
+      body.style.position = prevBodyPos;
+      body.style.top = prevBodyTop;
+      body.style.width = prevBodyWidth;
+      body.style.overflow = prevBodyOverflow;
+      root.style.overflow = prevRootOverflow;
+      window.scrollTo(0, scrollY.current);
+    };
   }, [strategy]);
 
   if (!strategy) return null;
@@ -111,7 +136,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
   const content = STRATEGIES[strategy];
   if (!content) return null;
 
-  return (
+  const sheet = (
     <>
       {/* Backdrop */}
       <div
@@ -123,6 +148,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
           background: 'rgba(0,0,0,0.6)',
           backdropFilter: 'blur(2px)',
           animation: 'strategyFadeIn 0.2s ease-out',
+          touchAction: 'none',
         }}
       />
 
@@ -170,7 +196,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
             }}
           />
           {/* Icon + Name */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, paddingTop: 4 }}>
             <span style={{ fontSize: 26 }}>{content.icon}</span>
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>
@@ -224,6 +250,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
             flex: 1,
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
             padding: '16px 16px 24px',
           }}
         >
@@ -350,8 +377,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
         </div>
       </div>
 
-      {/* Keyframes */}
-      <style jsx>{`
+      <style>{`
         @keyframes strategyFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -363,4 +389,8 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
       `}</style>
     </>
   );
+
+  // Render into document.body via portal — avoids parent stacking context traps
+  if (typeof document === 'undefined') return null;
+  return createPortal(sheet, document.body);
 }
