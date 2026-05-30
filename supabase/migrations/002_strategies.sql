@@ -1,8 +1,12 @@
 -- Strategies table for DCA, Rebalance, Tax Harvest schedules
-CREATE TABLE IF NOT EXISTS public.strategies (
+-- Run in: Supabase Dashboard → SQL Editor
+
+DROP TABLE IF EXISTS public.strategies CASCADE;
+
+CREATE TABLE public.strategies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
-  type text NOT NULL, -- 'dca', 'rebalance', 'tax_harvest'
+  user_id uuid NOT NULL,
+  type text NOT NULL,
   symbol text,
   config jsonb DEFAULT '{}',
   is_active boolean DEFAULT true,
@@ -11,5 +15,6 @@ CREATE TABLE IF NOT EXISTS public.strategies (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS strategies_user_id_idx ON public.strategies(user_id);
-CREATE INDEX IF NOT EXISTS strategies_type_idx ON public.strategies(type);
+
+CREATE INDEX strategies_user_id_idx ON public.strategies(user_id);
+CREATE INDEX strategies_type_idx ON public.strategies(type);
