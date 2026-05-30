@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
@@ -35,6 +35,21 @@ interface Filters {
 
 type SortCol = 'symbol' | 'price' | 'peRatio' | 'dividendYield' | 'marketCap' | 'week52Change';
 type SortDir = 'asc' | 'desc';
+
+const STORAGE_KEY = 'vantage:screener-filters';
+
+function getDefaultFilters(): Filters {
+  return { marketCap: '', peMin: '', peMax: '', dividendYieldMin: '', dividendYieldMax: '', sector: '' };
+}
+
+function loadSavedFilters(): Filters {
+  if (typeof window === 'undefined') return getDefaultFilters();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return getDefaultFilters();
+}
 
 const SECTORS = [
   'Technology', 'Financial Services', 'Healthcare', 'Consumer',
@@ -77,16 +92,16 @@ export default function StockScreenerPage() {
   const [scanned, setScanned] = useState(0);
   const [searched, setSearched] = useState(false);
 
-  // Filters
-  const [filters, setFilters] = useState<Filters>({
-    marketCap: '',
-    peMin: '',
-    peMax: '',
-    dividendYieldMin: '',
-    dividendYieldMax: '',
-    sector: '',
-  });
+  // Filters — loaded from localStorage on mount
+  const [filters, setFilters] = useState<Filters>(loadSavedFilters);
   const [showFilters, setShowFilters] = useState(true);
+
+  // Persist filters to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    }
+  }, [filters]);
 
   // Sort
   const [sortCol, setSortCol] = useState<SortCol>('marketCap');

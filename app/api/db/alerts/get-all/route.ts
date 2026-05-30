@@ -24,7 +24,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Production DB uses 'type' and 'threshold' column names
     let query = (supabase as any)
       .from('alerts')
-      .select('id, user_id, symbol, type, threshold, is_active, notification_channels, triggered_at, created_at, updated_at')
+      .select('id, user_id, symbol, type, threshold, is_active, notification_channels, triggered_at, created_at')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false });
 
@@ -51,7 +51,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       notificationChannels: a.notification_channels || ['in_app'],
       triggeredAt: a.triggered_at,
       createdAt: a.created_at,
-      updatedAt: a.updated_at,
     }));
 
     return NextResponse.json({ alerts });

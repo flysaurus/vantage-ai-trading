@@ -46,8 +46,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Cannot update other users alerts' }, { status: 403 });
     }
 
-    // Build update — production DB uses 'threshold' not 'target_value'
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    // Build update — production DB has no updated_at column
+    const updates: Record<string, unknown> = {};
     if (isActive !== undefined) updates.is_active = isActive;
     if (targetValue !== undefined) updates.threshold = targetValue;
 
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('alerts')
       .update(updates)
       .eq('id', alertId)
-      .select('id, type, threshold, is_active, updated_at')
+      .select('id, type, threshold, is_active')
       .single();
 
     if (error) {
@@ -68,7 +68,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       alertType: data.type,
       targetValue: data.threshold,
       isActive: data.is_active,
-      updatedAt: data.updated_at,
     });
   } catch (err: any) {
     if (err?.name === 'AuthError') {
