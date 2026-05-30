@@ -78,7 +78,7 @@ interface Trade {
 
 export default function RebalancingPage() {
   const router = useRouter();
-  const { account } = usePortfolio();
+  const { account, loading: portfolioLoading } = usePortfolio();
   const { isConnected } = useBroker();
 
   const positions = account?.positions ?? [];
@@ -298,7 +298,12 @@ export default function RebalancingPage() {
 
       {/* ─── Section 1: Current Portfolio ───────────── */}
       <Section icon={<Activity size={12} />} label="Current Portfolio">
-        {totalValue <= 0 || positions.length === 0 ? (
+        {portfolioLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
+            <div style={{ width: 16, height: 16, border: '2px solid #334155', borderTopColor: '#06b6d4', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+            Loading portfolio data...
+          </div>
+        ) : totalValue <= 0 || positions.length === 0 ? (
           <div style={{ fontSize: 12, color: '#94a3b8', padding: '8px 0', lineHeight: 1.6 }}>
             {!isConnected ? (
               <>
@@ -548,7 +553,7 @@ export default function RebalancingPage() {
         </div>
       </div>
 
-      <style>{`@keyframes dcaToastIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }`}</style>
+      <style>{`@keyframes dcaToastIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
