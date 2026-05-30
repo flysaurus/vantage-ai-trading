@@ -251,7 +251,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
-            padding: '16px 16px 40px',
+            padding: '16px 16px 24px',
           }}
         >
           {/* What is it? */}
@@ -348,7 +348,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
         <div
           style={{
             flexShrink: 0,
-            padding: '12px 16px 20px',
+            padding: '12px 16px 80px',
             borderTop: '1px solid #1e293b',
             background: '#0f172a',
           }}
