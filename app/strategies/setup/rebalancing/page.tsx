@@ -263,8 +263,19 @@ export default function RebalancingPage() {
 
   // ─── Handlers ────────────────────────────────────────────
   const handleTargetChange = (symbol: string, value: string) => {
-    const num = value === '' ? 0 : parseFloat(value);
+    if (value === '') {
+      // Completely remove the key so input goes blank
+      setTargets(prev => {
+        const next = { ...prev };
+        delete next[symbol];
+        return next;
+      });
+      setTargetsSaved(false);
+      return;
+    }
+    const num = parseFloat(value);
     if (isNaN(num)) return;
+    setTargetsSaved(false);
     setTargets(prev => ({ ...prev, [symbol]: Math.min(100, Math.max(0, num)) }));
   };
 
@@ -506,11 +517,10 @@ export default function RebalancingPage() {
               <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', minWidth: 56 }}>{sym}</span>
               <input
                 id={`target-${sym}`}
-                type="number"
-                min={0}
-                max={100}
-                step={0.1}
-                value={targets[sym] ?? 0}
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={targets[sym] !== undefined ? targets[sym].toString() : ''}
                 onChange={e => handleTargetChange(sym, e.target.value)}
                 style={{ width: 60, padding: '6px 8px', background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: 13, fontWeight: 600, textAlign: 'center', fontFamily: 'inherit' }}
               />
