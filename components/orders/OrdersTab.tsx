@@ -5,6 +5,7 @@ import { useOrderStore, useTabStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { DemoBanner } from '@/components/shared/DemoBanner';
 import { BarChart3 } from 'lucide-react';
+import { useState } from 'react';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
@@ -15,6 +16,7 @@ export function OrdersTab() {
   const { setTab } = useTabStore();
   const { account } = usePortfolio();
   const { isConnected } = useBroker();
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
   // useOrders hook already pre-filters by activeFilter (open includes pending/partially_filled)
 
@@ -327,9 +329,16 @@ export function OrdersTab() {
               {order.status === 'filled' ? 'Filled' : 'Placed'}:{' '}
               {new Date(order.createdAt).toLocaleString()}
             </span>
-            {(order.status === 'open' || order.status === 'pending') && (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="action-btn">Modify</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(order.status === 'open' || order.status === 'pending') && (
+                <button
+                  className="action-btn"
+                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                >
+                  Modify
+                </button>
+              )}
+              {(order.status === 'open' || order.status === 'pending') && (
                 <button
                   className="action-btn"
                   style={{ color: '#f87171', borderColor: 'rgba(239,68,68,0.3)' }}
@@ -337,12 +346,76 @@ export function OrdersTab() {
                 >
                   Cancel
                 </button>
-              </div>
-            )}
-            {order.status === 'filled' && (
-              <button className="action-btn">Details</button>
-            )}
+              )}
+              {order.status === 'filled' && (
+                <button
+                  className="action-btn"
+                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                >
+                  {expandedOrderId === order.id ? 'Hide' : 'Details'}
+                </button>
+              )}
+              {(order.status === 'cancelled' || order.status === 'rejected') && (
+                <button
+                  className="action-btn"
+                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                >
+                  {expandedOrderId === order.id ? 'Hide' : 'Details'}
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Expanded Details Panel */}
+          {expandedOrderId === order.id && (
+            <div style={{
+              marginTop: 10, padding: 12,
+              background: '#0f172a', borderRadius: 8,
+              border: '1px solid #1e293b',
+              display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <DetailRow label="Order ID" value={order.id.startsWith('demo-') ? order.id.replace('demo-', '').split('-').slice(0, -2).join('-') + '...' : order.id.slice(0, 12) + '...'} />
+              <DetailRow label="Status" value={order.status.toUpperCase()} />
+              <DetailRow label="Side" value={order.side.toUpperCase()} />
+              <DetailRow label="Type" value={order.type.toUpperCase()} />
+              <DetailRow label="Qty Ordered" value={String(order.qty)} />
+              {order.filledQty !== undefined && order.filledQty !== order.qty && (
+                <DetailRow label="Qty Filled" value={String(order.filledQty)} />
+              )}
+              {order.limitPrice !== undefined && (
+                <DetailRow label="Limit Price" value={`$${order.limitPrice.toFixed(2)}`} />
+              )}
+              {order.stopPrice !== undefined && (
+                <DetailRow label="Stop Price" value={`$${order.stopPrice.toFixed(2)}`} />
+              )}
+              {order.filledPrice !== undefined && (
+                <DetailRow label="Filled Price" value={`$${order.filledPrice.toFixed(2)}`} />
+              )}
+              {order.totalValue !== undefined && (
+                <DetailRow label="Total Value" value={`$${order.totalValue.toFixed(2)}`} />
+              )}
+              <DetailRow label="TIF" value={order.timeInForce.toUpperCase()} />
+              <DetailRow label="Created" value={new Date(order.createdAt).toLocaleString()} />
+              {order.updatedAt && order.updatedAt !== order.createdAt && (
+                <DetailRow label="Updated" value={new Date(order.updatedAt).toLocaleString()} />
+              )}
+              {order.bracketOrder && (
+                <>
+                  {order.bracketOrder.takeProfit && (
+                    <DetailRow label="Take Profit" value={`$${order.bracketOrder.takeProfit.toFixed(2)}`} />
+                  )}
+                  {order.bracketOrder.stopLoss && (
+                    <DetailRow label="Stop Loss" value={`$${order.bracketOrder.stopLoss.toFixed(2)}`} />
+                  )}
+                </>
+              )}
+              {(order.status === 'open' || order.status === 'pending') && (
+                <div style={{ marginTop: 4, fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}>
+                  Order modification coming soon — cancel and re-place to adjust.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
 
@@ -403,8 +476,20 @@ export function OrdersTab() {
           font-size: 10px;
           cursor: pointer;
           font-weight: 600;
+          font-family: inherit;
         }
+        .action-btn:active { opacity: 0.7; }
       `}</style>
+    </div>
+  );
+}
+
+// ─── Inline detail row for expanded order cards ─────────────
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+      <span style={{ color: '#64748b' }}>{label}</span>
+      <span style={{ color: '#e2e8f0', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );
 }
