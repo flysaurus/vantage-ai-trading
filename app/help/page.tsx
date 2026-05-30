@@ -124,22 +124,23 @@ export default function HelpPage() {
             }}>
               <MessageCircle size={15} style={{ color: '#06b6d4' }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>Questions or feedback? Reach out on Discord.</div>
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>Questions or feedback? Send us an email.</div>
               </div>
               <a
-                href="https://discord.com/invite/clawd"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="mailto:mparikhds@gmail.com?subject=Vantage%20Support"
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
                   padding: '8px 14px', borderRadius: 8,
-                  background: '#5865F2', color: '#fff', fontSize: 12, fontWeight: 600,
+                  background: '#06b6d4', color: '#fff', fontSize: 12, fontWeight: 600,
                   textDecoration: 'none', flexShrink: 0,
                 }}
               >
-                Join Discord
+                Email Support
                 <ExternalLink size={10} />
               </a>
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <span style={{ fontSize: 10, color: '#64748b' }}>mparikhds@gmail.com</span>
             </div>
           </div>
         </div>
