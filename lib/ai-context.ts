@@ -7,6 +7,8 @@
 
 import { createServerClient } from '@/lib/supabase';
 import { getAccount, getPositions } from '@/lib/alpaca';
+import { getConnectionStatus } from '@/lib/vault';
+import { getDemoAccount } from '@/lib/demo-data';
 import {
   getQuote,
   getCompanyProfile,
@@ -312,7 +314,178 @@ async function setCachedContext(userId: string, context: AIContext): Promise<voi
 // PORTFOLIO CONTEXT
 // ═══════════════════════════════════════════════════════════════
 
-async function buildPortfolioContext(/* userId: string */): Promise<PortfolioContext> {
+/**
+ * Build portfolio context from Vantage demo data + live market prices.
+ * This matches exactly what the user sees in the app when no broker is connected.
+ */
+async function buildDemoPortfolioContext(userId: string): Promise<PortfolioContext> {
+  const emptyPortfolio: PortfolioContext = {
+    totalValue: 0, buyingPower: 0, cash: 0,
+    todayPnL: 0, todayPnLPercent: 0, totalPnL: 0, totalPnLPercent: 0,
+    positions: [], sectorBreakdown: [], topHolding: '', topHoldingPercent: 0,
+    concentrationRisk: false, sectorRisk: false,
+  };
+
+  try {
+    // Get user's investor style
+    const supabase = createServerClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: userData } = await (supabase as any)
+      .from('users')
+      .select('investor_style')
+      .eq('id', userId)
+      .single();
+    const style = (userData?.investor_style || 'buffett') as import('@/types').InvestorStyle;
+
+    // Get demo position symbols and fetch live market prices
+    const { getDemoSymbols } = await import('@/lib/demo-data');
+    const symbols = getDemoSymbols(style);
+    if (symbols.length === 0) return emptyPortfolio;
+
+    // Fetch live quotes for all demo symbols
+    const quoteResults = await Promise.all(
+      symbols.map((s) => getQuote(s).catch(() => null))
+    );
+
+    // Build price map for getDemoAccount
+    const prices: Record<string, { price: number; change: number; changePercent: number; previousClose: number }> = {};
+    for (let i = 0; i < symbols.length; i++) {
+      const q = quoteResults[i];
+      if (q) {
+        prices[symbols[i]] = {
+          price: q.price,
+          change: q.changePercent ? q.price * q.changePercent / 100 : 0,
+          changePercent: q.changePercent || 0,
+          previousClose: q.price - (q.changePercent ? q.price * q.changePercent / 100 : 0),
+        };
+      }
+    }
+
+    // Build demo account using the same function the frontend uses
+    const demoAccount = getDemoAccount(style, prices);
+    if (!demoAccount || demoAccount.positions.length === 0) return emptyPortfolio;
+
+    const totalValue = demoAccount.equity;
+    const symbolsAll = demoAccount.positions.map((p) => p.symbol.toUpperCase());
+
+    // Fetch enrichment data in parallel (same as real portfolio path)
+    const [earningsMap, profiles, fundamentalsArr, candlesArr] = await Promise.all([
+      fetchUpcomingEarnings(symbolsAll).catch(() => new Map<string, string>()),
+      Promise.all(symbolsAll.map((s) => getCompanyProfile(s).catch(() => null))).catch(() => [] as (CompanyProfile | null)[]),
+      Promise.all(symbolsAll.map((s) => getFundamentals(s).catch(() => null))).catch(() => [] as (FundamentalMetrics | null)[]),
+      Promise.all(
+        symbolsAll.map((s) => {
+          const now = Math.floor(Date.now() / 1000);
+          return getCandles(s, 'D', now - 28 * 24 * 60 * 60, now, 30).catch(() => null);
+        })
+      ).catch(() => [] as (Candle[] | null)[]),
+    ]);
+
+    // Build enriched position contexts
+    const positionContexts: PositionContext[] = [];
+    for (let i = 0; i < demoAccount.positions.length; i++) {
+      const pos = demoAccount.positions[i];
+      const sym = symbolsAll[i];
+      const profile = i < (profiles?.length || 0) ? profiles?.[i] ?? null : null;
+      const fundamentals = i < (fundamentalsArr?.length || 0) ? fundamentalsArr?.[i] ?? null : null;
+      const candles = i < (candlesArr?.length || 0) ? candlesArr?.[i] ?? null : null;
+
+      // Sector from profile industry or fallback to position's sector
+      let sector = pos.sector || 'Unknown';
+      if (profile?.industry) {
+        const mapped = industryToSector(profile.industry);
+        if (mapped) sector = mapped;
+      }
+
+      const recentTrend = candles ? computeTrend(candles) : 'sideways';
+      let newsSentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
+      if (candles && candles.length >= 5) {
+        if (recentTrend === 'up') newsSentiment = 'positive';
+        else if (recentTrend === 'down') newsSentiment = 'negative';
+      }
+
+      const week52High = fundamentals?.high52w ?? 0;
+      const week52Low = fundamentals?.low52w ?? 0;
+      const percentFrom52High = week52High > 0 ? ((pos.currentPrice - week52High) / week52High) * 100 : 0;
+
+      positionContexts.push({
+        symbol: sym,
+        companyName: profile?.name || pos.name || sym,
+        sector,
+        shares: pos.qty,
+        currentPrice: pos.currentPrice,
+        marketValue: pos.marketValue,
+        portfolioPercent: pos.portfolioPercent,
+        costBasis: pos.avgCost * pos.qty,
+        unrealizedPnL: pos.totalPnl,
+        unrealizedPnLPercent: pos.totalPnlPercent,
+        pe: fundamentals?.pe ?? null,
+        eps: fundamentals?.eps ?? null,
+        week52High,
+        week52Low,
+        percentFrom52High,
+        recentTrend,
+        newsSentiment,
+        upcomingEarnings: earningsMap.get(sym) || null,
+      });
+    }
+
+    // Sector breakdown
+    const sectorMap = new Map<string, number>();
+    for (const pc of positionContexts) {
+      sectorMap.set(pc.sector, (sectorMap.get(pc.sector) || 0) + pc.marketValue);
+    }
+    const sectorBreakdown: SectorBreakdown[] = [];
+    for (const [sector, value] of sectorMap) {
+      const percent = totalValue > 0 ? (value / totalValue) * 100 : 0;
+      sectorBreakdown.push({ sector, percent, value, aboveLimit: percent > SECTOR_CONCENTRATION_LIMIT * 100 });
+    }
+    sectorBreakdown.sort((a, b) => b.value - a.value);
+
+    // Risk flags
+    let topHolding = '', topHoldingPercent = 0, concentrationRisk = false;
+    for (const pc of positionContexts) {
+      if (pc.portfolioPercent > POSITION_CONCENTRATION_LIMIT * 100) concentrationRisk = true;
+      if (pc.portfolioPercent > topHoldingPercent) { topHoldingPercent = pc.portfolioPercent; topHolding = pc.symbol; }
+    }
+    const sectorRisk = sectorBreakdown.some((sb) => sb.percent > SECTOR_CONCENTRATION_LIMIT * 100);
+
+    return {
+      totalValue,
+      buyingPower: demoAccount.buyingPower,
+      cash: demoAccount.cash,
+      todayPnL: demoAccount.dayPnl,
+      todayPnLPercent: demoAccount.dayPnlPercent,
+      totalPnL: demoAccount.totalPnl,
+      totalPnLPercent: demoAccount.totalPnlPercent,
+      positions: positionContexts,
+      sectorBreakdown,
+      topHolding,
+      topHoldingPercent,
+      concentrationRisk,
+      sectorRisk,
+    };
+  } catch {
+    return emptyPortfolio;
+  }
+}
+
+async function buildPortfolioContext(userId: string): Promise<PortfolioContext> {
+  // ── Check broker connection status ──
+  // If no broker connected, use the Vantage demo portfolio (same data shown in the app).
+  let isDemo = true;
+  try {
+    const status = await getConnectionStatus(userId);
+    isDemo = !status.connected;
+  } catch {
+    isDemo = true; // default to demo on vault error
+  }
+
+  if (isDemo) {
+    return buildDemoPortfolioContext(userId);
+  }
+
+  // ── Real broker: use Alpaca data ──
   // Empty states
   const emptyPortfolio: PortfolioContext = {
     totalValue: 0,
@@ -565,6 +738,15 @@ async function buildTaxContext(userId: string): Promise<TaxContext> {
     taxYear: currentYear,
   };
 
+  // ── Check broker connection ──
+  // Demo accounts have no real trades and no harvestable positions.
+  try {
+    const status = await getConnectionStatus(userId);
+    if (!status.connected) return empty;
+  } catch {
+    return empty; // vault error → assume demo
+  }
+
   try {
     const supabase = createServerClient();
     const yearStart = new Date(`${currentYear}-01-01T00:00:00Z`).toISOString();
@@ -746,7 +928,7 @@ export async function buildAIContext(userId: string): Promise<AIContext> {
 
   // 2. Build fresh context — all blocks are safe-guarded
   const [portfolio, market, tax, profile] = await Promise.all([
-    buildPortfolioContext(),
+    buildPortfolioContext(userId),
     buildMarketContext(),
     buildTaxContext(userId),
     fetchUserProfile(userId),
