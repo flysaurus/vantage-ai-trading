@@ -9,10 +9,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/email';
+import { getBatchQuotes } from '@/lib/market-data';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY || '';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
 
 type AlertRow = {
@@ -24,24 +24,12 @@ type AlertRow = {
   notification_channels: string[];
 };
 
-// ─── Finnhub price fetch ────────────────────────────────────
+// ─── Multi-source price fetch ──────────────────────────────
 async function getCurrentPrice(symbol: string): Promise<{ price: number; prevClose: number } | null> {
-  try {
-    if (!FINNHUB_KEY) return null;
-
-    const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`;
-    const res = await fetch(url);
-
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    // Finnhub quote: { c: current, pc: previous close, h, l, o, t }
-    const price = data.c ?? null;
-    const prevClose = data.pc ?? price;
-    return price != null && price > 0 ? { price, prevClose } : null;
-  } catch {
-    return null;
-  }
+  const quotes = await getBatchQuotes([symbol]);
+  const q = quotes.get(symbol.toUpperCase());
+  if (!q || q.price <= 0) return null;
+  return { price: q.price, prevClose: q.previousClose || q.price };
 }
 
 // ─── Trigger check ──────────────────────────────────────────
@@ -155,13 +143,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ checked: 0, triggered: 0, alerts: [] });
     }
 
-    // Group by symbol to minimize Finnhub API calls (60/min free tier)
+    // Batch fetch all prices via multi-source fallback
     const symbolSet = [...new Set((alerts as AlertRow[]).map(a => a.symbol))];
+    const quotes = await getBatchQuotes(symbolSet);
     const priceMap = new Map<string, { price: number; prevClose: number }>();
-
-    for (const sym of symbolSet) {
-      const p = await getCurrentPrice(sym);
-      if (p) priceMap.set(sym, p);
+    for (const [sym, q] of quotes) {
+      if (q.price > 0) priceMap.set(sym, { price: q.price, prevClose: q.previousClose || q.price });
     }
 
     const triggered: Array<{

@@ -1,91 +1,15 @@
-// ─── Market Quotes API (Finnhub) ──────────────────────────────
-// Fetches real-time quotes from Finnhub.io for demo/fallback mode.
-// Finnhub free tier: 60 API calls/min, supports stocks + ETFs.
+// ─── Market Quotes API (Multi-Source Fallback) ────────────────
+// Fetches real-time quotes with fallback chain:
+//   Finnhub → Alpaca → Yahoo Finance
 //
 // POST /api/market/quotes
 // Body: { symbols: string[] }
-// Returns: { quotes: { [symbol]: { price, change, changePercent, previousClose } } }
+// Returns: { quotes: { [symbol]: { price, change, changePercent, previousClose, source } } }
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY;
-
-interface FinnhubQuote {
-  c: number;  // Current price
-  d: number;  // Change
-  dp: number; // Percent change
-  h: number;  // High price of the day
-  l: number;  // Low price of the day
-  o: number;  // Open price of the day
-  pc: number; // Previous close price
-  t: number;  // Timestamp
-}
-
-async function fetchQuote(symbol: string): Promise<{ symbol: string; price: number; change: number; changePercent: number; previousClose: number } | null> {
-  if (!FINNHUB_KEY) {
-    console.error('[Market Quotes] FINNHUB_IO_API_KEY not set');
-    return null;
-  }
-
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
-      { next: { revalidate: 60 } },
-    );
-
-    if (!res.ok) {
-      console.error(`[Market Quotes] Finnhub returned ${res.status} for ${symbol}`);
-      return null;
-    }
-
-    const data: FinnhubQuote = await res.json();
-
-    // Finnhub returns all zeros for invalid/unknown symbols
-    if (data.c === 0 && data.pc === 0) {
-      return null;
-    }
-
-    return {
-      symbol,
-      price: data.c,
-      change: data.d ?? 0,
-      changePercent: data.dp ?? 0,
-      previousClose: data.pc,
-    };
-  } catch (err) {
-    console.error(`[Market Quotes] Error fetching ${symbol}:`, err);
-    return null;
-  }
-}
-
-// Fetch in concurrent batches to stay within rate limit
-async function fetchBatch(symbols: string[], concurrency = 10): Promise<Map<string, { price: number; change: number; changePercent: number; previousClose: number }>> {
-  const results = new Map<string, { price: number; change: number; changePercent: number; previousClose: number }>();
-
-  for (let i = 0; i < symbols.length; i += concurrency) {
-    const batch = symbols.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(batch.map(fetchQuote));
-
-    for (const result of batchResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        results.set(result.value.symbol, {
-          price: result.value.price,
-          change: result.value.change,
-          changePercent: result.value.changePercent,
-          previousClose: result.value.previousClose,
-        });
-      }
-    }
-
-    // Small delay between batches to be nice to the API
-    if (i + concurrency < symbols.length) {
-      await new Promise(r => setTimeout(r, 200));
-    }
-  }
-
-  return results;
-}
+import { getBatchQuotes, isConfigured } from '@/lib/market-data';
 
 export async function POST(request: Request) {
   try {
@@ -95,8 +19,8 @@ export async function POST(request: Request) {
       return Response.json({ error: 'symbols array required' }, { status: 400 });
     }
 
-    if (!FINNHUB_KEY) {
-      return Response.json({ error: 'Finnhub API key not configured' }, { status: 503 });
+    if (!isConfigured()) {
+      return Response.json({ error: 'No market data source configured (Finnhub or Alpaca)' }, { status: 503 });
     }
 
     // Validate and deduplicate symbols
@@ -105,7 +29,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'No valid symbols' }, { status: 400 });
     }
 
-    const results = await fetchBatch(clean);
+    const results = await getBatchQuotes(clean);
 
     // Convert Map to plain object
     const quotes: Record<string, {
@@ -113,10 +37,23 @@ export async function POST(request: Request) {
       change: number;
       changePercent: number;
       previousClose: number;
+      high: number;
+      low: number;
+      open: number;
+      source: string;
     }> = {};
 
     for (const [symbol, data] of results) {
-      quotes[symbol] = data;
+      quotes[symbol] = {
+        price: data.price,
+        change: data.change,
+        changePercent: data.changePercent,
+        previousClose: data.previousClose,
+        high: data.high,
+        low: data.low,
+        open: data.open,
+        source: data.source,
+      };
     }
 
     return Response.json({ quotes });

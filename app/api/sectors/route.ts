@@ -5,7 +5,8 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { industryToSector } from '@/lib/sectors';
-import { getCompanyProfile, finnhubIndustryToSector } from '@/lib/finnhub';
+import { getCompanyProfile } from '@/lib/market-data';
+import { finnhubIndustryToSector } from '@/lib/finnhub';
 
 const ALPACA_BASE = process.env.ALPACA_ENVIRONMENT === 'live'
   ? 'https://api.alpaca.markets'
@@ -42,8 +43,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const results = await Promise.all(
         batch.map(async (symbol) => {
           const profile = await getCompanyProfile(symbol);
-          if (profile?.finnhubIndustry) {
-            const sector = finnhubIndustryToSector(profile.finnhubIndustry);
+          const industry = profile?.industry || '';
+          if (industry) {
+            // Try Finnhub industry mapper first, then fallback
+            const sector = finnhubIndustryToSector(industry) || industryToSector(industry);
             if (sector) return { symbol, sector } as const;
           }
           return { symbol, sector: null as string | null };

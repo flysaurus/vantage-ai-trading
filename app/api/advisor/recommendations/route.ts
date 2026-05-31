@@ -153,36 +153,22 @@ interface FinnhubMetrics {
 }
 
 async function getFinnhubMetrics(symbol: string): Promise<FinnhubMetrics> {
-  const token = process.env.FINNHUB_IO_API_KEY;
-  if (!token) return emptyMetrics();
-
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(symbol.toUpperCase())}&metric=all&token=${token}`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-
-    if (!res.ok) return emptyMetrics();
-    const json = await res.json();
-    const m = json?.metric;
-    if (!m) return emptyMetrics();
-
-    return {
-      pe: m.peBasicExclExtraTTM ?? m.peTTM ?? null,
-      pb: m.pbAnnual ?? m.pbQuarterly ?? null,
-      roe: m.roeTTM ?? m.roeRfy ?? null,
-      roic: m.roicTTM ?? m.roicRfy ?? null,
-      revenueGrowth: m.revenueGrowthTTMYoy ?? m.revenueGrowth3Y ?? null,
-      earningsGrowth: m.epsGrowthTTMYoy ?? m.epsGrowth3Y ?? null,
-      dividendYield: m.currentDividendYieldTTM ?? null,
-      dividendGrowth: m.dividendGrowthRate5Y ?? null,
-      payoutRatio: m.payoutRatioTTM ?? null,
-      fcfYield: m.freeCashFlowYieldTTM ?? null,
-      marketCap: json?.metric?.marketCapitalization ?? null, // Finnhub returns in millions
-    };
-  } catch {
-    return emptyMetrics();
-  }
+  const { getFundamentals } = await import('@/lib/market-data');
+  const f = await getFundamentals(symbol);
+  if (!f) return emptyMetrics();
+  return {
+    pe: f.pe,
+    pb: null, // not in our simplified fundamentals, use Finnhub raw if needed
+    roe: null,
+    roic: null,
+    revenueGrowth: null,
+    earningsGrowth: null,
+    dividendYield: f.dividendYield,
+    dividendGrowth: null,
+    payoutRatio: null,
+    fcfYield: null,
+    marketCap: f.marketCap,
+  };
 }
 
 function emptyMetrics(): FinnhubMetrics {
@@ -192,20 +178,9 @@ function emptyMetrics(): FinnhubMetrics {
 // ─── Sector lookup ────────────────────────────────────────────
 
 async function getSector(symbol: string): Promise<string | undefined> {
-  const token = process.env.FINNHUB_IO_API_KEY;
-  if (!token) return undefined;
-
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (!res.ok) return undefined;
-    const data = await res.json();
-    return data?.finnhubIndustry || undefined;
-  } catch {
-    return undefined;
-  }
+  const { getCompanyProfile } = await import('@/lib/market-data');
+  const p = await getCompanyProfile(symbol);
+  return p?.industry || undefined;
 }
 
 // ─── Handler ──────────────────────────────────────────────────

@@ -212,7 +212,8 @@ export async function streamChat(
   messages: Array<{ role: string; content: string }>,
   context: ChatContext | undefined,
   callbacks: StreamCallbacks,
-  responseMode?: string
+  responseMode?: string,
+  mode?: string
 ): Promise<void> {
   // Check cache first
   if (context) {
@@ -240,6 +241,46 @@ export async function streamChat(
   }
 
   incrementRateLimit();
+
+  // New-format modes use the JSON endpoint (non-streaming response)
+  const NEW_FORMAT_MODES = ['research', 'opportunities', 'risk', 'trends', 'health', 'tax'];
+  const useNewFormat = !!mode && NEW_FORMAT_MODES.includes(mode);
+
+  if (useNewFormat) {
+    const newBody: Record<string, unknown> = {
+      message: messages[messages.length - 1].content,
+      mode,
+      responseMode,
+    };
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newBody),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({ error: 'Unknown error' }));
+      console.error('[VantageChat] Non-OK response:', errBody);
+      callbacks.onError(errBody.error || `API error (${res.status})`);
+      return;
+    }
+
+    const json = await res.json();
+    const content = String(json.content || '');
+    const tokensUsed = { input: json.tokensUsed?.input || estimateTokens(content), output: json.tokensUsed?.output || estimateTokens(content) };
+    const cost = typeof json.cost === 'number' ? json.cost : 0;
+
+    // Simulate streaming by tokenizing content word by word
+    const words = content.split(/(\s+)/);
+    for (let i = 0; i < words.length; i++) {
+      callbacks.onToken(words[i]);
+      await new Promise((r) => setTimeout(r, 6));
+    }
+
+    callbacks.onDone(tokensUsed, cost);
+    return;
+  }
 
   try {
     const res = await fetch('/api/chat', {

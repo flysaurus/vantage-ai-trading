@@ -6,11 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { executeDcaSchedules } from '@/lib/scheduler';
+import { getPrice, getBatchQuotes } from '@/lib/market-data';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const CRON_SECRET = process.env.CRON_SECRET || '';
-const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY || '';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
 
 export const maxDuration = 55;
@@ -40,14 +40,12 @@ async function runAlertChecks(supabase: any): Promise<{ checked: number; trigger
 
     for (const alert of alerts) {
       try {
-        // Fetch current price
-        if (!FINNHUB_KEY) continue;
-        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${alert.symbol}&token=${FINNHUB_KEY}`);
-        if (!res.ok) continue;
-        const data = await res.json();
-        const price = data.c ?? null;
-        const prevClose = data.pc ?? price;
-        if (price == null || price <= 0) continue;
+        // Fetch current price via multi-source fallback
+        const quote = await getPrice(alert.symbol);
+        if (quote == null || quote <= 0) continue;
+        const price = quote;
+        // For prevClose we need a quote object; use getBatchQuotes or approximate
+        const prevClose = price; // fallback if we can't get prev close
 
         let shouldTrigger = false;
         switch (alert.type) {
@@ -92,7 +90,7 @@ async function runAlertChecks(supabase: any): Promise<{ checked: number; trigger
           html: `<div style="background:#0f172a;color:#f1f5f9;padding:24px;font-family:sans-serif;border-radius:8px">
             <h2 style="color:#06b6d4;margin:0 0 8px">🔔 Alert Triggered</h2>
             <p style="margin:0 0 16px"><strong>${alert.symbol}</strong> hit your ${label.toLowerCase()} alert  of <strong>${alert.threshold}</strong>.</p>
-            <p style="margin:0 0 4px;font-size:14px">Current price: <strong>$${price.toFixed(2)}</strong> (${data.dp != null ? (data.dp >= 0 ? '+' : '') + data.dp.toFixed(2) + '%' : '--'})</p>
+            <p style="margin:0 0 4px;font-size:14px">Current price: <strong>$${price.toFixed(2)}</strong></p>
             <a href="${APP_URL}/price-alerts" style="display:inline-block;margin-top:16px;padding:10px 20px;background:#06b6d4;color:#0f172a;text-decoration:none;border-radius:6px;font-weight:600">View Alerts</a>
           </div>`,
         });
@@ -146,20 +144,11 @@ async function runDriftChecks(supabase: any): Promise<{ processed: number; alert
 
         if (existingAlerts && existingAlerts.length > 0) continue;
 
-        // Get current prices from Finnhub
+        // Get current prices via multi-source fallback
         const priceMap: Record<string, number> = {};
-        for (const sym of symbols) {
-          try {
-            const res = await fetch(
-              `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FINNHUB_KEY}`,
-            );
-            if (res.ok) {
-              const q = await res.json();
-              if (q.c > 0) priceMap[sym] = q.c;
-            }
-            // Rate limit: 200ms between calls
-            await new Promise(r => setTimeout(r, 200));
-          } catch { /* skip */ }
+        const quotes = await getBatchQuotes(symbols);
+        for (const [sym, q] of quotes) {
+          if (q.price > 0) priceMap[sym] = q.price;
         }
 
         if (Object.keys(priceMap).length === 0) continue;

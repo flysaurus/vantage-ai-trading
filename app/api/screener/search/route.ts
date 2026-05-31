@@ -198,16 +198,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const profiles: any[] = [];
 
     const toScan = symbols.slice(0, MAX_PROFILES);
+    const { getCompanyProfile: screenerProfile } = await import('@/lib/market-data');
 
     for (let i = 0; i < toScan.length; i += batchSize) {
       const batch = toScan.slice(i, i + batchSize);
       const results = await Promise.allSettled(
-        batch.map(sym =>
-          fetch(
-            `${FINNHUB_BASE}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`,
-            { signal: AbortSignal.timeout(5000) }
-          ).then(r => r.ok ? r.json() : null).catch(() => null)
-        )
+        batch.map(sym => screenerProfile(sym))
       );
       for (let j = 0; j < results.length; j++) {
         const r = results[j];
@@ -242,7 +238,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const symbol = p.ticker || '';
       const name = p.name || '';
       const marketCap = p.marketCapitalization != null ? p.marketCapitalization * 1e6 : null;
-      const industry = p.finnhubIndustry || '';
+      const industry = p.industry || p.finnhubIndustry || '';
       const exchange = p.exchange || '';
 
       // Sector filter: match against keyword list
@@ -280,32 +276,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.log(`[screener] After filters: ${results.length} matches`);
 
     // ─── 3. Enrich with metrics (PE, div yield, 52wk, price) ─
-    // Same pacing: 3 calls every 1.5s. Top 15 results (~7.5s).
+    const { getFundamentals: screenerFundamentals, getQuote: screenerQuote } = await import('@/lib/market-data');
     const MAX_ENRICH = 15;
     const topResults = results.slice(0, MAX_ENRICH);
     for (let i = 0; i < topResults.length; i += 3) {
       const batch = topResults.slice(i, i + 3);
       const metricResults = await Promise.allSettled(
-        batch.map(r =>
-          fetch(
-            `${FINNHUB_BASE}/stock/metric?symbol=${encodeURIComponent(r.symbol)}&metric=all&token=${token}`,
-            { signal: AbortSignal.timeout(5000) }
-          ).then(res => res.ok ? res.json() : null).catch(() => null)
-        )
+        batch.map(r => screenerFundamentals(r.symbol))
       );
       for (let j = 0; j < batch.length; j++) {
         const mr = metricResults[j];
-        if (mr.status !== 'fulfilled' || !mr.value?.metric) continue;
-        const m = mr.value.metric;
-        if (m.peBasicExclExtraTTM != null) batch[j].peRatio = m.peBasicExclExtraTTM;
-        if (m.dividendYieldIndicatedAnnual != null) batch[j].dividendYield = m.dividendYieldIndicatedAnnual;
-        if (m['52WeekHigh'] != null) batch[j].week52High = m['52WeekHigh'];
-        if (m['52WeekLow'] != null) batch[j].week52Low = m['52WeekLow'];
+        if (mr.status !== 'fulfilled' || !mr.value) continue;
+        const m = mr.value;
+        if (m.pe != null) batch[j].peRatio = m.pe;
+        if (m.dividendYield != null) batch[j].dividendYield = m.dividendYield;
+        if (m.high52w != null) batch[j].week52High = m.high52w;
+        if (m.low52w != null) batch[j].week52Low = m.low52w;
         if (batch[j].week52High && batch[j].week52Low) {
           const mid = (batch[j].week52High! + batch[j].week52Low!) / 2;
           batch[j].week52Change = ((batch[j].week52High! - mid) / mid) * 100;
         }
-        if (m.currentPrice != null) batch[j].price = m.currentPrice;
       }
       if (i + 3 < topResults.length) {
         await new Promise(r => setTimeout(r, 1500));

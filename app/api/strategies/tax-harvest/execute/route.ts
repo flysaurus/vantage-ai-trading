@@ -107,19 +107,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // 2. Buy replacement if selected
         const replacement: ReplacementItem | undefined = replacements?.[h.symbol];
         if (replacement) {
-          // Get live price for replacement
+          // Get live price for replacement (multi-source fallback)
           let replPrice = replacement.price;
           try {
-            const finnhubKey = process.env.FINNHUB_IO_API_KEY;
-            if (finnhubKey) {
-              const fRes = await fetch(
-                `https://finnhub.io/api/v1/quote?symbol=${replacement.symbol}&token=${finnhubKey}`,
-              );
-              if (fRes.ok) {
-                const q = await fRes.json();
-                if (q.c > 0) replPrice = q.c;
-              }
-            }
+            const { getPrice } = await import('@/lib/market-data');
+            const livePrice = await getPrice(replacement.symbol);
+            if (livePrice) replPrice = livePrice;
           } catch { /* use estimated price */ }
 
           const buyQty = Math.max(1, Math.floor(h.loss / replPrice));

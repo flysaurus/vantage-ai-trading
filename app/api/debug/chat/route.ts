@@ -1,94 +1,62 @@
 // GET /api/debug/chat — Full chat flow diagnostic
 // Tests the EXACT same code path as /api/chat but returns full tracing
 import { NextResponse } from 'next/server';
+import { getAIProvider, callAI, isAIAvailable } from '@/lib/ai-provider';
 
 export async function GET() {
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  const claudeKey = process.env.CLAUDE_API_KEY;
   const steps: string[] = [];
   const errors: string[] = [];
 
-  steps.push(`DEEPSEEK_API_KEY: ${deepseekKey ? 'set (prefix: ' + deepseekKey.slice(0, 6) + '...)' : 'NOT SET'}`);
-  steps.push(`CLAUDE_API_KEY: ${claudeKey ? 'set (prefix: ' + claudeKey.slice(0, 6) + '...)' : 'NOT SET'}`);
+  const provider = getAIProvider();
+  steps.push(`Active provider: ${provider.name}`);
+  steps.push(`AI available: ${isAIAvailable()}`);
+  steps.push(`DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? 'set' : 'NOT SET'}`);
+  steps.push(`CLAUDE_API_KEY: ${process.env.CLAUDE_API_KEY ? 'set' : 'NOT SET'}`);
+  steps.push(`ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? 'set' : 'NOT SET'}`);
+  steps.push(`OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? 'set' : 'NOT SET'}`);
+  steps.push(`AI_PROVIDER: ${process.env.AI_PROVIDER || 'deepseek (default)'}`);
 
-  if (!deepseekKey) {
-    return NextResponse.json({ diagnosis: 'DEEPSEEK_API_KEY not set', steps, errors }, { status: 500 });
+  if (!isAIAvailable()) {
+    return NextResponse.json({ diagnosis: 'No AI provider configured', steps, errors }, { status: 500 });
   }
 
-  // Test 1: DeepSeek simple connectivity
-  steps.push('Testing DeepSeek connectivity...');
+  // Test 1: Non-streaming call via provider
+  steps.push('Testing AI provider (non-streaming)...');
   try {
-    const dsRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deepseekKey}` },
-      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5, stream: false }),
-      signal: AbortSignal.timeout(10000),
+    const response = await callAI({
+      messages: [{ role: 'user', content: 'hi' }],
+      maxTokens: 5,
     });
-    const body = await dsRes.text().catch(() => '');
-    steps.push(`DeepSeek non-streaming: HTTP ${dsRes.status}, body: ${body.slice(0, 150)}`);
-    if (!dsRes.ok) errors.push(`DeepSeek non-streaming returned ${dsRes.status}`);
+    steps.push(`Non-streaming: model=${response.model}, tokens=${response.tokensUsed}, content="${response.content.slice(0, 80)}"`);
   } catch (e: any) {
-    errors.push(`DeepSeek non-streaming error: ${e.message}`);
+    errors.push(`Non-streaming error: ${e.message}`);
   }
 
-  // Test 2: DeepSeek streaming
-  steps.push('Testing DeepSeek streaming...');
+  // Test 2: Streaming via provider
+  steps.push('Testing AI provider (streaming)...');
   let streamOk = false;
   try {
-    const dsStreamRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deepseekKey}` },
-      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: 'say hi' }], stream: true, max_tokens: 10 }),
-      signal: AbortSignal.timeout(15000),
+    const { stream, model: streamModel } = await getAIProvider().stream({
+      messages: [{ role: 'user', content: 'say hi' }],
+      maxTokens: 10,
     });
-    steps.push(`DeepSeek streaming: HTTP ${dsStreamRes.status}, has body: ${!!dsStreamRes.body}`);
-    if (!dsStreamRes.ok) {
-      const errBody = await dsStreamRes.text().catch(() => '');
-      errors.push(`DeepSeek streaming returned ${dsStreamRes.status}: ${errBody.slice(0, 200)}`);
-    } else if (!dsStreamRes.body) {
-      errors.push('DeepSeek streaming: response body is null');
-    } else {
-      const reader = dsStreamRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      for (let i = 0; i < 5; i++) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-      }
-      reader.cancel();
-      steps.push(`DeepSeek stream data (first 200 chars): ${buffer.slice(0, 200)}`);
-      streamOk = buffer.length > 0;
+    steps.push(`Streaming: model=${streamModel}, stream obtained`);
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (let i = 0; i < 5; i++) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
     }
+    reader.cancel();
+    steps.push(`Stream data (first 200 chars): ${buffer.slice(0, 200)}`);
+    streamOk = buffer.length > 0;
   } catch (e: any) {
-    errors.push(`DeepSeek streaming error: ${e.message}`);
+    errors.push(`Streaming error: ${e.message}`);
   }
 
-  // Test 3: Claude connectivity
-  if (claudeKey) {
-    steps.push('Testing Claude connectivity...');
-    try {
-      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': claudeKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
-        signal: AbortSignal.timeout(10000),
-      });
-      const claudeBody = await claudeRes.text().catch(() => '');
-      steps.push(`Claude: HTTP ${claudeRes.status}, body: ${claudeBody.slice(0, 150)}`);
-      if (!claudeRes.ok) errors.push(`Claude returned ${claudeRes.status}: ${claudeBody.slice(0, 200)}`);
-    } catch (e: any) {
-      errors.push(`Claude error: ${e.message}`);
-    }
-  } else {
-    steps.push('Claude: skipped (key not set)');
-  }
-
-  // Test 4: Chat route integration (self-call)
+  // Test 3: Chat route integration (self-call)
   steps.push('Testing chat route integration...');
   try {
     const chatRes = await fetch('https://vantage-ai-trading.vercel.app/api/chat', {
@@ -112,8 +80,8 @@ export async function GET() {
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     conclusion: errors.length === 0 ? (
-      streamOk ? 'All providers working. Chat should function normally. Try hard-refreshing the page (Ctrl+Shift+R).' :
-      'DeepSeek connectivity works but streaming may have issues. Check Vercel function timeout settings.'
+      streamOk ? 'All providers working. Chat should function normally.' :
+      'Provider works but streaming may have issues. Check Vercel timeout settings.'
     ) : errors.join(' | '),
     streamOk,
     steps,

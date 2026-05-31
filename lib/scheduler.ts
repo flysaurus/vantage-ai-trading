@@ -37,8 +37,7 @@ interface DcaExecutionResult {
 }
 
 import { decryptData } from '@/lib/crypto';
-
-const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY || '';
+import { getPrice } from '@/lib/market-data';
 
 // ─── Calculate next run time ─────────────────────────────
 export function calculateNextRun(config: DcaConfig, fromDate?: Date): Date {
@@ -100,18 +99,7 @@ export function calculateNextRun(config: DcaConfig, fromDate?: Date): Date {
   return base;
 }
 
-// ─── Fetch live price ────────────────────────────────────
-async function getPrice(symbol: string): Promise<number | null> {
-  try {
-    if (!FINNHUB_KEY) return null;
-    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.c != null && data.c > 0 ? data.c : null;
-  } catch {
-    return null;
-  }
-}
+// getPrice() now imported from @/lib/market-data (Finnhub → Alpaca → Yahoo fallback)
 
 // ─── Execute all due DCA schedules ────────────────────────
 export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionResult[]> {

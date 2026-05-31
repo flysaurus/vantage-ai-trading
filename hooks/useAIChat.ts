@@ -124,7 +124,7 @@ export function useAIChat() {
   }, [account, orders, user]);
 
   const sendMessage = useCallback(
-    async (content: string, responseMode?: string) => {
+    async (content: string, responseMode?: string, mode?: string, symbol?: string) => {
       if (!content.trim() || isLoading) return;
 
       // Rate limit check
@@ -277,7 +277,7 @@ export function useAIChat() {
               });
             }
           },
-        }, responseMode);
+        }, responseMode, mode);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Connection failed');
         setLoading(false);

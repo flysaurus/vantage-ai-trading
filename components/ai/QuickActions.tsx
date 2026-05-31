@@ -1,12 +1,13 @@
 'use client';
 import { useMemo } from 'react';
 import { usePortfolioStore, useMarketStore } from '@/store';
-import { TrendingUp, Shield, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Shield, Heart } from 'lucide-react';
 
 interface ActionItem {
   icon: typeof TrendingUp;
   label: string;
-  prompt?: string;
+  prompt: string;
+  mode: string;
 }
 
 export function QuickActions() {
@@ -20,8 +21,9 @@ export function QuickActions() {
     if (!account?.positions?.length) {
       dynamic.push({
         icon: TrendingUp,
-        label: 'Markets',
+        label: '📈 Market Trends',
         prompt: 'What are the markets doing today?',
+        mode: 'trends',
       });
       return dynamic;
     }
@@ -33,24 +35,27 @@ export function QuickActions() {
     if (hasLosers) {
       dynamic.push({
         icon: Shield,
-        label: 'Risk Check',
+        label: '🛡 Risk Check',
         prompt: 'Check my portfolio risk',
+        mode: 'risk',
       });
     }
 
     if (hasBigWinners) {
       dynamic.push({
         icon: TrendingUp,
-        label: 'Take Profit?',
-        prompt: 'Should I take profits on my winning positions?',
+        label: '💡 Opportunities',
+        prompt: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
+        mode: 'opportunities',
       });
     }
 
     if (isConcentrated) {
       dynamic.push({
-        icon: AlertTriangle,
-        label: 'Rebalance',
-        prompt: 'How should I rebalance my portfolio?',
+        icon: Heart,
+        label: '🌱 Health Check',
+        prompt: 'How healthy is my portfolio right now?',
+        mode: 'health',
       });
     }
 
@@ -66,13 +71,13 @@ export function QuickActions() {
       gridTemplateColumns: `repeat(${Math.min(actions.length, 4)}, 1fr)`,
       gap: 8,
     }}>
-      {actions.slice(0, 8).map(({ icon: Icon, label, prompt }) => (
+      {actions.slice(0, 8).map(({ icon: Icon, label, prompt, mode }) => (
         <button
           key={label}
           onClick={() => {
             // Trigger a click on the chat suggestion that matches this prompt
             const event = new CustomEvent('vantage-ai-suggestion', {
-              detail: { prompt: prompt || label },
+              detail: { prompt, mode },
             });
             window.dispatchEvent(event);
           }}

@@ -103,30 +103,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ results: [] });
     }
 
-    // ─── 3. Enrich with Alpaca snapshots (prices) ───────────
-    const alpacaKey = process.env.ALPACA_API_KEY_ID;
-    if (alpacaKey) {
-      try {
-        const syms = filtered.map(r => r.symbol).join(',');
-        const snapRes = await fetch(
-          `${ALPACA_DATA}/v2/stocks/snapshots?symbols=${encodeURIComponent(syms)}`,
-          { headers: getAlpacaHeaders(), signal: AbortSignal.timeout(5000) }
-        );
-        if (snapRes.ok) {
-          const snapData = await snapRes.json();
-          for (const r of filtered) {
-            const snap = snapData[r.symbol];
-            if (snap) {
-              r.price = snap.latestTrade?.p;
-              r.exchange = snap.latestTrade?.x || '';
-              if (snap.dailyBar?.c && snap.prevDailyBar?.c) {
-                r.changePercent = ((snap.dailyBar.c - snap.prevDailyBar.c) / snap.prevDailyBar.c) * 100;
-              }
-            }
-          }
+    // ─── 3. Enrich with live prices (multi-source fallback) ──
+    try {
+      const symbols = filtered.map(r => r.symbol);
+      const { getBatchQuotes } = await import('@/lib/market-data');
+      const quotes = await getBatchQuotes(symbols);
+      for (const r of filtered) {
+        const q = quotes.get(r.symbol);
+        if (q) {
+          r.price = q.price;
+          r.changePercent = q.changePercent;
         }
-      } catch { /* prices optional */ }
-    }
+      }
+    } catch { /* prices optional */ }
 
     return NextResponse.json({ results: filtered });
   } catch {

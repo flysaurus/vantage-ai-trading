@@ -8,12 +8,42 @@ import { useAIChat } from '@/hooks/useAIChat';
 import { ConvictionCard } from './ConvictionCard';
 
 const SUGGESTIONS = [
-  { label: '🔍 Research', prompt: 'Research' },
-  { label: '📊 Risk Check', prompt: 'Check my portfolio risk' },
-  { label: '💡 Trade Ideas', prompt: 'Trade ideas' },
-  { label: '📰 Market News', prompt: 'Market news' },
-  { label: '⚙️ Rebalance', prompt: 'Should I rebalance my portfolio?', direct: true },
-  { label: '📈 Technical', prompt: 'Technical analysis' },
+  {
+    id: 'health',
+    label: '🌱 Portfolio Health',
+    mode: 'health' as const,
+    message: 'Run a complete health check on my portfolio. Score each area and give me priority actions.',
+  },
+  {
+    id: 'risk',
+    label: '🛡 Risk Check',
+    mode: 'risk' as const,
+    message: 'Check my portfolio for concentration risk, sector risk, and any other risks I should know about.',
+  },
+  {
+    id: 'opportunities',
+    label: '💡 Opportunities',
+    mode: 'opportunities' as const,
+    message: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
+  },
+  {
+    id: 'trends',
+    label: '📈 Market Trends',
+    mode: 'trends' as const,
+    message: 'What are the key market trends right now and how do they affect my portfolio specifically?',
+  },
+  {
+    id: 'research',
+    label: '🔍 Research',
+    mode: 'research' as const,
+    message: 'Research [SYMBOL] — fundamentals, technicals, recent news, and whether it fits my portfolio.',
+  },
+  {
+    id: 'tax',
+    label: '🧾 Tax Check',
+    mode: 'tax' as const,
+    message: 'Check my tax situation. What losses can I harvest and what are my estimated savings?',
+  },
 ];
 
 /** Custom markdown renderers — dark theme, compact, trading-appropriate */
@@ -94,6 +124,8 @@ export function AIChat() {
   const [input, setInput] = useState('');
   const [responseMode, setResponseMode] = useState<'summary' | 'detailed'>('summary');
   const [showCost, setShowCost] = useState(false);
+  const [researchSymbol, setResearchSymbol] = useState('');
+  const [showResearchInput, setShowResearchInput] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -132,16 +164,16 @@ export function AIChat() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.prompt) {
-        sendMessage(detail.prompt, responseMode);
+        sendMessage(detail.prompt, responseMode, detail.mode);
       }
     };
     window.addEventListener('vantage-ai-suggestion', handler);
     return () => window.removeEventListener('vantage-ai-suggestion', handler);
-  }, [sendMessage]);
+  }, [sendMessage, responseMode]);
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
-    sendMessage(input.trim(), responseMode);
+    sendMessage(input.trim(), responseMode, 'general');
     setInput('');
   };
 
@@ -152,10 +184,24 @@ export function AIChat() {
     }
   };
 
-  const handleSuggestion = (suggestion: string) => {
-    const cleaned = suggestion.replace(/^[📊💡📰⚙️📈🔍]\s*/, '');
-    setInput(cleaned);
-    inputRef.current?.focus();
+  const handleQuickPrompt = (suggestion: typeof SUGGESTIONS[number]) => {
+    if (suggestion.id === 'research') {
+      // Show inline symbol input for research prompt
+      setShowResearchInput(true);
+      setResearchSymbol('');
+      return;
+    }
+    sendMessage(suggestion.message, responseMode, suggestion.mode);
+  };
+
+  const handleResearchSend = () => {
+    const symbol = researchSymbol.trim().toUpperCase();
+    if (!symbol) return;
+    const researchSuggestion = SUGGESTIONS.find(s => s.id === 'research')!;
+    const message = researchSuggestion.message.replace('[SYMBOL]', symbol);
+    sendMessage(message, responseMode, 'research', symbol);
+    setShowResearchInput(false);
+    setResearchSymbol('');
   };
 
   return (
@@ -424,14 +470,8 @@ export function AIChat() {
           className="no-scrollbar">
           {SUGGESTIONS.map((s) => (
             <button
-              key={s.label}
-              onClick={() => {
-                if ((s as any).direct) {
-                  sendMessage((s as any).prompt, responseMode);
-                } else {
-                  handleSuggestion((s as any).prompt || (s as any).label || s);
-                }
-              }}
+              key={s.id}
+              onClick={() => handleQuickPrompt(s)}
               disabled={isLoading || remainingCalls === 0}
               style={{
                 padding: '5px 9px', background: '#334155', border: 'none',
@@ -444,6 +484,57 @@ export function AIChat() {
             </button>
           ))}
         </div>
+
+        {/* Research symbol input — appears inline when Research is tapped */}
+        {showResearchInput && (
+          <div style={{
+            display: 'flex', gap: 6, marginBottom: 8,
+            padding: '8px 10px', background: '#0f172a',
+            border: '1px solid #06b6d4', borderRadius: 8,
+            alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 10, color: '#06b6d4', whiteSpace: 'nowrap' }}>🔍 Symbol:</span>
+            <input
+              type="text"
+              value={researchSymbol}
+              onChange={(e) => setResearchSymbol(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleResearchSend();
+                if (e.key === 'Escape') { setShowResearchInput(false); setResearchSymbol(''); }
+              }}
+              placeholder="AAPL, NVDA..."
+              autoFocus
+              style={{
+                flex: 1, padding: '6px 8px',
+                background: '#1e293b', border: '1px solid #334155',
+                borderRadius: 6, color: '#f1f5f9', fontSize: 12,
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleResearchSend}
+              disabled={!researchSymbol.trim()}
+              style={{
+                padding: '6px 10px', background: researchSymbol.trim() ? '#06b6d4' : '#334155',
+                border: 'none', borderRadius: 6, color: 'white',
+                cursor: researchSymbol.trim() ? 'pointer' : 'default',
+                fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+              }}
+            >
+              Go
+            </button>
+            <button
+              onClick={() => { setShowResearchInput(false); setResearchSymbol(''); }}
+              style={{
+                padding: '6px 8px', background: 'transparent',
+                border: 'none', color: '#94a3b8',
+                cursor: 'pointer', fontSize: 14,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Input row */}
         <div style={{ display: 'flex', gap: 6 }}>

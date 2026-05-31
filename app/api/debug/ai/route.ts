@@ -1,10 +1,10 @@
 // ─── AI Provider Debug Endpoint ────────────────────────────
-// Tests connectivity to DeepSeek and Claude APIs with configured keys.
+// Tests connectivity through the AI provider abstraction.
 // Returns: status codes, error details, and latency per provider.
 // Access: GET /api/debug/ai
-// ⚠️  Does NOT echo keys — only reports whether they're set.
 
 import { NextResponse } from 'next/server';
+import { callAI, getAIProvider } from '@/lib/ai-provider';
 
 interface ProviderResult {
   available: boolean;
@@ -13,82 +13,59 @@ interface ProviderResult {
   error: string | null;
 }
 
-async function testProvider(params: {
-  url: string;
-  headers: Record<string, string>;
-  body: unknown;
-  timeoutMs: number;
-}): Promise<ProviderResult> {
-  const result: ProviderResult = { available: false, status: null, latencyMs: null, error: null };
+async function testProviderCall(
+  label: string,
+  model: string,
+  timeoutMs: number
+): Promise<ProviderResult> {
   const start = Date.now();
   try {
-    const res = await fetch(params.url, {
-      method: 'POST',
-      headers: params.headers,
-      body: JSON.stringify(params.body),
-      signal: AbortSignal.timeout(params.timeoutMs),
+    const response = await callAI({
+      messages: [{ role: 'user', content: 'ping' }],
+      model,
+      maxTokens: 1,
+      timeoutMs,
     });
-    result.status = res.status;
-    result.latencyMs = Date.now() - start;
-    result.available = res.ok;
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      result.error = res.status === 401 ? 'API key rejected (401)' : `HTTP ${res.status}: ${body.slice(0, 200)}`;
-    }
+    return {
+      available: true,
+      status: 200,
+      latencyMs: Date.now() - start,
+      error: null,
+    };
   } catch (e: any) {
-    result.latencyMs = Date.now() - start;
-    result.error = e?.message || String(e);
+    return {
+      available: false,
+      status: null,
+      latencyMs: Date.now() - start,
+      error: e?.message || String(e),
+    };
   }
-  return result;
 }
 
 export async function GET() {
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  const claudeKey = process.env.CLAUDE_API_KEY;
+  const provider = getAIProvider();
   const results: Record<string, ProviderResult> = {};
+  const keys: Record<string, boolean> = {
+    DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
+    ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+    CLAUDE_API_KEY: !!process.env.CLAUDE_API_KEY,
+    OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+  };
 
-  // ── DeepSeek Chat ──
-  results.deepseekChat = deepseekKey
-    ? await testProvider({
-        url: 'https://api.deepseek.com/v1/chat/completions',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${deepseekKey}`,
-        },
-        body: { model: 'deepseek-chat', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false },
-        timeoutMs: 15000,
-      })
-    : { available: false, status: null, latencyMs: null, error: 'DEEPSEEK_API_KEY not set' };
-
-  // ── DeepSeek Reasoner ──
-  results.deepseekReasoner = deepseekKey
-    ? await testProvider({
-        url: 'https://api.deepseek.com/v1/chat/completions',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${deepseekKey}`,
-        },
-        body: { model: 'deepseek-reasoner', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false },
-        timeoutMs: 30000,
-      })
-    : { available: false, status: null, latencyMs: null, error: 'DEEPSEEK_API_KEY not set' };
-
-  // ── Claude Haiku ──
-  results.claudeHaiku = claudeKey
-    ? await testProvider({
-        url: 'https://api.anthropic.com/v1/messages',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': claudeKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: { model: 'claude-3-haiku-20240307', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }], stream: false },
-        timeoutMs: 15000,
-      })
-    : { available: false, status: null, latencyMs: null, error: 'CLAUDE_API_KEY not set' };
+  // Test active provider with its models
+  if (provider.name === 'deepseek') {
+    results.deepseekChat = await testProviderCall('deepseek-chat', 'deepseek-chat', 15000);
+    results.deepseekReasoner = await testProviderCall('deepseek-reasoner', 'deepseek-reasoner', 30000);
+  } else if (provider.name === 'claude') {
+    results.claude = await testProviderCall('claude', undefined as any, 15000);
+  } else if (provider.name === 'openai') {
+    results.openai = await testProviderCall('openai', undefined as any, 15000);
+  }
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
+    activeProvider: provider.name,
+    keys,
     results,
   });
 }

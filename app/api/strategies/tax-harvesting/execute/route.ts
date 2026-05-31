@@ -76,14 +76,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // 2. Buy the replacement ETF if specified
         if (trade.buySymbol) {
           const buyAmount = trade.sellValue || trade.estimatedValue;
-          const res = await fetch(
-            `https://finnhub.io/api/v1/quote?symbol=${trade.buySymbol}&token=${process.env.FINNHUB_IO_API_KEY || ''}`,
-          );
-          let buyPrice = 0;
-          if (res.ok) {
-            const q = await res.json();
-            buyPrice = q.c || 0;
-          }
+          const { getPrice } = await import('@/lib/market-data');
+          const buyPrice = (await getPrice(trade.buySymbol)) || 0;
 
           if (buyPrice > 0) {
             const buyShares = Math.floor((buyAmount / buyPrice) * 100) / 100;
