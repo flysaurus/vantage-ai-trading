@@ -4,28 +4,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth';
 import { getBrokerContext } from '@/lib/broker-service';
 import { getConnectionStatus } from '@/lib/vault';
 
 export async function GET(req: NextRequest) {
   try {
-    // Extract userId from cookie (same as requireAuth but non-blocking)
-    const cookieHeader = req.headers.get('cookie') || '';
-    const tokenMatch = cookieHeader.match(/sb-vantage-auth-token=([^;]+)/);
-    if (!tokenMatch) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    const { userId } = await requireAuth(req);
 
     const supabase = createServerClient();
-    const token = tokenMatch[1];
-    
-    // Actually get the user via requireAuth-like flow
-    const { data: { user }, error: authErr } = await (supabase as any).auth.getUser(token);
-    if (authErr || !user) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
-    }
-
-    const userId = user.id;
 
     // 1. What broker-service thinks
     let brokerCtx: any;
@@ -59,6 +46,7 @@ export async function GET(req: NextRequest) {
         hasCredentials: !!brokerCtx?.credentials,
         credentialsProvider: brokerCtx?.credentials?.provider,
         investorStyle: brokerCtx?.investorStyle,
+        error: brokerCtx?.error,
       },
       oldVaultStatus: vaultStatus,
       database: {
