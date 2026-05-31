@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { getUserProfile, updateInvestorStyle } from '@/lib/supabase/user';
@@ -12,13 +13,14 @@ import type { StyleDef } from '@/components/onboarding/styles';
 import type { Position, User } from '@/types';
 import {
   RefreshCcw, Shield, AlertTriangle, Info,
-  TrendingUp, CheckCircle, XCircle,
+  TrendingUp, CheckCircle, XCircle, ArrowLeft,
 } from 'lucide-react';
 
 // ─── Page ─────────────────────────────────────────────────────
 export default function InvestorStylePage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const { setTab } = useTabStore();
   const { account } = usePortfolio();
   const [profile, setProfile] = useState<User | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -101,6 +103,18 @@ export default function InvestorStylePage() {
     <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
       <div style={{ marginBottom: 14 }}>
+        <button
+          onClick={() => { setTab('ai'); router.push('/'); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'none', border: 'none',
+            color: '#94a3b8', fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', padding: '4px 0', marginBottom: 8,
+            fontFamily: 'inherit',
+          }}
+        >
+          <ArrowLeft size={16} /> Back
+        </button>
         <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Investor Style</h1>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
           All analysis filtered through your investment philosophy
