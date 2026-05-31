@@ -99,6 +99,7 @@ export interface AIContext {
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_VERSION = 3; // bump to invalidate stale caches on deploy
 const POSITION_CONCENTRATION_LIMIT = 0.15; // 15%
 const SECTOR_CONCENTRATION_LIMIT = 0.40; // 40%
 const TREND_THRESHOLD = 0.02; // 2%
@@ -269,7 +270,7 @@ function fmtDollar(n: number): string {
 async function getCachedContext(userId: string): Promise<AIContext | null> {
   try {
     const supabase = createServerClient();
-    const cacheKey = `ai-context:${userId}`;
+    const cacheKey = `ai-context:v${CACHE_VERSION}:${userId}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
       .from('market_cache')
@@ -291,7 +292,7 @@ async function getCachedContext(userId: string): Promise<AIContext | null> {
 async function setCachedContext(userId: string, context: AIContext): Promise<void> {
   try {
     const supabase = createServerClient();
-    const cacheKey = `ai-context:${userId}`;
+    const cacheKey = `ai-context:v${CACHE_VERSION}:${userId}`;
     const expiresAt = new Date(Date.now() + CACHE_TTL_MS).toISOString();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -368,6 +369,7 @@ async function buildDemoPortfolioContext(userId: string): Promise<PortfolioConte
 
     const totalValue = demoAccount.equity;
     const symbolsAll = demoAccount.positions.map((p) => p.symbol.toUpperCase());
+    console.log('[AIContext] Demo portfolio built:', symbolsAll.length, 'positions:', symbolsAll.join(', '), 'value:', totalValue);
 
     // Fetch enrichment data in parallel (same as real portfolio path)
     const [earningsMap, profiles, fundamentalsArr, candlesArr] = await Promise.all([
@@ -492,6 +494,7 @@ async function buildPortfolioContext(userId: string): Promise<PortfolioContext> 
   }
 
   if (isDemo) {
+    console.log('[AIContext] Using DEMO portfolio for user', userId.slice(0, 8));
     return buildDemoPortfolioContext(userId);
   }
 
@@ -546,6 +549,7 @@ async function buildPortfolioContext(userId: string): Promise<PortfolioContext> 
 
     // Try to get total PnL from positions or account
     const positions = Array.isArray(rawPositions) ? rawPositions : [];
+    console.log('[AIContext] Using REAL broker (Alpaca) for user', userId.slice(0, 8), '- positions:', positions.length);
     const totalUnrealizedPl = positions.reduce(
       (sum, p) => sum + parseFloat(String(p.unrealized_pl ?? 0)),
       0
@@ -925,12 +929,15 @@ export async function buildAIContext(userId: string): Promise<AIContext> {
   try {
     const cached = await getCachedContext(userId);
     if (cached) {
+      console.log('[AIContext] Cache HIT for user', userId.slice(0, 8), '- positions:', cached.portfolio?.positions?.length);
       // Still refresh market status since it's time-sensitive
       cached.market.marketStatus = getMarketStatus();
       return cached;
     }
+    console.log('[AIContext] Cache MISS for user', userId.slice(0, 8), '- building fresh');
   } catch {
     // Cache failure → proceed to build fresh
+    console.log('[AIContext] Cache LOOKUP FAILED for user', userId.slice(0, 8), '- building fresh');
   }
 
   // 2. Build fresh context — all blocks are safe-guarded
