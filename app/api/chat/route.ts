@@ -690,6 +690,58 @@ export async function POST(request: NextRequest) {
     let fullResponse = '';
     let cardBuffer = '';
 
+    // JSON block stripping state
+    let jsonBlockDepth = 0;       // 0 = outside, 1 = inside ```json, 2 = inside nested ```
+    let jsonBlockBuffer = '';     // accumulate json block content
+    const JSON_FENCE = '```';
+
+    /** Check if text contains a JSON code fence and update state accordingly.
+     *  Returns { filtered text, cards to emit }. */
+    const filterJsonBlocks = (text: string): { text: string; cards: Array<any> } => {
+      let result = '';
+      const emittedCards: Array<any> = [];
+      let i = 0;
+      while (i < text.length) {
+        if (jsonBlockDepth === 0) {
+          // Outside JSON block — look for ```json
+          const fenceIdx = text.indexOf(JSON_FENCE + 'json', i);
+          if (fenceIdx !== -1 && fenceIdx < text.length) {
+            result += text.slice(i, fenceIdx);
+            jsonBlockDepth = 1;
+            jsonBlockBuffer = '';
+            i = fenceIdx + (JSON_FENCE + 'json').length;
+            // Skip newline after opening fence
+            if (text[i] === '\n') i++;
+            else if (text[i] === '\r' && text[i + 1] === '\n') i += 2;
+          } else {
+            result += text.slice(i);
+            break;
+          }
+        } else {
+          // Inside JSON block — look for closing ```
+          const closeIdx = text.indexOf(JSON_FENCE, i);
+          if (closeIdx !== -1) {
+            jsonBlockBuffer += text.slice(i, closeIdx);
+            jsonBlockDepth = 0;
+            i = closeIdx + JSON_FENCE.length;
+            // Skip trailing newline after closing fence
+            if (text[i] === '\n') i++;
+            else if (text[i] === '\r' && text[i + 1] === '\n') i += 2;
+
+            // Parse accumulated JSON for cards
+            const cards = tryParseCards(jsonBlockBuffer);
+            emittedCards.push(...cards);
+            jsonBlockBuffer = '';
+          } else {
+            // No closing fence yet — buffer everything
+            jsonBlockBuffer += text.slice(i);
+            break;
+          }
+        }
+      }
+      return { text: result, cards: emittedCards };
+    };
+
     const readable = new ReadableStream({
       async start(controller) {
         try {
@@ -718,21 +770,33 @@ export async function POST(request: NextRequest) {
                 if (delta) {
                   outputTokens += estimateTokens(delta);
                   fullResponse += delta;
-                  cardBuffer += delta;
 
-                  controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({ event: 'token', content: delta })}\n\n`
-                    )
-                  );
+                  // Strip ```json blocks before streaming to client
+                  const { text: cleanDelta, cards: fenceCards } = filterJsonBlocks(delta);
+                  if (cleanDelta) {
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ event: 'token', content: cleanDelta })}\n\n`
+                      )
+                    );
+                  }
+                  // Emit cards parsed from JSON fences immediately
+                  for (const card of fenceCards) {
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ event: 'card', card })}\n\n`
+                      )
+                    );
+                  }
                 }
               } catch {
                 // Skip unparseable lines
               }
             }
 
-            // Check for complete JSON blocks every ~200 chars (both providers)
-            if (cardBuffer.length > 200) {
+            // Legacy: Check for JSON blocks in plain cardBuffer (pre-fence detection path)
+            cardBuffer += (jsonBlockDepth === 0 ? buffer : '');
+            if (jsonBlockDepth === 0 && cardBuffer.length > 200) {
               const cards = tryParseCards(cardBuffer);
               if (cards.length > 0) {
                 for (const card of cards) {
@@ -747,7 +811,19 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Final card parse attempt
+          // Parse any remaining buffered JSON after stream ends
+          if (jsonBlockDepth === 1 && jsonBlockBuffer) {
+            const cards = tryParseCards(jsonBlockBuffer);
+            for (const card of cards) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ event: 'card', card })}\n\n`
+                )
+              );
+            }
+          }
+
+          // Final card parse attempt (legacy — for JSON that wasn't fence-wrapped)
           const finalCards = tryParseCards(fullResponse);
           for (const card of finalCards) {
             controller.enqueue(

@@ -188,11 +188,14 @@ export function useAIChat() {
               const existingComponents = lastMsg.components || [];
               // Check if this is a rebalance plan card with trade data — client-side session
               const isRebalance = card.type === 'rebalance' && (card as any).data?.trades?.length > 0;
+              // Always strip JSON blocks from displayed content
+              const cleanContent = lastMsg.content.replace(/```json\s*\n[\s\S]*?```\n?/g, '').trim();
               useChatStore.setState({
                 messages: msgs.map((m) =>
                   m.id === lastMsg.id
                     ? {
                         ...m,
+                        content: cleanContent,
                         components: [...existingComponents, card],
                         // Create client-side session from rebalance card data (no DB needed)
                         rebalanceSession: isRebalance ? {
@@ -211,15 +214,30 @@ export function useAIChat() {
             setRemainingCalls(getRemainingCalls());
             setLoading(false);
 
+            // Always strip any leaked JSON blocks from the last message (safety backstop)
+            const state = useChatStore.getState();
+            const msgs = [...state.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              const cleanContent = lastMsg.content.replace(/```json\s*\n[\s\S]*?```\n?/g, '').trim();
+              if (cleanContent !== lastMsg.content) {
+                useChatStore.setState({
+                  messages: msgs.map((m) =>
+                    m.id === lastMsg.id ? { ...m, content: cleanContent } : m
+                  ),
+                });
+              }
+            }
+
             // Persist AI response to DB (fire-and-forget)
             if (user?.id) {
-              const state = useChatStore.getState();
-              const lastMsg = state.messages[state.messages.length - 1];
-              if (lastMsg?.content) {
+              const freshState = useChatStore.getState();
+              const freshLastMsg = freshState.messages[freshState.messages.length - 1];
+              if (freshLastMsg?.content) {
                 saveMessage({
                   userId: user.id,
                   messageType: 'ai_response',
-                  content: lastMsg.content,
+                  content: freshLastMsg.content,
                   investorStyle: user.investorStyle || 'buffett',
                 });
               }
