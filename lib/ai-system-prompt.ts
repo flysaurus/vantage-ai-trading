@@ -185,6 +185,22 @@ function getResponseFormat(mode: ResponseMode): string {
 
 // ─── Layer 7: Hard Constraints ──────────────────────────────────────────────
 
+/** Generate the demo-mode awareness layer based on investor style. */
+function getDemoModeSection(isDemo: boolean, investorStyle?: string): string {
+  if (!isDemo) return '';
+
+  const styleDisplay: Record<string, string> = {
+    buffett: 'Value-Style',
+    lynch: 'Growth-Style',
+    livermore: 'Momentum-Style',
+    soros: 'Macro-Style',
+    munger: 'Dividend-Style',
+  };
+  const displayStyle = styleDisplay[investorStyle || ''] || 'value';
+
+  return `⚠️ DEMO MODE: All analysis is based on simulated ${displayStyle} portfolio data, not real holdings. Always remind the user this is demo data and suggest connecting a broker for live analysis.`;
+}
+
 const HARD_CONSTRAINTS = `DATA RULES:
 - Only reference positions that appear in the portfolio data above
 - Only cite metrics that appear in the data above
@@ -210,6 +226,8 @@ export function buildSystemPrompt(
   mode: AdvisorMode,
   responseMode: ResponseMode,
 ): string {
+  const demoSection = getDemoModeSection(context.isDemo, context.investorStyle);
+
   const layers = [
     IDENTITY,
     getStyleRules(context.investorStyle),
@@ -217,8 +235,9 @@ export function buildSystemPrompt(
     PROBABILITY_FRAMEWORK,
     getModeInstructions(mode),
     getResponseFormat(responseMode),
+    demoSection,
     HARD_CONSTRAINTS,
-  ];
+  ].filter(Boolean);
 
   return layers.join('\n\n');
 }

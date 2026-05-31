@@ -1,15 +1,19 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { DemoBanner } from '@/components/shared/DemoBanner';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 export function PortfolioTab() {
+  const router = useRouter();
   const { account, loading, error, refresh } = usePortfolio();
   const { isConnected, brokerId } = useBroker();
+  const { user } = useAuth();
   const store = usePortfolioStore();
+  const investorStyle = (user?.investorStyle || 'value').replace('-Style', '').toLowerCase();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [sortBy, setSortBy] = useState<'pct' | 'name' | 'sector' | 'pnl'>('pct');
@@ -193,7 +197,18 @@ export function PortfolioTab() {
 
     return (
       <div style={{ padding: '12px 16px 80px' }}>
-        <DemoBanner />
+        {/* Demo Mode Banner */}
+        <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 mb-4 flex items-center justify-between">
+          <div>
+            <span className="text-amber-400 text-sm font-medium">📊 Demo Mode</span>
+            <p className="text-amber-300/70 text-xs mt-0.5">
+              Showing simulated {investorStyle} portfolio
+            </p>
+          </div>
+          <button onClick={() => router.push('/settings/brokers')} className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-amber-600 transition-colors">
+            Connect Broker
+          </button>
+        </div>
 
         {/* Account Summary */}
         <div className="card" style={{ marginBottom: 12 }}>

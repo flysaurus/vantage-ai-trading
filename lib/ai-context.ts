@@ -6,7 +6,7 @@
 // Server-side only — uses process.env keys for Alpaca, Finnhub, Supabase.
 
 import { createServerClient } from '@/lib/supabase';
-import { getAccount, getPositions } from '@/lib/alpaca';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 import { getConnectionStatus } from '@/lib/vault';
 import { getDemoAccount } from '@/lib/demo-data';
 import {
@@ -90,6 +90,7 @@ export interface AIContext {
   market: MarketContext;
   tax: TaxContext;
   investorStyle: string;
+  isDemo: boolean;
   savedTargetAllocations: Array<{ symbol: string; targetPercent: number }> | null;
   timestamp: string;
 }
@@ -470,23 +471,31 @@ async function buildDemoPortfolioContext(userId: string): Promise<PortfolioConte
   }
 }
 
-async function buildPortfolioContext(userId: string): Promise<PortfolioContext> {
-  // ── Check broker connection status ──
-  // If no broker connected, use the Vantage demo portfolio (same data shown in the app).
-  let isDemo = true;
+/** Returns both the portfolio context and whether we're in demo mode. */
+export async function checkIsDemo(userId: string): Promise<boolean> {
   try {
     const status = await getConnectionStatus(userId);
-    isDemo = !status.connected;
+    return !status.connected;
   } catch {
-    isDemo = true; // default to demo on vault error
+    return true; // default to demo on vault error
+  }
+}
+
+async function buildPortfolioContext(userId: string): Promise<PortfolioContext> {
+  // ── Check broker connection via broker-service ──
+  let isDemo = true;
+  try {
+    const ctx = await getBrokerContext(userId);
+    isDemo = ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca';
+  } catch {
+    isDemo = true;
   }
 
   if (isDemo) {
     return buildDemoPortfolioContext(userId);
   }
 
-  // ── Real broker: use Alpaca data ──
-  // Empty states
+  // ── Real broker: use Alpaca data via broker-service ──
   const emptyPortfolio: PortfolioContext = {
     totalValue: 0,
     buyingPower: 0,
@@ -504,10 +513,13 @@ async function buildPortfolioContext(userId: string): Promise<PortfolioContext> 
   };
 
   try {
-    // Fetch account and positions from Alpaca in parallel
+    // Fetch account and positions from Alpaca in parallel via broker-service
+    const ctx = await getBrokerContext(userId);
+    if (ctx.isDemo || !ctx.credentials) return emptyPortfolio;
+
     const [rawAccount, rawPositions] = await Promise.all([
-      getAccount().catch(() => null),
-      getPositions().catch(() => [] as Array<{
+      makeAlpacaRequest('/v2/account', ctx.credentials).catch(() => null),
+      makeAlpacaRequest('/v2/positions', ctx.credentials).catch(() => [] as Array<{
         symbol: string;
         qty: string;
         avg_entry_price: string;
@@ -738,13 +750,12 @@ async function buildTaxContext(userId: string): Promise<TaxContext> {
     taxYear: currentYear,
   };
 
-  // ── Check broker connection ──
-  // Demo accounts have no real trades and no harvestable positions.
+  // ── Check broker connection via broker-service ──
   try {
-    const status = await getConnectionStatus(userId);
-    if (!status.connected) return empty;
+    const ctx = await getBrokerContext(userId);
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') return empty;
   } catch {
-    return empty; // vault error → assume demo
+    return empty;
   }
 
   try {
@@ -771,7 +782,6 @@ async function buildTaxContext(userId: string): Promise<TaxContext> {
       const t = trade as any;
       const total = t.total_value ?? (t.filled_price ?? 0) * (t.qty ?? 0);
       // Estimate gain/loss: buy price ≈ not available directly, approximate from total_value
-      // For simplicity, use total_value as proceeds. We'll treat positive-value sells as gains.
       if (total > 0) {
         ytdRealizedGains += total;
       } else if (total < 0) {
@@ -779,11 +789,7 @@ async function buildTaxContext(userId: string): Promise<TaxContext> {
       }
     }
 
-    // If we have filled_price but no total_value, use qty * filled_price
-    // More accurate: fetch buy trades for same symbols to calculate basis
-    // For now: approximate — any sell is proceeds. Since we don't have buy price in sell trade,
-    // we conservatively assume ALL sell proceeds are realized.
-    // Let's try a more sophisticated approach:
+    // More accurate: compute proceeds from filled_price * qty
     let proceeds = 0;
     for (const trade of sellTrades) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -793,16 +799,17 @@ async function buildTaxContext(userId: string): Promise<TaxContext> {
       proceeds += price * qty;
     }
     ytdRealizedGains = proceeds;
-    // Without buy prices, we can't compute actual gains/losses precisely
-    // Use a conservative estimate
     ytdRealizedLosses = 0;
 
     // ── Harvestable positions (unrealized losses) ──
-    // Fetch current positions from Alpaca
+    // Fetch current positions from Alpaca via broker-service
     let harvestablePositions: TaxContext['harvestablePositions'] = [];
 
     try {
-      const rawPositions = await getPositions().catch(() => [] as Array<{
+      const ctx = await getBrokerContext(userId);
+      if (ctx.isDemo || !ctx.credentials) return empty;
+
+      const rawPositions = await makeAlpacaRequest('/v2/positions', ctx.credentials).catch(() => [] as Array<{
         symbol: string;
         unrealized_pl: string;
       }>);
@@ -934,11 +941,21 @@ export async function buildAIContext(userId: string): Promise<AIContext> {
     fetchUserProfile(userId),
   ]);
 
+  // Determine if we're in demo mode
+  let isDemo = true;
+  try {
+    const status = await getConnectionStatus(userId);
+    isDemo = !status.connected;
+  } catch {
+    isDemo = true;
+  }
+
   const context: AIContext = {
     portfolio,
     market,
     tax,
     investorStyle: profile.investorStyle,
+    isDemo,
     savedTargetAllocations: profile.savedTargetAllocations,
     timestamp: new Date().toISOString(),
   };

@@ -1,11 +1,12 @@
 // POST /api/strategies/tax-harvest/execute
 // Executes tax-loss harvesting: sells losing positions and
 // optionally buys replacement securities.
+// Uses per-user broker credentials via broker-service (Supabase Vault).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase';
-import { decryptData } from '@/lib/crypto';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 export const maxDuration = 55;
 
@@ -45,27 +46,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const supabase = createServerClient();
 
-    // Get broker credentials from vault
-    const authCookie = req.cookies.get('sb-vantage-auth-token')?.value;
-    if (!authCookie) {
-      return NextResponse.json({ error: 'No auth cookie' }, { status: 401 });
+    // Get broker credentials via broker-service (Supabase Vault)
+    const ctx = await getBrokerContext(userId);
+
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
+      return NextResponse.json(
+        { error: ctx.isDemo ? 'Demo mode — connect a broker first' : 'Alpaca broker not connected' },
+        { status: 400 }
+      );
     }
 
-    const { data: vault } = await (supabase as any)
-      .from('broker_vault')
-      .select('encrypted_config')
-      .eq('user_id', userId)
-      .eq('broker', 'alpaca')
-      .single();
-
-    if (!(vault as any)?.encrypted_config) {
-      return NextResponse.json({ error: 'Broker not connected' }, { status: 400 });
-    }
-
-    const decrypted = decryptData(vault.encrypted_config);
-    const { apiKey, apiSecret, paper } = JSON.parse(decrypted);
-    const baseUrl = paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets';
-
+    const creds = ctx.credentials;
     let ordersPlaced = 0;
     const orderIds: string[] = [];
     const errors: string[] = [];
@@ -75,31 +66,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     for (const h of harvests as HarvestItem[]) {
       try {
         // 1. Sell the losing position
-        const sellBody = JSON.stringify({
+        const sellBody = {
           symbol: h.symbol,
           qty: String(h.qty),
           side: 'sell',
           type: 'market',
           time_in_force: 'day',
-        });
+        };
 
-        const sellRes = await fetch(`${baseUrl}/v2/orders`, {
-          method: 'POST',
-          headers: {
-            'APCA-API-KEY-ID': apiKey,
-            'APCA-API-SECRET-KEY': apiSecret,
-            'Content-Type': 'application/json',
-          },
-          body: sellBody,
-        });
-
-        if (!sellRes.ok) {
-          const errBody = await sellRes.text();
-          errors.push(`${h.symbol} sell failed: ${errBody}`);
+        let sellOrder: any;
+        try {
+          sellOrder = await makeAlpacaRequest('/v2/orders', creds, {
+            method: 'POST',
+            body: JSON.stringify(sellBody),
+          });
+        } catch (e: any) {
+          errors.push(`${h.symbol} sell failed: ${e.message}`);
           continue;
         }
 
-        const sellOrder = await sellRes.json();
         orderIds.push(sellOrder.id);
         ordersPlaced++;
         totalLossHarvested += h.loss;
@@ -116,31 +101,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           } catch { /* use estimated price */ }
 
           const buyQty = Math.max(1, Math.floor(h.loss / replPrice));
-          const buyBody = JSON.stringify({
+          const buyBody = {
             symbol: replacement.symbol,
             qty: String(buyQty),
             side: 'buy',
             type: 'market',
             time_in_force: 'day',
-          });
+          };
 
-          const buyRes = await fetch(`${baseUrl}/v2/orders`, {
-            method: 'POST',
-            headers: {
-              'APCA-API-KEY-ID': apiKey,
-              'APCA-API-SECRET-KEY': apiSecret,
-              'Content-Type': 'application/json',
-            },
-            body: buyBody,
-          });
-
-          if (buyRes.ok) {
-            const buyOrder = await buyRes.json();
+          try {
+            const buyOrder: any = await makeAlpacaRequest('/v2/orders', creds, {
+              method: 'POST',
+              body: JSON.stringify(buyBody),
+            });
             orderIds.push(buyOrder.id);
             ordersPlaced++;
-          } else {
-            const errBody = await buyRes.text();
-            errors.push(`${replacement.symbol} buy failed: ${errBody}`);
+          } catch (e: any) {
+            errors.push(`${replacement.symbol} buy failed: ${e.message}`);
           }
         }
       } catch (e: any) {

@@ -2,13 +2,13 @@
 // GET /api/broker/status
 //
 // Returns the current broker connection status and account preview.
-// Does NOT decrypt or return credentials.
+// Does NOT decrypt or return credentials to the client.
 //
-// If connected, pings the broker for account summary and market status.
+// Uses per-user credentials from Supabase Vault via broker-service.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getConnectionStatus, getCredentials } from '@/lib/vault';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
 const ALPACA_LIVE = 'https://api.alpaca.markets';
@@ -18,9 +18,8 @@ const TASTYTRADE_LIVE = 'https://api.tastytrade.com';
 async function getAlpacaAccountPreview(
   apiKey: string,
   secretKey: string,
-  environment: string
+  baseUrl: string
 ): Promise<Record<string, unknown> | null> {
-  const baseUrl = environment === 'live' ? ALPACA_LIVE : ALPACA_PAPER;
   try {
     const res = await fetch(`${baseUrl}/v2/account`, {
       headers: {
@@ -44,9 +43,8 @@ async function getAlpacaAccountPreview(
 async function getAlpacaMarketStatus(
   apiKey: string,
   secretKey: string,
-  environment: string
+  baseUrl: string
 ): Promise<boolean> {
-  const baseUrl = environment === 'live' ? ALPACA_LIVE : ALPACA_PAPER;
   try {
     const res = await fetch(`${baseUrl}/v2/clock`, {
       headers: {
@@ -62,38 +60,23 @@ async function getAlpacaMarketStatus(
   }
 }
 
-async function getTastytradeSession(
-  apiKey: string,
-  secretKey: string,
-  environment: string
-): Promise<string | null> {
-  const baseUrl = environment === 'live' ? TASTYTRADE_LIVE : TASTYTRADE_SANDBOX;
-  try {
-    const res = await fetch(`${baseUrl}/sessions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        login: apiKey,
-        password: secretKey,
-        'remember-me': false,
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as Record<string, unknown>;
-    return (data['session-token'] as string) || null;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(_req: NextRequest): Promise<NextResponse> {
+  let userId: string;
   try {
-    const { userId } = await requireAuth(_req);
+    const auth = await requireAuth(_req);
+    userId = auth.userId;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AuthError') {
+      const authErr = err as Error & { status?: number };
+      return NextResponse.json({ error: authErr.message }, { status: authErr.status || 401 });
+    }
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-    // Check vault for connected broker (no decryption)
-    const status = await getConnectionStatus(userId);
+  try {
+    const ctx = await getBrokerContext(userId);
 
-    if (!status.connected || !status.brokerId) {
+    if (ctx.isDemo || !ctx.credentials || !ctx.provider) {
       return NextResponse.json({
         connected: false,
         brokerId: null,
@@ -103,48 +86,51 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    // Get decrypted credentials (server-side only, never returned to client)
-    let credentials: Record<string, unknown> | null = null;
-    try {
-      const credResult = await getCredentials(userId);
-      credentials = credResult.credentials;
-    } catch {
-      // Credentials corrupt or missing — report disconnected
-      return NextResponse.json({
-        connected: false,
-        brokerId: status.brokerId,
-        accountPreview: null,
-        marketOpen: false,
-        environment: null,
-        error: 'Credentials not available',
-      });
-    }
-
-    const apiKey = String(credentials.apiKey || '');
-    const secretKey = String(credentials.secretKey || '');
-    const environment = String(credentials.environment || 'paper');
-
+    const creds = ctx.credentials;
     let accountPreview: Record<string, unknown> | null = null;
     let marketOpen = false;
 
-    if (status.brokerId === 'alpaca') {
-      accountPreview = await getAlpacaAccountPreview(apiKey, secretKey, environment);
-      marketOpen = await getAlpacaMarketStatus(apiKey, secretKey, environment);
-    } else if (status.brokerId === 'tastytrade') {
-      // Tastytrade: get session for basic connectivity check
-      const sessionToken = await getTastytradeSession(apiKey, secretKey, environment);
-      if (sessionToken) {
-        accountPreview = { connected: true };
+    if (ctx.provider === 'alpaca') {
+      const baseUrl = creds.alpacaBaseUrl || ALPACA_LIVE;
+      accountPreview = await getAlpacaAccountPreview(
+        creds.alpacaApiKey!,
+        creds.alpacaSecretKey!,
+        baseUrl
+      );
+      marketOpen = await getAlpacaMarketStatus(
+        creds.alpacaApiKey!,
+        creds.alpacaSecretKey!,
+        baseUrl
+      );
+    } else if (ctx.provider === 'tastytrade') {
+      // Tastytrade: use session-based check
+      try {
+        const baseUrl = TASTYTRADE_LIVE; // Tastytrade credentials don't separate env in current model
+        const res = await fetch(`${baseUrl}/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            login: creds.tastytradeApiKey,
+            password: '', // Tastytrade uses API key as login
+            'remember-me': false,
+          }),
+        });
+        if (res.ok) {
+          accountPreview = { connected: true };
+        }
+      } catch {
+        // Connection failed
       }
-      // Tastytrade doesn't have a direct market clock — assume open during US hours
       const now = new Date();
-      const hourET = now.getUTCHours() - 4; // rough ET conversion
+      const hourET = now.getUTCHours() - 4;
       marketOpen = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && hourET >= 4 && hourET < 20;
     }
 
+    const environment = creds.alpacaBaseUrl?.includes('paper-api') ? 'paper' : 'live';
+
     return NextResponse.json({
       connected: true,
-      brokerId: status.brokerId,
+      brokerId: ctx.provider,
       accountPreview,
       marketOpen,
       environment,

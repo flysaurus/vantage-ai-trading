@@ -1798,8 +1798,22 @@ What's Working:
     temperature: 0.3,
   });
 
+  // Prepend demo intro when no broker is connected
+  let content = aiResponse.content;
+  if (context.isDemo) {
+    const styleMap: Record<string, string> = {
+      buffett: 'Value-Style',
+      lynch: 'Growth-Style',
+      livermore: 'Momentum-Style',
+      soros: 'Macro-Style',
+      munger: 'Dividend-Style',
+    };
+    const displayStyle = styleMap[context.investorStyle] || context.investorStyle;
+    content = `📊 Analyzing your demo ${displayStyle.toLowerCase()} portfolio...\n\n${content}`;
+  }
+
   return NextResponse.json({
-    content: aiResponse.content,
+    content,
     type: 'text',
     model: aiResponse.model,
     tokensUsed: aiResponse.tokensUsed

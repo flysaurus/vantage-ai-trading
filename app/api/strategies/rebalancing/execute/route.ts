@@ -1,10 +1,11 @@
 // ─── POST /api/strategies/rebalancing/execute ───────────────
-// Executes rebalancing trades via Alpaca proxy + saves record.
+// Executes rebalancing trades via broker-service (Supabase Vault).
 // Requires a connected broker — returns 400 in demo mode.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 interface TradePayload {
   symbol: string;
@@ -49,6 +50,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Get broker credentials via broker-service
+    const ctx = await getBrokerContext(userId);
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
+      return NextResponse.json(
+        { error: ctx.isDemo ? 'Demo mode — connect a broker first' : 'Alpaca broker not connected' },
+        { status: 400 }
+      );
+    }
+
+    const creds = ctx.credentials;
     const ordersPlaced: string[] = [];
     const errors: string[] = [];
 
@@ -62,21 +73,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           time_in_force: 'day',
         };
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/alpaca/orders`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Cookie: req.headers.get('cookie') || '',
-          },
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          errors.push(`${trade.symbol}: ${errData.error || errData.message || res.statusText}`);
-        } else {
-          const data = await res.json();
+        try {
+          const data: any = await makeAlpacaRequest('/v2/orders', creds, {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
           ordersPlaced.push(data.id || trade.symbol);
+        } catch (e: any) {
+          errors.push(`${trade.symbol}: ${e.message}`);
         }
       } catch (e: any) {
         errors.push(`${trade.symbol}: ${e.message}`);

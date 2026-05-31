@@ -2,8 +2,8 @@
 // GET|POST|DELETE /api/broker/proxy/[...path]
 //
 // Broker-agnostic proxy. Determines the active broker from the vault,
-// decrypts credentials for this request only, and routes to the
-// correct broker API.
+// decrypts credentials per-request via broker-service, and routes to
+// the correct broker API.
 //
 // Replaces /api/alpaca/[...path] with multi-broker support.
 // Keys are discarded from memory after the request completes.
@@ -12,7 +12,8 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getConnectionStatus, getCredentials } from '@/lib/vault';
+import { getBrokerContext } from '@/lib/broker-service';
+import type { BrokerCredentials } from '@/lib/broker-service';
 
 // ─── Broker API bases ─────────────────────────────────────────
 
@@ -68,13 +69,12 @@ interface BrokerTarget {
 async function buildAlpacaTarget(
   pathStr: string,
   method: string,
-  credentials: Record<string, unknown>,
+  credentials: BrokerCredentials,
   req: NextRequest
 ): Promise<BrokerTarget> {
-  const apiKey = String(credentials.apiKey || '');
-  const secretKey = String(credentials.secretKey || '');
-  const environment = String(credentials.environment || 'paper');
-  const baseUrl = environment === 'live' ? ALPACA_LIVE : ALPACA_PAPER;
+  const apiKey = credentials.alpacaApiKey || '';
+  const secretKey = credentials.alpacaSecretKey || '';
+  const baseUrl = credentials.alpacaBaseUrl || ALPACA_PAPER;
 
   // Alpaca APIs are under /v2/
   const url = new URL(`${baseUrl}/v2/${pathStr}`);
@@ -149,8 +149,10 @@ async function handleRequest(
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   // Require authentication
+  let userId: string;
   try {
-    await requireAuth(req);
+    const auth = await requireAuth(req);
+    userId = auth.userId;
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AuthError') {
       const authErr = err as Error & { status?: number };
@@ -160,26 +162,13 @@ async function handleRequest(
   }
 
   try {
-    // Determine active broker from vault
-    const { userId } = await requireAuth(req);
-    const status = await getConnectionStatus(userId);
+    // Determine active broker and get decrypted credentials via broker-service
+    const ctx = await getBrokerContext(userId);
 
-    if (!status.connected || !status.brokerId) {
+    if (ctx.isDemo || !ctx.credentials || !ctx.provider) {
       return NextResponse.json(
         { error: 'No broker connected. Connect a broker in Settings.' },
         { status: 400 }
-      );
-    }
-
-    // Decrypt credentials (server-side only, for this request)
-    let credentials: Record<string, unknown>;
-    try {
-      const result = await getCredentials(userId);
-      credentials = result.credentials;
-    } catch {
-      return NextResponse.json(
-        { error: 'Failed to retrieve credentials. Please reconnect your broker.' },
-        { status: 500 }
       );
     }
 
@@ -188,13 +177,13 @@ async function handleRequest(
 
     // Build broker-specific target
     let target: BrokerTarget;
-    if (status.brokerId === 'alpaca') {
-      target = await buildAlpacaTarget(pathStr, method, credentials, req);
-    } else if (status.brokerId === 'tastytrade') {
-      target = await buildTastytradeTarget(pathStr, method, credentials, req);
+    if (ctx.provider === 'alpaca') {
+      target = await buildAlpacaTarget(pathStr, method, ctx.credentials, req);
+    } else if (ctx.provider === 'tastytrade') {
+      target = await buildTastytradeTarget(pathStr, method, ctx.credentials as unknown as Record<string, unknown>, req);
     } else {
       return NextResponse.json(
-        { error: `Unsupported broker: ${status.brokerId}` },
+        { error: `Unsupported broker: ${ctx.provider}` },
         { status: 400 }
       );
     }
@@ -218,7 +207,7 @@ async function handleRequest(
     } catch (fetchErr) {
       console.error('[Broker Proxy] Fetch error:', fetchErr);
       return NextResponse.json(
-        { error: `Failed to reach ${status.brokerId} API`, details: String(fetchErr) },
+        { error: `Failed to reach ${ctx.provider} API`, details: String(fetchErr) },
         { status: 502 }
       );
     }

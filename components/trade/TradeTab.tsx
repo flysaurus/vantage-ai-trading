@@ -5,7 +5,7 @@ import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { DemoBanner } from '@/components/shared/DemoBanner';
+
 import { SymbolSearch } from './SymbolSearch';
 import { addPendingDemoOrder } from '@/lib/demo-orders';
 import StrategySheet from '@/components/StrategySheet';
@@ -61,7 +61,15 @@ export function TradeTab() {
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
-      {!isConnected && <DemoBanner />}
+      {/* Demo Mode Banner */}
+      {!isConnected && (
+        <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-4 mb-4">
+          <p className="text-amber-300 text-sm mb-3">⚠️ Demo Mode — connect a broker to place real trades</p>
+          <button onClick={() => router.push('/settings/brokers')} className="text-sm bg-amber-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-amber-600 transition-colors">
+            Connect Broker
+          </button>
+        </div>
+      )}
 
       {/* 📊 Strategies */}
       <div style={{ marginBottom: 12 }}>

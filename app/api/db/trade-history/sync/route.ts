@@ -1,35 +1,21 @@
 // ─── Trade History Sync Endpoint ─────────────────────────────
-// Server-side sync: fetches filled orders directly from Alpaca
+// Server-side sync: fetches filled orders from the connected broker
 // and inserts them into the trade_history table with dedup.
-// Called by the Trade History page on load — no client-side
-// BrokerProvider dependency needed.
+// Uses per-user broker credentials via broker-service (Supabase Vault).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 export const dynamic = 'force-dynamic';
 
-const ALPACA_BASE = process.env.ALPACA_ENVIRONMENT === 'live'
-  ? 'https://api.alpaca.markets'
-  : 'https://paper-api.alpaca.markets';
-
-async function fetchAlpaca(path: string): Promise<Response> {
-  const keyId = process.env.ALPACA_API_KEY_ID;
-  const secretKey = process.env.ALPACA_SECRET_KEY;
-  if (!keyId || !secretKey) throw new Error('Alpaca credentials not configured');
-  return fetch(`${ALPACA_BASE}/v2${path}`, {
-    headers: {
-      'APCA-API-KEY-ID': keyId,
-      'APCA-API-SECRET-KEY': secretKey,
-    },
-  });
-}
-
 export async function POST(_req: NextRequest): Promise<NextResponse> {
   // Auth check
+  let userId: string;
   try {
-    await requireAuth(_req);
+    const auth = await requireAuth(_req);
+    userId = auth.userId;
   } catch (err: any) {
     if (err?.name === 'AuthError') {
       return NextResponse.json({ error: err.message }, { status: err.status || 401 });
@@ -37,30 +23,40 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { userId?: string; limit?: number } = {};
+  let body: { limit?: number } = {};
   try { body = await _req.json(); } catch { /* keep defaults */ }
 
-  const userId = body.userId;
-  if (!userId) {
-    return NextResponse.json({ error: 'userId required' }, { status: 400 });
-  }
-
   try {
-    // Fetch filled orders from Alpaca (most recent first)
-    const limit = body.limit || 100;
-    const res = await fetchAlpaca(`/orders?status=closed&limit=${limit}&direction=desc`);
-    
-    if (!res.ok) {
-      console.error('[trade-history/sync] Alpaca error:', res.status, await res.text());
-      return NextResponse.json({ synced: 0, message: `Alpaca API returned ${res.status}` });
+    // Get broker credentials via broker-service
+    const ctx = await getBrokerContext(userId);
+
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
+      return NextResponse.json({
+        synced: 0,
+        message: ctx.isDemo
+          ? 'Demo mode — connect a broker in Settings first'
+          : 'Alpaca broker not connected',
+      });
     }
 
-    const orders: Array<{
+    // Fetch filled orders from Alpaca (most recent first)
+    const limit = body.limit || 100;
+    let orders: Array<{
       id: string; symbol: string; side: string;
       filled_qty: string; filled_avg_price: string | null;
       filled_at: string | null; created_at: string;
       status: string;
-    }> = await res.json();
+    }>;
+
+    try {
+      orders = (await makeAlpacaRequest(
+        `/v2/orders?status=closed&limit=${limit}&direction=desc`,
+        ctx.credentials,
+      )) as any[];
+    } catch (err: any) {
+      console.error('[trade-history/sync] Alpaca error:', err?.message);
+      return NextResponse.json({ synced: 0, message: `Alpaca API error: ${err?.message}` });
+    }
 
     // Only process filled orders
     const filled = orders.filter(o => o.status === 'filled' && o.filled_avg_price && o.filled_qty);

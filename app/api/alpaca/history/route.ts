@@ -1,17 +1,31 @@
 // ─── Portfolio History API ──────────────────────────────────
-// Proxies Alpaca's /v2/account/portfolio/history endpoint.
 // Returns timestamped equity values for chart rendering.
+// Uses per-user broker credentials via broker-service.
 
 import { type NextRequest, NextResponse } from 'next/server';
-
-const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
+import { requireAuth } from '@/lib/auth';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 export async function GET(req: NextRequest) {
-  const keyId = process.env.ALPACA_API_KEY_ID;
-  const secretKey = process.env.ALPACA_SECRET_KEY;
+  // Authenticate
+  let userId: string;
+  try {
+    const auth = await requireAuth(req);
+    userId = auth.userId;
+  } catch (err: any) {
+    if (err?.name === 'AuthError') {
+      return NextResponse.json({ error: err.message }, { status: err.status || 401 });
+    }
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-  if (!keyId || !secretKey) {
-    return NextResponse.json({ error: 'Alpaca keys not configured' }, { status: 503 });
+  const brokerCtx = await getBrokerContext(userId);
+
+  if (brokerCtx.isDemo || !brokerCtx.credentials || brokerCtx.provider !== 'alpaca') {
+    return NextResponse.json(
+      { error: brokerCtx.isDemo ? 'Demo mode — connect a broker' : 'Alpaca broker not connected', isDemo: brokerCtx.isDemo },
+      { status: 400 }
+    );
   }
 
   const { searchParams } = new URL(req.url);
@@ -19,23 +33,12 @@ export async function GET(req: NextRequest) {
   const timeframe = searchParams.get('timeframe') || '1D';
 
   try {
-    const res = await fetch(
-      `${ALPACA_PAPER}/v2/account/portfolio/history?period=${period}&timeframe=${timeframe}&intraday_reporting=market_hours`,
-      {
-        headers: {
-          'APCA-API-KEY-ID': keyId,
-          'APCA-API-SECRET-KEY': secretKey,
-        },
-        signal: AbortSignal.timeout(15000),
-      },
+    const data = await makeAlpacaRequest(
+      `/v2/account/portfolio/history?period=${period}&timeframe=${timeframe}&intraday_reporting=market_hours`,
+      brokerCtx.credentials!,
+      { signal: AbortSignal.timeout(15000) }
     );
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      return NextResponse.json({ error: `Alpaca error ${res.status}: ${body.slice(0, 200)}` }, { status: res.status });
-    }
-
-    const data = await res.json();
     return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Failed to fetch portfolio history' }, { status: 502 });

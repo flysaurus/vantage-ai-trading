@@ -7,10 +7,11 @@
 // session token (Tastytrade).
 //
 // Keys decrypted from vault are held only for the duration of this request.
+// Uses per-user credentials from Supabase Vault via broker-service.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getConnectionStatus, getCredentials } from '@/lib/vault';
+import { getBrokerContext } from '@/lib/broker-service';
 
 const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
 const ALPACA_LIVE = 'https://api.alpaca.markets';
@@ -18,45 +19,39 @@ const TASTYTRADE_SANDBOX = 'https://api.cert.tastyworks.com';
 const TASTYTRADE_LIVE = 'https://api.tastytrade.com';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
+  let userId: string;
   try {
-    const { userId } = await requireAuth(_req);
+    const auth = await requireAuth(_req);
+    userId = auth.userId;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AuthError') {
+      const authErr = err as Error & { status?: number };
+      return NextResponse.json({ error: authErr.message }, { status: authErr.status || 401 });
+    }
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-    // Check if user has a connected broker
-    const status = await getConnectionStatus(userId);
+  try {
+    const ctx = await getBrokerContext(userId);
 
-    if (!status.connected || !status.brokerId) {
+    if (ctx.isDemo || !ctx.credentials || !ctx.provider) {
       return NextResponse.json(
         {
           configured: false,
           connected: false,
-          message: 'No broker connected. Connect a broker first.',
+          message: ctx.isDemo
+            ? 'No broker connected. Connect a broker first.'
+            : 'Credentials unavailable',
         },
-        { status: 404 }
+        { status: ctx.isDemo ? 404 : 500 }
       );
     }
 
-    // Decrypt credentials (server-side only)
-    let credentials: Record<string, unknown>;
-    try {
-      const result = await getCredentials(userId);
-      credentials = result.credentials;
-    } catch (err) {
-      return NextResponse.json(
-        {
-          configured: false,
-          connected: false,
-          message: 'Failed to retrieve credentials. Please reconnect your broker.',
-        },
-        { status: 500 }
-      );
-    }
+    const creds = ctx.credentials;
+    const environment = creds.alpacaBaseUrl?.includes('paper-api') ? 'paper' : 'live';
 
-    const apiKey = String(credentials.apiKey || '');
-    const secretKey = String(credentials.secretKey || '');
-    const environment = String(credentials.environment || 'paper');
-
-    if (status.brokerId === 'alpaca') {
-      const baseUrl = environment === 'live' ? ALPACA_LIVE : ALPACA_PAPER;
+    if (ctx.provider === 'alpaca') {
+      const baseUrl = creds.alpacaBaseUrl || ALPACA_LIVE;
 
       // Verify connectivity and get account preview
       let accountData: Record<string, unknown> | null = null;
@@ -64,8 +59,8 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
 
       try {
         const headers = {
-          'APCA-API-KEY-ID': apiKey,
-          'APCA-API-SECRET-KEY': secretKey,
+          'APCA-API-KEY-ID': creds.alpacaApiKey!,
+          'APCA-API-SECRET-KEY': creds.alpacaSecretKey!,
         };
 
         const [accRes, clockRes] = await Promise.all([
@@ -93,10 +88,9 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         brokerId: 'alpaca',
         environment,
         environmentUrl: baseUrl,
-        // WS auth payload — the ONLY key material returned to client
         wsAuth: {
-          key: apiKey,
-          secret: secretKey,
+          key: creds.alpacaApiKey,
+          secret: creds.alpacaSecretKey,
         },
         accountPreview: accountData
           ? {
@@ -110,10 +104,9 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    if (status.brokerId === 'tastytrade') {
-      const baseUrl = environment === 'live' ? TASTYTRADE_LIVE : TASTYTRADE_SANDBOX;
+    if (ctx.provider === 'tastytrade') {
+      const baseUrl = TASTYTRADE_LIVE;
 
-      // Obtain a session token for the client
       let sessionToken: string | null = null;
 
       try {
@@ -121,9 +114,9 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            login: apiKey,
-            password: secretKey,
-            'remember-me': true, // long-lived session for streaming
+            login: creds.tastytradeApiKey,
+            password: '',
+            'remember-me': true,
           }),
         });
 
@@ -165,9 +158,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       try {
         const streamerRes = await fetch(
           `${baseUrl}/api-quote-tokens`,
-          {
-            headers: { Authorization: sessionToken },
-          }
+          { headers: { Authorization: sessionToken } }
         );
         if (streamerRes.ok) {
           const streamerData = await streamerRes.json() as Record<string, unknown>;
@@ -176,7 +167,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
           streamerToken = (streamer.token as string) || null;
         }
       } catch {
-        // Non-critical — client can request streamer info later
+        // Non-critical
       }
 
       return NextResponse.json({
@@ -185,7 +176,6 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         brokerId: 'tastytrade',
         environment,
         environmentUrl: baseUrl,
-        // Session token for authenticated API calls
         sessionToken,
         streamerUrl,
         streamerToken,
@@ -196,7 +186,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       {
         configured: false,
         connected: false,
-        message: `Unsupported broker: ${status.brokerId}`,
+        message: `Unsupported broker: ${ctx.provider}`,
       },
       { status: 400 }
     );

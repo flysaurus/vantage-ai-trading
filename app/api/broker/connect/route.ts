@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { storeCredentials } from '@/lib/vault';
+import { storeBrokerCredentials, type BrokerCredentials } from '@/lib/broker-service';
 
 // ─── Broker API bases ─────────────────────────────────────────
 
@@ -191,23 +191,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const env = (environment === 'live' ? 'live' : 'paper') as 'paper' | 'live';
       result = await verifyAlpaca(apiKey, secretKey, env);
       if (result.ok) {
-        // Store credentials in vault (encrypted)
-        await storeCredentials(userId, 'alpaca', {
-          apiKey,
-          secretKey,
-          environment: env,
-        });
+        // Store credentials in broker-service (Supabase Vault)
+        const creds: BrokerCredentials = {
+          provider: 'alpaca',
+          alpacaApiKey: apiKey,
+          alpacaSecretKey: secretKey,
+          alpacaBaseUrl: env === 'live' ? ALPACA_LIVE : ALPACA_PAPER,
+        };
+        await storeBrokerCredentials(userId, 'alpaca', creds);
       }
     } else {
       // tastytrade
       const env = (environment === 'live' ? 'live' : 'sandbox') as 'sandbox' | 'live';
       result = await verifyTastytrade(apiKey, secretKey, env);
       if (result.ok) {
-        await storeCredentials(userId, 'tastytrade', {
-          apiKey,
-          secretKey,
-          environment: env,
-        });
+        const creds: BrokerCredentials = {
+          provider: 'tastytrade',
+          tastytradeApiKey: apiKey,
+        };
+        await storeBrokerCredentials(userId, 'tastytrade', creds);
       }
     }
 

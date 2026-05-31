@@ -4,7 +4,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useOrderStore, useTabStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { DemoBanner } from '@/components/shared/DemoBanner';
+
 import { BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
@@ -97,7 +97,12 @@ export function OrdersTab() {
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
-      {!isConnected && <DemoBanner />}
+      {/* Demo Mode Banner */}
+      {!isConnected && (
+        <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 mb-4">
+          <span className="text-amber-400 text-sm">📊 Showing demo order history</span>
+        </div>
+      )}
       {/* Account Summary */}
       {account && (
         <div style={{ marginBottom: 12 }}>

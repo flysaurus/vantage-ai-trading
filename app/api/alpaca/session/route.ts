@@ -1,21 +1,17 @@
-// ─── Session Endpoint ────────────────────────────────────────
-// Verifies Alpaca connectivity and returns a session payload
-// for the client-side adapter. The adapter calls this on connect()
-// instead of reading env vars directly.
+// ⛔ DEPRECATED — USE /api/broker/session INSTEAD ⛔
 //
-// The session includes the WebSocket auth payload since
-// Alpaca WS doesn't support token-based auth — but these
-// credentials are short-lived in client memory and loaded
-// from server env, not hardcoded.
+// This endpoint uses server-wide env vars (ALPACA_API_KEY_ID / ALPACA_SECRET_KEY)
+// and does not support per-user credentials or multi-broker.
+//
+// Now delegates to /api/broker/session which uses per-user credentials
+// from Supabase Vault via broker-service.
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-
-const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
-const ALPACA_LIVE = 'https://api.alpaca.markets';
+import { getBrokerContext } from '@/lib/broker-service';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
-  // Require authentication — prevents anonymous access to Alpaca credentials
+  // Require authentication
   try {
     await requireAuth(_req);
   } catch (err: any) {
@@ -24,33 +20,35 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  try {
-    const keyId = process.env.ALPACA_API_KEY_ID;
-    const secretKey = process.env.ALPACA_SECRET_KEY;
-    const environment = process.env.ALPACA_ENVIRONMENT === 'live' ? 'live' : 'paper';
 
-    if (!keyId || !secretKey) {
+  try {
+    const { userId } = await requireAuth(_req);
+    const ctx = await getBrokerContext(userId);
+
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
       return NextResponse.json(
         {
           configured: false,
-          message: 'Alpaca API keys not configured in server environment',
+          connected: false,
+          message: ctx.isDemo
+            ? 'Demo mode — connect a broker in Settings first'
+            : 'No Alpaca broker connected',
         },
-        { status: 503 }
+        { status: ctx.isDemo ? 400 : 404 }
       );
     }
 
-    // Verify connectivity by fetching account
-    const baseUrl = environment === 'live' ? ALPACA_LIVE : ALPACA_PAPER;
+    const creds = ctx.credentials;
+    const baseUrl = creds.alpacaBaseUrl || 'https://api.alpaca.markets';
 
-    let accountOk = false;
-    let clockOk = false;
+    // Verify connectivity via broker-service (same pattern as broker/session)
     let accountData: Record<string, unknown> | null = null;
-    let clockData: Record<string, unknown> | null = null;
+    let marketOpen = false;
 
     try {
       const headers = {
-        'APCA-API-KEY-ID': keyId,
-        'APCA-API-SECRET-KEY': secretKey,
+        'APCA-API-KEY-ID': creds.alpacaApiKey!,
+        'APCA-API-SECRET-KEY': creds.alpacaSecretKey!,
       };
 
       const [accRes, clockRes] = await Promise.all([
@@ -58,30 +56,30 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         fetch(`${baseUrl}/v2/clock`, { headers }),
       ]);
 
-      accountOk = accRes.ok;
-      clockOk = clockRes.ok;
-
-      if (accountOk) accountData = await accRes.json() as Record<string, unknown>;
-      if (clockOk) clockData = await clockRes.json() as Record<string, unknown>;
+      if (accRes.ok) accountData = await accRes.json() as Record<string, unknown>;
+      if (clockRes.ok) {
+        const clock = await clockRes.json() as { is_open: boolean };
+        marketOpen = clock.is_open;
+      }
     } catch {
-      // Connectivity check failed — return what we know
       return NextResponse.json({
         configured: true,
         connected: false,
-        environment,
+        environment: creds.alpacaBaseUrl?.includes('paper') ? 'paper' : 'live',
         message: 'Unable to reach Alpaca API',
       });
     }
 
+    const env = creds.alpacaBaseUrl?.includes('paper-api') ? 'paper' : 'live';
+
     return NextResponse.json({
       configured: true,
-      connected: accountOk,
-      environment,
+      connected: true,
+      environment: env,
       environmentUrl: baseUrl,
-      // WS auth payload — loaded into client memory for streaming
       wsAuth: {
-        key: keyId,
-        secret: secretKey,
+        key: creds.alpacaApiKey,
+        secret: creds.alpacaSecretKey,
       },
       accountPreview: accountData
         ? {
@@ -91,9 +89,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
             status: accountData.status,
           }
         : null,
-      marketOpen: clockData
-        ? (clockData as { is_open: boolean }).is_open
-        : false,
+      marketOpen,
     });
   } catch (err) {
     console.error('[Session API] Error:', err);

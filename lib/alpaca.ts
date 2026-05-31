@@ -1,8 +1,20 @@
 /**
- * Alpaca API client.
- * 
- * Uses HMAC-signed tokens for auth.
- * All calls are real — no mocks.
+ * @deprecated — USE @/lib/broker-service INSTEAD
+ *
+ * This file uses hardcoded env vars (process.env.ALPACA_API_KEY_ID)
+ * and does NOT support per-user broker credentials.
+ *
+ * For all broker operations, use:
+ *   import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
+ *
+ * The broker-service uses Supabase Vault for per-user credential storage
+ * and supports multi-broker (Alpaca + Tastytrade + Schwab + E*TRADE + IBKR).
+ *
+ * ⚠️  DO NOT add new code that imports from this file.
+ * ⚠️  Migrate existing callers to broker-service.
+ *
+ * Keeping this file for reference only — all functions below use env-var
+ * keys and should NOT be called from new code.
  */
 
 const ALPACA_BASE = 'https://paper-api.alpaca.markets/v2';

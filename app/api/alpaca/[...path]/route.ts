@@ -1,6 +1,14 @@
-// ─── Alpaca API Proxy ─────────────────────────────────────────
-// Server-side catch-all for Alpaca REST API calls.
-// NEVER exposes API keys to the client — all auth happens here.
+// ⛔ DEPRECATED — USE /api/broker/proxy/[...path] INSTEAD ⛔
+//
+// This endpoint uses server-wide env vars (ALPACA_API_KEY_ID / ALPACA_SECRET_KEY)
+// and does NOT support per-user broker credentials or multi-broker.
+//
+// All new code should use:  POST /api/broker/proxy/[...path]
+// which supports Alpaca, Tastytrade, Schwab, E*TRADE, and IBKR via
+// per-user credentials stored in Supabase Vault.
+//
+// Keeping this file temporarily for backwards compatibility
+// during migration. Remove once all clients use /api/broker/proxy.
 //
 // Proxies: https://paper-api.alpaca.markets/v2/{path}
 

@@ -1,10 +1,12 @@
 // ─── POST /api/strategies/tax-harvesting/execute ────────────
 // Executes tax-loss harvesting: sells losing positions and
 // optionally buys partner ETFs. Requires connected broker.
+// Uses per-user broker credentials via broker-service (Supabase Vault).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 interface HarvestTrade {
   sellSymbol: string;
@@ -43,9 +45,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Get broker credentials via broker-service
+    const ctx = await getBrokerContext(userId);
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
+      return NextResponse.json(
+        { error: ctx.isDemo ? 'Demo mode — connect a broker first' : 'Alpaca broker not connected' },
+        { status: 400 }
+      );
+    }
+
+    const creds = ctx.credentials;
     const ordersPlaced: string[] = [];
     const errors: string[] = [];
-    const cookie = req.headers.get('cookie') || '';
 
     for (const trade of trades) {
       try {
@@ -58,19 +69,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           time_in_force: 'day',
         };
 
-        const sellRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/alpaca/orders`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Cookie: cookie },
-          body: JSON.stringify(sellBody),
-        });
-
-        if (!sellRes.ok) {
-          const errData = await sellRes.json().catch(() => ({}));
-          errors.push(`SELL ${trade.sellSymbol}: ${errData.error || errData.message || sellRes.statusText}`);
-          continue; // skip the buy if sell failed
+        let sellData: any;
+        try {
+          sellData = await makeAlpacaRequest('/v2/orders', creds, {
+            method: 'POST',
+            body: JSON.stringify(sellBody),
+          });
+        } catch (e: any) {
+          errors.push(`SELL ${trade.sellSymbol}: ${e.message}`);
+          continue;
         }
 
-        const sellData = await sellRes.json();
         ordersPlaced.push(`SELL:${sellData.id || trade.sellSymbol}`);
 
         // 2. Buy the replacement ETF if specified
@@ -91,18 +100,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                 time_in_force: 'day',
               };
 
-              const buyRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/alpaca/orders`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Cookie: cookie },
-                body: JSON.stringify(buyBody),
-              });
-
-              if (buyRes.ok) {
-                const buyData = await buyRes.json();
+              try {
+                const buyData: any = await makeAlpacaRequest('/v2/orders', creds, {
+                  method: 'POST',
+                  body: JSON.stringify(buyBody),
+                });
                 ordersPlaced.push(`BUY:${buyData.id || trade.buySymbol}`);
-              } else {
-                const errData = await buyRes.json().catch(() => ({}));
-                errors.push(`BUY ${trade.buySymbol}: ${errData.error || errData.message || buyRes.statusText}`);
+              } catch (e: any) {
+                errors.push(`BUY ${trade.buySymbol}: ${e.message}`);
               }
             }
           } else {

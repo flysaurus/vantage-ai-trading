@@ -36,7 +36,7 @@ interface DcaExecutionResult {
   price?: number;
 }
 
-import { decryptData } from '@/lib/crypto';
+import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 import { getPrice } from '@/lib/market-data';
 
 // ─── Calculate next run time ─────────────────────────────
@@ -212,33 +212,15 @@ async function placeDcaOrder(
   price: number,
 ): Promise<boolean> {
   try {
-    // Read Alpaca keys from vault
-    // Use supabase (already service client, bypasses RLS)
-    const { data: vaultEntry } = await supabase
-      .from('broker_vault')
-      .select('encrypted_key, encrypted_secret, broker')
-      .eq('user_id', userId)
-      .eq('broker', 'alpaca')
-      .single();
+    // Get broker credentials via broker-service (Supabase Vault)
+    const ctx = await getBrokerContext(userId);
 
-    if (!vaultEntry) return false;
+    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
+      return false; // Demo mode or no Alpaca broker connected
+    }
 
-    // Decrypt and place order via Alpaca API
-    const apiKey = decryptData(vaultEntry.encrypted_key);
-    const apiSecret = decryptData(vaultEntry.encrypted_secret);
-
-    const isPaper = process.env.NEXT_PUBLIC_ALPACA_PAPER === 'true';
-    const baseUrl = isPaper
-      ? 'https://paper-api.alpaca.markets'
-      : 'https://api.alpaca.markets';
-
-    const res = await fetch(`${baseUrl}/v2/orders`, {
+    await makeAlpacaRequest('/v2/orders', ctx.credentials, {
       method: 'POST',
-      headers: {
-        'APCA-API-KEY-ID': apiKey,
-        'APCA-API-SECRET-KEY': apiSecret,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         symbol,
         qty: String(shares.toFixed(4)),
@@ -249,7 +231,7 @@ async function placeDcaOrder(
       }),
     });
 
-    return res.ok;
+    return true;
   } catch {
     return false;
   }
