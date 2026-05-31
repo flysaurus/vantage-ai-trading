@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { AuthGuard } from '@/components/providers/AuthGuard';
 import { InactivityWarning } from '@/components/providers/InactivityWarning';
+import { SplashGuard } from '@/components/SplashGuard';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -53,12 +54,14 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <AuthProvider>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-          <InactivityWarning />
-        </AuthProvider>
+        <SplashGuard>
+          <AuthProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+            <InactivityWarning />
+          </AuthProvider>
+        </SplashGuard>
       </body>
     </html>
   );
