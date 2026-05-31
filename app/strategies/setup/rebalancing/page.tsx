@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
 import { usePortfolioStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { getDemoSymbols, getDemoAccount } from '@/lib/demo-data';
+import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
 
@@ -122,13 +122,20 @@ export default function RebalancingPage() {
         return;
       }
 
-      // Fallback: show demo data instantly with cost-basis prices,
+      // Fallback: show demo data instantly with avgCost prices,
       // then refresh asynchronously with live market prices
       try {
-        // Phase 1: Show demo data immediately (no API call needed)
         const symbols = getDemoSymbols(investorStyle);
-        const emptyPrices: Record<string, any> = {};
-        const instantDemo = getDemoAccount(investorStyle, emptyPrices);
+
+        // Phase 1: Show demo data immediately using avgCost as price proxy
+        const costPrices: Record<string, any> = {};
+        const portfolio = (DEMO_PORTFOLIOS as any)[investorStyle];
+        if (portfolio?.positions) {
+          for (const p of portfolio.positions) {
+            costPrices[p.symbol] = { price: p.avgCost };
+          }
+        }
+        const instantDemo = getDemoAccount(investorStyle, costPrices);
         if (!cancelled && instantDemo) {
           setAccount(instantDemo as any);
           setDataLoading(false);

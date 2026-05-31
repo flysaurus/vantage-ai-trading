@@ -31,7 +31,7 @@ interface PositionDef {
   sector: string;
 }
 
-const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
+export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
   buffett: {
     label: 'Warren Buffett · Value Hunter',
     positions: [
