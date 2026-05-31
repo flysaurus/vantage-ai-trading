@@ -201,12 +201,14 @@ export default function RebalancingPage() {
     const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     const sid = params?.get('session');
     const tradesParam = params?.get('trades');
+    console.log('[rebalancing page] Init — session param:', sid || 'NONE', 'trades param:', tradesParam ? 'YES' : 'NO', 'source:', params?.get('source') || 'NONE');
 
     // Check if opened from AI Advisor
     if (params?.get('source') === 'ai') setFromAi(true);
 
     // Load client-side session from URL trades param (no DB needed)
     if (tradesParam && !sessionId && !sid) {
+      console.log('[rebalancing page] Loading trades from URL param...');
       try {
         const parsed = JSON.parse(decodeURIComponent(tradesParam));
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -223,22 +225,32 @@ export default function RebalancingPage() {
             isAiSuggested: true,
           })).filter((o: any) => o.symbol && o.shares > 0);
           if (orders.length > 0) {
+            console.log('[rebalancing page] Trades loaded from URL:', orders.length);
             setEditedOrders(orders);
             setAutoMode('auto');
+          } else {
+            console.log('[rebalancing page] URL trades parsed but all filtered out');
           }
         }
-      } catch { /* invalid JSON, skip */ }
+      } catch (e) {
+        console.log('[rebalancing page] Failed to parse URL trades:', e);
+      }
     }
 
     // Load session data from DB if present
     if (sid && !sessionId) {
+      console.log('[rebalancing page] Fetching session from API:', sid);
       setSessionId(sid);
       setSessionLoading(true);
       setFromAi(true);
       fetch(`/api/strategies/rebalancing/session?id=${sid}`)
-        .then(r => r.ok ? r.json() : null)
+        .then(r => {
+          console.log('[rebalancing page] Session API response status:', r.status);
+          return r.ok ? r.json() : null;
+        })
         .then(data => {
           if (data?.trades?.length) {
+            console.log('[rebalancing page] Session trades loaded:', data.trades.length);
             // Pre-fill edited orders from session trades
             const orders = data.trades.map((t: any) => ({
               symbol: t.symbol,
@@ -253,12 +265,14 @@ export default function RebalancingPage() {
             setEditedOrders(orders);
             setAutoMode('auto');
           } else {
+            console.log('[rebalancing page] Session not found or no trades');
             // Session not found — clear the stale session ID
             setSessionId(null);
           }
           setSessionLoading(false);
         })
-        .catch(() => {
+        .catch((e) => {
+          console.log('[rebalancing page] Session fetch error:', e);
           setSessionId(null);
           setSessionLoading(false);
         });

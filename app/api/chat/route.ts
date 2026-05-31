@@ -587,7 +587,9 @@ export async function POST(request: NextRequest) {
 
     // Detect rebalancing intent from user message
     const hasRebalanceIntent = !format && /\brebalance\b|\brebalancing\b|\bdrift\b|\ballocation\b|\boverweight\b|\bunderweight\b|\bredistribute\b/i.test(lastUserContent);
+    console.log('[chat/route] hasRebalanceIntent:', hasRebalanceIntent, 'format:', format, 'lastUserContent:', lastUserContent.slice(0, 80));
     const effectiveFormat = format || (hasRebalanceIntent ? 'rebalance_plan' : undefined);
+    console.log('[chat/route] effectiveFormat:', effectiveFormat);
 
     const model = effectiveFormat
       ? 'deepseek-reasoner'
@@ -728,9 +730,20 @@ export async function POST(request: NextRequest) {
             if (text[i] === '\n') i++;
             else if (text[i] === '\r' && text[i + 1] === '\n') i += 2;
 
-            // Parse accumulated JSON for cards
-            const cards = tryParseCards(jsonBlockBuffer);
-            emittedCards.push(...cards);
+            // Parse raw JSON directly (no fences needed — we already extracted it)
+            try {
+              const parsed = JSON.parse(jsonBlockBuffer.trim());
+              const items = Array.isArray(parsed) ? parsed : [parsed];
+              for (const item of items) {
+                if (!item.type || !item.data) continue;
+                // Reconstruct with fences so tryParseCards can find it
+                const withFences = '```json\n' + JSON.stringify(item) + '\n```';
+                const cards = tryParseCards(withFences);
+                emittedCards.push(...cards);
+              }
+            } catch {
+              // Invalid JSON — skip
+            }
             jsonBlockBuffer = '';
           } else {
             // No closing fence yet — buffer everything
@@ -835,11 +848,14 @@ export async function POST(request: NextRequest) {
 
           // If rebalance plan was generated, extract and store session
           if (effectiveFormat === 'rebalance_plan') {
+            console.log('[chat/route] Rebalance intent detected. Extracting plan from fullResponse...');
             try {
               const rebalanceData = extractRebalancePlan(fullResponse);
+              console.log('[chat/route] extractRebalancePlan result:', rebalanceData ? `${rebalanceData.trades.length} trades found` : 'null');
               if (rebalanceData) {
                 // Get userId from session cookie
                 const sessionCookie = request.cookies.get('session')?.value;
+                console.log('[chat/route] Session cookie present:', !!sessionCookie);
                 let userId: string | null = null;
                 if (sessionCookie) {
                   const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionCookie));
@@ -851,11 +867,13 @@ export async function POST(request: NextRequest) {
                     .eq('session_hash', sessionHash)
                     .single();
                   userId = sessionData?.user_id || null;
+                  console.log('[chat/route] userId from session lookup:', userId || 'null');
                 }
 
                 if (userId) {
-                  const supabase = createServerClient();
-                  const { data: session, error: sessionErr } = await (supabase as any)
+                  const supabase2 = createServerClient();
+                  console.log('[chat/route] Inserting into rebalance_sessions...');
+                  const { data: session, error: sessionErr } = await (supabase2 as any)
                     .from('rebalance_sessions')
                     .insert({
                       user_id: userId,
@@ -866,7 +884,11 @@ export async function POST(request: NextRequest) {
                     .select('id')
                     .single();
 
+                  if (sessionErr) {
+                    console.error('[chat/route] DB insert error:', sessionErr);
+                  }
                   if (session && !sessionErr) {
+                    console.log('[chat/route] Session stored:', session.id);
                     controller.enqueue(
                       encoder.encode(
                         `data: ${JSON.stringify({
@@ -877,11 +899,15 @@ export async function POST(request: NextRequest) {
                         })}\n\n`
                       )
                     );
+                  } else {
+                    console.log('[chat/route] Session NOT stored — will rely on client-side fallback');
                   }
+                } else {
+                  console.log('[chat/route] No userId — skipping DB session storage');
                 }
               }
             } catch (e) {
-              console.error('Rebalance session storage failed:', e);
+              console.error('[chat/route] Rebalance session storage failed:', e);
             }
           }
 

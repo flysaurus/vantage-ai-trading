@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    console.log('[session API] GET called — sessionId:', id, 'userId:', userId);
     if (!id) {
+      console.log('[session API] Missing session id');
       return NextResponse.json({ error: 'Session id required' }, { status: 400 });
     }
 
@@ -27,9 +29,11 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (dbErr || !data) {
+      console.log('[session API] Session not found — dbErr:', dbErr, 'data:', data);
       return NextResponse.json({ error: 'Session not found or expired' }, { status: 404 });
     }
 
+    console.log('[session API] Session found — trades:', data.trades?.length, 'summary:', data.summary?.slice(0, 50));
     return NextResponse.json({
       sessionId: data.id,
       trades: data.trades,
@@ -38,7 +42,7 @@ export async function GET(request: NextRequest) {
       createdAt: data.created_at,
     });
   } catch (e) {
-    console.error('GET /api/strategies/rebalancing/session error:', e);
+    console.error('[session API] Error:', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
