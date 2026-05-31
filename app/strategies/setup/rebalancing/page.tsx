@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
 import { usePortfolioStore } from '@/store';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoSymbols, getDemoAccount } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
@@ -91,6 +92,8 @@ interface Trade {
 
 export default function RebalancingPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const investorStyle = (user?.investorStyle || 'buffett') as import('@/types').InvestorStyle;
 
   // Read account from global Zustand store (populated by usePortfolio elsewhere)
   const storeAccount = usePortfolioStore(s => s.account) as (AccountSummary & { sectorAllocations?: any[] }) | null;
@@ -102,18 +105,13 @@ export default function RebalancingPage() {
   // ── Load portfolio data (demo or broker) ──
   useEffect(() => {
     let cancelled = false;
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), 10000);
 
     async function load() {
-      // Check broker status
-      try {
-        const res = await fetch('/api/broker/status', { signal: abortController.signal });
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) setIsConnected(data.isConnected || false);
-        }
-      } catch { /* keep false */ }
+      // Check broker status (fire and forget — doesn't block)
+      fetch('/api/broker/status')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (!cancelled && data?.isConnected) setIsConnected(true); })
+        .catch(() => {});
 
       // If store already has data from usePortfolio (on main dashboard), use it
       if (storeAccount && storeAccount.positions?.length > 0) {
@@ -124,43 +122,43 @@ export default function RebalancingPage() {
         return;
       }
 
-      // Fallback: load demo data directly
+      // Fallback: show demo data instantly with cost-basis prices,
+      // then refresh asynchronously with live market prices
       try {
-        let livePrices: Record<string, any> = {};
+        // Phase 1: Show demo data immediately (no API call needed)
+        const symbols = getDemoSymbols(investorStyle);
+        const emptyPrices: Record<string, any> = {};
+        const instantDemo = getDemoAccount(investorStyle, emptyPrices);
+        if (!cancelled && instantDemo) {
+          setAccount(instantDemo as any);
+          setDataLoading(false);
+        }
+
+        // Phase 2: Fetch live prices and update (fire and forget)
         try {
-          const symbols = getDemoSymbols('buffett');
           const res = await fetch('/api/market/quotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbols }),
-            signal: abortController.signal,
           });
-          if (res.ok) {
+          if (res.ok && !cancelled) {
             const data = await res.json();
-            livePrices = data.quotes || {};
+            const livePrices = data.quotes || {};
+            const updatedDemo = getDemoAccount(investorStyle, livePrices);
+            if (updatedDemo) setAccount(updatedDemo as any);
           }
-        } catch { /* use built-in prices if live fetch fails */ }
-
-        const demo = getDemoAccount('buffett', livePrices);
-        if (!cancelled) {
-          setAccount(demo as any);
-          setDataLoading(false);
-        }
+        } catch { /* keep cost-basis prices — already showing data */ }
       } catch (e: any) {
         if (!cancelled) {
-          setLoadError(e.name === 'AbortError' ? 'Portfolio data timed out — please refresh' : (e.message || 'Failed to load portfolio'));
+          setLoadError(e.message || 'Failed to load portfolio');
           setDataLoading(false);
         }
       }
     }
 
     load();
-    return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-      abortController.abort();
-    };
-  }, [storeAccount]);
+    return () => { cancelled = true; };
+  }, [storeAccount, investorStyle]);
 
   const positions = account?.positions ?? [];
   const totalValue = account?.equity ?? 0;
