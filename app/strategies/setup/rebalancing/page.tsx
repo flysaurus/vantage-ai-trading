@@ -11,56 +11,68 @@ import { SymbolSearch } from '@/components/trade/SymbolSearch';
 // ─── Helpers ───────────────────────────────────────────────
 
 const PRESETS: Record<string, { label: string; description: string; fill: (symbols: string[]) => Record<string, number> }> = {
-  '6040': {
-    label: '60/40 Stocks/Bonds',
-    description: '60% equities, 40% bonds',
-    fill: (symbols: string[]) => {
-      const alloc: Record<string, number> = {};
-      const stocks = symbols.filter(s => !['TLT', 'AGG', 'BND', 'IEF', 'LQD'].includes(s));
-      const bonds = symbols.filter(s => ['TLT', 'AGG', 'BND', 'IEF', 'LQD'].includes(s));
-      if (stocks.length) {
-        const each = Math.round((60 / stocks.length) * 100) / 100;
-        stocks.forEach(s => { alloc[s] = each; });
-      }
-      if (bonds.length) {
-        const each = Math.round((40 / bonds.length) * 100) / 100;
-        bonds.forEach(s => { alloc[s] = each; });
-      }
-      return alloc;
-    },
-  },
-  '3fund': {
-    label: '3-Fund Portfolio',
-    description: 'US 60% / Intl 20% / Bonds 20%',
-    fill: (symbols: string[]) => {
-      const alloc: Record<string, number> = {};
-      const us = symbols.filter(s => ['VTI', 'VOO', 'SPY', 'ITOT', 'SCHB'].includes(s));
-      const intl = symbols.filter(s => ['VXUS', 'IXUS', 'SCHF', 'VEA'].includes(s));
-      const bonds = symbols.filter(s => ['BND', 'AGG', 'TLT', 'IEF', 'LQD'].includes(s));
-      if (us.length) {
-        const each = Math.round((60 / us.length) * 100) / 100;
-        us.forEach(s => { alloc[s] = each; });
-      }
-      if (intl.length) {
-        const each = Math.round((20 / intl.length) * 100) / 100;
-        intl.forEach(s => { alloc[s] = each; });
-      }
-      if (bonds.length) {
-        const each = Math.round((20 / bonds.length) * 100) / 100;
-        bonds.forEach(s => { alloc[s] = each; });
-      }
-      return alloc;
-    },
-  },
   equal: {
     label: 'Equal Weight',
-    description: 'Equal allocation across all holdings',
+    description: 'Same allocation to every holding',
     fill: (symbols: string[]) => {
       const alloc: Record<string, number> = {};
       if (symbols.length) {
         const each = Math.round((100 / symbols.length) * 100) / 100;
         symbols.forEach(s => { alloc[s] = each; });
       }
+      return alloc;
+    },
+  },
+  concentrated: {
+    label: 'Concentrated',
+    description: '50% split among top 3, rest spread equally',
+    fill: (symbols: string[]) => {
+      const alloc: Record<string, number> = {};
+      if (symbols.length <= 3) {
+        const each = Math.round((100 / symbols.length) * 100) / 100;
+        symbols.forEach(s => { alloc[s] = each; });
+      } else {
+        const top3 = symbols.slice(0, 3);
+        const rest = symbols.slice(3);
+        const topEach = Math.round((50 / 3) * 100) / 100;
+        const restEach = Math.round((50 / rest.length) * 100) / 100;
+        top3.forEach(s => { alloc[s] = topEach; });
+        rest.forEach(s => { alloc[s] = restEach; });
+      }
+      return alloc;
+    },
+  },
+  core: {
+    label: 'Core + Satellite',
+    description: '70% to first 5, 30% spread across rest',
+    fill: (symbols: string[]) => {
+      const alloc: Record<string, number> = {};
+      if (symbols.length <= 5) {
+        const each = Math.round((100 / symbols.length) * 100) / 100;
+        symbols.forEach(s => { alloc[s] = each; });
+      } else {
+        const core = symbols.slice(0, 5);
+        const sat = symbols.slice(5);
+        const coreEach = Math.round((70 / 5) * 100) / 100;
+        const satEach = Math.round((30 / sat.length) * 100) / 100;
+        core.forEach(s => { alloc[s] = coreEach; });
+        sat.forEach(s => { alloc[s] = satEach; });
+      }
+      return alloc;
+    },
+  },
+  graduated: {
+    label: 'Graduated',
+    description: 'Descending weight — top pick gets most, bottom gets least',
+    fill: (symbols: string[]) => {
+      const alloc: Record<string, number> = {};
+      if (!symbols.length) return alloc;
+      // Weighted: position 1 = N parts, position 2 = N-1 parts, etc.
+      const n = symbols.length;
+      const total = (n * (n + 1)) / 2; // triangular number
+      symbols.forEach((s, i) => {
+        alloc[s] = Math.round(((n - i) / total * 100) * 100) / 100;
+      });
       return alloc;
     },
   },
