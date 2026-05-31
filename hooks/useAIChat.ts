@@ -283,7 +283,7 @@ export function useAIChat() {
         setLoading(false);
       }
     },
-    [messages, isLoading, addMessage, appendToLast, setLoading, setError, setLastCost, setRemainingCalls, buildContext]
+    [messages, isLoading, addMessage, appendToLast, setLoading, setError, setLastCost, setRemainingCalls, buildContext, user?.investorStyle]
   );
 
   const retry = useCallback(() => {
