@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info } from 'lucide-react';
 import { usePortfolioStore } from '@/store';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoAccount } from '@/lib/demo-data';
 
 // ─── Types ─────────────────────────────────────────────────
@@ -116,6 +117,8 @@ function isYearEnd(): boolean {
 // ─── Page Component ────────────────────────────────────────
 export default function TaxHarvestingPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const investorStyle = (user?.investorStyle || 'buffett') as import('@/types').InvestorStyle;
   const currentYear = getCurrentYear();
   const showUrgency = isYearEnd();
 
@@ -204,7 +207,7 @@ export default function TaxHarvestingPage() {
           }
         } else {
           // Demo data
-          const demoAccount = getDemoAccount('buffett', {});
+          const demoAccount = getDemoAccount(investorStyle, {});
           if (demoAccount?.positions?.length) {
             const symbols = demoAccount.positions.map((p: any) => p.symbol);
             try {
