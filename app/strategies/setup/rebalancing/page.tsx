@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
-import { usePortfolioStore } from '@/store';
+import { usePortfolioStore, useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
@@ -93,6 +93,7 @@ interface Trade {
 export default function RebalancingPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { setTab } = useTabStore();
   const investorStyle = (user?.investorStyle || 'buffett') as import('@/types').InvestorStyle;
 
   // Read account from global Zustand store (populated by usePortfolio elsewhere)
@@ -780,7 +781,7 @@ export default function RebalancingPage() {
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => router.back()} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
+          <button onClick={() => { setTab('ai'); router.push('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>
             <ArrowLeft size={16} /> Back
           </button>
           <button onClick={() => router.push('/strategies')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#06b6d4', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' }}>

@@ -5,6 +5,7 @@ import { Send, RefreshCw, AlertCircle, Trash2, AlignLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 
 const SUGGESTIONS = [
@@ -109,6 +110,8 @@ const MARKDOWN_COMPONENTS = {
 
 export function AIChat() {
   const router = useRouter();
+  const { user } = useAuth();
+  const userInitial = (user?.displayName || user?.email || 'U').charAt(0).toUpperCase();
   const {
     messages,
     isLoading,
@@ -228,7 +231,7 @@ export function AIChat() {
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">🦊</div>
-            <div className="empty-title">Ask Vantage AI</div>
+            <div className="empty-title">Ready to make some money, {userInitial}?</div>
             <div className="empty-subtitle">
               Real-time portfolio analysis, trade signals, and market insights — powered by DeepSeek.
             </div>
@@ -238,7 +241,28 @@ export function AIChat() {
           </div>
         )}
 
-        {messages.map((msg, idx) => (
+        {messages.map((msg, idx) => {
+          // Session divider special rendering
+          if (msg.role === 'system') {
+            return (
+              <div key={msg.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '8px 0', margin: '4px 0',
+              }}>
+                <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
+                <span style={{
+                  fontSize: 10, fontWeight: 600,
+                  color: '#475569', textTransform: 'uppercase',
+                  letterSpacing: 1, whiteSpace: 'nowrap',
+                }}>
+                  {msg.content}
+                </span>
+                <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
+              </div>
+            );
+          }
+
+          return (
           <div
             key={msg.id}
             className={`message ${msg.role}`}
@@ -260,7 +284,7 @@ export function AIChat() {
                 color: 'white',
               }}
             >
-              {msg.role === 'assistant' ? '🦊' : 'E'}
+              {msg.role === 'assistant' ? '🦊' : userInitial}
             </div>
             <div
               className="bubble"
@@ -396,7 +420,8 @@ export function AIChat() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* Error banner */}
         {error && (

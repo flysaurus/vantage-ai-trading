@@ -165,6 +165,7 @@ interface ChatStore {
   setRemainingCalls: (calls: number) => void;
   setError: (error: string | null) => void;
   clearChat: () => void;
+  sessionCount: number;
 }
 
 const initialChatMessages = loadFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
@@ -176,6 +177,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   lastCost: 0,
   remainingCalls: 15,
   error: null,
+  sessionCount: 1,
   addMessage: (msg) =>
     set((s) => {
       const MAX_MESSAGES = 10; // 5 user prompts + 5 AI responses
@@ -214,7 +216,15 @@ export const useChatStore = create<ChatStore>((set) => ({
   setError: (error) => set({ error }),
   clearChat: () => {
     saveToStorage(STORAGE_KEYS.chatMessages, []);
-    set({ messages: [] });
+    set((s) => ({
+      messages: [{
+        id: `session-divider-${Date.now()}`,
+        role: 'system' as const,
+        content: `── Session ${s.sessionCount + 1} ──`,
+        timestamp: Date.now(),
+      }],
+      sessionCount: s.sessionCount + 1,
+    }));
   },
 }));
 
