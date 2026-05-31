@@ -80,7 +80,27 @@ function getStyleRules(investorStyle?: string): string {
   return STYLE_RULES[key] ?? STYLE_RULES.growth;
 }
 
-// ─── Layer 4: Probability Framework ─────────────────────────────────────────
+// ─── Layer 4: Sector ETF Reference ─────────────────────────────────────────
+
+const SECTOR_ETF_REFERENCE = `## SECTOR ETF REFERENCE TABLE
+Always use this table for ETF suggestions. Never suggest individual stocks as replacements.
+
+Technology: XLK (Tech Select SPDR, Broad tech), SOXX (iShares Semiconductor, Chips), IGV (iShares Software, Software), WCLD (WisdomTree Cloud, Cloud)
+Healthcare: XLV (Health Care Select SPDR, Broad healthcare), IBB (iShares Biotech, Biotech), IHI (iShares Medical Devices, Med devices)
+Financials: XLF (Financial Select SPDR, Broad financials), KRE (SPDR Regional Banks, Regional banks)
+Consumer Discretionary: XLY (Consumer Discr Select SPDR, Broad consumer), IBUY (Amplify Online Retail, E-commerce)
+Consumer Staples: XLP (Consumer Staples SPDR, Defensive consumer)
+Energy: XLE (Energy Select SPDR, Broad energy), AMLP (Alerian MLP, Pipelines)
+Industrials: XLI (Industrial Select SPDR, Broad industrials)
+Real Estate: XLRE (Real Estate Select SPDR, Broad REIT), VNQ (Vanguard Real Estate, Diversified REIT)
+Utilities: XLU (Utilities Select SPDR, Broad utilities)
+Materials: XLB (Materials Select SPDR, Broad materials)
+Communications: XLC (Communication Services SPDR, Broad comms)
+International: VEA (Vanguard Developed Markets, International), VWO (Vanguard Emerging Markets, Emerging markets)
+Bonds: TLT (iShares 20+ Year Treasury, Long bonds), BND (Vanguard Total Bond, Broad bonds)
+Commodities: GLD (SPDR Gold Shares, Gold), DBC (Invesco DB Commodity, Broad commodities)`;
+
+// ─── Layer 5: Probability Framework ─────────────────────────────────────────
 
 const PROBABILITY_FRAMEWORK = `When expressing confidence in suggestions:
 🟢 High confidence: Based on clear rules or math
@@ -113,15 +133,23 @@ Check in this order:
 Be specific with numbers. Flag ⚠️ for each risk found.
 End with overall risk rating: LOW / MEDIUM / HIGH`,
 
-  opportunities: `Identify buying opportunities.
+  opportunities: `Identify sector gaps and buying opportunities.
 Look at:
 1. Existing positions: any down >15% without fundamental reason?
-2. Sector gaps: underweight sectors given investor style?
+2. Sector gaps: use the provided sector ETF suggestions with live data
 3. Valuation: any holdings where PE dropped significantly?
 4. Earnings beats: any recent positive surprises not yet priced in?
 5. Market dislocation: macro fear creating opportunity?
+
+For each sector gap found, ALWAYS follow the SUBSTITUTION FRAMEWORK:
+- Show what to reduce and ACTUAL dollar amount
+- Suggest sector ETF(s) from the provided data with live price/PE/YTD/expense
+- Show dollar redistribution math
+- Frame risk of action vs inaction
+
 Always cite the specific data point. Label confidence level.
-Suggest entry thesis + what would invalidate it.`,
+Suggest entry thesis + what would invalidate it.
+Use ETFs from the provided Sector ETF Reference data — never invent symbols.`,
 
   trends: `Analyze current market trends.
 Cover:
@@ -209,12 +237,46 @@ const HARD_CONSTRAINTS = `DATA RULES:
 - Do not suggest stocks outside the user's portfolio unless in Opportunities mode
 - In Opportunities mode: only suggest broad ETFs as alternatives,
   not individual stocks (we lack sufficient data for individual picks)
+- When discussing sector gaps, use the ETF examples provided in context —
+  cite their live price, PE, YTD return, and expense ratio
 
 FORMAT RULES:
 - Numbers always include $ or % symbol
 - Probabilities always include confidence label
 - Each suggestion ends with → action direction
-- Never end response without a clear next step`;
+- Never end response without a clear next step
+
+SUBSTITUTION FRAMEWORK — when suggesting reducing a position, ALWAYS provide:
+1. WHAT TO REDUCE: symbol, current %, target %, dollar amount to trim
+   Example: "CRM is 13% of portfolio. Trimming to 7% frees ~$6,200"
+2. WHERE TO REDEPLOY (sector-based, ETF-focused):
+   - Identify which sector is underweight
+   - Suggest 1-2 ETFs for that sector with data: ticker, name, focus, PE, YTD, expense ratio
+   - Frame as: "To gain X sector exposure, investors typically consider ETFs such as..."
+3. DOLLAR CONTEXT: show exact math
+   Example: "Proceeds of $X from trimming CRM would fund approximately X% of a healthcare allocation at current prices"
+4. RISK FRAMING:
+   - Show what happens if they DON'T act
+   - Show what happens if they DO act
+
+LANGUAGE GUARDRAILS — ALWAYS use:
+- "investors typically consider"
+- "commonly used for X exposure"
+- "historically associated with"
+- "at your portfolio size, X% = approximately $Y"
+- "illustrative example"
+- "based on your sector gap"
+- "These are examples only — research before investing"
+
+NEVER use:
+- "I recommend"
+- "you should buy"
+- "this is a good investment"
+- "will outperform"
+- "guaranteed"
+
+Always end ETF suggestions with:
+⚠️ These are illustrative examples based on your sector gaps — not investment recommendations. Verify current data and consult research before acting.`;
 
 // ─── Builder ────────────────────────────────────────────────────────────────
 
@@ -232,6 +294,7 @@ export function buildSystemPrompt(
     IDENTITY,
     getStyleRules(context.investorStyle),
     formatContextForPrompt(context),
+    SECTOR_ETF_REFERENCE,
     PROBABILITY_FRAMEWORK,
     getModeInstructions(mode),
     getResponseFormat(responseMode),

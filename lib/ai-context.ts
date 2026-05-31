@@ -85,6 +85,17 @@ export interface TaxContext {
   taxYear: number;
 }
 
+export interface SuggestedETF {
+  sector: string;
+  ticker: string;
+  name: string;
+  focus: string;
+  price: number | null;
+  peRatio: number | null;
+  ytdReturn: number | null;
+  expenseRatio: string;
+}
+
 export interface AIContext {
   portfolio: PortfolioContext;
   market: MarketContext;
@@ -92,6 +103,7 @@ export interface AIContext {
   investorStyle: string;
   isDemo: boolean;
   savedTargetAllocations: Array<{ symbol: string; targetPercent: number }> | null;
+  suggestedETFs: SuggestedETF[];
   timestamp: string;
 }
 
@@ -107,6 +119,65 @@ const EARNINGS_LOOKAHEAD_DAYS = 30;
 const ESTIMATED_TAX_RATE = 0.24; // 24% marginal rate
 const MAX_NEWS_ITEMS = 5;
 const TIMEOUT_MS = 8000;
+
+// ─── Sector ETF Reference ────────────────────────────────────
+
+const SECTOR_ETFS: Record<string, Array<{ ticker: string; name: string; focus: string; expenseRatio: string }>> = {
+  'Technology': [
+    { ticker: 'XLK', name: 'Tech Select SPDR', focus: 'Broad tech', expenseRatio: '0.09%' },
+    { ticker: 'SOXX', name: 'iShares Semiconductor', focus: 'Chips', expenseRatio: '0.35%' },
+    { ticker: 'IGV', name: 'iShares Software', focus: 'Software', expenseRatio: '0.41%' },
+    { ticker: 'WCLD', name: 'WisdomTree Cloud', focus: 'Cloud', expenseRatio: '0.45%' },
+  ],
+  'Healthcare': [
+    { ticker: 'XLV', name: 'Health Care Select SPDR', focus: 'Broad healthcare', expenseRatio: '0.09%' },
+    { ticker: 'IBB', name: 'iShares Biotech', focus: 'Biotech', expenseRatio: '0.44%' },
+    { ticker: 'IHI', name: 'iShares Medical Devices', focus: 'Med devices', expenseRatio: '0.40%' },
+  ],
+  'Financials': [
+    { ticker: 'XLF', name: 'Financial Select SPDR', focus: 'Broad financials', expenseRatio: '0.09%' },
+    { ticker: 'KRE', name: 'SPDR Regional Banks', focus: 'Regional banks', expenseRatio: '0.35%' },
+  ],
+  'Consumer Discretionary': [
+    { ticker: 'XLY', name: 'Consumer Discr Select SPDR', focus: 'Broad consumer', expenseRatio: '0.09%' },
+    { ticker: 'IBUY', name: 'Amplify Online Retail', focus: 'E-commerce', expenseRatio: '0.65%' },
+  ],
+  'Consumer Staples': [
+    { ticker: 'XLP', name: 'Consumer Staples SPDR', focus: 'Defensive consumer', expenseRatio: '0.09%' },
+  ],
+  'Energy': [
+    { ticker: 'XLE', name: 'Energy Select SPDR', focus: 'Broad energy', expenseRatio: '0.09%' },
+    { ticker: 'AMLP', name: 'Alerian MLP', focus: 'Pipelines', expenseRatio: '0.85%' },
+  ],
+  'Industrials': [
+    { ticker: 'XLI', name: 'Industrial Select SPDR', focus: 'Broad industrials', expenseRatio: '0.09%' },
+  ],
+  'Real Estate': [
+    { ticker: 'XLRE', name: 'Real Estate Select SPDR', focus: 'Broad REIT', expenseRatio: '0.09%' },
+    { ticker: 'VNQ', name: 'Vanguard Real Estate', focus: 'Diversified REIT', expenseRatio: '0.13%' },
+  ],
+  'Utilities': [
+    { ticker: 'XLU', name: 'Utilities Select SPDR', focus: 'Broad utilities', expenseRatio: '0.09%' },
+  ],
+  'Materials': [
+    { ticker: 'XLB', name: 'Materials Select SPDR', focus: 'Broad materials', expenseRatio: '0.09%' },
+  ],
+  'Communications': [
+    { ticker: 'XLC', name: 'Communication Services SPDR', focus: 'Broad comms', expenseRatio: '0.09%' },
+  ],
+  'International': [
+    { ticker: 'VEA', name: 'Vanguard Developed Markets', focus: 'International', expenseRatio: '0.06%' },
+    { ticker: 'VWO', name: 'Vanguard Emerging Markets', focus: 'Emerging markets', expenseRatio: '0.08%' },
+  ],
+  'Bonds': [
+    { ticker: 'TLT', name: 'iShares 20+ Year Treasury', focus: 'Long bonds', expenseRatio: '0.15%' },
+    { ticker: 'BND', name: 'Vanguard Total Bond', focus: 'Broad bonds', expenseRatio: '0.03%' },
+  ],
+  'Commodities': [
+    { ticker: 'GLD', name: 'SPDR Gold Shares', focus: 'Gold', expenseRatio: '0.40%' },
+    { ticker: 'DBC', name: 'Invesco DB Commodity', focus: 'Broad commodities', expenseRatio: '0.85%' },
+  ],
+};
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -310,6 +381,147 @@ async function setCachedContext(userId: string, context: AIContext): Promise<voi
   } catch {
     // Cache write failure is non-critical
   }
+}
+
+/** Get a single cached value from market_cache by key. */
+async function getCachedValue(userId: string, itemKey: string): Promise<string | null> {
+  try {
+    const supabase = createServerClient();
+    const cacheKey = `ai:v${CACHE_VERSION}:${userId}:${itemKey}`;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any)
+      .from('market_cache')
+      .select('data, expires_at')
+      .eq('symbol', cacheKey)
+      .single();
+    if (error || !data) return null;
+    const expires = new Date(data.expires_at as string).getTime();
+    if (Date.now() > expires) return null;
+    return data.data as string;
+  } catch {
+    return null;
+  }
+}
+
+/** Store a single value in market_cache by key. */
+async function setCachedValue(userId: string, itemKey: string, value: string): Promise<void> {
+  try {
+    const supabase = createServerClient();
+    const cacheKey = `ai:v${CACHE_VERSION}:${userId}:${itemKey}`;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from('market_cache')
+      .upsert(
+        {
+          symbol: cacheKey,
+          data: value as unknown as Record<string, unknown>,
+          cached_at: new Date().toISOString(),
+          expires_at: expiresAt,
+        },
+        { onConflict: 'symbol' },
+      );
+  } catch {
+    // Cache write failure is non-critical
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SECTOR ETF LIVE DATA
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Identify underweight sectors from portfolio and fetch live
+ * Finnhub data for the top 2 relevant ETFs per sector.
+ * Max 2 ETFs per sector to avoid rate limits. Data cached 15min.
+ */
+async function buildSuggestedETFs(
+  userId: string,
+  positions: Array<{ symbol: string; sector?: string; marketValue: number }>,
+  totalValue: number,
+): Promise<SuggestedETF[]> {
+  const apiKey = finnhubKey();
+  if (!apiKey || positions.length === 0) return [];
+
+  // Calculate current sector allocations
+  const sectorValue: Record<string, number> = {};
+  for (const p of positions) {
+    const sector = p.sector || 'Unknown';
+    sectorValue[sector] = (sectorValue[sector] || 0) + p.marketValue;
+  }
+
+  // Find underweight sectors (< 5% allocation for major sectors)
+  const underweight: string[] = [];
+  for (const [sector, etfs] of Object.entries(SECTOR_ETFS)) {
+    const alloc = (sectorValue[sector] || 0) / totalValue;
+    // Skip tiny allocations in non-major sectors
+    if (alloc < 0.05 && Object.keys(SECTOR_ETFS).length <= 14) {
+      underweight.push(sector);
+    }
+  }
+
+  if (underweight.length === 0) return [];
+
+  // Pick top 2 ETFs per underweight sector
+  const etfsToFetch: Array<{ sector: string; ticker: string; name: string; focus: string; expenseRatio: string }> = [];
+  for (const sector of underweight) {
+    const etfs = SECTOR_ETFS[sector];
+    if (!etfs) continue;
+    for (let i = 0; i < Math.min(2, etfs.length); i++) {
+      etfsToFetch.push({ sector, ...etfs[i] });
+    }
+  }
+
+  if (etfsToFetch.length === 0) return [];
+
+  // Fetch live quotes from Finnhub (rate-limited gracefully)
+  const results: SuggestedETF[] = [];
+  for (const etf of etfsToFetch) {
+    try {
+      // Check cache first
+      const cacheKey = `etf:${etf.ticker}`;
+      const cached = await getCachedValue(userId, cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Date.now() - parsed.ts < 15 * 60 * 1000) {
+          results.push({ ...etf, ...parsed.data });
+          continue;
+        }
+      }
+
+      const [quoteRes, metricsRes] = await Promise.allSettled([
+        fetch(`${FINNHUB_BASE}/quote?symbol=${etf.ticker}&token=${apiKey}`, { signal: AbortSignal.timeout(5000) }),
+        fetch(`${FINNHUB_BASE}/stock/metric?symbol=${etf.ticker}&metric=all&token=${apiKey}`, { signal: AbortSignal.timeout(5000) }),
+      ]);
+
+      const quote = quoteRes.status === 'fulfilled' && quoteRes.value.ok
+        ? await quoteRes.value.json().catch(() => ({}))
+        : {};
+      const metrics = metricsRes.status === 'fulfilled' && metricsRes.value.ok
+        ? await metricsRes.value.json().catch(() => ({}))
+        : {};
+
+      const result: SuggestedETF = {
+        sector: etf.sector,
+        ticker: etf.ticker,
+        name: etf.name,
+        focus: etf.focus,
+        price: quote.c ?? null,
+        peRatio: metrics.metric?.peBasicExclExtraTTM ?? null,
+        ytdReturn: null,
+        expenseRatio: etf.expenseRatio,
+      };
+
+      // Cache the result (fire and forget)
+      setCachedValue(userId, cacheKey, JSON.stringify({ ts: Date.now(), data: result })).catch(() => {});
+
+      results.push(result);
+    } catch {
+      // Individual ETF fetch failure is non-critical
+    }
+  }
+
+  return results.slice(0, 10); // Cap at 10 total suggestions
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -956,7 +1168,23 @@ export async function buildAIContext(userId: string, overrides?: { investorStyle
     fetchUserProfile(userId),
   ]);
 
-  // Determine if we're in demo mode
+  // 3. Fetch suggested ETFs for sector gaps (fire-and-forget, non-blocking timeout)
+  let suggestedETFs: SuggestedETF[] = [];
+  try {
+    suggestedETFs = await buildSuggestedETFs(
+      userId,
+      portfolio.positions.map(p => ({
+        symbol: p.symbol,
+        sector: p.sector,
+        marketValue: p.marketValue || 0,
+      })),
+      portfolio.totalValue,
+    );
+  } catch {
+    // ETF fetch failure is non-critical — continue without suggestions
+  }
+
+  // 4. Determine if we're in demo mode
   let isDemo = true;
   try {
     const status = await getConnectionStatus(userId);
@@ -972,6 +1200,7 @@ export async function buildAIContext(userId: string, overrides?: { investorStyle
     investorStyle: profile.investorStyle,
     isDemo,
     savedTargetAllocations: profile.savedTargetAllocations,
+    suggestedETFs,
     timestamp: new Date().toISOString(),
   };
 
@@ -1098,6 +1327,32 @@ export function formatContextForPrompt(context: AIContext): string {
     lines.push(`Saved Target Allocations: ${allocStr}`);
   } else {
     lines.push('Saved Target Allocations: None');
+  }
+
+  // ── Sector Gap ETF Suggestions (live data) ──
+  if (context.suggestedETFs.length > 0) {
+    lines.push('');
+    lines.push('Sector Gap ETF Examples (live data):');
+    // Group by sector
+    const bySector: Record<string, SuggestedETF[]> = {};
+    for (const etf of context.suggestedETFs) {
+      if (!bySector[etf.sector]) bySector[etf.sector] = [];
+      bySector[etf.sector].push(etf);
+    }
+    for (const [sector, etfs] of Object.entries(bySector)) {
+      // Calculate current sector allocation from portfolio data
+      const sectorAlloc = context.portfolio.sectorBreakdown
+        .find(sb => sb.sector === sector)?.percent ?? 0;
+      lines.push(`${sector} (${sectorAlloc.toFixed(1)}% current):`);
+      for (const etf of etfs) {
+        const priceStr = etf.price != null ? `$${etf.price.toFixed(2)}` : 'N/A';
+        const peStr = etf.peRatio != null ? `${etf.peRatio.toFixed(1)}x` : 'N/A';
+        const ytdStr = etf.ytdReturn != null ? `${etf.ytdReturn >= 0 ? '+' : ''}${etf.ytdReturn.toFixed(1)}%` : 'N/A';
+        lines.push(`  ${etf.ticker} (${etf.focus}): ${priceStr} | PE: ${peStr} | YTD: ${ytdStr} | Expense: ${etf.expenseRatio}`);
+      }
+    }
+    lines.push('');
+    lines.push('⚠️ These are illustrative examples based on sector gaps — not investment recommendations.');
   }
 
   return lines.join('\n');
