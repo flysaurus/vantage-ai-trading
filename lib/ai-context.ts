@@ -320,7 +320,7 @@ async function setCachedContext(userId: string, context: AIContext): Promise<voi
  * Build portfolio context from Vantage demo data + live market prices.
  * This matches exactly what the user sees in the app when no broker is connected.
  */
-async function buildDemoPortfolioContext(userId: string): Promise<PortfolioContext> {
+async function buildDemoPortfolioContext(userId: string, overrides?: { investorStyle?: string }): Promise<PortfolioContext> {
   const emptyPortfolio: PortfolioContext = {
     totalValue: 0, buyingPower: 0, cash: 0,
     todayPnL: 0, todayPnLPercent: 0, totalPnL: 0, totalPnLPercent: 0,
@@ -329,15 +329,23 @@ async function buildDemoPortfolioContext(userId: string): Promise<PortfolioConte
   };
 
   try {
-    // Get user's investor style
-    const supabase = createServerClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: userData } = await (supabase as any)
-      .from('users')
-      .select('investor_style')
-      .eq('id', userId)
-      .single();
-    const style = (userData?.investor_style || 'buffett') as import('@/types').InvestorStyle;
+    // Determine investor style: override > DB > localStorage fallback
+    let style: import('@/types').InvestorStyle = 'buffett';
+    
+    if (overrides?.investorStyle) {
+      style = overrides.investorStyle as import('@/types').InvestorStyle;
+    } else {
+      const supabase = createServerClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: userData } = await (supabase as any)
+        .from('users')
+        .select('investor_style')
+        .eq('id', userId)
+        .single();
+      if (userData?.investor_style) {
+        style = userData.investor_style as import('@/types').InvestorStyle;
+      }
+    }
 
     // Get demo position symbols and fetch live market prices
     const { getDemoSymbols } = await import('@/lib/demo-data');
@@ -483,26 +491,19 @@ export async function checkIsDemo(userId: string): Promise<boolean> {
   }
 }
 
-async function buildPortfolioContext(userId: string): Promise<PortfolioContext> {
+async function buildPortfolioContext(userId: string, overrides?: { investorStyle?: string }): Promise<PortfolioContext> {
   // ── Check broker connection via broker-service ──
-  // FORCE DEMO: temporarily bypass getBrokerContext while debugging
-  // the stale demo/Alpaca path issue. Remove this after confirming
-  // the root cause via /api/debug/context endpoint.
-  const FORCE_DEMO = true;
-  let isDemo = FORCE_DEMO;
-  
-  if (!FORCE_DEMO) {
-    try {
-      const ctx = await getBrokerContext(userId);
-      isDemo = ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca';
-    } catch {
-      isDemo = true;
-    }
+  let isDemo = true;
+  try {
+    const ctx = await getBrokerContext(userId);
+    isDemo = ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca';
+  } catch {
+    isDemo = true;
   }
 
   if (isDemo) {
     console.log('[AIContext] Using DEMO portfolio for user', userId.slice(0, 8));
-    return buildDemoPortfolioContext(userId);
+    return buildDemoPortfolioContext(userId, overrides);
   }
 
   // ── Real broker: use Alpaca data via broker-service ──
@@ -931,7 +932,7 @@ async function fetchUserProfile(
  * Checks cache first (5-minute TTL). Never throws — returns minimal
  * context on any failure so the AI always has grounding, even if stale.
  */
-export async function buildAIContext(userId: string): Promise<AIContext> {
+export async function buildAIContext(userId: string, overrides?: { investorStyle?: string }): Promise<AIContext> {
   // 1. Check cache
   try {
     const cached = await getCachedContext(userId);
@@ -949,7 +950,7 @@ export async function buildAIContext(userId: string): Promise<AIContext> {
 
   // 2. Build fresh context — all blocks are safe-guarded
   const [portfolio, market, tax, profile] = await Promise.all([
-    buildPortfolioContext(userId),
+    buildPortfolioContext(userId, overrides),
     buildMarketContext(),
     buildTaxContext(userId),
     fetchUserProfile(userId),

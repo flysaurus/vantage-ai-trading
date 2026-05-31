@@ -642,7 +642,8 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
   const message = body.message || '';
 
   // 1. Build data context (cached 5 min)
-  const context = await buildAIContext(userId);
+  // Pass investorStyle from frontend to override DB value (frontend knows active style)
+  const context = await buildAIContext(userId, { investorStyle: body.investorStyle });
 
   // 2. Detect rebalancing intent
   const rebalanceKeywords = ['rebalance', 'rebalancing', 'drift',

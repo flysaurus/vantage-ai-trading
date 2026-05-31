@@ -277,7 +277,7 @@ export function useAIChat() {
               });
             }
           },
-        }, responseMode, mode);
+        }, responseMode, mode, user?.investorStyle);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Connection failed');
         setLoading(false);

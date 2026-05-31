@@ -213,7 +213,8 @@ export async function streamChat(
   context: ChatContext | undefined,
   callbacks: StreamCallbacks,
   responseMode?: string,
-  mode?: string
+  mode?: string,
+  investorStyle?: string
 ): Promise<void> {
   // Check cache first
   if (context) {
@@ -251,6 +252,7 @@ export async function streamChat(
       message: messages[messages.length - 1].content,
       mode,
       responseMode,
+      investorStyle,
     };
 
     const res = await fetch('/api/chat', {
