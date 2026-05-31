@@ -485,12 +485,19 @@ export async function checkIsDemo(userId: string): Promise<boolean> {
 
 async function buildPortfolioContext(userId: string): Promise<PortfolioContext> {
   // ── Check broker connection via broker-service ──
-  let isDemo = true;
-  try {
-    const ctx = await getBrokerContext(userId);
-    isDemo = ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca';
-  } catch {
-    isDemo = true;
+  // FORCE DEMO: temporarily bypass getBrokerContext while debugging
+  // the stale demo/Alpaca path issue. Remove this after confirming
+  // the root cause via /api/debug/context endpoint.
+  const FORCE_DEMO = true;
+  let isDemo = FORCE_DEMO;
+  
+  if (!FORCE_DEMO) {
+    try {
+      const ctx = await getBrokerContext(userId);
+      isDemo = ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca';
+    } catch {
+      isDemo = true;
+    }
   }
 
   if (isDemo) {
