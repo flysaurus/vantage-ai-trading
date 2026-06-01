@@ -55,14 +55,16 @@ function getGreeting(): string {
 }
 
 export default function GreetingModal({ onComplete }: GreetingModalProps) {
+  const [isReady, setIsReady] = useState(false);
   const [phase, setPhase] = useState(0);
   const [userName, setUserName] = useState('');
   const [portfolioLine, setPortfolioLine] = useState('Your portfolio is ready.');
   const [portfolioColor, setPortfolioColor] = useState('white');
   const [marketStatus, setMarketStatus] = useState('');
+  const [exiting, setExiting] = useState(false);
 
+  // Fetch user + portfolio data (fires immediately)
   useEffect(() => {
-    // Fetch user + portfolio data
     const fetchData = async () => {
       try {
         const [meRes, portfolioRes] = await Promise.all([
@@ -96,108 +98,121 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
         setUserName('');
         setPortfolioLine('Your portfolio is ready.');
       }
+
+      // Signal data loaded — animation phases start
+      setIsReady(true);
     };
 
     fetchData();
 
     const { message } = getMarketStatus();
     setMarketStatus(message);
+  }, []);
 
-    // Animation phases
+  // Start animation phases only after data is loaded
+  useEffect(() => {
+    if (!isReady) return;
+
     const t1 = setTimeout(() => setPhase(1), 200);
     const t2 = setTimeout(() => setPhase(2), 600);
-    const t3 = setTimeout(() => setPhase(3), 900);
-    const t4 = setTimeout(() => setPhase(4), 1400);
-    const t5 = setTimeout(() => setPhase(5), 1700);
-    const t6 = setTimeout(() => setPhase(6), 2500);
-    const t7 = setTimeout(onComplete, 3000);
+    const t3 = setTimeout(() => setPhase(3), 1000);
+    const t4 = setTimeout(() => setPhase(4), 1600);
+    const t5 = setTimeout(() => setPhase(5), 2000);
+    const t6 = setTimeout(() => setExiting(true), 3000);
+    const t7 = setTimeout(onComplete, 3600);
 
-    return () => [t1, t2, t3, t4, t5, t6, t7].forEach(clearTimeout);
-  }, [onComplete]);
+    return () => {
+      [t1, t2, t3, t4, t5, t6, t7].forEach(clearTimeout);
+    };
+  }, [isReady, onComplete]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center px-8"
-      style={{
-        opacity: phase === 6 ? 0 : 1,
-        transition: phase === 6 ? 'opacity 0.4s ease-out' : 'none',
-      }}
-    >
-      {/* Fox */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-black/60">
       <div
+        className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl px-10 py-12 max-w-sm mx-auto shadow-2xl"
         style={{
-          fontSize: '48px',
-          marginBottom: '32px',
-          opacity: phase >= 1 ? 1 : 0,
-          transform: phase >= 1 ? 'translateY(0)' : 'translateY(8px)',
-          transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
+          opacity: exiting ? 0 : 1,
+          transform: exiting ? 'translateY(-20px)' : 'translateY(0)',
+          transition: 'all 0.6s ease-out',
         }}
       >
-        🦊
-      </div>
+        {/* Fox */}
+        <div
+          style={{
+            fontSize: '48px',
+            marginBottom: '32px',
+            textAlign: 'center',
+            opacity: phase >= 1 ? 1 : 0,
+            transform: phase >= 1 ? 'translateY(0)' : 'translateY(8px)',
+            transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
+          }}
+        >
+          🦊
+        </div>
 
-      {/* Greeting */}
-      <div
-        style={{
-          fontSize: 'clamp(32px, 8vw, 48px)',
-          fontWeight: 200,
-          color: 'white',
-          letterSpacing: '-0.02em',
-          lineHeight: 1.1,
-          textAlign: 'center',
-          opacity: phase >= 2 ? 1 : 0,
-          transform: phase >= 2 ? 'translateY(0)' : 'translateY(12px)',
-          transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
-        }}
-      >
-        {getGreeting()},
-      </div>
+        {/* Greeting */}
+        <div
+          style={{
+            fontSize: 'clamp(32px, 8vw, 48px)',
+            fontWeight: 200,
+            color: 'white',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.1,
+            textAlign: 'center',
+            opacity: phase >= 2 ? 1 : 0,
+            transform: phase >= 2 ? 'translateY(0)' : 'translateY(12px)',
+            transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+          }}
+        >
+          {getGreeting()},
+        </div>
 
-      {/* Name (initial only) */}
-      <div
-        style={{
-          fontSize: 'clamp(32px, 8vw, 48px)',
-          fontWeight: 600,
-          color: 'white',
-          letterSpacing: '-0.02em',
-          lineHeight: 1.1,
-          textAlign: 'center',
-          marginBottom: '24px',
-          opacity: phase >= 3 ? 1 : 0,
-          transform: phase >= 3 ? 'translateY(0)' : 'translateY(12px)',
-          transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
-        }}
-      >
-        {userName}.
-      </div>
+        {/* Name (initial only) */}
+        <div
+          style={{
+            fontSize: 'clamp(32px, 8vw, 48px)',
+            fontWeight: 600,
+            color: 'white',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.1,
+            textAlign: 'center',
+            marginBottom: '24px',
+            opacity: phase >= 3 ? 1 : 0,
+            transform: phase >= 3 ? 'translateY(0)' : 'translateY(12px)',
+            transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+          }}
+        >
+          {userName}.
+        </div>
 
-      {/* Portfolio line */}
-      <div
-        style={{
-          fontSize: '16px',
-          fontWeight: 300,
-          color: portfolioColor,
-          textAlign: 'center',
-          opacity: phase >= 4 ? 0.9 : 0,
-          transition: 'opacity 0.4s ease-out',
-        }}
-      >
-        {portfolioLine}
-      </div>
+        {/* Portfolio line */}
+        <div
+          style={{
+            fontSize: '16px',
+            fontWeight: 300,
+            color: portfolioColor,
+            textAlign: 'center',
+            opacity: phase >= 4 ? 0.9 : 0,
+            transition: 'opacity 0.4s ease-out',
+          }}
+        >
+          {portfolioLine}
+        </div>
 
-      {/* Market status */}
-      <div
-        style={{
-          fontSize: '14px',
-          fontWeight: 300,
-          color: 'rgba(255,255,255,0.45)',
-          textAlign: 'center',
-          marginTop: '8px',
-          opacity: phase >= 5 ? 1 : 0,
-          transition: 'opacity 0.4s ease-out',
-        }}
-      >
-        {marketStatus}
+        {/* Market status */}
+        <div
+          style={{
+            fontSize: '14px',
+            fontWeight: 300,
+            color: 'rgba(255,255,255,0.45)',
+            textAlign: 'center',
+            marginTop: '8px',
+            opacity: phase >= 5 ? 1 : 0,
+            transition: 'opacity 0.4s ease-out',
+          }}
+        >
+          {marketStatus}
+        </div>
       </div>
     </div>
   );
