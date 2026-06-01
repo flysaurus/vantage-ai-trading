@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
@@ -17,6 +17,7 @@ import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOn
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
+import GreetingModal from '@/components/GreetingModal';
 
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
@@ -37,10 +38,23 @@ function AppShell() {
   const [showBrokerGate, setShowBrokerGate] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [greeting, setGreeting] = useState('');
+  const [showGreeting, setShowGreeting] = useState(false);
+  const greetingShown = useRef(false);
 
-  // ── Welcome greeting on page load ──
+  // ── Greeting modal after login (once per tab session) ──
   useEffect(() => {
     if (!user || !isDataLoaded) return;
+    if (showOnboarding || showBrokerGate) return;
+    if (typeof window !== 'undefined' && sessionStorage.getItem('vantage_greeting_shown')) return;
+    sessionStorage.setItem('vantage_greeting_shown', '1');
+    greetingShown.current = true;
+    setShowGreeting(true);
+  }, [user, isDataLoaded, showOnboarding, showBrokerGate]);
+
+  // ── Welcome greeting banner (suppressed if modal shown) ──
+  useEffect(() => {
+    if (!user || !isDataLoaded) return;
+    if (greetingShown.current) return; // modal handles greeting
     const name = user.displayName || user.email?.split('@')[0] || '';
     const initial = name.charAt(0).toUpperCase();
     const hour = new Date().getHours();
@@ -116,6 +130,15 @@ function AppShell() {
           setShowBrokerGate(false);
           brokerGateDismissedThisSession = true;
         }}
+      />
+    );
+  }
+
+  // Greeting modal — Claude-style welcome after login
+  if (showGreeting) {
+    return (
+      <GreetingModal
+        onComplete={() => setShowGreeting(false)}
       />
     );
   }
