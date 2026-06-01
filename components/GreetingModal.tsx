@@ -129,7 +129,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-black/60">
       <div
-        className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl px-10 py-12 max-w-sm mx-auto shadow-2xl"
+        className="bg-slate-900/80 backdrop-blur-sm border border-white/10 rounded-2xl px-10 py-12 max-w-sm mx-auto shadow-2xl text-center"
         style={{
           opacity: exiting ? 0 : 1,
           transform: exiting ? 'translateY(-20px)' : 'translateY(0)',
@@ -141,7 +141,6 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
           style={{
             fontSize: '48px',
             marginBottom: '32px',
-            textAlign: 'center',
             opacity: phase >= 1 ? 1 : 0,
             transform: phase >= 1 ? 'translateY(0)' : 'translateY(8px)',
             transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
@@ -158,7 +157,6 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             color: 'white',
             letterSpacing: '-0.02em',
             lineHeight: 1.1,
-            textAlign: 'center',
             opacity: phase >= 2 ? 1 : 0,
             transform: phase >= 2 ? 'translateY(0)' : 'translateY(12px)',
             transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
@@ -175,7 +173,6 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             color: 'white',
             letterSpacing: '-0.02em',
             lineHeight: 1.1,
-            textAlign: 'center',
             marginBottom: '24px',
             opacity: phase >= 3 ? 1 : 0,
             transform: phase >= 3 ? 'translateY(0)' : 'translateY(12px)',
@@ -191,7 +188,6 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             fontSize: '16px',
             fontWeight: 300,
             color: portfolioColor,
-            textAlign: 'center',
             opacity: phase >= 4 ? 0.9 : 0,
             transition: 'opacity 0.4s ease-out',
           }}
@@ -205,7 +201,6 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             fontSize: '14px',
             fontWeight: 300,
             color: 'rgba(255,255,255,0.45)',
-            textAlign: 'center',
             marginTop: '8px',
             opacity: phase >= 5 ? 1 : 0,
             transition: 'opacity 0.4s ease-out',
