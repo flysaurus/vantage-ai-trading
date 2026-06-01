@@ -64,7 +64,7 @@ export interface ChatResult {
 
 // ─── Rate limiting ───
 const RATE_LIMIT_KEY = 'vantage_ai_rate_limit';
-const MAX_CALLS_PER_HOUR = 15;
+const MAX_CALLS_PER_HOUR = 25;
 
 interface RateLimitState {
   count: number;

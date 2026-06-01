@@ -630,7 +630,7 @@ export function AIChat() {
                   fontSize: 9, color: '#64748b', marginTop: 4,
                   textAlign: 'right', fontStyle: 'italic',
                 }}>
-                  ~${lastCost.toFixed(4)} · {remainingCalls} calls left
+                  ~${lastCost.toFixed(4)} · {remainingCalls}/25 calls left
                 </div>
               )}
             </div>
@@ -661,13 +661,13 @@ export function AIChat() {
         )}
 
         {/* Rate limit warning */}
-        {remainingCalls <= 3 && remainingCalls > 0 && (
+        {remainingCalls > 0 && (
           <div style={{
             padding: '8px 12px', background: 'rgba(251,191,36,0.1)',
             border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8,
             fontSize: 10, color: '#fbbf24', textAlign: 'center',
           }}>
-            ⚡ Only {remainingCalls} AI call{remainingCalls === 1 ? '' : 's'} remaining this hour
+            ⚡ {remainingCalls}/25 AI calls available this hour
           </div>
         )}
 
