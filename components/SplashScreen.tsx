@@ -21,10 +21,10 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
   const [tp, setTp] = useState<'idle' | 'vantage' | 'subtitle' | 'done'>('idle');
 
   useEffect(() => {
-    const t = [50, 1500, 2200, 2800, 3600].map((ms, i) =>
+    const t = [50, 1500, 2200, 2800, 7300].map((ms, i) =>
       setTimeout(() => { setP(i + 1); if (i === 3) setTp('vantage'); }, ms),
     );
-    const tDone = setTimeout(onComplete, 7500);
+    const tDone = setTimeout(onComplete, 7300);
     return () => [...t, tDone].forEach(clearTimeout);
   }, [onComplete]);
 
@@ -59,9 +59,6 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         justifyContent: 'center',
         height: '100dvh',
         fontFamily: 'system-ui,-apple-system,sans-serif',
-        opacity: ph(5) ? 0 : 1,
-        transition: 'opacity .6s ease-in-out',
-        pointerEvents: ph(5) ? 'none' : 'auto',
       }}
     >
       <style>{`
