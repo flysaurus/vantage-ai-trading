@@ -72,6 +72,36 @@ function extractSymbols(text: string): string[] {
   return [...new Set(matches.filter(s => !FAKE_TICKERS.has(s)))];
 }
 
+/**
+ * Detect when a user is asking for individual stock recommendations.
+ * Returns true to trigger the safe ETF-only response — prevents
+ * making Finnhub/API calls for single-stock-pick requests.
+ */
+const STOCK_PICK_KEYWORDS = [
+  'specific stock', 'which stock', 'what stock', 'individual stock',
+  'stock pick', 'stock to buy', 'stocks to buy', 'stocks should i',
+  'tell me what stock', 'which ticker', 'what ticker',
+  'pick a stock', 'recommend a stock', 'suggest a stock',
+  'what should i buy', 'which should i buy',
+];
+
+const STOCK_PICK_SAFE_RESPONSE = `I focus on sector-level analysis using ETFs rather
+than individual stock picks. This keeps suggestions
+data-driven and avoids single-stock recommendation risk.
+
+For your sector gaps, the ETF examples I mentioned
+(XLV for Healthcare, XLF for Financials) provide
+broad exposure without concentration risk.
+
+If you want to research a specific stock, use the
+🔍 Research button above.`;
+
+function isStockPickRequest(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return STOCK_PICK_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 /** Fetch stock data using multi-source fallback (Finnhub → Alpaca → Yahoo). */
 async function fetchStockData(symbols: string[]): Promise<Record<string, any> | null> {
   if (symbols.length === 0) return null;
@@ -641,9 +671,26 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
   const responseMode: ResponseMode = body.responseMode || 'summary';
   const message = body.message || '';
 
+  // ── Guard: individual stock pick requests → safe ETF-only response ──
+  if (isStockPickRequest(message)) {
+    return NextResponse.json({
+      content: STOCK_PICK_SAFE_RESPONSE,
+      type: 'text',
+    });
+  }
+
   // 1. Build data context (cached 5 min)
   // Pass investorStyle from frontend to override DB value (frontend knows active style)
-  const context = await buildAIContext(userId, { investorStyle: body.investorStyle });
+  let context: AIContext;
+  try {
+    context = await buildAIContext(userId, { investorStyle: body.investorStyle });
+  } catch (ctxErr) {
+    console.error('Chat API — buildAIContext failed:', ctxErr instanceof Error ? ctxErr.message : ctxErr);
+    return NextResponse.json({
+      content: "I'm having trouble loading your portfolio data right now. Try again in a minute — if the issue persists, try checking your portfolio health or risk metrics instead.",
+      type: 'error',
+    });
+  }
 
   // 2. Detect rebalancing intent
   const rebalanceKeywords = ['rebalance', 'rebalancing', 'drift',
@@ -664,17 +711,26 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
         const explainPrompt = `Explain these rebalancing trades in ${modeStr}. Do not change the trades. Only explain the drift from targets.\nTrades: ${JSON.stringify(trades)}`;
 
         const systemPrompt = buildSystemPrompt(context, 'general', responseMode);
-        const aiResponse = await callAI({
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: explainPrompt }
-          ],
-          temperature: 0.2,
-          maxTokens: responseMode === 'summary' ? 400 : 800,
-        });
+        let explanation: string;
+        try {
+          const aiResponse = await callAI({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: explainPrompt }
+            ],
+            temperature: 0.2,
+            maxTokens: responseMode === 'summary' ? 400 : 800,
+          });
+          explanation = aiResponse.content;
+        } catch (aiErr) {
+          console.error('Chat API — rebalance explain callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+          explanation = trades.map(t =>
+            `${t.symbol}: ${t.action === 'buy' ? 'Buy' : 'Sell'} ~$${t.dollarAmount.toLocaleString()} (${Math.abs(t.drift).toFixed(1)}% drift from target)`
+          ).join('\n');
+        }
 
         return NextResponse.json({
-          content: aiResponse.content,
+          content: explanation,
           type: 'rebalance_plan',
           sessionId,
           trades,
@@ -864,14 +920,23 @@ PRIORITY ACTIONS:
 → Execute in [Trade / Strategies / Tax Harvest] tab`;
 
     const systemPrompt = buildSystemPrompt(context, 'opportunities', responseMode) + '\n\n' + oppContext;
-    const aiResponse = await callAI({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: message }
-      ],
-      maxTokens: responseMode === 'summary' ? 600 : 1200,
-      temperature: 0.3,
-    });
+    let aiResponse;
+    try {
+      aiResponse = await callAI({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ],
+        maxTokens: responseMode === 'summary' ? 600 : 1200,
+        temperature: 0.3,
+      });
+    } catch (aiErr) {
+      console.error('Chat API — opportunities callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+      return NextResponse.json({
+        content: "I ran the opportunity scan but couldn't complete the analysis. The scan found:\n\n" + oppContext.split('Based on the above')[0].trim() + "\n\n→ Try asking me to focus on one specific area.",
+        type: 'opportunities',
+      });
+    }
 
     return NextResponse.json({
       content: aiResponse.content,
@@ -1068,14 +1133,23 @@ Confidence: 🟡/🔴 [reason]
 
     // Step 6: Send to AI
     const systemPrompt = buildSystemPrompt(context, 'trends', responseMode);
-    const aiResponse = await callAI({
-      messages: [
-        { role: 'system', content: systemPrompt + '\n\n' + trendContext + '\n\n' + trendsModeInstructions },
-        { role: 'user', content: message }
-      ],
-      maxTokens: 600,
-      temperature: 0.3,
-    });
+    let aiResponse;
+    try {
+      aiResponse = await callAI({
+        messages: [
+          { role: 'system', content: systemPrompt + '\n\n' + trendContext + '\n\n' + trendsModeInstructions },
+          { role: 'user', content: message }
+        ],
+        maxTokens: 600,
+        temperature: 0.3,
+      });
+    } catch (aiErr) {
+      console.error('Chat API — trends callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+      return NextResponse.json({
+        content: trendContext + '\n\n→ Try refreshing in a moment. Market data is loaded but AI analysis could not complete.',
+        type: 'trends',
+      });
+    }
 
     return NextResponse.json({
       content: aiResponse.content,
@@ -1212,14 +1286,34 @@ ${isYearEnd ? '⚠️ Act before Dec 31' : `Plan ahead — ${12 - month} months 
 → Use Tax Harvest strategy to execute harvesting`;
 
     const systemPrompt = buildSystemPrompt(context, 'tax', responseMode);
-    const aiResponse = await callAI({
-      messages: [
-        { role: 'system', content: systemPrompt + '\n\n' + taxContext + '\n\n' + taxFormatInstructions },
-        { role: 'user', content: message || 'Show me my tax situation' }
-      ],
-      maxTokens: 500,
-      temperature: 0.2,
-    });
+    let aiResponse;
+    try {
+      aiResponse = await callAI({
+        messages: [
+          { role: 'system', content: systemPrompt + '\n\n' + taxContext + '\n\n' + taxFormatInstructions },
+          { role: 'user', content: message || 'Show me my tax situation' }
+        ],
+        maxTokens: 500,
+        temperature: 0.2,
+      });
+    } catch (aiErr) {
+      console.error('Chat API — tax callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+      return NextResponse.json({
+        content: taxContext + '\n\n→ Tax analysis loaded but AI formatting could not complete. Consult the Tax Harvesting strategy tab for actionable data.',
+        type: 'tax',
+        taxData: {
+          netShortTerm,
+          netLongTerm,
+          totalNet,
+          estimatedTotalTax,
+          harvestable,
+          totalHarvestable,
+          totalTaxSaving,
+          isYearEnd,
+          daysLeft
+        },
+      });
+    }
 
     return NextResponse.json({
       content: aiResponse.content,
@@ -1508,14 +1602,26 @@ What's Working:
 
     // ─── Call AI ───
     const systemPrompt = buildSystemPrompt(context, mode, responseMode);
-    const aiResponse = await callAI({
-      messages: [
-        { role: 'system', content: systemPrompt + '\n\n' + healthContext + '\n\n' + healthFormatInstructions },
-        { role: 'user', content: message || 'Give me a portfolio health check' }
-      ],
-      maxTokens: 600,
-      temperature: 0.2,
-    });
+    let aiResponse;
+    try {
+      aiResponse = await callAI({
+        messages: [
+          { role: 'system', content: systemPrompt + '\n\n' + healthContext + '\n\n' + healthFormatInstructions },
+          { role: 'user', content: message || 'Give me a portfolio health check' }
+        ],
+        maxTokens: 600,
+        temperature: 0.2,
+      });
+    } catch (aiErr) {
+      console.error('Chat API — health callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+      return NextResponse.json({
+        content: healthContext + '\n\n→ Health scores calculated but AI formatting unavailable. All scores are computed server-side.',
+        type: 'health',
+        scores: healthData.scores,
+        violations,
+        strengths,
+      });
+    }
 
     return NextResponse.json({
       content: aiResponse.content,
@@ -1767,14 +1873,23 @@ What's Working:
       const systemPrompt = buildSystemPrompt(context, 'research', responseMode);
       const fullSystemPrompt = systemPrompt + '\n\n' + researchContext + formatInstructions;
 
-      const aiResponse = await callAI({
-        messages: [
-          { role: 'system', content: fullSystemPrompt },
-          { role: 'user', content: message }
-        ],
-        maxTokens: responseMode === 'summary' ? 600 : 1200,
-        temperature: 0.3,
-      });
+      let aiResponse;
+      try {
+        aiResponse = await callAI({
+          messages: [
+            { role: 'system', content: fullSystemPrompt },
+            { role: 'user', content: message }
+          ],
+          maxTokens: responseMode === 'summary' ? 600 : 1200,
+          temperature: 0.3,
+        });
+      } catch (aiErr) {
+        console.error('Chat API — research callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+        return NextResponse.json({
+          content: researchContext + '\n\n→ Research data loaded but AI analysis unavailable. Check the 🔍 Stock Screener for more details.',
+          type: 'research',
+        });
+      }
 
       return NextResponse.json({
         content: aiResponse.content,
@@ -1790,14 +1905,23 @@ What's Working:
 
   // 7. Regular AI call
   const systemPrompt = buildSystemPrompt(context, mode, responseMode);
-  const aiResponse = await callAI({
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: message }
-    ],
-    maxTokens: responseMode === 'summary' ? 400 : 800,
-    temperature: 0.3,
-  });
+  let aiResponse;
+  try {
+    aiResponse = await callAI({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message }
+      ],
+      maxTokens: responseMode === 'summary' ? 400 : 800,
+      temperature: 0.3,
+    });
+  } catch (aiErr) {
+    console.error('Chat API — general callAI failed:', aiErr instanceof Error ? aiErr.message : aiErr);
+    return NextResponse.json({
+      content: "I'm having trouble analyzing that right now. Try checking your portfolio health or asking about risk instead.",
+      type: 'error',
+    });
+  }
 
   // Prepend demo intro when no broker is connected
   let content = aiResponse.content;
@@ -2190,7 +2314,7 @@ async function handleLegacyChat(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest) {
   if (!isAIAvailable()) {
-    console.warn('No AI provider configured — using fallback message');
+    console.warn('[chat/route] No AI provider configured');
     return handleFallback(request);
   }
 
@@ -2205,8 +2329,13 @@ export async function POST(request: NextRequest) {
       return handleLegacyChat(request);
     }
   } catch (error) {
-    console.error('Chat route error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : '';
+    console.error('[chat/route] POST error:', errMsg, errStack?.split('\n').slice(0, 3).join(' | '));
+    return NextResponse.json({
+      content: "I'm having trouble processing that request right now. Try asking about your portfolio health or risk check instead.",
+      type: 'error',
+    });
   }
 }
 
