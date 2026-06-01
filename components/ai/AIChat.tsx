@@ -233,7 +233,7 @@ export function AIChat() {
             <div className="empty-icon">🦊</div>
             <div className="empty-title">Ready to make some money, {userInitial}?</div>
             <div className="empty-subtitle">
-              Real-time portfolio analysis, trade signals, and market insights — powered by DeepSeek.
+              AI-powered portfolio analysis and market intelligence.
             </div>
             <div className="empty-disclaimer">
               ⚠️ Advisory only. Vantage AI does not execute trades.
