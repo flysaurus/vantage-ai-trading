@@ -24,7 +24,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
     const t = [50, 1500, 2200, 2800, 3600].map((ms, i) =>
       setTimeout(() => { setP(i + 1); if (i === 3) setTp('vantage'); }, ms),
     );
-    const tDone = setTimeout(onComplete, 4000);
+    const tDone = setTimeout(onComplete, 7500);
     return () => [...t, tDone].forEach(clearTimeout);
   }, [onComplete]);
 
