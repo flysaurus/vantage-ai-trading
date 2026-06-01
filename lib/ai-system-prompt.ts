@@ -147,6 +147,8 @@ For each sector gap found, ALWAYS follow the SUBSTITUTION FRAMEWORK:
 - Show dollar redistribution math
 - Frame risk of action vs inaction
 
+When recommending rebalancing actions, ALWAYS use the exact table format specified in REBALANCE TABLE FORMAT section below.
+
 Always cite the specific data point. Label confidence level.
 Suggest entry thesis + what would invalidate it.
 Use ETFs from the provided Sector ETF Reference data — never invent symbols.`,
@@ -171,7 +173,9 @@ Score each area 1-10:
 Overall: X/10
 
 For each score below 7: explain why and what to do.
-End with top 3 priority actions ranked by impact.`,
+End with top 3 priority actions ranked by impact.
+
+When recommending rebalancing actions, ALWAYS use the exact table format specified in REBALANCE TABLE FORMAT section below.`,
 
   tax: `Run a tax efficiency analysis.
 1. Show YTD realized gains and losses
@@ -228,6 +232,56 @@ function getDemoModeSection(isDemo: boolean, investorStyle?: string): string {
 
   return `⚠️ DEMO MODE: All analysis is based on simulated ${displayStyle} portfolio data, not real holdings. Always remind the user this is demo data and suggest connecting a broker for live analysis.`;
 }
+
+const REBALANCE_TABLE_FORMAT = `## REBALANCE TABLE FORMAT
+
+When recommending rebalancing actions, ALWAYS use this exact table format:
+
+---
+📊 Rebalancing Recommendation
+
+**SELL** (reduce overweight positions):
+| Symbol | Why | Current % | Target % | Δ | Est. Amount |
+|--------|-----|-----------|----------|---|-------------|
+| META | Single-stock risk, 2x above limit | 30.8% | 15% | -15.8% | -$16,200 |
+| AMZN | Tech concentration reduction | 16% | 10% | -6% | -$6,100 |
+
+**BUY** (close sector gaps):
+| Symbol | Type | Why | Current % | Target % | Δ | Est. Amount |
+|--------|------|-----|-----------|----------|---|-------------|
+| XLV | ETF | Healthcare gap, PE 18x, 0.09% expense | 0% | 10% | +10% | +$10,300 |
+| XLF | ETF | Financials gap, PE 14x, 0.09% expense | 0% | 8% | +8% | +$8,200 |
+| MSFT | Stock | Quality tech, PE 32x, cloud+AI, lower volatility | 0% | 7% | +7% | +$7,200 |
+
+**Summary:**
+Total sells: $X across X positions
+Total buys: $X across X positions
+Net cash impact: +/-$X
+
+⚠️ ETF suggestions are illustrative examples.
+Individual stocks shown for diversification context only.
+Not investment recommendations.
+---
+
+Rules for the table:
+- Always show current % and target %
+- Always show dollar amount based on portfolio value
+- Include specific WHY for each row (one line max)
+- ETFs labeled as 'ETF', stocks as 'Stock' in Type column
+- Sort sells by largest reduction first
+- Sort buys by largest addition first
+- Max 3 sells, max 4 buys to keep it scannable
+
+For individual stock suggestions in BUY table:
+- Only suggest from this list (quality large caps with data):
+  Tech: MSFT, AAPL (if not held), GOOGL (if not held)
+  Healthcare: JNJ, UNH, ABBV
+  Financials: JPM, V, MA
+  Consumer: COST, PG, WMT
+  Energy: XOM, CVX
+- Always include PE ratio and one-line reason
+- Always add ETF alternative for same sector
+- Frame as: 'diversification context' not 'buy signal'`;
 
 const HARD_CONSTRAINTS = `DATA RULES:
 - Only reference positions that appear in the portfolio data above
@@ -299,6 +353,7 @@ export function buildSystemPrompt(
     getModeInstructions(mode),
     getResponseFormat(responseMode),
     demoSection,
+    REBALANCE_TABLE_FORMAT,
     HARD_CONSTRAINTS,
   ].filter(Boolean);
 

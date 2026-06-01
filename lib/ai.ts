@@ -280,6 +280,20 @@ export async function streamChat(
       await new Promise((r) => setTimeout(r, 6));
     }
 
+    // If rebalance_suggestion type, attach session for Push to Rebalance card
+    if (json.type === 'rebalance_suggestion' && json.sessionId && Array.isArray(json.trades)) {
+      callbacks.onSession?.({
+        sessionId: json.sessionId as string,
+        summary: `${json.tradeCount || 0} trades prepared`,
+        trades: (json.trades as any[]).map((t: any) => ({
+          symbol: t.symbol,
+          action: t.action || t.type || 'add',
+          shares: 0,
+          estimatedValue: Math.abs(t.dollarAmount || 0),
+        })),
+      });
+    }
+
     callbacks.onDone(tokensUsed, cost);
     return;
   }

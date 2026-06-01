@@ -634,9 +634,10 @@ async function storeRebalanceSession(userId: string, trades: Array<any>): Promis
   try {
     const supabase = createServerClient();
     await (supabase as any).from('rebalance_sessions').insert({
-      session_id: sessionId,
+      id: sessionId,
       user_id: userId,
       trades,
+      source: 'ai_advisor',
       status: 'pending',
       created_at: new Date().toISOString(),
     });
@@ -644,6 +645,112 @@ async function storeRebalanceSession(userId: string, trades: Array<any>): Promis
     console.error('Failed to store rebalance session');
   }
   return sessionId;
+}
+
+// ─── Rebalance Table Parser ───────────────────────────────────────────────
+
+interface ExtractedTrade {
+  symbol: string;
+  type: 'sell' | 'buy';
+  stockType: 'ETF' | 'Stock';
+  reason: string;
+  currentPct: number;
+  targetPct: number;
+  delta: number;
+  dollarAmount: number;
+}
+
+/**
+ * Parse AI-generated rebalance recommendation tables.
+ * Extracts SELL and BUY sections from markdown table format.
+ */
+function parseRebalanceTables(content: string): { sells: ExtractedTrade[]; buys: ExtractedTrade[] } {
+  const sells: ExtractedTrade[] = [];
+  const buys: ExtractedTrade[] = [];
+
+  // Find the rebalance recommendation marker
+  const rebalanceIdx = content.indexOf('📊 Rebalancing Recommendation');
+  if (rebalanceIdx === -1) return { sells, buys };
+
+  const section = content.slice(rebalanceIdx);
+
+  // Extract SELL table
+  const sellStart = section.indexOf('SELL');
+  const buyStart = section.indexOf('BUY');
+  const summaryStart = section.indexOf('**Summary:**');
+
+  if (sellStart >= 0) {
+    const sellEnd = buyStart > sellStart ? buyStart : (summaryStart > sellStart ? summaryStart : section.length);
+    const sellSection = section.slice(sellStart, sellEnd);
+    parseTableRows(sellSection, 'sell', sells);
+  }
+
+  if (buyStart >= 0) {
+    const buyEnd = summaryStart > buyStart ? summaryStart : section.length;
+    const buySection = section.slice(buyStart, buyEnd);
+    parseTableRows(buySection, 'buy', buys);
+  }
+
+  return { sells, buys };
+}
+
+/** Parse individual table rows from a markdown table section */
+function parseTableRows(section: string, action: 'sell' | 'buy', result: ExtractedTrade[]) {
+  // Match table rows: | SYM | reason | X% | Y% | ±Z% | ±$AMOUNT |
+  // Skip header rows (lines with --- or containing Symbol/Why headers)
+  const lines = section.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
+    // Skip separator/header rows
+    if (/^\|[\s-]+\|/.test(trimmed)) continue;
+    if (/\bSymbol\b/i.test(trimmed)) continue;
+
+    const cells = trimmed.split('|').map(c => c.trim()).filter(c => c.length > 0);
+    if (cells.length < 5) continue;
+
+    // SELL table: Symbol | Why | Current % | Target % | Δ | Est. Amount
+    // BUY table:  Symbol | Type | Why | Current % | Target % | Δ | Est. Amount
+    const isBuyTable = action === 'buy';
+    const symbolIdx = 0;
+    const typeIdx = isBuyTable ? 1 : -1;
+    const reasonIdx = isBuyTable ? 2 : 1;
+    const currentIdx = isBuyTable ? 3 : 2;
+    const targetIdx = isBuyTable ? 4 : 3;
+    const deltaIdx = isBuyTable ? 5 : 4;
+    const amountIdx = isBuyTable ? 6 : 5;
+
+    const symbol = cells[symbolIdx]?.toUpperCase() || '';
+    if (!symbol || symbol.length > 5) continue;
+
+    const stockType = isBuyTable && cells[typeIdx] ? (cells[typeIdx].toLowerCase().includes('etf') ? 'ETF' : 'Stock') : 'Stock';
+    const reason = cells[reasonIdx] || '';
+
+    // Parse percentages
+    const currentPct = parseFloat((cells[currentIdx] || '').replace('%', '')) || 0;
+    const targetPct = parseFloat((cells[targetIdx] || '').replace('%', '')) || 0;
+    const deltaRaw = (cells[deltaIdx] || '').replace(/^\+/, '');
+    const delta = parseFloat(deltaRaw.replace('%', '')) || 0;
+
+    // Parse dollar amount
+    const amountStr = (cells[amountIdx] || '').replace(/^\+?\$?/, '').replace(/,/g, '');
+    let dollarAmount = parseFloat(amountStr) || 0;
+    // If negative sign present
+    if ((cells[amountIdx] || '').includes('-')) dollarAmount = -Math.abs(dollarAmount);
+
+    const trade: ExtractedTrade = {
+      symbol,
+      type: action,
+      stockType,
+      reason,
+      currentPct,
+      targetPct,
+      delta: action === 'sell' ? -Math.abs(delta) : Math.abs(delta),
+      dollarAmount: action === 'sell' ? -Math.abs(dollarAmount) : Math.abs(dollarAmount),
+    };
+
+    result.push(trade);
+  }
 }
 
 // ─── RSI Calculator ───────────────────────────────────────────────────────
@@ -935,6 +1042,33 @@ PRIORITY ACTIONS:
       return NextResponse.json({
         content: "I ran the opportunity scan but couldn't complete the analysis. The scan found:\n\n" + oppContext.split('Based on the above')[0].trim() + "\n\n→ Try asking me to focus on one specific area.",
         type: 'opportunities',
+      });
+    }
+
+    // ═══ Parse rebalance tables from AI response ═══
+    const { sells: oppSells, buys: oppBuys } = parseRebalanceTables(aiResponse.content);
+    const allOppTrades = [...oppSells, ...oppBuys];
+    if (allOppTrades.length > 0) {
+      const tradesForSession = allOppTrades.map(t => ({
+        symbol: t.symbol,
+        action: t.type === 'sell' ? 'trim' : 'add',
+        type: t.stockType,
+        reason: t.reason,
+        currentPct: t.currentPct,
+        targetPct: t.targetPct,
+        delta: t.delta,
+        dollarAmount: t.dollarAmount,
+      }));
+      const oppSessionId = await storeRebalanceSession(userId, tradesForSession);
+      return NextResponse.json({
+        content: aiResponse.content,
+        type: 'rebalance_suggestion',
+        sessionId: oppSessionId,
+        trades: tradesForSession,
+        tradeCount: tradesForSession.length,
+        totalValue: tradesForSession.reduce((sum, t) => sum + Math.abs(t.dollarAmount), 0),
+        model: aiResponse.model,
+        tokensUsed: aiResponse.tokensUsed
       });
     }
 
@@ -1620,6 +1754,36 @@ What's Working:
         scores: healthData.scores,
         violations,
         strengths,
+      });
+    }
+
+    // ═══ Parse rebalance tables from AI response ═══
+    const { sells: healthSells, buys: healthBuys } = parseRebalanceTables(aiResponse.content);
+    const allHealthTrades = [...healthSells, ...healthBuys];
+    if (allHealthTrades.length > 0) {
+      const tradesForSession = allHealthTrades.map(t => ({
+        symbol: t.symbol,
+        action: t.type === 'sell' ? 'trim' : 'add',
+        type: t.stockType,
+        reason: t.reason,
+        currentPct: t.currentPct,
+        targetPct: t.targetPct,
+        delta: t.delta,
+        dollarAmount: t.dollarAmount,
+      }));
+      const healthSessionId = await storeRebalanceSession(userId, tradesForSession);
+      return NextResponse.json({
+        content: aiResponse.content,
+        type: 'rebalance_suggestion',
+        sessionId: healthSessionId,
+        trades: tradesForSession,
+        tradeCount: tradesForSession.length,
+        totalValue: tradesForSession.reduce((sum, t) => sum + Math.abs(t.dollarAmount), 0),
+        scores: healthData.scores,
+        violations,
+        strengths,
+        model: aiResponse.model,
+        tokensUsed: aiResponse.tokensUsed
       });
     }
 

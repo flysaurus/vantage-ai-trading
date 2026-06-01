@@ -59,7 +59,7 @@ const MARKDOWN_COMPONENTS = {
     <h3 style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', margin: '6px 0 2px', lineHeight: 1.3 }}>{children}</h3>
   ),
   p: ({ children }: { children: React.ReactNode }) => (
-    <p style={{ margin: '2px 0 6px', lineHeight: 1.5, color: '#cbd5e1' }}>{children}</p>
+    <p style={{ margin: '2px 0 6px', lineHeight: 1.7, color: '#cbd5e1' }}>{children}</p>
   ),
   strong: ({ children }: { children: React.ReactNode }) => (
     <strong style={{ color: '#facc15', fontWeight: 700 }}>{children}</strong>
@@ -100,7 +100,7 @@ const MARKDOWN_COMPONENTS = {
     <ol style={{ margin: '2px 0', paddingLeft: 16, color: '#cbd5e1' }}>{children}</ol>
   ),
   li: ({ children }: { children: React.ReactNode }) => (
-    <li style={{ marginBottom: 1, lineHeight: 1.4, fontSize: 11 }}>{children}</li>
+    <li style={{ marginBottom: 1, lineHeight: 1.6, fontSize: 12 }}>{children}</li>
   ),
   hr: () => <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '6px 0' }} />,
   blockquote: ({ children }: { children: React.ReactNode }) => (
@@ -300,7 +300,7 @@ export function AIChat() {
             >
               {/* Rich markdown rendering for AI messages */}
               {msg.role === 'assistant' ? (
-                <div className="markdown-body" style={{ fontSize: 11, lineHeight: 1.5 }}>
+                <div className="markdown-body" style={{ fontSize: 14, lineHeight: 1.7 }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={MARKDOWN_COMPONENTS as any}
