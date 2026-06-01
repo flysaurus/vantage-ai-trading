@@ -20,9 +20,15 @@ export function SplashGuard({ children }: { children: React.ReactNode }) {
     setShow(false);
   };
 
-  if (!mounted) return <div style={{ position:'fixed',inset:0,background:'#000',zIndex:9999 }} />;
+  // SSR: render nothing (no black flash)
+  if (!mounted) return null;
 
-  if (show) return <SplashScreen onComplete={handleComplete} />;
-
-  return <>{children}</>;
+  return (
+    <>
+      {/* App content always rendered behind the splash */}
+      {children}
+      {/* Splash overlays on top — fade-out reveals children underneath */}
+      {show && <SplashScreen onComplete={handleComplete} />}
+    </>
+  );
 }

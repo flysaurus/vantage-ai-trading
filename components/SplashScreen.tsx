@@ -19,13 +19,18 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
   const [p, setP] = useState(0);
   const [skip, setSkip] = useState(false);
   const [tp, setTp] = useState<'idle' | 'vantage' | 'subtitle' | 'done'>('idle');
+  const [fadingOut, setFadingOut] = useState(false);
 
   useEffect(() => {
-    const t = [50, 1500, 2200, 2800, 7300].map((ms, i) =>
+    // Animation phases — all complete by 2500ms
+    const t = [50, 600, 1100, 1500].map((ms, i) =>
       setTimeout(() => { setP(i + 1); if (i === 3) setTp('vantage'); }, ms),
     );
-    const tDone = setTimeout(onComplete, 7300);
-    return () => [...t, tDone].forEach(clearTimeout);
+    // 3.5s hold after last animation (done at ~2500ms) → fade starts at 6000ms
+    const tFade = setTimeout(() => setFadingOut(true), 6000);
+    // onComplete after 0.8s fade
+    const tDone = setTimeout(onComplete, 6800);
+    return () => [...t, tFade, tDone].forEach(clearTimeout);
   }, [onComplete]);
 
   useEffect(() => {
@@ -59,6 +64,8 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         justifyContent: 'center',
         height: '100dvh',
         fontFamily: 'system-ui,-apple-system,sans-serif',
+        opacity: fadingOut ? 0 : 1,
+        transition: fadingOut ? 'opacity 0.8s ease-out' : 'none',
       }}
     >
       <style>{`
