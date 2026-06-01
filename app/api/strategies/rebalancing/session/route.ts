@@ -1,4 +1,7 @@
 /**
+ * POST /api/strategies/rebalancing/session
+ * Creates a new rebalance session from AI-suggested trades
+ *
  * GET/DELETE /api/strategies/rebalancing/session?id=UUID
  *
  * GET: Returns stored rebalance session trades (validates user_id matches session)
@@ -7,6 +10,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase';
+
+const { v4: uuidv4 } = require('uuid');
+
+export async function POST(request: NextRequest) {
+  try {
+    const { userId } = await requireAuth(request);
+
+    const body = await request.json();
+    const { trades, source = 'ai_chat', expiresIn = 3600 } = body;
+
+    if (!trades || !Array.isArray(trades) || trades.length === 0) {
+      return NextResponse.json({ error: 'Trades array required' }, { status: 400 });
+    }
+
+    const sessionId = uuidv4();
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+    const supabase = createServerClient();
+    const { error: dbErr } = await (supabase as any)
+      .from('rebalance_sessions')
+      .insert({
+        id: sessionId,
+        user_id: userId,
+        trades: JSON.stringify(trades),
+        source,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt,
+      });
+
+    if (dbErr) {
+      console.error('[session API] POST insert error:', dbErr);
+      return NextResponse.json({ error: 'Failed to create session' }, { status: 500 });
+    }
+
+    console.log('[session API] Session created:', sessionId, 'trades:', trades.length);
+    return NextResponse.json({ sessionId });
+  } catch (e) {
+    console.error('[session API] POST error:', e);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {

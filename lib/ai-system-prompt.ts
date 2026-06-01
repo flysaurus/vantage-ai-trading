@@ -83,7 +83,7 @@ function getStyleRules(investorStyle?: string): string {
 // ─── Layer 4: Sector ETF Reference ─────────────────────────────────────────
 
 const SECTOR_ETF_REFERENCE = `## SECTOR ETF REFERENCE TABLE
-Always use this table for ETF suggestions. Never suggest individual stocks as replacements.
+Use this table for ETF suggestions. ETFs are preferred for sector exposure (lower risk, instant diversification). Individual stocks acceptable when there is a specific, data-backed reason.
 
 Technology: XLK (Tech Select SPDR, Broad tech), SOXX (iShares Semiconductor, Chips), IGV (iShares Software, Software), WCLD (WisdomTree Cloud, Cloud)
 Healthcare: XLV (Health Care Select SPDR, Broad healthcare), IBB (iShares Biotech, Biotech), IHI (iShares Medical Devices, Med devices)
@@ -134,20 +134,34 @@ Be specific with numbers. Flag ⚠️ for each risk found.
 End with overall risk rating: LOW / MEDIUM / HIGH`,
 
   opportunities: `Identify sector gaps and buying opportunities.
+
+OUTPUT FORMAT — MANDATORY:
+When recommending any position changes, you MUST output TWO markdown tables:
+
+Table 1 — SELL:
+| Symbol | Current % | Target % | Reduce By | Est. Proceeds | Why |
+
+Table 2 — BUY:
+| Symbol | Type | Current % | Target % | Add | Est. Cost | Why |
+
+Then a one-line summary:
+Net rebalance: sell $X across N positions, buy $X across N positions.
+
+Rules:
+- Type column: ETF or Stock
+- Why column: one specific data point (PE ratio, expense ratio, % above limit, sector gap %)
+- Est. amounts calculated from portfolio total value
+- Sort each table by largest amount first
+- NO prose bullets for position recommendations
+- Tables ONLY for buy/sell suggestions
+- Prose allowed for explanations only
+
 Look at:
 1. Existing positions: any down >15% without fundamental reason?
 2. Sector gaps: use the provided sector ETF suggestions with live data
 3. Valuation: any holdings where PE dropped significantly?
 4. Earnings beats: any recent positive surprises not yet priced in?
 5. Market dislocation: macro fear creating opportunity?
-
-For each sector gap found, ALWAYS follow the SUBSTITUTION FRAMEWORK:
-- Show what to reduce and ACTUAL dollar amount
-- Suggest sector ETF(s) from the provided data with live price/PE/YTD/expense
-- Show dollar redistribution math
-- Frame risk of action vs inaction
-
-When recommending rebalancing actions, ALWAYS use the exact table format specified in REBALANCE TABLE FORMAT section below.
 
 Always cite the specific data point. Label confidence level.
 Suggest entry thesis + what would invalidate it.
@@ -164,6 +178,28 @@ Connect macro trends to user's specific holdings.
 Be direct about implications.`,
 
   health: `Run a complete portfolio health diagnostic.
+
+OUTPUT FORMAT — MANDATORY:
+When recommending any position changes, you MUST output TWO markdown tables:
+
+Table 1 — SELL:
+| Symbol | Current % | Target % | Reduce By | Est. Proceeds | Why |
+
+Table 2 — BUY:
+| Symbol | Type | Current % | Target % | Add | Est. Cost | Why |
+
+Then a one-line summary:
+Net rebalance: sell $X across N positions, buy $X across N positions.
+
+Rules:
+- Type column: ETF or Stock
+- Why column: one specific data point (PE ratio, expense ratio, % above limit, sector gap %)
+- Est. amounts calculated from portfolio total value
+- Sort each table by largest amount first
+- NO prose bullets for position recommendations
+- Tables ONLY for buy/sell suggestions
+- Prose allowed for scores and explanations only
+
 Score each area 1-10:
 - Diversification: X/10
 - Risk management: X/10
@@ -173,9 +209,14 @@ Score each area 1-10:
 Overall: X/10
 
 For each score below 7: explain why and what to do.
-End with top 3 priority actions ranked by impact.
 
-When recommending rebalancing actions, ALWAYS use the exact table format specified in REBALANCE TABLE FORMAT section below.`,
+⚠️ MANDATORY: After the scores, you MUST produce a
+## 📊 Rebalancing Plan section using the exact table
+format above.
+This includes SELL table, BUY table, and Summary table.
+Do NOT write prose paragraphs with rebalancing suggestions.
+Do NOT use bullet points for trade recommendations.
+Tables ONLY.`,
 
   tax: `Run a tax efficiency analysis.
 1. Show YTD realized gains and losses
@@ -233,55 +274,84 @@ function getDemoModeSection(isDemo: boolean, investorStyle?: string): string {
   return `⚠️ DEMO MODE: All analysis is based on simulated ${displayStyle} portfolio data, not real holdings. Always remind the user this is demo data and suggest connecting a broker for live analysis.`;
 }
 
-const REBALANCE_TABLE_FORMAT = `## REBALANCE TABLE FORMAT
+const REBALANCE_TABLE_FORMAT = `## MANDATORY REBALANCE OUTPUT FORMAT
 
-When recommending rebalancing actions, ALWAYS use this exact table format:
+For ANY health check, opportunities scan, or rebalancing analysis,
+you MUST use this exact markdown table structure.
+NEVER use prose bullets for rebalancing — tables only.
+VIOLATION: prose bullets instead of tables = FAILED response.
 
 ---
-📊 Rebalancing Recommendation
+## 📊 Rebalancing Plan
 
-**SELL** (reduce overweight positions):
-| Symbol | Why | Current % | Target % | Δ | Est. Amount |
-|--------|-----|-----------|----------|---|-------------|
-| META | Single-stock risk, 2x above limit | 30.8% | 15% | -15.8% | -$16,200 |
-| AMZN | Tech concentration reduction | 16% | 10% | -6% | -$6,100 |
+### SELL — Reduce Overweight Positions
+| Symbol | Company | Current % | Target % | Change | Est. Amount | Why |
+|--------|---------|-----------|----------|--------|-------------|-----|
+| META | Meta Platforms | 30.8% | 15% | -15.8% | -$16,200 | Single-stock concentration 2x above Growth limit. 31% gain locked in. |
+| MSFT | Microsoft | 18% | 12% | -6% | -$6,100 | Tech sector at 84% — trim to reduce concentration. |
 
-**BUY** (close sector gaps):
-| Symbol | Type | Why | Current % | Target % | Δ | Est. Amount |
-|--------|------|-----|-----------|----------|---|-------------|
-| XLV | ETF | Healthcare gap, PE 18x, 0.09% expense | 0% | 10% | +10% | +$10,300 |
-| XLF | ETF | Financials gap, PE 14x, 0.09% expense | 0% | 8% | +8% | +$8,200 |
-| MSFT | Stock | Quality tech, PE 32x, cloud+AI, lower volatility | 0% | 7% | +7% | +$7,200 |
+### BUY — Close Sector Gaps
+| Symbol | Type | Company | Current % | Target % | Change | Est. Amount | Why |
+|--------|------|---------|-----------|----------|--------|-------------|-----|
+| XLV | ETF | Health Care Select SPDR | 0% | 10% | +10% | +$10,300 | Zero healthcare exposure. PE 18x, expense 0.09%. Defensive diversification. |
+| XLF | ETF | Financial Select SPDR | 0% | 8% | +8% | +$8,200 | Zero financials exposure. PE 14x, expense 0.09%. Rate-sensitive upside. |
+| JNJ | Stock | Johnson & Johnson | 0% | 5% | +5% | +$5,100 | Quality healthcare anchor. PE 15x, dividend 3.1%. Reduces portfolio volatility. |
+| JPM | Stock | JPMorgan Chase | 0% | 4% | +4% | +$4,100 | Best-in-class financials. PE 12x, ROE 17%. Benefits from rate environment. |
 
-**Summary:**
-Total sells: $X across X positions
-Total buys: $X across X positions
-Net cash impact: +/-$X
+### Summary
+| | Sells | Buys | Net |
+|-|-------|------|-----|
+| Positions | 2 | 4 | - |
+| Total Value | -$22,300 | +$27,700 | +$5,400 deployed |
 
-⚠️ ETF suggestions are illustrative examples.
-Individual stocks shown for diversification context only.
-Not investment recommendations.
+⚠️ ETFs shown for sector exposure. Individual stocks
+shown as quality examples — not buy recommendations.
+Research all securities before investing.
 ---
 
-Rules for the table:
-- Always show current % and target %
-- Always show dollar amount based on portfolio value
-- Include specific WHY for each row (one line max)
-- ETFs labeled as 'ETF', stocks as 'Stock' in Type column
-- Sort sells by largest reduction first
-- Sort buys by largest addition first
-- Max 3 sells, max 4 buys to keep it scannable
+RULES FOR TABLE GENERATION:
+1. Always calculate exact dollar amounts:
+   dollarAmount = (percentChange/100) * totalPortfolioValue
+   Total portfolio value is provided in the data context above.
+2. Always show current AND target % for every row
+3. Why column: max 15 words, must include one data point
+   (PE, yield, expense ratio, or % gain/loss)
+4. Individual stocks: only suggest from approved list:
+   Healthcare: JNJ, UNH, ABBV, PFE
+   Financials: JPM, V, MA, BRK.B
+   Consumer: COST, PG, WMT, KO
+   Tech (quality): MSFT, AAPL (if not held)
+   Energy: XOM, CVX
+5. Always pair each stock suggestion with an ETF alternative
+6. Max 3 sells, max 4 buys
+7. Sort by largest dollar amount first
+8. NEVER skip the summary table
+9. NEVER use prose bullets instead of tables
+10. Include Company column with full company name in every table
+11. Recalculate dollar amounts fresh each time using the portfolio's actual total value
 
-For individual stock suggestions in BUY table:
-- Only suggest from this list (quality large caps with data):
-  Tech: MSFT, AAPL (if not held), GOOGL (if not held)
-  Healthcare: JNJ, UNH, ABBV
-  Financials: JPM, V, MA
-  Consumer: COST, PG, WMT
-  Energy: XOM, CVX
-- Always include PE ratio and one-line reason
-- Always add ETF alternative for same sector
-- Frame as: 'diversification context' not 'buy signal'`;
+12. JSON INTEGRATION: After the markdown tables, output a hidden
+    JSON block so the app can send trades to the Rebalancing page.
+    Wrap it like this — it will be hidden from human view:
+
+    <rebalance-trades>
+    {
+      "trades": [
+        { "symbol": "META", "action": "sell", "targetPercent": 15 },
+        { "symbol": "MSFT", "action": "sell", "targetPercent": 12 },
+        { "symbol": "XLV", "action": "buy", "targetPercent": 10 },
+        { "symbol": "XLF", "action": "buy", "targetPercent": 8 },
+        { "symbol": "JNJ", "action": "buy", "targetPercent": 5 },
+        { "symbol": "JPM", "action": "buy", "targetPercent": 4 }
+      ]
+    }
+    </rebalance-trades>
+
+    Action must be "buy" or "sell" (lowercase).
+    targetPercent must be a number.
+    Include EVERY row from your BUY and SELL tables.
+    This JSON block is REQUIRED for rebalancing responses.
+    Place it AFTER the Summary table and disclaimers.`;
 
 const HARD_CONSTRAINTS = `DATA RULES:
 - Only reference positions that appear in the portfolio data above
@@ -289,10 +359,22 @@ const HARD_CONSTRAINTS = `DATA RULES:
 - If a metric is missing: say "data unavailable" not a guess
 - Rebalancing trades = math from saved targets only, never invent allocations
 - Do not suggest stocks outside the user's portfolio unless in Opportunities mode
-- In Opportunities mode: only suggest broad ETFs as alternatives,
-  not individual stocks (we lack sufficient data for individual picks)
-- When discussing sector gaps, use the ETF examples provided in context —
-  cite their live price, PE, YTD return, and expense ratio
+- When suggesting securities to buy:
+  - ETFs preferred for sector exposure (lower risk, instant diversification)
+  - Individual stocks acceptable when there is a specific,
+    data-backed reason (strong fundamentals, sector leadership, fits investor style)
+  - ALWAYS explain WHY each suggestion fits the portfolio:
+    For ETFs: expense ratio, what it tracks, sector gap it fills
+    For stocks: PE ratio, growth rate, why it fits the investor style,
+    what specific gap or opportunity it addresses
+  - Stocks from the approved list (JNJ, UNH, ABBV, PFE, JPM, V, MA,
+    BRK.B, COST, PG, WMT, KO, MSFT, AAPL, XOM, CVX)
+  - When discussing sector gaps, use the ETF examples provided in context —
+    cite their live price, PE, YTD return, and expense ratio
+  - Frame ALL suggestions as: "investors in this situation
+    typically consider" — never "I recommend buying"
+  - Always add disclaimer: ⚠️ These are illustrative examples —
+    research before investing
 
 FORMAT RULES:
 - Numbers always include $ or % symbol
@@ -303,10 +385,12 @@ FORMAT RULES:
 SUBSTITUTION FRAMEWORK — when suggesting reducing a position, ALWAYS provide:
 1. WHAT TO REDUCE: symbol, current %, target %, dollar amount to trim
    Example: "CRM is 13% of portfolio. Trimming to 7% frees ~$6,200"
-2. WHERE TO REDEPLOY (sector-based, ETF-focused):
+2. WHERE TO REDEPLOY (sector-based, stocks + ETFs):
    - Identify which sector is underweight
-   - Suggest 1-2 ETFs for that sector with data: ticker, name, focus, PE, YTD, expense ratio
-   - Frame as: "To gain X sector exposure, investors typically consider ETFs such as..."
+   - Suggest 1-2 individual stocks AND 1 ETF for that sector
+   - Stock: quality names from the approved list with PE, div yield, ROE
+   - ETF: ticker, name, focus, PE, YTD, expense ratio
+   - Frame as: "To gain X sector exposure, investors typically consider stocks like AAPL alongside ETFs such as XLK"
 3. DOLLAR CONTEXT: show exact math
    Example: "Proceeds of $X from trimming CRM would fund approximately X% of a healthcare allocation at current prices"
 4. RISK FRAMING:

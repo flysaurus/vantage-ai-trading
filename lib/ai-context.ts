@@ -1204,7 +1204,10 @@ export async function buildAIContext(userId: string, overrides?: { investorStyle
     timestamp: new Date().toISOString(),
   };
 
-  // 3. Cache for next call (fire and forget)
+  // 3. Log portfolio value for AI prompt verification
+  console.log('Portfolio value for AI:', context.portfolio.totalValue);
+
+  // 4. Cache for next call (fire and forget)
   setCachedContext(userId, context).catch(() => {});
 
   return context;

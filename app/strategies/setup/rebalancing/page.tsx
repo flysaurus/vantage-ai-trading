@@ -182,6 +182,7 @@ export default function RebalancingPage() {
   const [savingTargets, setSavingTargets] = useState(false);
   const [targetsSaved, setTargetsSaved] = useState(false);
   const [fromAi, setFromAi] = useState(false);
+  const [isFresh, setIsFresh] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
 
@@ -211,6 +212,13 @@ export default function RebalancingPage() {
 
     // Check if opened from AI Advisor
     if (params?.get('source') === 'ai') setFromAi(true);
+
+    // Detect fresh mode (AI-suggested plan, no saved targets)
+    const freshMode = params?.get('fresh') === 'true';
+    if (freshMode) {
+      setIsFresh(true);
+      console.log('[rebalancing page] Fresh mode — using session data only');
+    }
 
     // Load client-side session from URL trades param (no DB needed)
     if (tradesParam && !sessionId && !sid) {
@@ -262,14 +270,26 @@ export default function RebalancingPage() {
               symbol: t.symbol,
               name: t.symbol,
               action: t.action === 'trim' || t.action === 'sell' ? 'SELL' as const : 'BUY' as const,
-              shares: t.shares,
-              estimatedValue: t.estimatedValue,
-              currentPrice: t.shares > 0 ? t.estimatedValue / t.shares : 0,
+              shares: t.shares || 0,
+              estimatedValue: t.estimatedValue || t.dollarAmount || 0,
+              currentPrice: (t.shares || t.dollarAmount) > 0
+                ? (t.estimatedValue || t.dollarAmount || 0) / (t.shares || 1)
+                : 0,
               orderType: 'market' as const,
               isAiSuggested: true,
+              currentPct: t.currentPct,
+              targetPct: t.targetPct,
+              type: t.type || 'stock',
+              reason: t.reason || '',
             }));
             setEditedOrders(orders);
             setAutoMode('auto');
+            setSessionLoading(false);
+
+            // Clear fresh param from URL after loading
+            if (params?.get('fresh') === 'true') {
+              router.replace(`/strategies/setup/rebalancing?session=${sid}`);
+            }
           } else {
             console.log('[rebalancing page] Session not found or no trades');
             // Session not found — clear the stale session ID
@@ -287,6 +307,12 @@ export default function RebalancingPage() {
 
     // Skip normal init if waiting for session
     if (sessionLoading) return;
+
+    // Fresh mode: skip saved targets, use session-only data
+    if (freshMode) {
+      console.log('[rebalancing page] Skipping saved targets (fresh mode)');
+      return;
+    }
 
     // Load saved target allocations if available
     fetch('/api/strategies/rebalancing/saved')
@@ -501,6 +527,8 @@ export default function RebalancingPage() {
   // Auto-prepare helpers
   const buyOrders = editedOrders.filter(o => o.action === 'BUY');
   const sellOrders = editedOrders.filter(o => o.action === 'SELL');
+  // Sort sells first, then buys — for display
+  const sortedOrders = [...sellOrders, ...buyOrders];
   const totalBuys = buyOrders.reduce((s, o) => s + o.estimatedValue, 0);
   const totalSells = sellOrders.reduce((s, o) => s + o.estimatedValue, 0);
   const netCashImpact = totalBuys - totalSells;
@@ -793,7 +821,7 @@ export default function RebalancingPage() {
         {fromAi && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: 8, fontSize: 12, color: '#06b6d4', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>💡</span>
-            <span>{sessionId ? 'Populated from AI Advisor' : 'Opened from AI Advisor'}</span>
+            <span>{isFresh ? 'AI Suggested Plan — review before executing' : sessionId ? 'Populated from AI Advisor' : 'Opened from AI Advisor'}</span>
           </div>
         )}
       </div>
@@ -1105,8 +1133,9 @@ export default function RebalancingPage() {
                           {(order as any).isAiSuggested && (
                             <span style={{ fontSize: 9, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.12)', padding: '2px 6px', borderRadius: 3 }}>AI Suggested</span>
                           )}
-                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{order.shares} shares</span>
-                          <span style={{ fontSize: 11, color: '#64748b' }}>~${order.estimatedValue.toFixed(2)}</span>
+                          {(order as any).type && (
+                            <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b', background: 'rgba(100,116,139,0.12)', padding: '2px 6px', borderRadius: 3 }}>{(order as any).type === 'etf' ? 'ETF' : 'Stock'}</span>
+                          )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 10, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.1)', padding: '2px 8px', borderRadius: 4 }}>
@@ -1120,6 +1149,25 @@ export default function RebalancingPage() {
                           </button>
                         </div>
                       </div>
+
+                      {/* Detail row: shares, value, percentages */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#94a3b8', marginTop: 4, paddingLeft: 4 }}>
+                        <span>{order.shares} shares · ~${order.estimatedValue.toFixed(2)}</span>
+                        {(order as any).currentPct != null && (order as any).targetPct != null && (
+                          <span>
+                            <span style={{ color: '#64748b' }}>{(order as any).currentPct.toFixed(1)}%</span>
+                            <span style={{ margin: '0 4px', color: '#475569' }}>→</span>
+                            <span style={{ color: '#06b6d4', fontWeight: 600 }}>{(order as any).targetPct.toFixed(1)}%</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Reason subtitle */}
+                      {(order as any).reason && (
+                        <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.4, marginTop: 3, paddingLeft: 4, fontStyle: 'italic' }}>
+                          {(order as any).reason}
+                        </div>
+                      )}
 
                       {/* Inline editor */}
                       {isEditing && (

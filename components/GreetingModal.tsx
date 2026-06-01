@@ -119,7 +119,8 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
     const t4 = setTimeout(() => setPhase(4), 1600);
     const t5 = setTimeout(() => setPhase(5), 2000);
     const t6 = setTimeout(() => setExiting(true), 3000);
-    const t7 = setTimeout(onComplete, 3600);
+    // 0.8s for exit animation → onComplete at 3800ms
+    const t7 = setTimeout(onComplete, 3800);
 
     return () => {
       [t1, t2, t3, t4, t5, t6, t7].forEach(clearTimeout);
@@ -127,13 +128,19 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
   }, [isReady, onComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-black/60">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md"
+      style={{
+        backgroundColor: exiting ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.5)',
+        transition: 'background-color 0.8s ease-out',
+      }}
+    >
       <div
         className="bg-slate-900/80 backdrop-blur-sm border border-white/10 rounded-2xl px-10 py-12 max-w-sm mx-auto shadow-2xl text-center"
         style={{
           opacity: exiting ? 0 : 1,
           transform: exiting ? 'translateY(-20px)' : 'translateY(0)',
-          transition: 'all 0.6s ease-out',
+          transition: 'all 0.8s ease-out',
         }}
       >
         {/* Fox */}

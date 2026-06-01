@@ -144,6 +144,8 @@ export default function LoginPage() {
         // Direct login — redirect
         // Using full page reload (not router) to guarantee the session cookie
         // is processed before /api/auth/me is called on the dashboard.
+        // Set greeting flag so the main app shows Welcome overlay on top
+        sessionStorage.setItem('show_greeting', 'true');
         window.location.href = '/';
       }
     } catch (err: any) {
@@ -202,6 +204,7 @@ export default function LoginPage() {
       }
 
       // Full page reload to guarantee session cookie is processed
+      sessionStorage.setItem('show_greeting', 'true');
       window.location.href = '/';
     } catch (err: any) {
       setError(err.message || '2FA verification failed');

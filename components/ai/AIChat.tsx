@@ -5,6 +5,103 @@ import { Send, RefreshCw, AlertCircle, Trash2, AlignLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
+
+/** Extract <rebalance-trades> JSON block from AI response text */
+function extractRebalanceTrades(content: string): Array<{ symbol: string; action: string; targetPercent: number }> | null {
+  try {
+    const match = content.match(/<rebalance-trades>\s*([\s\S]*?)\s*<\/rebalance-trades>/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[1]);
+    if (!Array.isArray(parsed?.trades)) return null;
+    return parsed.trades;
+  } catch {
+    return null;
+  }
+}
+
+/** Get display-safe content by stripping JSON integration block */
+function sanitizeContent(content: string): string {
+  return content.replace(/<rebalance-trades>[\s\S]*?<\/rebalance-trades>/g, '').trim();
+}
+
+/** Check if a string contains a markdown table with positions */
+function hasMarkdownTable(content: string): boolean {
+  const clean = sanitizeContent(content);
+  return clean.includes('|') && /\bSymbol\b/i.test(clean);
+}
+
+/** Parse dollar amount string like "$10,300", "-$6,100", "$5.1K" */
+function parseDollarAmount(str: string): number {
+  if (!str) return 0;
+  const num = str.replace(/[$,\s]/g, '');
+  const value = parseFloat(num);
+  if (isNaN(value)) return 0;
+  return /[Kk]/.test(str) ? value * 1000 : value;
+}
+
+/** Parse trades from AI markdown tables */
+function parseTradesFromMarkdown(content: string): Array<{
+  symbol: string;
+  action: string;
+  type: string;
+  currentPct: number;
+  targetPct: number;
+  dollarAmount: number;
+  reason: string;
+}> {
+  const trades: Array<{
+    symbol: string;
+    action: string;
+    type: string;
+    currentPct: number;
+    targetPct: number;
+    dollarAmount: number;
+    reason: string;
+  }> = [];
+  const lines = content.split('\n');
+  let currentTable: 'sell' | 'buy' | null = null;
+
+  for (const line of lines) {
+    // Detect table type from headings
+    if (line.toLowerCase().includes('sell')) currentTable = 'sell';
+    if (line.toLowerCase().includes('buy') && !line.toLowerCase().includes('sell')) currentTable = 'buy';
+
+    // Skip non-data rows
+    if (!line.startsWith('|')) continue;
+    if (line.includes('---')) continue;
+    if (/\bSymbol\b/i.test(line)) continue;
+
+    const cols = line.split('|')
+      .map(c => c.trim())
+      .filter(Boolean);
+
+    if (cols.length >= 4 && currentTable) {
+      const symbol = cols[0];
+      if (!symbol || symbol.length > 6 || symbol.length < 1) continue;
+
+      // Column offsets differ between SELL/BUY tables
+      // SELL: Symbol | Current % | Target % | Reduce By | Est. Proceeds | Why
+      // BUY:  Symbol | Type | Current % | Target % | Add | Est. Cost | Why
+      const isBuy = currentTable === 'buy';
+      const currentPctCol = isBuy ? 2 : 1;
+      const targetPctCol = isBuy ? 3 : 2;
+      const amountCol = isBuy ? 5 : 4;
+
+      trades.push({
+        symbol: symbol.toUpperCase(),
+        action: currentTable === 'sell' ? 'sell' : 'buy',
+        type: isBuy && cols[1]?.toLowerCase().includes('etf') ? 'etf' : 'stock',
+        currentPct: parseFloat(cols[currentPctCol]) || 0,
+        targetPct: parseFloat(cols[targetPctCol]) || 0,
+        dollarAmount: parseDollarAmount(cols[amountCol] || ''),
+        reason: cols[cols.length - 1] || '',
+      });
+    }
+  }
+
+  return trades;
+}
+
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 
@@ -72,8 +169,8 @@ const MARKDOWN_COMPONENTS = {
     return <code style={{ color: '#cbd5e1', fontSize: 10 }}>{children}</code>;
   },
   table: ({ children }: { children: React.ReactNode }) => (
-    <div style={{ overflowX: 'auto', margin: '4px 0' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, color: '#cbd5e1' }}>
+    <div style={{ overflowX: 'auto', display: 'block', margin: '12px 0 4px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>
         {children}
       </table>
     </div>
@@ -85,13 +182,36 @@ const MARKDOWN_COMPONENTS = {
     <tbody>{children}</tbody>
   ),
   tr: ({ children }: { children: React.ReactNode }) => (
-    <tr style={{ borderBottom: '1px solid #1e293b' }}>{children}</tr>
+    <tr style={{ transition: 'background 0.15s' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(51,65,85,0.2)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+    >
+      {children}
+    </tr>
   ),
   th: ({ children }: { children: React.ReactNode }) => (
-    <th style={{ padding: '3px 6px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>{children}</th>
+    <th style={{
+      padding: '8px 12px',
+      textAlign: 'left',
+      color: '#22d3ee',
+      fontWeight: 500,
+      fontSize: 11,
+      whiteSpace: 'nowrap',
+      borderBottom: '1px solid #475569',
+    }}>
+      {children}
+    </th>
   ),
   td: ({ children }: { children: React.ReactNode }) => (
-    <td style={{ padding: '2px 6px', borderBottom: '1px solid #0f172a' }}>{children}</td>
+    <td style={{
+      padding: '6px 12px',
+      borderBottom: '1px solid rgba(51,65,85,0.3)',
+      color: 'rgba(255,255,255,0.85)',
+      whiteSpace: 'nowrap',
+      lineHeight: 1.5,
+    }}>
+      {children}
+    </td>
   ),
   ul: ({ children }: { children: React.ReactNode }) => (
     <ul style={{ margin: '2px 0', paddingLeft: 16, color: '#cbd5e1' }}>{children}</ul>
@@ -207,6 +327,27 @@ export function AIChat() {
     setResearchSymbol('');
   };
 
+  const handlePushToRebalance = async (content: string) => {
+    try {
+      const trades = parseTradesFromMarkdown(content);
+
+      const res = await fetch('/api/strategies/rebalancing/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trades,
+          source: 'ai_chat',
+          expiresIn: 3600,
+        }),
+      });
+
+      const { sessionId } = await res.json();
+      router.push(`/strategies/setup/rebalancing?session=${sessionId}&fresh=true`);
+    } catch (err) {
+      console.error('Push to rebalance error:', err);
+    }
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -305,7 +446,7 @@ export function AIChat() {
                     remarkPlugins={[remarkGfm]}
                     components={MARKDOWN_COMPONENTS as any}
                   >
-                    {msg.content || '...'}
+                    {sanitizeContent(msg.content || '...')}
                   </ReactMarkdown>
 
                   {/* Streaming cursor */}
@@ -323,6 +464,43 @@ export function AIChat() {
                   {msg.content}
                 </div>
               )}
+
+              {/* Push to Rebalance — shown when AI output contains a markdown table */}
+              {msg.role === 'assistant' && !isLoading && !msg.rebalanceSession && hasMarkdownTable(msg.content || '') && (() => {
+                return (
+                  <div style={{
+                    marginTop: 12,
+                    border: '1px solid rgba(6,182,212,0.3)',
+                    borderRadius: 12,
+                    padding: 16,
+                    background: 'rgba(30,41,59,0.5)',
+                  }}>
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
+                      AI-suggested rebalancing plan ready
+                    </p>
+                    <button
+                      onClick={() => handlePushToRebalance(msg.content)}
+                      style={{
+                        width: '100%',
+                        background: '#06b6d4',
+                        border: 'none',
+                        borderRadius: 8,
+                        color: 'white',
+                        fontWeight: 600,
+                        fontSize: 13,
+                        padding: '10px 16px',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#0891b2')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '#06b6d4')}
+                    >
+                      📊 Open in Rebalancing →
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Render embedded cards (suppress when rebalance session card is shown) */}
               {msg.components && msg.components.length > 0 && !msg.rebalanceSession && (
@@ -383,29 +561,66 @@ export function AIChat() {
                 );
               })()}
 
-              {/* Fallback: keyword-based rebalance link (no structured session) */}
+              {/* Fallback: keyword-based or JSON-parsed rebalance link */}
               {msg.role === 'assistant' && !isLoading && !msg.rebalanceSession && (() => {
-                const text = (msg.content || '').toLowerCase();
+                const rawText = msg.content || '';
+                const text = rawText.toLowerCase();
                 const hasRebalance = /\brebalance\b|\brebalancing\b|\bdrift\b|\ballocation target\b/i.test(text);
-                if (!hasRebalance) return null;
+                // Check for structured trades from <rebalance-trades> JSON block
+                const parsedTrades = extractRebalanceTrades(rawText);
+                if (!hasRebalance && !parsedTrades) return null;
+
+                const tradeCount = parsedTrades?.length || 0;
+                const buys = parsedTrades?.filter(t => t.action === 'buy') || [];
+                const sells = parsedTrades?.filter(t => t.action === 'sell') || [];
+
                 return (
-                  <button
-                    onClick={() => router.push('/strategies/setup/rebalancing?source=ai')}
-                    style={{
-                      width: '100%', marginTop: 10,
-                      padding: '10px 16px',
-                      background: '#1e293b',
-                      border: '1px solid #06b6d4',
-                      borderRadius: 8,
-                      color: '#06b6d4',
-                      fontSize: 12, fontWeight: 600,
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      textAlign: 'left',
-                    }}
-                  >
-                    📊 Open Rebalancing →
-                  </button>
+                  <div style={{
+                    marginTop: 10, padding: tradeCount > 0 ? '12px 14px' : 0,
+                    background: tradeCount > 0 ? '#1e293b' : 'transparent',
+                    border: tradeCount > 0 ? '1px solid #06b6d4' : 'none',
+                    borderRadius: 10,
+                  }}>
+                    {tradeCount > 0 && (
+                      <>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
+                          📊 Rebalance Detected
+                        </div>
+                        <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
+                          {tradeCount} targets parsed
+                          {buys.length > 0 && ` · ${buys.length} buys`}
+                          {sells.length > 0 && ` · ${sells.length} sells`}
+                        </div>
+                      </>
+                    )}
+                    <button
+                      onClick={() => {
+                        const url = tradeCount > 0 && parsedTrades
+                          ? `/strategies/setup/rebalancing?source=ai&trades=${encodeURIComponent(JSON.stringify(parsedTrades.map(t => ({
+                              symbol: t.symbol,
+                              action: t.action,
+                              shares: 0,
+                              estimatedValue: 0,
+                            }))))}`
+                          : '/strategies/setup/rebalancing?source=ai';
+                        router.push(url);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 16px',
+                        background: tradeCount > 0 ? '#06b6d4' : '#1e293b',
+                        border: tradeCount > 0 ? 'none' : '1px solid #06b6d4',
+                        borderRadius: 8,
+                        color: tradeCount > 0 ? 'white' : '#06b6d4',
+                        fontSize: 12, fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {tradeCount > 0 ? 'Send to Rebalancing →' : '📊 Open Rebalancing →'}
+                    </button>
+                  </div>
                 );
               })()}
 

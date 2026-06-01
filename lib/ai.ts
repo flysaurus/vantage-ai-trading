@@ -243,8 +243,8 @@ export async function streamChat(
 
   incrementRateLimit();
 
-  // New-format modes use the JSON endpoint (non-streaming response)
-  const NEW_FORMAT_MODES = ['research', 'opportunities', 'risk', 'trends', 'health', 'tax'];
+  // All modes use the new JSON endpoint (non-streaming, better error handling)
+  const NEW_FORMAT_MODES = ['general', 'research', 'opportunities', 'risk', 'trends', 'health', 'tax'];
   const useNewFormat = !!mode && NEW_FORMAT_MODES.includes(mode);
 
   if (useNewFormat) {
@@ -280,16 +280,21 @@ export async function streamChat(
       await new Promise((r) => setTimeout(r, 6));
     }
 
-    // If rebalance_suggestion type, attach session for Push to Rebalance card
-    if (json.type === 'rebalance_suggestion' && json.sessionId && Array.isArray(json.trades)) {
+    // If rebalance_plan type, attach session for Push to Rebalance card
+    const isRebalance = json.type === 'rebalance_plan' || json.type === 'rebalance_suggestion';
+    if (isRebalance && json.sessionId && Array.isArray(json.trades)) {
       callbacks.onSession?.({
         sessionId: json.sessionId as string,
-        summary: `${json.tradeCount || 0} trades prepared`,
+        summary: `${json.tradeCount || json.trades.length || 0} trades prepared`,
         trades: (json.trades as any[]).map((t: any) => ({
           symbol: t.symbol,
           action: t.action || t.type || 'add',
-          shares: 0,
-          estimatedValue: Math.abs(t.dollarAmount || 0),
+          shares: t.shares || 0,
+          estimatedValue: Math.abs(t.dollarAmount || t.estimatedValue || 0),
+          currentPct: t.currentPct,
+          targetPct: t.targetPct,
+          type: t.type || 'stock',
+          reason: t.reason || '',
         })),
       });
     }

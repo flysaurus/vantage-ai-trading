@@ -41,14 +41,18 @@ function AppShell() {
   const [showGreeting, setShowGreeting] = useState(false);
   const greetingShown = useRef(false);
 
-  // ── Greeting modal after login (once per tab session) ──
+  // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
   useEffect(() => {
     if (!user || !isDataLoaded) return;
     if (showOnboarding || showBrokerGate) return;
-    if (typeof window !== 'undefined' && sessionStorage.getItem('vantage_greeting_shown')) return;
-    sessionStorage.setItem('vantage_greeting_shown', '1');
-    greetingShown.current = true;
-    setShowGreeting(true);
+
+    const fromLogin = sessionStorage.getItem('show_greeting');
+    if (fromLogin === 'true') {
+      sessionStorage.removeItem('show_greeting');
+      greetingShown.current = true;
+      // Short delay to let the main app render fully behind the modal
+      setTimeout(() => setShowGreeting(true), 300);
+    }
   }, [user, isDataLoaded, showOnboarding, showBrokerGate]);
 
   // ── Welcome greeting banner (suppressed if modal shown) ──
@@ -134,15 +138,6 @@ function AppShell() {
     );
   }
 
-  // Greeting modal — Claude-style welcome after login
-  if (showGreeting) {
-    return (
-      <GreetingModal
-        onComplete={() => setShowGreeting(false)}
-      />
-    );
-  }
-
   const mainContent = (
     <>
       {greeting && (
@@ -177,6 +172,13 @@ function AppShell() {
     <div className="app-shell">
       {isDesktop && <DesktopSidebar />}
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
+
+      {/* Greeting modal — renders OVER fully loaded app with backdrop blur */}
+      {showGreeting && (
+        <GreetingModal
+          onComplete={() => setShowGreeting(false)}
+        />
+      )}
     </div>
   );
 }

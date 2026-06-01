@@ -1,4 +1,5 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useTabStore, useOrderFormStore } from '@/store';
 import type { AICardComponent } from '@/types';
 import { TrendingUp, TrendingDown, AlertTriangle, BarChart3, RefreshCw } from 'lucide-react';
@@ -41,6 +42,7 @@ const CARD_STYLES: Record<string, { bg: string; text: string; icon: typeof Trend
 };
 
 export function ConvictionCard({ card }: ConvictionCardProps) {
+  const router = useRouter();
   const { setTab } = useTabStore();
   const { setSymbol } = useOrderFormStore();
 
@@ -64,8 +66,8 @@ export function ConvictionCard({ card }: ConvictionCardProps) {
         setTab('portfolio');
         break;
       case 'rebalance':
-        // Navigate to AI tab for rebalance plan details
-        setTab('ai');
+        // Navigate to rebalancing strategy page with AI-sourced flag
+        router.push('/strategies/setup/rebalancing?source=ai');
         break;
     }
   };
