@@ -284,6 +284,18 @@ export default function RebalancingPage() {
             }));
             setEditedOrders(orders);
             setAutoMode('auto');
+
+            // Build targets map from session trades so the allocation table shows AI-suggested targets
+            const targetsFromSession: Record<string, number> = {};
+            data.trades.forEach((t: any) => {
+              if (t.targetPct != null) {
+                targetsFromSession[t.symbol] = t.targetPct;
+              }
+            });
+            // Also include current portfolio positions in targets for sell trades
+            // (they keep their targetPct from session, or currentPct if no explicit target)
+            setTargets(targetsFromSession);
+            setTargetsSaved(false);
             setSessionLoading(false);
 
             // Clear fresh param from URL after loading
