@@ -599,12 +599,15 @@ function calculateRebalanceTrades(
     const driftValue = Math.abs((drift / 100) * totalValue);
     const currentPrice = position?.currentPrice || 0;
 
-    if (currentPrice === 0) continue;
+    // Only skip if we're selling and don't have a price (shouldn't happen for held positions)
+    // Buy trades for new positions are valid even without a live price in portfolio data
+    const isBuy = drift < 0;
+    if (!isBuy && currentPrice === 0) continue;
 
     trades.push({
       symbol: target.symbol,
-      action: drift > 0 ? 'sell' : 'buy',
-      shares: Math.round(driftValue / currentPrice),
+      action: isBuy ? 'buy' : 'sell',
+      shares: currentPrice > 0 ? Math.round(driftValue / currentPrice) : Math.round(driftValue), // fallback: $1/share guess for unknown prices
       dollarAmount: Math.round(driftValue),
       currentPct: Math.round(currentPct * 10) / 10,
       targetPct: target.targetPercent,

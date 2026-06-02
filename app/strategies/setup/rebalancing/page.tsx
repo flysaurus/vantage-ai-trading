@@ -330,26 +330,11 @@ export default function RebalancingPage() {
           setTargetsSaved(true);
           return;
         }
-        // Fallback: init from current positions
-        if (positions.length && Object.keys(targets).length === 0) {
-          const init: Record<string, number> = {};
-          positions.forEach(p => {
-            const pct = p.portfolioPercent ?? ((p.marketValue / totalValue) * 100);
-            init[p.symbol] = Math.round(pct * 100) / 100;
-          });
-          setTargets(init);
-        }
+        // No saved targets and no session — leave targets empty
+        // (user should use AI-suggested plans or set targets manually)
       })
       .catch(() => {
-        // Fallback on error
-        if (positions.length && Object.keys(targets).length === 0) {
-          const init: Record<string, number> = {};
-          positions.forEach(p => {
-            const pct = p.portfolioPercent ?? ((p.marketValue / totalValue) * 100);
-            init[p.symbol] = Math.round(pct * 100) / 100;
-          });
-          setTargets(init);
-        }
+        // No saved targets — leave targets empty
       });
   }, [positions, totalValue]);
 
