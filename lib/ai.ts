@@ -14,7 +14,7 @@
  *   - Cost estimates shown subtly in chat UI
  */
 
-import type { AICardComponent, Position } from '@/types';
+import type { AICardComponent, Position, RebalanceSession } from '@/types';
 import { extractStructuredCards, structuredCardToComponent } from './schemas';
 
 const DEEPSEEK_CHAT_COST_PER_1K_INPUT = 0.00014;
@@ -45,24 +45,6 @@ export interface ChatContext {
     limitPrice?: number;
     stopPrice?: number;
   }>;
-}
-
-export interface RebalanceSession {
-  sessionId: string;
-  summary: string;
-  trades: Array<{
-    symbol: string;
-    action: string;
-    shares: number;
-    estimatedValue: number;
-    currentPct?: number;
-    targetPct?: number;
-    type?: string;
-    reason?: string;
-  }>;
-  targetSource?: 'saved' | 'style_default';
-  styleName?: string;
-  targets?: Array<{ symbol: string; targetPercent: number }>;
 }
 
 export interface StreamCallbacks {
