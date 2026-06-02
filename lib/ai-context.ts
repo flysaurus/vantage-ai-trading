@@ -18,6 +18,8 @@ import {
 import type { Quote, CompanyProfile, FundamentalMetrics, Candle } from '@/lib/market-data';
 import { industryToSector } from '@/lib/sectors';
 import { getInvestorStyleTargets } from '@/lib/investor-style-targets';
+import { getTopSectorLeaders, getSectorGapsFromStyle, STYLE_STRATEGY_NOTES } from '@/lib/sector-leaders';
+import { formatStockForContext } from '@/lib/stock-analyst';
 
 // ─── Public Interfaces ───────────────────────────────────────
 
@@ -108,6 +110,7 @@ export interface AIContext {
   styleAllocationName: string;
   styleAllocationDescription: string;
   suggestedETFs: SuggestedETF[];
+  sectorLeadersText: string | null; // pre-formatted deep analysis for prompt injection
   timestamp: string;
 }
 
@@ -1165,6 +1168,95 @@ async function fetchUserProfile(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SECTOR LEADERS FETCHER (Deep Analysis)
+// ═══════════════════════════════════════════════════════════════
+
+const STOCK_ANALYSIS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Build the sector leaders text for AI context.
+ * Fetches deep analysis for top sector gaps (max 3 sectors × 3 leaders = 9 stocks).
+ * Cached for 1 hour to respect Finnhub rate limits (60 req/min).
+ * Gracefully degrades — returns null on any failure.
+ */
+async function buildSectorLeadersText(
+  userId: string,
+  targetAllocations: Array<{ symbol: string; targetPercent: number }>,
+  positions: Array<{ symbol: string; marketValue: number }>,
+  totalValue: number,
+  investorStyle: string,
+): Promise<string | null> {
+  // Only fetch for style-default targets (ETF-based sector gaps)
+  // Saved user targets are usually position-level, not sector-level
+  if (targetAllocations.length === 0) return null;
+
+  try {
+    // Check stock-analysis cache first
+    const cacheKey = `sector-leaders:${userId}:${investorStyle}`;
+    const cached = await getCachedValue(userId, cacheKey);
+    if (cached) {
+      console.log('[AIContext] Sector leaders Cache HIT for user', userId.slice(0, 8));
+      return cached;
+    }
+
+    // Get sector gaps from style ETF targets
+    const gaps = getSectorGapsFromStyle(targetAllocations, positions, totalValue);
+    if (gaps.length === 0) {
+      console.log('[AIContext] No sector gaps found — skipping sector leaders');
+      return null;
+    }
+
+    // Limit to top 3 sectors with largest gaps
+    const topGaps = gaps.slice(0, 3);
+    const styleName = investorStyle === 'lynch' ? 'Growth-Style' :
+      investorStyle === 'buffett' ? 'Value-Style' :
+      investorStyle === 'livermore' ? 'Momentum-Style' :
+      investorStyle === 'soros' ? 'Macro-Style' : 'Dividend-Style';
+
+    // Fetch top 3 leaders per sector with a concurrency limit to respect rate limits
+    const lines: string[] = [];
+    lines.push('SECTOR LEADERS ANALYSIS (deep fundamentals, technicals, sentiment):');
+    lines.push(`Based on ${styleName} investment approach.`);
+    lines.push('');
+
+    // Process sectors sequentially to stay under rate limits
+    for (const gap of topGaps) {
+      lines.push(`  Sector: ${gap.sector} (current: ${gap.currentPct.toFixed(1)}% vs target: ${gap.targetPct.toFixed(1)}%, gap: ${gap.gap.toFixed(1)}%):`);
+
+      try {
+        const leaders = await getTopSectorLeaders(gap.sector, investorStyle, 3);
+        if (leaders.length === 0) {
+          lines.push(`    !! No data available for this sector`);
+        } else {
+          for (const l of leaders) {
+            lines.push(formatStockForContext(l, styleName));
+          }
+        }
+      } catch {
+        lines.push(`    !! Data fetch failed for ${gap.sector}`);
+      }
+
+      lines.push('');
+    }
+
+    if (lines.length <= 3) return null; // nothing useful
+
+    const text = lines.join('\n');
+
+    // Cache for 1 hour
+    try {
+      await setCachedValue(userId, cacheKey, text);
+    } catch {
+      // cache write failure is non-critical
+    }
+
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN EXPORT: buildAIContext
 // ═══════════════════════════════════════════════════════════════
 
@@ -1222,6 +1314,25 @@ export async function buildAIContext(userId: string, overrides?: { investorStyle
     isDemo = true;
   }
 
+  // 5. Build sector leaders deep analysis (fire-and-forget, non-blocking)
+  let sectorLeadersText: string | null = null;
+  try {
+    if (profile.savedTargetAllocations && profile.savedTargetAllocations.length > 0) {
+      sectorLeadersText = await buildSectorLeadersText(
+        userId,
+        profile.savedTargetAllocations,
+        portfolio.positions.map(p => ({ symbol: p.symbol, marketValue: p.marketValue })),
+        portfolio.totalValue,
+        profile.investorStyle,
+      );
+      if (sectorLeadersText) {
+        console.log('[AIContext] Sector leaders data built for user', userId.slice(0, 8));
+      }
+    }
+  } catch {
+    // Sector leaders failure is non-critical
+  }
+
   const context: AIContext = {
     portfolio,
     market,
@@ -1233,6 +1344,7 @@ export async function buildAIContext(userId: string, overrides?: { investorStyle
     styleAllocationName: profile.styleAllocationName,
     styleAllocationDescription: profile.styleAllocationDescription,
     suggestedETFs,
+    sectorLeadersText,
     timestamp: new Date().toISOString(),
   };
 
@@ -1316,6 +1428,14 @@ export function formatContextForPrompt(context: AIContext): string {
   if (riskFlags.length > 0) {
     lines.push('Risk Flags:');
     lines.push(...riskFlags);
+    lines.push('');
+  }
+
+  // ── Sector Leaders Deep Analysis (Stock Analyst Mode) ──
+  if (context.sectorLeadersText) {
+    lines.push(context.sectorLeadersText);
+    lines.push('');
+    lines.push('Use this deep analysis data when recommending specific stocks. Always include one numeric fact from this data (PE, yield, RSI, EPS growth%) in your analysis column.');
     lines.push('');
   }
 

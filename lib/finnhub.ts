@@ -85,3 +85,196 @@ export function finnhubIndustryToSector(finnhubIndustry: string): string | null 
 
   return null;
 }
+
+// ─── Finnhub News ─────────────────────────────────────────────
+
+export interface FinnhubNewsItem {
+  category: string;
+  datetime: number;
+  headline: string;
+  id: number;
+  image: string;
+  related: string;
+  source: string;
+  summary: string;
+  url: string;
+}
+
+/**
+ * Fetch company news for a symbol (last 7 days, up to 10 articles).
+ * Free tier: included in 60 req/min.
+ */
+export async function getCompanyNews(symbol: string, fromDate?: string, toDate?: string): Promise<FinnhubNewsItem[]> {
+  const token = getToken();
+  const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const to = toDate || new Date().toISOString().slice(0, 10);
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/company-news?symbol=${encodeURIComponent(symbol.toUpperCase())}&from=${from}&to=${to}&token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
+// ─── Finnhub Financial Metrics ────────────────────────────────
+
+export interface FinnhubMetrics {
+  pe: number | null;
+  epsGrowthTTM: number | null;
+  revenueGrowthTTM: number | null;
+  revenueGrowth3Y: number | null;
+  grossMargin: number | null;
+  netProfitMargin: number | null;
+  roe: number | null;
+  roa: number | null;
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  priceToBook: number | null;
+  dividendYield: number | null;
+  beta: number | null;
+  marketCap: number | null;
+}
+
+/**
+ * Fetch detailed financial metrics from Finnhub.
+ * Maps the flat `metric` object into our typed interface.
+ */
+export async function getFinancialMetrics(symbol: string): Promise<FinnhubMetrics | null> {
+  const token = getToken();
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/stock/metric?symbol=${encodeURIComponent(symbol.toUpperCase())}&metric=all&token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const m = data?.metric;
+    if (!m) return null;
+    return {
+      pe: m.peBasicExclExtraTTM ?? m.peTTM ?? null,
+      epsGrowthTTM: m.epsGrowthTTMYoy ?? null,
+      revenueGrowthTTM: m.revenueGrowthTTMYoy ?? null,
+      revenueGrowth3Y: m.revenueGrowth3Y ?? null,
+      grossMargin: m.grossMarginTTM ?? null,
+      netProfitMargin: m.netProfitMarginTTM ?? m.netProfitMarginAnnual ?? null,
+      roe: m.roeTTM ?? m.roeAnnual ?? null,
+      roa: m.roaTTM ?? m.roaAnnual ?? null,
+      debtToEquity: m.totalDebtTotalEquityAnnual ?? m.totalDebtTotalEquityQuarterly ?? null,
+      currentRatio: m.currentRatioAnnual ?? m.currentRatioQuarterly ?? null,
+      priceToBook: m.pbAnnual ?? m.pbQuarterly ?? null,
+      dividendYield: m.dividendYieldIndicatedAnnual ?? null,
+      beta: m.beta ?? null,
+      marketCap: m.marketCapitalization != null ? m.marketCapitalization * 1e6 : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Finnhub Earnings ─────────────────────────────────────────
+
+export interface FinnhubEarnings {
+  period: string;
+  actual: number | null;
+  estimate: number | null;
+  surprise: number | null;
+  surprisePercent: number | null;
+}
+
+/**
+ * Fetch recent earnings surprises (last 4 quarters).
+ */
+export async function getEarningsSurprises(symbol: string): Promise<FinnhubEarnings[]> {
+  const token = getToken();
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/stock/earnings?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.slice(0, 4).map((e: any) => ({
+      period: e.period || '',
+      actual: e.actual ?? null,
+      estimate: e.estimate ?? null,
+      surprise: e.surprise ?? null,
+      surprisePercent: e.surprisePercent ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─── Finnhub Recommendation Trends ────────────────────────────
+
+export interface FinnhubRecommendation {
+  period: string;
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+}
+
+/**
+ * Fetch analyst recommendation trends.
+ */
+export async function getRecommendationTrends(symbol: string): Promise<FinnhubRecommendation[]> {
+  const token = getToken();
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/stock/recommendation?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.slice(0, 4);
+  } catch {
+    return [];
+  }
+}
+
+// ─── Finnhub Price Target ─────────────────────────────────────
+
+export interface FinnhubPriceTarget {
+  symbol: string;
+  targetHigh: number | null;
+  targetLow: number | null;
+  targetMean: number | null;
+  targetMedian: number | null;
+  lastUpdated: string;
+}
+
+/**
+ * Fetch analyst price targets.
+ */
+export async function getPriceTarget(symbol: string): Promise<FinnhubPriceTarget | null> {
+  const token = getToken();
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/stock/price-target?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data) return null;
+    return {
+      symbol: data.symbol || symbol.toUpperCase(),
+      targetHigh: data.targetHigh ?? null,
+      targetLow: data.targetLow ?? null,
+      targetMean: data.targetMean ?? null,
+      targetMedian: data.targetMedian ?? null,
+      lastUpdated: data.lastUpdated || '',
+    };
+  } catch {
+    return null;
+  }
+}

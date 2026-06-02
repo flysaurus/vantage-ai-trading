@@ -268,6 +268,12 @@ ${styleGuidance}
 
 `;
 
+  // Inject sector leaders deep analysis (stock analyst mode)
+  if (ctx?.sectorLeadersText) {
+    prompt += ctx.sectorLeadersText as string;
+    prompt += '\n\n---\n\n';
+  }
+
   // Inject live market data
   if (stockData && Object.keys(stockData).length > 0) {
     prompt += `## LIVE MARKET DATA
@@ -826,7 +832,13 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
         const sourceNote = isStyleDefault
           ? `Based on your ${styleName} allocation targets (you can customize and save these in the Rebalancing strategy).`
           : 'Based on your saved target allocations.';
-        const explainPrompt = `Explain these rebalancing trades in ${modeStr}. ${sourceNote} Do not change the trades. Only explain the drift from targets.\nTrades: ${JSON.stringify(trades)}`;
+
+        // Add stock analyst context when deep data is available
+        const analystNote = context.sectorLeadersText
+          ? ` 🎯 ${styleName} Expert Analysis Ready — deep fundamental, technical, and sentiment analysis from 100+ data points per sector. Use the SECTOR LEADERS ANALYSIS data to recommend specific stocks alongside ETFs. Include one numeric fact per recommendation (PE, yield, RSI, EPS growth, etc.).`
+          : '';
+
+        const explainPrompt = `Explain these rebalancing trades in ${modeStr}. ${sourceNote}${analystNote} Do not change the trades. Only explain the drift from targets.\nTrades: ${JSON.stringify(trades)}`;
 
         const systemPrompt = buildSystemPrompt(context, 'general', responseMode);
         let explanation: string;
