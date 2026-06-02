@@ -17,6 +17,7 @@ import {
 } from '@/lib/market-data';
 import type { Quote, CompanyProfile, FundamentalMetrics, Candle } from '@/lib/market-data';
 import { industryToSector } from '@/lib/sectors';
+import { getInvestorStyleTargets } from '@/lib/investor-style-targets';
 
 // ─── Public Interfaces ───────────────────────────────────────
 
@@ -103,6 +104,9 @@ export interface AIContext {
   investorStyle: string;
   isDemo: boolean;
   savedTargetAllocations: Array<{ symbol: string; targetPercent: number }> | null;
+  targetSource: 'saved' | 'style_default';
+  styleAllocationName: string;
+  styleAllocationDescription: string;
   suggestedETFs: SuggestedETF[];
   timestamp: string;
 }
@@ -1093,9 +1097,15 @@ async function fetchUserProfile(
 ): Promise<{
   investorStyle: string;
   savedTargetAllocations: Array<{ symbol: string; targetPercent: number }> | null;
+  targetSource: 'saved' | 'style_default';
+  styleAllocationName: string;
+  styleAllocationDescription: string;
 }> {
   let investorStyle = 'buffett'; // default
   let savedTargetAllocations: Array<{ symbol: string; targetPercent: number }> | null = null;
+  let targetSource: 'saved' | 'style_default' = 'saved';
+  let styleAllocationName = 'Value-Style';
+  let styleAllocationDescription = '';
 
   try {
     const supabase = createServerClient();
@@ -1127,12 +1137,31 @@ async function fetchUserProfile(
         symbol,
         targetPercent: targetPercent * 100, // store as percentage
       }));
+      targetSource = 'saved';
+    } else {
+      // No saved targets — use investor style defaults
+      const styleDefaults = getInvestorStyleTargets(investorStyle);
+      savedTargetAllocations = styleDefaults.targets.map(t => ({
+        symbol: t.symbol,
+        targetPercent: t.targetPercent,
+      }));
+      targetSource = 'style_default';
+      styleAllocationName = styleDefaults.styleName;
+      styleAllocationDescription = styleDefaults.description;
     }
   } catch {
-    // defaults
+    // fallback: use style defaults
+    const styleDefaults = getInvestorStyleTargets(investorStyle);
+    savedTargetAllocations = styleDefaults.targets.map(t => ({
+      symbol: t.symbol,
+      targetPercent: t.targetPercent,
+    }));
+    targetSource = 'style_default';
+    styleAllocationName = styleDefaults.styleName;
+    styleAllocationDescription = styleDefaults.description;
   }
 
-  return { investorStyle, savedTargetAllocations };
+  return { investorStyle, savedTargetAllocations, targetSource, styleAllocationName, styleAllocationDescription };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1200,6 +1229,9 @@ export async function buildAIContext(userId: string, overrides?: { investorStyle
     investorStyle: profile.investorStyle,
     isDemo,
     savedTargetAllocations: profile.savedTargetAllocations,
+    targetSource: profile.targetSource,
+    styleAllocationName: profile.styleAllocationName,
+    styleAllocationDescription: profile.styleAllocationDescription,
     suggestedETFs,
     timestamp: new Date().toISOString(),
   };
@@ -1327,9 +1359,15 @@ export function formatContextForPrompt(context: AIContext): string {
     const allocStr = context.savedTargetAllocations
       .map((a) => `${a.symbol}: ${a.targetPercent.toFixed(1)}%`)
       .join(', ');
-    lines.push(`Saved Target Allocations: ${allocStr}`);
+    const sourceLabel = context.targetSource === 'style_default'
+      ? `${context.styleAllocationName} defaults`
+      : 'Your saved targets';
+    lines.push(`Target Allocations (${sourceLabel}): ${allocStr}`);
+    if (context.targetSource === 'style_default') {
+      lines.push(`💡 These are ${context.styleAllocationName} defaults. The user can save custom targets in the Rebalancing strategy page.`);
+    }
   } else {
-    lines.push('Saved Target Allocations: None');
+    lines.push('Target Allocations: None');
   }
 
   // ── Sector Gap ETF Suggestions (live data) ──

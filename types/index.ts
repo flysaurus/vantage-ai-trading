@@ -108,6 +108,9 @@ export interface RebalanceSession {
   sessionId: string;
   summary: string;
   trades: Array<{ symbol: string; action: string; shares: number; estimatedValue: number }>;
+  targetSource?: 'saved' | 'style_default';
+  styleName?: string;
+  targets?: Array<{ symbol: string; targetPercent: number }>;
 }
 
 export type AICardType = 'buy_signal' | 'sell_signal' | 'risk_analysis' | 'insight' | 'rebalance';

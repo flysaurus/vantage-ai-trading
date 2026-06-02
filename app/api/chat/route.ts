@@ -806,16 +806,24 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
     message.toLowerCase().includes(k));
 
   if (isRebalanceRequest) {
-    if (context.savedTargetAllocations && context.savedTargetAllocations.length > 0) {
+    const targets = context.savedTargetAllocations;
+    const isStyleDefault = context.targetSource === 'style_default';
+    const styleName = context.styleAllocationName || 'Value-Style';
+    const hasTargets = targets && targets.length > 0;
+
+    if (hasTargets) {
       const trades = calculateRebalanceTrades(
         context.portfolio,
-        context.savedTargetAllocations
+        targets
       );
 
       if (trades.length > 0) {
         const sessionId = await storeRebalanceSession(userId, trades);
         const modeStr = responseMode === 'summary' ? '3-4 bullets' : 'detail';
-        const explainPrompt = `Explain these rebalancing trades in ${modeStr}. Do not change the trades. Only explain the drift from targets.\nTrades: ${JSON.stringify(trades)}`;
+        const sourceNote = isStyleDefault
+          ? `Based on your ${styleName} allocation targets (you can customize and save these in the Rebalancing strategy).`
+          : 'Based on your saved target allocations.';
+        const explainPrompt = `Explain these rebalancing trades in ${modeStr}. ${sourceNote} Do not change the trades. Only explain the drift from targets.\nTrades: ${JSON.stringify(trades)}`;
 
         const systemPrompt = buildSystemPrompt(context, 'general', responseMode);
         let explanation: string;
@@ -842,7 +850,14 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
           sessionId,
           trades,
           tradeCount: trades.length,
-          estimatedValue: trades.reduce((sum, t) => sum + t.dollarAmount, 0)
+          estimatedValue: trades.reduce((sum, t) => sum + t.dollarAmount, 0),
+          targetSource: context.targetSource,
+          styleName: context.styleAllocationName,
+          // Include targets so client can offer "Save as My Targets"
+          targets: targets.map(t => ({
+            symbol: t.symbol,
+            targetPercent: t.targetPercent,
+          })),
         });
       } else {
         return NextResponse.json({
@@ -851,9 +866,10 @@ async function handleNewChat(body: any, userId: string, req: NextRequest) {
         });
       }
     } else {
+      // Edge case: should never happen since we always have style defaults now
       return NextResponse.json({
-        content: "You don't have saved target allocations yet. Set your targets in the Rebalancing strategy first to get consistent, math-based rebalancing advice.",
-        type: 'no_targets'
+        content: "I wasn't able to determine your allocation targets. Try setting your targets in the Rebalancing strategy first.",
+        type: 'text'
       });
     }
   }

@@ -47,12 +47,30 @@ export interface ChatContext {
   }>;
 }
 
+export interface RebalanceSession {
+  sessionId: string;
+  summary: string;
+  trades: Array<{
+    symbol: string;
+    action: string;
+    shares: number;
+    estimatedValue: number;
+    currentPct?: number;
+    targetPct?: number;
+    type?: string;
+    reason?: string;
+  }>;
+  targetSource?: 'saved' | 'style_default';
+  styleName?: string;
+  targets?: Array<{ symbol: string; targetPercent: number }>;
+}
+
 export interface StreamCallbacks {
   onToken: (token: string) => void;
   onCard: (card: AICardComponent) => void;
   onDone: (tokens: { input: number; output: number }, cost: number) => void;
   onError: (error: string) => void;
-  onSession?: (session: { sessionId: string; summary: string; trades: Array<{ symbol: string; action: string; shares: number; estimatedValue: number }> }) => void;
+  onSession?: (session: RebalanceSession) => void;
 }
 
 export interface ChatResult {
@@ -296,6 +314,9 @@ export async function streamChat(
           type: t.type || 'stock',
           reason: t.reason || '',
         })),
+        targetSource: json.targetSource as 'saved' | 'style_default' | undefined,
+        styleName: json.styleName as string | undefined,
+        targets: json.targets as Array<{ symbol: string; targetPercent: number }> | undefined,
       });
     }
 

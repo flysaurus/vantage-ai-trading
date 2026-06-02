@@ -348,6 +348,34 @@ export function AIChat() {
     }
   };
 
+  const handleSaveStyleTargets = async (targets: Array<{ symbol: string; targetPercent: number }>) => {
+    try {
+      const targetAllocations = targets.map(t => ({
+        symbol: t.symbol,
+        targetPercent: t.targetPercent / 100, // API expects decimal
+      }));
+
+      const res = await fetch('/api/strategies/rebalancing/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetAllocations,
+          driftThreshold: 5,
+          alertEnabled: false,
+        }),
+      });
+
+      if (res.ok) {
+        // Reload to pick up the now-saved targets
+        window.location.reload();
+      } else {
+        console.error('Save targets failed:', await res.json());
+      }
+    } catch (err) {
+      console.error('Save style targets error:', err);
+    }
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -518,6 +546,8 @@ export function AIChat() {
                 const totalValue = session.trades?.reduce((sum: number, t: any) => sum + (t.estimatedValue || 0), 0) || 0;
                 const buys = session.trades?.filter((t: any) => t.action === 'buy' || t.action === 'add') || [];
                 const sells = session.trades?.filter((t: any) => t.action === 'sell' || t.action === 'trim') || [];
+                const isStyleDefault = session.targetSource === 'style_default';
+                const styleName = session.styleName || '';
                 return (
                   <div style={{
                     marginTop: 10,
@@ -528,6 +558,7 @@ export function AIChat() {
                   }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
                       📊 Rebalance Plan Ready
+                      {isStyleDefault && <span style={{ fontSize: 10, color: '#f59e0b', marginLeft: 6 }}>({styleName} defaults)</span>}
                     </div>
                     <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
                       {tradeCount} trades · Est. ${totalValue.toLocaleString()}
@@ -557,6 +588,26 @@ export function AIChat() {
                     >
                       Push to Rebalance →
                     </button>
+                    {isStyleDefault && session.targets && session.targets.length > 0 && (
+                      <button
+                        onClick={() => handleSaveStyleTargets(session.targets!)}
+                        style={{
+                          width: '100%',
+                          marginTop: 8,
+                          padding: '8px 16px',
+                          background: '#1e293b',
+                          border: '1px solid #f59e0b',
+                          borderRadius: 8,
+                          color: '#f59e0b',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        💾 Save These as My Targets
+                      </button>
+                    )}
                   </div>
                 );
               })()}
