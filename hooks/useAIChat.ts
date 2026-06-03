@@ -129,7 +129,7 @@ export function useAIChat() {
 
       // Rate limit check
       if (isRateLimited()) {
-        setError('AI cooldown — you\'ve reached 15 calls this hour. Try again later.');
+        setError('You\'ve reached 75 messages today. Resets at midnight EST.');
         return;
       }
 

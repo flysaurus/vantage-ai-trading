@@ -400,7 +400,7 @@ export function AIChat() {
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">🦊</div>
-            <div className="empty-title">Ready to make some money, {userInitial}?</div>
+            <div className="empty-title">Welcome back, {userInitial}.</div>
             <div className="empty-subtitle">
               AI-powered portfolio analysis and market intelligence.
             </div>
@@ -681,7 +681,7 @@ export function AIChat() {
                   fontSize: 9, color: '#64748b', marginTop: 4,
                   textAlign: 'right', fontStyle: 'italic',
                 }}>
-                  ~${lastCost.toFixed(4)} · {remainingCalls}/25 calls left
+                  ~${lastCost.toFixed(4)} · {remainingCalls}/75 messages left
                 </div>
               )}
             </div>
@@ -718,7 +718,7 @@ export function AIChat() {
             border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8,
             fontSize: 10, color: '#fbbf24', textAlign: 'center',
           }}>
-            ⚡ {remainingCalls}/25 AI calls available this hour
+            ⚡ {remainingCalls}/75 messages remaining today
           </div>
         )}
 
@@ -728,7 +728,7 @@ export function AIChat() {
             border: '1px solid rgba(248,113,113,0.25)', borderRadius: 8,
             fontSize: 10, color: '#f87171', textAlign: 'center',
           }}>
-            🛑 AI cooldown — wait for the hourly reset
+            🛑 Daily limit reached — resets at midnight EST
           </div>
         )}
 

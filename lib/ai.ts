@@ -9,7 +9,7 @@
  *   - deepseek-reasoner: complex analysis, trade signals, risk scoring
  *
  * Cost control:
- *   - Max 15 AI calls per hour per user
+ *   - Max 75 messages per day, resets at midnight EST
  *   - Responses cached in localStorage for 1 hour
  *   - Cost estimates shown subtly in chat UI
  */
@@ -64,15 +64,25 @@ export interface ChatResult {
 
 // ─── Rate limiting ───
 const RATE_LIMIT_KEY = 'vantage_ai_rate_limit';
-const MAX_CALLS_PER_HOUR = 25;
+const MAX_MESSAGES_PER_DAY = 75;
 
 interface RateLimitState {
   count: number;
   resetAt: number; // timestamp when the window resets
 }
 
+function getESTMidnight(): number {
+  // Returns timestamp of next midnight EST (America/New_York)
+  const now = new Date();
+  const etNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const etMidnight = new Date(etNow);
+  etMidnight.setDate(etMidnight.getDate() + 1);
+  etMidnight.setHours(0, 0, 0, 0);
+  return etMidnight.getTime();
+}
+
 function getRateLimit(): RateLimitState {
-  if (typeof window === 'undefined') return { count: 0, resetAt: 0 };
+  if (typeof window === 'undefined') return { count: 0, resetAt: getESTMidnight() };
   try {
     const raw = localStorage.getItem(RATE_LIMIT_KEY);
     if (!raw) return { count: 0, resetAt: 0 };
@@ -93,19 +103,19 @@ function incrementRateLimit(): void {
   const current = getRateLimit();
   const newState: RateLimitState = {
     count: current.count + 1,
-    resetAt: current.resetAt || Date.now() + 3600_000, // 1 hour window
+    resetAt: current.resetAt || getESTMidnight(), // midnight EST
   };
   localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(newState));
 }
 
 export function isRateLimited(): boolean {
   const state = getRateLimit();
-  return state.count >= MAX_CALLS_PER_HOUR;
+  return state.count >= MAX_MESSAGES_PER_DAY;
 }
 
 export function getRemainingCalls(): number {
   const state = getRateLimit();
-  return Math.max(0, MAX_CALLS_PER_HOUR - state.count);
+  return Math.max(0, MAX_MESSAGES_PER_DAY - state.count);
 }
 
 // ─── Response caching (localStorage, 1 hour) ───
@@ -237,7 +247,7 @@ export async function streamChat(
 
   // Rate limit check
   if (isRateLimited()) {
-    callbacks.onError('Rate limit reached: 15 AI calls per hour. Please wait before sending more messages.');
+    callbacks.onError('Daily limit reached: 75 messages per day. Resets at midnight EST.');
     return;
   }
 
