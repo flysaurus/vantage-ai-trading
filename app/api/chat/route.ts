@@ -67,6 +67,46 @@ const DEEP_ANALYSIS_MODES = new Set([
 
 // ─── Auth ────────────────────────────────────────────────────
 
+/**
+ * Fire-and-forget: inserts user + assistant messages into chat_history.
+ * Does NOT block the response — errors are logged silently.
+ */
+function saveChatHistory(params: {
+  userId: string;
+  userMessage: string;
+  aiContent: string;
+  supabase: ReturnType<typeof createServerClient>;
+  investorStyle: string;
+}) {
+  const { userId, userMessage, aiContent, supabase, investorStyle } = params;
+
+  // Insert user message + assistant response in parallel
+  Promise.all([
+    (supabase as any)
+      .from('chat_history')
+      .insert({
+        user_id: userId,
+        message_type: 'user_message',
+        role: 'user',
+        content: userMessage,
+        investor_style: investorStyle,
+      }),
+    (supabase as any)
+      .from('chat_history')
+      .insert({
+        user_id: userId,
+        message_type: 'ai_response',
+        role: 'assistant',
+        content: aiContent,
+        investor_style: investorStyle,
+      }),
+  ]).then(() => {
+    console.log('[chat] Messages saved to chat_history');
+  }).catch((err: any) => {
+    console.error('[chat] Failed to save chat history:', err?.message || err);
+  });
+}
+
 async function getUserIdFromSession(req: NextRequest): Promise<string> {
   const sessionCookie = req.cookies.get('session')?.value || '';
   if (sessionCookie) {
@@ -173,6 +213,8 @@ export async function POST(req: NextRequest) {
 
     // ▸ 8. Theme detection & basket generation
     const detectedTheme = detectTheme(message);
+    console.log('[chat] Input:', message);
+    console.log('[chat] Detected theme:', detectedTheme);
 
     if (detectedTheme || mode === 'theme') {
       const themeKey = detectedTheme || 'ai_infrastructure';
@@ -318,6 +360,15 @@ Identify top 2 picks for this style.`;
         (aiResponse.tokensUsed || 0) * 0.000003,
       );
 
+      // ── Save to chat history (fire-and-forget) ──
+      saveChatHistory({
+        userId,
+        userMessage: message,
+        aiContent: aiResponse.content,
+        supabase,
+        investorStyle,
+      });
+
       return NextResponse.json({
         content: aiResponse.content,
         type: 'theme_basket',
@@ -362,6 +413,15 @@ Identify top 2 picks for this style.`;
       aiResponse.tokensUsed,
       (aiResponse.tokensUsed || 0) * costPerToken,
     );
+
+    // ── Save to chat history (fire-and-forget) ──
+    saveChatHistory({
+      userId,
+      userMessage: message,
+      aiContent: aiResponse.content,
+      supabase,
+      investorStyle,
+    });
 
     return NextResponse.json({
       content: aiResponse.content,
