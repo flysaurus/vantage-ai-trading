@@ -22,17 +22,22 @@ export async function checkUsageLimit(
   const today = new Date().toISOString().split('T')[0];
   const supabase = createServerClient();
 
-  const { data } = await (supabase as any)
-    .from('ai_usage')
-    .select('message_count, deep_analysis_count')
-    .eq('user_id', userId)
-    .eq('date', today)
-    .single();
-
-  const count =
-    type === 'message'
-      ? (data?.message_count || 0)
-      : (data?.deep_analysis_count || 0);
+  let count = 0;
+  try {
+    const { data } = await (supabase as any)
+      .from('ai_usage')
+      .select('message_count, deep_analysis_count')
+      .eq('user_id', userId)
+      .eq('date', today)
+      .single();
+    count =
+      type === 'message'
+        ? (data?.message_count || 0)
+        : (data?.deep_analysis_count || 0);
+  } catch {
+    // Table may not exist yet — allow unlimited until migration runs
+    count = 0;
+  }
 
   const limit =
     type === 'message'
@@ -62,14 +67,19 @@ export async function incrementUsage(
   const today = new Date().toISOString().split('T')[0];
   const supabase = createServerClient();
 
-  await (supabase as any).rpc('increment_ai_usage', {
-    p_user_id: userId,
-    p_date: today,
-    p_message_increment: type === 'message' ? 1 : 0,
-    p_analysis_increment: type === 'deepAnalysis' ? 1 : 0,
-    p_tokens: tokensUsed || 0,
-    p_cost: costUsd || 0,
-  });
+  try {
+    await (supabase as any).rpc('increment_ai_usage', {
+      p_user_id: userId,
+      p_date: today,
+      p_message_increment: type === 'message' ? 1 : 0,
+      p_analysis_increment: type === 'deepAnalysis' ? 1 : 0,
+      p_tokens: tokensUsed || 0,
+      p_cost: costUsd || 0,
+    });
+  } catch {
+    // RPC or table may not exist — fail silently, limit tracking is non-critical
+    console.warn('[ai-guard] increment_ai_usage RPC not available — skipping');
+  }
 }
 
 // ─── Finance-Only Guard ──────────────────────────────────────
