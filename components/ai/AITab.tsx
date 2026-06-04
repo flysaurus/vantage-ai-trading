@@ -6,7 +6,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { getDemoInsight } from '@/lib/demo-data';
 import { INVESTOR_STYLES } from '@/components/onboarding/styles';
-import { ConfidenceRing } from './ConfidenceRing';
+
 import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
 import SuggestionTracker from '@/components/SuggestionTracker';
@@ -93,7 +93,6 @@ export function AITab() {
 
   return (
     <>
-      <ConfidenceRing />
       {!isConnected && <div style={{ padding: '0 16px' }}><DemoBanner /></div>}
       {/* Investor Style Badge */}
       {styleDef && (
