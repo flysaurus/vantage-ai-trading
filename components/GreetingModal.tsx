@@ -75,9 +75,10 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
         const me = await meRes.json();
         const portfolio = await portfolioRes.json();
 
-        // First initial only
-        const firstName: string = me.displayName?.split(' ')[0] || '';
-        const initial = firstName ? firstName[0].toUpperCase() : '';
+        // First initial only — auth/me wraps user under .user key
+        const displayName = me.user?.displayName || me.displayName || '';
+        const firstName: string = displayName.split(' ')[0] || '';
+        const initial = firstName ? firstName[0].toUpperCase() : 'U';
         setUserName(initial);
 
         if (portfolio.isDemo) {

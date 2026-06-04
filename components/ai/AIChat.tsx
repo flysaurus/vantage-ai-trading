@@ -822,20 +822,6 @@ export function AIChat() {
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
-        {/* NO EXECUTION disclaimer banner */}
-        <div style={{
-          padding: '6px 10px',
-          marginBottom: 8,
-          background: 'rgba(248,113,113,0.08)',
-          border: '1px solid rgba(248,113,113,0.2)',
-          borderRadius: 6,
-          fontSize: 10,
-          color: '#fca5a5',
-          textAlign: 'center',
-          fontWeight: 500,
-        }}>
-          ⚠️ NO EXECUTION — Vantage AI advises only. All trades must be placed manually in the Trade tab or Strategies.
-        </div>
         {/* Suggestions */}
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}
           className="no-scrollbar">
