@@ -5,6 +5,8 @@ import { Send, RefreshCw, AlertCircle, Trash2, AlignLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
+import BuildBasketModal from '@/components/BuildBasketModal';
+import { useChatStore } from '@/store';
 
 /** Extract <rebalance-trades> JSON block from AI response text */
 function extractRebalanceTrades(content: string): Array<{ symbol: string; action: string; targetPercent: number }> | null {
@@ -174,6 +176,7 @@ export function AIChat() {
   const [researchSymbol, setResearchSymbol] = useState('');
   const [showResearchInput, setShowResearchInput] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<string>('general');
+  const [showBasketModal, setShowBasketModal] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -702,6 +705,26 @@ export function AIChat() {
               {s.label}
             </button>
           ))}
+          <button
+            onClick={() => setShowBasketModal(true)}
+            disabled={isLoading || remainingCalls === 0}
+            style={{
+              padding: '5px 9px',
+              background: 'linear-gradient(135deg, rgba(6,182,212,0.2), rgba(13,148,136,0.2))',
+              border: '1px solid rgba(6,182,212,0.3)',
+              borderRadius: 4,
+              color: '#22d3ee',
+              cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
+              fontSize: 10,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              fontWeight: 600,
+              opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
+              transition: 'all 0.2s',
+            }}
+          >
+            🧺 Build Basket
+          </button>
         </div>
 
         {/* Research symbol input — appears inline when Research is tapped */}
@@ -843,6 +866,34 @@ export function AIChat() {
           Powered by AI · Responses may contain errors. History of last 5 responses kept.
         </div>
       </div>
+
+      {/* ── Build Basket Modal ── */}
+      <BuildBasketModal
+        isOpen={showBasketModal}
+        onClose={() => setShowBasketModal(false)}
+        onBasketGenerated={(userMsg, data) => {
+          useChatStore.getState().addMessage({
+            id: Date.now().toString(),
+            role: 'user',
+            content: userMsg,
+            type: 'text',
+            timestamp: Date.now(),
+          })
+          useChatStore.getState().addMessage({
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.content,
+            type: data.type || 'text',
+            basketId: data.basketId,
+            basketName: data.basketName,
+            stocks: data.stocks,
+            timestamp: Date.now(),
+          })
+          setTimeout(() => {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+          }, 100)
+        }}
+      />
 
       <style jsx>{`
         @keyframes blink {

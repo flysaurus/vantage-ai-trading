@@ -242,6 +242,22 @@ export function useAIChat() {
                 });
               }
             }
+
+            // Fire-and-forget save to chat history endpoint
+            const state2 = useChatStore.getState();
+            const lastAi = state2.messages[state2.messages.length - 1];
+            const lastUser = [...state2.messages].reverse().find(m => m.role === 'user');
+            if (lastAi?.content && lastUser?.content) {
+              fetch('/api/chat/history/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userMessage: lastUser.content,
+                  assistantMessage: lastAi.content,
+                  mode,
+                }),
+              }).catch(() => {});
+            }
           },
           onSession: (session) => {
             // Attach rebalance session to the last AI message
