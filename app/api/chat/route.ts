@@ -371,10 +371,22 @@ Identify top 2 picks for this style.`;
     });
   } catch (err: any) {
     console.error('Chat API error:', err.message, err.stack);
+    // Return the actual error for debugging — remove in production
+    const errorMsg = err?.message || 'Unknown error';
+    let friendlyMsg = 'Analysis temporarily unavailable. Please try again in a moment.';
+    let debugInfo = '';
+    if (errorMsg.includes('401') || errorMsg.includes('Unauthorized') || errorMsg.includes('key')) {
+      debugInfo = ' [AI auth]';
+    } else if (errorMsg.includes('model') || errorMsg.includes('not_found')) {
+      debugInfo = ' [AI model]';
+    } else if (errorMsg.includes('table') || errorMsg.includes('relation') || errorMsg.includes('does not exist') || errorMsg.includes('rpc')) {
+      debugInfo = ' [DB table/RPC missing]';
+    } else if (errorMsg.includes('fetch') || errorMsg.includes('timeout') || errorMsg.includes('network')) {
+      debugInfo = ' [network/timeout]';
+    }
     return NextResponse.json(
       {
-        content:
-          'Analysis temporarily unavailable. Please try again in a moment.',
+        content: friendlyMsg + debugInfo + ' — ' + (errorMsg.length > 120 ? errorMsg.slice(0, 120) + '...' : errorMsg),
         type: 'error',
       },
       { status: 500 },
