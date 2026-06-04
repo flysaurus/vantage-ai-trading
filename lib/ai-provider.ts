@@ -54,7 +54,7 @@ export interface AIProvider {
 
 // ─── DeepSeek Provider ────────────────────────────────────────
 
-class DeepSeekProvider implements AIProvider {
+export class DeepSeekProvider implements AIProvider {
   name = 'deepseek';
 
   async call(options: AIRequestOptions): Promise<AIResponse> {
@@ -287,30 +287,32 @@ export function getAIProvider(): AIProvider {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Call Claude Sonnet for deep analysis work.
- * Higher quality, slower — use for portfolio health, risk checks, research.
+ * Call for deep analysis work (portfolio health, risk checks, research).
+ * Uses DeepSeek reasoner for higher quality analysis.
  */
 export async function callAnalystAI(
   options: AIRequestOptions
 ): Promise<AIResponse> {
-  const provider = new ClaudeProvider('claude-sonnet-4-20250514');
+  const provider = new DeepSeekProvider();
   return provider.call({
     ...options,
+    model: options.model || 'deepseek-reasoner',
     maxTokens: options.maxTokens || 1500,
     temperature: 0.2,
   });
 }
 
 /**
- * Call Claude Haiku for general chat.
- * Cheaper and faster for simple user queries.
+ * Call for general chat queries.
+ * Uses DeepSeek chat for fast, cost-effective responses.
  */
 export async function callChatAI(
   options: AIRequestOptions
 ): Promise<AIResponse> {
-  const provider = new ClaudeProvider('claude-haiku-4-20250514');
+  const provider = new DeepSeekProvider();
   return provider.call({
     ...options,
+    model: options.model || 'deepseek-chat',
     maxTokens: options.maxTokens || 500,
     temperature: 0.2,
   });
