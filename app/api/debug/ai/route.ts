@@ -90,8 +90,8 @@ export async function GET() {
   // Always test Claude too — the chat route uses Claude directly via callChatAI/callAnalystAI
   // regardless of AI_PROVIDER setting
   if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) {
-    results.claudeHaiku = await testClaudeCall('claude-haiku-4-20250514');
-    results.claudeSonnet = await testClaudeCall('claude-sonnet-4-20250514');
+    results.claudeHaiku = await testClaudeCall('claude-haiku-4-5');
+    results.claudeSonnet = await testClaudeCall('claude-sonnet-4-6');
   }
 
   return NextResponse.json({

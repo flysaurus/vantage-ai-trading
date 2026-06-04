@@ -126,7 +126,7 @@ export class ClaudeProvider implements AIProvider {
   name = 'claude';
   private model: string;
 
-  constructor(model: string = 'claude-sonnet-4-20250514') {
+  constructor(model: string = 'claude-sonnet-4-6') {
     this.model = model;
   }
 
@@ -287,32 +287,30 @@ export function getAIProvider(): AIProvider {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Call for deep analysis work (portfolio health, risk checks, research).
- * Uses DeepSeek reasoner for higher quality analysis.
+ * Call Claude Sonnet for deep analysis work.
+ * Higher quality, slower — use for portfolio health, risk checks, research.
  */
 export async function callAnalystAI(
   options: AIRequestOptions
 ): Promise<AIResponse> {
-  const provider = new DeepSeekProvider();
+  const provider = new ClaudeProvider('claude-sonnet-4-6');
   return provider.call({
     ...options,
-    model: options.model || 'deepseek-reasoner',
     maxTokens: options.maxTokens || 1500,
     temperature: 0.2,
   });
 }
 
 /**
- * Call for general chat queries.
- * Uses DeepSeek chat for fast, cost-effective responses.
+ * Call Claude Haiku for general chat.
+ * Cheaper and faster for simple user queries.
  */
 export async function callChatAI(
   options: AIRequestOptions
 ): Promise<AIResponse> {
-  const provider = new DeepSeekProvider();
+  const provider = new ClaudeProvider('claude-haiku-4-5');
   return provider.call({
     ...options,
-    model: options.model || 'deepseek-chat',
     maxTokens: options.maxTokens || 500,
     temperature: 0.2,
   });
