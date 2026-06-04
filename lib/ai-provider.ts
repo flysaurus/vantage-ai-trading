@@ -122,7 +122,7 @@ class DeepSeekProvider implements AIProvider {
 
 // ─── Claude Provider ──────────────────────────────────────────
 
-class ClaudeProvider implements AIProvider {
+export class ClaudeProvider implements AIProvider {
   name = 'claude';
   private model: string;
 

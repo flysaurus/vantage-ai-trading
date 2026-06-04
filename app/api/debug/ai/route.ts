@@ -4,7 +4,7 @@
 // Access: GET /api/debug/ai
 
 import { NextResponse } from 'next/server';
-import { callAI, getAIProvider } from '@/lib/ai-provider';
+import { callAI, getAIProvider, ClaudeProvider } from '@/lib/ai-provider';
 
 interface ProviderResult {
   available: boolean;
@@ -42,6 +42,31 @@ async function testProviderCall(
   }
 }
 
+async function testClaudeCall(model: string): Promise<ProviderResult> {
+  const start = Date.now();
+  try {
+    const provider = new ClaudeProvider(model);
+    const response = await provider.call({
+      messages: [{ role: 'user', content: 'ping' }],
+      maxTokens: 1,
+      timeoutMs: 15000,
+    });
+    return {
+      available: true,
+      status: 200,
+      latencyMs: Date.now() - start,
+      error: null,
+    };
+  } catch (e: any) {
+    return {
+      available: false,
+      status: null,
+      latencyMs: Date.now() - start,
+      error: e?.message || String(e),
+    };
+  }
+}
+
 export async function GET() {
   const provider = getAIProvider();
   const results: Record<string, ProviderResult> = {};
@@ -60,6 +85,13 @@ export async function GET() {
     results.claude = await testProviderCall('claude', undefined as any, 15000);
   } else if (provider.name === 'openai') {
     results.openai = await testProviderCall('openai', undefined as any, 15000);
+  }
+
+  // Always test Claude too — the chat route uses Claude directly via callChatAI/callAnalystAI
+  // regardless of AI_PROVIDER setting
+  if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) {
+    results.claudeHaiku = await testClaudeCall('claude-haiku-4-20250514');
+    results.claudeSonnet = await testClaudeCall('claude-sonnet-4-20250514');
   }
 
   return NextResponse.json({
