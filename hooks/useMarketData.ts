@@ -198,17 +198,17 @@ export function useMarketData() {
         });
       // Don't return early — still need the cleanup below to clear the interval
     } else {
+      // Fetch initial data
+      Promise.all([fetchMarketData(), fetchWatchlist()]).then(() => {
+        // After initial fetch, start streaming
+        setupStreaming();
 
-    // Fetch initial data
-    Promise.all([fetchMarketData(), fetchWatchlist()]).then(() => {
-      // After initial fetch, start streaming
-      setupStreaming();
-
-      // Set up polling fallback every 60s in case WebSocket drops
-      pollInterval.current = setInterval(() => {
-        fetchMarketData();
-      }, 60000);
-    });
+        // Set up polling fallback every 60s in case WebSocket drops
+        pollInterval.current = setInterval(() => {
+          fetchMarketData();
+        }, 60000);
+      });
+    }
 
     return () => {
       mountedRef.current = false;
