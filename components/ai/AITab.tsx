@@ -2,10 +2,10 @@
 import { useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useMarketStore } from '@/store';
-import { useAuth } from '@/components/providers/AuthProvider';
+
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { getDemoInsight } from '@/lib/demo-data';
-import { INVESTOR_STYLES } from '@/components/onboarding/styles';
+
 
 import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
@@ -66,7 +66,7 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
 export function AITab() {
   const { account } = usePortfolio();
   const { isMarketOpen } = useMarketStore();
-  const { user } = useAuth();
+
   const { isConnected } = useBroker();
 
   const insight = useMemo(() => {
@@ -76,16 +76,6 @@ export function AITab() {
     return generateInsight(account);
   }, [account, isConnected]);
 
-  // Resolve investor style from auth (fallback to localStorage if sessionStorage missing)
-  const investorStyle: string = (() => {
-    if (user?.investorStyle) return user.investorStyle;
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('vantage:investorStyle') || 'buffett';
-    }
-    return 'buffett';
-  })();
-  const styleDef = INVESTOR_STYLES.find(s => s.id === investorStyle);
-
   // Lazy tracking: trigger background refresh of suggestion outcomes
   useEffect(() => {
     fetch('/api/ai/suggestions/track', { method: 'POST' }).catch(() => {});
@@ -94,36 +84,6 @@ export function AITab() {
   return (
     <>
       {!isConnected && <div style={{ padding: '0 16px' }}><DemoBanner /></div>}
-      {/* Investor Style Badge */}
-      {styleDef && (
-        <div style={{ padding: '0 16px', marginBottom: 4 }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)',
-            borderRadius: 20, padding: '4px 12px', fontSize: 11,
-          }}>
-            <span style={{ fontSize: 14 }}>{styleDef.emoji}</span>
-            <span style={{ fontWeight: 600, color: '#e2e8f0' }}>{styleDef.title}</span>
-            <span style={{ color: '#64748b' }}>·</span>
-            <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
-              {styleDef.timeHorizon}
-            </span>
-          </div>
-          <span style={{ fontSize: 9, color: '#475569', marginLeft: 8 }}>
-            Change in{' '}
-            <span
-              onClick={() => {
-                // Switch to Settings tab (via store)
-                const { useTabStore } = require('@/store');
-                useTabStore.getState().setTab('settings');
-              }}
-              style={{ color: '#06b6d4', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Settings
-            </span>
-          </span>
-        </div>
-      )}
       <div style={{ padding: '12px 16px 0' }}>
         {/* Account Summary */}
         {account && (

@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, Settings, X } from 'lucide-react';
 import { useMarketStore, useTabStore } from '@/store';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { INVESTOR_STYLES } from '@/components/onboarding/styles';
 
 interface Notification {
   id: string;
@@ -28,7 +30,18 @@ function timeAgo(dateStr: string): string {
 export function Header() {
   const { isMarketOpen } = useMarketStore();
   const { setTab } = useTabStore();
+  const { user } = useAuth();
   const router = useRouter();
+
+  // Resolve investor style
+  const investorStyle: string = (() => {
+    if (user?.investorStyle) return user.investorStyle;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('vantage:investorStyle') || 'buffett';
+    }
+    return 'buffett';
+  })();
+  const styleDef = INVESTOR_STYLES.find(s => s.id === investorStyle);
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -99,6 +112,27 @@ export function Header() {
           {isMarketOpen ? 'OPEN' : 'CLOSED'}
         </div>
       </div>
+      {/* Investor Style Badge */}
+      {styleDef && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '2px 12px',
+          background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)',
+          borderRadius: 20,
+        }}>
+          <span style={{ fontSize: 18, lineHeight: 1 }}>{styleDef.emoji}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1 }}>
+            <span style={{ fontWeight: 600, color: '#e2e8f0', fontSize: 12 }}>{styleDef.title}</span>
+            <span style={{ color: '#64748b', fontSize: 10 }}>{styleDef.timeHorizon}</span>
+          </div>
+          <span
+            onClick={() => setTab('settings')}
+            style={{ fontSize: 9, color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            Change in Settings
+          </span>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button className="icon-btn"><Search size={16} /></button>
         <button
