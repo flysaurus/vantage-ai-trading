@@ -53,6 +53,7 @@ export interface StreamCallbacks {
   onDone: (tokens: { input: number; output: number }, cost: number) => void;
   onError: (error: string) => void;
   onSession?: (session: RebalanceSession) => void;
+  onBasket?: (data: { basketId?: string; basketName?: string; stocks?: any[] }) => void;
 }
 
 export interface ChatResult {
@@ -309,6 +310,15 @@ export async function streamChat(
         targetSource: json.targetSource as 'saved' | 'style_default' | undefined,
         styleName: json.styleName as string | undefined,
         targets: json.targets as Array<{ symbol: string; targetPercent: number }> | undefined,
+      });
+    }
+
+    // If theme_basket type, pass basket metadata for action card
+    if (json.type === 'theme_basket') {
+      callbacks.onBasket?.({
+        basketId: json.basketId,
+        basketName: json.basketName,
+        stocks: json.stocks,
       });
     }
 

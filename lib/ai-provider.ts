@@ -124,6 +124,11 @@ class DeepSeekProvider implements AIProvider {
 
 class ClaudeProvider implements AIProvider {
   name = 'claude';
+  private model: string;
+
+  constructor(model: string = 'claude-sonnet-4-20250514') {
+    this.model = model;
+  }
 
   async call(options: AIRequestOptions): Promise<AIResponse> {
     const systemMessage = options.messages.find(m => m.role === 'system');
@@ -137,7 +142,7 @@ class ClaudeProvider implements AIProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: options.model || 'claude-sonnet-4-20250514',
+        model: options.model || this.model,
         max_tokens: options.maxTokens ?? 1000,
         temperature: options.temperature ?? 0.3,
         system: systemMessage?.content || '',
@@ -154,7 +159,7 @@ class ClaudeProvider implements AIProvider {
 
     return {
       content: data.content?.[0]?.text || '',
-      model: data.model || 'claude',
+      model: data.model || this.model,
       tokensUsed: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
     };
   }
@@ -171,7 +176,7 @@ class ClaudeProvider implements AIProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: options.model || 'claude-sonnet-4-20250514',
+        model: options.model || this.model,
         max_tokens: options.maxTokens ?? 2048,
         temperature: options.temperature ?? 0.7,
         system: systemMessage?.content || '',
@@ -186,7 +191,7 @@ class ClaudeProvider implements AIProvider {
       throw new Error(`Claude stream ${res.status}: ${errBody.slice(0, 200)}`);
     }
 
-    return { stream: res.body, model: options.model || 'claude' };
+    return { stream: res.body, model: options.model || this.model };
   }
 }
 
@@ -269,6 +274,40 @@ export function getAIProvider(): AIProvider {
     default:
       return new DeepSeekProvider();
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONVENIENCE FUNCTIONS — model-specific routing
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Call Claude Sonnet for deep analysis work.
+ * Higher quality, slower — use for portfolio health, risk checks, research.
+ */
+export async function callAnalystAI(
+  options: AIRequestOptions
+): Promise<AIResponse> {
+  const provider = new ClaudeProvider('claude-sonnet-4-20250514');
+  return provider.call({
+    ...options,
+    maxTokens: options.maxTokens || 1500,
+    temperature: 0.2,
+  });
+}
+
+/**
+ * Call Claude Haiku for general chat.
+ * Cheaper and faster for simple user queries.
+ */
+export async function callChatAI(
+  options: AIRequestOptions
+): Promise<AIResponse> {
+  const provider = new ClaudeProvider('claude-haiku-4-20250514');
+  return provider.call({
+    ...options,
+    maxTokens: options.maxTokens || 500,
+    temperature: 0.2,
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════

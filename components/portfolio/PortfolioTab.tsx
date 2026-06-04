@@ -6,6 +6,7 @@ import { usePortfolioStore } from '@/store';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { PositionRow } from '@/components/portfolio/PositionRow';
 
 export function PortfolioTab() {
   const router = useRouter();
@@ -18,6 +19,16 @@ export function PortfolioTab() {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [sortBy, setSortBy] = useState<'pct' | 'name' | 'sector' | 'pnl'>('pct');
   const [sortOpen, setSortOpen] = useState(false);
+
+  // ── Baskets ─────────────────────────────────────────────
+  const [baskets, setBaskets] = useState<any[]>([]);
+  const [basketPositions, setBasketPositions] = useState<any[]>([]);
+  const [expandedBaskets, setExpandedBaskets] = useState<Set<string>>(new Set());
+  const [showSellBasketModal, setShowSellBasketModal] = useState<any>(null);
+  const [showSellAllModal, setShowSellAllModal] = useState(false);
+  const [sellAllConfirm, setSellAllConfirm] = useState('');
+  const [basketSellResults, setBasketSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
+  const [basketSellSubmitting, setBasketSellSubmitting] = useState(false);
 
   // ── Performance Chart ─────────────────────────────────────
   type RangeKey = '1D' | '7D' | '30D' | '90D' | 'YTD' | '1Y' | 'ALL';
@@ -66,6 +77,19 @@ export function PortfolioTab() {
   }, []);
 
   useEffect(() => { fetchChartData(chartRange); }, [chartRange, fetchChartData]);
+
+  // ── Fetch baskets ───────────────────────────────────────
+  useEffect(() => {
+    if (!isConnected && !account) return;
+    Promise.all([
+      fetch('/api/baskets').then(r => r.json()),
+      fetch('/api/baskets/positions').then(r => r.json()),
+    ]).then(([bData, pData]) => {
+      setBaskets(bData.baskets || []);
+      setBasketPositions(pData.positions || []);
+    }).catch(() => {});
+  }, [isConnected]);
+
   const [sellSubmitting, setSellSubmitting] = useState(false);
   const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
 
@@ -183,6 +207,100 @@ export function PortfolioTab() {
         return list.sort((a, b) => b.portfolioPercent - a.portfolioPercent);
     }
   })();
+
+  // ── Derived basket data ─────────────────────────────────
+  const basketPositionSymbols = new Set(basketPositions.map((p: any) => p.symbol));
+  const coreHoldings = sortedPositions.filter(pos => !basketPositionSymbols.has(pos.symbol));
+
+  // Basket positions grouped by basket_id
+  const basketGroups = (() => {
+    if (!baskets.length || !basketPositions.length) return [];
+    return baskets.map((basket: any) => {
+      const positions = basketPositions
+        .filter((p: any) => p.basket_id === basket.id)
+        .map((p: any) => {
+          const brokerPos = account?.positions.find((bp) => bp.symbol === p.symbol);
+          return {
+            ...p,
+            broker: brokerPos,
+            marketValue: brokerPos?.marketValue || 0,
+            unrealizedPnL: brokerPos?.totalPnl || 0,
+            unrealizedPnLPercent: brokerPos?.totalPnlPercent || 0,
+            currentPrice: brokerPos?.currentPrice || 0,
+            qty: brokerPos?.qty || 0,
+            sector: brokerPos?.sector || p.sector,
+          };
+        });
+      return { ...basket, positions, totalValue: positions.reduce((s: number, p: any) => s + p.marketValue, 0), totalPnl: positions.reduce((s: number, p: any) => s + p.unrealizedPnL, 0) };
+    }).filter((g: any) => g.positions.length > 0);
+  })();
+
+  const toggleBasket = (basketId: string) => {
+    setExpandedBaskets(prev => {
+      const next = new Set(prev);
+      next.has(basketId) ? next.delete(basketId) : next.add(basketId);
+      return next;
+    });
+  };
+
+  // ── Sell Entire Basket ──────────────────────────────────
+  const sellEntireBasket = async (basket: any) => {
+    setBasketSellSubmitting(true);
+    setBasketSellResults([]);
+    const results: Array<{ symbol: string; ok: boolean; error?: string }> = [];
+    for (const pos of basket.positions) {
+      try {
+        const body: any = { symbol: pos.symbol, qty: pos.qty, side: 'sell', type: 'market', time_in_force: 'day' };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const res = await fetch('/api/alpaca/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+          const json = await res.json();
+          results.push({ symbol: pos.symbol, ok: res.ok, error: json.error || json.message || '' });
+        } catch (fetchErr: any) {
+          results.push({ symbol: pos.symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
+        } finally { clearTimeout(timeout); }
+      } catch (e: any) {
+        results.push({ symbol: pos.symbol, ok: false, error: e.message });
+      }
+    }
+    setBasketSellResults(results);
+    setBasketSellSubmitting(false);
+    if (results.every(r => r.ok)) {
+      setShowSellBasketModal(null);
+      refresh();
+    }
+  };
+
+  // ── Sell All Portfolio ──────────────────────────────────
+  const sellAllPortfolio = async () => {
+    setBasketSellSubmitting(true);
+    setBasketSellResults([]);
+    const results: Array<{ symbol: string; ok: boolean; error?: string }> = [];
+    for (const pos of account?.positions || []) {
+      try {
+        const body: any = { symbol: pos.symbol, qty: pos.qty, side: 'sell', type: 'market', time_in_force: 'day' };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const res = await fetch('/api/alpaca/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+          const json = await res.json();
+          results.push({ symbol: pos.symbol, ok: res.ok, error: json.error || json.message || '' });
+        } catch (fetchErr: any) {
+          results.push({ symbol: pos.symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
+        } finally { clearTimeout(timeout); }
+      } catch (e: any) {
+        results.push({ symbol: pos.symbol, ok: false, error: e.message });
+      }
+    }
+    setBasketSellResults(results);
+    setBasketSellSubmitting(false);
+    if (results.every(r => r.ok)) {
+      setShowSellAllModal(false);
+      setSellAllConfirm('');
+      refresh();
+    }
+  };
 
   // No broker connected — show demo portfolio with banner
   if (!isConnected) {
@@ -541,173 +659,186 @@ export function PortfolioTab() {
       {/* Sector Allocation */}
       <SectorAllocation positions={account.positions} />
 
+      {/* Action Bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={() => {
+            if (account && selected.size === account.positions.length) {
+              setSelected(new Set());
+            } else if (account) {
+              setSelected(new Set(account.positions.map(p => p.symbol)));
+            }
+          }}
+          style={{
+            flex: 1, padding: '8px 12px', fontSize: 11, fontWeight: 700,
+            background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.25)',
+            borderRadius: 8, color: '#06b6d4', cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          {selected.size > 0 ? `${selected.size} Selected` : 'Select & Sell'}
+        </button>
+        <button
+          onClick={() => router.push('/advisor?open=theme')}
+          style={{
+            flex: 1, padding: '8px 12px', fontSize: 11, fontWeight: 700,
+            background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)',
+            borderRadius: 8, color: '#8b5cf6', cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          🧺 Create Basket
+        </button>
+      </div>
+
       {/* Positions */}
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={account && selected.size > 0 && selected.size === account.positions.length}
-                onChange={selectAll}
-                style={{ width: 16, height: 16, accentColor: '#06b6d4', cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                {selected.size === 0 ? 'Select All' : selected.size === account?.positions.length ? 'Deselect' : `${selected.size} selected`}
-              </span>
-            </label>
-            <span style={{ fontSize: 12, fontWeight: 700 }}>
-              Positions ({account?.positions.length || 0})
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {selected.size > 0 && (
+        {/* Basket Groups */}
+        {basketGroups.map((basket: any) => {
+          const isExpanded = expandedBaskets.has(basket.id);
+          const basketPnlPct = basket.totalValue > 0 ? (basket.totalPnl / (basket.totalValue - basket.totalPnl)) * 100 : 0;
+          return (
+            <div key={basket.id} style={{ marginBottom: 8 }}>
+              {/* Basket Header */}
               <button
-                onClick={() => { setShowSellPanel(true); initSellConfig(Array.from(selected)); }}
-                style={{
-                  fontSize: 10, fontWeight: 700, padding: '4px 10px',
-                  background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: 6, color: '#f87171', cursor: 'pointer',
-                }}
+                onClick={() => toggleBasket(basket.id)}
+                className="basket-header"
               >
-                Sell {selected.size} Selected
-              </button>
-            )}
-            {/* Sort dropdown */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setSortOpen(!sortOpen)}
-                style={{
-                  fontSize: 10, fontWeight: 600, padding: '4px 8px',
-                  background: '#1e293b', border: '1px solid #334155',
-                  borderRadius: 6, color: 'var(--text-muted)', cursor: 'pointer',
-                }}
-              >
-                Sort: {sortBy === 'pct' ? '%' : sortBy === 'pnl' ? 'P&L' : sortBy === 'name' ? 'ABC' : 'Sector'} ▾
-              </button>
-              {sortOpen && (
-                <>
-                  <div
-                    style={{ position: 'fixed', inset: 0, zIndex: 9 }}
-                    onClick={() => setSortOpen(false)}
-                  />
-                  <div style={{
-                    position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 10,
-                    background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 4,
-                    minWidth: 130, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                  }}>
-                    {([
-                      { key: 'pct', label: '% Value' },
-                      { key: 'name', label: 'Name (A-Z)' },
-                      { key: 'sector', label: 'Sector' },
-                      { key: 'pnl', label: 'P&L' },
-                    ] as const).map(({ key, label }) => (
-                      <button
-                        key={key}
-                        onClick={() => { setSortBy(key); setSortOpen(false); }}
-                        style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: '6px 10px', fontSize: 11, borderRadius: 6,
-                          background: sortBy === key ? 'rgba(6,182,212,0.12)' : 'transparent',
-                          border: 'none', color: sortBy === key ? '#06b6d4' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>{basket.emoji || '🧺'}</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{basket.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                      {basket.positions.length} position{basket.positions.length !== 1 ? 's' : ''} · ${basket.totalValue.toLocaleString()}
+                    </div>
                   </div>
-                </>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: basket.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
+                      {basket.totalPnl >= 0 ? '+' : ''}${Math.round(basket.totalPnl).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: 10, color: basket.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
+                      {basketPnlPct >= 0 ? '+' : ''}{basketPnlPct.toFixed(1)}%
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#64748b', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                </div>
+              </button>
+
+              {/* Expanded Positions */}
+              {isExpanded && (
+                <div style={{ paddingLeft: 4, paddingTop: 6 }}>
+                  {basket.positions.map((pos: any) => (
+                    <PositionRow
+                      key={pos.symbol}
+                      position={{
+                        symbol: pos.symbol,
+                        qty: pos.qty,
+                        marketValue: pos.marketValue,
+                        unrealizedPnL: pos.unrealizedPnL,
+                        unrealizedPnLPercent: pos.unrealizedPnLPercent,
+                        currentPrice: pos.currentPrice,
+                        sector: pos.sector,
+                      }}
+                      isSelectable={true}
+                      isSelected={selected.has(pos.symbol)}
+                      onSelect={() => toggleSelect(pos.symbol)}
+                      basketName={basket.name}
+                      showBasketBadge={false}
+                    />
+                  ))}
+                  <button
+                    onClick={() => setShowSellBasketModal(basket)}
+                    style={{
+                      width: '100%', padding: '8px', marginTop: 4,
+                      background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+                      borderRadius: 8, color: '#f87171', fontSize: 11, fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    Sell Entire Basket
+                  </button>
+                </div>
               )}
             </div>
-          </div>
-        </div>
+          );
+        })}
 
-        {sortedPositions.map((pos) => (
-          <div key={pos.symbol} className={`pos-row ${selected.has(pos.symbol) ? 'selected' : ''}`}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        {/* Core Holdings */}
+        {coreHoldings.length > 0 && (
+          <>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: 8, marginTop: basketGroups.length > 0 ? 12 : 0,
+              paddingBottom: 8, borderBottom: '1px solid #334155',
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={selected.has(pos.symbol)}
-                  onClick={(e) => { e.stopPropagation(); }}
-                  onChange={() => toggleSelect(pos.symbol)}
-                  style={{ width: 16, height: 16, accentColor: '#06b6d4', cursor: 'pointer', flexShrink: 0, margin: 0 }}
-                />
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{pos.symbol}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                  {pos.qty} shares {pos.sector && `· ${pos.sector}`}
-                </div>
+                <span style={{ fontSize: 14 }}>📊</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>
+                  Core Holdings ({coreHoldings.length})
+                </span>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>
-                  ${pos.marketValue.toLocaleString()}
-                </div>
-                <div
-                  className={pos.dayChange >= 0 ? 'up' : 'down'}
-                  style={{ fontSize: 10, fontWeight: 600 }}
-                >
-                  {pos.dayChange >= 0 ? '+' : ''}${pos.dayChange.toLocaleString()} ({pct(pos.dayChangePercent)})
-                </div>
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                ${coreHoldings.reduce((s, p) => s + p.marketValue, 0).toLocaleString()}
               </div>
             </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: 4,
-                paddingTop: 6,
-                borderTop: '1px solid #334155',
-              }}
-            >
-              {([
-                ['Avg Cost', `$${pos.avgCost}`],
-                ['Current', `$${pos.currentPrice}`],
-                ['Total P&L', `${pos.totalPnl >= 0 ? '+' : ''}$${pos.totalPnl.toLocaleString()}`],
-                ['% Port', `${pos.portfolioPercent.toFixed(1)}%`],
-              ] as [string, string][]).map(([label, val]) => (
-                <div key={label} style={{ textAlign: 'center' }}>
-                  <div
-                    style={{
-                      fontSize: 8,
-                      color: 'var(--text-dim)',
-                      textTransform: 'uppercase',
-                      marginBottom: 1,
-                    }}
-                  >
-                    {label}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: val.startsWith('+') ? '#4ade80' : val.startsWith('-') ? '#f87171' : '#f1f5f9',
-                    }}
-                  >
-                    {val}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div
-              style={{
-                height: 3,
-                background: '#334155',
-                borderRadius: 2,
-                marginTop: 6,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${pos.portfolioPercent}%`,
-                  background: 'linear-gradient(90deg, #06b6d4, #0d9488)',
+            {coreHoldings.map((pos) => (
+              <PositionRow
+                key={pos.symbol}
+                position={{
+                  symbol: pos.symbol,
+                  qty: pos.qty,
+                  marketValue: pos.marketValue,
+                  unrealizedPnL: pos.totalPnl,
+                  unrealizedPnLPercent: pos.totalPnlPercent,
+                  currentPrice: pos.currentPrice,
+                  sector: pos.sector,
                 }}
+                isSelectable={true}
+                isSelected={selected.has(pos.symbol)}
+                onSelect={() => toggleSelect(pos.symbol)}
               />
-            </div>
-          </div>
+            ))}
+          </>
+        )}
+
+        {/* No basket positions — show all positions flat */}
+        {basketGroups.length === 0 && coreHoldings.length === 0 && sortedPositions.map((pos) => (
+          <PositionRow
+            key={pos.symbol}
+            position={{
+              symbol: pos.symbol,
+              qty: pos.qty,
+              marketValue: pos.marketValue,
+              unrealizedPnL: pos.totalPnl,
+              unrealizedPnLPercent: pos.totalPnlPercent,
+              currentPrice: pos.currentPrice,
+              sector: pos.sector,
+            }}
+            isSelectable={true}
+            isSelected={selected.has(pos.symbol)}
+            onSelect={() => toggleSelect(pos.symbol)}
+          />
         ))}
+        {basketGroups.length === 0 && coreHoldings.length === 0 && sortedPositions.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 11 }}>
+            No positions to display
+          </div>
+        )}
+
+        {/* Sell Entire Portfolio */}
+        {account && account.positions.length > 0 && (
+          <button
+            onClick={() => setShowSellAllModal(true)}
+            style={{
+              width: '100%', padding: '10px', marginTop: 12,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+              borderRadius: 10, color: '#f87171', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            🚨 Sell Entire Portfolio
+          </button>
+        )}
       </div>
 
       {/* Sticky Batch Action Bar */}
@@ -945,6 +1076,154 @@ export function PortfolioTab() {
         </>
       )}
 
+      {/* Sell Basket Modal */}
+      {showSellBasketModal && (
+        <>
+          <div onClick={() => { setShowSellBasketModal(null); setBasketSellResults([]); }} className="overlay-backdrop" />
+          <div className="sell-overlay">
+            <div className="sell-header">
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
+                Sell {showSellBasketModal.emoji || ''} {showSellBasketModal.name}
+              </span>
+              <button onClick={() => { setShowSellBasketModal(null); setBasketSellResults([]); }} className="close-sell-btn">✕</button>
+            </div>
+            <div className="sell-body">
+              <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8 }}>
+                This will sell all {showSellBasketModal.positions?.length || 0} positions in this basket at market price.
+              </div>
+              {showSellBasketModal.positions?.map((p: any) => {
+                const result = basketSellResults.find(r => r.symbol === p.symbol);
+                return (
+                  <div key={p.symbol} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 10px', background: '#0f172a', borderRadius: 8,
+                    border: result ? (result.ok ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)') : '1px solid #334155',
+                  }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>{p.symbol}</span>
+                      <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>{p.qty} sh @ ${p.currentPrice?.toFixed(2)}</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>
+                        ${(p.qty * (p.currentPrice || 0)).toFixed(2)}
+                      </div>
+                      {result && (
+                        <div style={{ fontSize: 10, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
+                          {result.ok ? '✓ Sold' : `✗ ${result.error}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="sell-footer">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>Estimated proceeds</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                  ${showSellBasketModal.totalValue?.toLocaleString()}
+                </span>
+              </div>
+              <button
+                onClick={() => sellEntireBasket(showSellBasketModal)}
+                disabled={basketSellSubmitting}
+                className="confirm-sell-btn"
+              >
+                {basketSellSubmitting ? 'Submitting...' : `Confirm — Sell Entire Basket`}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Sell All Portfolio Modal */}
+      {showSellAllModal && (
+        <>
+          <div onClick={() => { setShowSellAllModal(false); setSellAllConfirm(''); setBasketSellResults([]); }} className="overlay-backdrop" />
+          <div className="sell-overlay">
+            <div className="sell-header">
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
+                🚨 Sell Entire Portfolio
+              </span>
+              <button onClick={() => { setShowSellAllModal(false); setSellAllConfirm(''); setBasketSellResults([]); }} className="close-sell-btn">✕</button>
+            </div>
+            <div className="sell-body">
+              <div style={{
+                padding: 10, background: 'rgba(239,68,68,0.08)', borderRadius: 8,
+                border: '1px solid rgba(239,68,68,0.2)', marginBottom: 10,
+              }}>
+                <div style={{ fontSize: 11, color: '#f87171', fontWeight: 600, marginBottom: 4 }}>⚠️ Warning</div>
+                <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.5 }}>
+                  This will sell ALL {account?.positions.length || 0} positions at market price.
+                  This action cannot be undone.
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>Type SELL to confirm</div>
+                <input
+                  type="text"
+                  value={sellAllConfirm}
+                  onChange={e => setSellAllConfirm(e.target.value)}
+                  placeholder="Type SELL"
+                  style={{
+                    width: '100%', padding: '8px 12px',
+                    background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
+                    color: '#f1f5f9', fontSize: 13, fontWeight: 600,
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* Position list preview */}
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {account?.positions.map(p => {
+                  const result = basketSellResults.find(r => r.symbol === p.symbol);
+                  return (
+                    <div key={p.symbol} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '6px 10px', marginBottom: 4,
+                      background: '#0f172a', borderRadius: 6,
+                      border: result ? (result.ok ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)') : '1px solid #334155',
+                    }}>
+                      <div>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: '#f1f5f9' }}>{p.symbol}</span>
+                        <span style={{ fontSize: 9, color: '#94a3b8', marginLeft: 6 }}>{p.qty} sh</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#cbd5e1' }}>
+                          ${p.marketValue.toLocaleString()}
+                        </div>
+                        {result && (
+                          <div style={{ fontSize: 9, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
+                            {result.ok ? '✓ Sold' : `✗ ${result.error}`}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="sell-footer">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>Total portfolio value</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                  ${account?.equity?.toLocaleString()}
+                </span>
+              </div>
+              <button
+                onClick={sellAllPortfolio}
+                disabled={sellAllConfirm !== 'SELL' || basketSellSubmitting}
+                className="confirm-sell-btn"
+              >
+                {basketSellSubmitting ? 'Submitting...' : sellAllConfirm !== 'SELL' ? 'Type SELL to confirm' : `Confirm — Sell Everything`}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       <style jsx>{`
         .card {
           background: #1e293b;
@@ -952,6 +1231,14 @@ export function PortfolioTab() {
           border-radius: 12px;
           padding: 12px;
         }
+        .basket-header {
+          width: 100%; display: flex; justify-content: space-between; align-items: center;
+          padding: 10px 12px;
+          background: rgba(6,182,212,0.04); border: 1px solid rgba(6,182,212,0.15);
+          border-radius: 10px; cursor: pointer; font-family: inherit;
+          transition: background 0.15s;
+        }
+        .basket-header:hover { background: rgba(6,182,212,0.08); }
         .pos-row {
           padding: 10px;
           background: #0f172a;

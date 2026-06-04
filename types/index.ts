@@ -99,6 +99,17 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  type?: string;
+  basketName?: string;
+  basketId?: string;
+  stocks?: Array<{
+    symbol: string;
+    company: string;
+    subTheme: string;
+    compositeScore: number;
+    conviction: string;
+    currentPrice: number;
+  }>;
   components?: AICardComponent[];
   rebalanceSession?: RebalanceSession;
   timestamp: number;

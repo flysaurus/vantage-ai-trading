@@ -104,6 +104,7 @@ function parseTradesFromMarkdown(content: string): Array<{
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
+import AIThinkingIndicator from './AIThinkingIndicator';
 
 const SUGGESTIONS = [
   {
@@ -249,6 +250,7 @@ export function AIChat() {
   const [showCost, setShowCost] = useState(false);
   const [researchSymbol, setResearchSymbol] = useState('');
   const [showResearchInput, setShowResearchInput] = useState(false);
+  const [thinkingMode, setThinkingMode] = useState<string>('general');
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -287,6 +289,7 @@ export function AIChat() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.prompt) {
+        setThinkingMode(detail.mode || 'general');
         sendMessage(detail.prompt, responseMode, detail.mode);
       }
     };
@@ -296,6 +299,7 @@ export function AIChat() {
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
+    setThinkingMode('general');
     sendMessage(input.trim(), responseMode, 'general');
     setInput('');
   };
@@ -314,6 +318,7 @@ export function AIChat() {
       setResearchSymbol('');
       return;
     }
+    setThinkingMode(suggestion.mode);
     sendMessage(suggestion.message, responseMode, suggestion.mode);
   };
 
@@ -322,6 +327,7 @@ export function AIChat() {
     if (!symbol) return;
     const researchSuggestion = SUGGESTIONS.find(s => s.id === 'research')!;
     const message = researchSuggestion.message.replace('[SYMBOL]', symbol);
+    setThinkingMode('research');
     sendMessage(message, responseMode, 'research', symbol);
     setShowResearchInput(false);
     setResearchSymbol('');
@@ -477,19 +483,93 @@ export function AIChat() {
                     {sanitizeContent(msg.content || '...')}
                   </ReactMarkdown>
 
-                  {/* Streaming cursor */}
+                  {/* Thinking indicator during loading */}
                   {isLoading && idx === messages.length - 1 && (
-                    <span className="cursor-blink" style={{
-                      display: 'inline-block', width: 6, height: 13,
-                      background: '#06b6d4', marginLeft: 2, verticalAlign: 'middle',
-                      animation: 'blink 1s step-end infinite',
-                    }} />
+                    <AIThinkingIndicator mode={thinkingMode} />
                   )}
                 </div>
               ) : (
                 /* User messages stay plain */
                 <div style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
                   {msg.content}
+                </div>
+              )}
+
+              {/* Theme Basket action card — shown when AI returns a themed stock basket */}
+              {msg.type === 'theme_basket' && (
+                <div style={{
+                  marginTop: 12,
+                  background: '#0f172a',
+                  border: '1px solid rgba(6,182,212,0.3)',
+                  borderRadius: 16,
+                  padding: 16,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <span style={{ fontSize: 16 }}>🧺</span>
+                    <span style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 600 }}>
+                      {msg.basketName || 'AI Basket'}
+                    </span>
+                    <span style={{ color: '#64748b', fontSize: 11 }}>
+                      {(msg.stocks || []).length} stocks scored
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {(msg.stocks || []).map((s: any, i: number) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        background: '#1e293b', borderRadius: 8, padding: '6px 10px',
+                      }}>
+                        <span style={{ color: '#f1f5f9', fontSize: 11, fontWeight: 600 }}>{s.symbol}</span>
+                        <span style={{
+                          fontSize: 10,
+                          color: s.conviction === 'high' ? '#4ade80' :
+                                 s.conviction === 'medium' ? '#facc15' : '#94a3b8',
+                        }}>{s.compositeScore}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {msg.basketId ? (
+                      <button
+                        onClick={() => router.push(`/trade/basket/${msg.basketId}`)}
+                        style={{
+                          flex: 1, padding: '10px 16px',
+                          background: '#06b6d4', border: 'none', borderRadius: 12,
+                          color: 'white', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        Review & Order →
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const { useTabStore } = require('@/store');
+                          useTabStore.getState().setTab('trade');
+                        }}
+                        style={{
+                          flex: 1, padding: '10px 16px',
+                          background: '#06b6d4', border: 'none', borderRadius: 12,
+                          color: 'white', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        View in Trade →
+                      </button>
+                    )}
+                    <button
+                      style={{
+                        padding: '10px 16px',
+                        background: 'transparent',
+                        border: '1px solid #475569',
+                        borderRadius: 12,
+                        color: '#94a3b8', fontSize: 12,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      Watch
+                    </button>
+                  </div>
                 </div>
               )}
 

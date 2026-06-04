@@ -26,6 +26,29 @@ export function TradeTab() {
   const [orderError, setOrderError] = useState('');
   const [orderSuccess, setOrderSuccess] = useState('');
 
+  // ─── Ready to Execute (draft baskets) ─────────────────────
+  const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    fetch('/api/baskets?status=draft')
+      .then(r => r.json())
+      .then(data => setPendingBaskets(data.baskets || []))
+      .catch(() => {});
+  }, [isConnected]);
+
+  const handleDismissBasket = async (basketId: string) => {
+    try {
+      await fetch(`/api/baskets/${basketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' }),
+      });
+      setPendingBaskets(prev => prev.filter(b => b.id !== basketId));
+    } catch {}
+  };
+  // ─── End Ready to Execute ─────────────────────────────────
+
   const { setTab } = useTabStore();
 
   // ─── Strategy Bottom Sheet ───────────────────────────────
@@ -61,6 +84,52 @@ export function TradeTab() {
 
   return (
     <div style={{ padding: '12px 16px 80px' }}>
+      {/* ─── Ready to Execute ─────────────────────────────── */}
+      {pendingBaskets.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <h2 className="text-white font-semibold text-sm tracking-wide uppercase">
+              Ready to Execute
+            </h2>
+            <span className="bg-cyan-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              {pendingBaskets.length}
+            </span>
+          </div>
+          {pendingBaskets.map((basket: any) => (
+            <div key={basket.id} className="bg-slate-800 rounded-2xl p-4 mb-3 border border-cyan-500/20">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{basket.emoji}</span>
+                  <div>
+                    <p className="text-white font-semibold text-sm">{basket.name}</p>
+                    <p className="text-slate-400 text-xs">{basket.basket_positions?.length || 0} stocks · AI Generated</p>
+                  </div>
+                </div>
+                <button onClick={() => handleDismissBasket(basket.id)} className="text-slate-500 hover:text-slate-300 text-lg leading-none">&times;</button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {basket.basket_positions?.slice(0, 6).map((pos: any) => (
+                  <span key={pos.symbol} className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded-lg">{pos.symbol}</span>
+                ))}
+                {(basket.basket_positions?.length || 0) > 6 && (
+                  <span className="text-xs text-slate-500 px-2 py-1">+{basket.basket_positions.length - 6} more</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => router.push(`/trade/basket/${basket.id}`)} className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white font-medium py-2.5 rounded-xl text-sm transition">
+                  Review &amp; Order →
+                </button>
+                <button disabled className="px-4 py-2.5 rounded-xl border border-slate-600 text-slate-500 text-sm cursor-not-allowed">
+                  Watch
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* ─── End Ready to Execute ────────────────────────── */}
+
       {/* Demo Mode Banner */}
       {!isConnected && (
         <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-4 mb-4">

@@ -1,5 +1,5 @@
 'use client';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useMarketStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -9,6 +9,7 @@ import { INVESTOR_STYLES } from '@/components/onboarding/styles';
 import { ConfidenceRing } from './ConfidenceRing';
 import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
+import SuggestionTracker from '@/components/SuggestionTracker';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import { DemoBanner } from '@/components/shared/DemoBanner';
 
@@ -85,6 +86,11 @@ export function AITab() {
   })();
   const styleDef = INVESTOR_STYLES.find(s => s.id === investorStyle);
 
+  // Lazy tracking: trigger background refresh of suggestion outcomes
+  useEffect(() => {
+    fetch('/api/ai/suggestions/track', { method: 'POST' }).catch(() => {});
+  }, []);
+
   return (
     <>
       <ConfidenceRing />
@@ -136,6 +142,7 @@ export function AITab() {
         </div>
       </div>
       <QuickActions />
+      <SuggestionTracker />
       <div className="disclaimer">
         <strong>⚠️ Disclaimer:</strong> AI suggestions are not financial advice. Always do your own research.
       </div>

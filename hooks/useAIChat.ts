@@ -260,6 +260,21 @@ export function useAIChat() {
               });
             }
           },
+          onBasket: (data) => {
+            // Attach theme basket metadata to the last AI message
+            const state = useChatStore.getState();
+            const msgs = [...state.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              useChatStore.setState({
+                messages: msgs.map((m) =>
+                  m.id === lastMsg.id
+                    ? { ...m, type: 'theme_basket', basketId: data.basketId, basketName: data.basketName, stocks: data.stocks }
+                    : m
+                ),
+              });
+            }
+          },
           onError: (err: string) => {
             setError(err);
             setLoading(false);

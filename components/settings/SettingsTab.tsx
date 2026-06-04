@@ -90,10 +90,20 @@ export function SettingsTab() {
   const [watchlistSymbolCount, setWatchlistSymbolCount] = useState(0);
   const [activeAlertCount, setActiveAlertCount] = useState(0);
   const [triggeredAlertCount, setTriggeredAlertCount] = useState(0);
+  const [riskTolerance, setRiskTolerance] = useState<string>('moderate');
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2000);
+  }, []);
+
+  const handleRiskChange = useCallback(async (value: string) => {
+    setRiskTolerance(value);
+    await fetch('/api/user/preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ risk_tolerance: value })
+    });
   }, []);
 
   // Load real watchlist and alert counts
@@ -163,6 +173,68 @@ export function SettingsTab() {
           badgeColor="#06b6d4"
           onClick={() => router.push('/investor-style')}
         />
+      </div>
+
+      {/* Risk Tolerance */}
+      <div className="section" style={{ marginTop: 12 }}>
+        <div style={{ padding: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9', marginBottom: 4 }}>
+            Risk Tolerance
+          </div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 12 }}>
+            Adjusts stock recommendations within your {user?.investorStyle ? capitalizeStyle(user.investorStyle) : 'Value'}-Style approach
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {[
+              { value: 'conservative', label: 'Conservative', emoji: '🛡️', desc: 'Lower volatility, established names' },
+              { value: 'moderate', label: 'Moderate', emoji: '⚖️', desc: 'Balanced risk and reward' },
+              { value: 'aggressive', label: 'Aggressive', emoji: '🚀', desc: 'Higher growth, higher risk' }
+            ].map(option => (
+              <button
+                key={option.value}
+                onClick={() => handleRiskChange(option.value)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${riskTolerance === option.value ? '#06b6d4' : '#334155'}`,
+                  background: riskTolerance === option.value ? 'rgba(6,182,212,0.1)' : '#0f172a',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 24 }}>{option.emoji}</span>
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: riskTolerance === option.value ? '#22d3ee' : '#cbd5e1',
+                  marginTop: 4,
+                }}>
+                  {option.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{
+            textAlign: 'center',
+            fontSize: 10,
+            color: '#64748b',
+            marginTop: 12,
+          }}>
+            {[
+              { value: 'conservative', desc: 'Lower volatility, established names' },
+              { value: 'moderate', desc: 'Balanced risk and reward' },
+              { value: 'aggressive', desc: 'Higher growth, higher risk' }
+            ].find(o => o.value === riskTolerance)?.desc}
+          </div>
+        </div>
+      </div>
+
+      {/* Portfolio & Research */}
+      <div className="section" style={{ marginTop: 12 }}>
         <SettingsItem
           icon={Star} title="Watchlists"
           subtitle={`${watchlistCount} list${watchlistCount !== 1 ? 's' : ''} · ${watchlistSymbolCount} symbol${watchlistSymbolCount !== 1 ? 's' : ''}`}
