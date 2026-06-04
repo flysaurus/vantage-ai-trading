@@ -410,9 +410,6 @@ export function AIChat() {
             <div className="empty-subtitle">
               AI-powered portfolio analysis and market intelligence.
             </div>
-            <div className="empty-disclaimer">
-              ⚠️ Advisory only. Vantage AI does not execute trades.
-            </div>
           </div>
         )}
 
