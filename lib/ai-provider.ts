@@ -134,11 +134,14 @@ class ClaudeProvider implements AIProvider {
     const systemMessage = options.messages.find(m => m.role === 'system');
     const userMessages = options.messages.filter(m => m.role !== 'system');
 
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+    if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY or CLAUDE_API_KEY');
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -168,11 +171,14 @@ class ClaudeProvider implements AIProvider {
     const systemMessage = options.messages.find(m => m.role === 'system');
     const userMessages = options.messages.filter(m => m.role !== 'system');
 
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+    if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY or CLAUDE_API_KEY');
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -351,7 +357,7 @@ export function isAIAvailable(): boolean {
   const provider = process.env.AI_PROVIDER || 'deepseek';
   switch (provider) {
     case 'claude':
-      return !!process.env.ANTHROPIC_API_KEY;
+      return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
     case 'openai':
       return !!process.env.OPENAI_API_KEY;
     case 'deepseek':
