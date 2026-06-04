@@ -24,84 +24,7 @@ function sanitizeContent(content: string): string {
   return content.replace(/<rebalance-trades>[\s\S]*?<\/rebalance-trades>/g, '').trim();
 }
 
-/** Check if a string contains a markdown table with positions */
-function hasMarkdownTable(content: string): boolean {
-  const clean = sanitizeContent(content);
-  return clean.includes('|') && /\bSymbol\b/i.test(clean);
-}
-
 /** Parse dollar amount string like "$10,300", "-$6,100", "$5.1K" */
-function parseDollarAmount(str: string): number {
-  if (!str) return 0;
-  const num = str.replace(/[$,\s]/g, '');
-  const value = parseFloat(num);
-  if (isNaN(value)) return 0;
-  return /[Kk]/.test(str) ? value * 1000 : value;
-}
-
-/** Parse trades from AI markdown tables */
-function parseTradesFromMarkdown(content: string): Array<{
-  symbol: string;
-  action: string;
-  type: string;
-  currentPct: number;
-  targetPct: number;
-  dollarAmount: number;
-  reason: string;
-}> {
-  const trades: Array<{
-    symbol: string;
-    action: string;
-    type: string;
-    currentPct: number;
-    targetPct: number;
-    dollarAmount: number;
-    reason: string;
-  }> = [];
-  const lines = content.split('\n');
-  let currentTable: 'sell' | 'buy' | null = null;
-
-  for (const line of lines) {
-    // Detect table type from headings
-    if (line.toLowerCase().includes('sell')) currentTable = 'sell';
-    if (line.toLowerCase().includes('buy') && !line.toLowerCase().includes('sell')) currentTable = 'buy';
-
-    // Skip non-data rows
-    if (!line.startsWith('|')) continue;
-    if (line.includes('---')) continue;
-    if (/\bSymbol\b/i.test(line)) continue;
-
-    const cols = line.split('|')
-      .map(c => c.trim())
-      .filter(Boolean);
-
-    if (cols.length >= 4 && currentTable) {
-      const symbol = cols[0];
-      if (!symbol || symbol.length > 6 || symbol.length < 1) continue;
-
-      // Column offsets differ between SELL/BUY tables
-      // SELL: Symbol | Current % | Target % | Reduce By | Est. Proceeds | Why
-      // BUY:  Symbol | Type | Current % | Target % | Add | Est. Cost | Why
-      const isBuy = currentTable === 'buy';
-      const currentPctCol = isBuy ? 2 : 1;
-      const targetPctCol = isBuy ? 3 : 2;
-      const amountCol = isBuy ? 5 : 4;
-
-      trades.push({
-        symbol: symbol.toUpperCase(),
-        action: currentTable === 'sell' ? 'sell' : 'buy',
-        type: isBuy && cols[1]?.toLowerCase().includes('etf') ? 'etf' : 'stock',
-        currentPct: parseFloat(cols[currentPctCol]) || 0,
-        targetPct: parseFloat(cols[targetPctCol]) || 0,
-        dollarAmount: parseDollarAmount(cols[amountCol] || ''),
-        reason: cols[cols.length - 1] || '',
-      });
-    }
-  }
-
-  return trades;
-}
-
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 import AIThinkingIndicator from './AIThinkingIndicator';
@@ -333,27 +256,6 @@ export function AIChat() {
     setResearchSymbol('');
   };
 
-  const handlePushToRebalance = async (content: string) => {
-    try {
-      const trades = parseTradesFromMarkdown(content);
-
-      const res = await fetch('/api/strategies/rebalancing/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trades,
-          source: 'ai_chat',
-          expiresIn: 3600,
-        }),
-      });
-
-      const { sessionId } = await res.json();
-      router.push(`/strategies/setup/rebalancing?session=${sessionId}&fresh=true`);
-    } catch (err) {
-      console.error('Push to rebalance error:', err);
-    }
-  };
-
   const handleSaveStyleTargets = async (targets: Array<{ symbol: string; targetPercent: number }>) => {
     try {
       const targetAllocations = targets.map(t => ({
@@ -569,43 +471,6 @@ export function AIChat() {
                   </div>
                 </div>
               )}
-
-              {/* Push to Rebalance — shown when AI output contains a markdown table */}
-              {msg.role === 'assistant' && !isLoading && !msg.rebalanceSession && hasMarkdownTable(msg.content || '') && (() => {
-                return (
-                  <div style={{
-                    marginTop: 12,
-                    border: '1px solid rgba(6,182,212,0.3)',
-                    borderRadius: 12,
-                    padding: 16,
-                    background: 'rgba(30,41,59,0.5)',
-                  }}>
-                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
-                      AI-suggested rebalancing plan ready
-                    </p>
-                    <button
-                      onClick={() => handlePushToRebalance(msg.content)}
-                      style={{
-                        width: '100%',
-                        background: '#06b6d4',
-                        border: 'none',
-                        borderRadius: 8,
-                        color: 'white',
-                        fontWeight: 600,
-                        fontSize: 13,
-                        padding: '10px 16px',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        transition: 'background 0.2s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#0891b2')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '#06b6d4')}
-                    >
-                      📊 Open in Rebalancing →
-                    </button>
-                  </div>
-                );
-              })()}
 
               {/* Render embedded cards (suppress when rebalance session card is shown) */}
               {msg.components && msg.components.length > 0 && !msg.rebalanceSession && (
