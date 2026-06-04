@@ -82,7 +82,7 @@ async function getUserIdFromSession(req: NextRequest): Promise<string> {
       const { data } = await (supabase as any)
         .from('user_sessions')
         .select('user_id')
-        .eq('session_hash', sessionHash)
+        .eq('session_token_hash', sessionHash)
         .maybeSingle();
       if (data?.user_id) return data.user_id;
     } catch {

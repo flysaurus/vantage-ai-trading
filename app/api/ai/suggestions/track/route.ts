@@ -10,7 +10,7 @@ async function getUserIdFromSession(req: NextRequest): Promise<string> {
     const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionCookie));
     const sessionHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     const supabase = createServerClient();
-    const { data } = await (supabase as any).from('user_sessions').select('user_id').eq('session_hash', sessionHash).maybeSingle();
+    const { data } = await (supabase as any).from('user_sessions').select('user_id').eq('session_token_hash', sessionHash).maybeSingle();
     return data?.user_id || 'anonymous';
   } catch { return 'anonymous'; }
 }
