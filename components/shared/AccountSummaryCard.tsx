@@ -35,28 +35,6 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
             ${account.equity.toLocaleString()}
           </div>
         </div>
-        {/* Investor Style Badge */}
-        {styleDef && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '3px 10px',
-            background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)',
-            borderRadius: 16,
-            flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 16, lineHeight: 1 }}>{styleDef.emoji}</span>
-            <div>
-              <div style={{ fontWeight: 600, color: '#e2e8f0', fontSize: 11, lineHeight: 1.3 }}>{styleDef.title}</div>
-              <div style={{ color: '#64748b', fontSize: 9, lineHeight: 1.3 }}>{styleDef.timeHorizon}</div>
-            </div>
-            <span
-              onClick={() => setTab('settings')}
-              style={{ fontSize: 8, color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}
-            >
-              Change in Settings
-            </span>
-          </div>
-        )}
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 8, paddingTop: 10, borderTop: '1px solid #334155' }}>
         <div style={{ flex: 1 }}>
@@ -94,6 +72,25 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
           </div>
         </div>
       </div>
+      {/* Investor Style Chip */}
+      {styleDef && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          marginTop: 8, padding: '4px 10px',
+          background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)',
+          borderRadius: 20,
+        }}>
+          <span style={{ fontSize: 12 }}>{styleDef.emoji}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#67e8f9' }}>{styleDef.title}</span>
+          <span style={{ color: '#475569', fontSize: 10 }}>· {styleDef.timeHorizon}</span>
+          <span
+            onClick={() => setTab('settings')}
+            style={{ fontSize: 9, color: '#475569', cursor: 'pointer', marginLeft: 2 }}
+          >
+            Change in Settings
+          </span>
+        </div>
+      )}
       <style jsx>{`
         .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
       `}</style>

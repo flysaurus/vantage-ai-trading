@@ -31,16 +31,16 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 import AIThinkingIndicator from './AIThinkingIndicator';
 
-const SUGGESTIONS = [
+const SUGGESTIONS_PRIMARY = [
   {
     id: 'health',
-    label: '🌱 Portfolio Health',
+    label: '🌱 Health Check',
     mode: 'health' as const,
     message: 'Run a complete health check on my portfolio. Score each area and give me priority actions.',
   },
   {
     id: 'risk',
-    label: '🛡 Risk Check',
+    label: '🛡 Risk',
     mode: 'risk' as const,
     message: 'Check my portfolio for concentration risk, sector risk, and any other risks I should know about.',
   },
@@ -50,23 +50,26 @@ const SUGGESTIONS = [
     mode: 'opportunities' as const,
     message: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
   },
+];
+
+const SUGGESTIONS_SECONDARY = [
   {
     id: 'trends',
-    label: '📈 Market Trends',
+    label: '📊 Market Trends',
     mode: 'trends' as const,
     message: 'What are the key market trends right now and how do they affect my portfolio specifically?',
+  },
+  {
+    id: 'tax',
+    label: '📋 Tax Check',
+    mode: 'tax' as const,
+    message: 'Check my tax situation. What losses can I harvest and what are my estimated savings?',
   },
   {
     id: 'research',
     label: '🔍 Research',
     mode: 'research' as const,
     message: 'Research [SYMBOL] — fundamentals, technicals, recent news, and whether it fits my portfolio.',
-  },
-  {
-    id: 'tax',
-    label: '🧾 Tax Check',
-    mode: 'tax' as const,
-    message: 'Check my tax situation. What losses can I harvest and what are my estimated savings?',
   },
 ];
 
@@ -177,6 +180,7 @@ export function AIChat() {
   const [showResearchInput, setShowResearchInput] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<string>('general');
   const [showBasketModal, setShowBasketModal] = useState(false);
+  const [showMorePrompts, setShowMorePrompts] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -237,7 +241,7 @@ export function AIChat() {
     }
   };
 
-  const handleQuickPrompt = (suggestion: typeof SUGGESTIONS[number]) => {
+  const handleQuickPrompt = (suggestion: { id: string; message: string; mode: string; label: string }) => {
     if (suggestion.id === 'research') {
       // Show inline symbol input for research prompt
       setShowResearchInput(true);
@@ -251,7 +255,7 @@ export function AIChat() {
   const handleResearchSend = () => {
     const symbol = researchSymbol.trim().toUpperCase();
     if (!symbol) return;
-    const researchSuggestion = SUGGESTIONS.find(s => s.id === 'research')!;
+    const researchSuggestion = SUGGESTIONS_SECONDARY.find(s => s.id === 'research')!;
     const message = researchSuggestion.message.replace('[SYMBOL]', symbol);
     setThinkingMode('research');
     sendMessage(message, responseMode, 'research', symbol);
@@ -687,10 +691,10 @@ export function AIChat() {
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
-        {/* Suggestions */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}
+        {/* Primary suggestions row */}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: showMorePrompts ? 4 : 8 }}
           className="no-scrollbar">
-          {SUGGESTIONS.map((s) => (
+          {SUGGESTIONS_PRIMARY.map((s) => (
             <button
               key={s.id}
               onClick={() => handleQuickPrompt(s)}
@@ -723,9 +727,45 @@ export function AIChat() {
               transition: 'all 0.2s',
             }}
           >
-            🧺 Build Basket
+            🧺 Build
+          </button>
+          <button
+            onClick={() => setShowMorePrompts(prev => !prev)}
+            disabled={isLoading || remainingCalls === 0}
+            style={{
+              padding: '5px 9px', background: showMorePrompts ? '#1e3a5f' : '#334155',
+              border: showMorePrompts ? '1px solid rgba(6,182,212,0.3)' : '1px solid transparent',
+              borderRadius: 4, color: showMorePrompts ? '#67e8f9' : '#94a3b8',
+              cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
+              fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
+              fontWeight: showMorePrompts ? 600 : 400,
+              opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
+            }}
+          >
+            {showMorePrompts ? 'Less ↑' : 'More ↓'}
           </button>
         </div>
+        {/* Secondary suggestions row — collapsible */}
+        {showMorePrompts && (
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}
+            className="no-scrollbar">
+            {SUGGESTIONS_SECONDARY.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => handleQuickPrompt(s)}
+                disabled={isLoading || remainingCalls === 0}
+                style={{
+                  padding: '5px 9px', background: '#1e293b', border: '1px solid #334155',
+                  borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
+                  fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
+                  opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Research symbol input — appears inline when Research is tapped */}
         {showResearchInput && (
