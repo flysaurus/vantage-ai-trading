@@ -165,6 +165,7 @@ interface ChatStore {
   setRemainingCalls: (calls: number) => void;
   setError: (error: string | null) => void;
   clearChat: () => void;
+  persistChat: () => void;
   sessionCount: number;
 }
 
@@ -195,7 +196,8 @@ export const useChatStore = create<ChatStore>((set) => ({
       const last = msgs[msgs.length - 1];
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, content: last.content + content };
-        saveToStorage(STORAGE_KEYS.chatMessages, msgs);
+        // NOTE: do NOT write to localStorage here — called on every token.
+        // Persistence happens at stream completion via addMessage → saveToStorage.
       }
       return { messages: msgs };
     }),
@@ -205,7 +207,6 @@ export const useChatStore = create<ChatStore>((set) => ({
       const last = msgs[msgs.length - 1];
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, ...updates };
-        saveToStorage(STORAGE_KEYS.chatMessages, msgs);
       }
       return { messages: msgs };
     }),
@@ -225,6 +226,10 @@ export const useChatStore = create<ChatStore>((set) => ({
       }],
       sessionCount: s.sessionCount + 1,
     }));
+  },
+  persistChat: () => {
+    const { messages } = useChatStore.getState();
+    saveToStorage(STORAGE_KEYS.chatMessages, messages);
   },
 }));
 

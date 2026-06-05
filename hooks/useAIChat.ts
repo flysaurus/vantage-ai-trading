@@ -29,6 +29,7 @@ export function useAIChat() {
     error,
     setError,
     updateLastMessage,
+    persistChat,
   } = useChatStore();
 
   const { account } = usePortfolioStore();
@@ -36,6 +37,17 @@ export function useAIChat() {
   const { user } = useAuth();
   const abortRef = useRef<AbortController | null>(null);
   const hydratedRef = useRef(false);
+
+  // ─── Periodic localStorage persistence during streaming ────
+  // While streaming, sync Zustand → localStorage at most once per second.
+  // Final sync happens in onDone/onError (via persistChat).
+  useEffect(() => {
+    if (!isLoading) return;
+    const interval = setInterval(() => {
+      useChatStore.getState().persistChat();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   // ─── Hydrate chat messages from DB on mount ──────────────────
   // localStorage is the primary store; DB is used to recover messages
@@ -167,8 +179,8 @@ export function useAIChat() {
 
       const context = buildContext();
 
-      // Build messages array for the API
-      const apiMessages = [...messages, userMsg].map((m) => ({
+      // Build messages array for the API (avoid duplicating the user message)
+      const apiMessages = messages.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       }));
@@ -258,6 +270,9 @@ export function useAIChat() {
                 }),
               }).catch(() => {});
             }
+
+            // Persist final state to localStorage (replaces per-token writes)
+            persistChat();
           },
           onSession: (session) => {
             // Attach rebalance session to the last AI message
@@ -307,6 +322,8 @@ export function useAIChat() {
                 ),
               });
             }
+            // Persist error state too
+            persistChat();
           },
         }, responseMode, mode, user?.investorStyle);
       } catch (err) {
