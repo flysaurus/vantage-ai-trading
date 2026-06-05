@@ -37,6 +37,7 @@ async function getUserIdFromSession(req: NextRequest): Promise<string> {
 export async function POST(req: NextRequest) {
   try {
     const userId = await getUserIdFromSession(req);
+    console.log('[chat/history/save] userId:', userId);
     if (userId === 'anonymous') {
       return NextResponse.json(
         { error: 'Not authenticated' },
@@ -55,7 +56,12 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
 
     // Insert both rows — user message + assistant response
-    await (supabase as any)
+    console.log('[chat/history/save] Saving to chat_history:', {
+      userId,
+      userMessage: userMessage?.substring(0, 50),
+      assistantMessage: assistantMessage?.substring(0, 50),
+    });
+    const { error: err1 } = await (supabase as any)
       .from('chat_history')
       .insert({
         user_id: userId,
@@ -65,8 +71,9 @@ export async function POST(req: NextRequest) {
         investor_style: null,
         created_at: now,
       });
+    if (err1) console.error('[chat/history/save] Insert user_message failed:', err1);
 
-    await (supabase as any)
+    const { error: err2 } = await (supabase as any)
       .from('chat_history')
       .insert({
         user_id: userId,
@@ -76,6 +83,9 @@ export async function POST(req: NextRequest) {
         investor_style: null,
         created_at: now,
       });
+    if (err2) console.error('[chat/history/save] Insert ai_response failed:', err2);
+
+    console.log('[chat/history/save] Insert complete. Errors:', { err1: !!err1, err2: !!err2 });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

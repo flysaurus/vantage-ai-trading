@@ -37,6 +37,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Cannot create messages for other users' }, { status: 403 });
     }
 
+    console.log('[chat-history/create] Saving:', { userId, messageType, content: content?.substring(0, 50) });
+
     const { data, error } = await (supabase as any)
       .from('chat_history')
       .insert({
@@ -51,6 +53,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .select('id, user_id, message_type, content, created_at')
       .single();
 
+    console.log('[chat-history/create] Insert result:', { success: !!data, error: error?.message });
     if (error) {
       console.error('[chat-history/create] Insert failed:', error.message);
       return NextResponse.json(
