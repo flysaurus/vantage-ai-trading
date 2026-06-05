@@ -362,10 +362,10 @@ export function PortfolioTab() {
           textAlign: 'center',
         }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4', marginBottom: 8 }}>
-            Ready to see your real portfolio?
+            Unlock your real portfolio
           </div>
           <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 12 }}>
-            Connect your broker to replace this demo data with live positions, P&L, and trading.
+            You&apos;re viewing a simulated portfolio. Connect your broker to unlock AI analysis of your real holdings.
           </div>
           <button
             onClick={() => router.push('/settings/broker')}

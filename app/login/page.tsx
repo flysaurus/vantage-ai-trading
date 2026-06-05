@@ -349,7 +349,7 @@ export default function LoginPage() {
         <div className="logo" style={{ textAlign: 'center', marginBottom: 4 }}>
           <span className="logo-text" style={{ fontSize: 32, fontWeight: 800, background: 'linear-gradient(135deg,#06b6d4,#0d9488)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-.5px' }}>Vantage</span>
         </div>
-        <p className="tagline" style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginBottom: 28 }}>AI-first trading, in your pocket</p>
+        <p className="tagline" style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginBottom: 28 }}>AI portfolio analysis. Built for everyone.</p>
 
         <div className="tabs" style={{ display: 'flex', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 3, marginBottom: 20 }}>
           <button

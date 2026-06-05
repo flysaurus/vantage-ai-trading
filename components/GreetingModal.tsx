@@ -190,10 +190,24 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
           {userName}.
         </div>
 
+        {/* Tagline */}
+        <div
+          style={{
+            fontSize: '13px',
+            fontWeight: 400,
+            color: '#94a3b8',
+            opacity: phase >= 4 ? 0.9 : 0,
+            transition: 'opacity 0.4s ease-out',
+            marginBottom: '8px',
+          }}
+        >
+          AI portfolio analysis. Built for everyone.
+        </div>
+
         {/* Portfolio line */}
         <div
           style={{
-            fontSize: '16px',
+            fontSize: '15px',
             fontWeight: 300,
             color: portfolioColor,
             opacity: phase >= 4 ? 0.9 : 0,

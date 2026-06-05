@@ -337,7 +337,7 @@ export function SettingsTab() {
               </div>
             ) : isConnected ? null : (
               <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px', lineHeight: 1.5 }}>
-                Connect your brokerage account to see your portfolio, positions, and start trading.
+                Connect your broker to get institutional-quality analysis of your actual holdings — free.
               </p>
             )}
 

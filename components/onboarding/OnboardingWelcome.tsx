@@ -17,8 +17,9 @@ export function OnboardingWelcome({ onNext, onSkip }: Props) {
           Welcome to Vantage
         </h1>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
-          Your AI-first trading dashboard. Before we dive in, let's set up
-          your investment style so every recommendation is tailored to you.
+          Institutional-quality AI portfolio analysis. Built for everyone.
+          Before we dive in, let's set up your investment style so every
+          recommendation is tailored to you.
         </p>
       </div>
 

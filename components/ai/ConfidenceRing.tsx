@@ -74,7 +74,7 @@ export function ConfidenceRing() {
     return (
       <div className="confidence-hero" style={{ padding: '14px 16px', borderBottom: '1px solid #334155' }}>
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-          Connect your broker to see portfolio confidence scores.
+          Connect your broker to unlock AI-powered confidence scores.
         </div>
       </div>
     );

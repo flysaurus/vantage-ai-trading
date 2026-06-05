@@ -72,10 +72,10 @@ export function BrokerSelection({ onSelect, onSkip }: BrokerSelectionProps) {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 4px' }}>
-          Connect Your Broker
+          Unlock your real portfolio
         </h2>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-          Link your brokerage account to start trading and tracking your portfolio.
+          Connect your broker to get institutional-quality analysis of your actual holdings — free.
           You can always add or change this later.
         </p>
       </div>

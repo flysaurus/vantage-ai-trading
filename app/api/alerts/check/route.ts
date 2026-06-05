@@ -97,7 +97,7 @@ ${symbol} ${condition}.
 </table>
 </td></tr>
 <tr><td style="padding:20px 32px;background:#0f172a;border-top:1px solid #334155;">
-<p style="color:#475569;font-size:11px;margin:0;">Vantage · AI-first trading<br>This is an automated alert. Manage your alerts in the app.</p>
+<p style="color:#475569;font-size:11px;margin:0;">Vantage · AI Portfolio Analysis<br>This is an automated alert. Manage your alerts in the app.</p>
 </td></tr>
 </table>
 </td></tr>

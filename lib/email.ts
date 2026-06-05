@@ -148,7 +148,7 @@ export function getVerificationEmailHTML(token: string, email: string): string {
       <table width="480" cellpadding="0" cellspacing="0" style="background:#1e293b;border-radius:12px;overflow:hidden;">
         <tr><td style="padding:32px 32px 0;">
           <p style="font-size:28px;font-weight:800;color:#06b6d4;margin:0;letter-spacing:-0.5px;">Vantage</p>
-          <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">AI-first trading, in your pocket</p>
+          <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">AI portfolio analysis. Built for everyone.</p>
         </td></tr>
         <tr><td style="padding:32px;">
           <h2 style="color:#f1f5f9;font-size:20px;margin:0 0 12px;">Verify your email address</h2>
@@ -164,7 +164,7 @@ export function getVerificationEmailHTML(token: string, email: string): string {
         </td></tr>
         <tr><td style="padding:20px 32px;background:#0f172a;border-top:1px solid #334155;">
           <p style="color:#475569;font-size:11px;margin:0;line-height:1.4;">
-            Vantage &middot; AI-first trading platform<br>
+            Vantage &middot; AI Portfolio Analysis<br>
             This is an automated message. Please do not reply to this email.
           </p>
         </td></tr>
@@ -192,7 +192,7 @@ export function getPasswordResetEmailHTML(token: string, email: string): string 
       <table width="480" cellpadding="0" cellspacing="0" style="background:#1e293b;border-radius:12px;overflow:hidden;">
         <tr><td style="padding:32px 32px 0;">
           <p style="font-size:28px;font-weight:800;color:#06b6d4;margin:0;letter-spacing:-0.5px;">Vantage</p>
-          <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">AI-first trading, in your pocket</p>
+          <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">AI portfolio analysis. Built for everyone.</p>
         </td></tr>
         <tr><td style="padding:32px;">
           <h2 style="color:#f1f5f9;font-size:20px;margin:0 0 12px;">Reset your password</h2>
@@ -208,7 +208,7 @@ export function getPasswordResetEmailHTML(token: string, email: string): string 
         </td></tr>
         <tr><td style="padding:20px 32px;background:#0f172a;border-top:1px solid #334155;">
           <p style="color:#475569;font-size:11px;margin:0;line-height:1.4;">
-            Vantage &middot; AI-first trading platform<br>
+            Vantage &middot; AI Portfolio Analysis<br>
             This is an automated message. Please do not reply to this email.
           </p>
         </td></tr>

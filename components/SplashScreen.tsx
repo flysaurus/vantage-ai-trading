@@ -192,8 +192,8 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
               </span>
             ))}
         </div>
-        <div style={{ fontSize: 13, fontWeight: 300, letterSpacing: '.2em', color: 'rgba(255,255,255,.5)', minHeight: 20 }}>
-          {(tp === 'subtitle' || tp === 'done') && <span className="si">AI Trading Intelligence</span>}
+        <div style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3, color: '#fff', minHeight: 60, textAlign: 'center' }}>
+          {(tp === 'subtitle' || tp === 'done') && <span className="si">Institutional-quality AI portfolio<br />analysis. Built for everyone.</span>}
         </div>
       </div>
 

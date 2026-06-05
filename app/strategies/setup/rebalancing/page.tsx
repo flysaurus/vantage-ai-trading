@@ -857,8 +857,7 @@ export default function RebalancingPage() {
           <div style={{ fontSize: 12, color: '#94a3b8', padding: '8px 0', lineHeight: 1.6 }}>
             {!isConnected ? (
               <>
-                No positions found. Connect your broker to see live holdings,<br />
-                or use demo data to explore the rebalancing tool.
+                You&apos;re viewing a simulated portfolio. Connect your broker to unlock AI analysis of your real holdings.
               </>
             ) : (
               'No positions found in your connected account.'

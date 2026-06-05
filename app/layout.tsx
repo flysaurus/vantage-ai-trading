@@ -6,13 +6,17 @@ import { SplashGuard } from '@/components/SplashGuard';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Vantage — AI-First Trading',
-  description: 'Vantage — AI-first, mobile-first trading platform',
+  title: 'Vantage — AI Portfolio Analysis',
+  description: 'Institutional-quality AI portfolio analysis. Built for everyone. Your AI portfolio analyst, available 24/7.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Vantage',
+  },
+  openGraph: {
+    title: 'Vantage — AI Portfolio Analysis',
+    description: 'Institutional-quality AI portfolio analysis. Built for everyone.',
   },
   other: {
     'mobile-web-app-capable': 'yes',
