@@ -1,14 +1,12 @@
 'use client';
 import { useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { useMarketStore } from '@/store';
 
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoInsight } from '@/lib/demo-data';
 
 
-import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
 import SuggestionTracker from '@/components/SuggestionTracker';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
@@ -66,7 +64,6 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
 
 export function AITab() {
   const { account } = usePortfolio();
-  const { isMarketOpen } = useMarketStore();
 
   const { isConnected } = useBroker();
   const { user } = useAuth();
@@ -84,12 +81,14 @@ export function AITab() {
   }, []);
 
   return (
-    <>
-      {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
-      <div style={{ padding: '12px 16px 0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <AIChat>
+        {/* Demo Banner */}
+        {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
+
         {/* Account Summary */}
         {account && (
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 12, paddingTop: 12 }}>
             <AccountSummaryCard account={account} />
           </div>
         )}
@@ -101,13 +100,10 @@ export function AITab() {
             {insight || 'Connect your portfolio to see insights.'}
           </div>
         </div>
-      </div>
-      <QuickActions />
-      <SuggestionTracker />
-      <div className="disclaimer">
-        <strong>⚠️ Disclaimer:</strong> AI suggestions are not financial advice. Always do your own research.
-      </div>
-      <AIChat />
+
+        {/* Suggestion Tracker */}
+        <SuggestionTracker />
+      </AIChat>
 
       <style jsx>{`
         .key-insight {
@@ -129,18 +125,7 @@ export function AITab() {
           color: #cbd5e1;
           line-height: 1.4;
         }
-        .disclaimer {
-          background: rgba(251,191,36,0.1);
-          border: 1px solid rgba(251,191,36,0.3);
-          border-radius: 8px;
-          padding: 9px;
-          font-size: 10px;
-          color: #cbd5e1;
-          margin: 12px 16px;
-          line-height: 1.4;
-        }
-        .disclaimer strong { color: #fbbf24; }
       `}</style>
-    </>
+    </div>
   );
 }

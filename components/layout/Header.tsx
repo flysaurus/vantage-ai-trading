@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, Settings, X } from 'lucide-react';
-import { useMarketStore, useTabStore } from '@/store';
+import { useTabStore } from '@/store';
+import { getMarketStatus } from '@/lib/market-hours';
 
 interface Notification {
   id: string;
@@ -26,7 +27,6 @@ function timeAgo(dateStr: string): string {
 }
 
 export function Header() {
-  const { isMarketOpen } = useMarketStore();
   const { setTab } = useTabStore();
   const router = useRouter();
 
@@ -67,10 +67,16 @@ export function Header() {
     } catch { /* ignore */ }
   };
 
-  // Poll unread count every 60s
+  // Market status state
+  const [marketStatus, setMarketStatus] = useState(getMarketStatus());
+
+  // Poll unread count and market status every 60s
   useEffect(() => {
     fetchUnread();
-    const interval = setInterval(fetchUnread, 60000);
+    const interval = setInterval(() => {
+      fetchUnread();
+      setMarketStatus(getMarketStatus());
+    }, 60000);
     return () => clearInterval(interval);
   }, [fetchUnread]);
 
@@ -95,9 +101,9 @@ export function Header() {
     <div className="app-header" ref={dropdownRef} style={{ position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div className="logo">Vantage</div>
-        <div className={`market-status ${!isMarketOpen ? 'closed' : ''}`}>
-          {isMarketOpen ? 'OPEN' : 'CLOSED'}
-        </div>
+        <span className={`text-xs font-medium px-2 py-1 rounded-full ${marketStatus.color}`}>
+          ● {marketStatus.label}
+        </span>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button className="icon-btn"><Search size={16} /></button>

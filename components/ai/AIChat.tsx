@@ -158,7 +158,7 @@ const MARKDOWN_COMPONENTS = {
   ),
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
-export function AIChat() {
+export function AIChat({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
   const userInitial = (user?.displayName || user?.email || 'U').charAt(0).toUpperCase();
@@ -303,8 +303,8 @@ export function AIChat() {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '100%',
-      maxHeight: 'calc(100vh - 180px)',
+      flex: 1,
+      minHeight: 0,
     }}>
       {/* ── Scrollable Messages ── */}
       <div
@@ -312,7 +312,7 @@ export function AIChat() {
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '12px 16px 0',
+          padding: '0 16px',
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
@@ -320,6 +320,9 @@ export function AIChat() {
         }}
         className="chat-messages"
       >
+        {/* Top content slot (DemoBanner, AccountSummaryCard, Insight, etc.) */}
+        {children}
+
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">🦊</div>

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useMarketStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { getDemoIndexes, getDemoQuotes, getAllDemoSymbols } from '@/lib/demo-data';
+import { isMarketOpen } from '@/lib/market-hours';
 import type { MarketIndex, Quote, WatchlistItem } from '@/types';
 
 // Indices and watchlist are now persisted in the market store (localStorage).
@@ -162,15 +163,7 @@ export function useMarketData() {
     if (!isConnected) {
       // Time-based fallback when no broker connected
       const checkMarketStatus = () => {
-        const now = new Date();
-        const day = now.getUTCDay();
-        const h = now.getUTCHours();
-        const m = now.getUTCMinutes();
-        // US market: 9:30 AM - 4:00 PM ET Mon-Fri (13:30-20:00 UTC during DST)
-        const isOpen = day >= 1 && day <= 5
-          && (h > 13 || (h === 13 && m >= 30))
-          && !(h > 20 || (h === 20 && m > 0));
-        setMarketOpen(isOpen);
+        setMarketOpen(isMarketOpen());
       };
       checkMarketStatus();
       // Re-check market status every 60s so it updates when market opens without a refresh

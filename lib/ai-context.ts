@@ -7,6 +7,7 @@
 
 import { createServerClient } from '@/lib/supabase';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
+import { isMarketOpen } from '@/lib/market-hours';
 import { getConnectionStatus } from '@/lib/vault';
 import { getDemoAccount } from '@/lib/demo-data';
 import {
@@ -194,26 +195,7 @@ function finnhubKey(): string | null {
 
 /** Get NY market status: open = Mon-Fri 9:30 AM – 4:00 PM ET. */
 function getMarketStatus(): 'open' | 'closed' {
-  try {
-    const now = new Date();
-    // Format in ET timezone
-    const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
-    const etDate = new Date(etStr);
-    const day = etDate.getDay();
-    const hours = etDate.getHours();
-    const minutes = etDate.getMinutes();
-
-    if (day === 0 || day === 6) return 'closed';
-
-    const totalMinutes = hours * 60 + minutes;
-    if (totalMinutes >= 9 * 60 + 30 && totalMinutes < 16 * 60) {
-      return 'open';
-    }
-    return 'closed';
-  } catch {
-    // Fallback: assume closed
-    return 'closed';
-  }
+  return isMarketOpen() ? 'open' : 'closed';
 }
 
 /** Sentiment classification by simple keyword matching. */
