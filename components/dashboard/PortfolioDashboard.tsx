@@ -276,7 +276,7 @@ export default function PortfolioDashboard({
             <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '0 0 2px' }}>
               Total Value
             </p>
-            <p style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+            <p style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
               ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </p>
           </div>
@@ -286,7 +286,7 @@ export default function PortfolioDashboard({
             </p>
             <p
               style={{
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 700,
                 color: isPositive ? '#22c55e' : '#ef4444',
                 margin: 0,
@@ -301,7 +301,7 @@ export default function PortfolioDashboard({
             </p>
             <p
               style={{
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 700,
                 color: isPositive ? '#22c55e' : '#ef4444',
                 margin: 0,

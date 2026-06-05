@@ -76,13 +76,13 @@ const SUGGESTIONS_SECONDARY = [
 /** Custom markdown renderers — dark theme, compact, trading-appropriate */
 const MARKDOWN_COMPONENTS = {
   h1: ({ children }: { children: React.ReactNode }) => (
-    <h1 style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', margin: '10px 0 4px', lineHeight: 1.3 }}>{children}</h1>
+    <h1 style={{ fontSize: 20, fontWeight: 700, color: '#f1f5f9', margin: '10px 0 4px', lineHeight: 1.3 }}>{children}</h1>
   ),
   h2: ({ children }: { children: React.ReactNode }) => (
-    <h2 style={{ fontSize: 13, fontWeight: 700, color: '#06b6d4', margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h2>
+    <h2 style={{ fontSize: 20, fontWeight: 700, color: '#06b6d4', margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h2>
   ),
   h3: ({ children }: { children: React.ReactNode }) => (
-    <h3 style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', margin: '6px 0 2px', lineHeight: 1.3 }}>{children}</h3>
+    <h3 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: '6px 0 2px', lineHeight: 1.3 }}>{children}</h3>
   ),
   p: ({ children }: { children: React.ReactNode }) => (
     <p style={{ margin: '2px 0 6px', lineHeight: 1.7, color: '#cbd5e1' }}>{children}</p>
@@ -381,7 +381,7 @@ export function AIChat() {
             >
               {/* Rich markdown rendering for AI messages */}
               {msg.role === 'assistant' ? (
-                <div className="markdown-body" style={{ fontSize: 14, lineHeight: 1.7 }}>
+                <div className="markdown-body" style={{ fontSize: 17, lineHeight: 1.625 }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={MARKDOWN_COMPONENTS as any}
@@ -396,7 +396,7 @@ export function AIChat() {
                 </div>
               ) : (
                 /* User messages stay plain */
-                <div style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                <div style={{ fontSize: 17, whiteSpace: 'pre-wrap', lineHeight: 1.625 }}>
                   {msg.content}
                 </div>
               )}
@@ -673,7 +673,7 @@ export function AIChat() {
               style={{
                 padding: '5px 9px', background: '#334155', border: 'none',
                 borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-                fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
+                fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
                 opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
               }}
             >
@@ -690,7 +690,7 @@ export function AIChat() {
               borderRadius: 4,
               color: '#22d3ee',
               cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-              fontSize: 10,
+              fontSize: 15,
               whiteSpace: 'nowrap',
               flexShrink: 0,
               fontWeight: 600,
@@ -708,7 +708,7 @@ export function AIChat() {
               border: showMorePrompts ? '1px solid rgba(6,182,212,0.3)' : '1px solid transparent',
               borderRadius: 4, color: showMorePrompts ? '#67e8f9' : '#94a3b8',
               cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-              fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
+              fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
               fontWeight: showMorePrompts ? 600 : 400,
               opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
             }}
@@ -728,7 +728,7 @@ export function AIChat() {
                 style={{
                   padding: '5px 9px', background: '#1e293b', border: '1px solid #334155',
                   borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-                  fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
+                  fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
                   opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
                 }}
               >

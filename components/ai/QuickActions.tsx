@@ -102,7 +102,7 @@ export function QuickActions() {
           color: #cbd5e1;
         }
         .qa-btn:active { background: #334155; transform: scale(0.97); }
-        .qa-label { font-size: 10px; font-weight: 600; }
+        .qa-label { font-size: 15px; font-weight: 600; }
       `}</style>
     </div>
   );

@@ -322,7 +322,7 @@ export function TradeTab() {
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 10 }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{quote.symbol}</div>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{quote.symbol}</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Corporation</div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -390,7 +390,7 @@ export function TradeTab() {
 
         {/* Order Type */}
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
             Order Type
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -399,7 +399,7 @@ export function TradeTab() {
                 key={t}
                 onClick={() => updateForm({ type: t })}
                 style={{
-                  padding: '7px 4px', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                  padding: '7px 4px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
                   background: form.type === t ? 'rgba(6,182,212,0.2)' : '#0f172a',
                   border: `1px solid ${form.type === t ? '#06b6d4' : '#334155'}`,
                   borderRadius: 6, color: form.type === t ? '#06b6d4' : '#cbd5e1',
@@ -413,7 +413,7 @@ export function TradeTab() {
 
         {/* Quantity */}
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
             Quantity
           </label>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -449,7 +449,7 @@ export function TradeTab() {
         {/* Limit Price */}
         {form.type === 'limit' && (
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
               Limit Price
             </label>
             <input
@@ -468,7 +468,7 @@ export function TradeTab() {
 
         {/* TIF */}
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
             Time in Force
           </label>
           <select
@@ -519,7 +519,7 @@ export function TradeTab() {
           <div style={{ padding: 10, background: '#0f172a', borderRadius: 8, marginBottom: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
-                <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>
                   Stop Loss
                 </label>
                 <input
@@ -534,7 +534,7 @@ export function TradeTab() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>
                   Take Profit
                 </label>
                 <input
