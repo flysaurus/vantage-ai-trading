@@ -1,109 +1,86 @@
 'use client';
-import { useMemo } from 'react';
-import { usePortfolioStore, useMarketStore } from '@/store';
-import { TrendingUp, Shield, Heart } from 'lucide-react';
+import { useState } from 'react';
 
-interface ActionItem {
-  icon: typeof TrendingUp;
-  label: string;
-  prompt: string;
-  mode: string;
-}
+const PRIMARY_PROMPTS = [
+  { label: 'Health', icon: '📊', mode: 'health' },
+  { label: 'Risk', icon: '🛡️', mode: 'risk' },
+  { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
+  { label: 'Build Basket', icon: '🧺', action: 'openBasketModal' },
+];
+
+const SECONDARY_PROMPTS = [
+  { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
+  { label: 'Tax Check', icon: '📋', mode: 'tax' },
+  { label: 'Research', icon: '🔍', mode: 'research' },
+  { label: 'Market Trends', icon: '📈', mode: 'trends' },
+];
 
 export function QuickActions() {
-  const { account } = usePortfolioStore();
-  const { isMarketOpen } = useMarketStore();
+  const [showMore, setShowMore] = useState(false);
 
-  // Dynamic AI suggestions based on portfolio state
-  const actions = useMemo(() => {
-    const dynamic: ActionItem[] = [];
-
-    if (!account?.positions?.length) {
-      dynamic.push({
-        icon: TrendingUp,
-        label: '📈 Market Trends',
-        prompt: 'What are the markets doing today?',
-        mode: 'trends',
-      });
-      return dynamic;
+  const handleModeSelect = (mode: string) => {
+    if (mode === 'openBasketModal') {
+      window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
+      return;
     }
-
-    const hasLosers = account.positions.some((p) => p.totalPnlPercent < -5);
-    const hasBigWinners = account.positions.some((p) => p.totalPnlPercent > 20);
-    const isConcentrated = account.positions.some((p) => p.portfolioPercent > 25);
-
-    if (hasLosers) {
-      dynamic.push({
-        icon: Shield,
-        label: '🛡 Risk Check',
-        prompt: 'Check my portfolio risk',
-        mode: 'risk',
-      });
-    }
-
-    if (hasBigWinners) {
-      dynamic.push({
-        icon: TrendingUp,
-        label: '💡 Opportunities',
-        prompt: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
-        mode: 'opportunities',
-      });
-    }
-
-    if (isConcentrated) {
-      dynamic.push({
-        icon: Heart,
-        label: '🌱 Health Check',
-        prompt: 'How healthy is my portfolio right now?',
-        mode: 'health',
-      });
-    }
-
-    return dynamic;
-  }, [account, isMarketOpen]);
-
-  if (actions.length === 0) return null;
+    window.dispatchEvent(new CustomEvent('vantage-ai-suggestion', {
+      detail: { prompt: '', mode },
+    }));
+  };
 
   return (
-    <div style={{
-      padding: '0 16px 12px',
-      display: 'grid',
-      gridTemplateColumns: `repeat(${Math.min(actions.length, 4)}, 1fr)`,
-      gap: 8,
-    }}>
-      {actions.slice(0, 8).map(({ icon: Icon, label, prompt, mode }) => (
+    <div style={{ padding: '0 16px 12px' }}>
+      {/* Primary row: always visible, flex-wrap */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {PRIMARY_PROMPTS.map((p) => (
+          <button
+            key={p.label}
+            onClick={() => handleModeSelect(p.mode || p.action || '')}
+            className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-300 text-sm font-medium px-3 py-2 rounded-full whitespace-nowrap transition"
+          >
+            <span>{p.icon}</span>
+            <span>{p.label}</span>
+          </button>
+        ))}
         <button
-          key={label}
-          onClick={() => {
-            // Trigger a click on the chat suggestion that matches this prompt
-            const event = new CustomEvent('vantage-ai-suggestion', {
-              detail: { prompt, mode },
-            });
-            window.dispatchEvent(event);
-          }}
-          className="qa-btn"
+          onClick={() => setShowMore(true)}
+          className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-300 text-sm font-medium px-3 py-2 rounded-full whitespace-nowrap transition"
         >
-          <Icon size={18} style={{ marginBottom: 4 }} />
-          <span className="qa-label">{label}</span>
+          More ▾
         </button>
-      ))}
-      <style jsx>{`
-        .qa-btn {
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 10px;
-          padding: 10px 4px;
-          text-align: center;
-          cursor: pointer;
-          transition: all 0.2s;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          color: #cbd5e1;
-        }
-        .qa-btn:active { background: #334155; transform: scale(0.97); }
-        .qa-label { font-size: 15px; font-weight: 600; }
-      `}</style>
+      </div>
+
+      {/* Bottom sheet: secondary prompts */}
+      {showMore && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/50"
+          onClick={() => setShowMore(false)}
+        >
+          <div
+            className="bg-slate-900 rounded-t-2xl w-full p-4 pb-8 border-t border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-slate-400 text-xs text-center mb-4 uppercase tracking-wide">
+              More Analysis
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {SECONDARY_PROMPTS.map((p) => (
+                <button
+                  key={p.mode}
+                  onClick={() => {
+                    handleModeSelect(p.mode);
+                    setShowMore(false);
+                  }}
+                  className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 font-medium"
+                >
+                  <span>{p.icon}</span>
+                  <span>{p.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

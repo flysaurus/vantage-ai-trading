@@ -241,7 +241,10 @@ export function useAIChat() {
               }
             }
 
-            // Persist AI response to DB (fire-and-forget)
+            // Persist final state to localStorage first (replaces per-token writes)
+            persistChat();
+
+            // Persist AI response to DB (fire-and-forget, after response arrives)
             if (user?.id) {
               const freshState = useChatStore.getState();
               const freshLastMsg = freshState.messages[freshState.messages.length - 1];
@@ -270,9 +273,6 @@ export function useAIChat() {
                 }),
               }).catch(() => {});
             }
-
-            // Persist final state to localStorage (replaces per-token writes)
-            persistChat();
           },
           onSession: (session) => {
             // Attach rebalance session to the last AI message

@@ -67,18 +67,29 @@ export async function incrementUsage(
   const today = new Date().toISOString().split('T')[0];
   const supabase = createServerClient();
 
-  try {
-    await (supabase as any).rpc('increment_ai_usage', {
-      p_user_id: userId,
-      p_date: today,
-      p_message_increment: type === 'message' ? 1 : 0,
-      p_analysis_increment: type === 'deepAnalysis' ? 1 : 0,
-      p_tokens: tokensUsed || 0,
-      p_cost: costUsd || 0,
-    });
-  } catch {
-    // RPC or table may not exist — fail silently, limit tracking is non-critical
-    console.warn('[ai-guard] increment_ai_usage RPC not available — skipping');
+  console.log('Incrementing usage:', { userId, type, date: new Date().toDateString() });
+
+  const { error } = await (supabase as any).rpc('increment_ai_usage', {
+    p_user_id: userId,
+    p_date: today,
+    p_message_increment: type === 'message' ? 1 : 0,
+    p_analysis_increment: type === 'deepAnalysis' ? 1 : 0,
+    p_tokens: tokensUsed || 0,
+    p_cost: costUsd || 0,
+  });
+
+  if (error) {
+    console.error('Usage increment failed:', error);
+    // Try direct upsert as fallback:
+    try {
+      await (supabase as any).from('ai_usage').upsert({
+        user_id: userId,
+        date: today,
+        message_count: 1,
+      }, { onConflict: 'user_id,date', ignoreDuplicates: false });
+    } catch (fallbackErr) {
+      console.warn('[ai-guard] Upsert fallback also failed:', fallbackErr);
+    }
   }
 }
 

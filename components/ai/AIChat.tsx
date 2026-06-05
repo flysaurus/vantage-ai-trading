@@ -79,16 +79,16 @@ const MARKDOWN_COMPONENTS = {
     <h1 style={{ fontSize: 20, fontWeight: 700, color: '#f1f5f9', margin: '10px 0 4px', lineHeight: 1.3 }}>{children}</h1>
   ),
   h2: ({ children }: { children: React.ReactNode }) => (
-    <h2 style={{ fontSize: 20, fontWeight: 700, color: '#06b6d4', margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h2>
+    <h2 style={{ fontSize: 16, fontWeight: 600, color: '#06b6d4', margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h2>
   ),
   h3: ({ children }: { children: React.ReactNode }) => (
-    <h3 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: '6px 0 2px', lineHeight: 1.3 }}>{children}</h3>
+    <h3 style={{ fontSize: 14, fontWeight: 500, color: '#06b6d4', margin: '6px 0 2px', lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.025em' }}>{children}</h3>
   ),
   p: ({ children }: { children: React.ReactNode }) => (
-    <p style={{ margin: '2px 0 6px', lineHeight: 1.7, color: '#cbd5e1' }}>{children}</p>
+    <p style={{ margin: '2px 0 6px', lineHeight: 1.625, color: '#cbd5e1' }}>{children}</p>
   ),
   strong: ({ children }: { children: React.ReactNode }) => (
-    <strong style={{ color: '#facc15', fontWeight: 700 }}>{children}</strong>
+    <strong style={{ fontWeight: 600, color: '#f1f5f9' }}>{children}</strong>
   ),
   code: ({ children, className }: { children: React.ReactNode; className?: string }) => {
     // Inline code (tickers, prices)
@@ -99,7 +99,7 @@ const MARKDOWN_COMPONENTS = {
   },
   table: ({ children }: { children: React.ReactNode }) => (
     <div style={{ overflowX: 'auto', display: 'block', margin: '12px 0 4px' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: 'rgba(255,255,255,0.85)' }}>
         {children}
       </table>
     </div>
@@ -124,7 +124,7 @@ const MARKDOWN_COMPONENTS = {
       textAlign: 'left',
       color: '#22d3ee',
       fontWeight: 500,
-      fontSize: 11,
+      fontSize: 14,
       whiteSpace: 'nowrap',
       borderBottom: '1px solid #475569',
     }}>
@@ -136,6 +136,7 @@ const MARKDOWN_COMPONENTS = {
       padding: '6px 12px',
       borderBottom: '1px solid rgba(51,65,85,0.3)',
       color: 'rgba(255,255,255,0.85)',
+      fontSize: 14,
       whiteSpace: 'nowrap',
       lineHeight: 1.5,
     }}>
@@ -149,7 +150,7 @@ const MARKDOWN_COMPONENTS = {
     <ol style={{ margin: '2px 0', paddingLeft: 16, color: '#cbd5e1' }}>{children}</ol>
   ),
   li: ({ children }: { children: React.ReactNode }) => (
-    <li style={{ marginBottom: 1, lineHeight: 1.6, fontSize: 12 }}>{children}</li>
+    <li style={{ marginBottom: 1, lineHeight: 1.6, fontSize: 14 }}>{children}</li>
   ),
   hr: () => <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '6px 0' }} />,
   blockquote: ({ children }: { children: React.ReactNode }) => (
@@ -223,8 +224,15 @@ export function AIChat() {
         sendMessage(detail.prompt, responseMode, detail.mode);
       }
     };
+    const basketHandler = () => {
+      setShowBasketModal(true);
+    };
     window.addEventListener('vantage-ai-suggestion', handler);
-    return () => window.removeEventListener('vantage-ai-suggestion', handler);
+    window.addEventListener('vantage-open-basket-modal', basketHandler);
+    return () => {
+      window.removeEventListener('vantage-ai-suggestion', handler);
+      window.removeEventListener('vantage-open-basket-modal', basketHandler);
+    };
   }, [sendMessage, responseMode]);
 
   const handleSend = () => {
@@ -381,7 +389,7 @@ export function AIChat() {
             >
               {/* Rich markdown rendering for AI messages */}
               {msg.role === 'assistant' ? (
-                <div className="markdown-body" style={{ fontSize: 17, lineHeight: 1.625 }}>
+                <div className="markdown-body" style={{ fontSize: 16, lineHeight: 1.625 }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={MARKDOWN_COMPONENTS as any}
@@ -396,7 +404,7 @@ export function AIChat() {
                 </div>
               ) : (
                 /* User messages stay plain */
-                <div style={{ fontSize: 17, whiteSpace: 'pre-wrap', lineHeight: 1.625 }}>
+                <div style={{ fontSize: 16, fontWeight: 400, whiteSpace: 'pre-wrap', lineHeight: 1.625 }}>
                   {msg.content}
                 </div>
               )}
@@ -797,7 +805,7 @@ export function AIChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything about stocks, markets, or your portfolio..."
+            placeholder="Ask about your portfolio, markets, or stocks..."
             disabled={isLoading || remainingCalls === 0}
             style={{
               flex: 1, padding: '9px 11px',
@@ -874,7 +882,7 @@ export function AIChat() {
           textAlign: 'center', fontSize: 9, color: '#475569',
           marginTop: 6,
         }}>
-          Powered by AI · Responses may contain errors. History of last 5 responses kept.
+          Powered by AI · Responses may contain errors. Conversation history saved.
         </div>
       </div>
 
