@@ -22,6 +22,8 @@ import GreetingModal from '@/components/GreetingModal';
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
 
+const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['ai', 'trade', 'portfolio']);
+
 const TAB_COMPONENTS: Record<TabId, React.FC> = {
   ai: AITab,
   trade: TradeTab,
@@ -159,7 +161,7 @@ function AppShell() {
         </div>
       )}
       <Header />
-      <MarketBar />
+      {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
       <WatchlistBar />
       <div className="content-area" key={activeTab}>
         {React.createElement(TAB_COMPONENTS[activeTab])}

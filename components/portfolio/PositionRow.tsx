@@ -95,6 +95,9 @@ export function PositionRow({
               Sell
             </button>
           )}
+          {!compact && !isSelectable && (
+            <span style={{ color: '#475569', fontSize: 16, lineHeight: 1 }}>›</span>
+          )}
         </div>
       </div>
 
@@ -102,7 +105,7 @@ export function PositionRow({
         .position-row {
           padding: 10px 12px;
           background: #0f172a;
-          border-radius: 8px;
+          border-radius: 16px;
           margin-bottom: 6px;
         }
         .position-row.selectable {

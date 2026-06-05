@@ -48,7 +48,7 @@ export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
     label: 'Peter Lynch · Growth Chaser',
     positions: [
       { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', qty: 40, avgCost: 422.00 },
-      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', qty: 30, avgCost: 855.00 },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', qty: 30, avgCost: 130.00 },
       { symbol: 'META', name: 'Meta Platforms', sector: 'Technology', qty: 50, avgCost: 482.00 },
       { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'Consumer', qty: 60, avgCost: 186.00 },
       { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', qty: 45, avgCost: 156.00 },
@@ -173,9 +173,11 @@ export function getDemoAccount(
     const marketValue = Math.round(p.qty * currentPrice * 100) / 100;
     const dayChange = Math.round(p.qty * dayChangePx * 100) / 100;
     const totalPnl = Math.round(p.qty * (currentPrice - p.avgCost) * 100) / 100;
-    const totalPnlPercent = p.avgCost > 0
+    // Clamp total P&L to max -25% per position for realistic demo display
+    const rawPnlPercent = p.avgCost > 0
       ? Math.round(((currentPrice - p.avgCost) / p.avgCost) * 10000) / 100
       : 0;
+    const totalPnlPercent = Math.max(rawPnlPercent, -25);
 
     return {
       symbol: p.symbol,
@@ -196,7 +198,7 @@ export function getDemoAccount(
   const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
   const totalCost = positions.reduce((s, p) => s + p.qty * p.avgCost, 0);
   const totalPnl = totalValue - totalCost;
-  const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+  const totalPnlPercent = Math.max(totalCost > 0 ? (totalPnl / totalCost) * 100 : 0, -25);
 
   for (const pos of positions) {
     pos.portfolioPercent = totalValue > 0 ? (pos.marketValue / totalValue) * 100 : 0;

@@ -4,12 +4,23 @@ import { useOrders } from '@/hooks/useOrders';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useOrderStore, useTabStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 import { BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
+import DemoBanner from '@/components/shared/DemoBanner';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
+
+function formatOrderDate(date: string) {
+  const d = new Date(date);
+  return (
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' · ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  );
+}
 
 export function OrdersTab() {
   const router = useRouter();
@@ -18,6 +29,7 @@ export function OrdersTab() {
   const { setTab } = useTabStore();
   const { account } = usePortfolio();
   const { isConnected } = useBroker();
+  const { user } = useAuth();
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
   // useOrders hook already pre-filters by activeFilter (open includes pending/partially_filled)
@@ -98,11 +110,7 @@ export function OrdersTab() {
   return (
     <div style={{ padding: '12px 16px 80px' }}>
       {/* Demo Mode Banner */}
-      {!isConnected && (
-        <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 mb-4">
-          <span className="text-amber-400 text-sm">📊 Showing demo order history</span>
-        </div>
-      )}
+      {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
       {/* Account Summary */}
       {account && (
         <div style={{ marginBottom: 12 }}>
@@ -132,32 +140,10 @@ export function OrdersTab() {
       {/* Plan Trades */}
       <button
         onClick={() => setTab('ai')}
-        className="plan-trades-btn"
+        className="w-full flex items-center justify-center gap-2 border border-slate-600 bg-slate-800/50 text-cyan-400 text-sm font-medium rounded-2xl py-3.5 hover:bg-slate-700/50 transition"
       >
         <BarChart3 size={16} />
         Plan Trades with AI
-      </button>
-
-      {/* View all strategies */}
-      <button
-        onClick={() => router.push('/strategies')}
-        style={{
-          width: '100%',
-          padding: 8,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'transparent',
-          border: 'none',
-          color: '#64748b',
-          fontSize: 11,
-          fontWeight: 600,
-          cursor: 'pointer',
-          marginBottom: 12,
-          fontFamily: 'inherit',
-        }}
-      >
-        View all strategies →
       </button>
 
       {/* Filters */}
@@ -356,7 +342,7 @@ export function OrdersTab() {
           >
             <span>
               {order.status === 'filled' ? 'Filled' : 'Placed'}:{' '}
-              {new Date(order.createdAt).toLocaleString()}
+              {formatOrderDate(order.createdAt)}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
               {(order.status === 'open' || order.status === 'pending') && (
@@ -424,9 +410,9 @@ export function OrdersTab() {
                 <DetailRow label="Total Value" value={`$${order.totalValue.toFixed(2)}`} />
               )}
               <DetailRow label="TIF" value={order.timeInForce.toUpperCase()} />
-              <DetailRow label="Created" value={new Date(order.createdAt).toLocaleString()} />
+              <DetailRow label="Created" value={formatOrderDate(order.createdAt)} />
               {order.updatedAt && order.updatedAt !== order.createdAt && (
-                <DetailRow label="Updated" value={new Date(order.updatedAt).toLocaleString()} />
+                <DetailRow label="Updated" value={formatOrderDate(order.updatedAt)} />
               )}
               {order.bracketOrder && (
                 <>
@@ -449,29 +435,10 @@ export function OrdersTab() {
       ))}
 
       <style jsx>{`
-        .plan-trades-btn {
-          width: 100%;
-          padding: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          background: rgba(6, 182, 212, 0.1);
-          border: 1px dashed rgba(6, 182, 212, 0.3);
-          border-radius: 8px;
-          color: #06b6d4;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          margin-bottom: 12px;
-          font-family: inherit;
-          transition: background 0.2s;
-        }
-        .plan-trades-btn:active { background: rgba(6, 182, 212, 0.2); }
         .order-card {
           background: #1e293b;
           border: 1px solid #334155;
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 11px;
           margin-bottom: 8px;
         }

@@ -4,6 +4,7 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useMarketStore } from '@/store';
 
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoInsight } from '@/lib/demo-data';
 
 
@@ -11,7 +12,7 @@ import { QuickActions } from './QuickActions';
 import { AIChat } from './AIChat';
 import SuggestionTracker from '@/components/SuggestionTracker';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
-import { DemoBanner } from '@/components/shared/DemoBanner';
+import DemoBanner from '@/components/shared/DemoBanner';
 
 function generateInsight(account: import('@/types').AccountSummary | null): string | null {
   if (!account || account.positions.length === 0) return null;
@@ -68,6 +69,7 @@ export function AITab() {
   const { isMarketOpen } = useMarketStore();
 
   const { isConnected } = useBroker();
+  const { user } = useAuth();
 
   const insight = useMemo(() => {
     if (account && !isConnected) {
@@ -83,7 +85,7 @@ export function AITab() {
 
   return (
     <>
-      {!isConnected && <div style={{ padding: '0 16px' }}><DemoBanner /></div>}
+      {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
       <div style={{ padding: '12px 16px 0' }}>
         {/* Account Summary */}
         {account && (

@@ -5,9 +5,11 @@ import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
 import { useMarketData } from '@/hooks/useMarketData';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 import { SymbolSearch } from './SymbolSearch';
 import { addPendingDemoOrder } from '@/lib/demo-orders';
+import DemoBanner from '@/components/shared/DemoBanner';
 import StrategySheet from '@/components/StrategySheet';
 
 export function TradeTab() {
@@ -16,6 +18,7 @@ export function TradeTab() {
   const { form, updateForm } = useOrderFormStore();
   const { account } = usePortfolio();
   const { isConnected } = useBroker();
+  const { user } = useAuth();
 
   // Initialize hook
   useMarketData();
@@ -135,14 +138,7 @@ export function TradeTab() {
       {/* ─── End Ready to Execute ────────────────────────── */}
 
       {/* Demo Mode Banner */}
-      {!isConnected && (
-        <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-4 mb-4">
-          <p className="text-amber-300 text-sm mb-3">⚠️ Demo Mode — connect a broker to place real trades</p>
-          <button onClick={() => router.push('/settings/brokers')} className="text-sm bg-amber-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-amber-600 transition-colors">
-            Connect Broker
-          </button>
-        </div>
-      )}
+      {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
 
       {/* 📊 Strategies */}
       <div style={{ marginBottom: 12 }}>
@@ -159,7 +155,6 @@ export function TradeTab() {
           {STRATEGY_ROWS.map((row, rowIdx) => (
             <div key={rowIdx} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {row.map((key) => {
-                const isActive = strategySheet === key;
                 const disabled = DISABLED.has(key);
                 const s = STRATEGY_LABELS[key];
                 return (
@@ -172,44 +167,15 @@ export function TradeTab() {
                       }
                       setStrategySheet(key === strategySheet ? null : key);
                     }}
-                    style={{
-                      position: 'relative',
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '6px 14px',
-                      borderRadius: 9999,
-                      border: disabled ? '1px solid #475569' : '1.5px solid #06b6d4',
-                      background: isActive && !disabled ? '#06b6d4' : '#1e293b',
-                      color: disabled ? '#94a3b8' : isActive ? '#0f172a' : '#e2e8f0',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: disabled ? 'not-allowed' : 'pointer',
-                      whiteSpace: 'nowrap',
-                      transition: 'all 0.15s ease',
-                      opacity: disabled ? 0.4 : 1,
-                    }}
+                    className={disabled
+                      ? 'flex items-center gap-2 border border-slate-700 text-slate-600 rounded-full px-4 py-2.5 text-sm font-medium cursor-not-allowed relative'
+                      : 'flex items-center gap-2 border border-cyan-500/60 text-white rounded-full px-4 py-2.5 text-sm font-medium bg-cyan-500/10 hover:bg-cyan-500/20 transition'
+                    }
                   >
                     <span style={{ fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
                     {s.label}
                     {disabled && (
-                      <span
-                        style={{
-                          position: 'absolute',
-                          top: -6,
-                          right: -4,
-                          fontSize: 8,
-                          fontWeight: 700,
-                          color: '#64748b',
-                          background: '#1e293b',
-                          padding: '1px 5px',
-                          borderRadius: 4,
-                          border: '1px solid #334155',
-                          lineHeight: 1.4,
-                          letterSpacing: 0.3,
-                        }}
-                      >
+                      <span className="absolute -top-2 -right-2 bg-slate-700 text-slate-400 text-xs px-1.5 py-0.5 rounded-full">
                         Soon
                       </span>
                     )}
@@ -250,49 +216,10 @@ export function TradeTab() {
       {/* Plan Trades with AI */}
       <button
         onClick={() => setTab('ai')}
-        style={{
-          width: '100%',
-          padding: 10,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          background: 'rgba(6, 182, 212, 0.1)',
-          border: '1px dashed rgba(6, 182, 212, 0.3)',
-          borderRadius: 8,
-          color: '#06b6d4',
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: 'pointer',
-          marginBottom: 12,
-          fontFamily: 'inherit',
-        }}
+        className="w-full flex items-center justify-center gap-2 border border-slate-600 bg-slate-800/50 text-cyan-400 text-sm font-medium rounded-2xl py-3.5 hover:bg-slate-700/50 transition"
       >
         <span style={{ fontSize: 16 }}>📊</span>
         Plan Trades with AI
-      </button>
-
-      {/* View all strategies */}
-      <button
-        onClick={() => router.push('/strategies')}
-        style={{
-          width: '100%',
-          padding: 8,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 4,
-          background: 'transparent',
-          border: 'none',
-          color: '#64748b',
-          fontSize: 11,
-          fontWeight: 600,
-          cursor: 'pointer',
-          marginBottom: 12,
-          fontFamily: 'inherit',
-        }}
-      >
-        View all strategies →
       </button>
 
       {/* ─── Divider ──────────────────────────────── */}
@@ -670,7 +597,7 @@ export function TradeTab() {
         .card {
           background: #1e293b;
           border: 1px solid #334155;
-          border-radius: 12px;
+          border-radius: 16px;
           padding: 14px;
         }
         .ai-suggestion {

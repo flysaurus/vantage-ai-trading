@@ -7,8 +7,8 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { getWatchlists } from '@/lib/supabase/watchlists';
 import { getAlerts } from '@/lib/supabase/alerts';
 import { 
-  Star, Bell, Newspaper, CalendarDays, Search, 
-  History, Target, CreditCard, Plug, Settings2, HelpCircle,
+  Star, Bell, Newspaper, CalendarDays,
+  History, Plug, Settings2, HelpCircle,
   ChevronRight, Building2, CircleDot, TrendingUp,
   AlertTriangle, Shield
 } from 'lucide-react';
@@ -199,7 +199,7 @@ export function SettingsTab() {
                   flexDirection: 'column',
                   alignItems: 'center',
                   padding: 12,
-                  borderRadius: 12,
+                  borderRadius: 16,
                   border: `1px solid ${riskTolerance === option.value ? '#06b6d4' : '#334155'}`,
                   background: riskTolerance === option.value ? 'rgba(6,182,212,0.1)' : '#0f172a',
                   cursor: 'pointer',
@@ -248,29 +248,18 @@ export function SettingsTab() {
           onClick={() => router.push('/price-alerts')}
         />
         <SettingsItem
-          icon={Newspaper} title="News Feed" subtitle="AI-curated for your portfolio"
-          onClick={() => router.push('/news-feed')}
+          icon={Newspaper} title="News Feed" subtitle="Coming soon"
         />
         <SettingsItem
           icon={CalendarDays} title="Earnings Calendar"
-          subtitle={holdingsCount > 0 ? `${holdingsCount} holding${holdingsCount !== 1 ? 's' : ''} tracked` : 'Track holdings earnings'}
-          onClick={() => router.push('/earnings-calendar')}
-        />
-        <SettingsItem
-          icon={Search} title="Stock Screener" subtitle="Find new opportunities"
-          onClick={() => router.push('/stock-screener')}
+          subtitle="Coming soon"
         />
       </div>
 
       {/* Account & History */}
       <div className="section" style={{ marginTop: 12 }}>
         <SettingsItem
-          icon={History} title="Trade History" subtitle="All time activity & taxes"
-          onClick={() => router.push('/trade-history')}
-        />
-        <SettingsItem
-          icon={Target} title="Goals & Targets" subtitle="Track financial milestones"
-          onClick={() => router.push('/goals')}
+          icon={History} title="Trade History" subtitle="Coming soon"
         />
       </div>
 
@@ -356,20 +345,9 @@ export function SettingsTab() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleChangeBroker}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  borderRadius: 8,
-                  border: '1px solid #334155',
-                  background: 'transparent',
-                  color: '#94a3b8',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
+                className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition"
               >
-                {isConnected ? 'Change Broker' : 'Connect Broker'}
+                {isConnected ? 'Change Broker' : 'Connect Broker →'}
               </button>
               {isConnected && (
                 <button
@@ -415,10 +393,10 @@ export function SettingsTab() {
 
       {/* System */}
       <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem
+        {/* <SettingsItem
           icon={CreditCard} title="Account & Funding" subtitle="Deposits, withdrawals, tax docs"
           onClick={() => router.push('/account')}
-        />
+        /> */}
         <SettingsItem
           icon={Settings2} title="Preferences" subtitle="Appearance, notifications & security"
           onClick={() => router.push('/preferences')}
@@ -544,7 +522,7 @@ export function SettingsTab() {
         .section {
           background: #1e293b;
           border: 1px solid #334155;
-          border-radius: 12px;
+          border-radius: 16px;
           overflow: hidden;
         }
         .section > div:last-child { border-bottom: none; }

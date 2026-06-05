@@ -45,7 +45,7 @@ export default function SuggestionTracker() {
     <div className="mx-4 mb-4">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between bg-slate-800 rounded-xl px-4 py-3"
+        className="w-full flex items-center justify-between bg-slate-800 rounded-2xl px-4 py-3"
       >
         <div className="flex items-center gap-2">
           <span className="text-sm">📊</span>

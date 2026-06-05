@@ -86,7 +86,7 @@ export function StockRecommendationCard({
       style={{
         background: '#0f172a',
         border: '1px solid #334155',
-        borderRadius: 12,
+        borderRadius: 16,
         overflow: 'hidden',
       }}
     >

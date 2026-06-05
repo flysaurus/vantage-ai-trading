@@ -34,7 +34,7 @@ export default function ConflictAlert({ analysis, onClose, onDismiss }: Props) {
       style={{
         background: c.bg,
         border: `1px solid ${c.border}`,
-        borderRadius: 12,
+        borderRadius: 16,
         padding: 20,
         color: c.text,
       }}

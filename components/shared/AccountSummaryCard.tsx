@@ -6,7 +6,6 @@
 import type { AccountSummary } from '@/types';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { INVESTOR_STYLES } from '@/components/onboarding/styles';
-import { useTabStore } from '@/store';
 
 export function AccountSummaryCard({ account }: { account: AccountSummary }) {
   const fmt = (n: number) => `$${Math.abs(n).toLocaleString()}`;
@@ -14,7 +13,7 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
 
   // Resolve investor style
   const { user } = useAuth();
-  const setTab = useTabStore(s => s.setTab);
+  // Resolve investor style
   const investorStyle: string = (() => {
     if (user?.investorStyle) return user.investorStyle;
     if (typeof window !== 'undefined') {
@@ -28,8 +27,14 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>
-            Account Value
+          <div className="flex items-center justify-between mb-1" style={{ gap: 12 }}>
+            <p className="text-slate-400 text-xs tracking-wider uppercase" style={{ margin: 0 }}>Account Value</p>
+            {styleDef && (
+              <div className="flex items-center gap-1.5 bg-slate-700/50 rounded-full px-2.5 py-1">
+                <span className="text-xs">{styleDef.emoji}</span>
+                <span className="text-cyan-400 text-xs font-medium">{styleDef.title}</span>
+              </div>
+            )}
           </div>
           <div style={{ fontSize: 26, fontWeight: 700 }}>
             ${account.equity.toLocaleString()}
@@ -72,27 +77,8 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
           </div>
         </div>
       </div>
-      {/* Investor Style Chip */}
-      {styleDef && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          marginTop: 8, padding: '4px 10px',
-          background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)',
-          borderRadius: 20,
-        }}>
-          <span style={{ fontSize: 12 }}>{styleDef.emoji}</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#67e8f9' }}>{styleDef.title}</span>
-          <span style={{ color: '#475569', fontSize: 10 }}>· {styleDef.timeHorizon}</span>
-          <span
-            onClick={() => setTab('settings')}
-            style={{ fontSize: 9, color: '#475569', cursor: 'pointer', marginLeft: 2 }}
-          >
-            Change in Settings
-          </span>
-        </div>
-      )}
       <style jsx>{`
-        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
       `}</style>
     </div>
   );

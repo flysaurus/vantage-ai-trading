@@ -80,7 +80,7 @@ function PositionRow({
       style={{
         background: '#0f172a',
         border: '1px solid #1e293b',
-        borderRadius: 12,
+        borderRadius: 16,
         padding: 14,
       }}
     >
@@ -237,7 +237,7 @@ export default function PortfolioDashboard({
         style={{
           background: '#0f172a',
           border: '1px solid #1e293b',
-          borderRadius: 12,
+          borderRadius: 16,
           padding: 20,
         }}
       >
@@ -374,7 +374,7 @@ export default function PortfolioDashboard({
             color: 'var(--text-dim)',
             background: '#0f172a',
             border: '1px solid #1e293b',
-            borderRadius: 12,
+            borderRadius: 16,
           }}
         >
           No positions yet. Start trading to see recommendations.

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
+import DemoBanner from '@/components/shared/DemoBanner';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { PositionRow } from '@/components/portfolio/PositionRow';
@@ -316,17 +317,7 @@ export function PortfolioTab() {
     return (
       <div style={{ padding: '12px 16px 80px' }}>
         {/* Demo Mode Banner */}
-        <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 mb-4 flex items-center justify-between">
-          <div>
-            <span className="text-amber-400 text-sm font-medium">📊 Demo Mode</span>
-            <p className="text-amber-300/70 text-xs mt-0.5">
-              Showing simulated {investorStyle} portfolio
-            </p>
-          </div>
-          <button onClick={() => router.push('/settings/brokers')} className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-amber-600 transition-colors">
-            Connect Broker
-          </button>
-        </div>
+        <DemoBanner investorStyle={investorStyle} />
 
         {/* Account Summary */}
         <div className="card" style={{ marginBottom: 12 }}>
@@ -335,19 +326,22 @@ export function PortfolioTab() {
 
         {/* Positions list */}
         {sortedPositions.map((pos) => (
-          <div key={pos.symbol} className="card" style={{ marginBottom: 8, padding: '10px 12px' }}>
+          <div key={pos.symbol} className="card" style={{ marginBottom: 8, padding: '10px 12px', cursor: 'pointer' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{pos.symbol}</div>
                 <div style={{ fontSize: 10, color: '#94a3b8' }}>{pos.qty} shares · {pos.sector}</div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: '#f1f5f9' }}>
-                  ${pos.marketValue.toLocaleString()}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f1f5f9' }}>
+                    ${pos.marketValue.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 10, color: pos.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
+                    {pos.totalPnl >= 0 ? '+' : ''}${Math.round(pos.totalPnl).toLocaleString()} ({pos.totalPnlPercent >= 0 ? '+' : ''}{pos.totalPnlPercent.toFixed(1)}%)
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: pos.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
-                  {pos.totalPnl >= 0 ? '+' : ''}${Math.round(pos.totalPnl).toLocaleString()} ({pos.totalPnlPercent >= 0 ? '+' : ''}{pos.totalPnlPercent.toFixed(1)}%)
-                </div>
+                <span style={{ color: '#475569', fontSize: 14 }}>›</span>
               </div>
             </div>
           </div>
@@ -364,7 +358,7 @@ export function PortfolioTab() {
           padding: '16px',
           background: 'rgba(6,182,212,0.06)',
           border: '1px solid rgba(6,182,212,0.2)',
-          borderRadius: 12,
+          borderRadius: 16,
           textAlign: 'center',
         }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4', marginBottom: 8 }}>
@@ -374,29 +368,15 @@ export function PortfolioTab() {
             Connect your broker to replace this demo data with live positions, P&L, and trading.
           </div>
           <button
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                window.location.reload();
-              }
-            }}
-            style={{
-              padding: '10px 24px',
-              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-              border: 'none',
-              borderRadius: 8,
-              color: '#0f172a',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
+            onClick={() => router.push('/settings/broker')}
+            className="bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition"
           >
-            Connect Broker
+            Connect Broker →
           </button>
         </div>
 
         <style jsx>{`
-          .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+          .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
         `}</style>
       </div>
     );
@@ -411,7 +391,7 @@ export function PortfolioTab() {
         <div className="card skeleton" style={{ height: 80, marginBottom: 12 }} />
         <SectorsSkeleton />
         <style jsx>{`
-          .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+          .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
           .skeleton {
             background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
             background-size: 200% 100%;
@@ -1428,7 +1408,7 @@ function SectorAllocation({ positions }: { positions: import('@/types').Position
         ))}
       </div>
       <style jsx>{`
-        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
       `}</style>
     </div>
   );
