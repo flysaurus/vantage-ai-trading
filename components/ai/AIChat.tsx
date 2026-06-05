@@ -574,52 +574,23 @@ export function AIChat() {
                 const buys = parsedTrades?.filter(t => t.action === 'buy') || [];
                 const sells = parsedTrades?.filter(t => t.action === 'sell') || [];
 
+                if (tradeCount === 0) return null;
+
                 return (
                   <div style={{
-                    marginTop: 10, padding: tradeCount > 0 ? '12px 14px' : 0,
-                    background: tradeCount > 0 ? '#1e293b' : 'transparent',
-                    border: tradeCount > 0 ? '1px solid #06b6d4' : 'none',
+                    marginTop: 10, padding: '12px 14px',
+                    background: '#1e293b',
+                    border: '1px solid #06b6d4',
                     borderRadius: 10,
                   }}>
-                    {tradeCount > 0 && (
-                      <>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
-                          📊 Rebalance Detected
-                        </div>
-                        <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
-                          {tradeCount} targets parsed
-                          {buys.length > 0 && ` · ${buys.length} buys`}
-                          {sells.length > 0 && ` · ${sells.length} sells`}
-                        </div>
-                      </>
-                    )}
-                    <button
-                      onClick={() => {
-                        const url = tradeCount > 0 && parsedTrades
-                          ? `/strategies/setup/rebalancing?source=ai&trades=${encodeURIComponent(JSON.stringify(parsedTrades.map(t => ({
-                              symbol: t.symbol,
-                              action: t.action,
-                              shares: 0,
-                              estimatedValue: 0,
-                            }))))}`
-                          : '/strategies/setup/rebalancing?source=ai';
-                        router.push(url);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 16px',
-                        background: tradeCount > 0 ? '#06b6d4' : '#1e293b',
-                        border: tradeCount > 0 ? 'none' : '1px solid #06b6d4',
-                        borderRadius: 8,
-                        color: tradeCount > 0 ? 'white' : '#06b6d4',
-                        fontSize: 12, fontWeight: 600,
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        textAlign: 'center',
-                      }}
-                    >
-                      {tradeCount > 0 ? 'Send to Rebalancing →' : '📊 Open Rebalancing →'}
-                    </button>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
+                      📊 Rebalance Detected
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 4 }}>
+                      {tradeCount} targets parsed
+                      {buys.length > 0 && ` · ${buys.length} buys`}
+                      {sells.length > 0 && ` · ${sells.length} sells`}
+                    </div>
                   </div>
                 );
               })()}
