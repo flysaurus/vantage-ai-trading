@@ -30,6 +30,7 @@ function sanitizeContent(content: string): string {
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 import AIThinkingIndicator from './AIThinkingIndicator';
+import CompassIcon from '../CompassIcon';
 
 
 
@@ -320,7 +321,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
 
         {messages.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">🦊</div>
+            <div className="empty-icon"><CompassIcon size={36} color="#22d3ee" /></div>
             <div className="empty-title">Welcome back, {userInitial}.</div>
             <div className="empty-subtitle">
               AI-powered portfolio analysis and market intelligence.
@@ -354,7 +355,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                 color: 'white',
               }}
             >
-              {msg.role === 'assistant' ? '🦊' : userInitial}
+              {msg.role === 'assistant' ? <CompassIcon size={18} color="#22d3ee" /> : userInitial}
             </div>
             <div
               className="bubble"

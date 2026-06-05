@@ -157,7 +157,7 @@ function AppShell() {
             zIndex: 50,
           }}
         >
-          🦊 {greeting}
+          {greeting}
         </div>
       )}
       <Header />

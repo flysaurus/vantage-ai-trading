@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getMarketStatus, isMarketOpen } from '@/lib/market-hours';
+import CompassIcon from './CompassIcon';
 
 interface GreetingModalProps {
   onComplete: () => void;
@@ -145,7 +146,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
           }}
         >
-          🦊
+          <CompassIcon size={48} color="white" />
         </div>
 
         {/* Greeting */}

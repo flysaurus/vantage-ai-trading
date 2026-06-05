@@ -6,6 +6,7 @@
 import { Bot, LayoutDashboard, BarChart3, ListOrdered, Settings } from 'lucide-react';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
+import CompassIcon from '../CompassIcon';
 
 const TABS: { id: TabId; icon: typeof Bot; label: string }[] = [
   { id: 'ai', icon: Bot, label: 'AI Advisor' },
@@ -28,7 +29,11 @@ export function DesktopSidebar() {
             className={`sidebar-item${activeTab === id ? ' active' : ''}`}
             onClick={() => setTab(id)}
           >
-            <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 1.5} />
+            {id === 'ai' ? (
+              <CompassIcon size={18} color={activeTab === 'ai' ? '#22d3ee' : '#64748b'} />
+            ) : (
+              <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 1.5} />
+            )}
             <span>{label}</span>
           </button>
         ))}

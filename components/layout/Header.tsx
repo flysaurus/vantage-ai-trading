@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, Settings, X } from 'lucide-react';
+import CompassIcon from '../CompassIcon';
 import { useTabStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 
@@ -100,7 +101,7 @@ export function Header() {
   return (
     <div className="app-header" ref={dropdownRef} style={{ position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div className="logo">Vantage</div>
+        <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CompassIcon size={18} color="#22d3ee" /> Vantage</div>
         <span className={`text-xs font-medium px-2 py-1 rounded-full ${marketStatus.color}`}>
           ● {marketStatus.label}
         </span>

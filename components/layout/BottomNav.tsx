@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Bot, LayoutDashboard, BarChart3, ListOrdered, Settings } from 'lucide-react';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
+import CompassIcon from '../CompassIcon';
 
 const TABS: { id: TabId; icon: typeof Bot; label: string }[] = [
   { id: 'ai', icon: Bot, label: 'AI' },
@@ -37,7 +38,11 @@ export function BottomNav() {
           onClick={() => setTab(id)}
           style={{ position: 'relative' }}
         >
-          <Icon className="nav-icon" size={20} strokeWidth={activeTab === id ? 2.5 : 1.5} />
+          {id === 'ai' ? (
+            <CompassIcon size={20} color={activeTab === 'ai' ? '#22d3ee' : '#64748b'} />
+          ) : (
+            <Icon className="nav-icon" size={20} strokeWidth={activeTab === id ? 2.5 : 1.5} />
+          )}
           {id === 'trade' && pendingCount > 0 && (
             <span style={{
               position: 'absolute', top: -4, right: -4,
