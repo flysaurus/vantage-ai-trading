@@ -162,9 +162,11 @@ export async function POST(req: NextRequest) {
 
     // ▸ 3. Finance-only guard (checks BEFORE usage limit)
     if (!isFinanceQuery(message)) {
+      const { remaining: rem } = await checkUsageLimit(userId, 'message').catch(() => ({ remaining: 75 }));
       return NextResponse.json({
         content: NON_FINANCE_RESPONSE,
         type: 'text',
+        remaining: rem,
       });
     }
 
@@ -186,12 +188,13 @@ export async function POST(req: NextRequest) {
         : 'message';
       return NextResponse.json({
         content: [
-          `Daily ${limitName} limit reached (${isDeepAnalysis ? 5 : 20}/day).`,
+          `Daily ${limitName} limit reached (${isDeepAnalysis ? 20 : 75}/day).`,
           isDeepAnalysis
             ? 'You can still ask general market questions.'
-            : 'Try again after midnight EST.',
+            : 'Try again after midnight UTC.',
         ].join('\n'),
         type: 'limit_reached',
+        remaining: 0,
       });
     }
 
@@ -360,6 +363,9 @@ Identify top 2 picks for this style.`;
         (aiResponse.tokensUsed || 0) * 0.000003,
       );
 
+      // Get fresh remaining counts after increment
+      const { remaining: updatedRemaining } = await checkUsageLimit(userId, 'message');
+
       // ── Save to chat history (fire-and-forget) ──
       saveChatHistory({
         userId,
@@ -383,7 +389,7 @@ Identify top 2 picks for this style.`;
           conviction: s.conviction,
           currentPrice: s.data.currentPrice,
         })),
-        remaining: remaining - 1,
+        remaining: updatedRemaining,
       });
     }
 
@@ -414,6 +420,9 @@ Identify top 2 picks for this style.`;
       (aiResponse.tokensUsed || 0) * costPerToken,
     );
 
+    // Get fresh remaining counts after increment
+    const { remaining: updatedRemaining } = await checkUsageLimit(userId, 'message');
+
     // ── Save to chat history (fire-and-forget) ──
     saveChatHistory({
       userId,
@@ -427,7 +436,7 @@ Identify top 2 picks for this style.`;
       content: aiResponse.content,
       type: 'text',
       model: aiResponse.model,
-      remaining: remaining - 1,
+      remaining: updatedRemaining,
     });
   } catch (err: any) {
     console.error('Chat API error:', err.message, err.stack);
@@ -448,6 +457,7 @@ Identify top 2 picks for this style.`;
       {
         content: friendlyMsg + debugInfo + ' — ' + (errorMsg.length > 120 ? errorMsg.slice(0, 120) + '...' : errorMsg),
         type: 'error',
+        remaining: 75,
       },
       { status: 500 },
     );

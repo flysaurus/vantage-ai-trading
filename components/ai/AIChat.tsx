@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, RefreshCw, AlertCircle, Trash2, AlignLeft } from 'lucide-react';
+import { Send, RefreshCw, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
@@ -31,47 +31,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 import AIThinkingIndicator from './AIThinkingIndicator';
 
-const SUGGESTIONS_PRIMARY = [
-  {
-    id: 'health',
-    label: '🌱 Health Check',
-    mode: 'health' as const,
-    message: 'Run a complete health check on my portfolio. Score each area and give me priority actions.',
-  },
-  {
-    id: 'risk',
-    label: '🛡 Risk',
-    mode: 'risk' as const,
-    message: 'Check my portfolio for concentration risk, sector risk, and any other risks I should know about.',
-  },
-  {
-    id: 'opportunities',
-    label: '💡 Opportunities',
-    mode: 'opportunities' as const,
-    message: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
-  },
-];
 
-const SUGGESTIONS_SECONDARY = [
-  {
-    id: 'trends',
-    label: '📊 Market Trends',
-    mode: 'trends' as const,
-    message: 'What are the key market trends right now and how do they affect my portfolio specifically?',
-  },
-  {
-    id: 'tax',
-    label: '📋 Tax Check',
-    mode: 'tax' as const,
-    message: 'Check my tax situation. What losses can I harvest and what are my estimated savings?',
-  },
-  {
-    id: 'research',
-    label: '🔍 Research',
-    mode: 'research' as const,
-    message: 'Research [SYMBOL] — fundamentals, technicals, recent news, and whether it fits my portfolio.',
-  },
-];
 
 /** Custom markdown renderers — dark theme, compact, trading-appropriate */
 const MARKDOWN_COMPONENTS = {
@@ -181,7 +141,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
   const [showResearchInput, setShowResearchInput] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<string>('general');
   const [showBasketModal, setShowBasketModal] = useState(false);
-  const [showMorePrompts, setShowMorePrompts] = useState(false);
+  const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -214,6 +174,25 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       return () => clearTimeout(timer);
     }
   }, [lastCost]);
+
+  // Fetch server-side remaining count on mount
+  useEffect(() => {
+    fetch('/api/usage/remaining')
+      .then(r => r.json())
+      .then(d => {
+        if (typeof d.remaining === 'number') {
+          setRemainingMessages(d.remaining);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // After each message completes, refresh remaining from store
+  useEffect(() => {
+    if (!isLoading && remainingCalls !== remainingMessages) {
+      setRemainingMessages(remainingCalls);
+    }
+  }, [isLoading, remainingCalls, remainingMessages]);
 
   // Listen for QuickAction button clicks from the AI tab
   useEffect(() => {
@@ -249,22 +228,38 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     }
   };
 
-  const handleQuickPrompt = (suggestion: { id: string; message: string; mode: string; label: string }) => {
-    if (suggestion.id === 'research') {
-      // Show inline symbol input for research prompt
+  // Mapping from mode to quick-prompt message
+  const QUICK_PROMPT_MESSAGES: Record<string, string> = {
+    health: 'Run a complete health check on my portfolio. Score each area and give me priority actions.',
+    risk: 'Check my portfolio for concentration risk, sector risk, and any other risks I should know about.',
+    opportunities: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
+    market_pulse: 'Give me a quick market pulse — key indices, sector moves, and anything affecting my portfolio right now.',
+    tax: 'Check my tax situation. What losses can I harvest and what are my estimated savings?',
+    trends: 'What are the key market trends right now and how do they affect my portfolio specifically?',
+    research: 'Research [SYMBOL] — fundamentals, technicals, recent news, and whether it fits my portfolio.',
+  };
+
+  const handleQuickPrompt = (mode: string) => {
+    if (mode === 'research') {
       setShowResearchInput(true);
       setResearchSymbol('');
       return;
     }
-    setThinkingMode(suggestion.mode);
-    sendMessage(suggestion.message, responseMode, suggestion.mode);
+    const message = QUICK_PROMPT_MESSAGES[mode] || `Run ${mode} analysis on my portfolio.`;
+    setThinkingMode(mode);
+    sendMessage(message, responseMode, mode);
+  };
+
+  const handleClearChat = () => {
+    if (confirm('Clear all chat messages?')) {
+      clearChat();
+    }
   };
 
   const handleResearchSend = () => {
     const symbol = researchSymbol.trim().toUpperCase();
     if (!symbol) return;
-    const researchSuggestion = SUGGESTIONS_SECONDARY.find(s => s.id === 'research')!;
-    const message = researchSuggestion.message.replace('[SYMBOL]', symbol);
+    const message = QUICK_PROMPT_MESSAGES.research.replace('[SYMBOL]', symbol);
     setThinkingMode('research');
     sendMessage(message, responseMode, 'research', symbol);
     setShowResearchInput(false);
@@ -334,25 +329,8 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         )}
 
         {messages.map((msg, idx) => {
-          // Session divider special rendering
-          if (msg.role === 'system') {
-            return (
-              <div key={msg.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '8px 0', margin: '4px 0',
-              }}>
-                <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
-                <span style={{
-                  fontSize: 10, fontWeight: 600,
-                  color: '#475569', textTransform: 'uppercase',
-                  letterSpacing: 1, whiteSpace: 'nowrap',
-                }}>
-                  {msg.content}
-                </span>
-                <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
-              </div>
-            );
-          }
+          // Skip system (session divider) messages — not rendered
+          if (msg.role === 'system') return null;
 
           return (
           <div
@@ -642,17 +620,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           </div>
         )}
 
-        {/* Rate limit warning */}
-        {remainingCalls > 0 && (
-          <div style={{
-            padding: '8px 12px', background: 'rgba(251,191,36,0.1)',
-            border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8,
-            fontSize: 10, color: '#fbbf24', textAlign: 'center',
-          }}>
-            ⚡ {remainingCalls}/75 messages remaining today
-          </div>
-        )}
-
+        {/* Rate limit reached warning */}
         {remainingCalls === 0 && (
           <div style={{
             padding: '8px 12px', background: 'rgba(248,113,113,0.1)',
@@ -669,95 +637,42 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       {/* ── Sticky Input Area ── */}
       <div style={{
         flexShrink: 0,
-        padding: '10px 16px 8px',
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
-        {/* Primary suggestions row */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: showMorePrompts ? 4 : 8 }}
-          className="no-scrollbar">
-          {SUGGESTIONS_PRIMARY.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => handleQuickPrompt(s)}
-              disabled={isLoading || remainingCalls === 0}
-              style={{
-                padding: '5px 9px', background: '#334155', border: 'none',
-                borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-                fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
-                opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-          <button
-            onClick={() => setShowBasketModal(true)}
-            disabled={isLoading || remainingCalls === 0}
-            style={{
-              padding: '5px 9px',
-              background: 'linear-gradient(135deg, rgba(6,182,212,0.2), rgba(13,148,136,0.2))',
-              border: '1px solid rgba(6,182,212,0.3)',
-              borderRadius: 4,
-              color: '#22d3ee',
-              cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-              fontSize: 15,
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-              fontWeight: 600,
-              opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
-              transition: 'all 0.2s',
-            }}
-          >
-            🧺 Build
-          </button>
-          <button
-            onClick={() => setShowMorePrompts(prev => !prev)}
-            disabled={isLoading || remainingCalls === 0}
-            style={{
-              padding: '5px 9px', background: showMorePrompts ? '#1e3a5f' : '#334155',
-              border: showMorePrompts ? '1px solid rgba(6,182,212,0.3)' : '1px solid transparent',
-              borderRadius: 4, color: showMorePrompts ? '#67e8f9' : '#94a3b8',
-              cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-              fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
-              fontWeight: showMorePrompts ? 600 : 400,
-              opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
-            }}
-          >
-            {showMorePrompts ? 'Less ↑' : 'More ↓'}
-          </button>
-        </div>
-        {/* Secondary suggestions row — collapsible */}
-        {showMorePrompts && (
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}
-            className="no-scrollbar">
-            {SUGGESTIONS_SECONDARY.map((s) => (
+        {/* Quick Prompts — horizontal scroll */}
+        <div className="px-4 pt-3 pb-2">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+            {[
+              { label: 'Health', icon: '📊', mode: 'health' },
+              { label: 'Risk', icon: '🛡️', mode: 'risk' },
+              { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
+              { label: 'Build Basket', icon: '🧺', action: 'basket' },
+              { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
+              { label: 'Tax Check', icon: '📋', mode: 'tax' },
+              { label: 'Research', icon: '🔍', mode: 'research' },
+              { label: 'Trends', icon: '📈', mode: 'trends' },
+            ].map(prompt => (
               <button
-                key={s.id}
-                onClick={() => handleQuickPrompt(s)}
+                key={prompt.label}
+                onClick={() => prompt.action === 'basket'
+                  ? setShowBasketModal(true)
+                  : handleQuickPrompt(prompt.mode!)
+                }
                 disabled={isLoading || remainingCalls === 0}
-                style={{
-                  padding: '5px 9px', background: '#1e293b', border: '1px solid #334155',
-                  borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-                  fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
-                  opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
-                }}
+                className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 active:bg-slate-700 text-slate-300 text-sm px-3 py-2 rounded-full whitespace-nowrap transition flex-shrink-0 disabled:opacity-50 disabled:cursor-default"
               >
-                {s.label}
+                <span className="text-base">{prompt.icon}</span>
+                <span>{prompt.label}</span>
               </button>
             ))}
           </div>
-        )}
+        </div>
 
         {/* Research symbol input — appears inline when Research is tapped */}
         {showResearchInput && (
-          <div style={{
-            display: 'flex', gap: 6, marginBottom: 8,
-            padding: '8px 10px', background: '#0f172a',
-            border: '1px solid #06b6d4', borderRadius: 8,
-            alignItems: 'center',
-          }}>
-            <span style={{ fontSize: 10, color: '#06b6d4', whiteSpace: 'nowrap' }}>🔍 Symbol:</span>
+          <div className="px-4 pb-2 flex items-center gap-2">
+            <span className="text-cyan-400 text-xs font-medium whitespace-nowrap">🔍 Symbol:</span>
             <input
               type="text"
               value={researchSymbol}
@@ -768,124 +683,73 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
               }}
               placeholder="AAPL, NVDA..."
               autoFocus
-              style={{
-                flex: 1, padding: '6px 8px',
-                background: '#1e293b', border: '1px solid #334155',
-                borderRadius: 6, color: '#f1f5f9', fontSize: 12,
-                outline: 'none',
-              }}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition"
             />
             <button
               onClick={handleResearchSend}
               disabled={!researchSymbol.trim()}
-              style={{
-                padding: '6px 10px', background: researchSymbol.trim() ? '#06b6d4' : '#334155',
-                border: 'none', borderRadius: 6, color: 'white',
-                cursor: researchSymbol.trim() ? 'pointer' : 'default',
-                fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-              }}
+              className="px-3 py-2 rounded-lg bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold transition flex-shrink-0"
             >
               Go
             </button>
             <button
               onClick={() => { setShowResearchInput(false); setResearchSymbol(''); }}
-              style={{
-                padding: '6px 8px', background: 'transparent',
-                border: 'none', color: '#94a3b8',
-                cursor: 'pointer', fontSize: 14,
-              }}
+              className="px-2 py-2 rounded-lg text-slate-500 hover:text-slate-300 transition flex-shrink-0"
             >
               ✕
             </button>
           </div>
         )}
 
-        {/* Input row */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        {/* Input Row */}
+        <div className="px-4 pb-3 flex items-center gap-2">
           <input
             ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about your portfolio, markets, or stocks..."
+            placeholder="Ask about your portfolio..."
             disabled={isLoading || remainingCalls === 0}
-            style={{
-              flex: 1, padding: '9px 11px',
-              background: '#0f172a', border: '1px solid #334155',
-              borderRadius: 8, color: '#f1f5f9', fontSize: 12,
-              outline: 'none',
-              opacity: isLoading ? 0.6 : 1,
-            }}
+            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-base placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition disabled:opacity-60"
           />
           <button
             onClick={handleSend}
-            disabled={isLoading || !input.trim() || remainingCalls === 0}
-            style={{
-              width: 34, height: 34,
-              background: input.trim() && !isLoading ? '#06b6d4' : '#334155',
-              border: 'none', borderRadius: 8,
-              color: 'white', cursor: input.trim() && !isLoading ? 'pointer' : 'default',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.2s',
-            }}
+            disabled={!input.trim() || isLoading || remainingCalls === 0}
+            className="w-11 h-11 rounded-xl bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 flex items-center justify-center text-white transition flex-shrink-0"
+            title="Send"
           >
-            <Send size={16} />
+            <Send size={20} />
           </button>
-
-          {/* Response mode toggle — Summary / Detailed */}
           <button
-            onClick={() => setResponseMode(m => m === 'summary' ? 'detailed' : 'summary')}
+            onClick={() => setResponseMode(prev => prev === 'summary' ? 'detailed' : 'summary')}
             disabled={isLoading}
-            title={responseMode === 'summary' ? 'Switch to Detailed mode' : 'Switch to Summary mode'}
-            style={{
-              width: 34, height: 34,
-              background: responseMode === 'detailed' ? 'rgba(6,182,212,0.15)' : 'transparent',
-              border: responseMode === 'detailed' ? '1px solid #06b6d4' : '1px solid #475569',
-              borderRadius: 8,
-              color: responseMode === 'detailed' ? '#06b6d4' : '#94a3b8',
-              cursor: isLoading ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: isLoading ? 0.5 : 1,
-              flexShrink: 0,
-              fontSize: 10,
-              fontWeight: 600,
-            }}
+            className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 disabled:opacity-50 transition flex-shrink-0"
+            title={responseMode === 'summary' ? 'Switch to detailed' : 'Switch to summary'}
           >
-            <AlignLeft size={14} />
+            ≡
           </button>
-
-          {/* 🗑️ Always visible */}
           <button
-            onClick={() => {
-              if (confirm('Clear all chat messages?')) {
-                clearChat();
-              }
-            }}
+            onClick={handleClearChat}
             disabled={isLoading}
-            title="Clear chat history"
-            style={{
-              width: 34, height: 34,
-              background: 'transparent',
-              border: '1px solid #475569',
-              borderRadius: 8,
-              color: '#94a3b8',
-              cursor: isLoading ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: isLoading ? 0.5 : 1,
-              flexShrink: 0,
-            }}
+            className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 hover:text-red-400 disabled:opacity-50 transition flex-shrink-0"
+            title="Clear chat"
           >
-            <Trash2 size={14} />
+            🗑
           </button>
         </div>
 
-        {/* API status */}
-        <div style={{
-          textAlign: 'center', fontSize: 9, color: '#475569',
-          marginTop: 6,
-        }}>
-          Powered by AI · Responses may contain errors. Conversation history saved.
+        {/* Footer copy */}
+        <div className="text-center pb-3 px-4">
+          <p className="text-slate-600 text-xs">
+            Powered by AI · Conversation history saved
+            {remainingMessages !== null && (
+              <span> · {remainingMessages}/75 today</span>
+            )}
+          </p>
+          <p className="text-slate-600 text-xs mt-0.5">
+            Not financial advice. Always do your own research.
+          </p>
         </div>
       </div>
 
@@ -941,12 +805,6 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           max-width: 260px;
           margin: 0 auto;
           line-height: 1.5;
-        }
-        .empty-disclaimer {
-          font-size: 9px;
-          color: #fca5a5;
-          margin-top: 8px;
-          font-weight: 500;
         }
         .chat-messages::-webkit-scrollbar {
           width: 4px;

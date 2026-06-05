@@ -5,11 +5,7 @@
 import { createServerClient } from '@/lib/supabase';
 
 // ─── Daily Limits ────────────────────────────────────────────
-
-const DAILY_LIMITS = {
-  messages: 20,
-  deepAnalysis: 5,
-};
+// (limits are defined inline in checkUsageLimit — 75 messages, 20 deepAnalysis)
 
 export async function checkUsageLimit(
   userId: string,
@@ -22,73 +18,86 @@ export async function checkUsageLimit(
   const today = new Date().toISOString().split('T')[0];
   const supabase = createServerClient();
 
-  let count = 0;
-  try {
-    const { data } = await (supabase as any)
-      .from('ai_usage')
-      .select('message_count, deep_analysis_count')
-      .eq('user_id', userId)
-      .eq('date', today)
-      .single();
-    count =
-      type === 'message'
-        ? (data?.message_count || 0)
-        : (data?.deep_analysis_count || 0);
-  } catch {
-    // Table may not exist yet — allow unlimited until migration runs
-    count = 0;
-  }
+  const { data, error } = await (supabase as any)
+    .from('ai_usage')
+    .select('message_count, deep_analysis_count')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .single();
 
-  const limit =
-    type === 'message'
-      ? DAILY_LIMITS.messages
-      : DAILY_LIMITS.deepAnalysis;
+  console.log('checkUsageLimit:', { userId, type, today, data, error });
 
-  const allowed = count < limit;
-  const remaining = Math.max(0, limit - count);
+  const LIMITS = { message: 75, deepAnalysis: 20 };
 
+  const limit = LIMITS[type];
+  const used = type === 'message' ? (data?.message_count || 0) : (data?.deep_analysis_count || 0);
+  const remaining = Math.max(0, limit - used);
+
+  // Calculate time until midnight UTC
   const now = new Date();
   const midnight = new Date();
   midnight.setUTCHours(24, 0, 0, 0);
-  const diffMs = midnight.getTime() - now.getTime();
-  const diffHrs = Math.floor(diffMs / 3600000);
-  const diffMins = Math.floor((diffMs % 3600000) / 60000);
-  const resetsIn = `${diffHrs}h ${diffMins}m`;
+  const hoursLeft = Math.ceil((midnight.getTime() - now.getTime()) / 3600000);
 
-  return { allowed, remaining, resetsIn };
+  return { allowed: remaining > 0, remaining, resetsIn: `${hoursLeft}h` };
 }
 
 export async function incrementUsage(
   userId: string,
   type: 'message' | 'deepAnalysis',
-  tokensUsed?: number,
-  costUsd?: number
-): Promise<void> {
+  tokens?: number,
+  cost?: number
+) {
   const today = new Date().toISOString().split('T')[0];
+
+  console.log('incrementUsage called:', { userId, type, today });
+
   const supabase = createServerClient();
 
-  console.log('Incrementing usage:', { userId, type, date: new Date().toDateString() });
-
-  const { error } = await (supabase as any).rpc('increment_ai_usage', {
+  // Try RPC first
+  const { error: rpcError } = await (supabase as any).rpc('increment_ai_usage', {
     p_user_id: userId,
     p_date: today,
     p_message_increment: type === 'message' ? 1 : 0,
     p_analysis_increment: type === 'deepAnalysis' ? 1 : 0,
-    p_tokens: tokensUsed || 0,
-    p_cost: costUsd || 0,
+    p_tokens: tokens || 0,
+    p_cost: cost || 0
   });
 
-  if (error) {
-    console.error('Usage increment failed:', error);
-    // Try direct upsert as fallback:
-    try {
-      await (supabase as any).from('ai_usage').upsert({
-        user_id: userId,
-        date: today,
-        message_count: 1,
-      }, { onConflict: 'user_id,date', ignoreDuplicates: false });
-    } catch (fallbackErr) {
-      console.warn('[ai-guard] Upsert fallback also failed:', fallbackErr);
+  if (rpcError) {
+    console.error('RPC increment failed:', rpcError);
+
+    // Fallback: direct upsert
+    const field = type === 'message' ? 'message_count' : 'deep_analysis_count';
+
+    const { data: existing } = await (supabase as any)
+      .from('ai_usage')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('date', today)
+      .single();
+
+    if (existing) {
+      await (supabase as any)
+        .from('ai_usage')
+        .update({
+          [field]: (existing[field] || 0) + 1,
+          tokens_used: (existing.tokens_used || 0) + (tokens || 0),
+          cost_usd: (existing.cost_usd || 0) + (cost || 0)
+        })
+        .eq('user_id', userId)
+        .eq('date', today);
+    } else {
+      await (supabase as any)
+        .from('ai_usage')
+        .insert({
+          user_id: userId,
+          date: today,
+          message_count: type === 'message' ? 1 : 0,
+          deep_analysis_count: type === 'deepAnalysis' ? 1 : 0,
+          tokens_used: tokens || 0,
+          cost_usd: cost || 0
+        });
     }
   }
 }

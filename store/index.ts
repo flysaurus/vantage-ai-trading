@@ -218,12 +218,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   clearChat: () => {
     saveToStorage(STORAGE_KEYS.chatMessages, []);
     set((s) => ({
-      messages: [{
-        id: `session-divider-${Date.now()}`,
-        role: 'system' as const,
-        content: `── Session ${s.sessionCount + 1} ──`,
-        timestamp: Date.now(),
-      }],
+      messages: [],
       sessionCount: s.sessionCount + 1,
     }));
   },

@@ -56,6 +56,16 @@ export function useAIChat() {
     if (!user?.id || hydratedRef.current) return;
     hydratedRef.current = true;
 
+    // Fetch server-side remaining count on mount
+    fetch('/api/usage/remaining')
+      .then(r => r.json())
+      .then(d => {
+        if (typeof d.remaining === 'number') {
+          useChatStore.getState().setRemainingCalls(d.remaining);
+        }
+      })
+      .catch(() => {});
+
     // Only hydrate if localStorage is empty — avoids overwriting newer data
     const local = typeof window !== 'undefined'
       ? localStorage.getItem(CHAT_STORAGE_KEY)
@@ -224,6 +234,17 @@ export function useAIChat() {
           onDone: (tokens, cost: number) => {
             setLastCost(cost);
             setRemainingCalls(getRemainingCalls());
+
+            // Refresh server-side remaining count
+            fetch('/api/usage/remaining')
+              .then(r => r.json())
+              .then(d => {
+                if (typeof d.remaining === 'number') {
+                  useChatStore.getState().setRemainingCalls(d.remaining);
+                }
+              })
+              .catch(() => {});
+
             setLoading(false);
 
             // Always strip any leaked JSON blocks from the last message (safety backstop)
