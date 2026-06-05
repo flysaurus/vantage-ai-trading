@@ -28,6 +28,7 @@ export function TradeTab() {
 
   // ─── Ready to Execute (draft baskets) ─────────────────────
   const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
+  const [showBaskets, setShowBaskets] = useState(true);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -83,11 +84,11 @@ export function TradeTab() {
   const holdings = account?.positions?.map(p => p.symbol) || [];
 
   return (
-    <div style={{ padding: '12px 16px 80px' }}>
+    <div style={{ padding: '12px 16px', paddingBottom: 80 }}>
       {/* ─── Ready to Execute ─────────────────────────────── */}
       {pendingBaskets.length > 0 && (
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 cursor-pointer" onClick={() => setShowBaskets(prev => !prev)}>
             <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
             <h2 className="text-white font-semibold text-sm tracking-wide uppercase">
               Ready to Execute
@@ -95,8 +96,11 @@ export function TradeTab() {
             <span className="bg-cyan-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
               {pendingBaskets.length}
             </span>
+            <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 14, transition: 'transform 0.2s', transform: showBaskets ? 'rotate(180deg)' : 'none' }}>
+              {showBaskets ? '▲' : '▼'}
+            </span>
           </div>
-          {pendingBaskets.map((basket: any) => (
+          {showBaskets && pendingBaskets.map((basket: any) => (
             <div key={basket.id} className="bg-slate-800 rounded-2xl p-4 mb-3 border border-cyan-500/20">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
