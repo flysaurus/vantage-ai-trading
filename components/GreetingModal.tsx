@@ -136,7 +136,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
           transition: 'all 0.8s ease-out',
         }}
       >
-        {/* Fox */}
+        {/* Compass */}
         <div
           style={{
             fontSize: '48px',

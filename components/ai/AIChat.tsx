@@ -641,33 +641,33 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
-        {/* Quick Prompts — horizontal scroll */}
-        <div className="px-4 pt-3 pb-2">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-            {[
-              { label: 'Health', icon: '📊', mode: 'health' },
-              { label: 'Risk', icon: '🛡️', mode: 'risk' },
-              { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
-              { label: 'Build Basket', icon: '🧺', action: 'basket' },
-              { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
-              { label: 'Tax Check', icon: '📋', mode: 'tax' },
-              { label: 'Research', icon: '🔍', mode: 'research' },
-              { label: 'Trends', icon: '📈', mode: 'trends' },
-            ].map(prompt => (
-              <button
-                key={prompt.label}
-                onClick={() => prompt.action === 'basket'
-                  ? setShowBasketModal(true)
-                  : handleQuickPrompt(prompt.mode!)
-                }
-                disabled={isLoading || remainingCalls === 0}
-                className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 active:bg-slate-700 text-slate-300 text-sm px-3 py-2 rounded-full whitespace-nowrap transition flex-shrink-0 disabled:opacity-50 disabled:cursor-default"
-              >
-                <span className="text-base">{prompt.icon}</span>
-                <span>{prompt.label}</span>
-              </button>
-            ))}
-          </div>
+        {/* Quick Prompts */}
+        <div className="px-4 pt-2 pb-2 flex flex-wrap gap-2 justify-center">
+          {[
+            // Row 1
+            { label: 'Health', icon: '📊', mode: 'health' },
+            { label: 'Risk', icon: '🛡️', mode: 'risk' },
+            { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
+            // Row 2
+            { label: 'Build Basket', icon: '🧺', action: 'basket' },
+            { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
+            // Row 3
+            { label: 'Tax Check', icon: '📋', mode: 'tax' },
+            { label: 'Research', icon: '🔍', mode: 'research' },
+            { label: 'Trends', icon: '📈', mode: 'trends' },
+          ].map(prompt => (
+            <button
+              key={prompt.label}
+              onClick={() => prompt.action === 'basket'
+                ? setShowBasketModal(true)
+                : handleQuickPrompt(prompt.mode!)
+              }
+              className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 active:bg-slate-700 text-slate-300 text-sm px-3 py-2 rounded-full whitespace-nowrap transition"
+            >
+              <span>{prompt.icon}</span>
+              <span>{prompt.label}</span>
+            </button>
+          ))}
         </div>
 
         {/* Research symbol input — appears inline when Research is tapped */}
