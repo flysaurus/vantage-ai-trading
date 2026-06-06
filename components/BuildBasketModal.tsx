@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Compass as CompassIcon } from 'lucide-react'
+import CompassIcon from '@/components/CompassIcon'
 
 const THEMES = [
   { key: 'ai_infrastructure', emoji: '🤖', name: 'AI Infrastructure', desc: 'NVDA, AMD, MSFT, data centers' },

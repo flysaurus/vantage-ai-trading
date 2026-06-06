@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send, RefreshCw, AlertCircle, Trash2 } from 'lucide-react';
+import CompassIcon from '@/components/CompassIcon';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
@@ -402,7 +403,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       >
         {messages.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">🦊</div>
+            <div className="empty-icon"><CompassIcon size={48} color="#22d3ee" /></div>
             <div className="empty-title">Ready to make some money, {userInitial}?</div>
             <div className="empty-subtitle">
               AI-powered portfolio analysis and market intelligence.
@@ -456,7 +457,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                 color: 'white',
               }}
             >
-              {msg.role === 'assistant' ? '🦊' : userInitial}
+              {msg.role === 'assistant' ? <CompassIcon size={14} color="white" /> : userInitial}
             </div>
             <div
               className="bubble"

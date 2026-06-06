@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Compass as CompassIcon } from 'lucide-react';
+import CompassIcon from '@/components/CompassIcon';
 
 interface GreetingModalProps {
   onComplete: () => void;
@@ -114,24 +114,18 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
       <div className="bg-slate-900/95 rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8 pt-10 pb-10">
-        {/* Compass — larger */}
+
         <div className="mb-8">
-          <CompassIcon
-            size={80}
-            color="white"
-            strokeWidth={1}
-          />
+          <CompassIcon size={80} color="white" animated={false} settling={true} />
         </div>
 
-        {/* Greeting text — much bigger */}
-        <p className="text-white mb-1 font-light leading-tight" style={{ fontSize: '2.25rem' }}>
+        <p className="text-white font-light leading-tight mb-1" style={{ fontSize: '2.25rem' }}>
           {getGreeting()},
         </p>
         <p className="text-white font-bold leading-tight mb-8" style={{ fontSize: '2.25rem' }}>
           {userName || 'M'}.
         </p>
 
-        {/* Status — bigger */}
         <p className={`${portfolioColor === 'amber' ? 'text-amber-400' : portfolioColor === 'green' ? 'text-green-400' : 'text-white'} text-lg font-medium mb-2`}>
           {portfolioLine}
         </p>
