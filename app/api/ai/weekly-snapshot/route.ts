@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
+import { getDemoPortfolio, isUserInDemo } from '@/lib/demo-data';
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 
@@ -79,12 +80,34 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Fetch positions
-    const { data: positions } = await (supabase as any)
-      .from('positions')
-      .select('symbol, qty, market_value, cost_basis')
-      .eq('user_id', userId)
-      .gt('qty', 0);
+    // Check if user is in demo mode
+    const { data: userProfile } = await (supabase as any)
+      .from('users')
+      .select('broker_connected, investor_style')
+      .eq('id', userId)
+      .single();
+
+    const isDemo = isUserInDemo(userProfile);
+    const investorStyle = userProfile?.investor_style || 'lynch';
+
+    // Fetch positions (real or demo)
+    let positions: Array<{ symbol: string; qty: number; market_value?: number; cost_basis?: number }> = [];
+
+    if (isDemo) {
+      const demoData = getDemoPortfolio(investorStyle);
+      positions = demoData.positions.map(p => ({
+        symbol: p.symbol,
+        qty: p.qty,
+        cost_basis: p.avgCost,
+      }));
+    } else {
+      const { data: dbPositions } = await (supabase as any)
+        .from('positions')
+        .select('symbol, qty, market_value, cost_basis')
+        .eq('user_id', userId)
+        .gt('qty', 0);
+      positions = dbPositions || [];
+    }
 
     // Fetch quotes for all position symbols
     const finnhubKey = process.env.FINNHUB_IO_API_KEY;
