@@ -51,11 +51,11 @@ export function BottomNav() {
             className="flex flex-col items-center"
           >
             <Icon
-              size={22}
+              size={24}
               strokeWidth={isActive ? 2.5 : 1.5}
               className={isActive ? 'text-cyan-400' : 'text-slate-400'}
             />
-            <span className={`text-[11px] font-medium mt-1 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`}>
+            <span className={`text-[11px] mt-1 ${isActive ? 'text-cyan-400 font-semibold' : 'text-slate-400 font-medium'}`}>
               {label}
             </span>
           </button>
