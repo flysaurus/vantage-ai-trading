@@ -100,8 +100,17 @@ export function useAIChat() {
       // Keep only last 10 messages (5 prompts + 5 responses)
       const trimmed = dbMessages.slice(-10);
 
+      // Deduplicate: remove messages with identical role+content prefix
+      const seen = new Set<string>();
+      const deduped = trimmed.filter((m: ChatMessage) => {
+        const key = `${m.role}-${(m.content || '').substring(0, 50)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
       // Populate store + persist to localStorage
-      useChatStore.setState({ messages: trimmed });
+      useChatStore.setState({ messages: deduped });
       if (typeof window !== 'undefined') {
         localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(trimmed));
       }

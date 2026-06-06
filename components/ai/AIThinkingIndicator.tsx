@@ -29,7 +29,7 @@ export default function AIThinkingIndicator({ mode = 'general' }: { mode?: strin
 
   return (
     <div className="flex items-center gap-3 py-2">
-      <CompassIcon size={24} color="#22d3ee" animated={true} />
+      <CompassIcon size={24} color="white" animated={true} />
       <p className="text-slate-400 text-sm">
         {messages[msgIndex]} —
       </p>

@@ -129,15 +129,15 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
       }}
     >
       <div
-        className="bg-slate-900/80 backdrop-blur-sm border border-white/10 rounded-2xl max-w-sm mx-auto shadow-2xl"
+        className="bg-slate-900/80 backdrop-blur-sm border border-white/10 rounded-3xl mx-6 w-full max-w-sm shadow-2xl"
         style={{
           opacity: exiting ? 0 : 1,
           transform: exiting ? 'translateY(-20px)' : 'translateY(0)',
           transition: 'all 0.8s ease-out',
         }}
       >
-        <div className="flex flex-col items-center text-center px-6 pt-6 pb-8">
-          {/* Compass — centered, bigger */}
+        <div className="flex flex-col items-center text-center px-8 pt-8 pb-10">
+          {/* Compass — centered, 64px */}
           <div
             className="mb-5"
             style={{
@@ -146,12 +146,12 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
               transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
             }}
           >
-            <CompassIcon size={56} color="white" animated={false} settling={true} />
+            <CompassIcon size={64} color="white" animated={false} settling={true} />
           </div>
 
           {/* Greeting */}
           <p
-            className="text-white text-3xl font-light mb-1"
+            className="text-white text-4xl font-light mb-0"
             style={{
               opacity: phase >= 2 ? 1 : 0,
               transform: phase >= 2 ? 'translateY(0)' : 'translateY(12px)',
@@ -161,7 +161,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             {getGreeting()},
           </p>
           <p
-            className="text-white text-3xl font-bold mb-5"
+            className="text-white text-4xl font-bold mb-6"
             style={{
               opacity: phase >= 3 ? 1 : 0,
               transform: phase >= 3 ? 'translateY(0)' : 'translateY(12px)',
@@ -173,7 +173,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
 
           {/* Status lines */}
           <p
-            className="text-amber-400 text-sm mb-1"
+            className="text-amber-400 text-base mb-2"
             style={{
               opacity: phase >= 4 ? 0.9 : 0,
               transition: 'opacity 0.4s ease-out',
@@ -182,7 +182,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
             {portfolioLine}
           </p>
           <p
-            className="text-slate-400 text-sm"
+            className="text-slate-400 text-base"
             style={{
               opacity: phase >= 5 ? 1 : 0,
               transition: 'opacity 0.4s ease-out',

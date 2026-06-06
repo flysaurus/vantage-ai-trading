@@ -143,7 +143,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
   const [thinkingMode, setThinkingMode] = useState<string>('general');
   const [showBasketModal, setShowBasketModal] = useState(false);
   const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
-  const [isSending, setIsSending] = useState(false);
+  const sendingRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -216,22 +216,21 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     };
   }, [sendMessage, responseMode]);
 
-  const handleSend = async () => {
-    if (isSending || !input.trim() || isLoading) return;
-    setIsSending(true);
+  const handleSend = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (sendingRef.current || isLoading) return;
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    sendingRef.current = true;
+    setInput('');
     setThinkingMode('general');
     try {
-      await sendMessage(input.trim(), responseMode, 'general');
-      setInput('');
+      await sendMessage(trimmed, responseMode, 'general');
     } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      setTimeout(() => { sendingRef.current = false; }, 1000);
     }
   };
 
@@ -329,6 +328,9 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           // Skip system (session divider) messages — not rendered
           if (msg.role === 'system') return null;
 
+          // Skip empty AI placeholder message during loading (thinking indicator shown standalone)
+          if (msg.role === 'assistant' && !msg.content && isLoading && idx === messages.length - 1) return null;
+
           return (
           <div
             key={msg.id}
@@ -375,10 +377,6 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                     {sanitizeContent(msg.content || '')}
                   </ReactMarkdown>
 
-                  {/* Thinking indicator during loading */}
-                  {isLoading && idx === messages.length - 1 && (
-                    <AIThinkingIndicator mode={thinkingMode} />
-                  )}
                 </div>
               ) : (
                 /* User messages stay plain */
@@ -628,6 +626,13 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           </div>
         )}
 
+        {/* Standalone thinking indicator (not inside a message bubble) */}
+        {isLoading && (
+          <div className="px-1 mb-2">
+            <AIThinkingIndicator mode={thinkingMode} />
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -700,19 +705,18 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         )}
 
         {/* Input Row */}
-        <div className="px-4 pb-3 flex items-center gap-2">
+        <form onSubmit={handleSend} className="px-4 pb-3 flex items-center gap-2">
           <input
             ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
             placeholder="Ask about your portfolio..."
             disabled={isLoading || remainingCalls === 0}
             className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-base placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition disabled:opacity-60"
           />
           <button
-            onClick={handleSend}
+            type="submit"
             disabled={!input.trim() || isLoading || remainingCalls === 0}
             className="w-11 h-11 rounded-xl bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 flex items-center justify-center text-white transition flex-shrink-0"
             title="Send"
@@ -735,7 +739,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           >
             🗑
           </button>
-        </div>
+        </form>
 
         {/* Footer copy */}
         <div className="text-center pb-3 px-4">

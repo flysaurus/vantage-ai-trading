@@ -25,20 +25,16 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
 
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div className="flex items-center justify-between mb-1" style={{ gap: 12 }}>
-            <p className="text-slate-400 text-xs tracking-wider uppercase" style={{ margin: 0 }}>Account Value</p>
-            {styleDef && (
-              <div className="flex items-center gap-1.5 bg-slate-700/50 rounded-full px-2.5 py-1">
-                <span className="text-xs">{styleDef.emoji}</span>
-                <span className="text-cyan-400 text-xs font-medium">{styleDef.title}</span>
-              </div>
-            )}
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 700 }}>
-            ${account.equity.toLocaleString()}
-          </div>
+      <div>
+        <p className="text-slate-500 text-xs tracking-widest uppercase font-medium mb-1">Account Value</p>
+        <div className="flex items-center justify-between">
+          <p className="text-white font-bold text-4xl tracking-tight">${account.equity.toLocaleString()}</p>
+          {styleDef && (
+            <span className="text-xs text-slate-400 flex items-center gap-1.5 self-end mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+              {styleDef.title}
+            </span>
+          )}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 8, paddingTop: 10, borderTop: '1px solid #334155' }}>
