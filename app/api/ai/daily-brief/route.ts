@@ -4,14 +4,13 @@
  * Caches result per-user per-date in daily_briefs table.
  * Regeneration triggers on the next day's first request.
  *
- * Uses Finnhub for real market data (indices + upcoming earnings).
+ * Uses Finnhub for real market data (indices + positions).
  * AI text generation via Claude Haiku (callChatAI).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
-import type { Database } from '@/types/supabase';
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 
@@ -56,20 +55,36 @@ export async function GET(req: NextRequest) {
 
     const { data: existing } = await (supabase as any)
       .from('daily_briefs')
-      .select('content, market_summary')
+      .select('content, market_summary, generated_at')
       .eq('user_id', userId)
       .eq('date', today)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return NextResponse.json({
         content: existing.content,
         marketSummary: existing.market_summary,
+        generatedAt: existing.generated_at,
         cached: true,
       });
     }
 
-    // 3. Fetch market data from Finnhub
+    // 3. Get positions from DB
+    const { data: positions } = await (supabase as any)
+      .from('positions')
+      .select('symbol, qty, market_value')
+      .eq('user_id', userId)
+      .gt('qty', 0);
+
+    if (!positions || positions.length === 0) {
+      return NextResponse.json({
+        content: null,
+        cached: false,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+
+    // 4. Fetch market data from Finnhub
     const finnhubKey = process.env.FINNHUB_IO_API_KEY;
     if (!finnhubKey) {
       return NextResponse.json(
@@ -78,6 +93,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Fetch indices
     const indices = await Promise.all(
       ['SPY', 'QQQ', 'IWM'].map(async (sym) => {
         const r = await fetch(
@@ -89,21 +105,51 @@ export async function GET(req: NextRequest) {
       }),
     );
 
-    // Get positions from DB (works for both demo and live)
-    const { data: positions } = await (supabase as any)
-      .from('positions')
-      .select('symbol, qty, market_value')
-      .eq('user_id', userId)
-      .gt('qty', 0);
+    // Fetch quotes for all position symbols
+    const positionSymbols = positions.map((p: any) => p.symbol);
+    const quotesMap: Record<string, any> = {};
 
-    if (!positions || positions.length === 0) {
-      return NextResponse.json({
-        content: 'Portfolio loading. Please try again in a moment.',
-        cached: false,
-      });
+    await Promise.all(
+      positionSymbols.map(async (sym: string) => {
+        try {
+          const r = await fetch(
+            `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${finnhubKey}`,
+            { signal: AbortSignal.timeout(5000) },
+          );
+          quotesMap[sym] = await r.json();
+        } catch {
+          quotesMap[sym] = {};
+        }
+      }),
+    );
+
+    // Build position data with quotes, sort by absolute change
+    interface PositionQuote {
+      symbol: string;
+      qty: number;
+      price: number;
+      changePct: number;
     }
 
-    // Get upcoming earnings for user's holdings
+    const positionsWithQuotes: PositionQuote[] = positions.map((p: any) => {
+      const q = quotesMap[p.symbol] || {};
+      return {
+        symbol: p.symbol,
+        qty: p.qty,
+        price: q.c ?? 0,
+        changePct: q.dp ?? 0,
+      };
+    });
+
+    // Sort by absolute change for top movers
+    const sortedByChange = [...positionsWithQuotes].sort(
+      (a, b) => Math.abs(b.changePct) - Math.abs(a.changePct),
+    );
+
+    const top6 = sortedByChange.slice(0, 6);
+    const biggestMover = sortedByChange[0];
+
+    // 5. Get upcoming earnings for user's holdings this week
     const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
     let relevantEarnings: any[] = [];
     try {
@@ -113,52 +159,101 @@ export async function GET(req: NextRequest) {
       );
       const earnings = await earningsRes.json();
       relevantEarnings = (earnings.earningsCalendar || []).filter((e: any) =>
-        positions?.some((p: { symbol: string }) => p.symbol === e.symbol),
+        positions?.some((p: any) => p.symbol === e.symbol),
       );
     } catch {
-      // Earnings fetch is best-effort
       relevantEarnings = [];
     }
 
-    // 4. Build prompt
-    const dataBlock = [
-      `DAILY BRIEF DATA — ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York' })}`,
+    // 6. Get investor style
+    let investorStyle = 'buffett';
+    let portfolioMode = 'demo';
+    try {
+      const { data: userData } = await (supabase as any)
+        .from('users')
+        .select('investor_style')
+        .eq('id', userId)
+        .maybeSingle();
+      if (userData?.investor_style) {
+        investorStyle = userData.investor_style;
+      }
+      // Check if connected to broker
+      const { data: vaultData } = await (supabase as any)
+        .from('vault')
+        .select('provider')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (vaultData?.provider) {
+        portfolioMode = vaultData.provider === 'alpaca' ? 'live' : 'demo';
+      }
+    } catch {
+      // use defaults
+    }
+
+    // 7. Build data block for AI
+    const dateStr = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'America/New_York',
+    });
+
+    const dataLines: string[] = [
+      `DAILY BRIEF DATA — ${dateStr}`,
+      `Investor Style: ${investorStyle} | Portfolio Mode: ${portfolioMode}`,
+      `Total Positions: ${positions.length}`,
       '',
-      'MARKET TODAY:',
+      'MARKET INDICES:',
       ...indices.map(
         (i) =>
           `${i.sym}: $${i.price?.toFixed(2) || '?'} (${i.changePct != null ? (i.changePct > 0 ? '+' : '') + i.changePct.toFixed(2) + '%' : 'N/A'})`,
       ),
       '',
-      `PORTFOLIO: ${positions?.length || 0} positions`,
-      ...(positions?.length
-        ? positions.map((p: { symbol: string; qty: number }) => `  ${p.symbol}: ${p.qty} shares`)
-        : ['No positions']),
+      `TOP ${Math.min(6, top6.length)} HOLDINGS BY MOVEMENT:`,
+      ...top6.map(
+        (p) =>
+          `  ${p.symbol}: $${p.price?.toFixed(2) || '?'} (${p.changePct != null ? (p.changePct > 0 ? '+' : '') + p.changePct.toFixed(2) + '%' : 'N/A'}) · ${p.qty} shares`,
+      ),
       '',
-      'EARNINGS THIS WEEK:',
-      ...(relevantEarnings.length > 0
-        ? relevantEarnings.map((e: any) => `  ${e.symbol}: ${e.date}`)
-        : ['No earnings for your holdings this week']),
-    ].join('\n');
+    ];
 
-    // 5. Call AI
+    if (biggestMover) {
+      dataLines.push(
+        `BIGGEST MOVER: ${biggestMover.symbol} ${biggestMover.changePct > 0 ? 'up' : 'down'} ${Math.abs(biggestMover.changePct || 0).toFixed(2)}%`,
+      );
+      dataLines.push('');
+    }
+
+    dataLines.push('EARNINGS THIS WEEK:');
+    if (relevantEarnings.length > 0) {
+      dataLines.push(
+        ...relevantEarnings.map((e: any) => `  ${e.symbol}: reports ${e.date}`),
+      );
+    } else {
+      dataLines.push('  (none — no holdings reporting earnings this week)');
+    }
+
+    const dataBlock = dataLines.join('\n');
+
+    // 8. Call AI with strict format prompt
     const aiResponse = await callChatAI({
       messages: [
         {
           role: 'system',
           content: `You are Vantage AI daily briefing engine.
 Write a concise daily brief using ONLY the data provided.
-Never invent numbers or fabricate information.
-Format EXACTLY:
+NEVER invent numbers. NEVER say "no positions held."
+Use the actual holdings data provided.
 
-MARKET: [1 sentence on SPY/QQQ direction — bullish, bearish, flat]
-PORTFOLIO: [1 sentence — context about today vs holdings]
-WATCH: [1 sentence — most important thing to watch today]
-${relevantEarnings.length > 0 ? 'EARNINGS: [symbol] reports [date]' : ''}
+FORMAT (exactly 4 lines, no headers, no bullets):
+Line 1 - MARKET: One sentence on market direction with specific index numbers
+Line 2 - PORTFOLIO: One sentence mentioning 1-2 specific holdings and their move today
+Line 3 - WATCH: One sentence on the most important thing to monitor today
+Line 4 - EARNINGS: Only include if earnings exist for holdings this week. Skip this line if no earnings.
 
-Maximum 4 lines total.
-Professional but clear.
-No bullet points, no markdown — plain short sentences only.`,
+Keep each line under 15 words.
+Start each line with the label: MARKET: PORTFOLIO: WATCH: EARNINGS:`,
         },
         {
           role: 'user',
@@ -170,8 +265,9 @@ No bullet points, no markdown — plain short sentences only.`,
     });
 
     const content = aiResponse.content.trim();
+    const generatedAt = new Date().toISOString();
 
-    // 6. Save to cache
+    // 9. Save to cache
     await (supabase as any).from('daily_briefs').upsert(
       {
         user_id: userId,
@@ -182,6 +278,7 @@ No bullet points, no markdown — plain short sentences only.`,
           qqq: indices[1],
           iwm: indices[2],
         },
+        generated_at: generatedAt,
       },
       { onConflict: 'user_id,date' },
     );
@@ -193,6 +290,7 @@ No bullet points, no markdown — plain short sentences only.`,
         qqq: indices[1],
         iwm: indices[2],
       },
+      generatedAt,
       cached: false,
     });
   } catch (error: any) {

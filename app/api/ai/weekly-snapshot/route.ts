@@ -3,7 +3,7 @@
  * DELETE /api/ai/weekly-snapshot — Force-refresh this week's snapshot.
  *
  * Caches result per-user per-week (Monday start) in weekly_snapshots table.
- * Uses Finnhub for position quotes + Claude Haiku for analysis.
+ * Uses Finnhub for position quotes + callChatAI for analysis.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -40,8 +40,8 @@ async function getUserIdFromSession(req: NextRequest): Promise<string | null> {
 /** Get Monday of current week as YYYY-MM-DD */
 function getWeekStart(): string {
   const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon, ...
-  const diff = day === 0 ? -6 : 1 - day; // Monday of current week
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       .select('*')
       .eq('user_id', userId)
       .eq('week_start', weekStartStr)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return NextResponse.json({
@@ -75,11 +75,12 @@ export async function GET(req: NextRequest) {
         riskLevel: existing.risk_level,
         opportunitiesCount: existing.opportunities_count,
         weekStart: weekStartStr,
+        generatedAt: existing.generated_at || null,
         cached: true,
       });
     }
 
-    // Fetch positions from DB (works for both demo and live)
+    // Fetch positions from DB
     const { data: positions } = await (supabase as any)
       .from('positions')
       .select('symbol, qty, market_value, avg_cost')
@@ -88,7 +89,12 @@ export async function GET(req: NextRequest) {
 
     if (!positions || positions.length === 0) {
       return NextResponse.json({
-        content: 'Portfolio loading. Please try again in a moment.',
+        content: null,
+        healthScore: null,
+        riskLevel: null,
+        opportunitiesCount: 0,
+        weekStart: weekStartStr,
+        generatedAt: null,
         cached: false,
       });
     }
@@ -114,26 +120,64 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Build data block
+    // Get investor style
+    let investorStyle = 'buffett';
+    let riskTolerance = 'medium';
+    try {
+      const { data: userData } = await (supabase as any)
+        .from('users')
+        .select('investor_style')
+        .eq('id', userId)
+        .maybeSingle();
+      if (userData?.investor_style) {
+        investorStyle = userData.investor_style;
+        const styleRiskMap: Record<string, string> = {
+          growth: 'medium-high',
+          buffett: 'medium',
+          lynch: 'medium',
+          livermore: 'high',
+          soros: 'high',
+          dividend: 'low',
+        };
+        riskTolerance = styleRiskMap[investorStyle] || 'medium';
+      }
+    } catch {
+      // use defaults
+    }
+
+    // Build position data block
+    const positionLines = positions.map((p: any) => {
+      const q = quotes[p.symbol] || {};
+      const avgCost = p.avg_cost;
+      const currentPrice = q.c ?? 0;
+      const pnl = avgCost && currentPrice
+        ? ((currentPrice - avgCost) / avgCost) * 100
+        : null;
+      const pnlStr = pnl != null
+        ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%`
+        : 'N/A';
+      return `  ${p.symbol}: ${p.qty} shares @ $${avgCost || '?'} | Current: $${currentPrice || '?'} | P&L: ${pnlStr}`;
+    });
+
     const dataBlock = [
       `WEEKLY PORTFOLIO HEALTH CHECK — Week of ${weekStartStr}`,
       '',
-      'PORTFOLIO:',
-      ...(positions?.length
-        ? positions.map((p: any) => {
-            const q = quotes[p.symbol];
-            const avgCost = p.avg_cost;
-            const pnl =
-              q?.c && avgCost
-                ? ((q.c - avgCost) / avgCost) * 100
-                : null;
-            const pnlStr =
-              pnl != null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : 'N/A';
-            return `  ${p.symbol}: ${p.qty} shares @ $${avgCost || '?'} | Current: $${q?.c || '?'} | P&L: ${pnlStr}`;
-          })
-        : ['No positions']),
+      `Symbols: ${symbols.join(', ')}`,
+      `Style: ${investorStyle} | Risk: ${riskTolerance}`,
+      `Total positions: ${positions.length}`,
       '',
-      'Analyze portfolio health (score /10), risk level (LOW/MEDIUM/HIGH), and count investment opportunities.',
+      'PORTFOLIO:',
+      ...positionLines,
+      '',
+    ].join('\n');
+
+    // Build prompt
+    const prompt = [
+      'Run a complete weekly portfolio health snapshot on this portfolio.',
+      'Format as markdown with sections: OVERALL HEALTH, RISKS, OPPORTUNITIES, SUMMARY.',
+      'Include OVERALL HEALTH: X/10 and OVERALL RISK: LOW|MEDIUM|HIGH.',
+      `Portfolio: ${symbols.join(', ')}`,
+      `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
 
     // Call AI
@@ -144,24 +188,20 @@ export async function GET(req: NextRequest) {
           content: `You are Vantage AI portfolio health analyst.
 Analyze the portfolio data provided.
 
-Respond in this EXACT format:
+Respond in markdown with these sections:
+## OVERALL HEALTH
+Include "OVERALL HEALTH: X/10" on its own line.
+[Brief explanation of the health score]
 
-PORTFOLIO HEALTH: X/10
-[1 sentence explanation]
+## RISKS
+Include "OVERALL RISK: LOW|MEDIUM|HIGH" on its own line.
+[Brief analysis of risk factors]
 
-OVERALL RISK: LOW/MEDIUM/HIGH
-[1 sentence on risk factors]
+## OPPORTUNITIES
+[List each as a bullet point "• description" — count these]
 
-KEY STRENGTHS:
-[1-2 brief points, each starting with "—"]
-
-WATCHES:
-[1-2 brief points, each starting with "—"]
-
-OPPORTUNITIES:
-[list each as "• [description]" — count these for opportunities_count]
-
-SUMMARY: [1 sentence overall assessment]
+## SUMMARY
+[1 sentence overall assessment]
 
 Be specific. Use real numbers provided. Never invent. Be honest if data is incomplete.`,
         },
@@ -175,9 +215,10 @@ Be specific. Use real numbers provided. Never invent. Be honest if data is incom
     });
 
     const content = aiResponse.content.trim();
+    const generatedAt = new Date().toISOString();
 
     // Parse structured fields from response
-    const healthMatch = content.match(/(\d+\.?\d*)\/10/);
+    const healthMatch = content.match(/OVERALL HEALTH:\s*(\d+\.?\d*)\/10/i);
     const healthScore = healthMatch ? parseFloat(healthMatch[1]) : null;
 
     const riskMatch = content.match(/OVERALL RISK:\s*(LOW|MEDIUM|HIGH)/i);
@@ -195,6 +236,7 @@ Be specific. Use real numbers provided. Never invent. Be honest if data is incom
         risk_level: riskLevel,
         opportunities_count: opportunitiesCount,
         content,
+        generated_at: generatedAt,
       },
       { onConflict: 'user_id,week_start' },
     );
@@ -205,6 +247,7 @@ Be specific. Use real numbers provided. Never invent. Be honest if data is incom
       riskLevel,
       opportunitiesCount,
       weekStart: weekStartStr,
+      generatedAt,
       cached: false,
     });
   } catch (error: any) {

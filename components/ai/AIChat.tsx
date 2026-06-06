@@ -329,8 +329,19 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       height: '100%',
       maxHeight: 'calc(100vh - 180px)',
     }}>
-      {/* ── Top content: banner, account card, insights — passed from AITab ── */}
+      {/* ── Top content: cards passed from AITab ── */}
       {children}
+
+      {/* === DIVIDER before chat === */}
+      <div className="mx-4 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 border-t border-slate-700/50" />
+          <span className="text-slate-600 text-xs uppercase tracking-wider font-medium flex-shrink-0">
+            Ask Vantage AI
+          </span>
+          <div className="flex-1 border-t border-slate-700/50" />
+        </div>
+      </div>
 
       {/* ── Scrollable Messages ── */}
       <div
@@ -338,21 +349,19 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '8px 16px 0',
+          padding: '0 16px 0',
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          minHeight: 0,
+          minHeight: 200,
         }}
         className="chat-messages"
       >
         {messages.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-icon"><CompassIcon size={48} color="#22d3ee" /></div>
-            <div className="empty-title">Ready to make some money, {userInitial}?</div>
-            <div className="empty-subtitle">
-              AI-powered portfolio analysis and market intelligence.
-            </div>
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-slate-500 text-xs text-center py-8">
+              Ask about your portfolio, markets, or build a basket
+            </p>
           </div>
         )}
 
@@ -676,9 +685,9 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about your portfolio..."
+            placeholder="Ask about your portfolio, markets, or build a basket"
             disabled={isLoading || remainingCalls === 0}
-            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl pl-5 pr-4 py-3 text-white text-base placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition"
+            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl pl-5 pr-4 py-3.5 text-white text-base placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition"
             style={{ opacity: isLoading ? 0.6 : 1 }}
           />
           {/* Send button */}
@@ -706,7 +715,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
 
         {/* Footer */}
         <p className="text-center text-slate-600 text-xs pb-2 px-4">
-          Powered by AI · Conversation history saved · {remainingCalls} messages remaining today · Not financial advice.
+          Powered by AI · Not financial advice · {remainingCalls} messages remaining
         </p>
       </div>
 

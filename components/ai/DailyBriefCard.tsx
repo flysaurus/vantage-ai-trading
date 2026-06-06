@@ -1,17 +1,47 @@
 'use client';
 import { useState, useEffect } from 'react';
 
+interface MarketSnapshot {
+  sym: string;
+  price: number;
+  changePct: number;
+}
+
 interface MarketSummary {
-  spy?: { sym: string; price: number; changePct: number };
-  qqq?: { sym: string; price: number; changePct: number };
-  iwm?: { sym: string; price: number; changePct: number };
+  spy?: MarketSnapshot;
+  qqq?: MarketSnapshot;
+  iwm?: MarketSnapshot;
 }
 
 interface BriefData {
-  content?: string;
+  content?: string | null;
   marketSummary?: MarketSummary;
+  generatedAt?: string | null;
   cached?: boolean;
 }
+
+interface ParsedLine {
+  label: string;
+  text: string;
+}
+
+function parseBrief(content: string): ParsedLine[] {
+  const lines = content.split('\n').filter((l) => l.trim());
+  return lines
+    .map((line) => {
+      const match = line.match(/^(MARKET|PORTFOLIO|WATCH|EARNINGS):\s*(.+)/i);
+      if (match) return { label: match[1].toUpperCase(), text: match[2].trim() };
+      return { label: '', text: line.trim() };
+    })
+    .filter((l) => l.text);
+}
+
+const LABEL_COLORS: Record<string, string> = {
+  MARKET: 'text-cyan-400',
+  PORTFOLIO: 'text-green-400',
+  WATCH: 'text-yellow-400',
+  EARNINGS: 'text-purple-400',
+};
 
 export default function DailyBriefCard() {
   const [data, setData] = useState<BriefData | null>(null);
@@ -28,13 +58,20 @@ export default function DailyBriefCard() {
 
   if (loading) {
     return (
-      <div className="mx-4 mb-3 bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="mx-4 mb-3 bg-slate-800 rounded-2xl p-4 border border-slate-700">
+        <div className="flex items-center gap-2 mb-3">
           <span className="text-sm">📡</span>
-          <span className="text-slate-400 text-xs">Loading daily brief...</span>
+          <span className="text-white text-xs font-semibold uppercase tracking-wide">
+            Daily Brief
+          </span>
+          <span className="ml-auto rounded-full bg-slate-700 px-2 py-0.5">
+            <span className="text-slate-500 text-[10px]">Loading...</span>
+          </span>
         </div>
-        <div className="h-3 bg-slate-700 rounded w-3/4 mb-2 animate-pulse" />
-        <div className="h-3 bg-slate-700 rounded w-1/2 animate-pulse" />
+        <div className="space-y-2">
+          <div className="h-3 bg-slate-700 rounded w-3/4 animate-pulse" />
+          <div className="h-3 bg-slate-700 rounded w-1/2 animate-pulse" />
+        </div>
       </div>
     );
   }
@@ -42,69 +79,59 @@ export default function DailyBriefCard() {
   const brief = data?.content;
   if (!brief) return null;
 
-  const lines = brief.split('\n').filter((l) => l.trim());
-  const hasMore = lines.length > 2;
+  const parsed = parseBrief(brief);
+  const visibleLines = expanded ? parsed : parsed.slice(0, 2);
+  const hasMore = parsed.length > 2;
 
   return (
     <div className="mx-4 mb-3">
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="w-full text-left bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 hover:border-slate-600 transition-all"
+        className="w-full text-left bg-slate-800 rounded-2xl p-4 border border-slate-700 hover:border-slate-600 transition-colors"
       >
-        <div className="flex items-center justify-between mb-2">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-sm">📡</span>
             <span className="text-white text-xs font-semibold uppercase tracking-wide">
               Daily Brief
             </span>
-            <span className="text-slate-600 text-xs">Today</span>
+            <span className="rounded-full bg-cyan-500/15 px-2 py-0.5">
+              <span className="text-cyan-400 text-[10px] font-medium">Today</span>
+            </span>
           </div>
-          <span className="text-slate-500 text-xs">
-            {expanded ? '▲' : '▼'}
-          </span>
+          {hasMore && (
+            <span className="text-slate-500 text-xs transition-transform">
+              {expanded ? '▲ Show less' : '▼ Show more'}
+            </span>
+          )}
         </div>
 
-        {(expanded ? lines : lines.slice(0, 2)).map((line, i) => (
-          <p key={i} className="text-slate-300 text-xs leading-relaxed">
-            {line}
-          </p>
-        ))}
+        {/* Lines */}
+        <div className="space-y-1.5">
+          {visibleLines.map((line, i) => (
+            <p key={i} className="text-xs leading-relaxed">
+              {line.label ? (
+                <>
+                  <span className={`font-semibold ${LABEL_COLORS[line.label] || 'text-slate-400'}`}>
+                    {line.label}:
+                  </span>{' '}
+                  <span className="text-slate-300">{line.text}</span>
+                </>
+              ) : (
+                <span className="text-slate-300">{line.text}</span>
+              )}
+            </p>
+          ))}
+        </div>
 
+        {/* Footer — visible when expanded */}
         {expanded && (
-          <div className="mt-3 pt-3 border-t border-slate-700/50">
-            {/* Market snapshot row */}
-            {data?.marketSummary && (
-              <div className="flex gap-3 mb-3">
-                {(
-                  [
-                    { label: 'SPY', d: data.marketSummary.spy, color: 'text-slate-300' },
-                    { label: 'QQQ', d: data.marketSummary.qqq, color: 'text-slate-300' },
-                    { label: 'IWM', d: data.marketSummary.iwm, color: 'text-slate-300' },
-                  ] as const
-                ).map(({ label, d }) => {
-                  if (!d?.price) return null;
-                  const changeColor =
-                    d.changePct > 0
-                      ? 'text-green-400'
-                      : d.changePct < 0
-                        ? 'text-red-400'
-                        : 'text-slate-400';
-                  return (
-                    <span key={label} className="text-xs text-slate-400">
-                      {label}: <span className="text-white">${d.price.toFixed(2)}</span>{' '}
-                      <span className={changeColor}>
-                        ({d.changePct > 0 ? '+' : ''}
-                        {d.changePct?.toFixed(2)}%)
-                      </span>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            <p className="text-slate-600 text-xs">
+          <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center justify-between">
+            <p className="text-slate-600 text-[10px]">
               {data?.cached
-                ? 'Cached today · Updates tomorrow'
-                : 'Generated now · Updates tomorrow'}
+                ? 'Cached today · Refreshes tomorrow'
+                : 'Generated just now · Refreshes tomorrow'}
             </p>
           </div>
         )}

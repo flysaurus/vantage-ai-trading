@@ -6,7 +6,6 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoInsight } from '@/lib/demo-data';
 import { AIChat } from './AIChat';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
-import DemoBanner from '@/components/shared/DemoBanner';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 
@@ -18,7 +17,7 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
 
   // Sector concentration
   const sectors: Record<string, number> = {};
-  positions.forEach(p => {
+  positions.forEach((p) => {
     const s = p.sector || 'Other';
     sectors[s] = (sectors[s] || 0) + p.marketValue;
   });
@@ -26,7 +25,9 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
   const topSectorPct = topSector ? ((topSector[1] / totalValue) * 100).toFixed(0) : '0';
 
   // Biggest mover today
-  const sortedByDay = [...positions].sort((a, b) => Math.abs(b.dayChangePercent) - Math.abs(a.dayChangePercent));
+  const sortedByDay = [...positions].sort(
+    (a, b) => Math.abs(b.dayChangePercent) - Math.abs(a.dayChangePercent)
+  );
   const biggestMover = sortedByDay[0];
 
   // Biggest position
@@ -34,13 +35,18 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
   const biggestPct = ((biggestPos.marketValue / totalValue) * 100).toFixed(0);
 
   // Day P&L
-  const dayPnlStr = account.dayPnl >= 0 ? `+$${account.dayPnl.toFixed(0)}` : `-$${Math.abs(account.dayPnl).toFixed(0)}`;
+  const dayPnlStr =
+    account.dayPnl >= 0
+      ? `+$${account.dayPnl.toFixed(0)}`
+      : `-$${Math.abs(account.dayPnl).toFixed(0)}`;
 
   // Build insight
   const parts: string[] = [];
 
   if (topSector && Number(topSectorPct) > 30) {
-    parts.push(`${topSector[0]} is ${topSectorPct}% of your portfolio — consider diversifying.`);
+    parts.push(
+      `${topSector[0]} is ${topSectorPct}% of your portfolio — consider diversifying.`
+    );
   }
 
   if (biggestPos && Number(biggestPct) > 20) {
@@ -49,15 +55,21 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
 
   if (biggestMover && Math.abs(biggestMover.dayChangePercent) > 2) {
     const dir = biggestMover.dayChangePercent >= 0 ? 'up' : 'down';
-    parts.push(`${biggestMover.symbol} is ${dir} ${Math.abs(biggestMover.dayChangePercent).toFixed(1)}% today.`);
+    parts.push(
+      `${biggestMover.symbol} is ${dir} ${Math.abs(biggestMover.dayChangePercent).toFixed(1)}% today.`
+    );
   }
 
   if (account.dayPnl !== 0) {
     const pnlDir = account.dayPnl >= 0 ? 'up' : 'down';
-    parts.push(`Portfolio ${pnlDir} ${dayPnlStr} (${account.dayPnlPercent >= 0 ? '+' : ''}${account.dayPnlPercent.toFixed(1)}%).`);
+    parts.push(
+      `Portfolio ${pnlDir} ${dayPnlStr} (${account.dayPnlPercent >= 0 ? '+' : ''}${account.dayPnlPercent.toFixed(1)}%).`
+    );
   }
 
-  return parts.length > 0 ? parts.join(' ') : `${positions.length} positions across ${Object.keys(sectors).length} sectors. Portfolio value: $${totalValue.toFixed(0)}.`;
+  return parts.length > 0
+    ? parts.join(' ')
+    : `${positions.length} positions across ${Object.keys(sectors).length} sectors. Portfolio value: $${totalValue.toFixed(0)}.`;
 }
 
 export function AITab() {
@@ -78,10 +90,16 @@ export function AITab() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <AIChat>
-        {/* Demo Banner */}
-        {!isConnected && <DemoBanner />}
+        {/* ── Card stack: Account → Insight → Daily Brief → Weekly Snapshot ── */}
 
         {/* Account Summary */}
         {account && (
@@ -100,10 +118,10 @@ export function AITab() {
           </p>
         </div>
 
-        {/* Daily Brief */}
+        {/* Daily Brief — color-coded labeled lines, collapsed by default */}
         <DailyBriefCard />
 
-        {/* Weekly Snapshot */}
+        {/* Weekly Snapshot — health metrics pills, expandable markdown */}
         <WeeklySnapshotCard />
       </AIChat>
     </div>
