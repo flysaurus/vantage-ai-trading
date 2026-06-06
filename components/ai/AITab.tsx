@@ -9,6 +9,7 @@ import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 import BuildBasketModal from '@/components/BuildBasketModal';
+import DemoBanner from '@/components/shared/DemoBanner';
 
 function generateInsight(account: import('@/types').AccountSummary | null): string | null {
   if (!account || account.positions.length === 0) return null;
@@ -114,7 +115,10 @@ export function AITab() {
       }}
     >
       <AIChat>
-        {/* ── Card stack: Account → Insight → Daily Brief → Weekly Snapshot ── */}
+        {/* ── Card stack: Demo Banner → Account → Insight → Daily Brief → Weekly Snapshot ── */}
+
+        {/* Demo Banner */}
+        {!isConnected && <DemoBanner />}
 
         {/* Account Summary */}
         {account && (
@@ -124,13 +128,16 @@ export function AITab() {
         )}
 
         {/* Today's Key Insight */}
-        <div className="mx-4 mb-3 bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3">
-          <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wider mb-1">
-            Today&apos;s Key Insight
-          </p>
-          <p className="text-slate-300 text-xs leading-relaxed">
-            {insight || 'Connect your portfolio to see insights.'}
-          </p>
+        <div className="mx-4 mb-3">
+          <div className="bg-slate-800/40 rounded-2xl border border-slate-700/50 px-4 py-3">
+            <p className="text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <span>📊</span>
+              Today&apos;s Key Insight
+            </p>
+            <p className="text-slate-300 text-sm leading-relaxed">
+              {insight || 'Connect your portfolio to see insights.'}
+            </p>
+          </div>
         </div>
 
         {/* Daily Brief — color-coded labeled lines, collapsed by default */}
