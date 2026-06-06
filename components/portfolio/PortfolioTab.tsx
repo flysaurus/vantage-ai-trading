@@ -1,1421 +1,854 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  LineChart, Line, Area, ResponsiveContainer,
+} from 'recharts';
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { usePortfolioStore } from '@/store';
-import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
-import DemoBanner from '@/components/shared/DemoBanner';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { PositionRow } from '@/components/portfolio/PositionRow';
+import DemoBanner from '@/components/shared/DemoBanner';
+import { getDemoPortfolio } from '@/lib/demo-data';
+import type { Position, AccountSummary } from '@/types';
 
-export function PortfolioTab() {
-  const router = useRouter();
-  const { account, loading, error, refresh } = usePortfolio();
-  const { isConnected, brokerId } = useBroker();
-  const { user } = useAuth();
-  const store = usePortfolioStore();
-  const investorStyle = (user?.investorStyle || 'value').replace('-Style', '').toLowerCase();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showSellPanel, setShowSellPanel] = useState(false);
-  const [sortBy, setSortBy] = useState<'pct' | 'name' | 'sector' | 'pnl'>('pct');
-  const [sortOpen, setSortOpen] = useState(false);
+// ─── Constants ─────────────────────────────────────────────────
 
-  // ── Baskets ─────────────────────────────────────────────
-  const [baskets, setBaskets] = useState<any[]>([]);
-  const [basketPositions, setBasketPositions] = useState<any[]>([]);
-  const [expandedBaskets, setExpandedBaskets] = useState<Set<string>>(new Set());
-  const [showSellBasketModal, setShowSellBasketModal] = useState<any>(null);
-  const [showSellAllModal, setShowSellAllModal] = useState(false);
-  const [sellAllConfirm, setSellAllConfirm] = useState('');
-  const [basketSellResults, setBasketSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
-  const [basketSellSubmitting, setBasketSellSubmitting] = useState(false);
+const DOLLAR_FMT: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+};
 
-  // ── Performance Chart ─────────────────────────────────────
-  type RangeKey = '1D' | '7D' | '30D' | '90D' | 'YTD' | '1Y' | 'ALL';
-  const [chartRange, setChartRange] = useState<RangeKey>('30D');
-  const [chartData, setChartData] = useState<{ timestamps: number[]; equities: number[] } | null>(null);
-  const [chartLoading, setChartLoading] = useState(false);
-  const [tooltip, setTooltip] = useState<{ x: number; idx: number; visible: boolean } | null>(null);
-  const chartRef = useRef<HTMLDivElement>(null);
+const TICKER_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
 
-  const RANGE_CONFIG: Record<RangeKey, { period: string; timeframe: string; label: string }> = {
-    '1D': { period: '1D', timeframe: '5Min', label: 'Today' },
-    '7D': { period: '1W', timeframe: '30Min', label: '7D' },
-    '30D': { period: '1M', timeframe: '1D', label: '30D' },
-    '90D': { period: '3M', timeframe: '1D', label: '90D' },
-    'YTD': { period: '1Y', timeframe: '1D', label: 'YTD' },
-    '1Y': { period: '1Y', timeframe: '1D', label: '1Y' },
-    'ALL': { period: 'all', timeframe: '1D', label: 'All' },
-  };
+const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y'] as const;
+type Timeframe = (typeof TIMEFRAMES)[number];
 
-  const fetchChartData = useCallback(async (range: RangeKey) => {
-    setChartLoading(true);
-    try {
-      const cfg = RANGE_CONFIG[range];
-      const res = await fetch(`/api/alpaca/history?period=${cfg.period}&timeframe=${cfg.timeframe}`);
-      const json = await res.json();
-      if (json.timestamp && json.equity) {
-        let timestamps: number[] = json.timestamp;
-        let equities: number[] = json.equity;
-        // YTD: filter to current year
-        if (range === 'YTD') {
-          const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
-          const idx = timestamps.findIndex((t: number) => t >= yearStart);
-          if (idx > 0) {
-            timestamps = timestamps.slice(idx);
-            equities = equities.slice(idx);
-          }
-        }
-        setChartData({ timestamps, equities });
-      } else {
-        setChartData(null);
-      }
-    } catch {
-      setChartData(null);
-    }
-    setChartLoading(false);
-  }, []);
+const SECTOR_COLORS: Record<string, string> = {
+  Technology: '#06b6d4',
+  'Financial Services': '#f59e0b',
+  Healthcare: '#10b981',
+  Consumer: '#f97316',
+  Energy: '#ef4444',
+  'Media & Entertainment': '#8b5cf6',
+  Automotive: '#ec4899',
+};
 
-  useEffect(() => { fetchChartData(chartRange); }, [chartRange, fetchChartData]);
+function getSectorColor(sector: string): string {
+  return SECTOR_COLORS[sector] || '#6366f1';
+}
 
-  // ── Fetch baskets ───────────────────────────────────────
-  useEffect(() => {
-    if (!isConnected && !account) return;
-    Promise.all([
-      fetch('/api/baskets').then(r => r.json()),
-      fetch('/api/baskets/positions').then(r => r.json()),
-    ]).then(([bData, pData]) => {
-      setBaskets(bData.baskets || []);
-      setBasketPositions(pData.positions || []);
-    }).catch(() => {});
-  }, [isConnected]);
+const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
+const pctStr = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
-  const [sellSubmitting, setSellSubmitting] = useState(false);
-  const [sellResults, setSellResults] = useState<Array<{ symbol: string; ok: boolean; error?: string }>>([]);
-
-  // Per-position sell configuration
-  interface SellConfig {
-    qty: number;
-    orderType: 'market' | 'limit' | 'stop' | 'stop_limit';
-    limitPrice: string;
-    stopPrice: string;
-    tif: 'day' | 'gtc';
+// Generate flat-ish sparkline data (placeholder until real API)
+function generateSparkline(base: number, points: number, volatility: number, trend: number) {
+  const data: { v: number }[] = [];
+  let val = base;
+  for (let i = 0; i < points; i++) {
+    val += volatility * (Math.random() - 0.45 + trend);
+    val = Math.max(val, base * 0.8);
+    data.push({ v: val });
   }
-  const [sellConfigs, setSellConfigs] = useState<Record<string, SellConfig>>({});
+  return data;
+}
 
-  const initSellConfig = (symbols: string[]) => {
-    const cfgs: Record<string, SellConfig> = {};
-    for (const sym of symbols) {
-      const pos = account?.positions.find(p => p.symbol === sym);
-      cfgs[sym] = { qty: pos?.qty || 0, orderType: 'market', limitPrice: '', stopPrice: '', tif: 'day' };
-    }
-    setSellConfigs(cfgs);
-  };
+// ─── Individual Sell Bottom Sheet ─────────────────────────────
 
-  const updateSellConfig = (symbol: string, patch: Partial<SellConfig>) => {
-    setSellConfigs(prev => ({ ...prev, [symbol]: { ...prev[symbol], ...patch } }));
-  };
+interface SellConfig {
+  mode: 'all' | 'partial';
+  shares: number;
+  orderType: 'Market' | 'Limit' | 'Stop';
+  tif: 'Day' | 'GTC';
+  limitPrice: string;
+}
 
-  const fmt = (n: number) =>
-    `$${Math.abs(n).toLocaleString()}`;
-  const pct = (n: number) =>
-    `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+function SellBottomSheet({
+  position,
+  onClose,
+  onConfirm,
+}: {
+  position: Position;
+  onClose: () => void;
+  onConfirm: (cfg: SellConfig) => void;
+}) {
+  const [cfg, setCfg] = useState<SellConfig>({
+    mode: 'all',
+    shares: position.qty,
+    orderType: 'Market',
+    tif: 'Day',
+    limitPrice: '',
+  });
+  const [confirmText, setConfirmText] = useState('');
+  const needsConfirm = confirmText === 'SELL';
 
-  const toggleSelect = (symbol: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(symbol) ? next.delete(symbol) : next.add(symbol);
-      return next;
-    });
-  };
-
-  const selectAll = () => {
-    if (account && selected.size === account.positions.length) {
-      setSelected(new Set());
-    } else if (account) {
-      setSelected(new Set(account.positions.map(p => p.symbol)));
-    }
-  };
-
-  const submitBulkSell = async () => {
-    setSellSubmitting(true);
-    setSellResults([]);
-    const results: Array<{ symbol: string; ok: boolean; error?: string }> = [];
-    for (const symbol of selected) {
-      try {
-        const pos = account?.positions.find(p => p.symbol === symbol);
-        const cfg = sellConfigs[symbol];
-        if (!pos || !cfg) continue;
-        const body: any = {
-          symbol,
-          qty: cfg.qty,
-          side: 'sell',
-          type: cfg.orderType,
-          time_in_force: cfg.orderType === 'market' ? 'day' : cfg.tif,
-        };
-        if (cfg.orderType === 'limit' || cfg.orderType === 'stop_limit') {
-          body.limit_price = parseFloat(cfg.limitPrice);
-        }
-        if (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') {
-          body.stop_price = parseFloat(cfg.stopPrice);
-        }
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-        try {
-          const res = await fetch('/api/alpaca/orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          });
-          const json = await res.json();
-          const errMsg = json.error || json.message || '';
-          results.push({ symbol, ok: res.ok, error: errMsg });
-        } catch (fetchErr: any) {
-          results.push({ symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
-        } finally {
-          clearTimeout(timeout);
-        }
-      } catch (e: any) {
-        results.push({ symbol, ok: false, error: e.message });
-      }
-    }
-    setSellResults(results);
-    setSellSubmitting(false);
-    const allOk = results.every(r => r.ok);
-    if (allOk) {
-      setSelected(new Set());
-      setShowSellPanel(false);
-      setSellConfigs({});
-      refresh();
-    }
-  };
-
-  // ── Sorted positions ─────────────────────────────────────
-  const sortedPositions = (() => {
-    if (!account?.positions) return [];
-    const list = [...account.positions];
-    switch (sortBy) {
-      case 'name':
-        return list.sort((a, b) => a.symbol.localeCompare(b.symbol));
-      case 'sector':
-        return list.sort((a, b) => (a.sector || 'ZZZ').localeCompare(b.sector || 'ZZZ'));
-      case 'pnl':
-        return list.sort((a, b) => b.totalPnl - a.totalPnl);
-      case 'pct':
-      default:
-        return list.sort((a, b) => b.portfolioPercent - a.portfolioPercent);
-    }
-  })();
-
-  // ── Derived basket data ─────────────────────────────────
-  const basketPositionSymbols = new Set(basketPositions.map((p: any) => p.symbol));
-  const coreHoldings = sortedPositions.filter(pos => !basketPositionSymbols.has(pos.symbol));
-
-  // Basket positions grouped by basket_id
-  const basketGroups = (() => {
-    if (!baskets.length || !basketPositions.length) return [];
-    return baskets.map((basket: any) => {
-      const positions = basketPositions
-        .filter((p: any) => p.basket_id === basket.id)
-        .map((p: any) => {
-          const brokerPos = account?.positions.find((bp) => bp.symbol === p.symbol);
-          return {
-            ...p,
-            broker: brokerPos,
-            marketValue: brokerPos?.marketValue || 0,
-            unrealizedPnL: brokerPos?.totalPnl || 0,
-            unrealizedPnLPercent: brokerPos?.totalPnlPercent || 0,
-            currentPrice: brokerPos?.currentPrice || 0,
-            qty: brokerPos?.qty || 0,
-            sector: brokerPos?.sector || p.sector,
-          };
-        });
-      return { ...basket, positions, totalValue: positions.reduce((s: number, p: any) => s + p.marketValue, 0), totalPnl: positions.reduce((s: number, p: any) => s + p.unrealizedPnL, 0) };
-    }).filter((g: any) => g.positions.length > 0);
-  })();
-
-  const toggleBasket = (basketId: string) => {
-    setExpandedBaskets(prev => {
-      const next = new Set(prev);
-      next.has(basketId) ? next.delete(basketId) : next.add(basketId);
-      return next;
-    });
-  };
-
-  // ── Sell Entire Basket ──────────────────────────────────
-  const sellEntireBasket = async (basket: any) => {
-    setBasketSellSubmitting(true);
-    setBasketSellResults([]);
-    const results: Array<{ symbol: string; ok: boolean; error?: string }> = [];
-    for (const pos of basket.positions) {
-      try {
-        const body: any = { symbol: pos.symbol, qty: pos.qty, side: 'sell', type: 'market', time_in_force: 'day' };
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-        try {
-          const res = await fetch('/api/alpaca/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
-          const json = await res.json();
-          results.push({ symbol: pos.symbol, ok: res.ok, error: json.error || json.message || '' });
-        } catch (fetchErr: any) {
-          results.push({ symbol: pos.symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
-        } finally { clearTimeout(timeout); }
-      } catch (e: any) {
-        results.push({ symbol: pos.symbol, ok: false, error: e.message });
-      }
-    }
-    setBasketSellResults(results);
-    setBasketSellSubmitting(false);
-    if (results.every(r => r.ok)) {
-      setShowSellBasketModal(null);
-      refresh();
-    }
-  };
-
-  // ── Sell All Portfolio ──────────────────────────────────
-  const sellAllPortfolio = async () => {
-    setBasketSellSubmitting(true);
-    setBasketSellResults([]);
-    const results: Array<{ symbol: string; ok: boolean; error?: string }> = [];
-    for (const pos of account?.positions || []) {
-      try {
-        const body: any = { symbol: pos.symbol, qty: pos.qty, side: 'sell', type: 'market', time_in_force: 'day' };
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-        try {
-          const res = await fetch('/api/alpaca/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
-          const json = await res.json();
-          results.push({ symbol: pos.symbol, ok: res.ok, error: json.error || json.message || '' });
-        } catch (fetchErr: any) {
-          results.push({ symbol: pos.symbol, ok: false, error: fetchErr.name === 'AbortError' ? 'Request timed out' : fetchErr.message });
-        } finally { clearTimeout(timeout); }
-      } catch (e: any) {
-        results.push({ symbol: pos.symbol, ok: false, error: e.message });
-      }
-    }
-    setBasketSellResults(results);
-    setBasketSellSubmitting(false);
-    if (results.every(r => r.ok)) {
-      setShowSellAllModal(false);
-      setSellAllConfirm('');
-      refresh();
-    }
-  };
-
-  // No broker connected — show demo portfolio with banner
-  if (!isConnected) {
-    const demoAccount = account;
-    if (!demoAccount) {
-      return (
-        <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Loading demo portfolio…
-        </div>
-      );
-    }
-
-    return (
-      <div style={{ padding: '12px 16px 80px' }}>
-        {/* Demo Mode Banner */}
-        <DemoBanner />
-
-        {/* Account Summary */}
-        <div className="card" style={{ marginBottom: 12 }}>
-          <AccountSummaryCard account={demoAccount} />
-        </div>
-
-        {/* Positions list */}
-        {sortedPositions.map((pos) => (
-          <div key={pos.symbol} className="card" style={{ marginBottom: 8, padding: '10px 12px', cursor: 'pointer' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{pos.symbol}</div>
-                <div style={{ fontSize: 10, color: '#94a3b8' }}>{pos.qty} shares · {pos.sector}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f1f5f9' }}>
-                    ${pos.marketValue.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: 10, color: pos.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
-                    {pos.totalPnl >= 0 ? '+' : ''}${Math.round(pos.totalPnl).toLocaleString()} ({pos.totalPnlPercent >= 0 ? '+' : ''}{pos.totalPnlPercent.toFixed(1)}%)
-                  </div>
-                </div>
-                <span style={{ color: '#475569', fontSize: 14 }}>›</span>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* Sector Allocation */}
-        {account.positions.length > 0 && (
-          <SectorAllocation positions={account.positions} />
-        )}
-
-        {/* Bottom CTA */}
-        <div style={{
-          marginTop: 16,
-          padding: '16px',
-          background: 'rgba(6,182,212,0.06)',
-          border: '1px solid rgba(6,182,212,0.2)',
-          borderRadius: 16,
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#06b6d4', marginBottom: 8 }}>
-            Unlock your real portfolio
-          </div>
-          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 12 }}>
-            You&apos;re viewing a simulated portfolio. Connect your broker to unlock AI analysis of your real holdings.
-          </div>
-          <button
-            onClick={() => router.push('/settings/broker')}
-            className="bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition"
-          >
-            Connect Broker →
-          </button>
-        </div>
-
-        <style jsx>{`
-          .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
-        `}</style>
-      </div>
-    );
-  }
-
-  // Loading state — skeleton shimmer
-  if (loading && !account) {
-    return (
-      <div style={{ padding: '12px 16px 80px' }}>
-        <div className="card skeleton" style={{ height: 160, marginBottom: 12 }} />
-        <div className="card skeleton" style={{ height: 100, marginBottom: 12 }} />
-        <div className="card skeleton" style={{ height: 80, marginBottom: 12 }} />
-        <SectorsSkeleton />
-        <style jsx>{`
-          .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
-          .skeleton {
-            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-          }
-          @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error && !account) {
-    return (
-      <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-        <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-          Unable to load portfolio
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
-          {error}
-        </div>
-        <button
-          onClick={refresh}
-          style={{
-            padding: '8px 20px', background: 'var(--accent-cyan)', border: 'none',
-            borderRadius: 8, color: 'white', fontWeight: 600, fontSize: 12, cursor: 'pointer',
-          }}
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  // Empty state — no positions
-  if (account && account.positions.length === 0) {
-    return (
-      <div style={{ padding: '12px 16px 80px' }}>
-        {/* Account Summary — shown even without positions */}
-        <div className="card" style={{ marginBottom: 12 }}>
-          <AccountSummaryCard account={account} />
-        </div>
-
-        <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>📈</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-            No positions yet
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
-            Ready to start investing? Your buying power is ${account.buyingPower.toLocaleString()}.
-          </div>
-          <button
-            style={{
-              padding: '8px 20px', background: 'linear-gradient(135deg, #06b6d4, #0d9488)',
-              border: 'none', borderRadius: 8, color: 'white', fontWeight: 600, fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            Explore Stocks
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Data state
-  if (!account) {
-    return (
-      <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
-        Connecting to broker...
-      </div>
-    );
-  }
+  const proceeds = cfg.mode === 'all'
+    ? position.qty * position.currentPrice
+    : cfg.shares * position.currentPrice;
 
   return (
-    <div style={{ padding: '12px 16px 80px' }}>
-      {/* Market Closed Banner */}
-      {/* (would be dynamic from useBrokerData — keeping it simple) */}
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-slate-900 rounded-t-3xl p-6 pb-safe max-h-[85vh] overflow-y-auto border-t border-slate-700">
+        <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-4" />
 
-      {/* Error banner for partial failures */}
-      {error && (
-        <div style={{
-          padding: '8px 12px', marginBottom: 10,
-          background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
-          borderRadius: 8, fontSize: 11, color: '#f87171',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <span>⚠ {error}</span>
-          <button onClick={refresh} style={{
-            background: 'transparent', border: 'none', color: '#f87171',
-            cursor: 'pointer', fontSize: 11, fontWeight: 600,
-          }}>
-            Retry
-          </button>
-        </div>
-      )}
+        <h3 className="text-lg font-bold text-white mb-1">
+          Sell {position.symbol}
+        </h3>
+        <p className="text-sm text-slate-400 mb-4">
+          {position.qty} shares available · ${position.currentPrice.toFixed(2)}/share
+        </p>
 
-      {/* Account Summary */}
-      <div className="card" style={{ marginBottom: 12 }}>
-        <AccountSummaryCard account={account} />
-      </div>
-
-      {/* Performance Chart */}
-      <div className="card" style={{ marginBottom: 12 }} ref={chartRef}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700 }}>Performance</span>
-          <span style={{ fontSize: 10 }}>
-            <span className={account.totalPnlPercent >= 0 ? 'up' : 'down'}>
-              {pct(account.totalPnlPercent)}
-            </span>
-          </span>
-        </div>
-        {/* Time Range Selector */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
-          {(Object.keys(RANGE_CONFIG) as RangeKey[]).map(r => (
-            <button
-              key={r}
-              onClick={() => setChartRange(r)}
-              style={{
-                padding: '3px 10px', fontSize: 10, fontWeight: 600, borderRadius: 12,
-                background: chartRange === r ? '#06b6d4' : 'transparent',
-                border: chartRange === r ? '1px solid #06b6d4' : '1px solid #334155',
-                color: chartRange === r ? '#fff' : 'var(--text-muted)',
-                cursor: 'pointer',
-              }}
-            >
-              {RANGE_CONFIG[r].label}
-            </button>
-          ))}
-        </div>
-        {/* Chart */}
-        {chartLoading && (
-          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-            Loading chart...
-          </div>
-        )}
-        {!chartLoading && chartData && chartData.timestamps.length > 1 ? (() => {
-          const W = 600, H = 160, PAD = { top: 10, right: 10, bottom: 28, left: 55 };
-          const plotW = W - PAD.left - PAD.right;
-          const plotH = H - PAD.top - PAD.bottom;
-          const { timestamps, equities } = chartData;
-          const minE = Math.min(...equities) * 0.995;
-          const maxE = Math.max(...equities) * 1.005;
-          const range = maxE - minE || 1;
-          const minT = timestamps[0];
-          const maxT = timestamps[timestamps.length - 1];
-          const tRange = maxT - minT || 1;
-          const xVal = (t: number) => PAD.left + ((t - minT) / tRange) * plotW;
-          const yVal = (e: number) => PAD.top + plotH - ((e - minE) / range) * plotH;
-          const points = timestamps.map((t, i) => `${xVal(t)},${yVal(equities[i])}`).join(' ');
-          const isUp = equities[equities.length - 1] >= equities[0];
-          const color = isUp ? '#4ade80' : '#f87171';
-          // Y-axis ticks
-          const yTicks = [minE, minE + range * 0.25, minE + range * 0.5, minE + range * 0.75, maxE];
-          // X-axis labels (3-4 evenly spaced)
-          const xLabelCount = chartRange === '1D' ? 4 : 4;
-          const xLabels = Array.from({ length: xLabelCount }, (_, i) => {
-            const ts = minT + (tRange / (xLabelCount - 1)) * i;
-            const d = new Date(ts * 1000);
-            const fmt = chartRange === '1D' ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-              : chartRange === '7D' ? d.toLocaleDateString([], { weekday: 'short' })
-              : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-            return { x: xVal(ts), label: fmt };
-          });
-          return (
-            <div style={{ position: 'relative' }}>
-              <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
-                onMouseMove={(e) => {
-                  const rect = (e.target as SVGElement).closest('svg')?.getBoundingClientRect();
-                  if (!rect) return;
-                  const mx = ((e.clientX - rect.left) / rect.width) * W;
-                  if (mx < PAD.left || mx > PAD.left + plotW) { setTooltip(null); return; }
-                  const tApprox = minT + ((mx - PAD.left) / plotW) * tRange;
-                  let bestIdx = 0, bestDist = Infinity;
-                  for (let i = 0; i < timestamps.length; i++) {
-                    const d = Math.abs(timestamps[i] - tApprox);
-                    if (d < bestDist) { bestDist = d; bestIdx = i; }
-                  }
-                  setTooltip({ x: mx, idx: bestIdx, visible: true });
-                }}
-                onMouseLeave={() => setTooltip(null)}
-              >
-                {/* Grid lines */}
-                {yTicks.map((y, i) => (
-                  <g key={i}>
-                    <line x1={PAD.left} y1={yVal(y)} x2={PAD.left + plotW} y2={yVal(y)} stroke="#1e293b" strokeWidth="1" />
-                    <text x={PAD.left - 6} y={yVal(y) + 4} textAnchor="end" fill="#64748b" fontSize="9">
-                      ${(y / 1000).toFixed(1)}k
-                    </text>
-                  </g>
-                ))}
-                {/* Line */}
-                <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-                {/* Area fill */}
-                <polygon
-                  points={`${xVal(timestamps[0])},${yVal(minE)} ${points} ${xVal(timestamps[timestamps.length - 1])},${yVal(minE)}`}
-                  fill={color} opacity="0.08"
-                />
-                {/* X-axis labels */}
-                {xLabels.map((l, i) => (
-                  <text key={i} x={l.x} y={H - 6} textAnchor="middle" fill="#64748b" fontSize="9">
-                    {l.label}
-                  </text>
-                ))}
-                {/* Tooltip marker */}
-                {tooltip?.visible && tooltip.idx < timestamps.length && (
-                  <>
-                    <line x1={xVal(timestamps[tooltip.idx])} y1={PAD.top} x2={xVal(timestamps[tooltip.idx])} y2={PAD.top + plotH}
-                      stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
-                    <circle cx={xVal(timestamps[tooltip.idx])} cy={yVal(equities[tooltip.idx])} r="4"
-                      fill={color} stroke="#0f172a" strokeWidth="2" />
-                  </>
-                )}
-              </svg>
-              {/* Tooltip popup */}
-              {tooltip?.visible && tooltip.idx < timestamps.length && (() => {
-                const t = new Date(timestamps[tooltip.idx] * 1000);
-                const dateStr = chartRange === '1D'
-                  ? t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : t.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-                const eq = equities[tooltip.idx];
-                return (
-                  <div style={{
-                    position: 'absolute', top: 0, left: Math.max(0, Math.min(tooltip.x - 65, (chartRef.current?.offsetWidth ?? 400) - 130)),
-                    background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '6px 10px',
-                    fontSize: 10, color: '#e2e8f0', pointerEvents: 'none', zIndex: 5, boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  }}>
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{dateStr}</div>
-                    <div style={{ color }}>${eq.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  </div>
-                );
-              })()}
+        {/* Radio: All / Partial */}
+        <div className="space-y-3 mb-4">
+          <label className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 cursor-pointer">
+            <input type="radio" checked={cfg.mode === 'all'} onChange={() => setCfg(p => ({ ...p, mode: 'all' }))}
+              className="accent-cyan-500" />
+            <div className="flex-1">
+              <p className="text-white text-sm font-semibold">All shares ({position.qty})</p>
+              <p className="text-slate-400 text-xs">Est. ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}</p>
             </div>
-          );
-        })() : !chartLoading && (
-          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-            No history data yet — chart will populate as you trade.
-          </div>
-        )}
-      </div>
-
-      {/* Sector Allocation */}
-      <SectorAllocation positions={account.positions} />
-
-      {/* Action Bar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button
-          onClick={() => {
-            if (account && selected.size === account.positions.length) {
-              setSelected(new Set());
-            } else if (account) {
-              setSelected(new Set(account.positions.map(p => p.symbol)));
-            }
-          }}
-          style={{
-            flex: 1, padding: '8px 12px', fontSize: 11, fontWeight: 700,
-            background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.25)',
-            borderRadius: 8, color: '#06b6d4', cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          {selected.size > 0 ? `${selected.size} Selected` : 'Select & Sell'}
-        </button>
-        <button
-          onClick={() => router.push('/advisor?open=theme')}
-          style={{
-            flex: 1, padding: '8px 12px', fontSize: 11, fontWeight: 700,
-            background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)',
-            borderRadius: 8, color: '#8b5cf6', cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          🧺 Create Basket
-        </button>
-      </div>
-
-      {/* Positions */}
-      <div className="card">
-        {/* Basket Groups */}
-        {basketGroups.map((basket: any) => {
-          const isExpanded = expandedBaskets.has(basket.id);
-          const basketPnlPct = basket.totalValue > 0 ? (basket.totalPnl / (basket.totalValue - basket.totalPnl)) * 100 : 0;
-          return (
-            <div key={basket.id} style={{ marginBottom: 8 }}>
-              {/* Basket Header */}
-              <button
-                onClick={() => toggleBasket(basket.id)}
-                className="basket-header"
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>{basket.emoji || '🧺'}</span>
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{basket.name}</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                      {basket.positions.length} position{basket.positions.length !== 1 ? 's' : ''} · ${basket.totalValue.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: basket.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
-                      {basket.totalPnl >= 0 ? '+' : ''}${Math.round(basket.totalPnl).toLocaleString()}
-                    </div>
-                    <div style={{ fontSize: 10, color: basket.totalPnl >= 0 ? '#22c55e' : '#ef4444' }}>
-                      {basketPnlPct >= 0 ? '+' : ''}{basketPnlPct.toFixed(1)}%
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 10, color: '#64748b', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                </div>
-              </button>
-
-              {/* Expanded Positions */}
-              {isExpanded && (
-                <div style={{ paddingLeft: 4, paddingTop: 6 }}>
-                  {basket.positions.map((pos: any) => (
-                    <PositionRow
-                      key={pos.symbol}
-                      position={{
-                        symbol: pos.symbol,
-                        qty: pos.qty,
-                        marketValue: pos.marketValue,
-                        unrealizedPnL: pos.unrealizedPnL,
-                        unrealizedPnLPercent: pos.unrealizedPnLPercent,
-                        currentPrice: pos.currentPrice,
-                        sector: pos.sector,
-                      }}
-                      isSelectable={true}
-                      isSelected={selected.has(pos.symbol)}
-                      onSelect={() => toggleSelect(pos.symbol)}
-                      basketName={basket.name}
-                      showBasketBadge={false}
-                    />
-                  ))}
-                  <button
-                    onClick={() => setShowSellBasketModal(basket)}
-                    style={{
-                      width: '100%', padding: '8px', marginTop: 4,
-                      background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                      borderRadius: 8, color: '#f87171', fontSize: 11, fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >
-                    Sell Entire Basket
-                  </button>
+          </label>
+          <label className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 cursor-pointer">
+            <input type="radio" checked={cfg.mode === 'partial'} onChange={() => setCfg(p => ({ ...p, mode: 'partial' }))}
+              className="accent-cyan-500" />
+            <div className="flex-1">
+              <p className="text-white text-sm font-semibold">Partial</p>
+              {cfg.mode === 'partial' && (
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={position.qty}
+                    value={cfg.shares}
+                    onChange={e => setCfg(p => ({ ...p, shares: Math.min(position.qty, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                    className="w-24 bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm outline-none"
+                  />
+                  <span className="text-slate-400 text-xs">of {position.qty}</span>
                 </div>
               )}
             </div>
-          );
-        })}
+          </label>
+        </div>
 
-        {/* Core Holdings */}
-        {coreHoldings.length > 0 && (
-          <>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              marginBottom: 8, marginTop: basketGroups.length > 0 ? 12 : 0,
-              paddingBottom: 8, borderBottom: '1px solid #334155',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 14 }}>📊</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>
-                  Core Holdings ({coreHoldings.length})
-                </span>
-              </div>
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                ${coreHoldings.reduce((s, p) => s + p.marketValue, 0).toLocaleString()}
-              </div>
-            </div>
-            {coreHoldings.map((pos) => (
-              <PositionRow
-                key={pos.symbol}
-                position={{
-                  symbol: pos.symbol,
-                  qty: pos.qty,
-                  marketValue: pos.marketValue,
-                  unrealizedPnL: pos.totalPnl,
-                  unrealizedPnLPercent: pos.totalPnlPercent,
-                  currentPrice: pos.currentPrice,
-                  sector: pos.sector,
-                }}
-                isSelectable={true}
-                isSelected={selected.has(pos.symbol)}
-                onSelect={() => toggleSelect(pos.symbol)}
+        {/* Order type pills */}
+        <p className="text-xs text-slate-500 uppercase mb-2">Order Type</p>
+        <div className="flex gap-2 mb-3">
+          {(['Market', 'Limit', 'Stop'] as const).map(t => (
+            <button key={t} onClick={() => setCfg(p => ({ ...p, orderType: t }))}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition ${
+                cfg.orderType === t ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'text-slate-400 border border-slate-700'
+              }`}>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* TIF */}
+        <p className="text-xs text-slate-500 uppercase mb-2">Time in Force</p>
+        <div className="flex gap-2 mb-3">
+          {(['Day', 'GTC'] as const).map(t => (
+            <button key={t} onClick={() => setCfg(p => ({ ...p, tif: t }))}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition ${
+                cfg.tif === t ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'text-slate-400 border border-slate-700'
+              }`}>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Limit price */}
+        {cfg.orderType === 'Limit' && (
+          <div className="mb-4">
+            <p className="text-xs text-slate-500 uppercase mb-2">Limit Price</p>
+            <div className="flex items-center bg-slate-800 rounded-xl border border-slate-700 px-4 py-3">
+              <span className="text-slate-400 text-lg mr-2">$</span>
+              <input
+                type="number" step="0.01" value={cfg.limitPrice}
+                onChange={e => setCfg(p => ({ ...p, limitPrice: e.target.value }))}
+                placeholder="0.00"
+                className="bg-transparent text-white text-lg font-semibold flex-1 outline-none placeholder-slate-600"
               />
-            ))}
-          </>
-        )}
-
-        {/* No basket positions — show all positions flat */}
-        {basketGroups.length === 0 && coreHoldings.length === 0 && sortedPositions.map((pos) => (
-          <PositionRow
-            key={pos.symbol}
-            position={{
-              symbol: pos.symbol,
-              qty: pos.qty,
-              marketValue: pos.marketValue,
-              unrealizedPnL: pos.totalPnl,
-              unrealizedPnLPercent: pos.totalPnlPercent,
-              currentPrice: pos.currentPrice,
-              sector: pos.sector,
-            }}
-            isSelectable={true}
-            isSelected={selected.has(pos.symbol)}
-            onSelect={() => toggleSelect(pos.symbol)}
-          />
-        ))}
-        {basketGroups.length === 0 && coreHoldings.length === 0 && sortedPositions.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 11 }}>
-            No positions to display
+            </div>
           </div>
         )}
 
-        {/* Sell Entire Portfolio */}
-        {account && account.positions.length > 0 && (
-          <button
-            onClick={() => setShowSellAllModal(true)}
-            style={{
-              width: '100%', padding: '10px', marginTop: 12,
-              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-              borderRadius: 10, color: '#f87171', fontSize: 12, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            🚨 Sell Entire Portfolio
+        {/* Est. proceeds */}
+        <div className="bg-slate-800 rounded-xl p-4 mb-4">
+          <p className="text-xs text-slate-400">Estimated proceeds</p>
+          <p className="text-base font-semibold text-cyan-400">
+            ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}
+          </p>
+        </div>
+
+        {/* Type to confirm */}
+        <div className="mb-4">
+          <p className="text-xs text-slate-400 mb-2">Type &quot;SELL&quot; to confirm</p>
+          <input
+            type="text" value={confirmText}
+            onChange={e => setConfirmText(e.target.value)}
+            placeholder="SELL"
+            className="w-full bg-slate-800 rounded-xl border border-slate-700 px-4 py-3 text-white text-sm outline-none"
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-3.5 text-slate-400 text-sm font-medium">
+            Cancel
           </button>
-        )}
+          <button
+            disabled={!needsConfirm}
+            onClick={() => onConfirm(cfg)}
+            className="flex-1 py-3.5 bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-2xl text-sm font-semibold min-h-[52px]">
+            Confirm Sell
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Market Ticker Strip ──────────────────────────────────────
+
+function MarketTicker() {
+  const [quotes, setQuotes] = useState<Record<string, { price: number; change: number; changePercent: number }>>({});
+
+  // Fetch on mount
+  useMemo(() => {
+    fetch('/api/market/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: TICKER_SYMBOLS }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.quotes) {
+          const m: Record<string, any> = {};
+          for (const sym of TICKER_SYMBOLS) {
+            const q = data.quotes[sym];
+            if (q) m[sym] = { price: q.last || q.price || 0, change: q.change || 0, changePercent: q.changePercent || 0 };
+          }
+          setQuotes(m);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 overflow-x-auto whitespace-nowrap hide-scrollbar">
+      {TICKER_SYMBOLS.map((sym, i) => {
+        const q = quotes[sym];
+        const isUp = (q?.change ?? 0) >= 0;
+        return (
+          <span key={sym} className="inline-flex items-center gap-2 mr-6">
+            <span className="text-sm font-semibold text-white">{sym}</span>
+            {q ? (
+              <>
+                <span className="text-xs text-slate-400">${q.price.toFixed(2)}</span>
+                <span className={`text-xs font-medium ${isUp ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {isUp ? '+' : ''}{q.change.toFixed(2)} ({isUp ? '+' : ''}{q.changePercent.toFixed(1)}%)
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-slate-600">—</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Account Card ─────────────────────────────────────────────
+
+function AccountCard({ account, investorStyle }: { account: AccountSummary; investorStyle: string }) {
+  const router = useRouter();
+  const [timeframe, setTimeframe] = useState<Timeframe>('1W');
+  const isUp = account.totalPnl >= 0;
+
+  // Generate placeholder sparkline data
+  const sparkData = useMemo(() => {
+    const points = timeframe === '1D' ? 78 : timeframe === '1W' ? 50 : timeframe === '1M' ? 30 : timeframe === '3M' ? 90 : 120;
+    const vol = account.equity * 0.002;
+    const trend = isUp ? 0.01 : -0.005;
+    return generateSparkline(account.equity * 0.94, points, vol, trend);
+  }, [timeframe, account.equity, isUp]);
+
+  return (
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 mx-4 mt-4">
+      {/* ACCOUNT VALUE */}
+      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">
+        Account Value
+      </p>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-4xl font-bold text-white">
+          ${account.equity.toLocaleString('en-US', DOLLAR_FMT)}
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            Growth Chaser
+          </span>
+          <button onClick={() => router.push('/investor-style')}
+            className="text-xs text-cyan-400">
+            Change ›
+          </button>
+        </div>
       </div>
 
-      {/* Sticky Batch Action Bar */}
-      {selected.size > 0 && !showSellPanel && (
-        <div className="batch-bar">
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>
-            <span style={{ color: '#06b6d4' }}>{selected.size}</span> position{selected.size > 1 ? 's' : ''} selected
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setSelected(new Set())} className="clear-btn">
-              Clear
+      {/* Sparkline */}
+      <div className="h-20 -mx-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={sparkData}>
+            <defs>
+              <linearGradient id="accGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isUp ? '#10b981' : '#ef4444'} stopOpacity={0.2} />
+                <stop offset="100%" stopColor={isUp ? '#10b981' : '#ef4444'} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Line type="monotone" dataKey="v" stroke={isUp ? '#10b981' : '#ef4444'}
+              strokeWidth={1.5} dot={false} />
+            <Area type="monotone" dataKey="v" fill="url(#accGrad)" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Timeframe pills */}
+      <div className="flex gap-1 justify-center -mt-1 mb-3">
+        {TIMEFRAMES.map(tf => (
+          <button key={tf} onClick={() => setTimeframe(tf)}
+            className={`rounded-full px-3 py-1 text-xs transition ${
+              timeframe === tf
+                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                : 'text-slate-400'
+            }`}>
+            {tf}
+          </button>
+        ))}
+      </div>
+
+      {/* Today P&L / Total P&L */}
+      <div className="grid grid-cols-2 gap-4 mb-3">
+        <div>
+          <p className="text-xs text-slate-500 uppercase">Today P&amp;L</p>
+          <p className={`text-base font-semibold ${account.dayPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {fmt(account.dayPnl)} ({pctStr(account.dayPnlPercent)})
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500 uppercase">Total P&amp;L</p>
+          <p className={`text-base font-semibold ${account.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
+          </p>
+        </div>
+      </div>
+
+      {/* Buying Power / Cash */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs text-slate-500 uppercase">Buying Power</p>
+          <p className="text-base font-semibold text-white">
+            ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500 uppercase">Cash</p>
+          <p className="text-base font-semibold text-white">
+            ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
+          </p>
+        </div>
+      </div>
+
+      {/* Bottom bar: investor style + Change link */}
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800">
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+          <span className="text-xs text-slate-400">Growth Chaser</span>
+        </div>
+        <button onClick={() => router.push('/investor-style')}
+          className="text-xs text-cyan-400">
+          Change ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Basket Card ──────────────────────────────────────────────
+
+function BasketCard({
+  id, name, emoji, positions, expanded, onToggle, onSellPosition, onSellEntire,
+}: {
+  id: string;
+  name: string;
+  emoji?: string;
+  positions: Position[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSellPosition: (pos: Position) => void;
+  onSellEntire: () => void;
+}) {
+  const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
+  const totalPnl = positions.reduce((s, p) => s + p.totalPnl, 0);
+  const totalPnlPct = totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : 0;
+  const isUp = totalPnl >= 0;
+
+  const symbols = positions.map(p => p.symbol).join(' · ');
+
+  return (
+    <div className={`bg-slate-900 rounded-2xl border border-slate-800 mx-4 mb-3 overflow-hidden ${isUp ? 'border-l-[3px] border-l-emerald-500' : 'border-l-[3px] border-l-red-500'}`}>
+      {/* Header */}
+      <button onClick={onToggle} className="w-full flex items-center justify-between p-4 text-left">
+        <div>
+          <p className="text-base font-semibold text-white flex items-center gap-1.5">
+            {emoji || '🧺'} {name}
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">{symbols}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-base font-semibold text-white">${totalValue.toLocaleString()}</p>
+          <p className={`text-xs ${isUp ? 'text-emerald-400' : 'text-red-400'}`}>
+            {isUp ? '+' : ''}{Math.round(totalPnl).toLocaleString()} ({pctStr(totalPnlPct)})
+          </p>
+        </div>
+      </button>
+
+      {/* Expanded positions */}
+      {expanded && (
+        <div className="px-4 pb-3 space-y-2">
+          {positions.map(pos => (
+            <div key={pos.symbol} className={`flex items-center justify-between py-2 border-l-[3px] pl-3 ${pos.dayChange >= 0 ? 'border-l-emerald-500' : 'border-l-red-500'}`}>
+              <div>
+                <p className="text-sm font-semibold text-white">{pos.symbol}</p>
+                <p className="text-xs text-slate-400">{pos.qty}sh · ${pos.marketValue.toLocaleString()}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <p className={`text-xs font-medium ${pos.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
+                </p>
+                <button onClick={e => { e.stopPropagation(); onSellPosition(pos); }}
+                  className="text-xs text-red-400 px-3 py-1 rounded-lg border border-red-500/30">
+                  Sell
+                </button>
+              </div>
+            </div>
+          ))}
+          <button onClick={onSellEntire}
+            className="w-full py-2.5 text-sm text-red-400 border border-red-500/40 rounded-xl mt-2 font-medium">
+            Sell Entire Basket
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Position Row (Core Holdings) ─────────────────────────────
+
+function HoldingRow({
+  position, expanded, onToggle, onBuy, onSell,
+}: {
+  position: Position;
+  expanded: boolean;
+  onToggle: () => void;
+  onBuy: () => void;
+  onSell: () => void;
+}) {
+  const isUp = position.dayChange >= 0;
+  const sparkData = useMemo(() => {
+    const base = position.marketValue * 0.9 + Math.random() * position.marketValue * 0.08;
+    return generateSparkline(base, 48, position.currentPrice * 0.5, isUp ? 0.015 : -0.005);
+  }, [position.marketValue, position.currentPrice, isUp]);
+
+  return (
+    <div className={`bg-slate-900 rounded-2xl border border-slate-800 mx-4 mb-3 overflow-hidden ${isUp ? 'border-l-[3px] border-l-emerald-500' : 'border-l-[3px] border-l-red-500'}`}>
+      {/* Header */}
+      <button onClick={onToggle} className="w-full flex items-center justify-between p-4 text-left">
+        <div>
+          <p className="text-base font-semibold text-white">{position.symbol}</p>
+          <p className="text-xs text-slate-400">{position.qty}sh · {position.sector || '—'}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-base font-semibold text-white">${position.marketValue.toLocaleString()}</p>
+          <p className={`text-sm ${isUp ? 'text-emerald-400' : 'text-red-400'}`}>
+            {fmt(position.dayChange)} ({pctStr(position.dayChangePercent)})
+          </p>
+        </div>
+      </button>
+
+      {/* Expanded */}
+      {expanded && (
+        <div className="px-4 pb-4">
+          {/* 7-day sparkline */}
+          <div className="h-16 mb-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={sparkData}>
+                <defs>
+                  <linearGradient id={`hg${position.symbol}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={isUp ? '#10b981' : '#ef4444'} stopOpacity={0.15} />
+                    <stop offset="100%" stopColor={isUp ? '#10b981' : '#ef4444'} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Line type="monotone" dataKey="v" stroke={isUp ? '#10b981' : '#ef4444'}
+                  strokeWidth={1.5} dot={false} />
+                <Area type="monotone" dataKey="v" fill={`url(#hg${position.symbol})`} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <p className="text-xs text-slate-500">Avg Cost</p>
+              <p className="text-sm font-semibold text-white">${position.avgCost.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Current</p>
+              <p className="text-sm font-semibold text-white">${position.currentPrice.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Total P&amp;L</p>
+              <p className={`text-sm font-semibold ${position.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {fmt(position.totalPnl)} ({pctStr(position.totalPnlPercent)})
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Today</p>
+              <p className={`text-sm font-semibold ${position.dayChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {fmt(position.dayChange)}
+              </p>
+            </div>
+          </div>
+
+          {/* Buy / Sell buttons */}
+          <div className="flex gap-2">
+            <button onClick={onBuy}
+              className="flex-1 py-2.5 border border-cyan-500/40 text-cyan-400 rounded-xl text-sm font-semibold min-h-[48px]">
+              Buy More
             </button>
-            <button onClick={() => { setShowSellPanel(true); initSellConfig(Array.from(selected)); }} className="sell-btn">
-              Sell Now
+            <button onClick={onSell}
+              className="flex-1 py-2.5 border border-red-500/40 text-red-400 rounded-xl text-sm font-semibold min-h-[48px]">
+              Sell
             </button>
           </div>
         </div>
       )}
-
-      {/* Sell Confirmation Overlay */}
-      {showSellPanel && selected.size > 0 && (
-        <>
-          <div onClick={() => { setShowSellPanel(false); setSellResults([]); }} className="overlay-backdrop" />
-          <div className="sell-overlay">
-            {/* Header — sticky */}
-            <div className="sell-header">
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
-                Sell {selected.size} Position{selected.size > 1 ? 's' : ''}
-              </span>
-              <button onClick={() => { setShowSellPanel(false); setSellResults([]); }} className="close-sell-btn">
-                ✕
-              </button>
-            </div>
-
-            {/* Scrollable position list with per-position config */}
-            <div className="sell-body">
-              {Array.from(selected).map(symbol => {
-                const pos = account?.positions.find(p => p.symbol === symbol);
-                const cfg = sellConfigs[symbol];
-                const result = sellResults.find(r => r.symbol === symbol);
-                if (!pos || !cfg) return null;
-
-                const orderType = cfg.orderType;
-                const needsLimit = orderType === 'limit' || orderType === 'stop_limit';
-                const needsStop = orderType === 'stop' || orderType === 'stop_limit';
-
-                return (
-                  <div key={symbol} className={`sell-pos-card ${result ? (result.ok ? 'sold' : 'failed') : ''}`}>
-                    {/* Remove button */}
-                    <button
-                      onClick={() => setSelected(prev => { const n = new Set(prev); n.delete(symbol); return n; })}
-                      style={{
-                        position: 'absolute', top: 6, right: 8,
-                        width: 22, height: 22, borderRadius: 6,
-                        border: '1px solid #334155', background: '#1e293b',
-                        color: '#94a3b8', fontSize: 12, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        lineHeight: 1,
-                      }}
-                      title="Remove from sell"
-                    >
-                      ✕
-                    </button>
-                    {/* Position summary row */}
-                    <div className="sell-pos-header">
-                      <div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{symbol}</span>
-                        <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>
-                          {pos.qty} sh @ ${pos.currentPrice?.toFixed(2)}
-                        </span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1' }}>
-                          ${(cfg.qty * pos.currentPrice).toFixed(2)}
-                        </div>
-                        {result && (
-                          <div style={{ fontSize: 10, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
-                            {result.ok ? '✓ Sold' : `✗ ${result.error}`}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Qty control */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600, minWidth: 14 }}>Qty</span>
-                      <button
-                        onClick={() => { const v = Math.max(1, cfg.qty - 1); updateSellConfig(symbol, { qty: v }); }}
-                        style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                      >−</button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={pos.qty}
-                        value={cfg.qty}
-                        onChange={e => { const v = Math.min(pos.qty, Math.max(1, parseInt(e.target.value) || 1)); updateSellConfig(symbol, { qty: v }); }}
-                        style={{ width: 60, textAlign: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '4px 6px', color: '#f1f5f9', fontSize: 12, fontWeight: 600 }}
-                      />
-                      <button
-                        onClick={() => { const v = Math.min(pos.qty, cfg.qty + 1); updateSellConfig(symbol, { qty: v }); }}
-                        style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                      >+</button>
-                      <span style={{ fontSize: 9, color: '#64748b' }}>of {pos.qty}</span>
-                    </div>
-
-                    {/* Order type mini-tabs */}
-                    <div style={{ display: 'flex', gap: 3, marginBottom: 6, background: '#0f172a', padding: 3, borderRadius: 6 }}>
-                      {(['market', 'limit', 'stop', 'stop_limit'] as const).map(t => (
-                        <button
-                          key={t}
-                          onClick={() => updateSellConfig(symbol, { orderType: t })}
-                          style={{
-                            flex: 1, padding: '4px 2px', fontSize: 9, fontWeight: 600,
-                            border: 'none', borderRadius: 4, cursor: 'pointer',
-                            background: orderType === t ? '#06b6d4' : 'transparent',
-                            color: orderType === t ? 'white' : '#64748b',
-                          }}
-                        >
-                          {t === 'market' ? 'Mkt' : t === 'limit' ? 'Lmt' : t === 'stop' ? 'Stp' : 'StpL'}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Price inputs + TIF */}
-                    {orderType !== 'market' && (
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                        {needsLimit && (
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Limit</div>
-                            <div style={{ display: 'flex', alignItems: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '0 6px' }}>
-                              <span style={{ color: '#64748b', fontSize: 10, marginRight: 2 }}>$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={cfg.limitPrice}
-                                onChange={e => updateSellConfig(symbol, { limitPrice: e.target.value })}
-                                placeholder="Min price"
-                                style={{ flex: 1, padding: '5px 0', background: 'transparent', border: 'none', color: '#f1f5f9', fontSize: 11, outline: 'none' }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                        {needsStop && (
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Stop</div>
-                            <div style={{ display: 'flex', alignItems: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '0 6px' }}>
-                              <span style={{ color: '#64748b', fontSize: 10, marginRight: 2 }}>$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={cfg.stopPrice}
-                                onChange={e => updateSellConfig(symbol, { stopPrice: e.target.value })}
-                                placeholder="Trigger"
-                                style={{ flex: 1, padding: '5px 0', background: 'transparent', border: 'none', color: '#f1f5f9', fontSize: 11, outline: 'none' }}
-                              />
-                            </div>
-                            {/* Stop order validation */}
-                            {cfg.orderType === 'stop' && cfg.stopPrice && (() => {
-                              const pos = account?.positions.find(p => p.symbol === symbol);
-                              const sp = parseFloat(cfg.stopPrice);
-                              const cp = pos?.currentPrice;
-                              if (cp && !isNaN(sp) && sp >= cp) {
-                                return (
-                                  <div style={{ fontSize: 9, color: '#fbbf24', marginTop: 3 }}>
-                                    ⚠ Stop ${sp.toFixed(2)} is above current price ($${cp.toFixed(2)}).
-                                    For sell stops, stop price must be below market.
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-                        )}
-                        <div>
-                          <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>TIF</div>
-                          <select
-                            value={cfg.tif}
-                            onChange={e => updateSellConfig(symbol, { tif: e.target.value as 'day' | 'gtc' })}
-                            style={{ padding: '5px 4px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: 10, fontWeight: 600 }}
-                          >
-                            <option value="day">Day</option>
-                            <option value="gtc">GTC</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Sticky footer — always visible */}
-            <div className="sell-footer">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>Estimated proceeds</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
-                  ${Array.from(selected).reduce((sum, sym) => {
-                    const pos = account?.positions.find(p => p.symbol === sym);
-                    const cfg = sellConfigs[sym];
-                    if (!pos || !cfg) return sum;
-                    const price = cfg.orderType === 'limit' && cfg.limitPrice ? parseFloat(cfg.limitPrice) : pos.currentPrice || 0;
-                    return sum + (cfg.qty * price);
-                  }, 0).toFixed(2)}
-                </span>
-              </div>
-
-              {/* Validation */}
-              {(() => {
-                const invalidCfg = Object.values(sellConfigs).find(cfg => {
-                  const needsLimit = (cfg.orderType === 'limit' || cfg.orderType === 'stop_limit') && !cfg.limitPrice;
-                  const needsStop = (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') && !cfg.stopPrice;
-                  return needsLimit || needsStop;
-                });
-                return invalidCfg && !sellSubmitting ? (
-                  <div className="validation-msg">Missing price(s) for one or more positions</div>
-                ) : null;
-              })()}
-
-              <button
-                onClick={submitBulkSell}
-                disabled={
-                  sellSubmitting ||
-                  Object.values(sellConfigs).some(cfg => {
-                    const needsLimit = (cfg.orderType === 'limit' || cfg.orderType === 'stop_limit') && !cfg.limitPrice;
-                    const needsStop = (cfg.orderType === 'stop' || cfg.orderType === 'stop_limit') && !cfg.stopPrice;
-                    return needsLimit || needsStop;
-                  })
-                }
-                className="confirm-sell-btn"
-              >
-                {sellSubmitting ? 'Submitting...' : `Confirm — Sell ${selected.size} Position${selected.size > 1 ? 's' : ''}`}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Sell Basket Modal */}
-      {showSellBasketModal && (
-        <>
-          <div onClick={() => { setShowSellBasketModal(null); setBasketSellResults([]); }} className="overlay-backdrop" />
-          <div className="sell-overlay">
-            <div className="sell-header">
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
-                Sell {showSellBasketModal.emoji || ''} {showSellBasketModal.name}
-              </span>
-              <button onClick={() => { setShowSellBasketModal(null); setBasketSellResults([]); }} className="close-sell-btn">✕</button>
-            </div>
-            <div className="sell-body">
-              <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8 }}>
-                This will sell all {showSellBasketModal.positions?.length || 0} positions in this basket at market price.
-              </div>
-              {showSellBasketModal.positions?.map((p: any) => {
-                const result = basketSellResults.find(r => r.symbol === p.symbol);
-                return (
-                  <div key={p.symbol} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '8px 10px', background: '#0f172a', borderRadius: 8,
-                    border: result ? (result.ok ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)') : '1px solid #334155',
-                  }}>
-                    <div>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>{p.symbol}</span>
-                      <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>{p.qty} sh @ ${p.currentPrice?.toFixed(2)}</span>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>
-                        ${(p.qty * (p.currentPrice || 0)).toFixed(2)}
-                      </div>
-                      {result && (
-                        <div style={{ fontSize: 10, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
-                          {result.ok ? '✓ Sold' : `✗ ${result.error}`}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="sell-footer">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>Estimated proceeds</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
-                  ${showSellBasketModal.totalValue?.toLocaleString()}
-                </span>
-              </div>
-              <button
-                onClick={() => sellEntireBasket(showSellBasketModal)}
-                disabled={basketSellSubmitting}
-                className="confirm-sell-btn"
-              >
-                {basketSellSubmitting ? 'Submitting...' : `Confirm — Sell Entire Basket`}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Sell All Portfolio Modal */}
-      {showSellAllModal && (
-        <>
-          <div onClick={() => { setShowSellAllModal(false); setSellAllConfirm(''); setBasketSellResults([]); }} className="overlay-backdrop" />
-          <div className="sell-overlay">
-            <div className="sell-header">
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>
-                🚨 Sell Entire Portfolio
-              </span>
-              <button onClick={() => { setShowSellAllModal(false); setSellAllConfirm(''); setBasketSellResults([]); }} className="close-sell-btn">✕</button>
-            </div>
-            <div className="sell-body">
-              <div style={{
-                padding: 10, background: 'rgba(239,68,68,0.08)', borderRadius: 8,
-                border: '1px solid rgba(239,68,68,0.2)', marginBottom: 10,
-              }}>
-                <div style={{ fontSize: 11, color: '#f87171', fontWeight: 600, marginBottom: 4 }}>⚠️ Warning</div>
-                <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.5 }}>
-                  This will sell ALL {account?.positions.length || 0} positions at market price.
-                  This action cannot be undone.
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>Type SELL to confirm</div>
-                <input
-                  type="text"
-                  value={sellAllConfirm}
-                  onChange={e => setSellAllConfirm(e.target.value)}
-                  placeholder="Type SELL"
-                  style={{
-                    width: '100%', padding: '8px 12px',
-                    background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
-                    color: '#f1f5f9', fontSize: 13, fontWeight: 600,
-                    outline: 'none', boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              {/* Position list preview */}
-              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                {account?.positions.map(p => {
-                  const result = basketSellResults.find(r => r.symbol === p.symbol);
-                  return (
-                    <div key={p.symbol} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '6px 10px', marginBottom: 4,
-                      background: '#0f172a', borderRadius: 6,
-                      border: result ? (result.ok ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)') : '1px solid #334155',
-                    }}>
-                      <div>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: '#f1f5f9' }}>{p.symbol}</span>
-                        <span style={{ fontSize: 9, color: '#94a3b8', marginLeft: 6 }}>{p.qty} sh</span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#cbd5e1' }}>
-                          ${p.marketValue.toLocaleString()}
-                        </div>
-                        {result && (
-                          <div style={{ fontSize: 9, fontWeight: 600, color: result.ok ? '#4ade80' : '#f87171' }}>
-                            {result.ok ? '✓ Sold' : `✗ ${result.error}`}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="sell-footer">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>Total portfolio value</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
-                  ${account?.equity?.toLocaleString()}
-                </span>
-              </div>
-              <button
-                onClick={sellAllPortfolio}
-                disabled={sellAllConfirm !== 'SELL' || basketSellSubmitting}
-                className="confirm-sell-btn"
-              >
-                {basketSellSubmitting ? 'Submitting...' : sellAllConfirm !== 'SELL' ? 'Type SELL to confirm' : `Confirm — Sell Everything`}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      <style jsx>{`
-        .card {
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 12px;
-          padding: 12px;
-        }
-        .basket-header {
-          width: 100%; display: flex; justify-content: space-between; align-items: center;
-          padding: 10px 12px;
-          background: rgba(6,182,212,0.04); border: 1px solid rgba(6,182,212,0.15);
-          border-radius: 10px; cursor: pointer; font-family: inherit;
-          transition: background 0.15s;
-        }
-        .basket-header:hover { background: rgba(6,182,212,0.08); }
-        .pos-row {
-          padding: 10px;
-          background: #0f172a;
-          border-radius: 8px;
-          margin-bottom: 8px;
-          cursor: pointer;
-        }
-        .pos-row:active { background: #334155; }
-        .pos-row.selected { background: #0a2333; border: 1px solid rgba(6,182,212,0.3); }
-        .batch-bar {
-          position: sticky; bottom: 60px; z-index: 20;
-          margin: 8px 16px 0; padding: 10px 16px;
-          background: #0f172a; border: 1px solid #334155;
-          border-radius: 12px; display: flex;
-          justify-content: space-between; align-items: center;
-          box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
-        }
-        .clear-btn {
-          padding: 6px 12px; background: transparent;
-          border: 1px solid #334155; border-radius: 6px;
-          color: #94a3b8; font-size: 11px; font-weight: 600;
-          cursor: pointer; font-family: inherit;
-        }
-        .sell-btn {
-          padding: 6px 16px; background: #ef4444;
-          border: none; border-radius: 6px;
-          color: white; font-size: 12px; font-weight: 700;
-          cursor: pointer; font-family: inherit;
-        }
-        .overlay-backdrop {
-          position: fixed; inset: 0;
-          background: rgba(0,0,0,0.6); z-index: 50;
-        }
-        .sell-overlay {
-          position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-          background: #1e293b; border: 1px solid #334155;
-          border-radius: 16px; z-index: 51;
-          width: 92%; max-width: 460px;
-          max-height: 80vh; overflow: hidden;
-          display: flex; flex-direction: column;
-        }
-        .sell-header {
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 16px 16px 12px;
-          border-bottom: 1px solid #334155;
-          flex-shrink: 0;
-        }
-        .sell-body {
-          flex: 1; overflow-y: auto; padding: 12px 16px; min-height: 0;
-          display: flex; flex-direction: column; gap: 10px;
-        }
-        .sell-footer {
-          padding: 12px 16px 16px;
-          border-top: 1px solid #334155;
-          flex-shrink: 0;
-          background: #1e293b;
-          border-radius: 0 0 16px 16px;
-        }
-        .sell-pos-card {
-          background: #0f172a; border: 1px solid #334155;
-          border-radius: 10px; padding: 12px;
-          position: relative;
-        }
-        .sell-pos-card.sold { border-color: rgba(74,222,128,0.3); }
-        .sell-pos-card.failed { border-color: rgba(239,68,68,0.3); }
-        .sell-pos-header {
-          display: flex; justify-content: space-between; align-items: center;
-          margin-bottom: 8px;
-        }
-        .close-sell-btn {
-          background: transparent; border: none; color: #94a3b8;
-          font-size: 20px; cursor: pointer; padding: 4px;
-        }
-        .validation-msg {
-          text-align: center; font-size: 10px; color: #fbbf24;
-          margin-bottom: 8px; padding: 6px; background: rgba(251,191,36,0.1);
-          border-radius: 6px;
-        }
-        .confirm-sell-btn {
-          width: 100%; padding: 13px; border: none; border-radius: 10px;
-          font-size: 14px; font-weight: 700; cursor: pointer;
-          background: #ef4444; color: white; font-family: inherit;
-        }
-        .confirm-sell-btn:disabled {
-          background: #334155; color: #94a3b8; cursor: not-allowed;
-        }
-        .sort-btn {
-          background: #0f172a;
-          border: 1px solid #334155;
-          border-radius: 6px;
-          padding: 4px 8px;
-          font-size: 10px;
-          color: #94a3b8;
-          cursor: pointer;
-        }
-      `}</style>
     </div>
   );
 }
 
-// ─── Sub-components ─────────────────────────────────────
+// ─── Sector Allocation ────────────────────────────────────────
 
-const SECTOR_COLORS = [
-  '#06b6d4', // Technology — cyan
-  '#8b5cf6', // Healthcare — purple
-  '#22c55e', // Financial Services — green
-  '#f59e0b', // Consumer — amber
-  '#ec4899', // Industrials — pink
-  '#3b82f6', // Energy — blue
-  '#ef4444', // Utilities — red
-  '#14b8a6', // Real Estate — teal
-  '#a855f7', // Materials — violet
-  '#f97316', // Media & Entertainment — orange
-  '#84cc16', // Automotive — lime
-  '#64748b', // Other — gray
-];
-
-function SectorAllocation({ positions }: { positions: import('@/types').Position[] }) {
-  const sectorTotals: Record<string, { value: number; color: string }> = {};
-  for (const pos of positions) {
-    const sector = pos.sector || 'Other';
-    if (!sectorTotals[sector]) {
-      sectorTotals[sector] = {
-        value: 0,
-        color: SECTOR_COLORS[Object.keys(sectorTotals).length % SECTOR_COLORS.length],
-      };
-    }
-    sectorTotals[sector].value += pos.marketValue;
-  }
-
-  const totalValue = Object.values(sectorTotals).reduce((s, v) => s + v.value, 0);
-  const allocations = Object.entries(sectorTotals)
-    .map(([sector, { value, color }]) => ({
-      sector,
-      percent: totalValue > 0 ? Math.round((value / totalValue) * 100) : 0,
-      color,
-    }))
-    .sort((a, b) => b.percent - a.percent);
-
-  if (allocations.length === 0) return null;
+function SectorBars({ positions }: { positions: Position[] }) {
+  const sectors = useMemo(() => {
+    const map: Record<string, number> = {};
+    const total = positions.reduce((s, p) => s + p.marketValue, 0);
+    positions.forEach(p => {
+      const sec = p.sector || 'Other';
+      map[sec] = (map[sec] || 0) + p.marketValue;
+    });
+    return Object.entries(map)
+      .map(([sector, value]) => ({ sector, value, pct: total > 0 ? (value / total) * 100 : 0 }))
+      .sort((a, b) => b.pct - a.pct);
+  }, [positions]);
 
   return (
-    <div className="card" style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 mx-4 p-4">
+      <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">
         Sector Allocation
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          height: 8,
-          borderRadius: 4,
-          overflow: 'hidden',
-          marginBottom: 10,
-        }}
-      >
-        {allocations.map((a) => (
-          <div
-            key={a.sector}
-            style={{ width: `${a.percent}%`, height: '100%', background: a.color }}
-          />
-        ))}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-        {allocations.map((a) => (
-          <div
-            key={a.sector}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: a.color,
-              }}
-            />
-            <span style={{ color: '#cbd5e1', flex: 1 }}>{a.sector}</span>
-            <span style={{ color: '#f1f5f9', fontWeight: 600 }}>
-              {a.percent}%
+      </p>
+      {sectors.map(({ sector, pct }) => {
+        const color = getSectorColor(sector);
+        return (
+          <div key={sector} className="flex items-center gap-3 mb-2 last:mb-0">
+            <span className="text-sm text-white w-28 flex-shrink-0 truncate">{sector}</span>
+            <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: color }} />
+            </div>
+            <span className="text-sm text-slate-400 w-10 text-right flex-shrink-0">
+              {pct.toFixed(0)}%
             </span>
           </div>
-        ))}
-      </div>
-      <style jsx>{`
-        .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 12px; }
-      `}</style>
+        );
+      })}
     </div>
   );
 }
 
-function SectorsSkeleton() {
+// ─── Main Portfolio Tab ───────────────────────────────────────
+
+export function PortfolioTab() {
+  const router = useRouter();
+  const { account, loading } = usePortfolio();
+  const { isConnected } = useBroker();
+  const { user } = useAuth();
+
+  const [showSellBasketModal, setShowSellBasketModal] = useState<string | null>(null);
+  const [showSellAllModal, setShowSellAllModal] = useState(false);
+  const [sellAllConfirm, setSellAllConfirm] = useState('');
+  const [showSellSheet, setShowSellSheet] = useState<Position | null>(null);
+  const [expandedBaskets, setExpandedBaskets] = useState<Set<string>>(new Set());
+  const [expandedHoldings, setExpandedHoldings] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
+
+  // Use real account if connected, else demo data
+  const displayAccount = useMemo(() => {
+    if (isConnected && account) return account;
+    return getDemoPortfolio('lynch') as unknown as AccountSummary;
+  }, [isConnected, account]);
+
+  const investorStyle = user?.investorStyle || 'lynch';
+
+  if (loading && !isConnected) {
+    return (
+      <div className="p-4 space-y-3 pb-24">
+        <div className="h-10 bg-slate-800 rounded-xl animate-pulse" />
+        <div className="h-48 bg-slate-800 rounded-2xl animate-pulse" />
+        <div className="h-32 bg-slate-800 rounded-2xl animate-pulse" />
+        <div className="h-24 bg-slate-800 rounded-2xl animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!displayAccount) {
+    return <div className="p-8 text-center text-slate-400">Loading portfolio…</div>;
+  }
+
+  // For now: all positions are core holdings (no basket data from API yet)
+  // Later: wire real basket data
+  const positions = displayAccount.positions || [];
+
+  // Mock baskets (to be replaced with real API data)
+  const mockBaskets = positions.length > 3 ? [
+    {
+      id: 'basket-1',
+      name: 'AI Infrastructure',
+      emoji: '🤖',
+      positions: positions.slice(0, 3),
+    },
+    {
+      id: 'basket-2',
+      name: 'Clean Energy',
+      emoji: '🌱',
+      positions: positions.slice(3, 5).length > 0 ? positions.slice(3, 5) : [positions[0]],
+    },
+  ] : [];
+
+  const coreHoldings = positions.filter((_, i) => {
+    const basketSyms = new Set(mockBaskets.flatMap(b => b.positions.map(p => p.symbol)));
+    return !basketSyms.has(positions[i].symbol);
+  });
+
+  const toggleBasket = (id: string) => {
+    setExpandedBaskets(p => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
+  const toggleHolding = (sym: string) => {
+    setExpandedHoldings(p => {
+      const n = new Set(p);
+      n.has(sym) ? n.delete(sym) : n.add(sym);
+      return n;
+    });
+  };
+
+  const toggleSelectSymbol = (sym: string) => {
+    setSelectedSymbols(p => {
+      const n = new Set(p);
+      n.has(sym) ? n.delete(sym) : n.add(sym);
+      return n;
+    });
+  };
+
+  const selectedValue = positions
+    .filter(p => selectedSymbols.has(p.symbol))
+    .reduce((s, p) => s + p.marketValue, 0);
+
   return (
-    <div className="card skeleton" style={{ height: 100 }} />
+    <div className="pb-24">
+
+      {/* ── 1. MARKET TICKER ── */}
+      <MarketTicker />
+
+      {/* ── Demo Banner ── */}
+      {!isConnected && <div className="mx-4 mt-3"><DemoBanner /></div>}
+
+      {/* ── 2. ACCOUNT CARD ── */}
+      <AccountCard account={displayAccount} investorStyle={investorStyle} />
+
+      {/* ── 3. BASKETS ── */}
+      {mockBaskets.length > 0 && (
+        <>
+          <div className="flex items-center justify-between px-4 mt-6 mb-2">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">Baskets</span>
+            {!selectMode && (
+              <button onClick={() => setSelectMode(true)}
+                className="text-xs text-slate-400">
+                Select &amp; Sell
+              </button>
+            )}
+            {selectMode && (
+              <button onClick={() => { setSelectMode(false); setSelectedSymbols(new Set()); }}
+                className="text-xs text-cyan-400">
+                Done
+              </button>
+            )}
+          </div>
+
+          {mockBaskets.map(basket => (
+            <div key={basket.id} className="relative">
+              {selectMode && (
+                <button onClick={() => toggleSelectSymbol(basket.positions[0]?.symbol)}
+                  className={`absolute left-6 top-4 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    selectedSymbols.has(basket.positions[0]?.symbol)
+                      ? 'border-cyan-500 bg-cyan-500/20' : 'border-slate-600'
+                  }`}>
+                  {selectedSymbols.has(basket.positions[0]?.symbol) && <span className="text-cyan-400 text-xs">✓</span>}
+                </button>
+              )}
+              <BasketCard
+                key={basket.id}
+                id={basket.id}
+                name={basket.name}
+                emoji={basket.emoji}
+                positions={basket.positions}
+                expanded={expandedBaskets.has(basket.id)}
+                onToggle={() => toggleBasket(basket.id)}
+                onSellPosition={(pos) => setShowSellSheet(pos)}
+                onSellEntire={() => setShowSellBasketModal(basket.id)}
+              />
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ── 4. CORE HOLDINGS ── */}
+      {coreHoldings.length > 0 && (
+        <>
+          <div className="flex items-center justify-between px-4 mt-6 mb-2">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">Core Holdings ({coreHoldings.length})</span>
+            {!selectMode && (
+              <button onClick={() => setSelectMode(true)}
+                className="text-xs text-slate-400">
+                Select &amp; Sell
+              </button>
+            )}
+          </div>
+
+          {coreHoldings.map(pos => (
+            <div key={pos.symbol} className="relative">
+              {selectMode && (
+                <button onClick={() => toggleSelectSymbol(pos.symbol)}
+                  className={`absolute left-6 top-4 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    selectedSymbols.has(pos.symbol)
+                      ? 'border-cyan-500 bg-cyan-500/20' : 'border-slate-600'
+                  }`}>
+                  {selectedSymbols.has(pos.symbol) && <span className="text-cyan-400 text-xs">✓</span>}
+                </button>
+              )}
+              <HoldingRow
+                position={pos}
+                expanded={expandedHoldings.has(pos.symbol)}
+                onToggle={() => toggleHolding(pos.symbol)}
+                onBuy={() => router.push('/trade')}
+                onSell={() => setShowSellSheet(pos)}
+              />
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ── 5. SECTOR ALLOCATION ── */}
+      {positions.length > 0 && (
+        <div className="mt-6 mb-3">
+          <SectorBars positions={positions} />
+        </div>
+      )}
+
+      {/* ── 6. SELL ENTIRE PORTFOLIO ── */}
+      {!selectMode && positions.length > 0 && (
+        <div className="mx-4 mt-4 mb-8">
+          <button onClick={() => setShowSellAllModal(true)}
+            className="w-full py-4 border border-red-500/40 text-red-400 rounded-2xl text-base font-semibold">
+            Sell Entire Portfolio
+          </button>
+        </div>
+      )}
+
+      {/* ── Multi-select bottom bar ── */}
+      {selectMode && selectedSymbols.size > 0 && (
+        <div className="fixed bottom-16 left-0 right-0 z-40 bg-slate-900 border-t border-slate-800 p-4 flex items-center gap-3">
+          <p className="text-sm text-white flex-1">
+            <span className="text-cyan-400 font-semibold">{selectedSymbols.size}</span> selected · ~${selectedValue.toLocaleString()}
+          </p>
+          <button onClick={() => { setSelectedSymbols(new Set()); setSelectMode(false); }}
+            className="text-slate-400 text-sm px-4 py-2">
+            Cancel
+          </button>
+          <button
+            className="bg-red-500 text-white text-sm font-semibold px-6 py-2 rounded-xl">
+            Sell Selected
+          </button>
+        </div>
+      )}
+
+      {/* ── Sell Entire Portfolio Confirmation ── */}
+      {showSellAllModal && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setShowSellAllModal(false)} />
+          <div className="fixed inset-x-0 bottom-0 z-50 bg-slate-900 rounded-t-3xl p-6 pb-safe border-t border-slate-700">
+            <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-white mb-1">Sell Entire Portfolio</h3>
+            <p className="text-sm text-slate-400 mb-4">
+              This will sell all {positions.length} positions for ~${positions.reduce((s, p) => s + p.marketValue, 0).toLocaleString()}.
+            </p>
+            <p className="text-xs text-slate-400 mb-2">Type &quot;SELL&quot; to confirm</p>
+            <input
+              type="text" value={sellAllConfirm}
+              onChange={e => setSellAllConfirm(e.target.value)}
+              placeholder="SELL"
+              className="w-full bg-slate-800 rounded-xl border border-slate-700 px-4 py-3 text-white text-sm outline-none mb-4"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setShowSellAllModal(false); setSellAllConfirm(''); }}
+                className="flex-1 py-3.5 text-slate-400 text-sm font-medium">
+                Cancel
+              </button>
+              <button
+                disabled={sellAllConfirm !== 'SELL'}
+                className="flex-1 py-3.5 bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-2xl text-sm font-semibold min-h-[52px]">
+                Confirm Sell All
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Individual Sell Bottom Sheet ── */}
+      {showSellSheet && (
+        <SellBottomSheet
+          position={showSellSheet}
+          onClose={() => setShowSellSheet(null)}
+          onConfirm={(cfg) => {
+            console.log('Sell confirmed:', showSellSheet.symbol, cfg);
+            setShowSellSheet(null);
+          }}
+        />
+      )}
+
+      {/* Hide scrollbar CSS */}
+      <style jsx global>{`
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+    </div>
   );
 }
