@@ -228,7 +228,7 @@ const MARKDOWN_COMPONENTS = {
   ),
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
-export function AIChat() {
+export function AIChat({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
   const userInitial = (user?.displayName || user?.email || 'U').charAt(0).toUpperCase();
@@ -383,6 +383,9 @@ export function AIChat() {
       height: '100%',
       maxHeight: 'calc(100vh - 180px)',
     }}>
+      {/* ── Children (banners, account summary, etc.) ── */}
+      {children}
+
       {/* ── Scrollable Messages ── */}
       <div
         ref={messagesContainerRef}
