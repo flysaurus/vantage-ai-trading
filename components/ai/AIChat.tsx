@@ -6,6 +6,7 @@ import CompassIcon from '@/components/CompassIcon';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
+import { useChatStore } from '@/store';
 import AIThinkingIndicator from './AIThinkingIndicator';
 
 /** Extract <rebalance-trades> JSON block from AI response text */
@@ -250,6 +251,44 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       return () => clearTimeout(timer);
     }
   }, [lastCost]);
+
+  // Listen for basket generation results from modal
+  useEffect(() => {
+    function handleBasketGenerated(e: CustomEvent) {
+      const { userMsg, data } = e.detail;
+
+      // Add user message
+      useChatStore.getState().addMessage({
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: userMsg,
+        type: 'text',
+        timestamp: Date.now(),
+      });
+
+      // Add AI response with basket data
+      useChatStore.getState().addMessage({
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: data.content,
+        type: data.type || 'text',
+        basketId: data.basketId,
+        basketName: data.basketName,
+        stocks: data.stocks,
+        timestamp: Date.now(),
+      });
+
+      // Scroll to bottom
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+
+    window.addEventListener('vantage-basket-generated', handleBasketGenerated as EventListener);
+    return () => {
+      window.removeEventListener('vantage-basket-generated', handleBasketGenerated as EventListener);
+    };
+  }, []);
 
   const handleSend = useCallback(() => {
     if (sendingRef.current) return;

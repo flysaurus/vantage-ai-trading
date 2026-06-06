@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -8,6 +8,7 @@ import { AIChat } from './AIChat';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
+import BuildBasketModal from '@/components/BuildBasketModal';
 
 function generateInsight(account: import('@/types').AccountSummary | null): string | null {
   if (!account || account.positions.length === 0) return null;
@@ -84,9 +85,23 @@ export function AITab() {
     return generateInsight(account);
   }, [account, isConnected]);
 
+  const [showBasketModal, setShowBasketModal] = useState(false);
+
   // Lazy tracking: trigger background refresh of suggestion outcomes
   useEffect(() => {
     fetch('/api/ai/suggestions/track', { method: 'POST' }).catch(() => {});
+  }, []);
+
+  // Listen for build-basket-modal open events from child components
+  useEffect(() => {
+    function handleOpenBasket() {
+      setShowBasketModal(true);
+    }
+
+    window.addEventListener('vantage-open-basket-modal', handleOpenBasket);
+    return () => {
+      window.removeEventListener('vantage-open-basket-modal', handleOpenBasket);
+    };
   }, []);
 
   return (
@@ -124,6 +139,21 @@ export function AITab() {
         {/* Weekly Snapshot — health metrics pills, expandable markdown */}
         <WeeklySnapshotCard />
       </AIChat>
+
+      {/* Build Basket Modal — triggered by custom event from child components */}
+      <BuildBasketModal
+        isOpen={showBasketModal}
+        onClose={() => setShowBasketModal(false)}
+        onBasketGenerated={(userMsg, data) => {
+          setShowBasketModal(false);
+          // Dispatch event so AIChat can receive and display the result
+          window.dispatchEvent(
+            new CustomEvent('vantage-basket-generated', {
+              detail: { userMsg, data },
+            })
+          );
+        }}
+      />
     </div>
   );
 }
