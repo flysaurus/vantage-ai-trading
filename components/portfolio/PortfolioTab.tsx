@@ -579,6 +579,61 @@ function SectorBars({ positions }: { positions: Position[] }) {
   );
 }
 
+// ─── Build AccountSummary from demo positions ──────────────────
+
+function buildDemoAccount(demo: ReturnType<typeof getDemoPortfolio>): AccountSummary {
+  const seed = 42; // deterministic pseudorandom
+  let s = seed;
+  const rand = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+
+  const positions: Position[] = demo.positions.map((dp, i) => {
+    const jitter = (rand() - 0.5) * 0.15;
+    const currentPrice = dp.avgCost * (1 + jitter);
+    const marketValue = currentPrice * dp.qty;
+    const dayChange = marketValue * (rand() - 0.5) * 0.04;
+    const dayChangePercent = (dayChange / (marketValue - dayChange)) * 100;
+    const totalPnl = (currentPrice - dp.avgCost) * dp.qty;
+    const totalPnlPercent = ((currentPrice / dp.avgCost) - 1) * 100;
+    const totalValue = marketValue;
+    return {
+      symbol: dp.symbol,
+      name: dp.name,
+      qty: dp.qty,
+      avgCost: dp.avgCost,
+      currentPrice,
+      marketValue,
+      dayChange,
+      dayChangePercent,
+      totalPnl,
+      totalPnlPercent,
+      profitLossPct: totalPnlPercent,
+      portfolioPercent: 0, // filled below
+      sector: dp.sector,
+    };
+  });
+
+  const totalEquity = positions.reduce((sum, p) => sum + p.marketValue, 0);
+  positions.forEach(p => { p.portfolioPercent = totalEquity > 0 ? (p.marketValue / totalEquity) * 100 : 0; });
+
+  const cash = 14373.61;
+  const buyingPower = 179670.15;
+  const dayPnl = positions.reduce((s, p) => s + p.dayChange, 0);
+  const dayPnlPercent = totalEquity > 0 ? (dayPnl / (totalEquity - dayPnl)) * 100 : 0;
+  const totalPnl = positions.reduce((s, p) => s + p.totalPnl, 0);
+  const totalPnlPercent = totalEquity > 0 ? (totalPnl / (totalEquity - totalPnl)) * 100 : 0;
+
+  return {
+    equity: totalEquity + cash,
+    buyingPower,
+    cash,
+    dayPnl,
+    dayPnlPercent,
+    totalPnl,
+    totalPnlPercent,
+    positions,
+  };
+}
+
 // ─── Main Portfolio Tab ───────────────────────────────────────
 
 export function PortfolioTab() {
@@ -596,13 +651,13 @@ export function PortfolioTab() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
 
+  const investorStyle = user?.investorStyle || 'lynch';
+
   // Use real account if connected, else demo data
   const displayAccount = useMemo(() => {
     if (isConnected && account) return account;
-    return getDemoPortfolio('lynch') as unknown as AccountSummary;
-  }, [isConnected, account]);
-
-  const investorStyle = user?.investorStyle || 'lynch';
+    return buildDemoAccount(getDemoPortfolio(investorStyle));
+  }, [isConnected, account, investorStyle]);
 
   if (loading && !isConnected) {
     return (
