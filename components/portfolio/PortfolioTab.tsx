@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import {
   LineChart, Line, Area, ResponsiveContainer,
 } from 'recharts';
@@ -579,22 +578,23 @@ function SectorBars({ positions }: { positions: Position[] }) {
   );
 }
 
-// ─── Build AccountSummary from demo positions ──────────────────
+// ─── Build AccountSummary from demo positions + Finnhub quotes ──
 
-function buildDemoAccount(demo: ReturnType<typeof getDemoPortfolio>): AccountSummary {
-  const seed = 42; // deterministic pseudorandom
-  let s = seed;
-  const rand = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+type QuoteEntry = { price: number; change: number; changePercent: number; previousClose: number };
 
-  const positions: Position[] = demo.positions.map((dp, i) => {
-    const jitter = (rand() - 0.5) * 0.15;
-    const currentPrice = dp.avgCost * (1 + jitter);
+function buildDemoAccount(
+  demo: ReturnType<typeof getDemoPortfolio>,
+  quotes: Record<string, QuoteEntry> | null,
+): AccountSummary {
+  const positions: Position[] = demo.positions.map((dp) => {
+    const q = quotes?.[dp.symbol];
+    // Use Finnhub live price if available, else fall back to avgCost
+    const currentPrice = q?.price ?? dp.avgCost;
     const marketValue = currentPrice * dp.qty;
-    const dayChange = marketValue * (rand() - 0.5) * 0.04;
-    const dayChangePercent = (dayChange / (marketValue - dayChange)) * 100;
+    const dayChange = q?.change ? q.change * dp.qty : 0;
+    const dayChangePercent = q?.changePercent ?? 0;
     const totalPnl = (currentPrice - dp.avgCost) * dp.qty;
-    const totalPnlPercent = ((currentPrice / dp.avgCost) - 1) * 100;
-    const totalValue = marketValue;
+    const totalPnlPercent = dp.avgCost > 0 ? ((currentPrice / dp.avgCost) - 1) * 100 : 0;
     return {
       symbol: dp.symbol,
       name: dp.name,
@@ -607,7 +607,7 @@ function buildDemoAccount(demo: ReturnType<typeof getDemoPortfolio>): AccountSum
       totalPnl,
       totalPnlPercent,
       profitLossPct: totalPnlPercent,
-      portfolioPercent: 0, // filled below
+      portfolioPercent: 0,
       sector: dp.sector,
     };
   });
@@ -653,13 +653,38 @@ export function PortfolioTab() {
 
   const investorStyle = user?.investorStyle || 'lynch';
 
-  // Use real account if connected, else demo data
-  const displayAccount = useMemo(() => {
-    if (isConnected && account) return account;
-    return buildDemoAccount(getDemoPortfolio(investorStyle));
+  const [displayAccount, setDisplayAccount] = useState<AccountSummary | null>(null);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+
+  // Use real account if connected, else build from demo + Finnhub quotes
+  useEffect(() => {
+    if (isConnected && account) {
+      setDisplayAccount(account);
+      return;
+    }
+    if (isConnected && !account) return; // still loading live data
+
+    const demo = getDemoPortfolio(investorStyle);
+    const symbols = demo.positions.map(p => p.symbol);
+    setQuotesLoading(true);
+
+    fetch('/api/market/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        setDisplayAccount(buildDemoAccount(demo, data.quotes || null));
+        setQuotesLoading(false);
+      })
+      .catch(() => {
+        setDisplayAccount(buildDemoAccount(demo, null));
+        setQuotesLoading(false);
+      });
   }, [isConnected, account, investorStyle]);
 
-  if (loading && !isConnected) {
+  if (loading || quotesLoading) {
     return (
       <div className="p-4 space-y-3 pb-24">
         <div className="h-10 bg-slate-800 rounded-xl animate-pulse" />
