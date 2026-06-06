@@ -120,7 +120,7 @@ export function OrdersTab() {
 
       {/* New Order */}
       <button
-        onClick={() => setTab('trade')}
+        onClick={() => setTab('invest')}
         style={{
           width: '100%',
           padding: 10,

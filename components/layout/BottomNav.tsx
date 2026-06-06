@@ -1,62 +1,66 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { Bot, LayoutDashboard, BarChart3, ListOrdered, Settings } from 'lucide-react';
+
+import { Briefcase, TrendingUp, Star, Settings } from 'lucide-react';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import CompassIcon from '../CompassIcon';
 
-const TABS: { id: TabId; icon: typeof Bot; label: string }[] = [
-  { id: 'ai', icon: Bot, label: 'AI' },
-  { id: 'trade', icon: BarChart3, label: 'Trade' },
-  { id: 'portfolio', icon: LayoutDashboard, label: 'Portfolio' },
-  { id: 'orders', icon: ListOrdered, label: 'Orders' },
+interface NavTab {
+  id: TabId;
+  icon: typeof Briefcase;
+  label: string;
+  isRaised?: boolean;
+}
+
+const TABS: NavTab[] = [
+  { id: 'portfolio', icon: Briefcase, label: 'Portfolio' },
+  { id: 'invest', icon: TrendingUp, label: 'Invest' },
+  { id: 'ai', icon: Briefcase, label: 'AI', isRaised: true },
+  { id: 'watchlist', icon: Star, label: 'Watchlist' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
 export function BottomNav() {
   const { activeTab, setTab } = useTabStore();
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    const checkPending = () => {
-      fetch('/api/baskets?status=draft')
-        .then(r => r.json())
-        .then(data => setPendingCount(data.baskets?.length || 0))
-        .catch(() => {});
-    };
-    checkPending();
-    const interval = setInterval(checkPending, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
-    <nav className="bottom-nav">
-      {TABS.map(({ id, icon: Icon, label }) => (
-        <button
-          key={id}
-          className={`nav-item${activeTab === id ? ' active' : ''}`}
-          onClick={() => setTab(id)}
-          style={{ position: 'relative' }}
-        >
-          {id === 'ai' ? (
-            <CompassIcon size={20} color={activeTab === 'ai' ? '#22d3ee' : '#64748b'} />
-          ) : (
-            <Icon className="nav-icon" size={20} strokeWidth={activeTab === id ? 2.5 : 1.5} />
-          )}
-          {id === 'trade' && pendingCount > 0 && (
-            <span style={{
-              position: 'absolute', top: -4, right: -4,
-              background: '#ef4444', color: 'white',
-              fontSize: 10, fontWeight: 700,
-              width: 16, height: 16, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {pendingCount}
+    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-slate-900 border-t border-slate-800 pb-safe flex items-center justify-around px-1">
+      {TABS.map(({ id, icon: Icon, label, isRaised }) => {
+        const isActive = activeTab === id;
+
+        if (isRaised) {
+          return (
+            <div key={id} className="relative flex flex-col items-center" style={{ marginTop: -20 }}>
+              <button
+                onClick={() => setTab(id)}
+                className="w-14 h-14 bg-cyan-500 rounded-full flex items-center justify-center shadow-lg shadow-cyan-500/30 active:scale-95 transition-transform"
+              >
+                <CompassIcon size={28} color="white" />
+              </button>
+              <span className={`text-[11px] font-medium mt-1 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`}>
+                {label}
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className="flex flex-col items-center"
+          >
+            <Icon
+              size={22}
+              strokeWidth={isActive ? 2.5 : 1.5}
+              className={isActive ? 'text-cyan-400' : 'text-slate-400'}
+            />
+            <span className={`text-[11px] font-medium mt-1 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`}>
+              {label}
             </span>
-          )}
-          <span>{label}</span>
-        </button>
-      ))}
+          </button>
+        );
+      })}
     </nav>
   );
 }

@@ -58,7 +58,7 @@ export function ConvictionCard({ card }: ConvictionCardProps) {
         } else if (card.symbol) {
           setSymbol(card.symbol);
         }
-        setTab('trade');
+        setTab('invest');
         break;
       }
       case 'view_chart':

@@ -3,16 +3,16 @@
 // Same tabs, same state — just vertical with labels.
 
 'use client';
-import { Bot, LayoutDashboard, BarChart3, ListOrdered, Settings } from 'lucide-react';
+import { Briefcase, TrendingUp, Star, Settings } from 'lucide-react';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import CompassIcon from '../CompassIcon';
 
-const TABS: { id: TabId; icon: typeof Bot; label: string }[] = [
-  { id: 'ai', icon: Bot, label: 'AI Advisor' },
-  { id: 'trade', icon: BarChart3, label: 'Trade' },
-  { id: 'portfolio', icon: LayoutDashboard, label: 'Portfolio' },
-  { id: 'orders', icon: ListOrdered, label: 'Orders' },
+const TABS: { id: TabId; icon: typeof Briefcase; label: string }[] = [
+  { id: 'portfolio', icon: Briefcase, label: 'Portfolio' },
+  { id: 'invest', icon: TrendingUp, label: 'Invest' },
+  { id: 'ai', icon: Briefcase, label: 'AI Advisor' },
+  { id: 'watchlist', icon: Star, label: 'Watchlist' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 

@@ -32,7 +32,7 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [];
 const DEFAULT_INDEX_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
 
 // ─── Tab State ───
-export type TabId = 'ai' | 'trade' | 'portfolio' | 'orders' | 'settings';
+export type TabId = 'ai' | 'invest' | 'portfolio' | 'watchlist' | 'settings';
 
 interface TabStore {
   activeTab: TabId;

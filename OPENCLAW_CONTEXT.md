@@ -1,317 +1,863 @@
-# Vantage AI — OpenClaw Project Context
-# READ THIS BEFORE EVERY CHANGE
+# OPENCLAW_CONTEXT.md
+# Vantage AI — Master Build Context
+# Read this file at the start of EVERY prompt before touching any code.
 # Last updated: June 2026
 
-## Active Directory
-projects/vantage/
-ALWAYS confirm with: pwd
+---
 
-## Tech Stack
-- Next.js 15 App Router (NOT pages router)
-- React 19
-- TypeScript 5
-- Tailwind CSS 4
-- Supabase (PostgreSQL + Auth)
-- Vercel deployment
-- Port 3002 (dev)
+## 0. MANDATORY WORKFLOW (no exceptions)
 
-## MANDATORY FIRST STEP
-Before changing ANY file run:
-pwd
-Confirm output ends with: projects/vantage
+Before every edit:
+1. `pwd` → must show `projects/vantage`
+2. `cat [file]` → read the full file before changing it
+3. Make changes
+4. `tsc --noEmit` → fix all TypeScript errors before moving on
+5. Show exact diff of what changed
 
-## COMPLETE FILE MAP (verified June 2026)
+If `pwd` is wrong, run `cd ~/projects/vantage` before anything else.
+Never write to `src/components/` — it does not exist.
 
-### Pages (app/ directory)
-app/page.tsx ← root/home
-app/layout.tsx ← root layout
-app/login/page.tsx
-app/signup/page.tsx
-app/forgot-password/page.tsx
-app/reset-password/page.tsx
-app/verify-email/page.tsx
-app/investor-style/page.tsx
-app/account/page.tsx
-app/preferences/page.tsx
-app/security/page.tsx
-app/help/page.tsx
-app/help/broker-keys/page.tsx
-app/news-feed/page.tsx
-app/watchlists/page.tsx
-app/price-alerts/page.tsx
-app/earnings-calendar/page.tsx
-app/goals/page.tsx
-app/trade-history/page.tsx
-app/stock-screener/page.tsx
-app/strategies/page.tsx
-app/strategies/setup/dca/page.tsx
-app/strategies/setup/rebalancing/page.tsx
-app/strategies/setup/tax-harvesting/page.tsx
-app/trade/basket/[id]/page.tsx
-app/error.tsx
-app/global-error.tsx
+---
 
-### Tab Components (NOT pages — these are components)
-components/ai/AITab.tsx ← AI tab (129 lines)
-components/ai/AIChat.tsx ← chat UI
-components/ai/AIThinkingIndicator.tsx
-components/ai/QuickActions.tsx ← prompt pills
-components/ai/DailyBriefCard.tsx
-components/ai/WeeklySnapshotCard.tsx
-components/ai/ConfidenceRing.tsx
-components/ai/ConvictionCard.tsx
-components/portfolio/PortfolioTab.tsx
-components/portfolio/PositionRow.tsx
-components/orders/OrdersTab.tsx
-components/trade/TradeTab.tsx
-components/trade/SymbolSearch.tsx
-components/settings/SettingsTab.tsx
+## 1. PROJECT OVERVIEW
 
-### Shared Components
-components/shared/AccountSummaryCard.tsx
-components/shared/DemoBanner.tsx
+| Field       | Value                                      |
+|-------------|--------------------------------------------|
+| App         | Vantage AI — AI-powered portfolio analysis |
+| URL         | https://vantage-ai-trading.vercel.app      |
+| Dev port    | 3002                                       |
+| Stack       | Next.js 15, React 19, TypeScript 5         |
+|             | Tailwind CSS 4, Supabase, Vercel           |
+| Active dir  | ~/projects/vantage/                        |
 
-### Modals + Overlays
-components/BuildBasketModal.tsx ← NOT in ai/
-components/GreetingModal.tsx
-components/SplashScreen.tsx
-components/SplashGuard.tsx
-components/StrategySheet.tsx
-components/SuggestionTracker.tsx
-components/CompassIcon.tsx ← custom SVG icon
+---
 
-### Layout
-components/layout/BottomNav.tsx
-components/layout/Header.tsx
-components/layout/MarketBar.tsx
-components/layout/WatchlistBar.tsx
-components/layout/DesktopSidebar.tsx
+## 2. CONFIRMED FILE LOCATIONS
 
-### Onboarding
-components/onboarding/BrokerCredentials.tsx
-components/onboarding/BrokerGate.tsx
-components/onboarding/BrokerSelection.tsx
-components/onboarding/InvestorStyleOnboarding.tsx
-components/onboarding/OnboardingConfirmation.tsx
-components/onboarding/OnboardingStyleSelection.tsx
-components/onboarding/OnboardingWelcome.tsx
+Do not create files at any other path without checking first.
 
-### Providers
-components/providers/AuthGuard.tsx
-components/providers/AuthProvider.tsx
-components/providers/BrokerProvider.tsx
-components/providers/InactivityWarning.tsx
+```
+components/
+  ai/
+    AITab.tsx
+    AIChat.tsx
+    AIThinkingIndicator.tsx
+    QuickActions.tsx
+    DailyBriefCard.tsx
+    WeeklySnapshotCard.tsx
+  layout/
+    BottomNav.tsx
+    Header.tsx
+    MarketBar.tsx
+  portfolio/
+    PortfolioTab.tsx
+    PositionRow.tsx
+  orders/
+    OrdersTab.tsx
+  trade/
+    TradeTab.tsx
+  settings/
+    SettingsTab.tsx
+  watchlists/          ← needs creation
+  shared/
+    AccountSummaryCard.tsx
+    DemoBanner.tsx
+  BuildBasketModal.tsx
+  CompassIcon.tsx
+  GreetingModal.tsx    ← being removed
+  SplashScreen.tsx
+  SplashGuard.tsx
 
-### Advisor
-components/advisor/ConflictAlert.tsx
-components/advisor/StockRecommendationCard.tsx
+app/
+  page.tsx
+  layout.tsx
+  watchlists/page.tsx
+  api/
+    chat/route.ts
+    ai/
+      daily-brief/route.ts
+      weekly-snapshot/route.ts
+    portfolio/
+      summary/route.ts
+      history/route.ts     ← new
+    stock/
+      candles/[symbol]/route.ts  ← new
 
-### Dashboard
-components/dashboard/PortfolioDashboard.tsx
+lib/
+  ai-provider.ts
+  ai-system-prompt.ts
+  ai-context.ts
+  demo-data.ts
+  portfolio-operations.ts
+  market-hours.ts
+  finnhub.ts
 
-### API Routes
-app/api/chat/route.ts ← main AI chat
-app/api/chat/history/route.ts
-app/api/chat/history/save/route.ts
-app/api/ai/daily-brief/route.ts
-app/api/ai/weekly-snapshot/route.ts
-app/api/ai/suggestions/route.ts
-app/api/ai/suggestions/track/route.ts
-app/api/ai/cache/clear/route.ts
-app/api/portfolio/summary/route.ts
-app/api/baskets/route.ts
-app/api/baskets/[id]/route.ts
-app/api/baskets/[id]/execute/route.ts
-app/api/baskets/positions/route.ts
-app/api/broker/connect/route.ts
-app/api/broker/disconnect/route.ts
-app/api/broker/proxy/[...path]/route.ts
-app/api/broker/session/route.ts
-app/api/broker/status/route.ts
-app/api/demo/switch-style/route.ts
-app/api/usage/remaining/route.ts
-app/api/user/preferences/route.ts
-app/api/market/quotes/route.ts
-app/api/stock/details/route.ts
-app/api/sectors/route.ts
-app/api/news/route.ts
-app/api/earnings/route.ts
-app/api/screener/search/route.ts
-app/api/symbols/search/route.ts
-app/api/notifications/list/route.ts
-app/api/notifications/mark-read/route.ts
-app/api/notifications/unread/route.ts
-app/api/alerts/check/route.ts
-app/api/alpaca/[...path]/route.ts
-app/api/alpaca/history/route.ts
-app/api/alpaca/market/route.ts
-app/api/alpaca/sectors/route.ts
-app/api/alpaca/session/route.ts
-app/api/alpaca/symbols/route.ts
-app/api/strategies/dca/create/route.ts
-app/api/strategies/dca/delete/route.ts
-app/api/strategies/dca/get-all/route.ts
-app/api/strategies/dca/update/route.ts
-app/api/strategies/rebalancing/execute/route.ts
-app/api/strategies/rebalancing/save/route.ts
-app/api/strategies/rebalancing/saved/route.ts
-app/api/strategies/rebalancing/session/route.ts
-app/api/strategies/tax-harvest/execute/route.ts
-app/api/strategies/tax-harvesting/execute/route.ts
-app/api/advisor/recommendations/route.ts
+hooks/
+  usePortfolio.ts
+  useAIChat.ts
 
-### DB Routes (Supabase wrappers)
-app/api/db/users/[create|get|update|delete]/route.ts
-app/api/db/chat-history/[all CRUD]/route.ts
-app/api/db/watchlists/[all CRUD]/route.ts
-app/api/db/alerts/[all CRUD]/route.ts
-app/api/db/strategies/[all CRUD]/route.ts
-app/api/db/trade-history/[all CRUD]/route.ts
-app/api/db/vault/[get|save]/route.ts
-app/api/db/sessions/[all CRUD]/route.ts
-app/api/db/metrics/[all CRUD]/route.ts
-app/api/db/notifications/[create|get]/route.ts
-app/api/db/market-cache/[get|upsert|delete]/route.ts
-app/api/db/daily-suggestions/[create|get]/route.ts
-app/api/db/scanner-recommendations/[create|get]/route.ts
+store/
+  index.ts
+```
 
-### Auth Routes
-app/api/auth/login/route.ts
-app/api/auth/logout/route.ts
-app/api/auth/signup/route.ts
-app/api/auth/me/route.ts
-app/api/auth/verify-email/route.ts
-app/api/auth/resend-verification/route.ts
-app/api/auth/request-password-reset/route.ts
-app/api/auth/reset-password/route.ts
-app/api/auth/login-2fa/route.ts
-app/api/auth/2fa/[generate|enable|disable|verify]/route.ts
-app/api/auth/verify-user/route.ts
+---
 
-### Hooks
-hooks/useAIChat.ts ← AI chat state
-hooks/useBrokerData.ts
-hooks/useLiveQuotes.ts
-hooks/useMarketData.ts
-hooks/useOrders.ts
-hooks/usePortfolio.ts
-hooks/useStockRecommendations.ts
+## 3. EVENT BUS
 
-### Libraries
-lib/ai-provider.ts ← Claude Haiku/Sonnet
-lib/ai-system-prompt.ts ← system prompts
-lib/ai-context.ts ← portfolio context
-lib/ai.ts
-lib/demo-data.ts ← demo portfolio data
-lib/demo-orders.ts ← demo order history
-lib/portfolio-operations.ts ← portfolio transitions
-lib/market-hours.ts ← OPEN/CLOSED logic
-lib/finnhub.ts ← market data
-lib/external-data.ts
-lib/stock-scorer.ts
-lib/stock-universe.ts
-lib/stock-analyst.ts
-lib/broker-service.ts
-lib/broker/alpaca.ts
-lib/broker/tastytrade.ts
-lib/broker/index.ts
-lib/alpaca.ts
-lib/auth.ts
-lib/auth-service.ts
-lib/supabase.ts
-lib/supabase-auth.ts
-lib/supabase/[all modules].ts
-lib/vault.ts
-lib/crypto.ts
-lib/email.ts
-lib/confidence.ts
-lib/scheduler.ts
-lib/schemas.ts
-lib/sectors.ts
-lib/sector-leaders.ts
-lib/investor-style-targets.ts
-lib/market-data.ts
-lib/advisor/engine.ts
-lib/advisor/conflict-detection.ts
-lib/middleware/auth.ts
+```
+'vantage-open-basket-modal'  →  opens BuildBasketModal (full screen)
+'vantage-basket-generated'   →  sends result to AI chat
+```
 
-### Store + Types
-store/index.ts ← Zustand store
-types/index.ts
-types/broker.ts
-types/supabase.ts
+---
 
-### Key Packages (from package.json)
-next: 15.5.19
-react: 19.2.4
-typescript: 5
-tailwindcss: 4
-lucide-react: 1.14.0 ← icon library
-react-markdown: 10.1.0
-remark-gfm: 4.0.1
-recharts: 3.8.1
-zustand: 5.0.13
-date-fns: 4.1.0
-@supabase/supabase-js: 2.106.1
+## 4. DESIGN SYSTEM
 
-## CRITICAL NOTES
+### 4.1 Colors
 
-### lucide-react is installed
-Many components use lucide-react icons.
-CompassIcon.tsx is a CUSTOM component —
-do NOT replace it with lucide Compass.
-They look different.
-Our CompassIcon = 4-pointed star ✦
-Lucide Compass = diamond ◇
+```css
+/* Backgrounds */
+--bg-page:     #0a0f1e;   /* dark navy — NOT pure black */
+--bg-card:     #111827;   /* slate-900 */
+--bg-elevated: #1f2937;   /* slate-800 */
+--bg-input:    #1f2937;   /* slate-800 */
 
-### Event Bus (custom window events)
-'vantage-open-basket-modal'
- → dispatched by QuickActions + AIChat
- → listened by AITab (mounts modal)
+/* Borders */
+--border-subtle: #1f2937; /* slate-800 */
+--border-active: #374151; /* slate-700 */
+--border-focus:  #22d3ee; /* cyan-400   */
 
-'vantage-basket-generated'
- → dispatched by AITab (after modal)
- → listened by AIChat (shows result)
+/* Text */
+--text-primary:   #ffffff;
+--text-secondary: #94a3b8; /* slate-400 */
+--text-muted:     #64748b; /* slate-500 */
+--text-disabled:  #374151; /* slate-700 */
 
-### Demo vs Live
-User is demo when: portfolio_mode = 'demo'
- OR broker_connected = false
-Same DB tables used for both.
-is_demo flag on positions + orders tables.
+/* Brand — ONE accent only */
+--accent: #22d3ee; /* cyan-400 */
 
-### No src/ directory
-Everything is at root level:
-components/ app/ lib/ hooks/ store/ types/
-NEVER write to src/
+/* Financial */
+--gain:    #34d399; /* emerald-400 */
+--loss:    #f87171; /* red-400     */
+--warning: #fbbf24; /* amber-400   */
+--neutral: #94a3b8; /* slate-400   */
+```
 
-### Tab Architecture
-Tabs are NOT Next.js pages.
-They are components rendered by app/page.tsx
-or app/layout.tsx via tab switching logic.
-Check app/page.tsx to see how tabs mount.
+### 4.2 Left Border Colors (positions, watchlist rows, futures)
 
-## WORKFLOW (mandatory every prompt)
+```
+Up today:   border-l-4 border-emerald-500
+Down today: border-l-4 border-red-500
+Unchanged:  border-l-4 border-slate-600
+```
 
-Step 1: pwd → confirm projects/vantage
-Step 2: cat the file before changing it
-Step 3: make changes
-Step 4: tsc --noEmit → fix ALL errors
-Step 5: show exact diff of what changed
+### 4.3 Typography — 5 sizes, nothing smaller than 12px
 
-## NEVER DO THIS
-❌ Write to src/components/ (doesn't exist)
-❌ Guess file paths
-❌ Change files without reading first
-❌ Skip tsc --noEmit
-❌ Use lucide Compass instead of CompassIcon
-❌ Replace window event bus with props
-❌ Create new files that duplicate existing ones
- (check if it exists first)
+| Role             | Class                        |
+|------------------|------------------------------|
+| Hero value       | text-4xl font-bold           |
+| Section header   | text-lg font-semibold        |
+| Body (minimum)   | text-base font-normal        |
+| Secondary        | text-sm text-slate-400       |
+| Metadata         | text-xs font-medium text-slate-500 |
+| Nav label        | text-[11px] font-medium      |
 
-## ALWAYS DO THIS
-✅ pwd first
-✅ cat file before editing
-✅ tsc --noEmit after
-✅ Show exact file path in confirmation
-✅ Check OPENCLAW_CONTEXT.md for correct path
- before creating any new file
+Rule: body copy minimum `text-base` (16px). Nothing below `text-xs` (12px).
+
+### 4.4 Spacing — 4px grid only
+
+```
+Page margin:   px-4    (16px)
+Card padding:  p-4     (16px)
+Section gap:   mb-4    (16px)
+Element gap:   gap-3   (12px)
+Row padding:   py-3 px-4
+Touch target:  min-h-[48px]
+```
+
+### 4.5 Card Style
+
+```tsx
+className="bg-slate-900 rounded-2xl border border-slate-800 p-4"
+```
+
+### 4.6 Interactions
+
+```tsx
+className="active:scale-95 transition-all duration-150"
+// All buttons: min-h-[48px]
+// Color transitions: transition-colors duration-200
+```
+
+### 4.7 Loading States
+
+Use skeleton loaders, NOT spinners.
+```tsx
+className="animate-pulse bg-slate-800 rounded"
+// Match fixed height to real content
+```
+
+### 4.8 Empty States
+
+Always: icon + headline + subtext + CTA button. Tell the user what to do.
+
+---
+
+## 5. NAVIGATION — FINAL STRUCTURE
+
+5 tabs. Raised center AI button. Monarch Money pattern.
+
+```
+💼 Portfolio  →  lucide Briefcase
+📈 Invest     →  lucide TrendingUp
+🧭 AI         →  CompassIcon  (RAISED CENTER BUTTON)
+⭐ Watchlist  →  lucide Star
+⚙️ Settings   →  lucide Settings
+```
+
+### Bottom Nav Bar
+
+```tsx
+// Nav bar container
+className="bg-slate-900 border-t border-slate-800 h-16 pb-safe"
+
+// Active tab
+icon: cyan-400, label: cyan-400
+
+// Inactive tab
+icon: slate-400, label: slate-400
+
+// Nav labels
+className="text-[11px] font-medium"
+```
+
+### Raised AI Button
+
+```tsx
+// Raised circle button — always cyan even when inactive
+className="w-14 h-14 bg-cyan-500 rounded-full shadow-lg shadow-cyan-500/30"
+style={{ marginBottom: '20px' }}  // lifts above nav bar
+
+// CompassIcon inside
+<CompassIcon size={28} color="white" />
+```
+
+REMOVED: Orders tab (merged into Invest tab)
+REMOVED: GreetingModal (AI tab handles context)
+
+---
+
+## 6. MARKET TICKER STRIP
+
+Shown on: Portfolio tab, Invest tab only.
+NOT shown on: AI tab, Watchlist tab, Settings tab.
+
+Symbols: SPY · QQQ · IWM · DIA · XLF
+
+```tsx
+// Each ticker item
+// Up:   text-emerald-400
+// Down: text-red-400
+// Horizontal scroll, no scrollbar
+```
+
+---
+
+## 7. PORTFOLIO TAB
+
+### Account Card
+```
+bg-slate-900 rounded-2xl border border-slate-800 p-4
+
+ACCOUNT VALUE          (text-xs slate-400 uppercase tracking-wider)
+$119,780.10            (text-4xl font-bold white)
+● Growth Chaser  Change ›   (inline, cyan-400 "Change")
+
+[Sparkline — recharts, emerald/red based on P&L]
+[1D] [1W✓] [1M] [3M] [1Y]   ← pill timeframe selector, default 1W
+
+TODAY P&L      TOTAL P&L
+$3,681  -3.0%  $11,336  +10.4%
+
+BUYING POWER   CASH
+$179,670.15    $14,373.61
+```
+
+All money values: `toLocaleString({ minimumFractionDigits: 2 })`
+
+### Sections (in order)
+1. BASKETS — collapsed cards with inline expand
+2. CORE HOLDINGS — collapsed position rows with inline expand
+3. SECTOR ALLOCATION — horizontal bar chart
+4. Sell Entire Portfolio (destructive, requires typing "SELL")
+
+### Position Row (collapsed)
+```
+[3px left border]  SYMBOL      $VALUE  ›
+                   Xsh · Sector  +$P&L (+%)
+```
+
+### Position Row (expanded — tap to toggle)
+```
+[3px left border]  SYMBOL      $VALUE  ▼
+                   X shares · Sector  +%
+
+[7-day sparkline — real Finnhub data]
+
+Avg Cost:  $xxx   Current: $xxx
+P&L:       +$xxx  Today:   -$xxx
+
+[Buy More]              [Sell]
+```
+
+### Select & Sell Mode
+- Top-right button: "Select & Sell" (text-sm slate-400)
+- Checkboxes appear on all positions
+- Bottom bar: "Sell Selected (N) · ~$value"  [Cancel] [Sell Selected]
+
+### Sell Bottom Sheet (individual)
+```
+SELL [SYMBOL]
+X shares available · $price/share
+
+○ All shares (X) — est. $value
+○ Partial: [___] shares
+
+ORDER TYPE:      [Market✓] [Limit] [Stop]
+TIME IN FORCE:   [Day✓]    [GTC]
+LIMIT PRICE:     (shown only if Limit selected)
+
+Est. proceeds: $value
+[Cancel]    [Confirm Sell]
+```
+
+### Sell Bottom Sheet (basket)
+```
+Sell 🤖 [Basket Name]
+N positions · ~$value
+
+SYMBOL  Xsh  ~$value  market
+...
+
+All at market price
+[Cancel]    [Confirm & Sell All]
+```
+
+---
+
+## 8. INVEST TAB
+
+### Layout (top to bottom)
+1. Market ticker strip
+2. Symbol search bar (→ search modal)
+3. Place Order form
+4. STRATEGIES section
+5. READY TO EXECUTE (only if pending baskets)
+6. ORDER HISTORY
+
+### Place Order Form
+```
+[BUY ✓]                [SELL]
+
+ORDER TYPE:   [Market✓] [Limit] [Stop]
+QUANTITY:     [Shares✓] [Dollars]
+              [input]
+TIME IN FORCE: [Day✓]  [GTC]
+LIMIT PRICE:   (only if Limit)
+
+Buying Power: $179,670.15
+
+[Place Order]   ← large cyan button, min-h-[56px]
+```
+
+### Strategies
+```
+[DCA]  [Rebalance]  [Tax Harvest]
+[Momentum Soon]  [Mean Reversion Soon]
+
+Active:  border border-cyan-500/60 bg-cyan-500/10
+Soon:    border border-slate-700 text-slate-600
+         cursor-not-allowed, shows "Soon" badge
+```
+
+### Ready to Execute (pending baskets)
+```
+Red badge on Invest tab icon when baskets pending
+
+🤖 [Basket Name]   N stocks
+[Review & Order →]    [Watch]  [×]
+```
+
+### Order History
+```
+[Open (0)] [Filled (11)] [Cancelled] [All]
+
+Order card:
+  [3px green left border — filled]
+  SYMBOL  BUY  FILLED
+  TYPE: market  QTY: 25  FILL: $price  TIF: DAY
+  Date · Time                         [Details]
+```
+
+RULE: AI responses must NEVER include rebalancing execution instructions.
+      Always direct user to Invest tab → Strategies.
+
+---
+
+## 9. AI TAB
+
+NO market ticker strip.
+
+### Layout (top to bottom)
+1. Compact account card
+2. Daily Brief card (collapsible)
+3. Weekly Snapshot card (collapsible)
+4. Divider: "── Ask Vantage AI ──"
+5. Chat messages area (flex-1, min-h-[200px])
+6. 2×2 Quick Actions grid
+7. Input bar
+
+### Compact Account Card
+```
+$119,780.10          (text-2xl font-bold)
+TODAY -3.0% · TOTAL +10.4%   (text-sm slate-400)
+```
+
+### Daily Brief Card
+```
+bg-slate-800 rounded-2xl border border-slate-700
+
+Header: 📡 Daily Brief · Today   (text-xs cached label)
+
+Preview (always visible):
+MARKET:    [cyan-400 label]    market summary text
+PORTFOLIO: [emerald-400 label] portfolio summary text
+
+▼ Show more
+
+Expanded adds:
+WATCH:    [amber-400 label]   watchlist note
+EARNINGS: [purple-400 label]  upcoming earnings (if any)
+
+Generated now · Updates tomorrow
+```
+
+### Weekly Snapshot Card
+```
+bg-slate-800/60 rounded-2xl border border-slate-700/60
+
+Header: 📊 Weekly Snapshot   [↻ refresh]
+
+Summary (always visible):
+Health 7.2/10  Risk LOW  2 opportunities
+
+Health color:
+  ≥7:  emerald-400
+  ≥5:  amber-400
+  <5:  red-400
+
+▼ Full analysis
+
+Expanded:
+  Full ReactMarkdown output
+  Generated Jun 6 · 10:15 AM
+  [↻ Refresh]  (costs 1 deep analysis)
+```
+
+### Chat Messages
+```
+User:  right-aligned, bg-cyan-500/20 rounded-2xl
+AI:    left-aligned, bg-slate-800 rounded-2xl
+       ReactMarkdown with tables, bold, lists
+
+Contextual suggestions (when no messages):
+Based on real portfolio data — e.g.:
+  "NVDA down 4.2% today — want analysis?"
+  "META earnings in 3 days — prepare?"
+Tap → sends as message
+```
+
+### AI Thinking Indicator
+```tsx
+// Inside chat area only — no wrapper bubble
+<CompassIcon size={22} color="white" animated={true} />
+<span>Analyzing your portfolio —</span>
+// NO "..." anywhere
+```
+
+### 2×2 Quick Actions Grid
+```tsx
+className="grid grid-cols-2 gap-2 px-4"
+
+// Each button:
+className="bg-slate-800 border border-slate-700 hover:border-cyan-500/40
+           active:scale-95 rounded-xl py-2.5 text-sm font-medium w-full"
+
+[🧺 Build Basket]  [📡 Market Pulse]
+[📋 Tax Check   ]  [⚡ Alerts      ]
+
+Build Basket → fires 'vantage-open-basket-modal' event
+Others       → sends pre-written message to chat
+```
+
+### Input Bar
+```
+[input pl-5]  [send — cyan]  [trash]
+NO hamburger/menu button
+```
+
+### Footer
+```
+Powered by AI · Not financial advice · X messages remaining today
+```
+
+### Chat History
+- Session-based (new session if >30 min gap)
+- "View previous conversations →" link below footer
+- Trash button clears current session
+
+### Alerts Mode (when ⚡ Alerts tapped)
+System prompt scans for:
+- Price moves >5%
+- Earnings within 3 days
+- Concentration >20% single stock
+- Sector weight >50%
+
+Format:
+```
+🔴 URGENT — [item] — [data point] — [suggested action]
+🟡 WATCH  — [item] — [data point]
+🟢 INFO   — [item] — [data point]
+
+If nothing: ✅ All clear today
+```
+
+---
+
+## 10. BUILD BASKET MODAL
+
+FULL SCREEN — covers entire screen including bottom nav.
+
+### Step 1 — Theme Selection
+```
+Header: Build a Basket    [✕]
+
+Grid 2 cols (icon + name only, no descriptions):
+[🤖 AI Infrastructure]  [🌱 Clean Energy   ]
+[🛡️ Cybersecurity    ]  [🧬 Healthcare     ]
+[💰 Dividends        ]  [🏭 Reshoring       ]
+[💳 Fintech          ]  [🛍️ Consumer        ]
+[✏️ Custom Basket — full width, dashed border]
+```
+
+### Step 2 — Budget
+```
+Header: [← back]  [Theme Name]  [✕]
+
+Theme preview card
+
+Budget: $ [large input]
+Quick: [$1K] [$5K] [$10K] [$25K]
+
+[Generate 🤖 Basket]   ← pinned to bottom, uses 1 deep analysis
+```
+
+### Basket Flow
+```
+AI generates → badge appears on Invest tab icon
+User → Invest tab → Ready to Execute
+Taps "Review & Order" → /invest/basket/[id]
+Places orders → returns to Invest tab
+Portfolio tab → basket appears in positions
+```
+
+---
+
+## 11. WATCHLIST TAB
+
+Fidelity-inspired. Color-coded left borders. Dense but readable.
+
+### Header
+```
+[Tech Stocks ▾]    [+ Add]  [⋯]
+```
+
+### List Selector (bottom sheet)
+```
+● Tech Stocks (4 stocks)
+○ Dividend Watch (6 stocks)
+[+ Create New List]
+```
+
+### Each Row
+```
+min-h-[56px]
+[3px left border — emerald/red/slate]
+
+Left:
+  NVDA          (text-base semibold white)
+  NVIDIA Corp   (text-sm slate-400, truncated)
+
+Right:
+  $124.56       (text-base semibold white)
+  -7.1%         (text-sm red-400)
+  -$9.42        (text-xs slate-400)
+
+If owned: small "50 shares" badge (text-xs cyan-400/20 bg)
+
+Tap row   → stock detail (future feature)
+Swipe left → delete from watchlist
+```
+
+### Footer
+```
+[+ Add Symbol to Watchlist]   ← full-width button
+```
+
+### Empty State
+```
+⭐ No stocks yet
+Add symbols to track them here
+[+ Add Symbol]
+```
+
+---
+
+## 12. SETTINGS TAB
+
+NO market ticker. NO account card.
+
+### Sections
+
+**PROFILE**
+```
+Investor Style
+Lynch · Tap to change           ›   → /investor-style
+
+Risk Tolerance
+[Conservative] [Moderate ✓] [Aggressive]
+```
+
+**BROKER**
+```
+Not connected:
+  Not connected · [Connect Broker →]   ›
+
+Connected:
+  Alpaca · Connected ✓               ›
+  [Disconnect]
+```
+
+**TOOLS**
+```
+Watchlists      1 list · 4 symbols    ›
+Price Alerts    2 active              ›
+Earnings Cal.   10 holdings tracked   ›
+News Feed       AI-curated            ›
+Trade History   All time activity     ›
+```
+
+**ACCOUNT**
+```
+Preferences     Appearance · Security ›
+Help & Support  Docs · Contact        ›
+Sign Out        (red text, no background, destructive)
+```
+
+**Footer**
+```
+Vantage v0.1.0
+AI-First · Mobile-First · Built with ❤️
+```
+
+HIDDEN (do not build, do not show):
+- Goals & Targets
+- Stock Screener
+- Account & Funding
+
+---
+
+## 13. CHARTS — REAL DATA ONLY
+
+### Portfolio Sparkline (account card)
+
+```
+API: GET /api/portfolio/history
+Params: userId, timeframe (1D | 1W | 1M | 3M | 1Y)
+
+Logic:
+  1. Fetch positions (symbol, qty, avg_cost, buy_date)
+  2. For each date in timeframe:
+       value = Σ(qty × close_price) for positions owned at that date
+       Before buy_date: $0 for that position
+  3. Return: [{ date, value, pnl, pnl_pct }]
+
+Finnhub endpoints:
+  1D:          /stock/candle?resolution=5   (5-min bars)
+  1W/1M/3M/1Y: /stock/candle?resolution=D
+
+Cache: 1 hour
+Default timeframe: 1W
+```
+
+```tsx
+// recharts config
+<LineChart>
+  <Area     // gradient fill, 20% opacity under line
+  <Line     // emerald-400 if pnl ≥ 0, red-400 if pnl < 0
+  <Tooltip  // shows $value · date on touch
+// NO XAxis labels, NO YAxis labels, NO grid lines
+```
+
+### Position Mini Chart (expanded position card)
+
+```
+API: GET /api/stock/candles/[symbol]
+Params: symbol, timeframe
+Returns: [{ date, close }]
+Cache: 1 hour
+Default: 1W
+
+Same visual style as portfolio sparkline.
+```
+
+---
+
+## 14. AI SYSTEM
+
+### Models
+```
+General chat:   claude-haiku-4-5     (fast, cheap)
+Deep analysis:  claude-sonnet-4-6    (thorough)
+```
+
+### Daily Limits
+```
+Messages:       75 / day
+Deep analyses:  20 / day
+Resets:         midnight UTC
+```
+
+### Deep Analysis Modes
+```
+research | theme | health | opportunities | tax | alerts | market_pulse
+```
+
+### Finance Guard
+Block non-finance queries before AI call:
+> "Vantage AI specializes in portfolio analysis and US market research only."
+
+### AI Response Rules
+
+NEVER say:
+- "Great question", "Certainly", "Of course"
+- "Keep in mind", "Some investors believe"
+- Rebalancing execution steps → direct to Invest tab → Strategies
+
+ALWAYS include:
+- Specific data points (prices, %, dates)
+- Conviction level (High / Medium / Low)
+- Reference to user's investor style mandate
+
+---
+
+## 15. DEMO PORTFOLIO SYSTEM
+
+Single source of truth: `lib/portfolio-operations.ts`
+Same DB tables as real users. `is_demo` flag on positions and orders.
+
+### 5 Styles × 10 Positions Each
+
+| Style               | Symbols                                      |
+|---------------------|----------------------------------------------|
+| Lynch (Growth)      | META MSFT GOOGL AMZN NVDA CRM NFLX ADBE UBER SQ |
+| Buffett (Value)     | AAPL KO BAC AXP CVX OXY MCO KHC VZ JNJ      |
+| Livermore (Momentum)| NVDA AMD TSLA SMCI ARM MSTR COIN PLTR RKLB SOFI |
+| Munger (Dividend)   | BRK.B COST V MA MSFT WM UNH SPGI ROL NVO    |
+| Soros (Macro)       | GLD TLT EEM FXI GDX USO SPY QQQ UUP BITO    |
+
+### Transitions
+```
+First login (no positions)  → auto-seed demo portfolio
+Style change (demo)         → confirmation modal → reseed
+Broker connect              → clear demo → sync real positions
+Broker disconnect           → clear real → reseed demo
+Any transition              → clear portfolio cache
+```
+
+---
+
+## 16. COMPASS ICON SPEC
+
+Custom SVG — NOT a lucide icon. Do not substitute.
+
+```
+Shape:     4-pointed star rose
+           North point dominant (tall)
+           South/East/West points subtle (shorter)
+           Circle ring around all 4 points
+
+In nav:    cyan-400 fill, static
+In chat:   white fill, animated (needle sweep)
+In splash: white fill, settling animation
+```
+
+---
+
+## 17. PROMPT EXECUTION ORDER
+
+Send to OpenClaw one at a time. Each prompt must start with:
+
+```
+READ FIRST: ~/projects/vantage/OPENCLAW_CONTEXT.md
+pwd → confirm projects/vantage
+cat [target file(s)] before changing anything
+```
+
+### Prompt sequence:
+```
+Prompt 1 — Bottom nav: 5 tabs + raised AI button
+Prompt 2 — Portfolio tab: account card + sparkline + positions + baskets + sell flows
+Prompt 3 — Invest tab: order form + strategies + ready to execute + order history
+Prompt 4 — AI tab: compact card + daily brief + weekly snapshot + chat + 2×2 grid
+Prompt 5 — Watchlist tab: Fidelity-inspired, color borders, list selector
+Prompt 6 — Settings tab: cleanup + hide unbuilt sections
+Prompt 7 — Design system pass: typography + spacing + colors across all tabs
+Prompt 8 — Charts: portfolio sparkline + position mini charts (real Finnhub data)
+```
+
+---
+
+## 18. KEY DECISIONS LOG
+
+| # | Decision | Choice |
+|---|----------|--------|
+| Q1 | Home tab order | Option B — insights first |
+| Q2 | Tap position | Option B — inline expand + chart |
+| Q3 | Chat history | Option B — session-based |
+| Q4 | Empty AI tab | Option B — contextual suggestions |
+| Q5 | Basket review | Option A — Invest tab Ready to Execute |
+| Q6 | Rebalancing | Option A — stays in Invest Strategies |
+| Q7 | Sparkline | Option B — yes, add it |
+| Q8 | Tab icons | briefcase / trending / compass / star / gear |
+| Q9 | Primary user | Option C — demo + live both |
+| Q10 | Portfolio tab | Option A — account + positions + sector |
+| Q11 | Sparkline timeframe | Option D — user selectable |
+| Q12 | Greeting modal | Option D — remove entirely |
+| Q13 | Market ticker | Option B — Portfolio + Invest only |
+| Q14 | Basket expand | Option A — inline |
+| Q15 | Individual sell | Option A — bottom sheet (qty, type, TIF, limit) |
+| Q16 | Sell all portfolio | Option A — type "SELL" |
+| Q17 | Sell basket | Option C — bottom sheet with list |
+| Q18 | Multi-select | Option C — Select & Sell button |
+| Q19 | Sparkline data | Real Finnhub data only |
+| Q20 | Position chart | Option C — simple, real data |
+| Q21 | Empty basket | Option A — Invest tab only |
+| — | Sparkline default | 1W |
+| — | Portfolio history | Option B — true history from $0 |
+| — | Nav pattern | 5 tabs, raised center AI (Monarch Money) |
+| — | Watchlist | Option C — multiple lists, Fidelity-inspired |
+
+---
+
+*End of OPENCLAW_CONTEXT.md*

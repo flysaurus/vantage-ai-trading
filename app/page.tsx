@@ -9,8 +9,8 @@ import { WatchlistBar } from '@/components/layout/WatchlistBar';
 import { AITab } from '@/components/ai/AITab';
 import { TradeTab } from '@/components/trade/TradeTab';
 import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
-import { OrdersTab } from '@/components/orders/OrdersTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
+import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
@@ -22,13 +22,13 @@ import GreetingModal from '@/components/GreetingModal';
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
 
-const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['ai', 'trade', 'portfolio']);
+const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['ai', 'invest', 'portfolio']);
 
 const TAB_COMPONENTS: Record<TabId, React.FC> = {
   ai: AITab,
-  trade: TradeTab,
+  invest: TradeTab,
   portfolio: PortfolioTab,
-  orders: OrdersTab,
+  watchlist: WatchlistTab,
   settings: SettingsTab,
 };
 
