@@ -1,86 +1,65 @@
 'use client';
-import { useState } from 'react';
 
-const PRIMARY_PROMPTS = [
-  { label: 'Health', icon: '📊', mode: 'health' },
-  { label: 'Risk', icon: '🛡️', mode: 'risk' },
-  { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
-  { label: 'Build Basket', icon: '🧺', action: 'openBasketModal' },
+interface QuickActionsProps {
+  onAction: (mode: string, message: string) => void;
+  onOpenBasket: () => void;
+  disabled?: boolean;
+}
+
+const ACTIONS = [
+  {
+    icon: '🧺',
+    label: 'Build Basket',
+    mode: 'basket',
+    message: '',
+    isBasket: true,
+  },
+  {
+    icon: '📡',
+    label: 'Market Pulse',
+    mode: 'market_pulse',
+    message: "Give me today's market pulse briefing for my portfolio",
+  },
+  {
+    icon: '📋',
+    label: 'Tax Check',
+    mode: 'tax',
+    message: 'Run a tax efficiency analysis on my portfolio',
+  },
+  {
+    icon: '⚡',
+    label: 'Alerts',
+    mode: 'alerts',
+    message: 'Scan my portfolio for urgent alerts and items needing attention',
+  },
 ];
 
-const SECONDARY_PROMPTS = [
-  { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
-  { label: 'Tax Check', icon: '📋', mode: 'tax' },
-  { label: 'Research', icon: '🔍', mode: 'research' },
-  { label: 'Market Trends', icon: '📈', mode: 'trends' },
-];
-
-export function QuickActions() {
-  const [showMore, setShowMore] = useState(false);
-
-  const handleModeSelect = (mode: string) => {
-    if (mode === 'openBasketModal') {
-      window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('vantage-ai-suggestion', {
-      detail: { prompt: '', mode },
-    }));
-  };
-
+export default function QuickActions({
+  onAction,
+  onOpenBasket,
+  disabled = false,
+}: QuickActionsProps) {
   return (
-    <div style={{ padding: '0 16px 12px' }}>
-      {/* Primary row: always visible, flex-wrap */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {PRIMARY_PROMPTS.map((p) => (
+    <div className="px-4 pt-2 pb-3">
+      <div className="grid grid-cols-2 gap-2">
+        {ACTIONS.map((action) => (
           <button
-            key={p.label}
-            onClick={() => handleModeSelect(p.mode || p.action || '')}
-            className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-300 text-sm font-medium px-3 py-2 rounded-full whitespace-nowrap transition"
+            key={action.mode}
+            disabled={disabled}
+            onClick={() => {
+              if (action.isBasket) {
+                onOpenBasket();
+              } else {
+                onAction(action.mode, action.message);
+              }
+            }}
+            className="flex items-center justify-center gap-2 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 hover:bg-slate-700/80 active:scale-95 active:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl py-2.5 px-4 text-slate-300 text-sm font-medium w-full transition-all duration-150 select-none"
           >
-            <span>{p.icon}</span>
-            <span>{p.label}</span>
+            <span className="text-base leading-none">{action.icon}</span>
+            <span className="leading-none">{action.label}</span>
           </button>
         ))}
-        <button
-          onClick={() => setShowMore(true)}
-          className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-300 text-sm font-medium px-3 py-2 rounded-full whitespace-nowrap transition"
-        >
-          More ▾
-        </button>
       </div>
-
-      {/* Bottom sheet: secondary prompts */}
-      {showMore && (
-        <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-black/50"
-          onClick={() => setShowMore(false)}
-        >
-          <div
-            className="bg-slate-900 rounded-t-2xl w-full p-4 pb-8 border-t border-slate-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-slate-400 text-xs text-center mb-4 uppercase tracking-wide">
-              More Analysis
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {SECONDARY_PROMPTS.map((p) => (
-                <button
-                  key={p.mode}
-                  onClick={() => {
-                    handleModeSelect(p.mode);
-                    setShowMore(false);
-                  }}
-                  className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 font-medium"
-                >
-                  <span>{p.icon}</span>
-                  <span>{p.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

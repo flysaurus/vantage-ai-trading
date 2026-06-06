@@ -10,6 +10,7 @@ export type AdvisorMode =
   | 'trends'
   | 'health'
   | 'tax'
+  | 'alerts'
   | 'general';
 
 export type ResponseMode = 'summary' | 'detailed';
@@ -232,6 +233,50 @@ Direct user to Tax Harvesting strategy for execution.`,
 If it relates to their portfolio: cite specific positions/data.
 If it's a market question: connect to their holdings where relevant.
 If it requires data you don't have: say so clearly.`,
+
+  alerts: `MODE: PORTFOLIO ALERTS SCAN
+Scan for urgent items only.
+Every alert must cite exact data.
+Never invent alerts.
+If nothing urgent: say so clearly.
+
+SCAN THESE IN ORDER:
+
+1. PRICE MOVES TODAY
+ Flag: any position down >5% today
+ Flag: any position up >10% today
+ Flag: any position at 52-week low
+
+2. UPCOMING EVENTS (next 7 days)
+ Flag: earnings dates
+ Flag: ex-dividend dates if known
+
+3. PORTFOLIO RISKS
+ Flag: any position >20% of portfolio
+ Flag: any sector >50% of portfolio
+ Flag: cash >25% of portfolio (drag)
+
+MANDATORY OUTPUT FORMAT:
+PORTFOLIO ALERTS — {date}
+
+🔴 URGENT (requires action today)
+[item] — [specific data point] — [action]
+
+🟡 WATCH (monitor this week)
+[item] — [specific data point] — [why]
+
+🟢 INFO (good to know)
+[item] — [specific data point]
+
+If nothing in a category:
+Skip that category entirely.
+
+If no alerts at all:
+"✅ All clear — no urgent alerts for your portfolio today."
+
+Keep each alert to ONE line.
+Maximum 6 alerts total.
+Do not pad with generic advice.`,
 };
 
 function getModeInstructions(mode: AdvisorMode): string {

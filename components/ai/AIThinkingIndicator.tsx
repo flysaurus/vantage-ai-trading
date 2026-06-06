@@ -50,6 +50,13 @@ const MESSAGES: Record<string, string[]> = {
     'Reading your portfolio',
     'Processing',
   ],
+  alerts: [
+    'Scanning price moves',
+    'Checking upcoming events',
+    'Analyzing concentration',
+    'Looking for risks',
+    'Compiling alerts',
+  ],
 };
 
 export default function AIThinkingIndicator({ mode = 'general' }: { mode?: string }) {

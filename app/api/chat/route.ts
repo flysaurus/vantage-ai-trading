@@ -63,6 +63,7 @@ const DEEP_ANALYSIS_MODES = new Set([
   'health',
   'opportunities',
   'tax',
+  'alerts',
 ]);
 
 // ─── Auth ────────────────────────────────────────────────────

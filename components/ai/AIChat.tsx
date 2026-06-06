@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
 import { useChatStore } from '@/store';
 import AIThinkingIndicator from './AIThinkingIndicator';
+import QuickActions from './QuickActions';
 
 /** Extract <rebalance-trades> JSON block from AI response text */
 function extractRebalanceTrades(content: string): Array<{ symbol: string; action: string; targetPercent: number }> | null {
@@ -184,14 +185,6 @@ const MARKDOWN_COMPONENTS = {
   ),
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
-const PROMPTS = [
-  { label: 'Build Basket', icon: '🧺', action: 'basket' },
-  { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
-  { label: 'Tax Check', icon: '📋', mode: 'tax' },
-  { label: 'Research', icon: '🔍', mode: 'research' },
-  { label: 'Trends', icon: '📈', mode: 'trends' },
-];
-
 export function AIChat({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -307,22 +300,11 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     }
   };
 
-  const handlePromptClick = useCallback((prompt: typeof PROMPTS[number]) => {
-    if (isLoading || sendingRef.current) return;
-    if (prompt.action === 'basket') {
-      window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
-      return;
-    }
-    setCurrentMode(prompt.mode || 'general');
-    // Send a tailored message based on the mode
-    const messages: Record<string, string> = {
-      market_pulse: 'Give me today\'s market pulse briefing.',
-      tax: 'Check my tax situation. What losses can I harvest?',
-      research: 'Research mode activated. Enter a ticker symbol to analyze.',
-      trends: 'What are the key market trends right now and how do they affect my portfolio?',
-    };
-    const msg = messages[prompt.mode || ''] || `Run a ${prompt.label.toLowerCase()} analysis on my portfolio.`;
-    sendMessage(msg, 'detailed', prompt.mode || 'general');
+  const handleQuickPrompt = useCallback((mode: string, message: string) => {
+    if (!message || isLoading || sendingRef.current) return;
+    sendingRef.current = true;
+    setCurrentMode(mode);
+    sendMessage(message, 'detailed', mode);
   }, [isLoading, sendMessage]);
 
   const handlePushToRebalance = async (content: string) => {
@@ -698,24 +680,14 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
-        {/* Prompt pills — 3 wrapped rows */}
-        <div className="px-4 pt-2 pb-3 flex flex-wrap gap-2 justify-center">
-          {PROMPTS.map((p) => {
-            const isWider = p.label === 'Build Basket' || p.label === 'Market Pulse';
-            return (
-              <button
-                key={p.label}
-                onClick={() => handlePromptClick(p)}
-                disabled={isLoading || remainingCalls === 0}
-                className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-300 text-xs font-medium px-3 py-2 rounded-full whitespace-nowrap transition disabled:opacity-40"
-                style={isWider ? { minWidth: '145px' } : undefined}
-              >
-                <span>{p.icon}</span>
-                <span>{p.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Quick actions — 2x2 grid */}
+        <QuickActions
+          onAction={handleQuickPrompt}
+          onOpenBasket={() => {
+            window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
+          }}
+          disabled={isLoading || remainingCalls === 0}
+        />
 
         {/* Input row */}
         <div className="px-4 pb-3 flex items-center gap-2">
