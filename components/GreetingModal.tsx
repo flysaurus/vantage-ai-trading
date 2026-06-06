@@ -129,84 +129,67 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
       }}
     >
       <div
-        className="bg-slate-900/80 backdrop-blur-sm border border-white/10 rounded-2xl px-10 py-12 max-w-sm mx-auto shadow-2xl text-center"
+        className="bg-slate-900/80 backdrop-blur-sm border border-white/10 rounded-2xl max-w-sm mx-auto shadow-2xl"
         style={{
           opacity: exiting ? 0 : 1,
           transform: exiting ? 'translateY(-20px)' : 'translateY(0)',
           transition: 'all 0.8s ease-out',
         }}
       >
-        {/* Compass */}
-        <div
-          className="flex flex-col items-center"
-          style={{
-            marginBottom: '32px',
-            opacity: phase >= 1 ? 1 : 0,
-            transform: phase >= 1 ? 'translateY(0)' : 'translateY(8px)',
-            transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
-          }}
-        >
-          <CompassIcon size={48} color="#22d3ee" />
-        </div>
+        <div className="flex flex-col items-center text-center px-6 pt-6 pb-8">
+          {/* Compass — centered, bigger */}
+          <div
+            className="mb-5"
+            style={{
+              opacity: phase >= 1 ? 1 : 0,
+              transform: phase >= 1 ? 'translateY(0)' : 'translateY(8px)',
+              transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
+            }}
+          >
+            <CompassIcon size={56} color="white" animated={false} settling={true} />
+          </div>
 
-        {/* Greeting */}
-        <div
-          style={{
-            fontSize: 'clamp(32px, 8vw, 48px)',
-            fontWeight: 200,
-            color: 'white',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.1,
-            opacity: phase >= 2 ? 1 : 0,
-            transform: phase >= 2 ? 'translateY(0)' : 'translateY(12px)',
-            transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
-          }}
-        >
-          {getGreeting()},
-        </div>
+          {/* Greeting */}
+          <p
+            className="text-white text-3xl font-light mb-1"
+            style={{
+              opacity: phase >= 2 ? 1 : 0,
+              transform: phase >= 2 ? 'translateY(0)' : 'translateY(12px)',
+              transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+            }}
+          >
+            {getGreeting()},
+          </p>
+          <p
+            className="text-white text-3xl font-bold mb-5"
+            style={{
+              opacity: phase >= 3 ? 1 : 0,
+              transform: phase >= 3 ? 'translateY(0)' : 'translateY(12px)',
+              transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+            }}
+          >
+            {userName}.
+          </p>
 
-        {/* Name (initial only) */}
-        <div
-          style={{
-            fontSize: 'clamp(32px, 8vw, 48px)',
-            fontWeight: 600,
-            color: 'white',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.1,
-            marginBottom: '24px',
-            opacity: phase >= 3 ? 1 : 0,
-            transform: phase >= 3 ? 'translateY(0)' : 'translateY(12px)',
-            transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
-          }}
-        >
-          {userName}.
-        </div>
-
-        {/* Portfolio line */}
-        <div
-          style={{
-            fontSize: '15px',
-            fontWeight: 300,
-            color: portfolioColor,
-            opacity: phase >= 4 ? 0.9 : 0,
-            transition: 'opacity 0.4s ease-out',
-          }}
-        >
-          {portfolioLine}
-        </div>
-
-        {/* Market status */}
-        <div
-          style={{
-            fontSize: '14px',
-            fontWeight: 300,
-            color: '#94a3b8',
-            marginTop: '8px',
-            opacity: phase >= 5 ? 1 : 0,
-            transition: 'opacity 0.4s ease-out',
-          }}
-        >
-          {marketStatus}
+          {/* Status lines */}
+          <p
+            className="text-amber-400 text-sm mb-1"
+            style={{
+              opacity: phase >= 4 ? 0.9 : 0,
+              transition: 'opacity 0.4s ease-out',
+            }}
+          >
+            {portfolioLine}
+          </p>
+          <p
+            className="text-slate-400 text-sm"
+            style={{
+              opacity: phase >= 5 ? 1 : 0,
+              transition: 'opacity 0.4s ease-out',
+            }}
+          >
+            {marketStatus}
+          </p>
         </div>
       </div>
     </div>

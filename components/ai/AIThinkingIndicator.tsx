@@ -28,13 +28,10 @@ export default function AIThinkingIndicator({ mode = 'general' }: { mode?: strin
   }, [mode, messages.length]);
 
   return (
-    <div className="flex items-center gap-3 mb-4 px-1">
-      <div className="flex-shrink-0">
-        <CompassIcon size={28} color="#22d3ee" animated={true} />
-      </div>
-      <p className="text-slate-400 text-sm transition-all duration-500">
-        {messages[msgIndex]}
-        <span className="text-slate-600"> —</span>
+    <div className="flex items-center gap-3 py-2">
+      <CompassIcon size={24} color="#22d3ee" animated={true} />
+      <p className="text-slate-400 text-sm">
+        {messages[msgIndex]} —
       </p>
     </div>
   );

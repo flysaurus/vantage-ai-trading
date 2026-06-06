@@ -143,6 +143,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
   const [thinkingMode, setThinkingMode] = useState<string>('general');
   const [showBasketModal, setShowBasketModal] = useState(false);
   const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -215,11 +216,16 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     };
   }, [sendMessage, responseMode]);
 
-  const handleSend = () => {
-    if (!input.trim() || isLoading) return;
+  const handleSend = async () => {
+    if (isSending || !input.trim() || isLoading) return;
+    setIsSending(true);
     setThinkingMode('general');
-    sendMessage(input.trim(), responseMode, 'general');
-    setInput('');
+    try {
+      await sendMessage(input.trim(), responseMode, 'general');
+      setInput('');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -632,15 +638,15 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         borderTop: '1px solid #334155',
       }}>
         {/* Quick Prompts */}
-        <div className="px-4 pt-2 pb-2 flex flex-wrap gap-2 justify-start">
+        <div className="px-4 pt-2 pb-3 flex flex-wrap gap-2">
           {[
             // Row 1
             { label: 'Health', icon: '📊', mode: 'health' },
             { label: 'Risk', icon: '🛡️', mode: 'risk' },
             { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
             // Row 2
-            { label: 'Build Basket', icon: '🧺', action: 'basket', minWidth: '140px' },
-            { label: 'Market Pulse', icon: '📡', mode: 'market_pulse', minWidth: '140px' },
+            { label: 'Build Basket', icon: '🧺', action: 'basket', minWidth: '145px' },
+            { label: 'Market Pulse', icon: '📡', mode: 'market_pulse', minWidth: '145px' },
             // Row 3
             { label: 'Tax Check', icon: '📋', mode: 'tax' },
             { label: 'Research', icon: '🔍', mode: 'research' },
@@ -653,7 +659,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                 : handleQuickPrompt(prompt.mode!)
               }
               style={prompt.minWidth ? { minWidth: prompt.minWidth } : undefined}
-              className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 active:bg-slate-700 text-slate-300 text-sm px-3 py-2 rounded-full whitespace-nowrap transition"
+              className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 text-slate-300 text-sm font-medium px-3 py-2 rounded-full whitespace-nowrap transition-all active:scale-95"
             >
               <span>{prompt.icon}</span>
               <span>{prompt.label}</span>
@@ -735,9 +741,14 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         <div className="text-center pb-3 px-4">
           <p className="text-slate-600 text-xs">
             Powered by AI · Conversation history saved
-            {remainingMessages !== null && (
-              <span> · {remainingMessages} messages remaining today</span>
-            )}
+            {(() => {
+              const display = remainingMessages !== null && remainingMessages !== undefined
+                ? remainingMessages === 0
+                  ? ' · Limit reached · Resets at midnight'
+                  : ` · ${remainingMessages} messages remaining today`
+                : '';
+              return <span>{display}</span>;
+            })()}
           </p>
           <p className="text-slate-600 text-xs mt-0.5">
             Not financial advice. Always do your own research.
