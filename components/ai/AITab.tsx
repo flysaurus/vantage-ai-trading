@@ -7,6 +7,8 @@ import { getDemoInsight } from '@/lib/demo-data';
 import { AIChat } from './AIChat';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import DemoBanner from '@/components/shared/DemoBanner';
+import DailyBriefCard from '@/components/ai/DailyBriefCard';
+import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 
 function generateInsight(account: import('@/types').AccountSummary | null): string | null {
   if (!account || account.positions.length === 0) return null;
@@ -98,25 +100,11 @@ export function AITab() {
           </p>
         </div>
 
-        {/* Daily Brief — placeholder */}
-        <div className="mx-4 mb-3 bg-slate-800/40 border border-slate-700/50 rounded-xl px-4 py-3">
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">
-            Daily Brief
-          </p>
-          <p className="text-slate-600 text-xs italic">
-            Coming soon — a one-minute market snapshot tailored to your portfolio.
-          </p>
-        </div>
+        {/* Daily Brief */}
+        <DailyBriefCard />
 
-        {/* Weekly Snapshot — placeholder */}
-        <div className="mx-4 mb-3 bg-slate-800/40 border border-slate-700/50 rounded-xl px-4 py-3">
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">
-            Weekly Snapshot
-          </p>
-          <p className="text-slate-600 text-xs italic">
-            Coming soon — weekly performance, sector shifts, and key events.
-          </p>
-        </div>
+        {/* Weekly Snapshot */}
+        <WeeklySnapshotCard />
       </AIChat>
     </div>
   );
