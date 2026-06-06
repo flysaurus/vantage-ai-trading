@@ -41,6 +41,8 @@ export async function POST(request: Request) {
       low: number;
       open: number;
       source: string;
+      high52w?: number;
+      low52w?: number;
     }> = {};
 
     for (const [symbol, data] of results) {
@@ -53,6 +55,8 @@ export async function POST(request: Request) {
         low: data.low,
         open: data.open,
         source: data.source,
+        high52w: data.high52w,
+        low52w: data.low52w,
       };
     }
 

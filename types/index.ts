@@ -44,6 +44,8 @@ export interface Position {
   profitLossPct?: number;
   portfolioPercent: number;
   sector?: string;
+  weekHigh52?: number;
+  weekLow52?: number;
 }
 
 export interface SectorAllocation {

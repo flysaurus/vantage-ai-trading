@@ -34,6 +34,8 @@ interface PositionDef {
   name: string;
   sector: string;
   industry?: string;
+  weekHigh52?: number;
+  weekLow52?: number;
 }
 
 export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
@@ -555,7 +557,7 @@ export const AVAILABLE_STYLES = Object.keys(DEMO_PORTFOLIOS);
 export function getDemoPortfolio(investorStyle: string): {
   name: string;
   description: string;
-  positions: Array<{ symbol: string; qty: number; avgCost: number; name: string; sector: string; industry?: string }>;
+  positions: Array<{ symbol: string; qty: number; avgCost: number; name: string; sector: string; industry?: string; weekHigh52?: number; weekLow52?: number }>;
 } {
   const portfolio = DEMO_PORTFOLIOS[investorStyle as InvestorStyle] || DEMO_PORTFOLIOS.lynch;
   return {
@@ -568,6 +570,8 @@ export function getDemoPortfolio(investorStyle: string): {
       name: p.name,
       sector: p.sector,
       industry: p.industry,
+      weekHigh52: p.weekHigh52,
+      weekLow52: p.weekLow52,
     })),
   };
 }
