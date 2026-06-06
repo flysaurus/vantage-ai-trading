@@ -6,7 +6,6 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
   const [ringDrawn, setRingDrawn] = useState(false);
   const [roseVisible, setRoseVisible] = useState(false);
   const [needleAnimating, setNeedleAnimating] = useState(false);
-  const [settling, setSettling] = useState(false);
   const [textVisible, setTextVisible] = useState(false);
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -18,10 +17,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
         setRoseVisible(true);
         setNeedleAnimating(true);
       }, 900),
-      setTimeout(() => {
-        setNeedleAnimating(false);
-        setSettling(true);
-      }, 1200),
+      // Needle animation runs internally for ~2.4s (1.2s sway out + 1.2s return)
       setTimeout(() => setTextVisible(true), 1800),
       setTimeout(() => setTaglineVisible(true), 2100),
       // Hold 3 full seconds after tagline
@@ -57,7 +53,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
 
         {/* Rose — fades in, then settles */}
         <div className={`transition-opacity duration-300 ${roseVisible ? 'opacity-100' : 'opacity-0'}`}>
-          <CompassIcon size={130} color="white" animated={needleAnimating} settling={settling} />
+          <CompassIcon size={130} color="white" animated={needleAnimating} />
         </div>
       </div>
 

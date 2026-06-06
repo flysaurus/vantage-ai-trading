@@ -21,41 +21,35 @@ export default function CompassIcon({
   useEffect(() => {
     if (!animated) return;
     if (!needleRef.current) return;
-    needleRef.current.style.transformBox = 'fill-box';
-    needleRef.current.style.transformOrigin = 'center';
-    let startTime: number;
-    let animFrame: number;
-    function sweep(timestamp: number) {
-      if (!startTime) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      const angle = (elapsed / 2000) * 360;
-      if (needleRef.current) {
-        needleRef.current.style.transform = `rotate(${angle}deg)`;
-      }
-      animFrame = requestAnimationFrame(sweep);
-    }
-    animFrame = requestAnimationFrame(sweep);
-    return () => cancelAnimationFrame(animFrame);
+    const el = needleRef.current;
+    el.style.transformBox = 'fill-box';
+    el.style.transformOrigin = 'center';
+
+    // Randomly pick a direction: -25° (left) or +25° (right)
+    const targetAngle = Math.random() < 0.5 ? -25 : 25;
+
+    // Smooth CSS transition — 1.2s ease-in-out each way
+    el.style.transition = 'transform 1.2s ease-in-out';
+
+    // Phase 1: sway out to target angle
+    const t1 = setTimeout(() => {
+      el.style.transform = `rotate(${targetAngle}deg)`;
+    }, 50);
+
+    // Phase 2: return to north
+    const t2 = setTimeout(() => {
+      el.style.transform = 'rotate(0deg)';
+    }, 1300);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      el.style.transition = '';
+      el.style.transform = '';
+    };
   }, [animated]);
 
-  useEffect(() => {
-    if (!settling) return;
-    if (!needleRef.current) return;
-    needleRef.current.style.transformBox = 'fill-box';
-    needleRef.current.style.transformOrigin = 'center';
-    needleRef.current.animate([
-      { transform: 'rotate(0deg)' },
-      { transform: 'rotate(14deg)' },
-      { transform: 'rotate(-9deg)' },
-      { transform: 'rotate(5deg)' },
-      { transform: 'rotate(-2deg)' },
-      { transform: 'rotate(0deg)' },
-    ], {
-      duration: 700,
-      easing: 'ease-out',
-      fill: 'forwards',
-    });
-  }, [settling]);
+  // settling kept for backwards compat — no-op, the animated effect is the primary animation
 
   const cx = size / 2;
   const cy = size / 2;
