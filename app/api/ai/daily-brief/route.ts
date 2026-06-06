@@ -11,7 +11,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
-import { getDemoPortfolio, isUserInDemo } from '@/lib/demo-data';
 import type { Database } from '@/types/supabase';
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
@@ -90,32 +89,18 @@ export async function GET(req: NextRequest) {
       }),
     );
 
-    // Check if user is in demo mode
-    const { data: userProfile } = await (supabase as any)
-      .from('users')
-      .select('broker_connected, investor_style')
-      .eq('id', userId)
-      .single();
+    // Get positions from DB (works for both demo and live)
+    const { data: positions } = await (supabase as any)
+      .from('positions')
+      .select('symbol, qty, market_value')
+      .eq('user_id', userId)
+      .gt('qty', 0);
 
-    const isDemo = isUserInDemo(userProfile);
-    const investorStyle = userProfile?.investor_style || 'lynch';
-
-    // Get positions (real or demo)
-    let positions: Array<{ symbol: string; qty: number; market_value?: number }> = [];
-    
-    if (isDemo) {
-      const demoData = getDemoPortfolio(investorStyle);
-      positions = demoData.positions.map(p => ({
-        symbol: p.symbol,
-        qty: p.qty,
-      }));
-    } else {
-      const { data: dbPositions } = await (supabase as any)
-        .from('positions')
-        .select('symbol, qty, market_value')
-        .eq('user_id', userId)
-        .gt('qty', 0);
-      positions = dbPositions || [];
+    if (!positions || positions.length === 0) {
+      return NextResponse.json({
+        content: 'Portfolio loading. Please try again in a moment.',
+        cached: false,
+      });
     }
 
     // Get upcoming earnings for user's holdings

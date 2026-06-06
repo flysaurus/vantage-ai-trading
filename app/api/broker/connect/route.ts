@@ -9,7 +9,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { createServerClient } from '@/lib/supabase';
 import { storeBrokerCredentials, type BrokerCredentials } from '@/lib/broker-service';
+import { activateLivePortfolio } from '@/lib/portfolio-operations';
 
 // ─── Broker API bases ─────────────────────────────────────────
 
@@ -218,6 +220,69 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { connected: false, brokerId, error: result.error || 'Connection failed' },
         { status: 400 }
       );
+    }
+
+    // ── Import live portfolio data ──
+    try {
+      const supabase = createServerClient();
+      let brokerPositions: any[] = [];
+      let brokerOrders: any[] = [];
+
+      if (brokerId === 'alpaca') {
+        const baseUrl = environment === 'live' ? ALPACA_LIVE : ALPACA_PAPER;
+        const headers = {
+          'APCA-API-KEY-ID': apiKey,
+          'APCA-API-SECRET-KEY': secretKey,
+        };
+
+        const [posRes, ordRes] = await Promise.all([
+          fetch(`${baseUrl}/v2/positions`, { headers }),
+          fetch(`${baseUrl}/v2/orders?status=closed&limit=100`, { headers }),
+        ]);
+
+        if (posRes.ok) {
+          const alpacaPositions = await posRes.json();
+          brokerPositions = (Array.isArray(alpacaPositions) ? alpacaPositions : []).map((p: any) => ({
+            symbol: p.symbol,
+            qty: parseInt(p.qty) || 0,
+            avg_cost: parseFloat(p.avg_entry_price) || 0,
+            current_price: parseFloat(p.current_price) || 0,
+            market_value: parseFloat(p.market_value) || 0,
+            unrealized_pnl: parseFloat(p.unrealized_pl) || 0,
+            unrealized_pnl_pct: parseFloat(p.unrealized_plpc) * 100 || 0,
+            sector: null,
+            industry: null,
+          }));
+        }
+
+        if (ordRes.ok) {
+          const alpacaOrders = await ordRes.json();
+          brokerOrders = (Array.isArray(alpacaOrders) ? alpacaOrders : []).map((o: any) => ({
+            symbol: o.symbol,
+            qty: parseInt(o.qty || o.filled_qty || 0),
+            filled_qty: parseInt(o.filled_qty || 0),
+            side: o.side,
+            order_type: o.type || 'market',
+            status: o.status || 'filled',
+            filled_price: parseFloat(o.filled_avg_price || o.limit_price || 0),
+            filled_at: o.filled_at || o.updated_at,
+            time_in_force: o.time_in_force || 'day',
+          }));
+        }
+      }
+
+      if (brokerPositions.length > 0 || brokerOrders.length > 0) {
+        await activateLivePortfolio(userId, brokerPositions, brokerOrders);
+      }
+
+      // Mark user as broker-connected
+      await (supabase as any)
+        .from('users')
+        .update({ broker_connected: true })
+        .eq('id', userId);
+    } catch (importErr: any) {
+      console.error('[Connect API] Portfolio import error:', importErr?.message || importErr);
+      // Non-fatal: credentials are stored, portfolio can be re-imported via refresh
     }
 
     return NextResponse.json({

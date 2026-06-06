@@ -6,7 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { createServerClient } from '@/lib/supabase';
 import { clearCredentials } from '@/lib/vault';
+import { seedDemoPortfolio } from '@/lib/portfolio-operations';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -15,7 +17,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Wipe everything — credentials, hash, broker_id, connection state
     await clearCredentials(userId);
 
-    return NextResponse.json({ success: true });
+    // Switch back to demo portfolio
+    const supabase = createServerClient();
+    const { data: user } = await (supabase as any)
+      .from('users')
+      .select('demo_style, investor_style')
+      .eq('id', userId)
+      .single();
+
+    const style = user?.demo_style || user?.investor_style || 'lynch';
+
+    // Update user to demo mode first
+    await (supabase as any)
+      .from('users')
+      .update({ broker_connected: false, portfolio_mode: 'demo' })
+      .eq('id', userId);
+
+    // Seed demo portfolio
+    await seedDemoPortfolio(userId, style);
+
+    return NextResponse.json({ success: true, disconnected: true });
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AuthError') {
       const authErr = err as Error & { status?: number };

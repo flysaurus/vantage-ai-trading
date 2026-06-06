@@ -9,7 +9,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
-import { getDemoPortfolio, isUserInDemo } from '@/lib/demo-data';
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 
@@ -80,38 +79,23 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Check if user is in demo mode
-    const { data: userProfile } = await (supabase as any)
-      .from('users')
-      .select('broker_connected, investor_style')
-      .eq('id', userId)
-      .single();
+    // Fetch positions from DB (works for both demo and live)
+    const { data: positions } = await (supabase as any)
+      .from('positions')
+      .select('symbol, qty, market_value, avg_cost')
+      .eq('user_id', userId)
+      .gt('qty', 0);
 
-    const isDemo = isUserInDemo(userProfile);
-    const investorStyle = userProfile?.investor_style || 'lynch';
-
-    // Fetch positions (real or demo)
-    let positions: Array<{ symbol: string; qty: number; market_value?: number; cost_basis?: number }> = [];
-
-    if (isDemo) {
-      const demoData = getDemoPortfolio(investorStyle);
-      positions = demoData.positions.map(p => ({
-        symbol: p.symbol,
-        qty: p.qty,
-        cost_basis: p.avgCost,
-      }));
-    } else {
-      const { data: dbPositions } = await (supabase as any)
-        .from('positions')
-        .select('symbol, qty, market_value, cost_basis')
-        .eq('user_id', userId)
-        .gt('qty', 0);
-      positions = dbPositions || [];
+    if (!positions || positions.length === 0) {
+      return NextResponse.json({
+        content: 'Portfolio loading. Please try again in a moment.',
+        cached: false,
+      });
     }
 
     // Fetch quotes for all position symbols
     const finnhubKey = process.env.FINNHUB_IO_API_KEY;
-    const symbols = positions?.map((p: any) => p.symbol) || [];
+    const symbols = positions.map((p: any) => p.symbol);
     const quotes: Record<string, any> = {};
 
     if (finnhubKey) {
@@ -138,13 +122,14 @@ export async function GET(req: NextRequest) {
       ...(positions?.length
         ? positions.map((p: any) => {
             const q = quotes[p.symbol];
+            const avgCost = p.avg_cost;
             const pnl =
-              q?.c && p.cost_basis
-                ? ((q.c - p.cost_basis) / p.cost_basis) * 100
+              q?.c && avgCost
+                ? ((q.c - avgCost) / avgCost) * 100
                 : null;
             const pnlStr =
               pnl != null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : 'N/A';
-            return `  ${p.symbol}: ${p.qty} shares @ $${p.cost_basis} | Current: $${q?.c || '?'} | P&L: ${pnlStr}`;
+            return `  ${p.symbol}: ${p.qty} shares @ $${avgCost || '?'} | Current: $${q?.c || '?'} | P&L: ${pnlStr}`;
           })
         : ['No positions']),
       '',

@@ -135,7 +135,7 @@ interface DemoOrderDef {
 const NOW = Date.now();
 const DAY = 86400000;
 
-const DEMO_ORDERS: Record<string, DemoOrderDef[]> = {
+export const DEMO_ORDERS: Record<string, DemoOrderDef[]> = {
   buffett: [
     { symbol: 'AAPL', qty: 50, side: 'buy', type: 'market', status: 'filled', filledPrice: 162.40, filledAt: new Date(NOW - 180 * DAY), timeInForce: 'day' },
     { symbol: 'AAPL', qty: 50, side: 'buy', type: 'market', status: 'filled', filledPrice: 168.00, filledAt: new Date(NOW - 90 * DAY), timeInForce: 'day' },
@@ -460,6 +460,14 @@ export function getDemoInsight(account: AccountSummary): string {
 // ─── Demo Orders ─────────────────────────────────────────────
 
 /**
+ * Get raw demo order definitions (not converted to Order interface).
+ * Used by portfolio-operations for DB seeding.
+ */
+export function getRawDemoOrders(style: string): DemoOrderDef[] {
+  return DEMO_ORDERS[style] || [];
+}
+
+/**
  * Generate demo order history for the given investor style.
  * Uses predefined orders from DEMO_ORDERS if available,
  * otherwise falls back to dynamic generation.
@@ -535,6 +543,10 @@ export function getDemoOrders(style: InvestorStyle): Order[] {
 }
 
 // ─── Demo Mode Helpers ───────────────────────────────────────
+
+// ─── Available Styles Export ───────────────────────────────
+
+export const AVAILABLE_STYLES = Object.keys(DEMO_PORTFOLIOS);
 
 /**
  * Convenience function to get a demo portfolio's raw positions
