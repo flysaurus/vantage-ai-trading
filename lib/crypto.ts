@@ -4,8 +4,11 @@ import crypto from 'crypto';
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '';
 
-if (!ENCRYPTION_KEY) {
-  throw new Error('ENCRYPTION_KEY not set in environment variables');
+function requireEncryptionKey(): string {
+  if (!ENCRYPTION_KEY) {
+    throw new Error('ENCRYPTION_KEY not set in environment variables');
+  }
+  return ENCRYPTION_KEY;
 }
 
 // ============================================================================
@@ -78,7 +81,7 @@ export function verifyToken(token: string, storedHash: string, storedSalt: strin
  * Falls back to ENCRYPTION_KEY if VAULT_ENCRYPTION_KEY is not set.
  */
 export function deriveUserKey(userId: string): Buffer {
-  const masterKey = process.env.VAULT_ENCRYPTION_KEY || ENCRYPTION_KEY;
+  const masterKey = process.env.VAULT_ENCRYPTION_KEY || requireEncryptionKey();
   const hash = crypto.createHash('sha256');
   hash.update(userId + masterKey);
   return hash.digest(); // 32-byte Buffer
@@ -97,7 +100,7 @@ export function deriveUserKey(userId: string): Buffer {
  */
 export function encryptData(plaintext: string, key?: Buffer): string {
   try {
-    const keyBuffer = key || Buffer.from(ENCRYPTION_KEY, 'hex');
+    const keyBuffer = key || Buffer.from(requireEncryptionKey(), 'hex');
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, keyBuffer, iv);
 
@@ -129,7 +132,7 @@ export function decryptData(encryptedData: string, key?: Buffer): string {
       throw new Error('Invalid encrypted data format');
     }
 
-    const keyBuffer = key || Buffer.from(ENCRYPTION_KEY, 'hex');
+    const keyBuffer = key || Buffer.from(requireEncryptionKey(), 'hex');
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
 
