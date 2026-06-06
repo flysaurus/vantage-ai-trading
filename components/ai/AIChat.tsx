@@ -1,11 +1,12 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, RefreshCw, AlertCircle, Trash2 } from 'lucide-react';
+import { Send, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
 import CompassIcon from '@/components/CompassIcon';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAIChat } from '@/hooks/useAIChat';
+import AIThinkingIndicator from './AIThinkingIndicator';
 
 /** Extract <rebalance-trades> JSON block from AI response text */
 function extractRebalanceTrades(content: string): Array<{ symbol: string; action: string; targetPercent: number }> | null {
@@ -63,11 +64,8 @@ function parseTradesFromMarkdown(content: string): Array<{
   let currentTable: 'sell' | 'buy' | null = null;
 
   for (const line of lines) {
-    // Detect table type from headings
     if (line.toLowerCase().includes('sell')) currentTable = 'sell';
     if (line.toLowerCase().includes('buy') && !line.toLowerCase().includes('sell')) currentTable = 'buy';
-
-    // Skip non-data rows
     if (!line.startsWith('|')) continue;
     if (line.includes('---')) continue;
     if (/\bSymbol\b/i.test(line)) continue;
@@ -79,10 +77,6 @@ function parseTradesFromMarkdown(content: string): Array<{
     if (cols.length >= 4 && currentTable) {
       const symbol = cols[0];
       if (!symbol || symbol.length > 6 || symbol.length < 1) continue;
-
-      // Column offsets differ between SELL/BUY tables
-      // SELL: Symbol | Current % | Target % | Reduce By | Est. Proceeds | Why
-      // BUY:  Symbol | Type | Current % | Target % | Add | Est. Cost | Why
       const isBuy = currentTable === 'buy';
       const currentPctCol = isBuy ? 2 : 1;
       const targetPctCol = isBuy ? 3 : 2;
@@ -106,45 +100,6 @@ function parseTradesFromMarkdown(content: string): Array<{
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ConvictionCard } from './ConvictionCard';
 
-const SUGGESTIONS = [
-  {
-    id: 'health',
-    label: '🌱 Portfolio Health',
-    mode: 'health' as const,
-    message: 'Run a complete health check on my portfolio. Score each area and give me priority actions.',
-  },
-  {
-    id: 'risk',
-    label: '🛡 Risk Check',
-    mode: 'risk' as const,
-    message: 'Check my portfolio for concentration risk, sector risk, and any other risks I should know about.',
-  },
-  {
-    id: 'opportunities',
-    label: '💡 Opportunities',
-    mode: 'opportunities' as const,
-    message: 'Based on my current portfolio and market conditions, what buying or rebalancing opportunities do you see?',
-  },
-  {
-    id: 'trends',
-    label: '📈 Market Trends',
-    mode: 'trends' as const,
-    message: 'What are the key market trends right now and how do they affect my portfolio specifically?',
-  },
-  {
-    id: 'research',
-    label: '🔍 Research',
-    mode: 'research' as const,
-    message: 'Research [SYMBOL] — fundamentals, technicals, recent news, and whether it fits my portfolio.',
-  },
-  {
-    id: 'tax',
-    label: '🧾 Tax Check',
-    mode: 'tax' as const,
-    message: 'Check my tax situation. What losses can I harvest and what are my estimated savings?',
-  },
-];
-
 /** Custom markdown renderers — dark theme, compact, trading-appropriate */
 const MARKDOWN_COMPONENTS = {
   h1: ({ children }: { children: React.ReactNode }) => (
@@ -163,7 +118,6 @@ const MARKDOWN_COMPONENTS = {
     <strong style={{ color: '#facc15', fontWeight: 700 }}>{children}</strong>
   ),
   code: ({ children, className }: { children: React.ReactNode; className?: string }) => {
-    // Inline code (tickers, prices)
     if (!className) {
       return <code style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', padding: '0 3px', borderRadius: 3, fontSize: 11, fontFamily: 'monospace' }}>{children}</code>;
     }
@@ -229,6 +183,14 @@ const MARKDOWN_COMPONENTS = {
   ),
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
+const PROMPTS = [
+  { label: 'Build Basket', icon: '🧺', action: 'basket' },
+  { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
+  { label: 'Tax Check', icon: '📋', mode: 'tax' },
+  { label: 'Research', icon: '🔍', mode: 'research' },
+  { label: 'Trends', icon: '📈', mode: 'trends' },
+];
+
 export function AIChat({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -246,18 +208,24 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
   } = useAIChat();
 
   const [input, setInput] = useState('');
-  const [responseMode, setResponseMode] = useState<'summary' | 'detailed'>('summary');
+  const [currentMode, setCurrentMode] = useState<string>('general');
   const [showCost, setShowCost] = useState(false);
-  const [researchSymbol, setResearchSymbol] = useState('');
-  const [showResearchInput, setShowResearchInput] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
+
+  // Reset sendingRef when loading finishes
+  useEffect(() => {
+    if (!isLoading) {
+      // small delay so the UI catches up
+      const t = setTimeout(() => { sendingRef.current = false; }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [isLoading]);
 
   // Scroll to latest message on mount (always open at the bottom)
   useEffect(() => {
     if (messages.length > 0) {
-      // Small delay for DOM render
       setTimeout(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'instant' });
       }, 100);
@@ -283,23 +251,15 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     }
   }, [lastCost]);
 
-  // Listen for QuickAction button clicks from the AI tab
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.prompt) {
-        sendMessage(detail.prompt, responseMode, detail.mode);
-      }
-    };
-    window.addEventListener('vantage-ai-suggestion', handler);
-    return () => window.removeEventListener('vantage-ai-suggestion', handler);
-  }, [sendMessage, responseMode]);
+  const handleSend = useCallback(() => {
+    if (sendingRef.current) return;
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
 
-  const handleSend = () => {
-    if (!input.trim() || isLoading) return;
-    sendMessage(input.trim(), responseMode, 'general');
+    sendingRef.current = true;
     setInput('');
-  };
+    sendMessage(trimmed, 'detailed', currentMode);
+  }, [input, isLoading, sendMessage, currentMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -308,40 +268,32 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     }
   };
 
-  const handleQuickPrompt = (suggestion: typeof SUGGESTIONS[number]) => {
-    if (suggestion.id === 'research') {
-      // Show inline symbol input for research prompt
-      setShowResearchInput(true);
-      setResearchSymbol('');
+  const handlePromptClick = useCallback((prompt: typeof PROMPTS[number]) => {
+    if (isLoading || sendingRef.current) return;
+    if (prompt.action === 'basket') {
+      window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
       return;
     }
-    sendMessage(suggestion.message, responseMode, suggestion.mode);
-  };
-
-  const handleResearchSend = () => {
-    const symbol = researchSymbol.trim().toUpperCase();
-    if (!symbol) return;
-    const researchSuggestion = SUGGESTIONS.find(s => s.id === 'research')!;
-    const message = researchSuggestion.message.replace('[SYMBOL]', symbol);
-    sendMessage(message, responseMode, 'research', symbol);
-    setShowResearchInput(false);
-    setResearchSymbol('');
-  };
+    setCurrentMode(prompt.mode || 'general');
+    // Send a tailored message based on the mode
+    const messages: Record<string, string> = {
+      market_pulse: 'Give me today\'s market pulse briefing.',
+      tax: 'Check my tax situation. What losses can I harvest?',
+      research: 'Research mode activated. Enter a ticker symbol to analyze.',
+      trends: 'What are the key market trends right now and how do they affect my portfolio?',
+    };
+    const msg = messages[prompt.mode || ''] || `Run a ${prompt.label.toLowerCase()} analysis on my portfolio.`;
+    sendMessage(msg, 'detailed', prompt.mode || 'general');
+  }, [isLoading, sendMessage]);
 
   const handlePushToRebalance = async (content: string) => {
     try {
       const trades = parseTradesFromMarkdown(content);
-
       const res = await fetch('/api/strategies/rebalancing/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trades,
-          source: 'ai_chat',
-          expiresIn: 3600,
-        }),
+        body: JSON.stringify({ trades, source: 'ai_chat', expiresIn: 3600 }),
       });
-
       const { sessionId } = await res.json();
       router.push(`/strategies/setup/rebalancing?session=${sessionId}&fresh=true`);
     } catch (err) {
@@ -353,21 +305,14 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     try {
       const targetAllocations = targets.map(t => ({
         symbol: t.symbol,
-        targetPercent: t.targetPercent / 100, // API expects decimal
+        targetPercent: t.targetPercent / 100,
       }));
-
       const res = await fetch('/api/strategies/rebalancing/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetAllocations,
-          driftThreshold: 5,
-          alertEnabled: false,
-        }),
+        body: JSON.stringify({ targetAllocations, driftThreshold: 5, alertEnabled: false }),
       });
-
       if (res.ok) {
-        // Reload to pick up the now-saved targets
         window.location.reload();
       } else {
         console.error('Save targets failed:', await res.json());
@@ -384,7 +329,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       height: '100%',
       maxHeight: 'calc(100vh - 180px)',
     }}>
-      {/* ── Children (banners, account summary, etc.) ── */}
+      {/* ── Top content: banner, account card, insights — passed from AITab ── */}
       {children}
 
       {/* ── Scrollable Messages ── */}
@@ -393,7 +338,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '12px 16px 0',
+          padding: '8px 16px 0',
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
@@ -408,32 +353,12 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
             <div className="empty-subtitle">
               AI-powered portfolio analysis and market intelligence.
             </div>
-            <div className="empty-disclaimer">
-              ⚠️ Advisory only. Vantage AI does not execute trades.
-            </div>
           </div>
         )}
 
         {messages.map((msg, idx) => {
-          // Session divider special rendering
-          if (msg.role === 'system') {
-            return (
-              <div key={msg.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '8px 0', margin: '4px 0',
-              }}>
-                <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
-                <span style={{
-                  fontSize: 10, fontWeight: 600,
-                  color: '#475569', textTransform: 'uppercase',
-                  letterSpacing: 1, whiteSpace: 'nowrap',
-                }}>
-                  {msg.content}
-                </span>
-                <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
-              </div>
-            );
-          }
+          // Skip system messages (session dividers)
+          if (msg.role === 'system') return null;
 
           return (
           <div
@@ -491,7 +416,6 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                   )}
                 </div>
               ) : (
-                /* User messages stay plain */
                 <div style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
                   {msg.content}
                 </div>
@@ -528,13 +452,13 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                       onMouseEnter={e => (e.currentTarget.style.background = '#0891b2')}
                       onMouseLeave={e => (e.currentTarget.style.background = '#06b6d4')}
                     >
-                      📊 Open in Rebalancing →
+                      Open in Rebalancing →
                     </button>
                   </div>
                 );
               })()}
 
-              {/* Render embedded cards (suppress when rebalance session card is shown) */}
+              {/* Render embedded cards */}
               {msg.components && msg.components.length > 0 && !msg.rebalanceSession && (
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {msg.components.map((card, ci) => (
@@ -543,7 +467,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                 </div>
               )}
 
-              {/* Rebalance session card — structured plan from AI */}
+              {/* Rebalance session card */}
               {msg.role === 'assistant' && !isLoading && msg.rebalanceSession && (() => {
                 const session = msg.rebalanceSession;
                 const tradeCount = session.trades?.length || 0;
@@ -561,7 +485,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                     borderRadius: 10,
                   }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
-                      📊 Rebalance Plan Ready
+                      Rebalance Plan Ready
                       {isStyleDefault && <span style={{ fontSize: 10, color: '#f59e0b', marginLeft: 6 }}>({styleName} defaults)</span>}
                     </div>
                     <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
@@ -609,7 +533,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                           fontFamily: 'inherit',
                         }}
                       >
-                        💾 Save These as My Targets
+                        Save These as My Targets
                       </button>
                     )}
                   </div>
@@ -621,7 +545,6 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                 const rawText = msg.content || '';
                 const text = rawText.toLowerCase();
                 const hasRebalance = /\brebalance\b|\brebalancing\b|\bdrift\b|\ballocation target\b/i.test(text);
-                // Check for structured trades from <rebalance-trades> JSON block
                 const parsedTrades = extractRebalanceTrades(rawText);
                 if (!hasRebalance && !parsedTrades) return null;
 
@@ -639,7 +562,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                     {tradeCount > 0 && (
                       <>
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
-                          📊 Rebalance Detected
+                          Rebalance Detected
                         </div>
                         <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
                           {tradeCount} targets parsed
@@ -673,7 +596,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                         textAlign: 'center',
                       }}
                     >
-                      {tradeCount > 0 ? 'Send to Rebalancing →' : '📊 Open Rebalancing →'}
+                      {tradeCount > 0 ? 'Send to Rebalancing →' : 'Open Rebalancing →'}
                     </button>
                   </div>
                 );
@@ -715,151 +638,58 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           </div>
         )}
 
-        {/* Rate limit warning */}
-        {remainingCalls > 0 && (
-          <div style={{
-            padding: '8px 12px', background: 'rgba(251,191,36,0.1)',
-            border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8,
-            fontSize: 10, color: '#fbbf24', textAlign: 'center',
-          }}>
-            ⚡ {remainingCalls}/25 AI calls available this hour
-          </div>
-        )}
-
-        {remainingCalls === 0 && (
-          <div style={{
-            padding: '8px 12px', background: 'rgba(248,113,113,0.1)',
-            border: '1px solid rgba(248,113,113,0.25)', borderRadius: 8,
-            fontSize: 10, color: '#f87171', textAlign: 'center',
-          }}>
-            🛑 AI cooldown — wait for the hourly reset
-          </div>
-        )}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Sticky Input Area ── */}
+      {/* ── Thinking indicator ── */}
+      {isLoading && <AIThinkingIndicator mode={currentMode} />}
+
+      {/* ── Bottom bar: prompts, input, footer ── */}
       <div style={{
         flexShrink: 0,
-        padding: '10px 16px 8px',
         background: '#1e293b',
         borderTop: '1px solid #334155',
       }}>
-        {/* NO EXECUTION disclaimer banner */}
-        <div style={{
-          padding: '6px 10px',
-          marginBottom: 8,
-          background: 'rgba(248,113,113,0.08)',
-          border: '1px solid rgba(248,113,113,0.2)',
-          borderRadius: 6,
-          fontSize: 10,
-          color: '#fca5a5',
-          textAlign: 'center',
-          fontWeight: 500,
-        }}>
-          ⚠️ NO EXECUTION — Vantage AI advises only. All trades must be placed manually in the Trade tab or Strategies.
+        {/* Prompt pills — 3 wrapped rows */}
+        <div className="px-4 pt-2 pb-3 flex flex-wrap gap-2 justify-center">
+          {PROMPTS.map((p) => {
+            const isWider = p.label === 'Build Basket' || p.label === 'Market Pulse';
+            return (
+              <button
+                key={p.label}
+                onClick={() => handlePromptClick(p)}
+                disabled={isLoading || remainingCalls === 0}
+                className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/50 text-slate-300 text-xs font-medium px-3 py-2 rounded-full whitespace-nowrap transition disabled:opacity-40"
+                style={isWider ? { minWidth: '145px' } : undefined}
+              >
+                <span>{p.icon}</span>
+                <span>{p.label}</span>
+              </button>
+            );
+          })}
         </div>
-        {/* Suggestions */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}
-          className="no-scrollbar">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => handleQuickPrompt(s)}
-              disabled={isLoading || remainingCalls === 0}
-              style={{
-                padding: '5px 9px', background: '#334155', border: 'none',
-                borderRadius: 4, color: '#cbd5e1', cursor: (isLoading || remainingCalls === 0) ? 'default' : 'pointer',
-                fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0,
-                opacity: (isLoading || remainingCalls === 0) ? 0.5 : 1,
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Research symbol input — appears inline when Research is tapped */}
-        {showResearchInput && (
-          <div style={{
-            display: 'flex', gap: 6, marginBottom: 8,
-            padding: '8px 10px', background: '#0f172a',
-            border: '1px solid #06b6d4', borderRadius: 8,
-            alignItems: 'center',
-          }}>
-            <span style={{ fontSize: 10, color: '#06b6d4', whiteSpace: 'nowrap' }}>🔍 Symbol:</span>
-            <input
-              type="text"
-              value={researchSymbol}
-              onChange={(e) => setResearchSymbol(e.target.value.toUpperCase())}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleResearchSend();
-                if (e.key === 'Escape') { setShowResearchInput(false); setResearchSymbol(''); }
-              }}
-              placeholder="AAPL, NVDA..."
-              autoFocus
-              style={{
-                flex: 1, padding: '6px 8px',
-                background: '#1e293b', border: '1px solid #334155',
-                borderRadius: 6, color: '#f1f5f9', fontSize: 12,
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={handleResearchSend}
-              disabled={!researchSymbol.trim()}
-              style={{
-                padding: '6px 10px', background: researchSymbol.trim() ? '#06b6d4' : '#334155',
-                border: 'none', borderRadius: 6, color: 'white',
-                cursor: researchSymbol.trim() ? 'pointer' : 'default',
-                fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-              }}
-            >
-              Go
-            </button>
-            <button
-              onClick={() => { setShowResearchInput(false); setResearchSymbol(''); }}
-              style={{
-                padding: '6px 8px', background: 'transparent',
-                border: 'none', color: '#94a3b8',
-                cursor: 'pointer', fontSize: 14,
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
 
         {/* Input row */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="px-4 pb-3 flex items-center gap-2">
           <input
-            ref={inputRef}
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything about stocks, markets, or your portfolio..."
+            placeholder="Ask about your portfolio..."
             disabled={isLoading || remainingCalls === 0}
             className="flex-1 bg-slate-800 border border-slate-700 rounded-xl pl-5 pr-4 py-3 text-white text-base placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition"
             style={{ opacity: isLoading ? 0.6 : 1 }}
           />
+          {/* Send button */}
           <button
-            onClick={handleSend}
-            disabled={isLoading || !input.trim() || remainingCalls === 0}
-            style={{
-              width: 34, height: 34,
-              background: input.trim() && !isLoading ? '#06b6d4' : '#334155',
-              border: 'none', borderRadius: 8,
-              color: 'white', cursor: input.trim() && !isLoading ? 'pointer' : 'default',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.2s',
-            }}
+            onClick={() => handleSend()}
+            disabled={!input.trim() || isLoading || remainingCalls === 0}
+            className="w-11 h-11 rounded-xl bg-cyan-500 disabled:bg-slate-700 flex items-center justify-center text-white transition flex-shrink-0"
           >
-            <Send size={16} />
+            <Send size={18} />
           </button>
-
-          {/* 🗑️ Always visible */}
+          {/* Clear button */}
           <button
             onClick={() => {
               if (confirm('Clear all chat messages?')) {
@@ -868,29 +698,16 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
             }}
             disabled={isLoading}
             title="Clear chat history"
-            style={{
-              width: 34, height: 34,
-              background: 'transparent',
-              border: '1px solid #475569',
-              borderRadius: 8,
-              color: '#94a3b8',
-              cursor: isLoading ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: isLoading ? 0.5 : 1,
-              flexShrink: 0,
-            }}
+            className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 hover:text-red-400 transition flex-shrink-0"
           >
-            <Trash2 size={14} />
+            🗑
           </button>
         </div>
 
-        {/* API status */}
-        <div style={{
-          textAlign: 'center', fontSize: 9, color: '#475569',
-          marginTop: 6,
-        }}>
-          Powered by AI · Responses may contain errors. History of last 5 responses kept.
-        </div>
+        {/* Footer */}
+        <p className="text-center text-slate-600 text-xs pb-2 px-4">
+          Powered by AI · Conversation history saved · {remainingCalls} messages remaining today · Not financial advice.
+        </p>
       </div>
 
       <style jsx>{`
@@ -917,12 +734,6 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           max-width: 260px;
           margin: 0 auto;
           line-height: 1.5;
-        }
-        .empty-disclaimer {
-          font-size: 9px;
-          color: #fca5a5;
-          margin-top: 8px;
-          font-weight: 500;
         }
         .chat-messages::-webkit-scrollbar {
           width: 4px;

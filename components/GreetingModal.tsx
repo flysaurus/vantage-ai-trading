@@ -2,50 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import CompassIcon from '@/components/CompassIcon';
+import { getMarketStatus } from '@/lib/market-hours';
 
 interface GreetingModalProps {
   onComplete: () => void;
 }
 
-function getMarketStatus(): { status: string; message: string } {
-  const now = new Date();
-  const et = new Date(
-    now.toLocaleString('en-US', { timeZone: 'America/New_York' }),
-  );
-  const day = et.getDay();
-  const hours = et.getHours();
-  const minutes = et.getMinutes();
-  const timeInMinutes = hours * 60 + minutes;
-
-  if (day === 0 || day === 6) {
-    return { status: 'closed', message: 'Markets closed for the weekend.' };
+function getMarketMessage(): string {
+  const { label } = getMarketStatus();
+  switch (label) {
+    case 'OPEN': return 'Markets are open.';
+    case 'PRE-MARKET': return 'Pre-market trading active.';
+    case 'AFTER HOURS': return 'Markets closed. After-hours trading active.';
+    case 'CLOSED': return 'Markets are closed.';
+    default: return 'Markets are closed.';
   }
-
-  if (timeInMinutes >= 240 && timeInMinutes < 570) {
-    const minsToOpen = 570 - timeInMinutes;
-    const h = Math.floor(minsToOpen / 60);
-    const m = minsToOpen % 60;
-    return {
-      status: 'premarket',
-      message:
-        h > 0
-          ? `Markets open in ${h}h ${m}m.`
-          : `Markets open in ${m} minutes.`,
-    };
-  }
-
-  if (timeInMinutes >= 570 && timeInMinutes < 960) {
-    return { status: 'open', message: 'Markets are open.' };
-  }
-
-  if (timeInMinutes >= 960 && timeInMinutes < 1200) {
-    return {
-      status: 'afterhours',
-      message: 'Markets closed. After-hours trading active.',
-    };
-  }
-
-  return { status: 'closed', message: 'Markets are closed.' };
 }
 
 function getGreeting(): string {
@@ -101,8 +72,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
 
     fetchData();
 
-    const { message } = getMarketStatus();
-    setMarketStatus(message);
+    setMarketStatus(getMarketMessage());
   }, []);
 
   useEffect(() => {

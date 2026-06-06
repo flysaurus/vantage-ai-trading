@@ -1,14 +1,10 @@
 'use client';
 import { useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
-
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getDemoInsight } from '@/lib/demo-data';
-
-
 import { AIChat } from './AIChat';
-import SuggestionTracker from '@/components/SuggestionTracker';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import DemoBanner from '@/components/shared/DemoBanner';
 
@@ -64,7 +60,6 @@ function generateInsight(account: import('@/types').AccountSummary | null): stri
 
 export function AITab() {
   const { account } = usePortfolio();
-
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -84,48 +79,45 @@ export function AITab() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <AIChat>
         {/* Demo Banner */}
-        {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
+        {!isConnected && <DemoBanner />}
 
         {/* Account Summary */}
         {account && (
-          <div style={{ marginBottom: 12, paddingTop: 12 }}>
+          <div className="px-4 pt-3 pb-2">
             <AccountSummaryCard account={account} />
           </div>
         )}
 
-        {/* Key Insight */}
-        <div className="key-insight">
-          <div className="insight-title">🎯 Today&apos;s Key Insight</div>
-          <div className="insight-text">
+        {/* Today's Key Insight */}
+        <div className="mx-4 mb-3 bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3">
+          <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+            Today&apos;s Key Insight
+          </p>
+          <p className="text-slate-300 text-xs leading-relaxed">
             {insight || 'Connect your portfolio to see insights.'}
-          </div>
+          </p>
         </div>
 
-        {/* Suggestion Tracker */}
-        <SuggestionTracker />
-      </AIChat>
+        {/* Daily Brief — placeholder */}
+        <div className="mx-4 mb-3 bg-slate-800/40 border border-slate-700/50 rounded-xl px-4 py-3">
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">
+            Daily Brief
+          </p>
+          <p className="text-slate-600 text-xs italic">
+            Coming soon — a one-minute market snapshot tailored to your portfolio.
+          </p>
+        </div>
 
-      <style jsx>{`
-        .key-insight {
-          background: rgba(15,23,42,0.8);
-          border: 1px solid #334155;
-          border-radius: 10px;
-          padding: 10px;
-          margin-bottom: 12px;
-        }
-        .insight-title {
-          font-size: 10px;
-          color: #06b6d4;
-          font-weight: 700;
-          margin-bottom: 4px;
-          text-transform: uppercase;
-        }
-        .insight-text {
-          font-size: 12px;
-          color: #cbd5e1;
-          line-height: 1.4;
-        }
-      `}</style>
+        {/* Weekly Snapshot — placeholder */}
+        <div className="mx-4 mb-3 bg-slate-800/40 border border-slate-700/50 rounded-xl px-4 py-3">
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">
+            Weekly Snapshot
+          </p>
+          <p className="text-slate-600 text-xs italic">
+            Coming soon — weekly performance, sector shifts, and key events.
+          </p>
+        </div>
+      </AIChat>
     </div>
   );
 }

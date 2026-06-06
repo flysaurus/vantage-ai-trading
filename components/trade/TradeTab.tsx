@@ -138,7 +138,7 @@ export function TradeTab() {
       {/* ─── End Ready to Execute ────────────────────────── */}
 
       {/* Demo Mode Banner */}
-      {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
+      {!isConnected && <DemoBanner />}
 
       {/* 📊 Strategies */}
       <div style={{ marginBottom: 12 }}>

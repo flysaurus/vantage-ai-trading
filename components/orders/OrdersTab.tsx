@@ -110,7 +110,7 @@ export function OrdersTab() {
   return (
     <div style={{ padding: '12px 16px 80px' }}>
       {/* Demo Mode Banner */}
-      {!isConnected && <DemoBanner investorStyle={user?.investorStyle} />}
+      {!isConnected && <DemoBanner />}
       {/* Account Summary */}
       {account && (
         <div style={{ marginBottom: 12 }}>

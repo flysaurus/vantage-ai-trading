@@ -317,7 +317,7 @@ export function PortfolioTab() {
     return (
       <div style={{ padding: '12px 16px 80px' }}>
         {/* Demo Mode Banner */}
-        <DemoBanner investorStyle={investorStyle} />
+        <DemoBanner />
 
         {/* Account Summary */}
         <div className="card" style={{ marginBottom: 12 }}>
