@@ -319,16 +319,6 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         {/* Top content slot (DemoBanner, AccountSummaryCard, Insight, etc.) */}
         {children}
 
-        {messages.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-icon"><CompassIcon size={36} color="#22d3ee" /></div>
-            <div className="empty-title">Welcome back, {userInitial}.</div>
-            <div className="empty-subtitle">
-              AI-powered portfolio analysis and market intelligence.
-            </div>
-          </div>
-        )}
-
         {messages.map((msg, idx) => {
           // Skip system (session divider) messages — not rendered
           if (msg.role === 'system') return null;
@@ -376,7 +366,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                     remarkPlugins={[remarkGfm]}
                     components={MARKDOWN_COMPONENTS as any}
                   >
-                    {sanitizeContent(msg.content || '...')}
+                    {sanitizeContent(msg.content || '')}
                   </ReactMarkdown>
 
                   {/* Thinking indicator during loading */}
@@ -591,7 +581,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                   fontSize: 9, color: '#64748b', marginTop: 4,
                   textAlign: 'right', fontStyle: 'italic',
                 }}>
-                  ~${lastCost.toFixed(4)} · {remainingCalls}/75 messages left
+                  ~${lastCost.toFixed(4)} · {remainingCalls} messages remaining today
                 </div>
               )}
             </div>
@@ -642,15 +632,15 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         borderTop: '1px solid #334155',
       }}>
         {/* Quick Prompts */}
-        <div className="px-4 pt-2 pb-2 flex flex-wrap gap-2 justify-center">
+        <div className="px-4 pt-2 pb-2 flex flex-wrap gap-2 justify-start">
           {[
             // Row 1
             { label: 'Health', icon: '📊', mode: 'health' },
             { label: 'Risk', icon: '🛡️', mode: 'risk' },
             { label: 'Opportunities', icon: '💡', mode: 'opportunities' },
             // Row 2
-            { label: 'Build Basket', icon: '🧺', action: 'basket' },
-            { label: 'Market Pulse', icon: '📡', mode: 'market_pulse' },
+            { label: 'Build Basket', icon: '🧺', action: 'basket', minWidth: '140px' },
+            { label: 'Market Pulse', icon: '📡', mode: 'market_pulse', minWidth: '140px' },
             // Row 3
             { label: 'Tax Check', icon: '📋', mode: 'tax' },
             { label: 'Research', icon: '🔍', mode: 'research' },
@@ -662,6 +652,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                 ? setShowBasketModal(true)
                 : handleQuickPrompt(prompt.mode!)
               }
+              style={prompt.minWidth ? { minWidth: prompt.minWidth } : undefined}
               className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 active:bg-slate-700 text-slate-300 text-sm px-3 py-2 rounded-full whitespace-nowrap transition"
             >
               <span>{prompt.icon}</span>
@@ -745,7 +736,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
           <p className="text-slate-600 text-xs">
             Powered by AI · Conversation history saved
             {remainingMessages !== null && (
-              <span> · {remainingMessages}/75 today</span>
+              <span> · {remainingMessages} messages remaining today</span>
             )}
           </p>
           <p className="text-slate-600 text-xs mt-0.5">

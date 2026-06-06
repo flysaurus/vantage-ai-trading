@@ -32,21 +32,21 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
     <div className={`fixed inset-0 z-50 bg-black flex flex-col items-center justify-center transition-opacity duration-400 ${exiting ? 'opacity-0' : 'opacity-100'}`}>
       <div className="relative mb-8">
         <svg
-          width={90}
-          height={90}
-          viewBox="0 0 90 90"
+          width={110}
+          height={110}
+          viewBox="0 0 110 110"
           className="absolute inset-0"
         >
           <circle
-            cx={45}
-            cy={45}
-            r={43}
+            cx={55}
+            cy={55}
+            r={53}
             stroke="white"
             strokeWidth={3.5}
             fill="none"
             opacity={0.9}
-            strokeDasharray={270}
-            strokeDashoffset={ringDrawn ? 0 : 270}
+            strokeDasharray={333}
+            strokeDashoffset={ringDrawn ? 0 : 333}
             strokeLinecap="round"
             style={{
               transition: ringDrawn ? 'stroke-dashoffset 0.65s ease-out' : 'none',
@@ -57,7 +57,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         </svg>
 
         <div className={`transition-opacity duration-300 ${roseVisible ? 'opacity-100' : 'opacity-0'}`}>
-          <CompassIcon size={90} color="white" animated={false} settling={settling} />
+          <CompassIcon size={110} color="white" animated={false} settling={settling} />
         </div>
       </div>
 

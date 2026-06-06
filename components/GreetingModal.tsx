@@ -138,15 +138,15 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
       >
         {/* Compass */}
         <div
+          className="flex flex-col items-center"
           style={{
-            fontSize: '48px',
             marginBottom: '32px',
             opacity: phase >= 1 ? 1 : 0,
             transform: phase >= 1 ? 'translateY(0)' : 'translateY(8px)',
             transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
           }}
         >
-          <CompassIcon size={48} color="white" />
+          <CompassIcon size={48} color="#22d3ee" />
         </div>
 
         {/* Greeting */}
@@ -182,20 +182,6 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
           {userName}.
         </div>
 
-        {/* Tagline */}
-        <div
-          style={{
-            fontSize: '13px',
-            fontWeight: 400,
-            color: '#94a3b8',
-            opacity: phase >= 4 ? 0.9 : 0,
-            transition: 'opacity 0.4s ease-out',
-            marginBottom: '8px',
-          }}
-        >
-          AI portfolio analysis. Built for everyone.
-        </div>
-
         {/* Portfolio line */}
         <div
           style={{
@@ -214,7 +200,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
           style={{
             fontSize: '14px',
             fontWeight: 300,
-            color: 'rgba(255,255,255,0.45)',
+            color: '#94a3b8',
             marginTop: '8px',
             opacity: phase >= 5 ? 1 : 0,
             transition: 'opacity 0.4s ease-out',
