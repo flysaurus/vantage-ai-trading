@@ -138,6 +138,7 @@ function PositionCard({
               className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
                 isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
               }`}
+              style={{ marginLeft: '12px' }}
             >
               {isSelected && (
                 <span className="text-white text-xs leading-none">&#10003;</span>
@@ -1007,6 +1008,7 @@ export function PortfolioTab() {
                       ? 'bg-cyan-500/40 border-cyan-500'
                       : 'border-slate-600 bg-transparent'
                 }`}
+                style={{ marginLeft: '12px' }}
               >
                 {(allSelected || someSelected) && (
                   <span className="text-white text-xs leading-none">
