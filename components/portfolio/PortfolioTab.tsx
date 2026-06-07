@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { LineChart, Line, Area, ResponsiveContainer } from 'recharts';
+import { useState, useEffect } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -23,56 +22,9 @@ const pctStr = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
 const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
-// ─── Market Status ────────────────────────────────────────
-
-function useMarketStatus() {
-  const now = new Date();
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const day = et.getDay();
-  const mins = et.getHours() * 60 + et.getMinutes();
-  const open = day >= 1 && day <= 5 && mins >= 570 && mins < 960; // 9:30–16:00 ET
-  return { open, label: open ? 'OPEN' : 'CLOSED' };
-}
-
-// ─── Header ───────────────────────────────────────────────
-
-function HeaderBar() {
-  const { open, label } = useMarketStatus();
-
-  return (
-    <div className="px-4 py-3 flex justify-between items-center">
-      <div className="flex items-center">
-        <h1 className="text-xl font-bold text-white">Vantage</h1>
-        <span className="inline-flex items-center gap-1.5 ml-2">
-          <span className={`w-1.5 h-1.5 rounded-full ${open ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-          <span className="text-xs text-slate-400">{label}</span>
-        </span>
-      </div>
-      <div className="flex items-center gap-4 text-slate-400 text-[20px]">
-        <span>🔍</span>
-        <span>🔔</span>
-        <span>⚙️</span>
-      </div>
-    </div>
-  );
-}
-
 // ─── Account Card ─────────────────────────────────────────
 
 function AccountCard({ account }: { account: AccountSummary }) {
-  const isUp = account.totalPnl >= 0;
-  const lineColor = isUp ? '#34d399' : '#f87171';
-
-  const sparkData = [
-    { v: 96000 },
-    { v: 97000 },
-    { v: 95000 },
-    { v: 98000 },
-    { v: 96800 },
-  ];
-
-  const gradientId = 'acctSpark';
-
   return (
     <div className="mx-4 mt-4 bg-slate-900 rounded-2xl border border-slate-800 p-5">
       {/* Account Value */}
@@ -89,33 +41,8 @@ function AccountCard({ account }: { account: AccountSummary }) {
       {/* Divider */}
       <div className="border-t border-slate-800 my-4" />
 
-      {/* Sparkline */}
-      <div className="h-20">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sparkData}>
-            <defs>
-              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={lineColor} stopOpacity={0.15} />
-                <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <Line
-              type="monotone"
-              dataKey="v"
-              stroke={lineColor}
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Area
-              type="monotone"
-              dataKey="v"
-              fill={`url(#${gradientId})`}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      {/* Sparkline placeholder */}
+      <div className="h-20 w-full bg-slate-800 rounded-xl mt-3 mb-3" />
 
       {/* Divider */}
       <div className="border-t border-slate-800 my-4" />
@@ -621,17 +548,10 @@ export function PortfolioTab() {
 
   return (
     <div className="pb-24">
-      {/* 1. Header */}
-      <HeaderBar />
+      {/* 1. Demo banner */}
+      {!isConnected && <DemoBanner />}
 
-      {/* 2. Demo banner */}
-      {!isConnected && (
-        <div className="px-4 mb-3">
-          <DemoBanner />
-        </div>
-      )}
-
-      {/* 3. Account Card */}
+      {/* 2. Account Card */}
       <AccountCard account={displayAccount} />
 
       {/* 4. Core Holdings */}
