@@ -26,7 +26,7 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="mx-4 mt-4 bg-slate-900 rounded-2xl border border-slate-800 p-5">
+    <div className="mx-4 mt-4 mb-3 bg-slate-900 rounded-2xl border border-slate-800 p-5">
       {/* Account Value */}
       <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
         Account Value
@@ -101,7 +101,7 @@ function PositionCard({
   return (
     <div
       onClick={onToggle}
-      className={`mx-4 mb-2 rounded-2xl bg-slate-900 border border-slate-800 px-4 py-4 min-h-[72px] flex justify-between items-center border-l-[3px] ${borderL} transition-colors duration-200 cursor-pointer active:opacity-80 ${isSelected ? 'border-cyan-500' : ''}`}
+      className={`mx-4 mb-3 rounded-2xl bg-slate-900 border border-slate-800 px-4 py-4 min-h-[72px] flex justify-between items-center border-l-[3px] ${borderL} transition-colors duration-200 cursor-pointer active:opacity-80 ${isSelected ? 'border-cyan-500' : ''}`}
     >
       <div className="flex items-center gap-3 min-w-0">
         {isSelectMode && (
@@ -547,7 +547,7 @@ export function PortfolioTab() {
   const selectedPositions = positions.filter(p => selectedArr.includes(p.symbol));
 
   return (
-    <div className="pb-24">
+    <div className="pb-40">
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
@@ -582,6 +582,7 @@ export function PortfolioTab() {
           onToggle={() => toggleSelect(pos.symbol)}
         />
       ))}
+      <div className="h-32" />
 
       {/* 6. Sell Entire Portfolio */}
       {positions.length > 0 && (
