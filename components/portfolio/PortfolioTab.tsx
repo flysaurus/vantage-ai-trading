@@ -42,7 +42,21 @@ function AccountCard({ account }: { account: AccountSummary }) {
       <div className="border-t border-slate-800 my-4" />
 
       {/* Sparkline placeholder */}
-      <div style={{height:'80px', background:'#1e2d45', borderRadius:'12px', margin:'12px 0'}} />
+      <div
+       style={{
+        height: '80px',
+        background: '#1e2d45',
+        borderRadius: '12px',
+        margin: '12px 0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+       }}
+      >
+        <span style={{ color: '#334155', fontSize: '12px' }}>
+          Chart coming soon
+        </span>
+      </div>
 
       {/* Divider */}
       <div className="border-t border-slate-800 my-4" />
