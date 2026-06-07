@@ -286,219 +286,221 @@ Symbols: SPY · QQQ · IWM · DIA · XLF
 
 ## 7. PORTFOLIO TAB
 
-Design inspiration: Fidelity Trader+ mobile app.
-Bigger text, generous padding, easy on the eyes. Vertically scrollable. No icons on this tab.
-Consistent px-4 left/right padding throughout the entire tab.
+Design inspiration: Alpaca mobile app — clean card list, not a table.
+NO horizontal scrolling table. Card-per-position only.
+Consistent px-4 padding throughout. Vertically scrollable. No icons on this tab.
 
 ### Header Bar
 ```
 Vantage  ● CLOSED/OPEN    🔍  🔔  ⚙️
-"Vantage" text: text-2xl font-bold white  ← bigger than current
-Market status dot + label: text-base
-Icons: 24px
+"Vantage": text-2xl font-bold white
+Status dot + label: text-sm
+Icons: 22px
 ```
 
 ### Market Ticker Strip
 ```
-Horizontal scroll, no scrollbar
-px-4 py-3 (more padding than before)
-Each item: symbol text-base font-semibold + price text-base + change text-base
+Horizontal scroll, no scrollbar visible
+px-4 py-2 border-b border-slate-800
+Each item: symbol text-sm font-semibold white + price text-sm + change% text-sm
 Up: emerald-400 · Down: red-400
-Gap between items: gap-4
+gap-5 between items
 ```
 
 ### Demo Mode Banner
 ```
-px-4 py-3
-"Demo Mode" text-base font-semibold cyan-400
-"Simulated portfolio · Lynch Growth Style" text-base slate-400
-[Connect →] button text-base
-More padding, bigger text — clearly readable
+px-4 py-2 bg-cyan-500/10 border-b border-cyan-500/20
+"Demo Mode" text-sm font-semibold cyan-400 (left)
+"Simulated portfolio · Lynch Growth Style" text-xs slate-400 (below)
+[Connect →] text-sm cyan-400 pill button (right)
 ```
 
 ### Account Card
 ```
-px-4 mx-0 mt-3  (full width with px-4 padding, no extra mx)
+px-4 pt-4 pb-2 (no card border — flush with page bg)
 
 ACCOUNT VALUE  (text-xs slate-500 uppercase tracking-wider)
-$134,144.51    (text-3xl font-bold white)  ← slightly smaller than text-4xl
+$134,144.51    (text-3xl font-bold white)
 
-● Growth Chaser     (cyan dot + text-base slate-400)
-  Change ›          (text-sm cyan-400, on SECOND LINE below Growth Chaser)
+● Growth Chaser  (cyan dot + text-sm slate-400, first line)
+  Change ›       (text-xs cyan-400, second line, 4px below)
 
 [Sparkline — recharts LineChart + Area]
-Height: 160px  ← double the previous height
-emerald-400 line if P&L positive, red-400 if negative
+Height: 96px
+mt-3 mb-1
+emerald-400 line if P&L ≥ 0, red-400 if negative
 20% opacity gradient fill under line
 No axes, no grid lines
 Touch tooltip: $value · date
 
-Timeframe pills below chart:
+Timeframe pills (centered row):
 [1D] [1W✓] [1M] [3M] [1Y]
-Active: bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-full px-3 py-1 text-sm
-Inactive: text-slate-400 text-sm px-3 py-1
+Active: bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-full px-3 py-1 text-xs
+Inactive: text-slate-500 text-xs px-3 py-1
 
-2-col grid below pills:
-  TODAY P&L            TOTAL P&L
-  -$3,690.20 (-3.0%)   +$11,327.40 (+10.4%)
+2-col grid below pills (gap-3 mt-3):
+  TODAY P&L              TOTAL P&L
+  -$3,690.20 (-3.0%)     +$11,327.40 (+10.4%)
   label: text-xs slate-500 uppercase tracking-wider
-  value: text-xl font-semibold emerald-400 or red-400
+  value: text-base font-semibold emerald-400 or red-400
 
-  BUYING POWER         CASH
-  $179,670.15          $14,373.61
-  label: text-xs slate-500 uppercase tracking-wider
-  value: text-xl font-semibold white
+  BUYING POWER           CASH
+  $179,670.15            $14,373.61
+  label: text-xs slate-500 uppercase
+  value: text-base font-semibold white
 
-Padding between rows: gap-4
+border-b border-slate-800 mt-4
 ```
 
-All money values: `toLocaleString({ minimumFractionDigits: 2 })`
-Both TODAY P&L and TOTAL P&L must always be visible — never hidden.
+All money: toLocaleString minimumFractionDigits 2
+Both P&L rows always visible — never hidden.
 
-### Sections (in order)
-1. CORE HOLDINGS — frozen-pane horizontal table (see below)
-2. SELL ENTIRE PORTFOLIO — destructive button
-3. SECTOR ALLOCATION — horizontal bar chart
+### Data View Toggle
+```
+Sits between account card and positions list.
+px-4 py-3
 
-NOTE: Baskets section removed from default view.
-Baskets only appear here if the user has created one via Build Basket flow.
-All positions go into CORE HOLDINGS by default.
+Horizontal pill row (scrollable, no scrollbar):
+[P&L ✓]  [Value]  [Cost Basis]  [Today]  [52-Wk]
 
-### Core Holdings — Frozen Pane Table
+Active pill: bg-slate-700 text-white rounded-full px-4 py-1.5 text-xs font-semibold
+Inactive pill: text-slate-500 text-xs px-4 py-1.5
 
-Inspired by Fidelity Trader+ positions view.
-Symbol + Name column is frozen (sticky left).
-All other columns scroll horizontally.
-Rows compact but readable — shares removed to reclaim space.
+What each pill shows on the RIGHT side of every position card:
+  P&L       → Total $ G/L (text-base font-semibold) + % G/L (text-xs) below
+  Value     → Market value (text-base font-semibold) + % of account (text-xs) below
+  Cost Basis→ Avg cost (text-base font-semibold) + Total cost (text-xs) below
+  Today     → $ change today (text-base font-semibold) + % today (text-xs) below
+  52-Wk     → Range bar (low ── dot ── high) with current price dot
+```
+
+### Core Holdings Section
+```
+Section header row px-4 mt-2 mb-1 flex justify-between items-center:
+  CORE HOLDINGS  (text-xs font-semibold slate-400 uppercase tracking-wider)
+  [Select]       (text-xs slate-400, toggles multi-select mode)
+
+Baskets shown here ONLY if user has created one — otherwise hidden.
+All positions in Core Holdings by default.
+```
+
+### Position Card (normal mode)
+```
+mx-4 mb-2 rounded-2xl bg-slate-900 border border-slate-800
+px-4 py-3 min-h-[64px]
+3px left border: emerald-500 up today, red-500 down today, slate-600 unchanged
+
+Layout: flex justify-between items-center
+
+LEFT:
+  SYMBOL       (text-base font-bold white)
+  Company Name (text-xs slate-400 truncate max-w-[160px])
+  X shares     (text-xs slate-500)
+
+RIGHT (driven by active data toggle pill):
+  Primary value   (text-base font-semibold, emerald/red/white)
+  Secondary value (text-xs slate-400, below primary)
+
+Tap card → expand inline below (not a new screen):
+  [7-day sparkline height 56px, same recharts style, no axes]
+  2-col: Avg Cost · Current Price
+  2-col: Total P&L · Today P&L
+  [Buy More]  [Sell]
+  Buy More: border border-cyan-500/40 text-cyan-400 rounded-xl py-2 flex-1 text-sm
+  Sell:     border border-red-500/40  text-red-400  rounded-xl py-2 flex-1 text-sm
+  Both min-h-[44px]
+```
+
+### Multi-Select Mode (triggered by [Select] button)
 
 ```
-Section header row (px-4 mt-6 mb-1):
-  CORE HOLDINGS  (text-sm font-bold white uppercase tracking-wider)
-  ← make this prominent so user clearly sees the section label
+[Select] button in header toggles to [Done Selecting] (cyan-400)
 
-Layout:
-  Outer: overflow-x-auto w-full
-  Inner: min-w-[1100px]
-
-Frozen left column (sticky left-0 z-10 bg-slate-950):
-  Width: 144px  ← 20% smaller than 180px
-  pl-4 pr-2 (left padding preserved, tight right)
-  3px left border: emerald-500 up today, red-500 down today, slate-600 unchanged
-
-  Checkbox (top-left of cell):
-    w-5 h-5 rounded border-2 border-slate-600
-    Checked: bg-cyan-500 border-cyan-500 with checkmark
-    Unchecked: transparent bg
-    Tapping checkbox selects that row for sell action
-
-  SYMBOL      (text-base font-bold white)  ← not text-xl, keeps it compact
-  Full Name   (text-xs slate-400 truncate max-w-[110px])
-  NO shares line — removed entirely
-
-Column headers (sticky top-0 bg-slate-950 z-10 border-b border-slate-800):
-  text-xs font-bold uppercase slate-500
-  py-3 px-3 text-right
-  Min-width per column: 110px
-  Columns (in order):
-    Last · Change · $ Today G/L · % Today G/L ·
-    $ Total G/L · % Total G/L · $ Value · % of Acct ·
-    Qty · Avg Cost · Total Cost · 52-Wk Range
-
-Each data row:
-  min-h-[56px] py-3 px-3 text-right
-  border-b border-slate-800/60
-  Alternating bg: slate-950 / slate-900
-
-  Key values (Last, G/L $, Value): text-base font-semibold
-  Percent values: text-sm font-medium
-  Secondary (Qty, Avg Cost, Total Cost): text-sm slate-400
-  Gain: emerald-400 · Loss: red-400 · Neutral: white
-
-52-week range column (min-width: 160px):
-  IMPORTANT: render as a self-contained cell, no overflow into adjacent columns
-  Layout stacked vertically inside the cell:
-    High price (text-xs slate-400 text-right)
-    [Bar: bg-slate-700 h-1.5 rounded-full w-full relative mx-2]
-    [Dot: absolute bg-white w-2.5 h-2.5 rounded-full -top-[4px]]
-    Low price (text-xs slate-400 text-left)
+Each position card in select mode:
+  Circular checkbox LEFT of symbol (w-6 h-6)
+  Unchecked: border-2 border-slate-600 rounded-full bg-transparent
+  Checked:   bg-cyan-500 border-cyan-500 rounded-full white checkmark
+             Card border lights up: border-cyan-500
   
-  Dot position = ((currentPrice - weekLow52) / (weekHigh52 - weekLow52)) * 100%
-  Clamp between 2% and 98% so dot never falls off edge
-  If weekHigh52 === weekLow52: place dot at 50%
-```
+  Tap anywhere on card → toggles checkbox
 
-### Checkbox-Driven Sell Flow
+Sell bottom bar (slides up from bottom when ≥1 selected):
+  fixed bottom-[64px] left-0 right-0
+  bg-slate-900 border-t border-slate-800 px-4 py-3
+  
+  Left:
+    "N selected"  (text-base font-semibold white)
+    "~$value"     (text-xs slate-400 below)
+  
+  Right:
+    [Cancel]      text-sm slate-400 px-4
+    [Sell Selected] bg-red-500 text-white rounded-xl px-5 py-2.5 text-sm font-semibold
 
-REMOVED: "Select & Sell" top-right button.
-
-Checkboxes are always visible in the frozen left column of every row.
-Selecting one or more checkboxes activates the sell bottom bar.
-
-```
-Sell bottom bar (slides up when ≥1 checkbox checked):
-  bg-slate-900 border-t border-slate-800 px-4 py-4
-  fixed bottom-[64px] left-0 right-0 (sits above bottom nav)
-
-  Left: "X selected · ~$value estimated"  (text-base white)
-  Right: [Sell Selected] button
-         bg-red-500 text-white rounded-xl px-6 py-3 text-base font-semibold
-
-Special cases:
-  All rows checked → show [Sell Portfolio] instead of [Sell Selected]
-  Single row checked → show [Sell SYMBOL] with that symbol name
+  Label changes:
+    1 selected   → [Sell META]
+    2+ selected  → [Sell Selected (N)]
+    All selected → [Sell Portfolio]
 ```
 
 ### Sell Bottom Sheet
 ```
-Slides up from bottom. bg-slate-900 rounded-t-3xl p-6. Dark overlay.
+Slides up from bottom. bg-slate-900 rounded-t-3xl p-6. Dark scrim behind.
 
-If single stock:
-  SELL [SYMBOL]  (text-lg font-bold white)
-  X shares · $price/share  (text-sm slate-400)
-  ○ All shares (X) — est. $value
-  ○ Partial: [___] shares
+─ Single stock ─
+SELL META  (text-lg font-bold white)
+50 shares · $593.00/share  (text-sm slate-400)
 
-If multiple stocks:
-  SELL SELECTED (N positions)  (text-lg font-bold white)
-  List each: SYMBOL · Xsh · ~$value  (text-sm slate-400)
+○ All shares (50) — est. $29,650
+○ Partial: [___] shares — est. $0
 
-If all stocks:
-  SELL ENTIRE PORTFOLIO  (text-lg font-bold red-400)
-  Type "SELL" to confirm: [text input]
+ORDER TYPE:    [Market✓] [Limit] [Stop]   pill selector
+TIME IN FORCE: [Day✓]    [GTC]
+LIMIT PRICE:   $[input]  (only if Limit selected)
 
-ORDER TYPE:    [Market] [Limit] [Stop]  (single stock only)
-TIME IN FORCE: [Day]    [GTC]           (single stock only)
-LIMIT PRICE:   $ input  (only if Limit, single stock only)
+Est. proceeds: $29,650.00  (text-base font-semibold cyan-400)
 
-Est. proceeds: $value  (text-base font-semibold cyan-400)
+─ Multiple stocks ─
+SELL SELECTED (3 positions)  (text-lg font-bold white)
+Each line: SYMBOL · Xsh · ~$value  (text-sm slate-400)
+Total est. proceeds: $value  (cyan-400)
+All at market price
 
-[Cancel text-slate-400]  [Confirm Sell bg-red-500 rounded-2xl min-h-[52px] flex-1]
+─ All stocks (Sell Portfolio) ─
+SELL ENTIRE PORTFOLIO  (text-lg font-bold red-400)
+"Type SELL to confirm:"  [text input border border-slate-700 rounded-xl p-3]
+
+─ Footer (all cases) ─
+[Cancel]         [Confirm Sell]
+Cancel: text-slate-400 text-sm
+Confirm: bg-red-500 text-white rounded-2xl min-h-[52px] flex-1 text-base font-semibold
 ```
 
-### Sell Entire Portfolio Button
+### Sell Entire Portfolio (standalone)
 ```
-Shown in table as: when ALL checkboxes selected → bottom bar shows [Sell Portfolio]
-Also available as standalone button BEFORE sector allocation:
-  mx-4 my-6
-  border border-red-500/40 text-red-400 rounded-2xl
-  py-4 text-base font-semibold min-h-[56px] w-full
-  "Sell Entire Portfolio"
+mx-4 mt-4 mb-2
+border border-red-500/30 text-red-400 rounded-2xl
+py-3.5 text-sm font-semibold min-h-[52px] w-full text-center
+"Sell Entire Portfolio"
+Opens same sell bottom sheet in "all stocks" mode
 ```
 
 ### Sector Allocation
 ```
-Shown AFTER sell button, at bottom of page.
-bg-slate-900 rounded-2xl border border-slate-800 mx-4 p-5
-Section header: SECTOR ALLOCATION (text-xs slate-500 uppercase)
+mx-4 mt-4
+bg-slate-900 rounded-2xl border border-slate-800 p-4
+SECTOR ALLOCATION  (text-xs slate-500 uppercase tracking-wider mb-3)
 
-Each row: sector name + colored bar + percentage
-Bar colors: tech=cyan, health=emerald, finance=amber, energy=orange, etc.
-text-base for sector name, text-sm slate-400 for percentage
-Row min-h-[40px], gap between rows gap-3
-Add mb-32 after last section (clears bottom nav)
+Each row: flex justify-between items-center min-h-[36px]
+  Sector name  text-sm white
+  [===bar===]  bg-slate-700 rounded-full h-1.5 flex-1 mx-3
+               fill: sector color, width = percentage
+  XX%          text-xs slate-400
+
+Sector colors: tech=cyan-400, health=emerald-400, finance=amber-400,
+               energy=orange-400, consumer=purple-400, industrial=blue-400
+
+mb-32 after sector allocation (clears bottom nav)
 ```
-
----
 
 ## 8. INVEST TAB
 
