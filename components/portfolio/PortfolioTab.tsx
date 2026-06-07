@@ -26,7 +26,7 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="mt-4 mb-3 bg-[#1a2235] rounded-2xl border border-[#2a3448] p-5">
+    <div className="mt-4 mb-3 bg-[#1a2235] rounded-2xl border border-[#2a3448] p-5" style={{margin:'16px 8px 12px 8px'}}>
       {/* Account Value */}
       <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
         Account Value
@@ -42,7 +42,7 @@ function AccountCard({ account }: { account: AccountSummary }) {
       <div className="border-t border-slate-800 my-4" />
 
       {/* Sparkline placeholder */}
-      <div className="h-20 w-full bg-slate-800 rounded-xl mt-3 mb-3" />
+      <div style={{height:'80px', background:'#1e2d45', borderRadius:'12px', margin:'12px 0'}} />
 
       {/* Divider */}
       <div className="border-t border-slate-800 my-4" />
@@ -556,7 +556,7 @@ export function PortfolioTab() {
 
       {/* 4. Core Holdings */}
       {positions.length > 0 && (
-        <div className="px-4 mt-6 mb-2 flex justify-between items-center">
+        <div className="px-4 mt-6 mb-2 flex justify-between items-center" style={{paddingRight:'16px'}}>
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
             Core Holdings
           </span>
