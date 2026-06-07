@@ -122,26 +122,27 @@ function PositionCard({
     <div className="mb-4">
       <div
         onClick={onToggleExpand}
-        className="bg-[#1a2235] rounded-lg border border-[#2a3448] px-4 py-3 cursor-pointer"
+        className="bg-[#1a2235] rounded-lg border border-[#2a3448] cursor-pointer"
         style={{ borderLeft: `3px solid ${borderLColor}` }}
       >
         {/* Collapsed row — checkbox inside card */}
-        <div className="flex items-center">
+        <div className="flex items-center px-4 pt-3 pb-3">
           <button
             onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
             aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
+            className="flex-shrink-0"
           >
             <div
-              className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+              className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center mr-4 transition-all duration-150 ${
                 isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
               }`}
             >
               {isSelected && (
-                <span className="text-white text-xs leading-none">&#10003;</span>
+                <span className="text-white text-[10px] leading-none">&#10003;</span>
               )}
             </div>
           </button>
-          <div className="ml-3 flex-1 flex justify-between items-center">
+          <div className="flex-1 flex justify-between items-center">
             <div>
               <p className="text-base font-bold text-white">{pos.symbol}</p>
               <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
@@ -159,16 +160,16 @@ function PositionCard({
 
         {/* Expanded detail */}
         {isExpanded && (
-          <>
-            <div className="border-t border-[#2a3448] my-3" />
+          <div className="px-4 pb-4">
+            <div className="border-t border-[#2a3448] mt-3 mb-4" />
 
             {/* 2-col stats */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Daily G/L
                 </p>
-                <p className={`text-sm font-semibold ${gain(pos.dayChange)}`}>
+                <p className={`text-base font-semibold ${gain(pos.dayChange)}`}>
                   {fmt(pos.dayChange)} (
                   {pctStr(pos.dayChangePercent)})
                 </p>
@@ -177,7 +178,7 @@ function PositionCard({
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Total G/L
                 </p>
-                <p className={`text-sm font-semibold ${gain(pos.totalPnl)}`}>
+                <p className={`text-base font-semibold ${gain(pos.totalPnl)}`}>
                   {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
                 </p>
               </div>
@@ -185,7 +186,7 @@ function PositionCard({
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Current Px
                 </p>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-base font-semibold text-white">
                   ${pos.currentPrice.toFixed(2)}
                 </p>
               </div>
@@ -193,7 +194,7 @@ function PositionCard({
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Avg Cost
                 </p>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-base font-semibold text-white">
                   ${pos.avgCost.toFixed(2)}
                 </p>
               </div>
@@ -201,7 +202,7 @@ function PositionCard({
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Portfolio %
                 </p>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-base font-semibold text-white">
                   {pos.portfolioPercent.toFixed(1)}%
                 </p>
               </div>
@@ -209,7 +210,7 @@ function PositionCard({
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Total Cost
                 </p>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-base font-semibold text-white">
                   ${(pos.avgCost * pos.qty).toLocaleString('en-US', DOLLAR_FMT)}
                 </p>
               </div>
@@ -217,7 +218,7 @@ function PositionCard({
 
             {/* 52-Week Range */}
             {pos.weekHigh52 != null && pos.weekLow52 != null && (
-              <div className="mt-3">
+              <div className="mt-4">
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   52-Week Range
                 </p>
@@ -239,13 +240,13 @@ function PositionCard({
             )}
 
             {/* Action buttons */}
-            <div className="flex gap-3 mt-5 pt-3">
+            <div className="flex gap-3 mt-4 mb-3">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onBuy?.();
                 }}
-                className="flex-1 border border-cyan-500/40 text-cyan-400 rounded-lg py-2.5 text-sm font-medium min-h-[44px]"
+                className="flex-1 border border-cyan-500/40 text-cyan-400 rounded-lg py-3 text-sm font-medium min-h-[48px]"
               >
                 Buy More
               </button>
@@ -254,12 +255,12 @@ function PositionCard({
                   e.stopPropagation();
                   onToggleSelect();
                 }}
-                className="flex-1 border border-red-500/40 text-red-400 rounded-lg py-2.5 text-sm font-medium min-h-[44px]"
+                className="flex-1 border border-red-500/40 text-red-400 rounded-lg py-3 text-sm font-medium min-h-[48px]"
               >
                 Sell
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -987,29 +988,32 @@ export function PortfolioTab() {
 
       {/* 3. Column header with select-all */}
       {positions.length > 0 && (
-        <div className="flex items-center mb-1 mt-6 pl-4">
-          <button onClick={toggleSelectAll} aria-label="Select all">
-            <div
-              className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                allSelected
-                  ? 'bg-cyan-500 border-cyan-500'
-                  : someSelected
-                    ? 'bg-cyan-500/40 border-cyan-500'
-                    : 'border-slate-600 bg-transparent'
-              }`}
-            >
-              {(allSelected || someSelected) && (
-                <span className="text-white text-xs leading-none">
-                  {allSelected ? '\u2713' : '\u2013'}
-                </span>
-              )}
-            </div>
-          </button>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1 ml-3">
-            Holdings
+        <div className="flex items-center mb-2 mt-6 px-0">
+          <div className="flex items-center gap-2" style={{ width: 'calc(32px + 1.25rem + 1rem)' }}>
+            <span className="text-xs text-slate-500 uppercase tracking-wider">SELL</span>
+            <button onClick={toggleSelectAll} aria-label="Select all">
+              <div
+                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                  allSelected
+                    ? 'bg-cyan-500 border-cyan-500'
+                    : someSelected
+                      ? 'bg-cyan-500/40 border-cyan-500'
+                      : 'border-slate-600 bg-transparent'
+                }`}
+              >
+                {(allSelected || someSelected) && (
+                  <span className="text-white text-[10px] leading-none">
+                    {allSelected ? '\u2713' : '\u2013'}
+                  </span>
+                )}
+              </div>
+            </button>
+          </div>
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1">
+            HOLDINGS
           </span>
           <span className="text-xs text-slate-500 uppercase tracking-wider text-right">
-            Price / P&amp;L
+            PRICE / P&amp;L
           </span>
         </div>
       )}
