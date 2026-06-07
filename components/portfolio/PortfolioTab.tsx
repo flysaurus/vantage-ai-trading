@@ -119,44 +119,41 @@ function PositionCard({
       : 50;
 
   return (
-    <div className="flex items-center mb-3">
-      {/* Checkbox */}
-      <div className="w-8 flex-shrink-0 flex justify-center">
-        <button
-          onClick={onToggleSelect}
-          aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
-        >
-          <div
-            className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-              isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
-            }`}
-          >
-            {isSelected && (
-              <span className="text-white text-xs leading-none">&#10003;</span>
-            )}
-          </div>
-        </button>
-      </div>
-
-      {/* Card */}
+    <div className="mb-4">
       <div
         onClick={onToggleExpand}
-        className="flex-1 bg-[#1a2235] rounded-lg border border-[#2a3448] px-4 py-3 cursor-pointer"
+        className="bg-[#1a2235] rounded-lg border border-[#2a3448] px-4 py-3 cursor-pointer"
         style={{ borderLeft: `3px solid ${borderLColor}` }}
       >
-        {/* Collapsed row */}
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-base font-bold text-white">{pos.symbol}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
-          </div>
-          <div className="text-right">
-            <p className="text-base font-semibold text-white">
-              ${pos.currentPrice.toFixed(2)}
-            </p>
-            <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
-              {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
-            </p>
+        {/* Collapsed row — checkbox inside card */}
+        <div className="flex items-center">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+            aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
+          >
+            <div
+              className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
+              }`}
+            >
+              {isSelected && (
+                <span className="text-white text-xs leading-none">&#10003;</span>
+              )}
+            </div>
+          </button>
+          <div className="ml-3 flex-1 flex justify-between items-center">
+            <div>
+              <p className="text-base font-bold text-white">{pos.symbol}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
+            </div>
+            <div className="text-right">
+              <p className="text-base font-semibold text-white">
+                ${pos.currentPrice.toFixed(2)}
+              </p>
+              <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
+                {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
+              </p>
+            </div>
           </div>
         </div>
 
@@ -242,7 +239,7 @@ function PositionCard({
             )}
 
             {/* Action buttons */}
-            <div className="flex gap-3 mt-4">
+            <div className="flex gap-3 mt-5 pt-3">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -990,28 +987,25 @@ export function PortfolioTab() {
 
       {/* 3. Column header with select-all */}
       {positions.length > 0 && (
-        <div className="flex items-center mb-1 mt-6">
-          {/* Select-all checkbox */}
-          <div className="w-8 flex-shrink-0 flex justify-center">
-            <button onClick={toggleSelectAll} aria-label="Select all">
-              <div
-                className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                  allSelected
-                    ? 'bg-cyan-500 border-cyan-500'
-                    : someSelected
-                      ? 'bg-cyan-500/40 border-cyan-500'
-                      : 'border-slate-600 bg-transparent'
-                }`}
-              >
-                {(allSelected || someSelected) && (
-                  <span className="text-white text-xs leading-none">
-                    {allSelected ? '\u2713' : '\u2013'}
-                  </span>
-                )}
-              </div>
-            </button>
-          </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1 ml-2">
+        <div className="flex items-center mb-1 mt-6 pl-4">
+          <button onClick={toggleSelectAll} aria-label="Select all">
+            <div
+              className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                allSelected
+                  ? 'bg-cyan-500 border-cyan-500'
+                  : someSelected
+                    ? 'bg-cyan-500/40 border-cyan-500'
+                    : 'border-slate-600 bg-transparent'
+              }`}
+            >
+              {(allSelected || someSelected) && (
+                <span className="text-white text-xs leading-none">
+                  {allSelected ? '\u2713' : '\u2013'}
+                </span>
+              )}
+            </div>
+          </button>
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1 ml-3">
             Holdings
           </span>
           <span className="text-xs text-slate-500 uppercase tracking-wider text-right">
