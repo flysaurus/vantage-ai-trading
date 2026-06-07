@@ -90,12 +90,14 @@ function PositionCard({
   isExpanded,
   onToggleSelect,
   onToggleExpand,
+  onBuy,
 }: {
   pos: Position;
   isSelected: boolean;
   isExpanded: boolean;
   onToggleSelect: () => void;
   onToggleExpand: () => void;
+  onBuy?: () => void;
 }) {
   const borderLColor =
     pos.dayChange > 0 ? '#10b981' : pos.dayChange < 0 ? '#ef4444' : '#475569';
@@ -241,7 +243,13 @@ function PositionCard({
 
             {/* Action buttons */}
             <div className="flex gap-3 mt-4">
-              <button className="flex-1 border border-cyan-500/40 text-cyan-400 rounded-lg py-2.5 text-sm font-medium min-h-[44px]">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBuy?.();
+                }}
+                className="flex-1 border border-cyan-500/40 text-cyan-400 rounded-lg py-2.5 text-sm font-medium min-h-[44px]"
+              >
                 Buy More
               </button>
               <button
@@ -256,6 +264,129 @@ function PositionCard({
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Buy Modal ───────────────────────────────────────────
+
+function BuyModal({
+  position,
+  onClose,
+}: {
+  position: Position;
+  onClose: () => void;
+}) {
+  const [shares, setShares] = useState(1);
+  const [orderType, setOrderType] = useState<'Market' | 'Limit' | 'Stop'>('Market');
+  const [tif, setTif] = useState<'Day' | 'GTC'>('Day');
+  const [limitPrice, setLimitPrice] = useState('');
+
+  const estCost = shares * position.currentPrice;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#1a2235] rounded-xl p-6 w-full max-w-sm border border-[#2a3448]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-start">
+          <h3 className="text-lg font-bold text-white">
+            Buy {position.symbol}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 text-xl leading-none">
+            &#10005;
+          </button>
+        </div>
+        <p className="text-sm text-slate-400 mt-1 mb-4">
+          Current price: ${position.currentPrice.toFixed(2)}/share
+        </p>
+
+        {/* Quantity */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Quantity</p>
+        <div className="flex items-center gap-2 mb-4">
+          <input
+            type="number"
+            min={1}
+            value={shares}
+            onChange={(e) => setShares(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-24 bg-[#0f1829] border border-[#2a3448] rounded-md px-3 py-2 text-white text-sm outline-none"
+          />
+          <span className="text-slate-400 text-sm">shares</span>
+        </div>
+        <p className="text-sm text-cyan-400 mb-4">
+          Est. cost: ${estCost.toLocaleString('en-US', DOLLAR_FMT)}
+        </p>
+
+        {/* Order Type */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Order Type</p>
+        <div className="flex gap-2 mb-3">
+          {(['Market', 'Limit', 'Stop'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setOrderType(t)}
+              className={
+                orderType === t
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
+                  : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
+              }
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Time in Force */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Time in Force</p>
+        <div className="flex gap-2 mb-3">
+          {(['Day', 'GTC'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTif(t)}
+              className={
+                tif === t
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
+                  : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
+              }
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Limit Price */}
+        {orderType === 'Limit' && (
+          <div className="mb-3">
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Limit Price</p>
+            <input
+              type="number"
+              step="0.01"
+              value={limitPrice}
+              onChange={(e) => setLimitPrice(e.target.value)}
+              placeholder="$0.00"
+              className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-white outline-none placeholder-slate-600 text-sm"
+            />
+          </div>
+        )}
+
+        {/* Buying Power */}
+        <p className="text-xs text-slate-500 mt-3">
+          Buying Power: $145,217.48
+        </p>
+
+        {/* Buttons */}
+        <div className="flex gap-3 mt-4">
+          <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
+            Cancel
+          </button>
+          <button className="flex-1 bg-cyan-500 text-white rounded-lg py-3 text-sm font-semibold">
+            Confirm Buy
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -772,6 +903,7 @@ export function PortfolioTab() {
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   const [showSellModal, setShowSellModal] = useState<Position[] | null>(null);
+  const [showBuySymbol, setShowBuySymbol] = useState<Position | null>(null);
 
   const investorStyle = user?.investorStyle || 'lynch';
   const [displayAccount, setDisplayAccount] = useState<AccountSummary | null>(null);
@@ -897,6 +1029,7 @@ export function PortfolioTab() {
           isExpanded={expandedSymbol === pos.symbol}
           onToggleSelect={() => toggleSelect(pos.symbol)}
           onToggleExpand={() => toggleExpand(pos.symbol)}
+          onBuy={() => setShowBuySymbol(pos)}
         />
       ))}
       <div className="h-8" />
@@ -933,6 +1066,14 @@ export function PortfolioTab() {
             setShowSellModal(null);
             setSelectedSymbols([]);
           }}
+        />
+      )}
+
+      {/* 8. Buy Modal */}
+      {showBuySymbol && (
+        <BuyModal
+          position={showBuySymbol}
+          onClose={() => setShowBuySymbol(null)}
         />
       )}
 
