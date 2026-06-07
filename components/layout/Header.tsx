@@ -101,19 +101,19 @@ export function Header() {
   return (
     <div className="app-header" ref={dropdownRef} style={{ position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CompassIcon size={18} color="#22d3ee" /> Vantage</div>
-        <span className={`text-xs font-medium px-2 py-1 rounded-full ${marketStatus.color}`}>
+        <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CompassIcon size={18} color="#22d3ee" /> <span style={{ fontSize: 24, fontWeight: 700 }}>Vantage</span></div>
+        <span className={`text-base font-medium px-2 py-1 rounded-full ${marketStatus.color}`}>
           ● {marketStatus.label}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="icon-btn"><Search size={16} /></button>
+        <button className="icon-btn"><Search size={24} /></button>
         <button
           className="icon-btn"
           onClick={handleBellClick}
           style={{ position: 'relative' }}
         >
-          <Bell size={16} />
+          <Bell size={24} />
           {unreadCount > 0 && (
             <span style={{
               position: 'absolute', top: -2, right: -2,
@@ -128,7 +128,7 @@ export function Header() {
           )}
         </button>
         <button className="icon-btn" onClick={() => setTab('settings')}>
-          <Settings size={16} />
+          <Settings size={24} />
         </button>
       </div>
 
