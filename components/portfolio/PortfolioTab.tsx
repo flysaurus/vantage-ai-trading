@@ -26,7 +26,7 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="mt-4 mb-3 bg-[#1a2235] rounded-lg border border-[#2a3448] p-5">
+    <div className="mt-4 mb-3 bg-[#1a2235] rounded-lg border border-[#2a3448] px-3 py-5">
       {/* Account Value */}
       <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
         Account Value
@@ -126,45 +126,44 @@ function PositionCard({
         style={{ borderLeft: `3px solid ${borderLColor}` }}
       >
         {/* Collapsed row — checkbox inside card */}
-        <div className="flex items-center px-4 pt-3 pb-3">
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
-            aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
-            className="flex-shrink-0"
-          >
-            <div
-              className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center mr-4 transition-all duration-150 ${
-                isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
-              }`}
+        <div className="flex items-center px-0 py-3">
+          <div className="w-10 flex-shrink-0 flex justify-center pl-3">
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+              aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
             >
-              {isSelected && (
-                <span className="text-white text-[10px] leading-none">&#10003;</span>
-              )}
-            </div>
-          </button>
-          <div className="flex-1 flex justify-between items-center">
-            <div>
-              <p className="text-base font-bold text-white">{pos.symbol}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
-            </div>
-            <div className="text-right">
-              <p className="text-base font-semibold text-white">
-                ${pos.currentPrice.toFixed(2)}
-              </p>
-              <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
-                {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
-              </p>
-            </div>
+              <div
+                className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                  isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
+                }`}
+              >
+                {isSelected && (
+                  <span className="text-white text-xs leading-none">&#10003;</span>
+                )}
+              </div>
+            </button>
+          </div>
+          <div className="flex-1 ml-3">
+            <p className="text-base font-bold text-white">{pos.symbol}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
+          </div>
+          <div className="text-right pr-3">
+            <p className="text-base font-semibold text-white">
+              ${pos.currentPrice.toFixed(2)}
+            </p>
+            <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
+              {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
+            </p>
           </div>
         </div>
 
         {/* Expanded detail */}
         {isExpanded && (
-          <div className="px-4 pb-4">
-            <div className="border-t border-[#2a3448] mt-3 mb-4" />
+          <>
+            <div className="border-t border-[#2a3448] mx-3 mt-3" />
 
             {/* 2-col stats */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4 pl-3 pr-3 mt-3">
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Daily G/L
@@ -218,8 +217,8 @@ function PositionCard({
 
             {/* 52-Week Range */}
             {pos.weekHigh52 != null && pos.weekLow52 != null && (
-              <div className="mt-4">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
+              <div className="pl-3 pr-3 mt-4">
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
                   52-Week Range
                 </p>
                 <div className="flex items-center gap-2">
@@ -240,7 +239,7 @@ function PositionCard({
             )}
 
             {/* Action buttons */}
-            <div className="flex gap-3 mt-4 mb-3">
+            <div className="flex gap-3 mx-3 mt-4 mb-3">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -260,7 +259,7 @@ function PositionCard({
                 Sell
               </button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -988,12 +987,12 @@ export function PortfolioTab() {
 
       {/* 3. Column header with select-all */}
       {positions.length > 0 && (
-        <div className="flex items-center mb-2 mt-6 px-0">
-          <div className="flex items-center gap-2" style={{ width: 'calc(32px + 1.25rem + 1rem)' }}>
+        <div className="flex items-center mb-2 mt-6 pl-3 pr-3">
+          <div className="flex items-center gap-2 flex-shrink-0 w-10">
             <span className="text-xs text-slate-500 uppercase tracking-wider">SELL</span>
             <button onClick={toggleSelectAll} aria-label="Select all">
               <div
-                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
                   allSelected
                     ? 'bg-cyan-500 border-cyan-500'
                     : someSelected
@@ -1002,14 +1001,14 @@ export function PortfolioTab() {
                 }`}
               >
                 {(allSelected || someSelected) && (
-                  <span className="text-white text-[10px] leading-none">
+                  <span className="text-white text-xs leading-none">
                     {allSelected ? '\u2713' : '\u2013'}
                   </span>
                 )}
               </div>
             </button>
           </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1">
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1 ml-3">
             HOLDINGS
           </span>
           <span className="text-xs text-slate-500 uppercase tracking-wider text-right">
