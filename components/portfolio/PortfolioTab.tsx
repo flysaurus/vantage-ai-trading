@@ -92,209 +92,314 @@ function AccountCard({ account }: { account: AccountSummary }) {
   );
 }
 
-// ─── Position Card ────────────────────────────────────────
+// ─── Position Card (checkbox + expandable card) ───────────
 
 function PositionCard({
   pos,
-  isSelectMode,
   isSelected,
-  onToggle,
+  isExpanded,
+  onToggleSelect,
+  onToggleExpand,
 }: {
   pos: Position;
-  isSelectMode: boolean;
   isSelected: boolean;
-  onToggle: () => void;
+  isExpanded: boolean;
+  onToggleSelect: () => void;
+  onToggleExpand: () => void;
 }) {
-  const borderL =
-    pos.dayChange > 0
-      ? 'border-l-emerald-500'
-      : pos.dayChange < 0
-        ? 'border-l-red-500'
-        : 'border-l-slate-600';
+  const borderLColor =
+    pos.dayChange > 0 ? '#10b981' : pos.dayChange < 0 ? '#ef4444' : '#475569';
+
+  // 52-week range ball position
+  const weekPos =
+    pos.weekHigh52 != null &&
+    pos.weekLow52 != null &&
+    pos.weekHigh52 !== pos.weekLow52
+      ? Math.min(
+          98,
+          Math.max(
+            2,
+            ((pos.currentPrice - pos.weekLow52) /
+              (pos.weekHigh52 - pos.weekLow52)) *
+              100,
+          ),
+        )
+      : 50;
 
   return (
-    <div
-      onClick={onToggle}
-      className={`mb-3 rounded-2xl bg-[#1a2235] border border-[#2a3448] px-4 py-4 min-h-[72px] flex justify-between items-center border-l-[3px] ${borderL} transition-colors duration-200 cursor-pointer active:opacity-80 ${isSelected ? 'border-cyan-500' : ''}`}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        {isSelectMode && (
+    <div className="flex items-center mb-3">
+      {/* Checkbox */}
+      <div className="w-8 flex-shrink-0 flex justify-center">
+        <button
+          onClick={onToggleSelect}
+          aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
+        >
           <div
-            className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-              isSelected
-                ? 'bg-cyan-500 border-cyan-500'
-                : 'bg-transparent border-slate-600'
+            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 ${
+              isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
             }`}
           >
             {isSelected && (
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2 6l2.5 2.5L10 3.5"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <span className="text-white text-xs leading-none">&#10003;</span>
             )}
           </div>
-        )}
-        <div>
-          <p className="text-lg font-bold text-white">{pos.symbol}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
-        </div>
+        </button>
       </div>
 
-      <div className="text-right flex-shrink-0">
-        <p className="text-base font-semibold text-white">
-          ${pos.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-        </p>
-        <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
-          {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
-        </p>
+      {/* Card */}
+      <div
+        onClick={onToggleExpand}
+        className="flex-1 bg-[#1a2235] rounded-2xl border border-[#2a3448] px-4 py-3 cursor-pointer"
+        style={{ borderLeft: `3px solid ${borderLColor}` }}
+      >
+        {/* Collapsed row */}
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-base font-bold text-white">{pos.symbol}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
+          </div>
+          <div className="text-right">
+            <p className="text-base font-semibold text-white">
+              ${pos.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+            <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
+              {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
+            </p>
+          </div>
+        </div>
+
+        {/* Expanded detail */}
+        {isExpanded && (
+          <>
+            <div className="border-t border-[#2a3448] mt-3 pt-3" />
+
+            {/* 2-col stats */}
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">
+                  Daily G/L
+                </p>
+                <p className={`text-sm font-semibold ${gain(pos.dayChange)}`}>
+                  {fmt(pos.dayChange)} (
+                  {pctStr(pos.dayChangePercent)})
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">
+                  Total G/L
+                </p>
+                <p className={`text-sm font-semibold ${gain(pos.totalPnl)}`}>
+                  {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">
+                  Portfolio %
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  {pos.portfolioPercent.toFixed(1)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">
+                  Avg Cost
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  ${pos.avgCost.toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">
+                  Current Price
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  ${pos.currentPrice.toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">
+                  Total Cost
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  ${(pos.avgCost * pos.qty).toLocaleString('en-US', DOLLAR_FMT)}
+                </p>
+              </div>
+            </div>
+
+            {/* 52-Week Range */}
+            {pos.weekHigh52 != null && pos.weekLow52 != null && (
+              <div className="mt-3">
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
+                  52-Week Range
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">
+                    ${pos.weekLow52.toFixed(0)}
+                  </span>
+                  <div className="relative flex-1 h-1.5 bg-slate-700 rounded-full">
+                    <div
+                      className="absolute bg-white w-2.5 h-2.5 rounded-full"
+                      style={{ top: '-3px', left: `${weekPos}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    ${pos.weekHigh52.toFixed(0)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-3 mt-4">
+              <button className="flex-1 border border-cyan-500/40 text-cyan-400 rounded-xl py-2.5 text-sm font-medium min-h-[44px]">
+                Buy More
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect();
+                }}
+                className="flex-1 border border-red-500/40 text-red-400 rounded-xl py-2.5 text-sm font-medium min-h-[44px]"
+              >
+                Sell
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Sell Bottom Sheet ────────────────────────────────────
+// ─── Sell Modal ───────────────────────────────────────────
 
-interface SellConfig {
-  mode: 'all' | 'partial';
-  shares: number;
-  orderType: 'Market' | 'Limit' | 'Stop';
-  tif: 'Day' | 'GTC';
-  limitPrice: string;
-}
-
-function SellBottomSheet({
+function SellModal({
   positions,
+  totalPositions,
   onClose,
 }: {
   positions: Position[];
+  totalPositions: number;
   onClose: () => void;
 }) {
   const single = positions.length === 1 ? positions[0] : null;
   const multi = positions.length > 1;
+  const isPortfolio = positions.length === totalPositions && positions.length > 1;
 
-  const [cfg, setCfg] = useState<SellConfig>({
-    mode: 'all',
-    shares: single?.qty ?? 0,
-    orderType: 'Market',
-    tif: 'Day',
-    limitPrice: '',
-  });
+  const [sellMode, setSellMode] = useState<'all' | 'partial'>('all');
+  const [shares, setShares] = useState(single?.qty ?? 0);
+  const [orderType, setOrderType] = useState<'Market' | 'Limit' | 'Stop'>(
+    'Market',
+  );
+  const [tif, setTif] = useState<'Day' | 'GTC'>('Day');
+  const [limitPrice, setLimitPrice] = useState('');
   const [confirmText, setConfirmText] = useState('');
 
   const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
-  const proceeds = single && cfg.mode === 'partial'
-    ? cfg.shares * single.currentPrice
-    : totalValue;
-
-  const canConfirm = multi
-    ? confirmText === 'SELL'
-    : true;
-
-  // Title
-  const title = multi
-    ? 'Sell Entire Portfolio'
-    : `Sell ${single?.symbol}`;
-
-  const subtitle = multi
-    ? `Type SELL to confirm`
-    : `${single?.qty} shares · $${single?.currentPrice.toFixed(2)}/share`;
+  const proceeds =
+    single && sellMode === 'partial'
+      ? shares * single.currentPrice
+      : totalValue;
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-50 bg-slate-900 rounded-t-3xl p-6 pb-safe max-h-[85vh] overflow-y-auto border-t border-slate-700">
-        {/* Handle */}
-        <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-4" />
-
-        {/* Title */}
-        <h3 className={`text-xl font-bold ${multi ? 'text-red-400' : 'text-white'}`}>
-          {title}
-        </h3>
-        <p className="text-sm text-slate-400 mt-1">{subtitle}</p>
-
-        {/* Multi-position list */}
-        {multi && (
-          <div className="space-y-1.5 my-4 max-h-[200px] overflow-y-auto">
-            {positions.map(p => (
-              <p key={p.symbol} className="text-sm text-slate-400">
-                {p.symbol} · {p.qty}sh · ~$
-                {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-              </p>
-            ))}
-            <p className="text-xs text-slate-500 mt-2">All at market price</p>
-          </div>
-        )}
-
-        {/* Single-position options */}
-        {single && !multi && (
+    <div
+      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#1a2235] rounded-2xl p-6 w-full max-w-sm border border-[#2a3448] max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Single position ── */}
+        {single && !isPortfolio && (
           <>
-            {/* Quantity */}
-            <div className="space-y-3 my-4">
-              <label className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={cfg.mode === 'all'}
-                  onChange={() => setCfg(p => ({ ...p, mode: 'all' }))}
-                  className="accent-cyan-500"
-                />
-                <div className="flex-1">
-                  <p className="text-white text-sm font-semibold">
-                    All shares ({single.qty})
-                  </p>
-                  <p className="text-slate-400 text-xs">
-                    Est. $
-                    {(single.qty * single.currentPrice).toLocaleString('en-US', DOLLAR_FMT)}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={cfg.mode === 'partial'}
-                  onChange={() => setCfg(p => ({ ...p, mode: 'partial' }))}
-                  className="accent-cyan-500"
-                />
-                <div className="flex-1">
-                  <p className="text-white text-sm font-semibold">Partial</p>
-                  {cfg.mode === 'partial' && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={single.qty}
-                        value={cfg.shares}
-                        onChange={e =>
-                          setCfg(p => ({
-                            ...p,
-                            shares: Math.min(single.qty, Math.max(1, parseInt(e.target.value) || 1)),
-                          }))
-                        }
-                        className="w-24 bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm outline-none"
-                      />
-                      <span className="text-slate-400 text-xs">of {single.qty}</span>
-                    </div>
-                  )}
-                </div>
-              </label>
+            <div className="flex justify-between items-start">
+              <h3 className="text-lg font-bold text-white">
+                Sell {single.symbol}
+              </h3>
+              <button
+                onClick={onClose}
+                className="text-slate-400 text-xl leading-none"
+              >
+                &#10005;
+              </button>
             </div>
+            <p className="text-sm text-slate-400 mt-1 mb-4">
+              {single.qty} shares &middot; ${single.currentPrice.toFixed(2)}/share
+            </p>
+
+            {/* Quantity */}
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
+              Quantity
+            </p>
+            <label className="flex items-center gap-3 bg-[#0f1829] rounded-xl p-3 border border-[#2a3448] mb-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={sellMode === 'all'}
+                onChange={() => setSellMode('all')}
+                className="accent-cyan-500"
+              />
+              <div className="flex-1">
+                <p className="text-white text-sm font-semibold">
+                  All shares ({single.qty})
+                </p>
+                <p className="text-slate-400 text-xs">
+                  Est. $
+                  {(single.qty * single.currentPrice).toLocaleString(
+                    'en-US',
+                    DOLLAR_FMT,
+                  )}
+                </p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 bg-[#0f1829] rounded-xl p-3 border border-[#2a3448] cursor-pointer">
+              <input
+                type="radio"
+                checked={sellMode === 'partial'}
+                onChange={() => setSellMode('partial')}
+                className="accent-cyan-500"
+              />
+              <div className="flex-1">
+                <p className="text-white text-sm font-semibold">Partial</p>
+                {sellMode === 'partial' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={single.qty}
+                      value={shares}
+                      onChange={(e) =>
+                        setShares(
+                          Math.min(
+                            single.qty,
+                            Math.max(1, parseInt(e.target.value) || 1),
+                          ),
+                        )
+                      }
+                      className="w-24 bg-[#0f1829] border border-[#2a3448] rounded-xl px-3 py-2 text-white text-sm outline-none"
+                    />
+                    <span className="text-slate-400 text-xs">
+                      of {single.qty}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </label>
 
             {/* Order Type */}
-            <p className="text-xs text-slate-500 uppercase mb-2">Order Type</p>
-            <div className="flex gap-2 mb-3">
-              {(['Market', 'Limit', 'Stop'] as const).map(t => (
+            <p className="text-xs text-slate-500 uppercase tracking-wider mt-4 mb-2">
+              Order Type
+            </p>
+            <div className="flex gap-2">
+              {(['Market', 'Limit', 'Stop'] as const).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setCfg(p => ({ ...p, orderType: t }))}
-                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-                    cfg.orderType === t
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-400'
-                  }`}
+                  onClick={() => setOrderType(t)}
+                  className={
+                    orderType === t
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-xl px-4 py-2 text-sm'
+                      : 'text-slate-400 border border-slate-700 rounded-xl px-4 py-2 text-sm'
+                  }
                 >
                   {t}
                 </button>
@@ -302,15 +407,19 @@ function SellBottomSheet({
             </div>
 
             {/* Time in Force */}
-            <p className="text-xs text-slate-500 uppercase mb-2">Time in Force</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wider mt-3 mb-2">
+              Time in Force
+            </p>
             <div className="flex gap-2 mb-3">
-              {(['Day', 'GTC'] as const).map(t => (
+              {(['Day', 'GTC'] as const).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setCfg(p => ({ ...p, tif: t }))}
-                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-                    cfg.tif === t ? 'bg-slate-700 text-white' : 'text-slate-400'
-                  }`}
+                  onClick={() => setTif(t)}
+                  className={
+                    tif === t
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-xl px-4 py-2 text-sm'
+                      : 'text-slate-400 border border-slate-700 rounded-xl px-4 py-2 text-sm'
+                  }
                 >
                   {t}
                 </button>
@@ -318,108 +427,183 @@ function SellBottomSheet({
             </div>
 
             {/* Limit Price */}
-            {cfg.orderType === 'Limit' && (
-              <div className="mb-4">
-                <p className="text-xs text-slate-500 uppercase mb-2">Limit Price</p>
-                <div className="flex items-center bg-slate-800 rounded-xl border border-slate-700 px-4 py-3">
-                  <span className="text-slate-400 text-lg mr-2">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={cfg.limitPrice}
-                    onChange={e => setCfg(p => ({ ...p, limitPrice: e.target.value }))}
-                    placeholder="0.00"
-                    className="bg-transparent text-white text-lg font-semibold flex-1 outline-none placeholder-slate-600"
-                  />
-                </div>
+            {orderType === 'Limit' && (
+              <div className="mb-3">
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
+                  Limit Price
+                </p>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={limitPrice}
+                  onChange={(e) => setLimitPrice(e.target.value)}
+                  placeholder="$0.00"
+                  className="bg-[#0f1829] border border-[#2a3448] rounded-xl p-3 w-full text-white outline-none placeholder-slate-600"
+                />
               </div>
             )}
+
+            {/* Est. proceeds */}
+            <p className="text-xs text-slate-500 mb-1">Est. proceeds</p>
+            <p className="text-base font-semibold text-cyan-400">
+              ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+
+            {/* Buttons */}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={onClose}
+                className="flex-1 border border-slate-700 text-slate-400 rounded-xl py-3 text-sm"
+              >
+                Cancel
+              </button>
+              <button className="flex-1 bg-red-500 text-white rounded-xl py-3 text-sm font-semibold">
+                Confirm Sell
+              </button>
+            </div>
           </>
         )}
 
-        {/* Estimated proceeds */}
-        <div className="bg-slate-800 rounded-xl p-4 mb-4">
-          <p className="text-xs text-slate-400">Est. proceeds</p>
-          <p className="text-base font-semibold text-cyan-400 mt-1">
-            ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}
-          </p>
-        </div>
+        {/* ── Multi or Portfolio ── */}
+        {(multi || isPortfolio) && (
+          <>
+            <div className="flex justify-between items-start">
+              <h3
+                className={`text-lg font-bold ${isPortfolio ? 'text-red-400' : 'text-white'}`}
+              >
+                {isPortfolio
+                  ? 'Sell Entire Portfolio'
+                  : `Sell Selected (${positions.length})`}
+              </h3>
+              <button
+                onClick={onClose}
+                className="text-slate-400 text-xl leading-none"
+              >
+                &#10005;
+              </button>
+            </div>
 
-        {/* Confirm text (portfolio only) */}
-        {multi && (
-          <div className="mb-4">
-            <input
-              type="text"
-              value={confirmText}
-              onChange={e => setConfirmText(e.target.value)}
-              placeholder="SELL"
-              className="w-full bg-slate-800 rounded-xl border border-slate-700 px-4 py-3 text-white text-sm outline-none mt-2"
-            />
-          </div>
+            {isPortfolio ? (
+              <>
+                <p className="text-sm text-slate-400 mt-1">
+                  {positions.length} positions &middot; ~$
+                  {totalValue.toLocaleString('en-US', DOLLAR_FMT)}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-400 mt-1">
+                {positions.length} position{positions.length > 1 ? 's' : ''}{' '}
+                selected
+              </p>
+            )}
+
+            {/* Position list */}
+            <div className="space-y-1 mt-3 mb-2 max-h-[150px] overflow-y-auto">
+              {positions.map((p) => (
+                <p key={p.symbol} className="text-sm text-slate-400">
+                  {p.symbol} &middot; {p.qty}sh &middot; ~$
+                  {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+                </p>
+              ))}
+            </div>
+
+            {isPortfolio ? (
+              <>
+                <p className="text-xs text-slate-500 mt-2">
+                  All positions at market price
+                </p>
+
+                {/* Confirm text */}
+                <p className="text-xs text-slate-500 uppercase tracking-wider mt-4 mb-2">
+                  Type SELL to confirm
+                </p>
+                <input
+                  type="text"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="Type SELL"
+                  className="bg-[#0f1829] border border-[#2a3448] rounded-xl p-3 w-full text-white outline-none placeholder-slate-600 text-sm"
+                />
+              </>
+            ) : (
+              <p className="text-xs text-slate-500 mt-2">
+                All at market price
+              </p>
+            )}
+
+            {/* Est. total */}
+            <p className="text-base font-semibold text-cyan-400 mt-3">
+              Est. total ${totalValue.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+
+            {/* Buttons */}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={onClose}
+                className="flex-1 border border-slate-700 text-slate-400 rounded-xl py-3 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isPortfolio ? confirmText !== 'SELL' : false}
+                className={`flex-1 rounded-xl py-3 text-sm font-semibold ${
+                  isPortfolio && confirmText !== 'SELL'
+                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                    : 'bg-red-500 text-white'
+                }`}
+              >
+                {isPortfolio ? 'Confirm Sell' : 'Confirm Sell All'}
+              </button>
+            </div>
+          </>
         )}
-
-        {/* Footer */}
-        <div className="flex gap-3">
-          <button onClick={onClose} className="text-slate-400 text-sm font-medium py-3">
-            Cancel
-          </button>
-          <button
-            disabled={!canConfirm}
-            onClick={() => {
-              console.log('Sell:', positions.map(p => p.symbol), cfg);
-              onClose();
-            }}
-            className="flex-1 ml-3 bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-2xl min-h-[52px] text-base font-semibold"
-          >
-            Confirm Sell
-          </button>
-        </div>
       </div>
-    </>
+    </div>
   );
 }
 
-// ─── Slide-Up Sell Bar ────────────────────────────────────
+// ─── Sell Bar ─────────────────────────────────────────────
 
 function SellBar({
   selected,
   positions,
   onDismiss,
-  onSellSelected,
+  onSell,
 }: {
   selected: string[];
   positions: Position[];
   onDismiss: () => void;
-  onSellSelected: () => void;
+  onSell: () => void;
 }) {
   if (selected.length === 0) return null;
 
-  const sel = positions.filter(p => selected.includes(p.symbol));
+  const sel = positions.filter((p) => selected.includes(p.symbol));
   const totalVal = sel.reduce((s, p) => s + p.marketValue, 0);
-  const all = selected.length === positions.length && positions.length > 1;
-  const one = sel[0];
+  const isAll = selected.length === positions.length && positions.length > 1;
 
-  let btnLabel = `Sell Selected (${selected.length})`;
-  if (all) btnLabel = 'Sell Portfolio';
-  else if (selected.length === 1 && one) btnLabel = `Sell ${one.symbol}`;
+  let label = `Sell Selected (${selected.length})`;
+  if (isAll && positions.length > 1) label = 'Sell Portfolio';
+  else if (selected.length === 1 && sel[0]) label = `Sell ${sel[0].symbol}`;
 
   return (
-    <div className="fixed bottom-[64px] left-0 right-0 z-40 bg-slate-900 border-t border-slate-800 px-4 py-3 flex justify-between items-center animate-slide-up">
+    <div className="fixed bottom-[64px] left-0 right-0 z-40 bg-[#1a2235] border-t border-[#2a3448] px-4 py-3 flex justify-between items-center animate-slide-up">
       <div>
-        <p className="text-sm font-semibold text-white">{selected.length} selected</p>
+        <p className="text-sm font-semibold text-white">
+          {selected.length} selected
+        </p>
         <p className="text-xs text-slate-400">
           ~${Math.round(totalVal).toLocaleString('en-US', DOLLAR_FMT)}
         </p>
       </div>
       <div className="flex items-center">
-        <button onClick={onDismiss} className="text-sm text-slate-400 mr-3">
+        <button onClick={onDismiss} className="text-sm text-slate-400 mr-4">
           Cancel
         </button>
         <button
-          onClick={onSellSelected}
-          className="bg-red-500 text-white rounded-xl px-6 py-2.5 text-sm font-semibold"
+          onClick={onSell}
+          className="bg-red-500 text-white rounded-xl px-5 py-2.5 text-sm font-semibold"
         >
-          {btnLabel}
+          {label}
         </button>
       </div>
     </div>
@@ -439,14 +623,15 @@ function buildDemoAccount(
   demo: ReturnType<typeof getDemoPortfolio>,
   quotes: Record<string, QuoteEntry> | null,
 ): AccountSummary {
-  const positions: Position[] = demo.positions.map(dp => {
+  const positions: Position[] = demo.positions.map((dp) => {
     const q = quotes?.[dp.symbol];
     const currentPrice = q?.price ?? dp.avgCost;
     const marketValue = currentPrice * dp.qty;
     const dayChange = q?.change ? q.change * dp.qty : 0;
     const dayChangePercent = q?.changePercent ?? 0;
     const totalPnl = (currentPrice - dp.avgCost) * dp.qty;
-    const totalPnlPercent = dp.avgCost > 0 ? (currentPrice / dp.avgCost - 1) * 100 : 0;
+    const totalPnlPercent =
+      dp.avgCost > 0 ? (currentPrice / dp.avgCost - 1) * 100 : 0;
 
     return {
       symbol: dp.symbol,
@@ -462,20 +647,25 @@ function buildDemoAccount(
       profitLossPct: totalPnlPercent,
       portfolioPercent: 0,
       sector: dp.sector,
+      weekHigh52: dp.weekHigh52,
+      weekLow52: dp.weekLow52,
     };
   });
 
   const totalEquity = positions.reduce((s, p) => s + p.marketValue, 0);
-  positions.forEach(p => {
-    p.portfolioPercent = totalEquity > 0 ? (p.marketValue / totalEquity) * 100 : 0;
+  positions.forEach((p) => {
+    p.portfolioPercent =
+      totalEquity > 0 ? (p.marketValue / totalEquity) * 100 : 0;
   });
 
   const cash = 11617.4;
   const buyingPower = 145217.48;
   const dayPnl = positions.reduce((s, p) => s + p.dayChange, 0);
-  const dayPnlPercent = totalEquity > 0 ? (dayPnl / (totalEquity - dayPnl)) * 100 : 0;
+  const dayPnlPercent =
+    totalEquity > 0 ? (dayPnl / (totalEquity - dayPnl)) * 100 : 0;
   const totalPnl = positions.reduce((s, p) => s + p.totalPnl, 0);
-  const totalPnlPercent = totalEquity > 0 ? (totalPnl / (totalEquity - totalPnl)) * 100 : 0;
+  const totalPnlPercent =
+    totalEquity > 0 ? (totalPnl / (totalEquity - totalPnl)) * 100 : 0;
 
   return {
     equity: totalEquity + cash,
@@ -496,12 +686,13 @@ export function PortfolioTab() {
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
-  const [isSelectMode, setIsSelectMode] = useState(false);
-  const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set());
-  const [showSellSheet, setShowSellSheet] = useState<Position[] | null>(null);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const [showSellModal, setShowSellModal] = useState<Position[] | null>(null);
 
   const investorStyle = user?.investorStyle || 'lynch';
-  const [displayAccount, setDisplayAccount] = useState<AccountSummary | null>(null);
+  const [displayAccount, setDisplayAccount] =
+    useState<AccountSummary | null>(null);
   const [quotesLoading, setQuotesLoading] = useState(false);
 
   useEffect(() => {
@@ -516,10 +707,10 @@ export function PortfolioTab() {
     fetch('/api/market/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbols: demo.positions.map(p => p.symbol) }),
+      body: JSON.stringify({ symbols: demo.positions.map((p) => p.symbol) }),
     })
-      .then(r => r.json())
-      .then(data => {
+      .then((r) => r.json())
+      .then((data) => {
         setDisplayAccount(buildDemoAccount(demo, data.quotes || null));
         setQuotesLoading(false);
       })
@@ -544,21 +735,28 @@ export function PortfolioTab() {
   }
 
   if (!displayAccount) {
-    return <div className="p-8 text-center text-slate-400">Loading portfolio…</div>;
+    return (
+      <div className="p-8 text-center text-slate-400">
+        Loading portfolio…
+      </div>
+    );
   }
 
   const positions = displayAccount.positions || [];
 
   const toggleSelect = (sym: string) => {
-    setSelectedSet(prev => {
-      const n = new Set(prev);
-      n.has(sym) ? n.delete(sym) : n.add(sym);
-      return n;
-    });
+    setSelectedSymbols((prev) =>
+      prev.includes(sym) ? prev.filter((s) => s !== sym) : [...prev, sym],
+    );
   };
 
-  const selectedArr = [...selectedSet];
-  const selectedPositions = positions.filter(p => selectedArr.includes(p.symbol));
+  const toggleExpand = (sym: string) => {
+    setExpandedSymbol((prev) => (prev === sym ? null : sym));
+  };
+
+  // Positions to sell
+  const sellPositions =
+    showSellModal ?? positions.filter((p) => selectedSymbols.includes(p.symbol));
 
   return (
     <div className="min-h-screen bg-[#060a14] px-4 pb-40">
@@ -568,41 +766,39 @@ export function PortfolioTab() {
       {/* 2. Account Card */}
       <AccountCard account={displayAccount} />
 
-      {/* 4. Core Holdings */}
+      {/* 3. Column header */}
       {positions.length > 0 && (
-        <div className="px-4 mt-6 mb-2 flex justify-between items-center" style={{paddingRight:'16px'}}>
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
-            Core Holdings
+        <div className="flex items-center mb-1 px-1 mt-6">
+          <span className="text-xs text-slate-500 uppercase tracking-wider w-8 text-center">
+            Sell
           </span>
-          <button
-            onClick={() => {
-              setIsSelectMode(prev => !prev);
-              if (isSelectMode) setSelectedSet(new Set());
-            }}
-            className={`text-xs ${isSelectMode ? 'text-cyan-400' : 'text-slate-400'}`}
-          >
-            {isSelectMode ? 'Done' : 'Select'}
-          </button>
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1 ml-2">
+            Holdings
+          </span>
+          <span className="text-xs text-slate-500 uppercase tracking-wider text-right">
+            Value / P&amp;L
+          </span>
         </div>
       )}
 
-      {/* 5. Position Cards */}
-      {positions.map(pos => (
+      {/* 4. Position Cards */}
+      {positions.map((pos) => (
         <PositionCard
           key={pos.symbol}
           pos={pos}
-          isSelectMode={isSelectMode}
-          isSelected={selectedSet.has(pos.symbol)}
-          onToggle={() => toggleSelect(pos.symbol)}
+          isSelected={selectedSymbols.includes(pos.symbol)}
+          isExpanded={expandedSymbol === pos.symbol}
+          onToggleSelect={() => toggleSelect(pos.symbol)}
+          onToggleExpand={() => toggleExpand(pos.symbol)}
         />
       ))}
-      <div className="h-32" />
+      <div className="h-8" />
 
-      {/* 6. Sell Entire Portfolio */}
+      {/* 5. Sell Entire Portfolio button */}
       {positions.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 mb-32">
           <button
-            onClick={() => setShowSellSheet(positions)}
+            onClick={() => setShowSellModal(positions)}
             className="w-full py-3 border border-red-500/20 text-red-400/70 rounded-2xl text-sm text-center"
           >
             Sell Entire Portfolio
@@ -610,29 +806,28 @@ export function PortfolioTab() {
         </div>
       )}
 
-      {/* 7. Nav spacer */}
-      <div className="mb-32" />
-
-      {/* 8. Sell Bar (multi-select) */}
+      {/* 6. Sell Bar (bottom, always shows when selections exist) */}
       <SellBar
-        selected={selectedArr}
+        selected={selectedSymbols}
         positions={positions}
-        onDismiss={() => {
-          setSelectedSet(new Set());
-          setIsSelectMode(false);
-        }}
-        onSellSelected={() => {
-          if (selectedPositions.length > 0) {
-            setShowSellSheet(selectedPositions);
-          }
+        onDismiss={() => setSelectedSymbols([])}
+        onSell={() => {
+          const sel = positions.filter((p) =>
+            selectedSymbols.includes(p.symbol),
+          );
+          if (sel.length > 0) setShowSellModal(sel);
         }}
       />
 
-      {/* 9. Sell Bottom Sheet */}
-      {showSellSheet && (
-        <SellBottomSheet
-          positions={showSellSheet}
-          onClose={() => setShowSellSheet(null)}
+      {/* 7. Sell Modal */}
+      {showSellModal && (
+        <SellModal
+          positions={showSellModal}
+          totalPositions={positions.length}
+          onClose={() => {
+            setShowSellModal(null);
+            setSelectedSymbols([]);
+          }}
         />
       )}
 
@@ -642,7 +837,6 @@ export function PortfolioTab() {
           to { transform: translateY(0); }
         }
         .animate-slide-up { animation: slide-up 0.2s ease-out; }
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 16px); }
       `}</style>
     </div>
   );
