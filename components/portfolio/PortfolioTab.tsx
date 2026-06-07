@@ -119,35 +119,40 @@ function PositionCard({
       : 50;
 
   return (
-    <div className="mb-4">
+    <div className="mb-3">
       <div
-        onClick={onToggleExpand}
-        className="bg-[#1a2235] rounded-lg border border-[#2a3448] cursor-pointer"
+        className="bg-[#1a2235] border border-[#2a3448] rounded-lg overflow-hidden"
         style={{ borderLeft: `3px solid ${borderLColor}` }}
       >
-        {/* Collapsed row — checkbox inside card */}
-        <div className="flex items-center px-0 py-3">
-          <div className="w-10 flex-shrink-0 flex justify-center pl-3">
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
-              aria-label={isSelected ? `Deselect ${pos.symbol}` : `Select ${pos.symbol}`}
+        {/* Collapsed section */}
+        <div
+          className="flex items-center pl-4 pr-4 py-3"
+          onClick={onToggleExpand}
+        >
+          {/* LEFT — checkbox */}
+          <div
+            className="w-8 flex-shrink-0 flex items-center"
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+          >
+            <div
+              className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
+              }`}
             >
-              <div
-                className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                  isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
-                }`}
-              >
-                {isSelected && (
-                  <span className="text-white text-xs leading-none">&#10003;</span>
-                )}
-              </div>
-            </button>
+              {isSelected && (
+                <span className="text-white text-xs leading-none">&#10003;</span>
+              )}
+            </div>
           </div>
-          <div className="flex-1 ml-3">
+
+          {/* MIDDLE — symbol + shares */}
+          <div className="flex-1 ml-2 min-w-0">
             <p className="text-base font-bold text-white">{pos.symbol}</p>
             <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
           </div>
-          <div className="text-right pr-3">
+
+          {/* RIGHT — price + P&amp;L */}
+          <div className="text-right flex-shrink-0">
             <p className="text-base font-semibold text-white">
               ${pos.currentPrice.toFixed(2)}
             </p>
@@ -157,13 +162,13 @@ function PositionCard({
           </div>
         </div>
 
-        {/* Expanded detail */}
+        {/* Expanded section */}
         {isExpanded && (
-          <>
-            <div className="border-t border-[#2a3448] mx-3 mt-3" />
+          <div className="px-4 pb-4">
+            <div className="border-t border-[#2a3448] mb-4" />
 
-            {/* 2-col stats */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4 pl-3 pr-3 mt-3">
+            {/* Detail grid */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Daily G/L
@@ -217,7 +222,7 @@ function PositionCard({
 
             {/* 52-Week Range */}
             {pos.weekHigh52 != null && pos.weekLow52 != null && (
-              <div className="pl-3 pr-3 mt-4">
+              <div className="mt-4">
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
                   52-Week Range
                 </p>
@@ -227,8 +232,12 @@ function PositionCard({
                   </span>
                   <div className="relative flex-1 h-1.5 bg-slate-700 rounded-full">
                     <div
-                      className="absolute bg-white w-2.5 h-2.5 rounded-full"
-                      style={{ top: '-3px', left: `${weekPos}%` }}
+                      className="absolute w-2.5 h-2.5 bg-white rounded-full"
+                      style={{
+                        top: '-3px',
+                        left: `${weekPos}%`,
+                        transform: 'translateX(-50%)',
+                      }}
                     />
                   </div>
                   <span className="text-xs text-slate-400">
@@ -238,8 +247,8 @@ function PositionCard({
               </div>
             )}
 
-            {/* Action buttons */}
-            <div className="flex gap-3 mx-3 mt-4 mb-3">
+            {/* Buy More / Sell buttons */}
+            <div className="flex gap-3 mt-4">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -259,7 +268,7 @@ function PositionCard({
                 Sell
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -985,11 +994,10 @@ export function PortfolioTab() {
       {/* 2. Account Card */}
       <AccountCard account={displayAccount} />
 
-      {/* 3. Column header with select-all */}
+      {/* 3. Column header */}
       {positions.length > 0 && (
-        <div className="flex items-center mb-2 mt-6 pl-3 pr-3">
-          <div className="flex items-center gap-2 flex-shrink-0 w-10">
-            <span className="text-xs text-slate-500 uppercase tracking-wider">SELL</span>
+        <div className="flex items-center pl-4 pr-4 mb-2">
+          <div className="w-8 flex-shrink-0 flex items-center gap-1.5">
             <button onClick={toggleSelectAll} aria-label="Select all">
               <div
                 className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
@@ -1008,11 +1016,11 @@ export function PortfolioTab() {
               </div>
             </button>
           </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1 ml-3">
-            HOLDINGS
+          <span className="text-xs text-slate-500 uppercase tracking-wider ml-2 flex-1">
+            Holdings
           </span>
-          <span className="text-xs text-slate-500 uppercase tracking-wider text-right">
-            PRICE / P&amp;L
+          <span className="text-xs text-slate-500 uppercase tracking-wider">
+            Price / P&amp;L
           </span>
         </div>
       )}
