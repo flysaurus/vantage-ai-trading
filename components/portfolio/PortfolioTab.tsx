@@ -135,25 +135,25 @@ function PositionCard({
             onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
           >
             <div
-              className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+              className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
                 isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
               }`}
               style={{ marginLeft: '12px' }}
             >
               {isSelected && (
-                <span className="text-white text-xs leading-none">&#10003;</span>
+                <span className="text-white text-[10px] leading-none">&#10003;</span>
               )}
             </div>
           </div>
 
           {/* MIDDLE — symbol + shares */}
-          <div className="flex-1 ml-2 min-w-0">
+          <div className="flex-1 ml-3 min-w-0">
             <p className="text-base font-bold text-white">{pos.symbol}</p>
             <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
           </div>
 
           {/* RIGHT — price + P&amp;L */}
-          <div className="text-right flex-shrink-0">
+          <div className="text-right flex-shrink-0 pr-3">
             <p className="text-base font-semibold text-white">
               ${pos.currentPrice.toFixed(2)}
             </p>
@@ -166,10 +166,14 @@ function PositionCard({
         {/* Expanded section */}
         {isExpanded && (
           <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '16px' }}>
-            <div className="border-t border-[#2a3448] mb-4" />
+            <div style={{
+              borderTop: '1px solid #2a3448',
+              marginTop: '12px',
+              marginBottom: '16px'
+            }} />
 
             {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Daily G/L
@@ -223,12 +227,12 @@ function PositionCard({
 
             {/* 52-Week Range */}
             {pos.weekHigh52 != null && pos.weekLow52 != null && (
-              <div className="mt-4">
+              <div style={{ marginTop: '20px' }}>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
                   52-Week Range
                 </p>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-400 flex-shrink-0">
                     ${pos.weekLow52.toFixed(0)}
                   </span>
                   <div className="relative flex-1 h-1.5 bg-slate-700 rounded-full">
@@ -241,7 +245,7 @@ function PositionCard({
                       }}
                     />
                   </div>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-400 flex-shrink-0">
                     ${pos.weekHigh52.toFixed(0)}
                   </span>
                 </div>
@@ -249,7 +253,7 @@ function PositionCard({
             )}
 
             {/* Buy More / Sell buttons */}
-            <div className="flex gap-3" style={{ margin: '16px 16px 0 16px' }}>
+            <div className="flex gap-3" style={{ marginTop: '20px', marginBottom: '4px' }}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1001,7 +1005,7 @@ export function PortfolioTab() {
           <div className="w-8 flex-shrink-0 flex items-center gap-1.5">
             <button onClick={toggleSelectAll} aria-label="Select all">
               <div
-                className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
                   allSelected
                     ? 'bg-cyan-500 border-cyan-500'
                     : someSelected
@@ -1011,14 +1015,14 @@ export function PortfolioTab() {
                 style={{ marginLeft: '12px' }}
               >
                 {(allSelected || someSelected) && (
-                  <span className="text-white text-xs leading-none">
+                  <span className="text-white text-[10px] leading-none">
                     {allSelected ? '\u2713' : '\u2013'}
                   </span>
                 )}
               </div>
             </button>
           </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider ml-2 flex-1">
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '44px' }}>
             Holdings
           </span>
           <span className="text-xs text-slate-500 uppercase tracking-wider">
