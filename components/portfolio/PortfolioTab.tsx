@@ -26,7 +26,7 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="mt-4 mb-3 bg-[#1a2235] rounded-lg border border-[#2a3448] px-3 py-5">
+    <div className="mt-4 mb-3 bg-[#1a2235] rounded-lg border border-[#2a3448] px-3 py-5" style={{ margin: '16px 16px 0 16px' }}>
       {/* Account Value */}
       <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
         Account Value
@@ -119,7 +119,7 @@ function PositionCard({
       : 50;
 
   return (
-    <div className="mb-3">
+    <div className="mb-3" style={{ marginLeft: '16px', marginRight: '16px' }}>
       <div
         className="bg-[#1a2235] border border-[#2a3448] rounded-lg overflow-hidden"
         style={{ borderLeft: `3px solid ${borderLColor}` }}
@@ -164,7 +164,7 @@ function PositionCard({
 
         {/* Expanded section */}
         {isExpanded && (
-          <div className="px-4 pb-4">
+          <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '16px' }}>
             <div className="border-t border-[#2a3448] mb-4" />
 
             {/* Detail grid */}
@@ -248,7 +248,7 @@ function PositionCard({
             )}
 
             {/* Buy More / Sell buttons */}
-            <div className="flex gap-3 mt-4">
+            <div className="flex gap-3" style={{ margin: '16px 16px 0 16px' }}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -987,7 +987,7 @@ export function PortfolioTab() {
     showSellModal ?? positions.filter((p) => selectedSymbols.includes(p.symbol));
 
   return (
-    <div className="min-h-screen bg-[#060a14] px-4 pb-40">
+    <div className="min-h-screen bg-[#060a14] pb-40">
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
@@ -996,7 +996,7 @@ export function PortfolioTab() {
 
       {/* 3. Column header */}
       {positions.length > 0 && (
-        <div className="flex items-center pl-4 pr-4 mb-2">
+        <div className="flex items-center mb-2" style={{ paddingLeft: '16px', paddingRight: '16px' }}>
           <div className="w-8 flex-shrink-0 flex items-center gap-1.5">
             <button onClick={toggleSelectAll} aria-label="Select all">
               <div
