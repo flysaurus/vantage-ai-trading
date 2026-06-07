@@ -26,7 +26,7 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="mt-4 mb-3 bg-slate-900 rounded-2xl border border-slate-800 p-5">
+    <div className="mt-4 mb-3 bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
       {/* Account Value */}
       <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
         Account Value
@@ -101,7 +101,7 @@ function PositionCard({
   return (
     <div
       onClick={onToggle}
-      className={`mb-3 rounded-2xl bg-slate-900 border border-slate-800 px-4 py-4 min-h-[72px] flex justify-between items-center border-l-[3px] ${borderL} transition-colors duration-200 cursor-pointer active:opacity-80 ${isSelected ? 'border-cyan-500' : ''}`}
+      className={`mb-3 rounded-2xl bg-slate-800/50 border border-slate-700 px-4 py-4 min-h-[72px] flex justify-between items-center border-l-[3px] ${borderL} transition-colors duration-200 cursor-pointer active:opacity-80 ${isSelected ? 'border-cyan-500' : ''}`}
     >
       <div className="flex items-center gap-3 min-w-0">
         {isSelectMode && (
@@ -547,7 +547,7 @@ export function PortfolioTab() {
   const selectedPositions = positions.filter(p => selectedArr.includes(p.symbol));
 
   return (
-    <div className="min-h-screen bg-[#0a0f1e] px-4 pb-40">
+    <div className="min-h-screen bg-[#060a14] px-4 pb-40">
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
