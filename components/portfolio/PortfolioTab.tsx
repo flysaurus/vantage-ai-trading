@@ -147,13 +147,13 @@ function PositionCard({
           </div>
 
           {/* MIDDLE — symbol + shares */}
-          <div className="flex-1 ml-7 min-w-0">
+          <div className="flex-1 min-w-0" style={{ marginLeft: '16px' }}>
             <p className="text-base font-bold text-white">{pos.symbol}</p>
             <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
           </div>
 
           {/* RIGHT — price + P&amp;L */}
-          <div className="text-right flex-shrink-0 pr-3">
+          <div className="text-right flex-shrink-0 pr-3" style={{ paddingRight: '12px' }}>
             <p className="text-base font-semibold text-white">
               ${pos.currentPrice.toFixed(2)}
             </p>
@@ -165,7 +165,7 @@ function PositionCard({
 
         {/* Expanded section */}
         {isExpanded && (
-          <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '16px' }}>
+          <div style={{ paddingLeft: '16px', paddingRight: '12px', paddingBottom: '16px' }}>
             <div style={{
               borderTop: '1px solid #2a3448',
               marginTop: '12px',
@@ -253,7 +253,7 @@ function PositionCard({
             )}
 
             {/* Buy More / Sell buttons */}
-            <div className="flex gap-3" style={{ marginTop: '20px', marginBottom: '4px' }}>
+            <div className="flex gap-3" style={{ marginTop: '20px', marginBottom: '16px' }}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1022,7 +1022,7 @@ export function PortfolioTab() {
               </div>
             </button>
           </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '24px' }}>
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '16px' }}>
             Holdings
           </span>
           <span className="text-xs text-slate-500 uppercase tracking-wider">
