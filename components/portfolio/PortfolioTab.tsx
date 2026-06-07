@@ -147,7 +147,7 @@ function PositionCard({
           </div>
 
           {/* MIDDLE — symbol + shares */}
-          <div className="flex-1 ml-3 min-w-0">
+          <div className="flex-1 ml-7 min-w-0">
             <p className="text-base font-bold text-white">{pos.symbol}</p>
             <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
           </div>
@@ -1022,7 +1022,7 @@ export function PortfolioTab() {
               </div>
             </button>
           </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '44px' }}>
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '24px' }}>
             Holdings
           </span>
           <span className="text-xs text-slate-500 uppercase tracking-wider">
