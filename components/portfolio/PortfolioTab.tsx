@@ -7,6 +7,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import DemoBanner from '@/components/shared/DemoBanner';
 import { getDemoPortfolio } from '@/lib/demo-data';
 import type { Position, AccountSummary } from '@/types';
+import SellModal from './SellModal';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -527,7 +528,8 @@ export function PortfolioTab() {
 
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
-  const [showSellModal, setShowSellModal] = useState<Position[] | null>(null);
+  const [sellModalPositions, setSellModalPositions] =
+    useState<{symbol:string, qty:number, currentPrice:number}[] | null>(null);
   const [showBuySymbol, setShowBuySymbol] = useState<Position | null>(null);
 
   const investorStyle = user?.investorStyle || 'lynch';
@@ -661,160 +663,27 @@ export function PortfolioTab() {
         positions={positions}
         onDismiss={() => setSelectedSymbols([])}
         onSell={() => {
-          const sel = positions.filter((p) => selectedSymbols.includes(p.symbol));
-          if (sel.length > 0) setShowSellModal(sel);
+          const selectedPositions = positions.filter((p) => selectedSymbols.includes(p.symbol));
+          setSellModalPositions(selectedPositions.map(s => ({
+            symbol: s.symbol,
+            qty: s.qty,
+            currentPrice: s.currentPrice
+          })));
         }}
       />
 
-      {/* 7. Sell Modal */}
-      {showSellModal && (() => {
-        const close = () => {
-          setShowSellModal(null);
-          setSelectedSymbols([]);
-        };
-        const totalValue = showSellModal.reduce((s, p) => s + p.qty * p.currentPrice, 0);
-        return (
-          <div style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }} onClick={close}>
-            <div style={{
-              backgroundColor: '#1a2235',
-              borderRadius: '16px',
-              border: '1px solid #2a3448',
-              width: '100%',
-              maxWidth: '380px',
-              maxHeight: '80vh',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden'
-            }} onClick={(e) => e.stopPropagation()}>
-
-              {/* HEADER */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '16px 20px',
-                borderBottom: '1px solid #2a3448',
-                flexShrink: 0
-              }}>
-                <span style={{
-                  fontSize: '18px',
-                  fontWeight: '700',
-                  color: '#ffffff'
-                }}>
-                  {showSellModal.length === 1
-                    ? `Sell ${showSellModal[0].symbol}`
-                    : showSellModal.length === positions.length
-                    ? 'Sell Portfolio'
-                    : `Sell Selected (${showSellModal.length})`}
-                </span>
-                <button
-                  onClick={close}
-                  style={{ color: '#64748b', fontSize: '20px',
-                    background: 'none', border: 'none',
-                    cursor: 'pointer', padding: '4px' }}
-                >✕</button>
-              </div>
-
-              {/* STOCK LIST */}
-              <div style={{ overflowY: 'auto', flex: 1 }}>
-                {showSellModal.map((pos, i) => (
-                  <div key={pos.symbol} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '14px 20px',
-                    borderBottom: i < showSellModal.length - 1
-                      ? '1px solid #2a3448' : 'none'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '15px', fontWeight: '700',
-                        color: '#ffffff' }}>
-                        {pos.symbol}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b',
-                        marginTop: '2px' }}>
-                        {pos.qty} shares
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '15px', fontWeight: '600',
-                        color: '#ffffff' }}>
-                        ~${(pos.qty * pos.currentPrice).toLocaleString(
-                          undefined, {minimumFractionDigits: 2})}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b',
-                        marginTop: '2px' }}>
-                        All shares &middot; Market
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* FOOTER */}
-              <div style={{
-                padding: '16px 20px',
-                borderTop: '1px solid #2a3448',
-                flexShrink: 0
-              }}>
-                <div style={{ fontSize: '12px', color: '#64748b',
-                  textAlign: 'center', marginBottom: '8px' }}>
-                  All shares &middot; Market order &middot; Day
-                </div>
-                <div style={{ fontSize: '18px', fontWeight: '600',
-                  color: '#22d3ee', textAlign: 'center',
-                  marginBottom: '16px' }}>
-                  Total est: ${totalValue.toLocaleString(
-                    undefined, {minimumFractionDigits: 2})}
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button onClick={close}
-                    style={{
-                      flex: 1,
-                      padding: '14px',
-                      border: '1px solid #374151',
-                      borderRadius: '10px',
-                      background: 'transparent',
-                      color: '#94a3b8',
-                      fontSize: '14px',
-                      cursor: 'pointer'
-                    }}
-                  >Cancel</button>
-                  <button
-                    style={{
-                      flex: 1,
-                      padding: '14px',
-                      border: 'none',
-                      borderRadius: '10px',
-                      background: '#ef4444',
-                      color: '#ffffff',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      cursor: 'pointer'
-                    }}
-                  >Confirm Sell</button>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 8. Buy Modal */}
+      {/* 7. Buy Modal */}
       {showBuySymbol && (
         <BuyModal
           position={showBuySymbol}
           onClose={() => setShowBuySymbol(null)}
+        />
+      )}
+
+      {sellModalPositions && (
+        <SellModal
+          positions={sellModalPositions}
+          onClose={() => setSellModalPositions(null)}
         />
       )}
 
