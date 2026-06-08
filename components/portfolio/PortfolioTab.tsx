@@ -92,6 +92,7 @@ function PositionCard({
   onToggleSelect,
   onToggleExpand,
   onBuy,
+  showCheckbox = false,
 }: {
   pos: Position;
   isSelected: boolean;
@@ -99,6 +100,7 @@ function PositionCard({
   onToggleSelect: () => void;
   onToggleExpand: () => void;
   onBuy?: () => void;
+  showCheckbox?: boolean;
 }) {
   const borderLColor =
     pos.dayChange > 0 ? '#10b981' : pos.dayChange < 0 ? '#ef4444' : '#475569';
@@ -131,21 +133,25 @@ function PositionCard({
           onClick={onToggleExpand}
         >
           {/* LEFT — checkbox */}
-          <div
-            className="w-8 flex-shrink-0 flex items-center"
-            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
-          >
+          {showCheckbox ? (
             <div
-              className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
-              }`}
-              style={{ marginLeft: '12px' }}
+              className="w-8 flex-shrink-0 flex items-center"
+              onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
             >
-              {isSelected && (
-                <span className="text-white text-[10px] leading-none">&#10003;</span>
-              )}
+              <div
+                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                  isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
+                }`}
+                style={{ marginLeft: '12px' }}
+              >
+                {isSelected && (
+                  <span className="text-white text-[10px] leading-none">&#10003;</span>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="w-8 flex-shrink-0" />
+          )}
 
           {/* MIDDLE — symbol + shares */}
           <div className="flex-1 min-w-0" style={{ marginLeft: '16px' }}>
@@ -404,47 +410,6 @@ function BuyModal({
   );
 }
 
-// ─── Sell Bar ─────────────────────────────────────────────
-
-function SellBar({
-  selected,
-  positions,
-  onDismiss,
-  onSell,
-}: {
-  selected: string[];
-  positions: Position[];
-  onDismiss: () => void;
-  onSell: () => void;
-}) {
-  if (selected.length === 0) return null;
-
-  const sel = positions.filter((p) => selected.includes(p.symbol));
-  const totalVal = sel.reduce((s, p) => s + p.marketValue, 0);
-
-  return (
-    <div className="fixed bottom-[64px] left-0 right-0 z-40 bg-[#1a2235] border-t border-[#2a3448] px-4 py-3 flex justify-between items-center animate-slide-up">
-      <div>
-        <p className="text-sm font-semibold text-white">{selected.length} selected</p>
-        <p className="text-xs text-slate-400">
-          ~${Math.round(totalVal).toLocaleString('en-US', DOLLAR_FMT)}
-        </p>
-      </div>
-      <div className="flex items-center">
-        <button onClick={onDismiss} className="text-sm text-slate-400 mr-4">
-          Cancel
-        </button>
-        <button
-          onClick={onSell}
-          className="bg-cyan-500 text-white rounded-lg px-5 py-2.5 text-sm font-semibold"
-        >
-          Done
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Build Demo Account ───────────────────────────────────
 
 type QuoteEntry = {
@@ -525,6 +490,7 @@ export function PortfolioTab() {
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   const [sellModalPositions, setSellModalPositions] =
     useState<{symbol:string, qty:number, currentPrice:number}[] | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
   const [showBuySymbol, setShowBuySymbol] = useState<Position | null>(null);
 
   const investorStyle = user?.investorStyle || 'lynch';
@@ -609,32 +575,70 @@ export function PortfolioTab() {
       {/* 3. Column header */}
       {positions.length > 0 && (
         <div className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '20px', marginBottom: '10px' }}>
-          <div className="w-8 flex-shrink-0 flex items-center gap-1.5">
-            <button onClick={toggleSelectAll} aria-label="Select all">
-              <div
-                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                  allSelected
-                    ? 'bg-cyan-500 border-cyan-500'
-                    : someSelected
-                      ? 'bg-cyan-500/40 border-cyan-500'
-                      : 'border-slate-600 bg-transparent'
-                }`}
-                style={{ marginLeft: '12px' }}
-              >
-                {(allSelected || someSelected) && (
-                  <span className="text-white text-[10px] leading-none">
-                    {allSelected ? '\u2713' : '\u2013'}
-                  </span>
-                )}
+          {selectMode ? (
+            <>
+              {/* Select-all checkbox */}
+              <div className="w-8 flex-shrink-0 flex items-center">
+                <button onClick={toggleSelectAll} aria-label="Select all">
+                  <div
+                    className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                      allSelected
+                        ? 'bg-cyan-500 border-cyan-500'
+                        : someSelected
+                          ? 'bg-cyan-500/40 border-cyan-500'
+                          : 'border-slate-600 bg-transparent'
+                    }`}
+                    style={{ marginLeft: '12px' }}
+                  >
+                    {(allSelected || someSelected) && (
+                      <span className="text-white text-[10px] leading-none">
+                        {allSelected ? '\u2713' : '\u2013'}
+                      </span>
+                    )}
+                  </div>
+                </button>
               </div>
-            </button>
-          </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '16px' }}>
-            Holdings
-          </span>
-          <span className="text-xs text-slate-500 uppercase tracking-wider">
-            Price / P&amp;L
-          </span>
+              <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '16px' }}>
+                Holdings
+              </span>
+              {selectedSymbols.length === 0 ? (
+                <button
+                  onClick={() => { setSelectMode(false); setSelectedSymbols([]); }}
+                  className="text-xs text-slate-400 uppercase tracking-wider"
+                >
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const sp = positions.filter((p) => selectedSymbols.includes(p.symbol));
+                    setSellModalPositions(sp.map(s => ({
+                      symbol: s.symbol,
+                      qty: s.qty,
+                      currentPrice: s.currentPrice
+                    })));
+                  }}
+                  className="bg-red-500 text-white rounded-lg px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                >
+                  {selectedSymbols.length === positions.length && positions.length > 1
+                    ? 'Sell Portfolio'
+                    : `Sell Selected (${selectedSymbols.length})`}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-slate-500 uppercase tracking-wider flex-1">
+                Holdings
+              </span>
+              <button
+                onClick={() => setSelectMode(true)}
+                className="text-xs text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors"
+              >
+                Sell Positions
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -648,26 +652,12 @@ export function PortfolioTab() {
           onToggleSelect={() => toggleSelect(pos.symbol)}
           onToggleExpand={() => toggleExpand(pos.symbol)}
           onBuy={() => setShowBuySymbol(pos)}
+          showCheckbox={selectMode}
         />
       ))}
       <div className="h-8" />
 
-      {/* 6. Sell Bar (bottom, always shows when selections exist) */}
-      <SellBar
-        selected={selectedSymbols}
-        positions={positions}
-        onDismiss={() => setSelectedSymbols([])}
-        onSell={() => {
-          const selectedPositions = positions.filter((p) => selectedSymbols.includes(p.symbol));
-          setSellModalPositions(selectedPositions.map(s => ({
-            symbol: s.symbol,
-            qty: s.qty,
-            currentPrice: s.currentPrice
-          })));
-        }}
-      />
-
-      {/* 7. Buy Modal */}
+      {/* 5. Buy Modal */}
       {showBuySymbol && (
         <BuyModal
           position={showBuySymbol}
@@ -679,6 +669,11 @@ export function PortfolioTab() {
         <SellModal
           positions={sellModalPositions}
           onClose={() => setSellModalPositions(null)}
+          onConfirm={() => {
+            setSellModalPositions(null);
+            setSelectedSymbols([]);
+            setSelectMode(false);
+          }}
         />
       )}
 

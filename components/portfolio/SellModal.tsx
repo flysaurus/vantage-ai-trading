@@ -10,9 +10,10 @@ interface Position {
 interface SellModalProps {
  positions: Position[]
  onClose: () => void
+ onConfirm?: () => void
 }
 
-export default function SellModal({ positions, onClose }: SellModalProps) {
+export default function SellModal({ positions, onClose, onConfirm }: SellModalProps) {
  const total = positions.reduce((s, p) => s + p.qty * p.currentPrice, 0)
 
  useEffect(() => {
@@ -170,7 +171,7 @@ export default function SellModal({ positions, onClose }: SellModalProps) {
  Cancel
  </button>
  <button
- onClick={onClose}
+ onClick={() => (onConfirm ?? onClose)()}
  style={{
  flex: 1,
  padding: '14px',
