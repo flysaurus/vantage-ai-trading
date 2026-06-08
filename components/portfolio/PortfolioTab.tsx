@@ -1001,7 +1001,7 @@ export function PortfolioTab() {
 
       {/* 3. Column header */}
       {positions.length > 0 && (
-        <div className="flex items-center mb-2" style={{ paddingLeft: '16px', paddingRight: '16px' }}>
+        <div className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '16px', marginBottom: '8px' }}>
           <div className="w-8 flex-shrink-0 flex items-center gap-1.5">
             <button onClick={toggleSelectAll} aria-label="Select all">
               <div
