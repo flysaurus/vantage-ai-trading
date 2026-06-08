@@ -587,202 +587,138 @@ function SellModal({
     );
   }
 
-  // ── Multi or Portfolio ──
+  // ── Portfolio Sell ──
+  if (isPortfolio) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-[#1a2235] rounded-xl w-full max-w-sm border border-[#2a3448] max-h-[80vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="sticky top-0 bg-[#1a2235] px-6 pt-6 pb-2 z-10">
+            <div className="flex justify-between items-start">
+              <h3 className="text-lg font-bold text-red-400">Sell Entire Portfolio</h3>
+              <button onClick={onClose} className="text-slate-400 text-xl leading-none">
+                &#10005;
+              </button>
+            </div>
+          </div>
+
+          <div className="px-6">
+            <p className="text-sm text-slate-400 mt-1">
+              {positions.length} positions &middot; ~$
+              {totalValue.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+            <div className="space-y-1 mt-3 mb-2 max-h-[150px] overflow-y-auto">
+              {positions.map((p) => (
+                <p key={p.symbol} className="text-sm text-slate-400">
+                  {p.symbol} &middot; {p.qty}sh &middot; ~$
+                  {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+                </p>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500 mt-2">All positions at market price</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wider mt-4 mb-1">
+              Type SELL to confirm
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="Type SELL"
+              className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-white outline-none placeholder-slate-600 text-sm"
+            />
+          </div>
+
+          <div className="sticky bottom-0 bg-[#1a2235] border-t border-[#2a3448] px-6 py-4 mt-2">
+            <p className="text-base text-cyan-400 mb-3">
+              Total est: ${totalValue.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
+                Cancel
+              </button>
+              <button
+                disabled={confirmText !== 'SELL'}
+                className={`flex-1 rounded-lg py-3 text-sm font-semibold ${
+                  confirmText !== 'SELL'
+                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                    : 'bg-red-500 text-white'
+                }`}
+              >
+                Confirm Sell
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Multi ──
   return (
     <div
-      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
+      className="fixed inset-0 bg-black/70 z-50 flex items-end justify-center"
       onClick={onClose}
     >
       <div
-        className="bg-[#1a2235] rounded-xl w-full max-w-sm border border-[#2a3448] max-h-[80vh] overflow-y-auto"
+        className="bg-[#1a2235] rounded-t-xl w-full max-h-[70vh] flex flex-col border-t border-l border-r border-[#2a3448]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-[#1a2235] px-6 pt-6 pb-2 z-10">
-          <div className="flex justify-between items-start">
-            <h3 className={`text-lg font-bold ${isPortfolio ? 'text-red-400' : 'text-white'}`}>
-              {isPortfolio ? 'Sell Entire Portfolio' : `Sell Selected (${positions.length})`}
-            </h3>
-            <button onClick={onClose} className="text-slate-400 text-xl leading-none">
-              &#10005;
-            </button>
-          </div>
+        <div className="flex justify-between items-center px-5 py-4 border-b border-[#2a3448] flex-shrink-0">
+          <p className="text-lg font-bold text-white">
+            Sell Selected ({positions.length})
+          </p>
+          <button onClick={onClose} className="text-slate-400 text-xl leading-none">
+            &#10005;
+          </button>
         </div>
 
         {/* Scrollable content */}
-        <div className="px-6">
-          {isPortfolio ? (
-            <>
-              {/* Portfolio mode: simple list + confirm */}
-              <p className="text-sm text-slate-400 mt-1">
-                {positions.length} positions &middot; ~$
-                {totalValue.toLocaleString('en-US', DOLLAR_FMT)}
-              </p>
-              <div className="space-y-1 mt-3 mb-2 max-h-[150px] overflow-y-auto">
-                {positions.map((p) => (
-                  <p key={p.symbol} className="text-sm text-slate-400">
-                    {p.symbol} &middot; {p.qty}sh &middot; ~$
-                    {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-                  </p>
-                ))}
+        <div className="overflow-y-auto flex-1 px-5 py-4">
+          {positions.map((p) => (
+            <div
+              key={p.symbol}
+              className="flex justify-between items-center py-3 border-b border-[#2a3448] last:border-0"
+            >
+              <div>
+                <p className="text-base font-bold text-white">{p.symbol}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{p.qty} shares</p>
               </div>
-              <p className="text-xs text-slate-500 mt-2">All positions at market price</p>
-              <p className="text-xs text-slate-500 uppercase tracking-wider mt-4 mb-1">
-                Type SELL to confirm
-              </p>
-              <input
-                type="text"
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                placeholder="Type SELL"
-                className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-white outline-none placeholder-slate-600 text-sm"
-              />
-            </>
-          ) : (
-            <>
-              {/* Multi mode: per-stock controls */}
-              {positions.map((p) => {
-                const cfg = stockConfigs[p.symbol];
-                if (!cfg) return null;
-                return (
-                  <div key={p.symbol} className="border-b border-[#2a3448] pb-4 mb-4 last:border-0">
-                    <p className="text-sm font-bold text-white uppercase">{p.symbol}</p>
-                    <p className="text-xs text-slate-400 mb-3">
-                      {p.qty} shares &middot; ${p.currentPrice.toFixed(2)}/share
-                    </p>
+              <div className="text-right">
+                <p className="text-base font-semibold text-white">
+                  ${p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">All shares &middot; Market</p>
+              </div>
+            </div>
+          ))}
 
-                    {/* Quantity */}
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Quantity</p>
-                    <div className="flex items-center gap-3 mb-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          checked={cfg.mode === 'all'}
-                          onChange={() => updateStockConfig(p.symbol, { mode: 'all' })}
-                          className="accent-cyan-500"
-                        />
-                        <span className="text-sm text-white">
-                          All ({p.qty}) ~$
-                          {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-                        </span>
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          checked={cfg.mode === 'partial'}
-                          onChange={() => updateStockConfig(p.symbol, { mode: 'partial' })}
-                          className="accent-cyan-500"
-                        />
-                        <span className="text-sm text-white">Partial</span>
-                      </label>
-                      {cfg.mode === 'partial' && (
-                        <input
-                          type="number"
-                          min={1}
-                          max={p.qty}
-                          value={cfg.shares}
-                          onChange={(e) =>
-                            updateStockConfig(p.symbol, {
-                              mode: 'partial',
-                              shares: Math.min(p.qty, Math.max(1, parseInt(e.target.value) || 1)),
-                            })
-                          }
-                          className="w-16 text-center bg-[#0f1829] border border-[#2a3448] rounded-md px-2 py-1 text-white text-sm outline-none"
-                        />
-                      )}
-                      {cfg.mode === 'partial' && (
-                        <span className="text-xs text-slate-400">shares</span>
-                      )}
-                    </div>
-
-                    {/* Order Type */}
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mt-3 mb-1">Order Type</p>
-                    <div className="flex gap-2">
-                      {(['Market', 'Limit', 'Stop'] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => updateStockConfig(p.symbol, { orderType: t })}
-                          className={
-                            cfg.orderType === t
-                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
-                              : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
-                          }
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Time in Force */}
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mt-2 mb-1">Time in Force</p>
-                    <div className="flex gap-2">
-                      {(['Day', 'GTC'] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => updateStockConfig(p.symbol, { tif: t })}
-                          className={
-                            cfg.tif === t
-                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
-                              : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
-                          }
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Limit Price */}
-                    {cfg.orderType === 'Limit' && (
-                      <div className="mt-2">
-                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Limit Price</p>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={cfg.limitPrice}
-                          onChange={(e) => updateStockConfig(p.symbol, { limitPrice: e.target.value })}
-                          placeholder="$0.00"
-                          className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-sm text-white outline-none placeholder-slate-600"
-                        />
-                      </div>
-                    )}
-
-                    {/* Est */}
-                    <p className="text-sm text-cyan-400 mt-2">
-                      Est: $
-                      {(cfg.mode === 'partial'
-                        ? cfg.shares * p.currentPrice
-                        : p.marketValue
-                      ).toLocaleString('en-US', DOLLAR_FMT)}
-                    </p>
-                  </div>
-                );
-              })}
-            </>
-          )}
+          <div className="mt-4 pt-4 border-t border-[#2a3448]">
+            <p className="text-xs text-slate-500 text-center mb-3">
+              All at market price &middot; Day order
+            </p>
+            <p className="text-lg font-semibold text-cyan-400 text-center">
+              Total est: ${totalValue.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-[#1a2235] border-t border-[#2a3448] px-6 py-4 mt-2">
-          <p className="text-base text-cyan-400 mb-3">
-            Total est: ${(isPortfolio ? totalValue : multiProceeds).toLocaleString('en-US', DOLLAR_FMT)}
-          </p>
-          <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
-              Cancel
-            </button>
-            <button
-              disabled={isPortfolio ? confirmText !== 'SELL' : false}
-              className={`flex-1 rounded-lg py-3 text-sm font-semibold ${
-                isPortfolio && confirmText !== 'SELL'
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                  : 'bg-red-500 text-white'
-              }`}
-            >
-              {isPortfolio ? 'Confirm Sell' : 'Confirm Sell All'}
-            </button>
-          </div>
+        <div className="px-5 py-4 border-t border-[#2a3448] flex gap-3 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm"
+          >
+            Cancel
+          </button>
+          <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
+            Confirm Sell All
+          </button>
         </div>
       </div>
     </div>
