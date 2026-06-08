@@ -6,7 +6,6 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DemoBanner from '@/components/shared/DemoBanner';
 import { getDemoPortfolio } from '@/lib/demo-data';
-import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -404,360 +403,6 @@ function BuyModal({
   );
 }
 
-// ─── Sell Modal ───────────────────────────────────────────
-
-type StockSellConfig = {
-  mode: 'all' | 'partial';
-  shares: number;
-  orderType: 'Market' | 'Limit' | 'Stop';
-  tif: 'Day' | 'GTC';
-  limitPrice: string;
-};
-
-function SellModal({
-  positions,
-  totalPositions,
-  onClose,
-}: {
-  positions: Position[];
-  totalPositions: number;
-  onClose: () => void;
-}) {
-  const { setTab } = useTabStore();
-  const single = positions.length === 1 ? positions[0] : null;
-  const multi = positions.length > 1;
-  const isPortfolio = positions.length === totalPositions && positions.length > 1;
-
-  // Single-stock state
-  const [sellMode, setSellMode] = useState<'all' | 'partial'>('all');
-  const [shares, setShares] = useState(single?.qty ?? 0);
-  const [orderType, setOrderType] = useState<'Market' | 'Limit' | 'Stop'>('Market');
-  const [tif, setTif] = useState<'Day' | 'GTC'>('Day');
-  const [limitPrice, setLimitPrice] = useState('');
-  const [confirmText, setConfirmText] = useState('');
-
-  // Multi-stock per-stock configs
-  const initConfigs = (): Record<string, StockSellConfig> => {
-    const configs: Record<string, StockSellConfig> = {};
-    for (const p of positions) {
-      configs[p.symbol] = {
-        mode: 'all',
-        shares: p.qty,
-        orderType: 'Market',
-        tif: 'Day',
-        limitPrice: '',
-      };
-    }
-    return configs;
-  };
-  const [stockConfigs, setStockConfigs] = useState<Record<string, StockSellConfig>>(initConfigs);
-
-  const updateStockConfig = (sym: string, patch: Partial<StockSellConfig>) => {
-    setStockConfigs((prev) => ({ ...prev, [sym]: { ...prev[sym], ...patch } }));
-  };
-
-  const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
-  const proceeds =
-    single && sellMode === 'partial'
-      ? shares * single.currentPrice
-      : totalValue;
-
-  // Multi proceeds from per-stock configs
-  const multiProceeds = positions.reduce((s, p) => {
-    const cfg = stockConfigs[p.symbol];
-    if (!cfg) return s;
-    return s + (cfg.mode === 'partial' ? cfg.shares * p.currentPrice : p.marketValue);
-  }, 0);
-
-  // ── Single position ──
-  if (single && !isPortfolio) {
-    return (
-      <div
-        className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
-        onClick={onClose}
-      >
-        <div
-          className="bg-[#1a2235] rounded-xl p-6 w-full max-w-sm border border-[#2a3448]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-start">
-            <h3 className="text-lg font-bold text-white">
-              Sell {single.symbol}
-            </h3>
-            <button onClick={onClose} className="text-slate-400 text-xl leading-none">
-              &#10005;
-            </button>
-          </div>
-          <p className="text-sm text-slate-400 mt-1 mb-4">
-            {single.qty} shares &middot; ${single.currentPrice.toFixed(2)}/share
-          </p>
-
-          {/* Quantity */}
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Quantity</p>
-          <label className="flex items-center gap-3 bg-[#0f1829] rounded-lg p-3 border border-[#2a3448] mb-2 cursor-pointer">
-            <input type="radio" checked={sellMode === 'all'} onChange={() => setSellMode('all')} className="accent-cyan-500" />
-            <div className="flex-1">
-              <p className="text-white text-sm font-semibold">All shares ({single.qty})</p>
-              <p className="text-slate-400 text-xs">
-                Est. ${(single.qty * single.currentPrice).toLocaleString('en-US', DOLLAR_FMT)}
-              </p>
-            </div>
-          </label>
-          <label className="flex items-center gap-3 bg-[#0f1829] rounded-lg p-3 border border-[#2a3448] cursor-pointer">
-            <input type="radio" checked={sellMode === 'partial'} onChange={() => setSellMode('partial')} className="accent-cyan-500" />
-            <div className="flex-1">
-              <p className="text-white text-sm font-semibold">Partial</p>
-              {sellMode === 'partial' && (
-                <div className="flex items-center gap-2 mt-2">
-                  <input
-                    type="number" min={1} max={single.qty} value={shares}
-                    onChange={(e) => setShares(Math.min(single.qty, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-24 bg-[#0f1829] border border-[#2a3448] rounded-md px-3 py-2 text-white text-sm outline-none"
-                  />
-                  <span className="text-slate-400 text-xs">of {single.qty}</span>
-                </div>
-              )}
-            </div>
-          </label>
-
-          {/* Order Type */}
-          <p className="text-xs text-slate-500 uppercase tracking-wider mt-4 mb-1">Order Type</p>
-          <div className="flex gap-2">
-            {(['Market', 'Limit', 'Stop'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setOrderType(t)}
-                className={
-                  orderType === t
-                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
-                    : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
-                }
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          {/* Time in Force */}
-          <p className="text-xs text-slate-500 uppercase tracking-wider mt-3 mb-1">Time in Force</p>
-          <div className="flex gap-2 mb-3">
-            {(['Day', 'GTC'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTif(t)}
-                className={
-                  tif === t
-                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
-                    : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
-                }
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          {/* Limit / Stop: redirect to Invest tab */}
-          {orderType !== 'Market' && (
-            <div
-              style={{
-                background: 'rgba(34,211,238,0.08)',
-                border: '1px solid rgba(34,211,238,0.2)',
-                borderRadius: '8px',
-                padding: '12px',
-                marginTop: '12px',
-              }}
-            >
-              <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.5' }}>
-                &#8505;&#65039; For limit and stop orders, use the
-                Order Ticket in the Invest tab for
-                full price and execution control.
-              </p>
-            </div>
-          )}
-
-          {/* Market: est. proceeds */}
-          {orderType === 'Market' && (
-            <>
-              <p className="text-xs text-slate-500 mt-3 mb-1">Est. proceeds</p>
-              <p className="text-base font-semibold text-cyan-400">
-                ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}
-              </p>
-            </>
-          )}
-
-          {/* Buttons */}
-          <div className="flex gap-3 mt-4">
-            <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
-              Cancel
-            </button>
-            {orderType === 'Market' ? (
-              <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
-                Confirm Sell
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  onClose();
-                  setTimeout(() => setTab('invest'), 200);
-                }}
-                style={{
-                  flex: 1,
-                  background: 'rgba(34,211,238,0.15)',
-                  color: '#22d3ee',
-                  border: '1px solid rgba(34,211,238,0.3)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                }}
-              >
-                Go to Invest Tab &rarr;
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Portfolio Sell ──
-  if (isPortfolio) {
-    return (
-      <div
-        className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
-        onClick={onClose}
-      >
-        <div
-          className="bg-[#1a2235] rounded-xl w-full max-w-sm border border-[#2a3448] max-h-[80vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="sticky top-0 bg-[#1a2235] px-6 pt-6 pb-2 z-10">
-            <div className="flex justify-between items-start">
-              <h3 className="text-lg font-bold text-red-400">Sell Entire Portfolio</h3>
-              <button onClick={onClose} className="text-slate-400 text-xl leading-none">
-                &#10005;
-              </button>
-            </div>
-          </div>
-
-          <div className="px-6">
-            <p className="text-sm text-slate-400 mt-1">
-              {positions.length} positions &middot; ~$
-              {totalValue.toLocaleString('en-US', DOLLAR_FMT)}
-            </p>
-            <div className="space-y-1 mt-3 mb-2 max-h-[150px] overflow-y-auto">
-              {positions.map((p) => (
-                <p key={p.symbol} className="text-sm text-slate-400">
-                  {p.symbol} &middot; {p.qty}sh &middot; ~$
-                  {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-                </p>
-              ))}
-            </div>
-            <p className="text-xs text-slate-500 mt-2">All positions at market price</p>
-            <p className="text-xs text-slate-500 uppercase tracking-wider mt-4 mb-1">
-              Type SELL to confirm
-            </p>
-            <input
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="Type SELL"
-              className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-white outline-none placeholder-slate-600 text-sm"
-            />
-          </div>
-
-          <div className="sticky bottom-0 bg-[#1a2235] border-t border-[#2a3448] px-6 py-4 mt-2">
-            <p className="text-base text-cyan-400 mb-3">
-              Total est: ${totalValue.toLocaleString('en-US', DOLLAR_FMT)}
-            </p>
-            <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
-                Cancel
-              </button>
-              <button
-                disabled={confirmText !== 'SELL'}
-                className={`flex-1 rounded-lg py-3 text-sm font-semibold ${
-                  confirmText !== 'SELL'
-                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                    : 'bg-red-500 text-white'
-                }`}
-              >
-                Confirm Sell
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Multi ──
-  return (
-    <div
-      className="fixed inset-0 bg-black/70 z-50 flex items-end justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#1a2235] rounded-t-xl w-full max-h-[70vh] flex flex-col border-t border-l border-r border-[#2a3448]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex justify-between items-center px-5 py-4 border-b border-[#2a3448] flex-shrink-0">
-          <p className="text-lg font-bold text-white">
-            Sell Selected ({positions.length})
-          </p>
-          <button onClick={onClose} className="text-slate-400 text-xl leading-none">
-            &#10005;
-          </button>
-        </div>
-
-        {/* Scrollable content */}
-        <div className="overflow-y-auto flex-1 px-5 py-4">
-          {positions.map((p) => (
-            <div
-              key={p.symbol}
-              className="flex justify-between items-center py-3 border-b border-[#2a3448] last:border-0"
-            >
-              <div>
-                <p className="text-base font-bold text-white">{p.symbol}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{p.qty} shares</p>
-              </div>
-              <div className="text-right">
-                <p className="text-base font-semibold text-white">
-                  ${p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-                </p>
-                <p className="text-xs text-slate-400 mt-0.5">All shares &middot; Market</p>
-              </div>
-            </div>
-          ))}
-
-          <div className="mt-4 pt-4 border-t border-[#2a3448]">
-            <p className="text-xs text-slate-500 text-center mb-3">
-              All at market price &middot; Day order
-            </p>
-            <p className="text-lg font-semibold text-cyan-400 text-center">
-              Total est: ${totalValue.toLocaleString('en-US', DOLLAR_FMT)}
-            </p>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-[#2a3448] flex gap-3 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm"
-          >
-            Cancel
-          </button>
-          <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
-            Confirm Sell All
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Sell Bar ─────────────────────────────────────────────
 
 function SellBar({
@@ -956,10 +601,6 @@ export function PortfolioTab() {
     }
   };
 
-  // Positions to sell
-  const sellPositions =
-    showSellModal ?? positions.filter((p) => selectedSymbols.includes(p.symbol));
-
   return (
     <div className="min-h-0 bg-[#060a14] pb-32">
       {/* 1. Demo banner */}
@@ -1014,18 +655,6 @@ export function PortfolioTab() {
       ))}
       <div className="h-8" />
 
-      {/* 5. Sell Entire Portfolio button */}
-      {positions.length > 0 && (
-        <div className="mt-6 mb-40" style={{ marginLeft: '16px', marginRight: '16px' }}>
-          <button
-            onClick={() => setShowSellModal(positions)}
-            className="w-full py-3 border border-red-500/20 text-red-400/70 rounded-lg text-sm text-center"
-          >
-            Sell Entire Portfolio
-          </button>
-        </div>
-      )}
-
       {/* 6. Sell Bar (bottom, always shows when selections exist) */}
       <SellBar
         selected={selectedSymbols}
@@ -1038,95 +667,148 @@ export function PortfolioTab() {
       />
 
       {/* 7. Sell Modal */}
-      {showSellModal &&
-        (() => {
-          const isAll =
-            showSellModal.length === positions.length && positions.length > 1;
-          const sellTitle = isAll
-            ? 'Sell Portfolio'
-            : showSellModal.length === 1
-              ? `Sell ${showSellModal[0].symbol}`
-              : `Sell Selected (${showSellModal.length})`;
-          const sellTotal = showSellModal.reduce(
-            (s, p) => s + p.marketValue,
-            0,
-          );
-          const close = () => {
-            setShowSellModal(null);
-            setSelectedSymbols([]);
-          };
+      {showSellModal && (() => {
+        const close = () => {
+          setShowSellModal(null);
+          setSelectedSymbols([]);
+        };
+        const totalValue = showSellModal.reduce((s, p) => s + p.qty * p.currentPrice, 0);
+        return (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }} onClick={close}>
+            <div style={{
+              backgroundColor: '#1a2235',
+              borderRadius: '16px',
+              border: '1px solid #2a3448',
+              width: '100%',
+              maxWidth: '380px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }} onClick={(e) => e.stopPropagation()}>
 
-          return (
-            <div
-              className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
-              onClick={close}
-            >
-              <div
-                className="bg-[#1a2235] rounded-xl w-full max-w-sm border border-[#2a3448] overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="flex justify-between items-center px-5 py-4 border-b border-[#2a3448]">
-                  <p className="text-lg font-bold text-white">{sellTitle}</p>
-                  <button
-                    onClick={close}
-                    className="text-slate-400 text-xl leading-none"
-                  >
-                    &#10005;
-                  </button>
-                </div>
+              {/* HEADER */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 20px',
+                borderBottom: '1px solid #2a3448',
+                flexShrink: 0
+              }}>
+                <span style={{
+                  fontSize: '18px',
+                  fontWeight: '700',
+                  color: '#ffffff'
+                }}>
+                  {showSellModal.length === 1
+                    ? `Sell ${showSellModal[0].symbol}`
+                    : showSellModal.length === positions.length
+                    ? 'Sell Portfolio'
+                    : `Sell Selected (${showSellModal.length})`}
+                </span>
+                <button
+                  onClick={close}
+                  style={{ color: '#64748b', fontSize: '20px',
+                    background: 'none', border: 'none',
+                    cursor: 'pointer', padding: '4px' }}
+                >✕</button>
+              </div>
 
-                {/* Stock list */}
-                <div className="max-h-[200px] overflow-y-auto">
-                  {showSellModal.map((p) => (
-                    <div
-                      key={p.symbol}
-                      className="flex justify-between items-center px-5 py-3 border-b border-[#2a3448] last:border-0"
-                    >
-                      <div>
-                        <p className="text-base font-bold text-white">
-                          {p.symbol}
-                        </p>
-                        <p className="text-xs text-slate-400">{p.qty} shares</p>
+              {/* STOCK LIST */}
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {showSellModal.map((pos, i) => (
+                  <div key={pos.symbol} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '14px 20px',
+                    borderBottom: i < showSellModal.length - 1
+                      ? '1px solid #2a3448' : 'none'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: '700',
+                        color: '#ffffff' }}>
+                        {pos.symbol}
                       </div>
-                      <div className="text-right">
-                        <p className="text-base text-white">
-                          ~$
-                          {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          All &middot; Market
-                        </p>
+                      <div style={{ fontSize: '12px', color: '#64748b',
+                        marginTop: '2px' }}>
+                        {pos.qty} shares
                       </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* Footer */}
-                <div className="px-5 py-4 border-t border-[#2a3448]">
-                  <p className="text-xs text-slate-500 text-center mb-2">
-                    All shares &middot; Market &middot; Day order
-                  </p>
-                  <p className="text-lg font-semibold text-cyan-400 text-center mb-4">
-                    Total est: $
-                    {sellTotal.toLocaleString('en-US', DOLLAR_FMT)}
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={close}
-                      className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm"
-                    >
-                      Cancel
-                    </button>
-                    <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
-                      Confirm Sell
-                    </button>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '15px', fontWeight: '600',
+                        color: '#ffffff' }}>
+                        ~${(pos.qty * pos.currentPrice).toLocaleString(
+                          undefined, {minimumFractionDigits: 2})}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b',
+                        marginTop: '2px' }}>
+                        All shares &middot; Market
+                      </div>
+                    </div>
                   </div>
+                ))}
+              </div>
+
+              {/* FOOTER */}
+              <div style={{
+                padding: '16px 20px',
+                borderTop: '1px solid #2a3448',
+                flexShrink: 0
+              }}>
+                <div style={{ fontSize: '12px', color: '#64748b',
+                  textAlign: 'center', marginBottom: '8px' }}>
+                  All shares &middot; Market order &middot; Day
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '600',
+                  color: '#22d3ee', textAlign: 'center',
+                  marginBottom: '16px' }}>
+                  Total est: ${totalValue.toLocaleString(
+                    undefined, {minimumFractionDigits: 2})}
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={close}
+                    style={{
+                      flex: 1,
+                      padding: '14px',
+                      border: '1px solid #374151',
+                      borderRadius: '10px',
+                      background: 'transparent',
+                      color: '#94a3b8',
+                      fontSize: '14px',
+                      cursor: 'pointer'
+                    }}
+                  >Cancel</button>
+                  <button
+                    style={{
+                      flex: 1,
+                      padding: '14px',
+                      border: 'none',
+                      borderRadius: '10px',
+                      background: '#ef4444',
+                      color: '#ffffff',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >Confirm Sell</button>
                 </div>
               </div>
+
             </div>
-          );
-        })()}
+          </div>
+        );
+      })()}
 
       {/* 8. Buy Modal */}
       {showBuySymbol && (
