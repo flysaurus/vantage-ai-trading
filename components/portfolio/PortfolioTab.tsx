@@ -575,69 +575,64 @@ export function PortfolioTab() {
       {/* 3. Column header */}
       {positions.length > 0 && (
         <div className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '20px', marginBottom: '10px' }}>
-          {selectMode ? (
-            <>
-              {/* Select-all checkbox */}
-              <div className="w-8 flex-shrink-0 flex items-center">
-                <button onClick={toggleSelectAll} aria-label="Select all">
-                  <div
-                    className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                      allSelected
-                        ? 'bg-cyan-500 border-cyan-500'
-                        : someSelected
-                          ? 'bg-cyan-500/40 border-cyan-500'
-                          : 'border-slate-600 bg-transparent'
-                    }`}
-                    style={{ marginLeft: '12px' }}
-                  >
-                    {(allSelected || someSelected) && (
-                      <span className="text-white text-[10px] leading-none">
-                        {allSelected ? '\u2713' : '\u2013'}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              </div>
-              <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '16px' }}>
-                Holdings
-              </span>
-              {selectedSymbols.length === 0 ? (
-                <button
-                  onClick={() => { setSelectMode(false); setSelectedSymbols([]); }}
-                  className="text-xs text-slate-400 uppercase tracking-wider font-medium px-2 py-0.5 rounded hover:text-white transition-colors"
+          {/* Checkbox spacer — always present so Holdings never shifts */}
+          <div className="w-8 flex-shrink-0 flex items-center">
+            {selectMode && (
+              <button onClick={toggleSelectAll} aria-label="Select all">
+                <div
+                  className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                    allSelected
+                      ? 'bg-cyan-500 border-cyan-500'
+                      : someSelected
+                        ? 'bg-cyan-500/40 border-cyan-500'
+                        : 'border-slate-600 bg-transparent'
+                  }`}
+                  style={{ marginLeft: '12px' }}
                 >
-                  Cancel
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    const sp = positions.filter((p) => selectedSymbols.includes(p.symbol));
-                    setSellModalPositions(sp.map(s => ({
-                      symbol: s.symbol,
-                      qty: s.qty,
-                      currentPrice: s.currentPrice
-                    })));
-                  }}
-                  className="bg-red-500 text-white rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wider active:scale-95 transition-all"
-                >
-                  {selectedSymbols.length === positions.length && positions.length > 1
-                    ? 'Sell Portfolio'
-                    : `Sell Selected (${selectedSymbols.length})`}
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <span className="text-xs text-slate-500 uppercase tracking-wider flex-1">
-                Holdings
-              </span>
-              <button
-                onClick={() => setSelectMode(true)}
-                className="text-xs text-slate-300 uppercase tracking-wider font-medium border border-slate-600 rounded-lg px-3 py-1 hover:border-red-500/40 hover:text-red-400 transition-all"
-              >
-                Sell Positions
+                  {(allSelected || someSelected) && (
+                    <span className="text-white text-[10px] leading-none">
+                      {allSelected ? '\u2713' : '\u2013'}
+                    </span>
+                  )}
+                </div>
               </button>
-            </>
+            )}
+          </div>
+          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '16px' }}>
+            Holdings
+          </span>
+          {selectMode ? (
+            selectedSymbols.length === 0 ? (
+              <button
+                onClick={() => { setSelectMode(false); setSelectedSymbols([]); }}
+                className="text-xs text-slate-400 uppercase tracking-wider font-medium px-2 py-0.5 rounded hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  const sp = positions.filter((p) => selectedSymbols.includes(p.symbol));
+                  setSellModalPositions(sp.map(s => ({
+                    symbol: s.symbol,
+                    qty: s.qty,
+                    currentPrice: s.currentPrice
+                  })));
+                }}
+                className="bg-red-500 text-white rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wider active:scale-95 transition-all"
+              >
+                {selectedSymbols.length === positions.length && positions.length > 1
+                  ? 'Sell Portfolio'
+                  : `Sell Selected (${selectedSymbols.length})`}
+              </button>
+            )
+          ) : (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="text-sm text-gray-900 uppercase tracking-wider font-semibold bg-white rounded-lg px-5 py-2 hover:bg-gray-100 active:scale-95 transition-all"
+            >
+              Sell Positions
+            </button>
           )}
         </div>
       )}
