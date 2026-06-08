@@ -6,6 +6,7 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DemoBanner from '@/components/shared/DemoBanner';
 import { getDemoPortfolio } from '@/lib/demo-data';
+import { useTabStore } from '@/store';
 import type { Position, AccountSummary } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -422,6 +423,7 @@ function SellModal({
   totalPositions: number;
   onClose: () => void;
 }) {
+  const { setTab } = useTabStore();
   const single = positions.length === 1 ? positions[0] : null;
   const multi = positions.length > 1;
   const isPortfolio = positions.length === totalPositions && positions.length > 1;
@@ -554,33 +556,64 @@ function SellModal({
             ))}
           </div>
 
-          {/* Limit Price */}
-          {orderType === 'Limit' && (
-            <div className="mb-3">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Limit Price</p>
-              <input
-                type="number" step="0.01" value={limitPrice}
-                onChange={(e) => setLimitPrice(e.target.value)}
-                placeholder="$0.00"
-                className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-white outline-none placeholder-slate-600 text-sm"
-              />
+          {/* Limit / Stop: redirect to Invest tab */}
+          {orderType !== 'Market' && (
+            <div
+              style={{
+                background: 'rgba(34,211,238,0.08)',
+                border: '1px solid rgba(34,211,238,0.2)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginTop: '12px',
+              }}
+            >
+              <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.5' }}>
+                &#8505;&#65039; For limit and stop orders, use the
+                Order Ticket in the Invest tab for
+                full price and execution control.
+              </p>
             </div>
           )}
 
-          {/* Est. proceeds */}
-          <p className="text-xs text-slate-500 mb-1">Est. proceeds</p>
-          <p className="text-base font-semibold text-cyan-400">
-            ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}
-          </p>
+          {/* Market: est. proceeds */}
+          {orderType === 'Market' && (
+            <>
+              <p className="text-xs text-slate-500 mt-3 mb-1">Est. proceeds</p>
+              <p className="text-base font-semibold text-cyan-400">
+                ${proceeds.toLocaleString('en-US', DOLLAR_FMT)}
+              </p>
+            </>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-3 mt-4">
             <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
               Cancel
             </button>
-            <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
-              Confirm Sell
-            </button>
+            {orderType === 'Market' ? (
+              <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
+                Confirm Sell
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  onClose();
+                  setTimeout(() => setTab('invest'), 200);
+                }}
+                style={{
+                  flex: 1,
+                  background: 'rgba(34,211,238,0.15)',
+                  color: '#22d3ee',
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                Go to Invest Tab &rarr;
+              </button>
+            )}
           </div>
         </div>
       </div>
