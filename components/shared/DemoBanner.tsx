@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 export default function DemoBanner() {
   const router = useRouter();
   return (
-    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-4 py-3 flex justify-between items-center" style={{ margin: '8px 16px' }}>
+    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-4 py-3 flex justify-between items-center" style={{ margin: '16px 16px 12px 16px' }}>
       <div>
         <p className="text-cyan-400 text-sm font-semibold">
           Demo Mode

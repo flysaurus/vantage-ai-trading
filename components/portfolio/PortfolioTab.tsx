@@ -26,7 +26,7 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="mt-4 mb-3 bg-[#1a2235] rounded-lg border border-[#2a3448] px-3 py-5" style={{ margin: '16px 16px 0 16px' }}>
+    <div className="bg-[#1a2235] rounded-lg border border-[#2a3448] p-5" style={{ margin: '20px 16px 24px 16px' }}>
       {/* Account Value */}
       <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
         Account Value
@@ -119,9 +119,9 @@ function PositionCard({
       : 50;
 
   return (
-    <div className="mb-3" style={{ marginLeft: '16px', marginRight: '16px' }}>
+    <div className="mb-4" style={{ marginLeft: '16px', marginRight: '16px' }}>
       <div
-        className="bg-[#1a2235] border border-[#2a3448] rounded-lg overflow-hidden"
+        className="bg-[#1a2235] border border-[#2a3448] rounded-lg"
         style={{ borderLeft: `3px solid ${borderLColor}` }}
       >
         {/* Collapsed section */}
@@ -165,11 +165,11 @@ function PositionCard({
 
         {/* Expanded section */}
         {isExpanded && (
-          <div style={{ paddingLeft: '16px', paddingRight: '12px', paddingBottom: '16px' }}>
+          <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '20px', paddingTop: '4px' }}>
             <div style={{
               borderTop: '1px solid #2a3448',
-              marginTop: '12px',
-              marginBottom: '16px'
+              marginTop: '16px',
+              marginBottom: '20px'
             }} />
 
             {/* Detail grid */}
@@ -227,7 +227,7 @@ function PositionCard({
 
             {/* 52-Week Range */}
             {pos.weekHigh52 != null && pos.weekLow52 != null && (
-              <div style={{ marginTop: '20px' }}>
+              <div style={{ marginTop: '24px' }}>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
                   52-Week Range
                 </p>
@@ -253,7 +253,7 @@ function PositionCard({
             )}
 
             {/* Buy More / Sell buttons */}
-            <div className="flex gap-3" style={{ marginTop: '20px', marginBottom: '16px' }}>
+            <div className="flex gap-3" style={{ marginTop: '24px', marginBottom: '20px' }}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -992,7 +992,7 @@ export function PortfolioTab() {
     showSellModal ?? positions.filter((p) => selectedSymbols.includes(p.symbol));
 
   return (
-    <div className="min-h-screen bg-[#060a14] pb-40">
+    <div className="min-h-0 bg-[#060a14] pb-32">
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
@@ -1001,7 +1001,7 @@ export function PortfolioTab() {
 
       {/* 3. Column header */}
       {positions.length > 0 && (
-        <div className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '16px', marginBottom: '8px' }}>
+        <div className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '20px', marginBottom: '10px' }}>
           <div className="w-8 flex-shrink-0 flex items-center gap-1.5">
             <button onClick={toggleSelectAll} aria-label="Select all">
               <div
@@ -1047,7 +1047,7 @@ export function PortfolioTab() {
 
       {/* 5. Sell Entire Portfolio button */}
       {positions.length > 0 && (
-        <div className="mt-6 mb-32">
+        <div className="mt-6 mb-40" style={{ marginLeft: '16px', marginRight: '16px' }}>
           <button
             onClick={() => setShowSellModal(positions)}
             className="w-full py-3 border border-red-500/20 text-red-400/70 rounded-lg text-sm text-center"
