@@ -629,7 +629,7 @@ export function PortfolioTab() {
           ) : (
             <button
               onClick={() => setSelectMode(true)}
-              className="text-sm text-gray-900 uppercase tracking-wider font-semibold bg-white rounded-lg px-5 py-2 hover:bg-gray-100 active:scale-95 transition-all"
+              className="text-sm text-gray-900 uppercase tracking-wider font-semibold bg-[#22d3ee] rounded-lg px-5 py-2 hover:bg-[#67e8f9] active:scale-95 transition-all"
             >
               Sell Positions
             </button>
