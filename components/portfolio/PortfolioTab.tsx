@@ -604,7 +604,7 @@ export function PortfolioTab() {
               {selectedSymbols.length === 0 ? (
                 <button
                   onClick={() => { setSelectMode(false); setSelectedSymbols([]); }}
-                  className="text-xs text-slate-400 uppercase tracking-wider"
+                  className="text-xs text-slate-400 uppercase tracking-wider font-medium px-2 py-0.5 rounded hover:text-white transition-colors"
                 >
                   Cancel
                 </button>
@@ -618,7 +618,7 @@ export function PortfolioTab() {
                       currentPrice: s.currentPrice
                     })));
                   }}
-                  className="bg-red-500 text-white rounded-lg px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                  className="bg-red-500 text-white rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wider active:scale-95 transition-all"
                 >
                   {selectedSymbols.length === positions.length && positions.length > 1
                     ? 'Sell Portfolio'
@@ -633,7 +633,7 @@ export function PortfolioTab() {
               </span>
               <button
                 onClick={() => setSelectMode(true)}
-                className="text-xs text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors"
+                className="text-xs text-slate-300 uppercase tracking-wider font-medium border border-slate-600 rounded-lg px-3 py-1 hover:border-red-500/40 hover:text-red-400 transition-all"
               >
                 Sell Positions
               </button>
