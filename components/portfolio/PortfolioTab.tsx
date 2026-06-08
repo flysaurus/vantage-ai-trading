@@ -1038,16 +1038,95 @@ export function PortfolioTab() {
       />
 
       {/* 7. Sell Modal */}
-      {showSellModal && (
-        <SellModal
-          positions={showSellModal}
-          totalPositions={positions.length}
-          onClose={() => {
+      {showSellModal &&
+        (() => {
+          const isAll =
+            showSellModal.length === positions.length && positions.length > 1;
+          const sellTitle = isAll
+            ? 'Sell Portfolio'
+            : showSellModal.length === 1
+              ? `Sell ${showSellModal[0].symbol}`
+              : `Sell Selected (${showSellModal.length})`;
+          const sellTotal = showSellModal.reduce(
+            (s, p) => s + p.marketValue,
+            0,
+          );
+          const close = () => {
             setShowSellModal(null);
             setSelectedSymbols([]);
-          }}
-        />
-      )}
+          };
+
+          return (
+            <div
+              className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
+              onClick={close}
+            >
+              <div
+                className="bg-[#1a2235] rounded-xl w-full max-w-sm border border-[#2a3448] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex justify-between items-center px-5 py-4 border-b border-[#2a3448]">
+                  <p className="text-lg font-bold text-white">{sellTitle}</p>
+                  <button
+                    onClick={close}
+                    className="text-slate-400 text-xl leading-none"
+                  >
+                    &#10005;
+                  </button>
+                </div>
+
+                {/* Stock list */}
+                <div className="max-h-[200px] overflow-y-auto">
+                  {showSellModal.map((p) => (
+                    <div
+                      key={p.symbol}
+                      className="flex justify-between items-center px-5 py-3 border-b border-[#2a3448] last:border-0"
+                    >
+                      <div>
+                        <p className="text-base font-bold text-white">
+                          {p.symbol}
+                        </p>
+                        <p className="text-xs text-slate-400">{p.qty} shares</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-base text-white">
+                          ~$
+                          {p.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          All &middot; Market
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-4 border-t border-[#2a3448]">
+                  <p className="text-xs text-slate-500 text-center mb-2">
+                    All shares &middot; Market &middot; Day order
+                  </p>
+                  <p className="text-lg font-semibold text-cyan-400 text-center mb-4">
+                    Total est: $
+                    {sellTotal.toLocaleString('en-US', DOLLAR_FMT)}
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={close}
+                      className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button className="flex-1 bg-red-500 text-white rounded-lg py-3 text-sm font-semibold">
+                      Confirm Sell
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* 8. Buy Modal */}
       {showBuySymbol && (
