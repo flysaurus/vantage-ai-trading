@@ -421,11 +421,6 @@ function SellBar({
 
   const sel = positions.filter((p) => selected.includes(p.symbol));
   const totalVal = sel.reduce((s, p) => s + p.marketValue, 0);
-  const isAll = selected.length === positions.length && positions.length > 1;
-
-  let label = `Sell Selected (${selected.length})`;
-  if (isAll && positions.length > 1) label = 'Sell Portfolio';
-  else if (selected.length === 1 && sel[0]) label = `Sell ${sel[0].symbol}`;
 
   return (
     <div className="fixed bottom-[64px] left-0 right-0 z-40 bg-[#1a2235] border-t border-[#2a3448] px-4 py-3 flex justify-between items-center animate-slide-up">
@@ -441,9 +436,9 @@ function SellBar({
         </button>
         <button
           onClick={onSell}
-          className="bg-red-500 text-white rounded-lg px-5 py-2.5 text-sm font-semibold"
+          className="bg-cyan-500 text-white rounded-lg px-5 py-2.5 text-sm font-semibold"
         >
-          {label}
+          Done
         </button>
       </div>
     </div>
