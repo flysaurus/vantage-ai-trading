@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 interface IndexData {
   symbol: string;
   label: string;
-  sublabel: string;
   value: number;
   change: number;
   changePct: number;
@@ -18,13 +17,13 @@ export default function MarketOverview() {
   const fetchIndices = async () => {
     try {
       const symbols = [
-        { symbol: 'SPY', label: 'SPY', sublabel: 'S&P 500 ETF' },
-        { symbol: 'QQQ', label: 'QQQ', sublabel: 'Nasdaq ETF' },
-        { symbol: 'DIA', label: 'DIA', sublabel: 'Dow ETF' },
-        { symbol: 'IWM', label: 'IWM', sublabel: 'Russell 2000' }
+        { symbol: 'SPY', label: 'S&P 500 ETF (SPY)' },
+        { symbol: 'QQQ', label: 'Nasdaq ETF (QQQ)' },
+        { symbol: 'DIA', label: 'Dow ETF (DIA)' },
+        { symbol: 'IWM', label: 'Russell 2000 (IWM)' }
       ];
       const results = await Promise.all(
-        symbols.map(async ({ symbol, label, sublabel }) => {
+        symbols.map(async ({ symbol, label }) => {
           const res = await fetch(
             `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
           );
@@ -32,7 +31,6 @@ export default function MarketOverview() {
           return {
             symbol,
             label,
-            sublabel,
             value: data.c || data.pc || 0,
             change: data.c ? (data.d ?? 0) : 0,
             changePct: data.c ? (data.dp ?? 0) : 0,
@@ -68,13 +66,10 @@ export default function MarketOverview() {
   if (loading) {
     return (
       <div style={gridStyle}>
-        {['SPY', 'QQQ', 'DIA', 'IWM'].map((label, i) => (
+        {['S&P 500 ETF (SPY)', 'Nasdaq ETF (QQQ)', 'Dow ETF (DIA)', 'Russell 2000 (IWM)'].map((label) => (
           <div key={label} style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '2px' }}>{label}</div>
-            <div style={{ fontSize: '10px', color: '#334155', marginBottom: '4px' }}>
-              {['S&P 500 ETF', 'Nasdaq ETF', 'Dow ETF', 'Russell 2000'][i]}
-            </div>
-            <div style={{ fontSize: '15px', color: '#334155' }}>—</div>
+            <div style={{ fontSize: '11px', color: '#334155', marginBottom: '4px' }}>{label}</div>
+            <div style={{ fontSize: '16px', color: '#334155' }}>—</div>
           </div>
         ))}
       </div>
@@ -86,21 +81,14 @@ export default function MarketOverview() {
       {indices.map((idx) => (
         <div key={idx.symbol} style={{ textAlign: 'center' }}>
           <div style={{
-            fontSize: '13px',
-            fontWeight: '700',
-            color: '#ffffff'
+            fontSize: '11px',
+            color: '#64748b',
+            marginBottom: '4px'
           }}>
             {idx.label}
           </div>
           <div style={{
-            fontSize: '10px',
-            color: '#64748b',
-            marginBottom: '4px'
-          }}>
-            {idx.sublabel}
-          </div>
-          <div style={{
-            fontSize: '15px',
+            fontSize: '16px',
             fontWeight: '700',
             color: '#ffffff',
             marginBottom: '2px'
