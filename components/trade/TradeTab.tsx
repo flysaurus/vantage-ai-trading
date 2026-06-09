@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const DEMO_ORDERS = [
   { id: '1', symbol: 'META', side: 'buy', status: 'filled', qty: 25, price: 593.02, date: 'Jun 1 · 2:14 PM' },
@@ -47,6 +47,7 @@ export function TradeTab() {
   const [showResults, setShowResults] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [selectedResult, setSelectedResult] = useState<{ description: string; type: string } | null>(null);
+  const skipSearchRef = useRef(false);
 
   // ─── Symbol quote state ───
   const [symbolQuote, setSymbolQuote] = useState<{
@@ -105,6 +106,10 @@ export function TradeTab() {
 
   // Debounced search
   useEffect(() => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
     if (searchQuery.length < 1) {
       setSearchResults([]);
       setShowResults(false);
@@ -191,6 +196,7 @@ export function TradeTab() {
               <div
                 key={r.symbol}
                 onClick={() => {
+                  skipSearchRef.current = true;
                   setSelectedSymbol(r.symbol);
                   setSelectedResult({ description: r.description, type: r.type });
                   setSearchQuery(r.symbol);
