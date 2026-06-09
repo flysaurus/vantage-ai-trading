@@ -1,623 +1,430 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useMarketStore, useOrderFormStore, useTabStore } from '@/store';
-import { useMarketData } from '@/hooks/useMarketData';
-import { usePortfolio } from '@/hooks/usePortfolio';
-import { useBroker } from '@/components/providers/BrokerProvider';
-import { useAuth } from '@/components/providers/AuthProvider';
+import { useState } from 'react';
 
-import { SymbolSearch } from './SymbolSearch';
-import { addPendingDemoOrder } from '@/lib/demo-orders';
-import DemoBanner from '@/components/shared/DemoBanner';
-import StrategySheet from '@/components/StrategySheet';
+const DEMO_ORDERS = [
+  { id: '1', symbol: 'META', side: 'buy', status: 'filled', qty: 25, price: 593.02, date: 'Jun 1 · 2:14 PM' },
+  { id: '2', symbol: 'NVDA', side: 'buy', status: 'filled', qty: 30, price: 205.10, date: 'May 28 · 10:33 AM' },
+  { id: '3', symbol: 'GOOGL', side: 'buy', status: 'filled', qty: 45, price: 368.53, date: 'May 15 · 9:45 AM' },
+  { id: '4', symbol: 'AMZN', side: 'buy', status: 'filled', qty: 60, price: 246.03, date: 'May 10 · 11:20 AM' },
+  { id: '5', symbol: 'CRM', side: 'sell', status: 'open', qty: 20, price: undefined, date: 'Today · pending' },
+  { id: '6', symbol: 'NFLX', side: 'buy', status: 'cancelled', qty: 10, price: 85.00, date: 'Apr 22 · 3:45 PM' },
+];
+
+const statusBorder: Record<string, string> = {
+  filled_buy: '#10b981',
+  filled_sell: '#ef4444',
+  open: '#f59e0b',
+  cancelled: '#475569',
+};
+
+function getBorderColor(order: typeof DEMO_ORDERS[number]) {
+  if (order.status === 'filled') return order.side === 'buy' ? '#10b981' : '#ef4444';
+  if (order.status === 'open') return '#f59e0b';
+  return '#475569';
+}
+
+function getStatusStyle(status: string) {
+  if (status === 'filled') return { color: '#10b981' };
+  if (status === 'open') return { color: '#f59e0b' };
+  return { color: '#475569' };
+}
 
 export function TradeTab() {
-  const router = useRouter();
-  const { quotes } = useMarketStore();
-  const { form, updateForm } = useOrderFormStore();
-  const { account } = usePortfolio();
-  const { isConnected } = useBroker();
-  const { user } = useAuth();
+  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>('market');
+  const [qtyType, setQtyType] = useState<'shares' | 'dollars'>('shares');
+  const [qty, setQty] = useState('');
+  const [limitPrice, setLimitPrice] = useState('');
+  const [tif, setTif] = useState<'day' | 'gtc'>('day');
+  const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
 
-  // Initialize hook
-  useMarketData();
-
-  // Default to empty — user picks a symbol
-  const [searchSymbol, setSearchSymbol] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [orderError, setOrderError] = useState('');
-  const [orderSuccess, setOrderSuccess] = useState('');
-
-  // ─── Ready to Execute (draft baskets) ─────────────────────
-  const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
-  const [showBaskets, setShowBaskets] = useState(true);
-
-  useEffect(() => {
-    if (!isConnected) return;
-    fetch('/api/baskets?status=draft')
-      .then(r => r.json())
-      .then(data => setPendingBaskets(data.baskets || []))
-      .catch(() => {});
-  }, [isConnected]);
-
-  const handleDismissBasket = async (basketId: string) => {
-    try {
-      await fetch(`/api/baskets/${basketId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'archived' }),
-      });
-      setPendingBaskets(prev => prev.filter(b => b.id !== basketId));
-    } catch {}
-  };
-  // ─── End Ready to Execute ─────────────────────────────────
-
-  const { setTab } = useTabStore();
-
-  // ─── Strategy Bottom Sheet ───────────────────────────────
-  const STRATEGY_ROWS = [
-    ['dca', 'rebalancing', 'momentum'],
-    ['meanreversion', 'taxharvest'],
-  ];
-  const STRATEGY_LABELS: Record<string, { icon: string; label: string }> = {
-    dca: { icon: '🔄', label: 'DCA' },
-    rebalancing: { icon: '⚖️', label: 'Rebalance' },
-    momentum: { icon: '🚀', label: 'Momentum' },
-    meanreversion: { icon: '📉', label: 'Mean Reversion' },
-    taxharvest: { icon: '🧾', label: 'Tax Harvest' },
-  };
-  const [strategySheet, setStrategySheet] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const closeSheet = useCallback(() => setStrategySheet(null), []);
-
-  // Disabled strategies — show "Soon" badge + toast, don't open sheet
-  const DISABLED = new Set(['momentum', 'meanreversion']);
-
-  // Auto-dismiss toast after 2s
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2000);
-    return () => clearTimeout(t);
-  }, [toast]);
-  // ─── End Strategy Bottom Sheet ───────────────────────────
-
-  const quote = quotes[searchSymbol.toUpperCase()];
-  const isBuy = form.side === 'buy';
-  const holdings = account?.positions?.map(p => p.symbol) || [];
+  const filteredOrders = DEMO_ORDERS.filter(o => {
+    if (historyTab === 'all') return true;
+    return o.status === historyTab;
+  });
 
   return (
-    <div style={{ padding: '12px 16px', paddingBottom: 80 }}>
-      {/* ─── Ready to Execute ─────────────────────────────── */}
-      {pendingBaskets.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3 cursor-pointer" onClick={() => setShowBaskets(prev => !prev)}>
-            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <h2 className="text-white font-semibold text-sm tracking-wide uppercase">
-              Ready to Execute
-            </h2>
-            <span className="bg-cyan-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-              {pendingBaskets.length}
-            </span>
-            <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 14, transition: 'transform 0.2s', transform: showBaskets ? 'rotate(180deg)' : 'none' }}>
-              {showBaskets ? '▲' : '▼'}
-            </span>
-          </div>
-          {showBaskets && pendingBaskets.map((basket: any) => (
-            <div key={basket.id} className="bg-slate-800 rounded-2xl p-4 mb-3 border border-cyan-500/20">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{basket.emoji}</span>
-                  <div>
-                    <p className="text-white font-semibold text-sm">{basket.name}</p>
-                    <p className="text-slate-400 text-xs">{basket.basket_positions?.length || 0} stocks · AI Generated</p>
-                  </div>
-                </div>
-                <button onClick={() => handleDismissBasket(basket.id)} className="text-slate-500 hover:text-slate-300 text-lg leading-none">&times;</button>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {basket.basket_positions?.slice(0, 6).map((pos: any) => (
-                  <span key={pos.symbol} className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded-lg">{pos.symbol}</span>
-                ))}
-                {(basket.basket_positions?.length || 0) > 6 && (
-                  <span className="text-xs text-slate-500 px-2 py-1">+{basket.basket_positions.length - 6} more</span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => router.push(`/trade/basket/${basket.id}`)} className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white font-medium py-2.5 rounded-xl text-sm transition">
-                  Review &amp; Order →
-                </button>
-                <button disabled className="px-4 py-2.5 rounded-xl border border-slate-600 text-slate-500 text-sm cursor-not-allowed">
-                  Watch
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {/* ─── End Ready to Execute ────────────────────────── */}
+    <div style={{ paddingBottom: '120px' }}>
 
-      {/* Demo Mode Banner */}
-      {!isConnected && <DemoBanner />}
-
-      {/* 📊 Strategies */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          📊 Strategies
-        </div>
-        <div
+      {/* ─── 1. SYMBOL SEARCH BAR ─── */}
+      <div style={{
+        margin: '16px 16px 0 16px',
+        background: '#1a2235',
+        border: '1px solid #2a3448',
+        borderRadius: '10px',
+        padding: '12px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <span style={{ color: '#64748b', fontSize: '16px' }}>🔍</span>
+        <input
+          placeholder="Search symbol..."
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#ffffff',
+            fontSize: '15px',
+            flex: 1
           }}
-        >
-          {STRATEGY_ROWS.map((row, rowIdx) => (
-            <div key={rowIdx} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {row.map((key) => {
-                const disabled = DISABLED.has(key);
-                const s = STRATEGY_LABELS[key];
-                return (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      if (disabled) {
-                        setToast('Coming in next update');
-                        return;
-                      }
-                      setStrategySheet(key === strategySheet ? null : key);
-                    }}
-                    className={disabled
-                      ? 'flex items-center gap-2 border border-slate-700 text-slate-600 rounded-full px-4 py-2.5 text-sm font-medium cursor-not-allowed relative'
-                      : 'flex items-center gap-2 border border-cyan-500/60 text-white rounded-full px-4 py-2.5 text-sm font-medium bg-cyan-500/10 hover:bg-cyan-500/20 transition'
-                    }
-                  >
-                    <span style={{ fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
-                    {s.label}
-                    {disabled && (
-                      <span className="absolute -top-2 -right-2 bg-slate-700 text-slate-400 text-xs px-1.5 py-0.5 rounded-full">
-                        Soon
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-        </div>
-      ))}
-    </div>
-      </div>
-
-      {/* Toast for disabled strategies */}
-      {toast && (
-        <div
-          style={{
-            textAlign: 'center',
-            marginBottom: 12,
-            animation: 'toastIn 0.2s ease-out',
-          }}
-        >
-          <span
-            style={{
-              display: 'inline-block',
-              fontSize: 11,
-              fontWeight: 600,
-              color: '#64748b',
-              background: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: 6,
-              padding: '6px 16px',
-            }}
-          >
-            {toast}
-          </span>
-        </div>
-      )}
-
-      {/* Plan Trades with AI */}
-      <button
-        onClick={() => setTab('ai')}
-        className="w-full flex items-center justify-center gap-2 border border-slate-600 bg-slate-800/50 text-cyan-400 text-sm font-medium rounded-2xl py-3.5 hover:bg-slate-700/50 transition"
-      >
-        <span style={{ fontSize: 16 }}>📊</span>
-        Plan Trades with AI
-      </button>
-
-      {/* ─── Divider ──────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          margin: '8px 0 16px',
-        }}
-      >
-        <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, transparent, #334155)' }} />
-        <span style={{ fontSize: 9, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 1.5 }}>
-          Research & Place Order
-        </span>
-        <div style={{ flex: 1, height: 1, background: 'linear-gradient(to left, transparent, #334155)' }} />
-      </div>
-
-      {/* Search */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <SymbolSearch
-          value={searchSymbol}
-          onChange={(sym) => { setSearchSymbol(sym); updateForm({ symbol: sym }); }}
-          onInputChange={(text) => setSearchSymbol(text)}
-          positions={holdings}
         />
       </div>
 
-      {/* Stock Card */}
-      {searchSymbol && quote && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{quote.symbol}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Corporation</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>${quote.last.toFixed(2)}</div>
-              <div className={quote.changePercent >= 0 ? 'up' : 'down'} style={{ fontSize: 12, fontWeight: 600 }}>
-                {quote.change >= 0 ? '+' : ''}{quote.change.toFixed(2)} ({quote.changePercent.toFixed(2)}%)
-              </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, paddingTop: 10, borderTop: '1px solid #334155' }}>
-            {[
-              ['Bid', `$${quote.bid.toFixed(2)}`],
-              ['Ask', `$${quote.ask.toFixed(2)}`],
-              ['Volume', `${(quote.volume / 1e6).toFixed(1)}M`],
-              ['52W H', `$${quote.high52w}`],
-            ].map(([label, val]) => (
-              <div key={label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
-                <div style={{ fontSize: 11, fontWeight: 600 }}>{val}</div>
-              </div>
-            ))}
-          </div>
-
-        </div>
-      )}
-
-      {/* AI Suggestion — contextual */}
-      {quote && (
-      <div className="ai-suggestion">
-        <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #06b6d4, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>✨</div>
-        <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.4 }}>
-          <strong style={{ color: '#06b6d4' }}>{quote.symbol}</strong> — ${quote.last.toFixed(2)} · {' '}
-          {quote.changePercent >= 0 ? '↑' : '↓'} {Math.abs(quote.changePercent).toFixed(2)}% today
-          {quote.bid && quote.ask && <span> · Spread ${(quote.ask - quote.bid).toFixed(2)}</span>}
-        </div>
-      </div>
-      )}
-
-      {/* Order Form */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 700 }}>Place Order</span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Buying Power: $24,500</span>
+      {/* ─── 2. PLACE ORDER FORM ─── */}
+      <div style={{
+        margin: '16px',
+        background: '#1a2235',
+        border: '1px solid #2a3448',
+        borderRadius: '12px',
+        padding: '20px'
+      }}>
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '16px' }}>
+          PLACE ORDER
         </div>
 
-        {/* Buy/Sell Toggle */}
-        <div style={{ display: 'flex', background: '#0f172a', borderRadius: 8, padding: 3, marginBottom: 12 }}>
-          {(['buy', 'sell'] as const).map((side) => (
+        {/* BUY / SELL toggle */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          {(['buy', 'sell'] as const).map(s => (
             <button
-              key={side}
-              onClick={() => updateForm({ side })}
+              key={s}
+              onClick={() => setSide(s)}
               style={{
-                flex: 1, padding: '9px', border: 'none', background: 'transparent',
-                color: form.side === side ? 'white' : '#94a3b8',
-                fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 6,
-                ...(form.side === side ? { background: side === 'buy' ? '#22c55e' : '#ef4444' } : {}),
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: '8px',
+                border: side === s ? 'none' : '1px solid #2a3448',
+                background: side === s ? (s === 'buy' ? '#10b981' : '#ef4444') : '#0f1829',
+                color: side === s ? '#ffffff' : '#64748b',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer'
               }}
             >
-              {side === 'buy' ? 'BUY' : 'SELL'}
+              {s === 'buy' ? 'BUY' : 'SELL'}
             </button>
           ))}
         </div>
 
-        {/* Order Type */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-            Order Type
-          </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-            {(['market', 'limit', 'stop'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => updateForm({ type: t })}
-                style={{
-                  padding: '7px 4px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
-                  background: form.type === t ? 'rgba(6,182,212,0.2)' : '#0f172a',
-                  border: `1px solid ${form.type === t ? '#06b6d4' : '#334155'}`,
-                  borderRadius: 6, color: form.type === t ? '#06b6d4' : '#cbd5e1',
-                }}
-              >
-                {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : 'Stop'}
-              </button>
-            ))}
-          </div>
+        {/* ORDER TYPE */}
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+          ORDER TYPE
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          {(['market', 'limit', 'stop'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setOrderType(t)}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: '8px',
+                border: orderType === t ? '1px solid #22d3ee' : '1px solid #2a3448',
+                background: orderType === t ? '#1e3a5f' : '#0f1829',
+                color: orderType === t ? '#22d3ee' : '#64748b',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : 'Stop'}
+            </button>
+          ))}
         </div>
 
-        {/* Quantity */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-            Quantity
-          </label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <div style={{ display: 'flex', background: '#0f172a', borderRadius: 6, padding: 2 }}>
-              {(['shares', 'dollars'] as const).map((qt) => (
-                <button
-                  key={qt}
-                  onClick={() => updateForm({ qtyType: qt })}
-                  style={{
-                    padding: '6px 10px', background: form.qtyType === qt ? '#06b6d4' : 'transparent',
-                    border: 'none', color: form.qtyType === qt ? 'white' : '#94a3b8',
-                    fontSize: 11, cursor: 'pointer', borderRadius: 4, fontWeight: 600,
-                  }}
-                >
-                  {qt === 'shares' ? 'Shares' : 'Dollars'}
-                </button>
-              ))}
+        {/* QUANTITY */}
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+          QUANTITY
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          {(['shares', 'dollars'] as const).map(qt => (
+            <button
+              key={qt}
+              onClick={() => setQtyType(qt)}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: '8px',
+                border: qtyType === qt ? '1px solid #22d3ee' : '1px solid #2a3448',
+                background: qtyType === qt ? '#1e3a5f' : '#0f1829',
+                color: qtyType === qt ? '#22d3ee' : '#64748b',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {qt === 'shares' ? 'Shares' : 'Dollars'}
+            </button>
+          ))}
+        </div>
+        <input
+          type="number"
+          placeholder="0"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          style={{
+            width: '100%',
+            background: '#0f1829',
+            border: '1px solid #2a3448',
+            borderRadius: '8px',
+            padding: '14px 16px',
+            color: '#ffffff',
+            fontSize: '24px',
+            fontWeight: '600',
+            outline: 'none',
+            marginBottom: '20px',
+            boxSizing: 'border-box'
+          }}
+        />
+
+        {/* LIMIT PRICE */}
+        {(orderType === 'limit' || orderType === 'stop') && (
+          <>
+            <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+              LIMIT PRICE
             </div>
             <input
               type="number"
-              value={form.qty || ''}
-              onChange={(e) => updateForm({ qty: parseFloat(e.target.value) || 0 })}
-              placeholder="0"
+              placeholder="0.00"
+              value={limitPrice}
+              onChange={e => setLimitPrice(e.target.value)}
               style={{
-                flex: 1, background: '#0f172a', border: '1px solid #334155',
-                borderRadius: 8, padding: '9px 11px', color: '#f1f5f9',
-                fontSize: 13, outline: 'none',
+                width: '100%',
+                background: '#0f1829',
+                border: '1px solid #2a3448',
+                borderRadius: '8px',
+                padding: '14px 16px',
+                color: '#ffffff',
+                fontSize: '18px',
+                fontWeight: '600',
+                outline: 'none',
+                marginBottom: '20px',
+                boxSizing: 'border-box'
               }}
             />
-          </div>
+          </>
+        )}
+
+        {/* TIME IN FORCE */}
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+          TIME IN FORCE
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          {(['day', 'gtc'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTif(t)}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: '8px',
+                border: tif === t ? '1px solid #22d3ee' : '1px solid #2a3448',
+                background: tif === t ? '#1e3a5f' : '#0f1829',
+                color: tif === t ? '#22d3ee' : '#64748b',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {t === 'day' ? 'Day' : 'GTC'}
+            </button>
+          ))}
         </div>
 
-        {/* Limit Price */}
-        {form.type === 'limit' && (
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-              Limit Price
-            </label>
-            <input
-              type="number"
-              value={form.limitPrice || ''}
-              onChange={(e) => updateForm({ limitPrice: parseFloat(e.target.value) || undefined })}
-              placeholder="$0.00"
-              style={{
-                width: '100%', background: '#0f172a', border: '1px solid #334155',
-                borderRadius: 8, padding: '9px 11px', color: '#f1f5f9',
-                fontSize: 13, outline: 'none',
-              }}
-            />
+        {/* Est. value */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <span style={{ color: '#64748b', fontSize: '13px' }}>Est. value</span>
+          <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>$0.00</span>
+        </div>
+
+        {/* Buying Power */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <span style={{ color: '#64748b', fontSize: '13px' }}>Buying Power</span>
+          <span style={{ color: '#94a3b8', fontSize: '13px' }}>$145,217.48</span>
+        </div>
+
+        {/* Limit/Stop advisory */}
+        {(orderType === 'limit' || orderType === 'stop') && (
+          <div style={{
+            background: 'rgba(34,211,238,0.08)',
+            border: '1px solid rgba(34,211,238,0.2)',
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '16px'
+          }}>
+            <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.5' }}>
+              ℹ️ For advanced limit and stop orders, review your order carefully before submitting.
+            </div>
           </div>
         )}
 
-        {/* TIF */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-            Time in Force
-          </label>
-          <select
-            value={form.timeInForce}
-            onChange={(e) => updateForm({ timeInForce: e.target.value as any })}
-            style={{
-              width: '100%', background: '#0f172a', border: '1px solid #334155',
-              borderRadius: 8, padding: '9px 11px', color: '#f1f5f9',
-              fontSize: 13, outline: 'none', appearance: 'none', cursor: 'pointer',
-            }}
-          >
-            <option value="day">Day</option>
-            <option value="gtc">Good Till Canceled (GTC)</option>
-            <option value="ioc">Immediate or Cancel (IOC)</option>
-            <option value="fok">Fill or Kill (FOK)</option>
-          </select>
-        </div>
-
-        {/* Bracket Order Toggle */}
-        <div
-          onClick={() => updateForm({ bracketOrder: !form.bracketOrder })}
+        {/* PLACE ORDER BUTTON */}
+        <button
           style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: 10, background: '#0f172a', borderRadius: 8, marginBottom: 12,
-            cursor: 'pointer',
+            width: '100%',
+            padding: '16px',
+            background: side === 'buy' ? '#10b981' : '#ef4444',
+            border: 'none',
+            borderRadius: '10px',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '700',
+            cursor: 'pointer'
           }}
         >
-          <div>
-            <div style={{ fontSize: 12, color: '#f1f5f9', fontWeight: 600 }}>Bracket Order</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Stop loss + take profit</div>
-          </div>
-          <div style={{
-            width: 32, height: 18, borderRadius: 9,
-            background: form.bracketOrder ? '#06b6d4' : '#334155',
-            position: 'relative', transition: 'background 0.2s',
-          }}>
-            <div style={{
-              width: 14, height: 14, background: 'white', borderRadius: '50%',
-              position: 'absolute', top: 2,
-              left: form.bracketOrder ? 16 : 2,
-              transition: 'left 0.2s',
-            }} />
-          </div>
+          Place Order
+        </button>
+      </div>
+
+      {/* ─── 3. STRATEGIES SECTION ─── */}
+      <div style={{ margin: '0 16px 16px 16px' }}>
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+          STRATEGIES
         </div>
-
-        {/* Bracket Fields */}
-        {form.bracketOrder && (
-          <div style={{ padding: 10, background: '#0f172a', borderRadius: 8, marginBottom: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                  Stop Loss
-                </label>
-                <input
-                  type="number"
-                  placeholder="$0.00"
-                  onChange={(e) => updateForm({ stopLoss: parseFloat(e.target.value) || undefined })}
-                  style={{
-                    width: '100%', background: '#1e293b', border: '1px solid #334155',
-                    borderRadius: 6, padding: '8px 10px', color: '#f1f5f9',
-                    fontSize: 13, outline: 'none',
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 15, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                  Take Profit
-                </label>
-                <input
-                  type="number"
-                  placeholder="$0.00"
-                  onChange={(e) => updateForm({ takeProfit: parseFloat(e.target.value) || undefined })}
-                  style={{
-                    width: '100%', background: '#1e293b', border: '1px solid #334155',
-                    borderRadius: 6, padding: '8px 10px', color: '#f1f5f9',
-                    fontSize: 13, outline: 'none',
-                  }}
-                />
-              </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+          {['DCA', 'Rebalance', 'Tax Harvest'].map(name => (
+            <div
+              key={name}
+              style={{
+                background: '#1a2235',
+                border: '1px solid #2a3448',
+                borderRadius: '8px',
+                padding: '12px 8px',
+                textAlign: 'center',
+                color: '#ffffff',
+                fontSize: '12px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {name}
             </div>
-          </div>
-        )}
-
-        {/* Summary — only when a symbol is selected */}
-        {searchSymbol && quote ? (
-        <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-          {[
-            ['Est. Cost', `$${(form.qty * quote.last).toFixed(2)}`],
-            ['Commission', '$0.00'],
-          ].map(([label, val]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
-              <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-              <span style={{ fontWeight: 600, color: '#f1f5f9' }}>
-                {val}
+          ))}
+          {['Momentum', 'Mean Rev.'].map(name => (
+            <div
+              key={name}
+              style={{
+                background: '#0f1829',
+                border: '1px solid #1e2d45',
+                borderRadius: '8px',
+                padding: '12px 8px',
+                textAlign: 'center',
+                color: '#334155',
+                fontSize: '12px',
+                cursor: 'not-allowed',
+                position: 'relative'
+              }}
+            >
+              {name}
+              <span style={{
+                position: 'absolute',
+                top: '4px',
+                right: '4px',
+                background: '#1e3a5f',
+                color: '#22d3ee',
+                fontSize: '9px',
+                borderRadius: '4px',
+                padding: '1px 4px'
+              }}>
+                Soon
               </span>
             </div>
           ))}
         </div>
-        ) : (
-        <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Buying Power</span>
-            <span style={{ fontWeight: 600, color: '#f1f5f9' }}>$24,500</span>
-          </div>
-        </div>
-        )}
-
-        {/* Submit */}
-        <button
-          onClick={async () => {
-            const sym = searchSymbol?.trim() || form.symbol;
-            if (!sym) { setOrderError('Select a symbol first'); return; }
-            setSubmitting(true);
-            setOrderError('');
-            setOrderSuccess('');
-            try {
-              const qty = form.qtyType === 'dollars' && quote ? Math.floor(form.qty / quote.last) : form.qty;
-              if (!qty || qty <= 0) { setOrderError('Enter a valid quantity'); setSubmitting(false); return; }
-
-              // ─── Demo mode: store locally as pending ──────────
-              if (!isConnected) {
-                const price = quote?.last ?? 0;
-                const totalValue = qty * price;
-                const demoOrder: any = {
-                  id: `demo-${sym.toUpperCase()}-${Date.now()}`,
-                  symbol: sym.toUpperCase(),
-                  side: form.side,
-                  type: form.type,
-                  status: 'pending',
-                  qty,
-                  filledQty: 0,
-                  limitPrice: form.type === 'limit' ? form.limitPrice : undefined,
-                  fillPrice: undefined,
-                  totalValue: form.type === 'market' ? totalValue : undefined,
-                  timeInForce: form.timeInForce,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                };
-                addPendingDemoOrder(demoOrder);
-                setOrderSuccess('✓ Order accepted · Will execute when market opens');
-                updateForm({ qty: 0, limitPrice: undefined, stopPrice: undefined, stopLoss: undefined, takeProfit: undefined });
-                setSubmitting(false);
-                return;
-              }
-
-              // ─── Connected mode: proxy to Alpaca ─────────────
-              const body: any = {
-                symbol: sym.toUpperCase(),
-                qty,
-                side: form.side,
-                type: form.type,
-                time_in_force: form.timeInForce,
-              };
-              if (form.type === 'limit' && form.limitPrice) body.limit_price = form.limitPrice;
-              if (form.type === 'stop' && form.stopPrice) body.stop_price = form.stopPrice;
-              if (form.bracketOrder) {
-                body.order_class = 'bracket';
-                if (form.takeProfit) body.take_profit = { limit_price: form.takeProfit };
-                if (form.stopLoss) body.stop_loss = { stop_price: form.stopLoss };
-              }
-              const res = await fetch('/api/alpaca/orders', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-              });
-              const json = await res.json();
-              if (res.ok) {
-                setOrderSuccess(`✓ ${form.side === 'buy' ? 'Bought' : 'Sold'} ${qty} ${sym.toUpperCase()} @ ${form.type}`);
-                updateForm({ qty: 0, limitPrice: undefined, stopPrice: undefined, stopLoss: undefined, takeProfit: undefined });
-              } else {
-                setOrderError(json.error || json.message || 'Order failed');
-              }
-            } catch (e: any) {
-              setOrderError(e.message || 'Network error');
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-          disabled={submitting}
-          style={{
-            width: '100%', padding: 13, border: 'none', borderRadius: 10,
-            fontWeight: 700, fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer',
-            background: submitting ? '#334155' : isBuy ? '#22c55e' : '#ef4444',
-            color: submitting ? '#94a3b8' : 'white',
-            opacity: submitting ? 0.7 : 1,
-          }}
-        >
-          {submitting ? 'Submitting...' : `Review & Submit ${isBuy ? 'Buy' : 'Sell'} Order`}
-        </button>
-        {orderError && <div style={{ marginTop: 8, fontSize: 11, color: '#f87171', textAlign: 'center', padding: '6px 10px', background: 'rgba(248,113,113,0.1)', borderRadius: 6 }}>{orderError}</div>}
-        {orderSuccess && <div style={{ marginTop: 8, fontSize: 11, color: '#4ade80', textAlign: 'center', padding: '6px 10px', background: 'rgba(74,222,128,0.1)', borderRadius: 6 }}>{orderSuccess}</div>}
       </div>
 
-      <style jsx>{`
-        .card {
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 16px;
-          padding: 14px;
-        }
-        .ai-suggestion {
-          background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(13,148,136,0.05));
-          border: 1px solid rgba(6,182,212,0.3);
-          border-radius: 8px;
-          padding: 10px;
-          margin-bottom: 12px;
-          display: flex;
-          gap: 8px;
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
+      {/* ─── 4. ORDER HISTORY ─── */}
+      <div style={{ margin: '0 16px' }}>
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+          ORDER HISTORY
+        </div>
 
-      <StrategySheet
-        strategy={strategySheet}
-        onClose={closeSheet}
-        onExecute={closeSheet}
-      />
+        {/* History tabs */}
+        <div style={{ display: 'flex', marginBottom: '12px' }}>
+          {([
+            { key: 'open', label: 'Open' },
+            { key: 'filled', label: 'Filled ✓' },
+            { key: 'cancelled', label: 'Cancelled' },
+            { key: 'all', label: 'All' },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setHistoryTab(tab.key)}
+              style={{
+                fontSize: '13px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                borderBottom: historyTab === tab.key ? '2px solid #22d3ee' : '2px solid transparent',
+                color: historyTab === tab.key ? '#22d3ee' : '#64748b'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Order cards */}
+        {filteredOrders.map(order => (
+          <div
+            key={order.id}
+            style={{
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderLeft: `3px solid ${getBorderColor(order)}`,
+              borderRadius: '8px',
+              padding: '14px 16px',
+              marginBottom: '8px',
+              display: 'flex',
+              justifyContent: 'space-between'
+            }}
+          >
+            {/* LEFT */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                  {order.symbol}
+                </span>
+                <span style={{
+                  borderRadius: '4px',
+                  padding: '2px 6px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  background: order.side === 'buy' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                  color: order.side === 'buy' ? '#10b981' : '#ef4444'
+                }}>
+                  {order.side.toUpperCase()}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>
+                market · {order.qty} shares
+              </div>
+            </div>
+
+            {/* RIGHT */}
+            <div style={{ textAlign: 'right' }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                ...getStatusStyle(order.status)
+              }}>
+                {order.status.toUpperCase()}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                {order.price ? `$${order.price.toFixed(2)}/share` : 'pending'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#475569' }}>
+                {order.date}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ─── 5. Bottom spacer ─── */}
+      <div style={{ height: '80px' }} />
     </div>
   );
 }
