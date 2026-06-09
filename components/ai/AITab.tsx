@@ -39,6 +39,7 @@ export function AITab() {
     daysUntil: number;
   }[]>([]);
   const [marketHeadline, setMarketHeadline] = useState('');
+  const [marketNewsUrl, setMarketNewsUrl] = useState('');
   const [portfolioSummary, setPortfolioSummary] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +56,7 @@ export function AITab() {
             ? headline.substring(0, 57) + '...'
             : headline
         );
+        setMarketNewsUrl(data[0].url || '');
       }
     } catch (e) {
       console.error(e);
@@ -168,6 +170,26 @@ export function AITab() {
     }, 1500);
   };
 
+  // ── send to chat from tappable rows ──
+  const sendToChat = (message: string) => {
+    setMessages((prev) => [...prev, { role: 'user', content: message }]);
+    setLoading(true);
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          content:
+            "I'm analyzing your portfolio. Full AI advisor coming soon — your positions look interesting! Stay tuned for deeper analysis.",
+        },
+      ]);
+      setLoading(false);
+    }, 1500);
+    setTimeout(() => {
+      document.getElementById('chat-area')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   // ── derived data ──
   const equity = account?.equity ?? 0;
   const dayPnl = account?.dayPnl ?? 0;
@@ -265,7 +287,21 @@ export function AITab() {
 
         {/* Preview (always visible) */}
         <div style={{ padding: '0 16px 12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              cursor: 'pointer',
+              marginBottom: '6px',
+            }}
+            onClick={() => {
+              if (marketNewsUrl) window.open(marketNewsUrl, '_blank');
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
             <span
               style={{
                 fontSize: '9px',
@@ -282,8 +318,25 @@ export function AITab() {
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
               {marketHeadline || 'Markets mixed, monitoring macro events'}
             </span>
+            </div>
+            <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
+              );
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
             <span
               style={{
                 fontSize: '9px',
@@ -300,6 +353,8 @@ export function AITab() {
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
               {portfolioSummary || 'Your portfolio down 0.9% today'}
             </span>
+            </div>
+            <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
           </div>
         </div>
 
@@ -311,7 +366,24 @@ export function AITab() {
               borderTop: '1px solid #2a3448',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px', marginTop: '12px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                marginBottom: '6px',
+                marginTop: '12px',
+              }}
+              onClick={() => {
+                if (earnings[0]) {
+                  sendToChat(`Tell me about ${earnings[0].symbol} upcoming earnings`);
+                }
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
               <span
                 style={{
                   fontSize: '9px',
@@ -330,9 +402,24 @@ export function AITab() {
                   ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} day${earnings[0].daysUntil === 1 ? '' : 's'}`
                   : 'No earnings in next 30 days for your holdings'}
               </span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
             </div>
             {earnings.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                sendToChat(`Tell me about ${earnings[1].symbol} upcoming earnings`);
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
               <span
                 style={{
                   fontSize: '9px',
@@ -349,6 +436,8 @@ export function AITab() {
               <span style={{ fontSize: '12px', color: '#94a3b8' }}>
                 {earnings[1].symbol} reports in {earnings[1].daysUntil} days
               </span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
             </div>
             )}
             <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
@@ -479,14 +568,29 @@ export function AITab() {
                 📈 OPPORTUNITIES
               </p>
               {[
-                earnings[0]
-                  ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} days — prepare position`
-                  : 'NVDA showing oversold signals — consider adding',
-                'GOOGL trading below 52-week average — value entry',
+                {
+                  text: earnings[0]
+                    ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} days — prepare position`
+                    : 'NVDA showing oversold signals — consider adding',
+                  msg: earnings[0]
+                    ? `Help me prepare for ${earnings[0].symbol} earnings`
+                    : 'Analyze NVDA — is it showing oversold signals?',
+                },
+                {
+                  text: 'GOOGL trading below 52-week average — value entry',
+                  msg: 'Analyze GOOGL — is it a value entry at current price?',
+                },
               ].map((item, i) => (
                 <div
                   key={i}
+                  onClick={() => sendToChat(item.msg)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
                     fontSize: '13px',
                     color: '#94a3b8',
                     paddingLeft: '8px',
@@ -495,7 +599,8 @@ export function AITab() {
                     lineHeight: '1.4',
                   }}
                 >
-                  → {item}
+                  <span>→ {item.text}</span>
+                  <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
             </div>
@@ -510,12 +615,25 @@ export function AITab() {
                 ⚠️ RISKS
               </p>
               {[
-                'Tech concentration at 68% — above 50% threshold',
-                'NFLX position down 91% — review sizing',
+                {
+                  text: 'Tech concentration at 68% — above 50% threshold',
+                  msg: 'How should I reduce my tech concentration?',
+                },
+                {
+                  text: 'NFLX position down 91% — review sizing',
+                  msg: "Should I cut my NFLX position? It's down 91%",
+                },
               ].map((item, i) => (
                 <div
                   key={i}
+                  onClick={() => sendToChat(item.msg)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
                     fontSize: '13px',
                     color: '#94a3b8',
                     paddingLeft: '8px',
@@ -524,7 +642,8 @@ export function AITab() {
                     lineHeight: '1.4',
                   }}
                 >
-                  → {item}
+                  <span>→ {item.text}</span>
+                  <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
             </div>
@@ -539,12 +658,25 @@ export function AITab() {
                 💡 RECOMMENDATIONS
               </p>
               {[
-                'Consider adding healthcare or financials for diversification',
-                'Review NFLX position — down 91% from cost basis',
+                {
+                  text: 'Consider adding healthcare or financials for diversification',
+                  msg: 'What healthcare or financial stocks should I add?',
+                },
+                {
+                  text: 'Review NFLX position — down 91% from cost basis',
+                  msg: 'Give me a full analysis of my NFLX position',
+                },
               ].map((item, i) => (
                 <div
                   key={i}
+                  onClick={() => sendToChat(item.msg)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
                     fontSize: '13px',
                     color: '#94a3b8',
                     paddingLeft: '8px',
@@ -553,7 +685,8 @@ export function AITab() {
                     lineHeight: '1.4',
                   }}
                 >
-                  → {item}
+                  <span>→ {item.text}</span>
+                  <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
             </div>
@@ -584,6 +717,7 @@ export function AITab() {
 
       {/* ─── 5. Chat Messages Area ─── */}
       <div
+        id="chat-area"
         style={{
           minHeight: '200px',
           maxHeight: '300px',
