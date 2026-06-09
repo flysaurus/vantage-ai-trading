@@ -29,6 +29,15 @@ function getStatusStyle(status: string) {
   return { color: '#475569' };
 }
 
+function formatQuoteDate(ts: number) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
 export function TradeTab() {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>('market');
@@ -63,6 +72,7 @@ export function TradeTab() {
     volume: number;
     weekHigh52: number;
     weekLow52: number;
+    lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
 
@@ -93,6 +103,7 @@ export function TradeTab() {
           volume: quote.v ?? 0,
           weekHigh52: metric?.metric?.['52WeekHigh'] ?? 0,
           weekLow52: metric?.metric?.['52WeekLow'] ?? 0,
+          lastTradeTime: quote.t ?? 0,
         });
       } catch (e) {
         console.error(e);
@@ -395,7 +406,7 @@ export function TradeTab() {
             marginTop: '10px'
           }}>
             <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Open
+              OPEN ({symbolQuote.lastTradeTime ? formatQuoteDate(symbolQuote.lastTradeTime) : ''})
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
               {symbolQuote.open > 0 ? `$${symbolQuote.open.toFixed(2)}` : '—'}
@@ -410,7 +421,7 @@ export function TradeTab() {
             marginTop: '8px'
           }}>
             <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Prev Close
+              PREV CLOSE ({symbolQuote.lastTradeTime ? formatQuoteDate(symbolQuote.lastTradeTime - 86400) : ''})
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
               {symbolQuote.prevClose > 0
