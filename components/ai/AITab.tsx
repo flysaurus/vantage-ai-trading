@@ -692,7 +692,7 @@ export function AITab() {
             </div>
 
             <p style={{
-              fontSize: '10px', color: '#334155',
+              fontSize: '10px', color: '#94a3b8',
               marginTop: '12px',
             }}>
               Generated Jun 9 · Refresh uses 1 deep analysis
