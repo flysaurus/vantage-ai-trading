@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const DEMO_ORDERS = [
   { id: '1', symbol: 'META', side: 'buy', status: 'filled', qty: 25, price: 593.02, date: 'Jun 1 · 2:14 PM' },
@@ -38,38 +38,163 @@ export function TradeTab() {
   const [tif, setTif] = useState<'day' | 'gtc'>('day');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
 
+  // ─── Symbol search state ───
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<
+    { symbol: string; description: string; type: string }[]
+  >([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState('');
+
+  // Debounced search
+  useEffect(() => {
+    if (searchQuery.length < 1) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+        const res = await fetch(
+          `https://finnhub.io/api/v1/search?q=${encodeURIComponent(searchQuery)}&token=${key}`
+        );
+        const data = await res.json();
+        const filtered = (data.result || [])
+          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP')
+          .slice(0, 8);
+        setSearchResults(filtered);
+        setShowResults(true);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const filteredOrders = DEMO_ORDERS.filter(o => {
     if (historyTab === 'all') return true;
     return o.status === historyTab;
   });
 
   return (
-    <div style={{ paddingBottom: '120px' }}>
+    <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
 
       {/* ─── 1. SYMBOL SEARCH BAR ─── */}
-      <div style={{
-        margin: '16px 16px 0 16px',
-        background: '#1a2235',
-        border: '1px solid #2a3448',
-        borderRadius: '10px',
-        padding: '12px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
-      }}>
-        <span style={{ color: '#64748b', fontSize: '16px' }}>🔍</span>
-        <input
-          placeholder="Search symbol..."
-          style={{
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            color: '#ffffff',
-            fontSize: '15px',
-            flex: 1
-          }}
-        />
+      <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+        <div style={{
+          margin: '16px 16px 0 16px',
+          background: '#1a2235',
+          border: '1px solid #2a3448',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <span style={{ color: '#64748b', fontSize: '16px' }}>🔍</span>
+          <input
+            placeholder="Search symbol..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onFocus={() => searchResults.length > 0 && setShowResults(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#ffffff',
+              fontSize: '15px',
+              flex: 1
+            }}
+          />
+        </div>
+
+        {/* Search Results Dropdown */}
+        {showResults && searchResults.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: 'calc(100% - 16px)',
+            left: '16px',
+            right: '16px',
+            background: '#1a2235',
+            border: '1px solid #2a3448',
+            borderRadius: '10px',
+            marginTop: '4px',
+            zIndex: 100,
+            overflow: 'hidden'
+          }}>
+            {searchLoading && (
+              <div style={{ padding: '12px 16px', color: '#64748b', fontSize: '13px' }}>
+                Searching...
+              </div>
+            )}
+            {searchResults.map((r, i) => (
+              <div
+                key={r.symbol}
+                onClick={() => {
+                  setSelectedSymbol(r.symbol);
+                  setSearchQuery(r.symbol);
+                  setShowResults(false);
+                }}
+                style={{
+                  padding: '12px 16px',
+                  borderBottom: i < searchResults.length - 1 ? '1px solid #2a3448' : 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>
+                    {r.symbol}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
+                    {r.description}
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '11px',
+                  color: '#334155',
+                  background: '#0f1829',
+                  padding: '2px 6px',
+                  borderRadius: '4px'
+                }}>
+                  {r.type === 'ETP' ? 'ETF' : 'Stock'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Selected Symbol Indicator */}
+      {selectedSymbol && (
+        <div style={{
+          padding: '8px 16px',
+          margin: '8px 16px 0 16px',
+          background: '#1e3a5f',
+          border: '1px solid #22d3ee',
+          borderRadius: '8px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span style={{ color: '#22d3ee', fontWeight: '700', fontSize: '14px' }}>
+            {selectedSymbol}
+          </span>
+          <button
+            onClick={() => { setSelectedSymbol(''); setSearchQuery(''); setSearchResults([]); }}
+            style={{ color: '#64748b', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ─── 2. PLACE ORDER FORM ─── */}
       <div style={{
