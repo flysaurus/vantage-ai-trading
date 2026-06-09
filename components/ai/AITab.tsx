@@ -38,8 +38,58 @@ export function AITab() {
     date: string;
     daysUntil: number;
   }[]>([]);
+  const [marketHeadline, setMarketHeadline] = useState('');
+  const [portfolioSummary, setPortfolioSummary] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── fetch market news ──
+  const fetchMarketNews = async () => {
+    try {
+      const res = await fetch('/api/finnhub/news?category=general');
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const headline = data[0].headline || '';
+        setMarketHeadline(
+          headline.length > 60
+            ? headline.substring(0, 57) + '...'
+            : headline
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // ── fetch portfolio summary (top holdings today change) ──
+  const fetchPortfolioSummary = async () => {
+    try {
+      const topHoldings = ['META', 'MSFT', 'GOOGL'];
+
+      const quotes = await Promise.all(
+        topHoldings.map(async (symbol) => {
+          const res = await fetch(
+            `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
+          );
+          const data = await res.json();
+          return { symbol, changePct: data.dp ?? 0 };
+        })
+      );
+
+      const biggest = quotes.reduce((a, b) =>
+        Math.abs(a.changePct) > Math.abs(b.changePct) ? a : b
+      );
+
+      const direction = biggest.changePct >= 0 ? 'up' : 'down';
+      const pct = Math.abs(biggest.changePct).toFixed(1);
+
+      setPortfolioSummary(
+        `${biggest.symbol} ${direction} ${pct}% · portfolio -0.9% today`
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // ── fetch earnings calendar ──
   const fetchEarnings = async () => {
@@ -86,6 +136,8 @@ export function AITab() {
 
   useEffect(() => {
     fetchEarnings();
+    fetchMarketNews();
+    fetchPortfolioSummary();
   }, []);
 
   // ── helpers ──
@@ -228,7 +280,7 @@ export function AITab() {
               MARKET
             </span>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Markets mixed, tech leading gains
+              {marketHeadline || 'Markets mixed, monitoring macro events'}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -246,7 +298,7 @@ export function AITab() {
               PORTFOLIO
             </span>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Your portfolio down 0.9% today
+              {portfolioSummary || 'Your portfolio down 0.9% today'}
             </span>
           </div>
         </div>
