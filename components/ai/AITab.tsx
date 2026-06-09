@@ -48,30 +48,31 @@ export function AITab() {
   // ── fetch market news ──
   const fetchMarketNews = async () => {
     try {
-      const financialKeywords = [
-        'market', 'stock', 'fed', 'rate', 'inflation',
-        'economy', 'gdp', 'earnings', 'nasdaq', 'dow',
-        's&p', 'treasury', 'bond', 'yield', 'trade',
-        'tariff', 'recession', 'growth', 'jobs', 'payroll',
-      ];
+      const today = new Date().toISOString().split('T')[0];
+      let res = await fetch(
+        `/api/finnhub/company-news?symbol=SPY&from=${today}&to=${today}`
+      );
+      let data = await res.json();
 
-      const res = await fetch('/api/finnhub/news?category=general');
-      const data = await res.json();
-      if (data && data.length > 0) {
-        const relevant = data.find((item: { headline?: string; summary?: string }) =>
-          financialKeywords.some((kw) =>
-            item.headline?.toLowerCase().includes(kw) ||
-            item.summary?.toLowerCase().includes(kw)
-          )
+      // weekend/holiday fallback
+      if (!data || data.length === 0) {
+        const yesterday = new Date(Date.now() - 86400000)
+          .toISOString()
+          .split('T')[0];
+        res = await fetch(
+          `/api/finnhub/company-news?symbol=SPY&from=${yesterday}&to=${yesterday}`
         );
-        const item = relevant || data[0];
-        const headline = item.headline || '';
+        data = await res.json();
+      }
+
+      if (data && data.length > 0) {
+        const headline = data[0]?.headline || '';
         setMarketHeadline(
           headline.length > 60
             ? headline.substring(0, 57) + '...'
-            : headline
+            : headline || 'Markets open'
         );
-        setMarketNewsUrl(item.url || '');
+        setMarketNewsUrl(data[0]?.url || '');
       }
     } catch (e) {
       console.error(e);
@@ -280,7 +281,7 @@ export function AITab() {
           onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
         >
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px' }}>📡</span>
+            <span style={{ fontSize: '16px' }}>📡</span>
             <span
               style={{
                 fontSize: '13px',
