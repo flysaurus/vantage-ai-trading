@@ -7,6 +7,7 @@ interface IndexData {
   value: number;
   change: number;
   changePct: number;
+  isLive: boolean;
 }
 
 export default function MarketOverview() {
@@ -29,9 +30,10 @@ export default function MarketOverview() {
           return {
             symbol,
             label,
-            value: data.c ?? 0,
-            change: data.d ?? 0,
-            changePct: data.dp ?? 0
+            value: data.c || data.pc || 0,
+            change: data.c ? (data.d ?? 0) : 0,
+            changePct: data.c ? (data.dp ?? 0) : 0,
+            isLive: !!data.c
           };
         })
       );
@@ -107,12 +109,13 @@ export default function MarketOverview() {
           <div style={{
             fontSize: '11px',
             fontWeight: '500',
-            color: idx.change >= 0 ? '#10b981' : '#ef4444'
+            color: idx.isLive
+              ? (idx.change >= 0 ? '#10b981' : '#ef4444')
+              : '#64748b'
           }}>
-            {idx.change >= 0 ? '+' : ''}
-            {idx.change.toFixed(0)} (
-            {idx.changePct >= 0 ? '+' : ''}
-            {idx.changePct.toFixed(2)}%)
+            {idx.isLive
+              ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(0)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
+              : 'Closed'}
           </div>
         </div>
       ))}
