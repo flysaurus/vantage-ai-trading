@@ -64,10 +64,6 @@ export function AITab() {
     }, 1500);
   };
 
-  const clearChat = () => {
-    setMessages([]);
-  };
-
   // ── derived data ──
   const equity = account?.equity ?? 0;
   const dayPnl = account?.dayPnl ?? 0;
@@ -108,13 +104,14 @@ export function AITab() {
             ${equity.toLocaleString('en-US', DOLLAR_FMT)}
           </p>
           <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            TODAY -$1,117.20 (-0.9%) · TOTAL -$10,207.30 (-7.9%)
+            TODAY -$1,117 (-0.9%) · TOTAL -$10,207 (-7.9%)
           </p>
         </div>
         <div>
           <span
             style={{
               whiteSpace: 'nowrap',
+              display: 'inline-block',
               fontSize: '10px',
               color: '#22d3ee',
               background: 'rgba(34,211,238,0.1)',
@@ -609,7 +606,12 @@ export function AITab() {
 
         {/* Trash button */}
         <div
-          onClick={clearChat}
+          onClick={() => {
+            if (messages.length === 0) return;
+            if (window.confirm('Clear chat history?')) {
+              setMessages([]);
+            }
+          }}
           style={{
             width: '36px',
             height: '36px',
