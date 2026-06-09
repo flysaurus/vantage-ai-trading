@@ -49,6 +49,14 @@ export default function WatchlistTab() {
   const [searching, setSearching] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── delete / edit states ──
+  const [deletingSymbol, setDeletingSymbol] = useState<string | null>(null);
+  const [deletingTimer, setDeletingTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [showDeleteListConfirm, setShowDeleteListConfirm] = useState(false);
+
   const activeList = lists.find((l) => l.id === activeListId) || lists[0];
 
   // ── fetch real quotes for all symbols ──
@@ -204,6 +212,7 @@ export default function WatchlistTab() {
             + Add
           </button>
           <button
+            onClick={() => setShowOptionsMenu(true)}
             style={{
               fontSize: '18px',
               color: '#64748b',
@@ -254,19 +263,78 @@ export default function WatchlistTab() {
             return (
               <div
                 key={item.symbol}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  margin: '0 16px 8px 16px',
-                  padding: '14px 16px',
-                  background: '#1a2235',
-                  borderRadius: '10px',
-                  borderLeft: `3px solid ${changeColor}`,
-                  minHeight: '64px',
-                  position: 'relative',
-                }}
+                style={{ position: 'relative', margin: '0 16px 8px 16px' }}
               >
+                {/* Delete button — revealed on long press */}
+                {deletingSymbol === item.symbol && (
+                  <button
+                    onClick={() => {
+                      setLists((prev) =>
+                        prev.map((l) =>
+                          l.id === activeListId
+                            ? { ...l, items: l.items.filter((i) => i.symbol !== item.symbol) }
+                            : l
+                        )
+                      );
+                      setDeletingSymbol(null);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: '80px',
+                      background: '#ef4444',
+                      border: 'none',
+                      borderRadius: '0 10px 10px 0',
+                      color: '#ffffff',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      zIndex: 10,
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+
+                {/* Main row */}
+                <div
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setDeletingSymbol(item.symbol);
+                  }}
+                  onTouchStart={() => {
+                    if (deletingTimer) clearTimeout(deletingTimer);
+                    const timer = setTimeout(() => setDeletingSymbol(item.symbol), 600);
+                    setDeletingTimer(timer);
+                  }}
+                  onTouchEnd={() => {
+                    if (deletingTimer) {
+                      clearTimeout(deletingTimer);
+                      setDeletingTimer(null);
+                    }
+                  }}
+                  onTouchMove={() => {
+                    if (deletingTimer) {
+                      clearTimeout(deletingTimer);
+                      setDeletingTimer(null);
+                    }
+                  }}
+                  onClick={() => {
+                    if (deletingSymbol) setDeletingSymbol(null);
+                  }}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '14px 16px',
+                    background: '#1a2235',
+                    borderRadius: '10px',
+                    borderLeft: `3px solid ${changeColor}`,
+                    minHeight: '64px',
+                  }}
+                >
                 {/* Left — symbol + name */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -344,33 +412,7 @@ export default function WatchlistTab() {
                     </p>
                   )}
                 </div>
-
-                {/* Delete button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeSymbol(item.symbol);
-                  }}
-                  style={{
-                    position: 'absolute',
-                    top: '8px',
-                    right: '8px',
-                    width: '20px',
-                    height: '20px',
-                    background: 'none',
-                    border: 'none',
-                    color: '#334155',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: 0.5,
-                  }}
-                >
-                  ×
-                </button>
+                </div>
               </div>
             );
           })
@@ -638,6 +680,281 @@ export default function WatchlistTab() {
                 No results found
               </p>
             )}
+          </div>
+        </>
+      )}
+
+      {/* ─── 6. Options Menu Bottom Sheet ─── */}
+      {showOptionsMenu && (
+        <>
+          <div
+            onClick={() => setShowOptionsMenu(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 9998,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: '#1a2235',
+              borderTopLeftRadius: '16px',
+              borderTopRightRadius: '16px',
+              padding: '24px',
+              paddingBottom: '80px',
+              zIndex: 9999,
+            }}
+          >
+            <div
+              onClick={() => {
+                setRenameValue(activeList?.name || '');
+                setShowRenameModal(true);
+                setShowOptionsMenu(false);
+              }}
+              style={{
+                padding: '14px 0',
+                borderBottom: '1px solid #2a3448',
+                cursor: 'pointer',
+                fontSize: '15px',
+                color: '#ffffff',
+              }}
+            >
+              Rename List
+            </div>
+            {lists.length > 1 && (
+              <div
+                onClick={() => {
+                  setShowDeleteListConfirm(true);
+                  setShowOptionsMenu(false);
+                }}
+                style={{
+                  padding: '14px 0',
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  color: '#ef4444',
+                }}
+              >
+                Delete List
+              </div>
+            )}
+            <button
+              onClick={() => setShowOptionsMenu(false)}
+              style={{
+                width: '100%',
+                marginTop: '16px',
+                padding: '14px',
+                background: 'transparent',
+                border: '1px solid #475569',
+                borderRadius: '10px',
+                color: '#94a3b8',
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ─── 7. Rename List Modal ─── */}
+      {showRenameModal && (
+        <>
+          <div
+            onClick={() => setShowRenameModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 9998,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '380px',
+              zIndex: 9999,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+              }}
+            >
+              <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                Rename List
+              </p>
+              <button
+                onClick={() => setShowRenameModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              autoFocus
+              style={{
+                width: '100%',
+                background: '#0f1829',
+                border: '1px solid #2a3448',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                color: '#ffffff',
+                fontSize: '15px',
+                outline: 'none',
+                marginBottom: '16px',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setShowRenameModal(false)}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  background: 'transparent',
+                  border: '1px solid #475569',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (renameValue.trim()) {
+                    setLists((prev) =>
+                      prev.map((l) =>
+                        l.id === activeListId ? { ...l, name: renameValue.trim() } : l
+                      )
+                    );
+                  }
+                  setShowRenameModal(false);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  background: '#22d3ee',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#000000',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ─── 8. Delete List Confirmation ─── */}
+      {showDeleteListConfirm && (
+        <>
+          <div
+            onClick={() => setShowDeleteListConfirm(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 9998,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '360px',
+              zIndex: 9999,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>🗑️</div>
+            <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' }}>
+              Delete {activeList?.name}?
+            </p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>
+              This will remove the list and all {activeList?.items.length} stocks in it.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setShowDeleteListConfirm(false)}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  background: 'transparent',
+                  border: '1px solid #475569',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const remaining = lists.filter((l) => l.id !== activeListId);
+                  setLists(remaining);
+                  if (remaining.length > 0) {
+                    setActiveListId(remaining[0].id);
+                  }
+                  setShowDeleteListConfirm(false);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </>
       )}
