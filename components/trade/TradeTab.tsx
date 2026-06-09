@@ -199,7 +199,7 @@ export function TradeTab() {
                   skipSearchRef.current = true;
                   setSelectedSymbol(r.symbol);
                   setSelectedResult({ description: r.description, type: r.type });
-                  setSearchQuery(r.symbol);
+                  setSearchQuery('');
                   setSearchResults([]);
                   setShowResults(false);
                 }}
@@ -387,7 +387,7 @@ export function TradeTab() {
             </div>
           )}
 
-          {/* Volume */}
+          {/* Open */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -395,17 +395,26 @@ export function TradeTab() {
             marginTop: '10px'
           }}>
             <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Volume
+              Open
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
-              {symbolQuote.volume > 0
-                ? symbolQuote.volume >= 1000000
-                  ? `${(symbolQuote.volume / 1000000).toFixed(2)}M`
-                  : symbolQuote.volume >= 1000
-                    ? `${(symbolQuote.volume / 1000).toFixed(1)}K`
-                    : symbolQuote.volume.toLocaleString()
-                : '—'
-              }
+              {symbolQuote.open > 0 ? `$${symbolQuote.open.toFixed(2)}` : '—'}
+            </span>
+          </div>
+
+          {/* Prev Close */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '8px'
+          }}>
+            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Prev Close
+            </span>
+            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+              {symbolQuote.prevClose > 0
+                ? `$${symbolQuote.prevClose.toFixed(2)}` : '—'}
             </span>
           </div>
 
