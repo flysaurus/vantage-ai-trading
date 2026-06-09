@@ -33,8 +33,60 @@ export function AITab() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [earnings, setEarnings] = useState<{
+    symbol: string;
+    date: string;
+    daysUntil: number;
+  }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── fetch earnings calendar ──
+  const fetchEarnings = async () => {
+    try {
+      const today = new Date();
+      const fromDate = today.toISOString().split('T')[0];
+      const toDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
+
+      const res = await fetch(
+        `/api/finnhub/earnings?from=${fromDate}&to=${toDate}`
+      );
+      const data = await res.json();
+
+      const demoSymbols = [
+        'META', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
+        'CRM', 'NFLX', 'ADBE', 'UBER', 'SQ',
+      ];
+
+      const relevant = (data.earningsCalendar || [])
+        .filter((e: { symbol: string; date: string }) =>
+          demoSymbols.includes(e.symbol)
+        )
+        .map((e: { symbol: string; date: string }) => {
+          const earningsDate = new Date(e.date);
+          const daysUntil = Math.ceil(
+            (earningsDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          return { symbol: e.symbol, date: e.date, daysUntil };
+        })
+        .filter((e: { daysUntil: number }) => e.daysUntil >= 0)
+        .sort(
+          (a: { daysUntil: number }, b: { daysUntil: number }) =>
+            a.daysUntil - b.daysUntil
+        )
+        .slice(0, 3);
+
+      setEarnings(relevant);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchEarnings();
+  }, []);
 
   // ── helpers ──
   const scrollToBottom = () => {
@@ -222,9 +274,12 @@ export function AITab() {
                 WATCH
               </span>
               <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                NVDA earnings in 3 days
+                {earnings.length > 0
+                  ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} day${earnings[0].daysUntil === 1 ? '' : 's'}`
+                  : 'No earnings in next 30 days for your holdings'}
               </span>
             </div>
+            {earnings.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span
                 style={{
@@ -240,9 +295,10 @@ export function AITab() {
                 EARNINGS
               </span>
               <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                CRM reports this week
+                {earnings[1].symbol} reports in {earnings[1].daysUntil} days
               </span>
             </div>
+            )}
             <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
               Generated now · Updates tomorrow
             </p>
@@ -361,19 +417,99 @@ export function AITab() {
               borderTop: '1px solid rgba(42,52,72,0.6)',
             }}
           >
-            <p
-              style={{
-                fontSize: '13px',
-                color: '#94a3b8',
-                lineHeight: '1.6',
-                marginTop: '12px',
-              }}
-            >
-              Your portfolio shows strong long-term growth despite short-term
-              volatility. Tech concentration at 68% warrants attention. META and
-              GOOGL remain core positions with solid fundamentals.
-            </p>
-            <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
+            {/* Opportunities */}
+            <div style={{ marginTop: '12px' }}>
+              <p style={{
+                fontSize: '11px', color: '#22d3ee',
+                fontWeight: '700', letterSpacing: '0.05em',
+                marginBottom: '8px',
+              }}>
+                📈 OPPORTUNITIES
+              </p>
+              {[
+                earnings[0]
+                  ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} days — prepare position`
+                  : 'NVDA showing oversold signals — consider adding',
+                'GOOGL trading below 52-week average — value entry',
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: '13px',
+                    color: '#94a3b8',
+                    paddingLeft: '8px',
+                    borderLeft: '2px solid #22d3ee',
+                    marginBottom: '6px',
+                    lineHeight: '1.4',
+                  }}
+                >
+                  → {item}
+                </div>
+              ))}
+            </div>
+
+            {/* Risks */}
+            <div style={{ marginTop: '12px' }}>
+              <p style={{
+                fontSize: '11px', color: '#f59e0b',
+                fontWeight: '700', letterSpacing: '0.05em',
+                marginBottom: '8px',
+              }}>
+                ⚠️ RISKS
+              </p>
+              {[
+                'Tech concentration at 68% — above 50% threshold',
+                'NFLX position down 91% — review sizing',
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: '13px',
+                    color: '#94a3b8',
+                    paddingLeft: '8px',
+                    borderLeft: '2px solid #f59e0b',
+                    marginBottom: '6px',
+                    lineHeight: '1.4',
+                  }}
+                >
+                  → {item}
+                </div>
+              ))}
+            </div>
+
+            {/* Recommendations */}
+            <div style={{ marginTop: '12px' }}>
+              <p style={{
+                fontSize: '11px', color: '#10b981',
+                fontWeight: '700', letterSpacing: '0.05em',
+                marginBottom: '8px',
+              }}>
+                💡 RECOMMENDATIONS
+              </p>
+              {[
+                'Consider adding healthcare or financials for diversification',
+                'Review NFLX position — down 91% from cost basis',
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: '13px',
+                    color: '#94a3b8',
+                    paddingLeft: '8px',
+                    borderLeft: '2px solid #10b981',
+                    marginBottom: '6px',
+                    lineHeight: '1.4',
+                  }}
+                >
+                  → {item}
+                </div>
+              ))}
+            </div>
+
+            <p style={{
+              fontSize: '10px', color: '#334155',
+              marginTop: '12px',
+            }}>
               Generated Jun 9 · Refresh uses 1 deep analysis
             </p>
           </div>
@@ -640,7 +776,7 @@ export function AITab() {
         style={{
           textAlign: 'center',
           fontSize: '10px',
-          color: '#334155',
+          color: '#64748b',
           padding: '4px 16px 16px 16px',
         }}
       >
