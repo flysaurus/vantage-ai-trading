@@ -15,7 +15,6 @@ export default function MarketOverview() {
 
   const fetchIndices = async () => {
     try {
-      const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
       const symbols = [
         { symbol: '^DJI', label: 'DOW' },
         { symbol: '^GSPC', label: 'S&P 500' },
@@ -24,7 +23,7 @@ export default function MarketOverview() {
       const results = await Promise.all(
         symbols.map(async ({ symbol, label }) => {
           const res = await fetch(
-            `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`
+            `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
           );
           const data = await res.json();
           return {
