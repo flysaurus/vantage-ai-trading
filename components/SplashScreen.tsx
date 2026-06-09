@@ -9,39 +9,40 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    // Start sweep after 300ms
-    const t1 = setTimeout(() => setAngle(120), 300);
-    // Return to north after sweep completes
+    // Start sweep after 400ms
+    const t1 = setTimeout(() => setAngle(120), 400);
+    // Return to north after sweep + 300ms pause (400 + 2500 + 300 = 3200)
     const t2 = setTimeout(() => {
       setReturning(true);
       setAngle(0);
-    }, 1800);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+    }, 3200);
+    // Hide splash after return + 2s display (3200 + 1200 + 1600 = 6000)
+    const t3 = setTimeout(() => onComplete(), 6000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [onComplete]);
 
   useEffect(() => {
     const t = [
-      setTimeout(() => setTextVisible(true), 1800),
-      setTimeout(() => setTaglineVisible(true), 2100),
-      // Hold 3 full seconds after tagline
-      setTimeout(() => setExiting(true), 5200),
-      setTimeout(() => onComplete(), 5600),
+      setTimeout(() => setTextVisible(true), 2000),
+      setTimeout(() => setTaglineVisible(true), 2400),
+      // Fade out just before splash dismisses
+      setTimeout(() => setExiting(true), 5500),
     ];
     return () => t.forEach(clearTimeout);
-  }, [onComplete]);
+  }, []);
 
   return (
     <div className={`fixed inset-0 z-50 bg-black flex flex-col items-center justify-center transition-opacity duration-500 ${exiting ? 'opacity-0' : 'opacity-100'}`}>
 
       {/* Compass with sweeping needle */}
-      <div className="relative" style={{ marginBottom: '36px' }}>
-        <svg width="180" height="180" viewBox="0 0 180 180">
+      <div className="relative" style={{ marginBottom: '40px' }}>
+        <svg width="360" height="360" viewBox="0 0 360 360">
 
           {/* Outer ring */}
           <circle
-            cx="90" cy="90" r="82"
+            cx="180" cy="180" r="164"
             fill="none"
-            stroke="#1e3a5f"
+            stroke="white"
             strokeWidth="4"
           />
 
@@ -49,30 +50,30 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
           <g
             style={{
               transform: `rotate(${angle}deg)`,
-              transformOrigin: '90px 90px',
+              transformOrigin: '180px 180px',
               transition: returning
-                ? 'transform 0.8s ease-in-out'
-                : 'transform 1.5s ease-out'
+                ? 'transform 1.2s ease-in-out'
+                : 'transform 2.5s ease-out'
             }}
           >
             {/* North point — cyan, tall */}
             <polygon
-              points="90,18 98,90 90,108 82,90"
+              points="180,36 196,180 180,216 164,180"
               fill="#22d3ee"
             />
             {/* South point — slate, short */}
             <polygon
-              points="90,162 98,90 90,108 82,90"
+              points="180,324 196,180 180,216 164,180"
               fill="#334155"
             />
             {/* Center dot */}
-            <circle cx="90" cy="90" r="5.5" fill="#0f172a" />
-            <circle cx="90" cy="90" r="3" fill="#22d3ee" />
+            <circle cx="180" cy="180" r="11" fill="black" />
+            <circle cx="180" cy="180" r="6" fill="#22d3ee" />
           </g>
 
           {/* N label */}
-          <text x="90" y="12" textAnchor="middle"
-            fill="#22d3ee" fontSize="18" fontWeight="700">N</text>
+          <text x="180" y="24" textAnchor="middle"
+            fill="white" fontSize="20" fontWeight="600">N</text>
 
         </svg>
       </div>
