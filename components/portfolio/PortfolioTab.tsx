@@ -28,11 +28,11 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 function AccountCard({ account }: { account: AccountSummary }) {
   return (
-    <div className="bg-[#1a2235] rounded-lg border border-[#2a3448] p-5" style={{ margin: '20px 16px 24px 16px' }}>
-      {/* Account Value */}
-      <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
+    <div style={{ margin: '16px 16px 0 16px' }}>
+      <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
         Account Value
-      </p>
+      </div>
+      <div className="bg-[#1a2235] rounded-lg border border-[#2a3448] p-5">
       <p className="text-4xl font-bold text-white">
         ${account.equity.toLocaleString('en-US', DOLLAR_FMT)}
       </p>
@@ -80,6 +80,7 @@ function AccountCard({ account }: { account: AccountSummary }) {
           </p>
         </div>
       </div>
+    </div>
     </div>
   );
 }
