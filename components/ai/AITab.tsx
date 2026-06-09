@@ -776,7 +776,7 @@ export function AITab() {
         style={{
           textAlign: 'center',
           fontSize: '10px',
-          color: '#64748b',
+          color: '#94a3b8',
           padding: '4px 16px 16px 16px',
         }}
       >
