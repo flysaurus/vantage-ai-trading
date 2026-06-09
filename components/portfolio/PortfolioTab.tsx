@@ -605,7 +605,17 @@ export function PortfolioTab() {
             selectedSymbols.length === 0 ? (
               <button
                 onClick={() => { setSelectMode(false); setSelectedSymbols([]); }}
-                className="text-xs text-slate-400 uppercase tracking-wider font-medium px-2 py-0.5 rounded hover:text-white transition-colors"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: '#94a3b8',
+                  border: '1px solid #374151',
+                  borderRadius: '8px',
+                  padding: '5px 10px',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
               >
                 Cancel
               </button>
@@ -619,7 +629,17 @@ export function PortfolioTab() {
                     currentPrice: s.currentPrice
                   })));
                 }}
-                className="bg-red-500 text-white rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wider active:scale-95 transition-all"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  color: '#ffffff',
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '5px 12px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
               >
                 {selectedSymbols.length === positions.length && positions.length > 1
                   ? 'Sell Portfolio'
@@ -629,7 +649,17 @@ export function PortfolioTab() {
           ) : (
             <button
               onClick={() => setSelectMode(true)}
-              className="text-xs text-gray-900 uppercase tracking-wider font-semibold bg-[#22d3ee] rounded-lg px-5 py-2 hover:bg-[#67e8f9] active:scale-95 transition-all"
+              style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#22d3ee',
+                border: '1px solid rgba(34,211,238,0.4)',
+                borderRadius: '8px',
+                padding: '5px 10px',
+                background: 'transparent',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
             >
               Sell Positions
             </button>
