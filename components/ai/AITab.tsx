@@ -293,13 +293,15 @@ export function AITab() {
               justifyContent: 'space-between',
               alignItems: 'center',
               cursor: 'pointer',
+              background: 'rgba(34,211,238,0.06)',
+              border: '1px solid rgba(34,211,238,0.12)',
+              borderRadius: '6px',
+              padding: '8px 10px',
               marginBottom: '6px',
             }}
             onClick={() => {
               if (marketNewsUrl) window.open(marketNewsUrl, '_blank');
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
           >
             <div style={{ display: 'flex', alignItems: 'center' }}>
             <span
@@ -319,7 +321,7 @@ export function AITab() {
               {marketHeadline || 'Markets mixed, monitoring macro events'}
             </span>
             </div>
-            <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+            <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
           </div>
           <div
             style={{
@@ -327,14 +329,16 @@ export function AITab() {
               justifyContent: 'space-between',
               alignItems: 'center',
               cursor: 'pointer',
+              background: 'rgba(34,211,238,0.06)',
+              border: '1px solid rgba(34,211,238,0.12)',
+              borderRadius: '6px',
+              padding: '8px 10px',
             }}
             onClick={() => {
               window.dispatchEvent(
                 new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
               );
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
           >
             <div style={{ display: 'flex', alignItems: 'center' }}>
             <span
@@ -354,7 +358,7 @@ export function AITab() {
               {portfolioSummary || 'Your portfolio down 0.9% today'}
             </span>
             </div>
-            <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+            <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
           </div>
         </div>
 
@@ -372,6 +376,10 @@ export function AITab() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 cursor: 'pointer',
+                background: 'rgba(34,211,238,0.06)',
+                border: '1px solid rgba(34,211,238,0.12)',
+                borderRadius: '6px',
+                padding: '8px 10px',
                 marginBottom: '6px',
                 marginTop: '12px',
               }}
@@ -380,8 +388,6 @@ export function AITab() {
                   sendToChat(`Tell me about ${earnings[0].symbol} upcoming earnings`);
                 }
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
             >
               <div style={{ display: 'flex', alignItems: 'center' }}>
               <span
@@ -403,7 +409,7 @@ export function AITab() {
                   : 'No earnings in next 30 days for your holdings'}
               </span>
               </div>
-              <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+              <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
             </div>
             {earnings.length > 1 && (
             <div
@@ -412,12 +418,14 @@ export function AITab() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 cursor: 'pointer',
+                background: 'rgba(34,211,238,0.06)',
+                border: '1px solid rgba(34,211,238,0.12)',
+                borderRadius: '6px',
+                padding: '8px 10px',
               }}
               onClick={() => {
                 sendToChat(`Tell me about ${earnings[1].symbol} upcoming earnings`);
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
             >
               <div style={{ display: 'flex', alignItems: 'center' }}>
               <span
@@ -437,7 +445,7 @@ export function AITab() {
                 {earnings[1].symbol} reports in {earnings[1].daysUntil} days
               </span>
               </div>
-              <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+              <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
             </div>
             )}
             <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
@@ -584,23 +592,20 @@ export function AITab() {
                 <div
                   key={i}
                   onClick={() => sendToChat(item.msg)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     cursor: 'pointer',
-                    fontSize: '13px',
-                    color: '#94a3b8',
-                    paddingLeft: '8px',
-                    borderLeft: '2px solid #22d3ee',
+                    background: 'rgba(34,211,238,0.06)',
+                    border: '1px solid rgba(34,211,238,0.12)',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
                     marginBottom: '6px',
-                    lineHeight: '1.4',
                   }}
                 >
-                  <span>→ {item.text}</span>
-                  <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
+                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
             </div>
@@ -627,23 +632,20 @@ export function AITab() {
                 <div
                   key={i}
                   onClick={() => sendToChat(item.msg)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     cursor: 'pointer',
-                    fontSize: '13px',
-                    color: '#94a3b8',
-                    paddingLeft: '8px',
-                    borderLeft: '2px solid #f59e0b',
+                    background: 'rgba(34,211,238,0.06)',
+                    border: '1px solid rgba(34,211,238,0.12)',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
                     marginBottom: '6px',
-                    lineHeight: '1.4',
                   }}
                 >
-                  <span>→ {item.text}</span>
-                  <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
+                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
             </div>
@@ -670,23 +672,20 @@ export function AITab() {
                 <div
                   key={i}
                   onClick={() => sendToChat(item.msg)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     cursor: 'pointer',
-                    fontSize: '13px',
-                    color: '#94a3b8',
-                    paddingLeft: '8px',
-                    borderLeft: '2px solid #10b981',
+                    background: 'rgba(34,211,238,0.06)',
+                    border: '1px solid rgba(34,211,238,0.12)',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
                     marginBottom: '6px',
-                    lineHeight: '1.4',
                   }}
                 >
-                  <span>→ {item.text}</span>
-                  <span style={{ fontSize: '12px', color: '#334155', marginLeft: '8px', flexShrink: 0 }}>›</span>
+                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
+                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
             </div>
