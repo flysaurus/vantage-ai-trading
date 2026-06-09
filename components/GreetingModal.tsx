@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import CompassIcon from '@/components/CompassIcon';
+
 import { getMarketStatus } from '@/lib/market-hours';
 
 interface GreetingModalProps {
@@ -83,10 +83,26 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
-      <div className="bg-slate-900/95 rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8 pt-10 pb-10">
+      <div className="bg-slate-900/95 rounded-3xl mx-8 w-full max-w-xs flex flex-col items-center text-center px-8" style={{ paddingTop: '54px', paddingBottom: '54px' }}>
 
         <div className="mb-8">
-          <CompassIcon size={80} color="white" animated={false} settling={true} />
+          <svg width="80" height="80" viewBox="0 -8 180 196">
+            <circle cx="90" cy="90" r="82"
+              fill="none" stroke="#22d3ee" strokeWidth="10" />
+            <g style={{
+              transform: 'rotate(0deg)',
+              transformOrigin: '90px 90px'
+            }}>
+              <polygon points="90,18 98,90 90,108 82,90"
+                fill="#22d3ee" />
+              <polygon points="90,162 98,90 90,108 82,90"
+                fill="#475569" />
+              <circle cx="90" cy="90" r="5.5" fill="black" />
+              <circle cx="90" cy="90" r="3" fill="#22d3ee" />
+            </g>
+            <text x="90" y="-4" textAnchor="middle"
+              fill="#22d3ee" fontSize="16" fontWeight="700">N</text>
+          </svg>
         </div>
 
         <p className="text-white font-light leading-tight mb-1" style={{ fontSize: '2.25rem' }}>
