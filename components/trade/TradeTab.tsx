@@ -57,9 +57,8 @@ export function TradeTab() {
     const timer = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
         const res = await fetch(
-          `https://finnhub.io/api/v1/search?q=${encodeURIComponent(searchQuery)}&token=${key}`
+          `/api/finnhub/search?q=${encodeURIComponent(searchQuery)}`
         );
         const data = await res.json();
         const filtered = (data.result || [])
