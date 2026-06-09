@@ -168,6 +168,7 @@ input::placeholder, textarea::placeholder {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   min-height: 0; /* flex child scroll fix */
+  padding-bottom: 80px;
 }
 .content-area::-webkit-scrollbar { width: 4px; }
 .content-area::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
