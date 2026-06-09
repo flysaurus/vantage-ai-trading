@@ -36,21 +36,21 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
 
       {/* Compass with sweeping needle */}
       <div className="relative" style={{ marginBottom: '40px' }}>
-        <svg width="360" height="360" viewBox="0 0 360 360">
+        <svg width="180" height="180" viewBox="0 0 180 180">
 
           {/* Outer ring */}
           <circle
-            cx="180" cy="180" r="164"
+            cx="90" cy="90" r="82"
             fill="none"
             stroke="white"
-            strokeWidth="4"
+            strokeWidth="10"
           />
 
           {/* Needle — north point (dominant, tall) */}
           <g
             style={{
               transform: `rotate(${angle}deg)`,
-              transformOrigin: '180px 180px',
+              transformOrigin: '90px 90px',
               transition: returning
                 ? 'transform 1.2s ease-in-out'
                 : 'transform 2.5s ease-out'
@@ -58,22 +58,22 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
           >
             {/* North point — cyan, tall */}
             <polygon
-              points="180,36 196,180 180,216 164,180"
+              points="90,18 98,90 90,108 82,90"
               fill="#22d3ee"
             />
             {/* South point — slate, short */}
             <polygon
-              points="180,324 196,180 180,216 164,180"
+              points="90,162 98,90 90,108 82,90"
               fill="#334155"
             />
             {/* Center dot */}
-            <circle cx="180" cy="180" r="11" fill="black" />
-            <circle cx="180" cy="180" r="6" fill="#22d3ee" />
+            <circle cx="90" cy="90" r="5.5" fill="black" />
+            <circle cx="90" cy="90" r="3" fill="#22d3ee" />
           </g>
 
           {/* N label */}
-          <text x="180" y="24" textAnchor="middle"
-            fill="white" fontSize="20" fontWeight="600">N</text>
+          <text x="90" y="12" textAnchor="middle"
+            fill="white" fontSize="10" fontWeight="600">N</text>
 
         </svg>
       </div>
