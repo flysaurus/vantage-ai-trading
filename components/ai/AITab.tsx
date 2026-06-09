@@ -38,6 +38,7 @@ export function AITab() {
     date: string;
     daysUntil: number;
   }[]>([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [marketHeadline, setMarketHeadline] = useState('');
   const [marketNewsUrl, setMarketNewsUrl] = useState('');
   const [portfolioSummary, setPortfolioSummary] = useState('');
@@ -947,9 +948,7 @@ export function AITab() {
         <div
           onClick={() => {
             if (messages.length === 0) return;
-            if (window.confirm('Clear chat history?')) {
-              setMessages([]);
-            }
+            setShowClearConfirm(true);
           }}
           style={{
             width: '36px',
@@ -993,6 +992,92 @@ export function AITab() {
           to { transform: rotate(360deg); }
         }
       `}</style>
+
+      {/* ─── Clear Confirm Modal ─── */}
+      {showClearConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '320px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>🗑️</div>
+            <p
+              style={{
+                fontSize: '16px',
+                fontWeight: '700',
+                color: '#ffffff',
+                marginBottom: '8px',
+              }}
+            >
+              Clear Conversation
+            </p>
+            <p
+              style={{
+                fontSize: '13px',
+                color: '#64748b',
+                marginBottom: '24px',
+                lineHeight: '1.5',
+              }}
+            >
+              This will remove all messages from your current session. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: 'transparent',
+                  border: '1px solid #374151',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setMessages([]);
+                  setShowClearConfirm(false);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
