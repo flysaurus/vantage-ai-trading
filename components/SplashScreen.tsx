@@ -35,7 +35,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
     <div className={`fixed inset-0 z-50 bg-black flex flex-col items-center justify-center transition-opacity duration-500 ${exiting ? 'opacity-0' : 'opacity-100'}`}>
 
       {/* Compass with sweeping needle */}
-      <div className="relative" style={{ marginBottom: '40px' }}>
+      <div className="relative" style={{ marginBottom: '36px' }}>
         <svg width="180" height="180" viewBox="0 0 180 180">
 
           {/* Outer ring */}
@@ -43,7 +43,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
             cx="90" cy="90" r="82"
             fill="none"
             stroke="white"
-            strokeWidth="10"
+            strokeWidth="4"
           />
 
           {/* Needle — north point (dominant, tall) */}
