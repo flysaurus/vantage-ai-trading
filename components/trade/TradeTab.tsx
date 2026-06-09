@@ -46,6 +46,63 @@ export function TradeTab() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [selectedResult, setSelectedResult] = useState<{ description: string; type: string } | null>(null);
+
+  // ─── Symbol quote state ───
+  const [symbolQuote, setSymbolQuote] = useState<{
+    price: number;
+    change: number;
+    changePct: number;
+    description: string;
+    type: string;
+    dayHigh: number;
+    dayLow: number;
+    open: number;
+    prevClose: number;
+    volume: number;
+    weekHigh52: number;
+    weekLow52: number;
+  } | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
+  // Fetch quote when symbol selected
+  useEffect(() => {
+    if (!selectedSymbol || !selectedResult) return;
+    let cancelled = false;
+    const fetchQuote = async () => {
+      setQuoteLoading(true);
+      try {
+        const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+        const [quoteRes, metricRes] = await Promise.all([
+          fetch(`https://finnhub.io/api/v1/quote?symbol=${selectedSymbol}&token=${key}`),
+          fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${selectedSymbol}&metric=all&token=${key}`)
+        ]);
+        const quote = await quoteRes.json();
+        const metric = await metricRes.json();
+        if (cancelled) return;
+        setSymbolQuote({
+          price: quote.c ?? 0,
+          change: quote.d ?? 0,
+          changePct: quote.dp ?? 0,
+          description: selectedResult.description,
+          type: selectedResult.type,
+          dayHigh: quote.h ?? 0,
+          dayLow: quote.l ?? 0,
+          open: quote.o ?? 0,
+          prevClose: quote.pc ?? 0,
+          volume: quote.v ?? 0,
+          weekHigh52: metric?.metric?.['52WeekHigh'] ?? 0,
+          weekLow52: metric?.metric?.['52WeekLow'] ?? 0,
+        });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    };
+    fetchQuote();
+    return () => { cancelled = true; };
+  }, [selectedSymbol, selectedResult]);
 
   // Debounced search
   useEffect(() => {
@@ -136,6 +193,7 @@ export function TradeTab() {
                 key={r.symbol}
                 onClick={() => {
                   setSelectedSymbol(r.symbol);
+                  setSelectedResult({ description: r.description, type: r.type });
                   setSearchQuery(r.symbol);
                   setShowResults(false);
                 }}
@@ -187,11 +245,169 @@ export function TradeTab() {
             {selectedSymbol}
           </span>
           <button
-            onClick={() => { setSelectedSymbol(''); setSearchQuery(''); setSearchResults([]); }}
+            onClick={() => { setSelectedSymbol(''); setSelectedResult(null); setSearchQuery(''); setSearchResults([]); setSymbolQuote(null); }}
             style={{ color: '#64748b', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* ─── Symbol Card ─── */}
+      {symbolQuote && (
+        <div style={{
+          margin: '12px 16px 0 16px',
+          background: '#1a2235',
+          border: '1px solid #2a3448',
+          borderRadius: '12px',
+          padding: '16px'
+        }}>
+          {/* Symbol name + type badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>
+              {selectedSymbol}
+            </span>
+            <span style={{
+              fontSize: '10px',
+              color: '#334155',
+              background: '#0f1829',
+              padding: '2px 6px',
+              borderRadius: '4px'
+            }}>
+              {symbolQuote.type === 'ETP' ? 'ETF' : 'Stock'}
+            </span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>
+            {symbolQuote.description}
+          </div>
+
+          {/* Price + Change */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+            <span style={{ fontSize: '28px', fontWeight: '700', color: '#ffffff' }}>
+              ${symbolQuote.price.toFixed(2)}
+            </span>
+            <span style={{
+              fontSize: '14px',
+              fontWeight: '600',
+              color: symbolQuote.change >= 0 ? '#10b981' : '#ef4444'
+            }}>
+              {symbolQuote.change >= 0 ? '+' : ''}{symbolQuote.change.toFixed(2)}
+              {' '}({symbolQuote.changePct >= 0 ? '+' : ''}{symbolQuote.changePct.toFixed(2)}%)
+            </span>
+          </div>
+
+          {/* Day Range */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '12px',
+            paddingTop: '12px',
+            borderTop: '1px solid #2a3448'
+          }}>
+            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Day Range
+            </span>
+            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+              ${symbolQuote.dayLow.toFixed(2)} — ${symbolQuote.dayHigh.toFixed(2)}
+            </span>
+          </div>
+
+          {/* Day Range Bar */}
+          <div style={{ marginTop: '6px', marginBottom: '4px' }}>
+            <div style={{
+              position: 'relative',
+              height: '4px',
+              background: '#0f1829',
+              borderRadius: '2px'
+            }}>
+              <div style={{
+                position: 'absolute',
+                height: '8px',
+                width: '8px',
+                background: '#22d3ee',
+                borderRadius: '50%',
+                top: '-2px',
+                left: `${Math.min(98, Math.max(2,
+                  ((symbolQuote.price - symbolQuote.dayLow) /
+                  (symbolQuote.dayHigh - symbolQuote.dayLow || 1)) * 100
+                ))}%`,
+                transform: 'translateX(-50%)'
+              }} />
+            </div>
+          </div>
+
+          {/* 52-Week Range */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '10px'
+          }}>
+            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              52-Wk Range
+            </span>
+            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+              {symbolQuote.weekLow52 > 0
+                ? `$${symbolQuote.weekLow52.toFixed(2)} — $${symbolQuote.weekHigh52.toFixed(2)}`
+                : '—'
+              }
+            </span>
+          </div>
+
+          {/* 52-Week Range Bar */}
+          {symbolQuote.weekLow52 > 0 && (
+            <div style={{ marginTop: '6px', marginBottom: '4px' }}>
+              <div style={{
+                position: 'relative',
+                height: '4px',
+                background: '#0f1829',
+                borderRadius: '2px'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  height: '8px',
+                  width: '8px',
+                  background: '#ffffff',
+                  borderRadius: '50%',
+                  top: '-2px',
+                  left: `${Math.min(98, Math.max(2,
+                    ((symbolQuote.price - symbolQuote.weekLow52) /
+                    (symbolQuote.weekHigh52 - symbolQuote.weekLow52 || 1)) * 100
+                  ))}%`,
+                  transform: 'translateX(-50%)'
+                }} />
+              </div>
+            </div>
+          )}
+
+          {/* Volume */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '10px'
+          }}>
+            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Volume
+            </span>
+            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+              {symbolQuote.volume > 0
+                ? symbolQuote.volume >= 1000000
+                  ? `${(symbolQuote.volume / 1000000).toFixed(2)}M`
+                  : symbolQuote.volume >= 1000
+                    ? `${(symbolQuote.volume / 1000).toFixed(1)}K`
+                    : symbolQuote.volume.toLocaleString()
+                : '—'
+              }
+            </span>
+          </div>
+
+          {quoteLoading && (
+            <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+              Loading quote...
+            </div>
+          )}
         </div>
       )}
 
