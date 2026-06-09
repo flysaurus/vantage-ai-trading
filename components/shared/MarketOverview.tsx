@@ -10,9 +10,16 @@ interface IndexData {
   isLive: boolean;
 }
 
+// ── module-level cache survives tab-switch unmounts ──
+let cachedIndices: IndexData[] | null = null;
+let cacheTime = 0;
+const CACHE_TTL = 60_000; // 60s
+
 export default function MarketOverview() {
-  const [indices, setIndices] = useState<IndexData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [indices, setIndices] = useState<IndexData[]>(
+    cachedIndices || []
+  );
+  const [loading, setLoading] = useState(!cachedIndices);
 
   const fetchIndices = async () => {
     try {
@@ -39,6 +46,8 @@ export default function MarketOverview() {
         })
       );
       setIndices(results);
+      cachedIndices = results;
+      cacheTime = Date.now();
     } catch (e) {
       console.error(e);
     } finally {
@@ -47,8 +56,11 @@ export default function MarketOverview() {
   };
 
   useEffect(() => {
-    fetchIndices();
-    const interval = setInterval(fetchIndices, 60000);
+    // if cache is fresh, just use it — but still start interval for next refresh
+    if (!cachedIndices || Date.now() - cacheTime >= CACHE_TTL) {
+      fetchIndices();
+    }
+    const interval = setInterval(fetchIndices, CACHE_TTL);
     return () => clearInterval(interval);
   }, []);
 
