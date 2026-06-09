@@ -65,19 +65,28 @@ export default function MarketOverview() {
 
   if (loading) {
     return (
-      <div style={gridStyle}>
+      <div style={{ margin: '16px 16px 0 16px' }}>
+        <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+          Market Overview
+        </div>
+        <div style={gridStyle}>
         {['S&P 500 ETF (SPY)', 'Nasdaq ETF (QQQ)', 'Dow ETF (DIA)', 'Russell 2000 (IWM)'].map((label) => (
           <div key={label} style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '11px', color: '#334155', marginBottom: '4px' }}>{label}</div>
             <div style={{ fontSize: '16px', color: '#334155' }}>—</div>
           </div>
         ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={gridStyle}>
+    <div style={{ margin: '16px 16px 0 16px' }}>
+      <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        Market Overview
+      </div>
+      <div style={gridStyle}>
       {indices.map((idx) => (
         <div key={idx.symbol} style={{ textAlign: 'center' }}>
           <div style={{
@@ -108,6 +117,7 @@ export default function MarketOverview() {
           </div>
         </div>
       ))}
+    </div>
     </div>
   );
 }
