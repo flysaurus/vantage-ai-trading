@@ -108,7 +108,7 @@ export default function WatchlistTab() {
     };
 
     fetchAllQuotes();
-  }, []);
+  }, [lists.length]);
 
   // ── debounced symbol search ──
   useEffect(() => {
@@ -154,6 +154,35 @@ export default function WatchlistTab() {
     setAddQuery('');
     setAddResults([]);
     setShowAddSymbol(false);
+
+    // ── fetch quote for the newly added symbol ──
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
+        );
+        const data = await res.json();
+        const price = data.c ?? 0;
+        const change = data.d ?? 0;
+        const changePct = data.dp ?? 0;
+        setLists((prev) =>
+          prev.map((l) =>
+            l.id === activeListId
+              ? {
+                  ...l,
+                  items: l.items.map((i) =>
+                    i.symbol === symbol
+                      ? { ...i, price, change, changePct }
+                      : i
+                  ),
+                }
+              : l
+          )
+        );
+      } catch (e) {
+        console.error(e);
+      }
+    })();
   };
 
   // ── remove symbol ──
