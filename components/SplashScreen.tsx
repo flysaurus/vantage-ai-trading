@@ -36,7 +36,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
 
       {/* Compass with sweeping needle */}
       <div className="relative" style={{ marginBottom: '36px' }}>
-        <svg width="180" height="180" viewBox="0 0 180 180">
+        <svg width="180" height="180" viewBox="0 -16 180 196">
 
           {/* Outer ring */}
           <circle
@@ -72,8 +72,8 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
           </g>
 
           {/* N label */}
-          <text x="90" y="5" textAnchor="middle"
-            fill="#22d3ee" fontSize="10" fontWeight="700">N</text>
+          <text x="90" y="-4" textAnchor="middle"
+            fill="#22d3ee" fontSize="16" fontWeight="700">N</text>
 
         </svg>
       </div>
