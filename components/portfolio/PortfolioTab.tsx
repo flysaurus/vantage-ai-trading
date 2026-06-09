@@ -565,7 +565,7 @@ export function PortfolioTab() {
   };
 
   return (
-    <div className="min-h-0 bg-[#060a14] pb-36">
+    <div className="min-h-0 bg-[#060a14]" style={{ paddingBottom: '120px' }}>
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
@@ -680,7 +680,7 @@ export function PortfolioTab() {
           showCheckbox={selectMode}
         />
       ))}
-      <div className="h-8" />
+      <div style={{ height: '40px' }} />
 
       {/* 5. Buy Modal */}
       {showBuySymbol && (
