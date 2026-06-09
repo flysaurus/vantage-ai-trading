@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 interface Position {
  symbol: string
@@ -15,11 +15,16 @@ interface SellModalProps {
 
 export default function SellModal({ positions, onClose, onConfirm }: SellModalProps) {
  const total = positions.reduce((s, p) => s + p.qty * p.currentPrice, 0)
+ const [submitted, setSubmitted] = useState(false)
 
  useEffect(() => {
  document.body.style.overflow = 'hidden'
  return () => { document.body.style.overflow = '' }
  }, [])
+
+ const handleDone = () => {
+ (onConfirm ?? onClose)()
+ }
 
  return (
  <div
@@ -49,6 +54,77 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  overflow: 'hidden'
  }}
  >
+ {submitted ? (
+ /* ─── SUBMITTED STATE ─── */
+ <div style={{
+ display: 'flex',
+ flexDirection: 'column',
+ alignItems: 'center',
+ justifyContent: 'center',
+ padding: '40px 20px 32px',
+ textAlign: 'center'
+ }}>
+ <div style={{
+ width: '56px',
+ height: '56px',
+ borderRadius: '50%',
+ background: '#22d3ee',
+ display: 'flex',
+ alignItems: 'center',
+ justifyContent: 'center',
+ marginBottom: '20px'
+ }}>
+ <span style={{ fontSize: '28px', color: '#0f172a', fontWeight: '700', lineHeight: 1 }}>✓</span>
+ </div>
+ <div style={{
+ fontSize: '20px',
+ fontWeight: '700',
+ color: '#ffffff',
+ marginBottom: '8px'
+ }}>
+ Order Submitted
+ </div>
+ <div style={{
+ fontSize: '14px',
+ color: '#64748b',
+ marginBottom: '6px'
+ }}>
+ {positions.map(p => p.symbol).join(' · ')}
+ {positions.length === 1 ? ` · ${positions[0].qty} shares` : ` · ${positions.length} positions`}
+ </div>
+ <div style={{
+ fontSize: '14px',
+ color: '#64748b',
+ marginBottom: '24px'
+ }}>
+ Market
+ </div>
+ <div style={{
+ fontSize: '13px',
+ color: '#94a3b8',
+ marginBottom: '28px'
+ }}>
+ Your order has been queued.
+ </div>
+ <button
+ onClick={handleDone}
+ style={{
+ width: '100%',
+ padding: '14px',
+ background: '#22d3ee',
+ border: 'none',
+ borderRadius: '10px',
+ color: '#0f172a',
+ fontSize: '14px',
+ fontWeight: '700',
+ cursor: 'pointer'
+ }}
+ >
+ Done
+ </button>
+ </div>
+ ) : (
+ <>
  {/* HEADER */}
  <div style={{
  display: 'flex',
@@ -171,7 +247,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  Cancel
  </button>
  <button
- onClick={() => (onConfirm ?? onClose)()}
+ onClick={() => setSubmitted(true)}
  style={{
  flex: 1,
  padding: '14px',
@@ -188,6 +264,8 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  </button>
  </div>
  </div>
+ </>
+ )}
  </div>
  </div>
  )
