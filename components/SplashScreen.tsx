@@ -4,15 +4,20 @@ import { useState, useEffect } from 'react';
 export default function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [angle, setAngle] = useState(0);
   const [returning, setReturning] = useState(false);
+  const [trailVisible, setTrailVisible] = useState(false);
   const [textVisible, setTextVisible] = useState(false);
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    // Start sweep after 300ms
-    const t1 = setTimeout(() => setAngle(120), 300);
-    // Return to north after sweep completes
+    // Start sweep after 300ms — show trail, sweep clockwise
+    const t1 = setTimeout(() => {
+      setTrailVisible(true);
+      setAngle(120);
+    }, 300);
+    // Return to north after sweep completes — fade trail, then return needle
     const t2 = setTimeout(() => {
+      setTrailVisible(false);
       setReturning(true);
       setAngle(0);
     }, 1800);
@@ -45,12 +50,12 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
             strokeWidth="1.5"
           />
 
-          {/* Fading trail arc — 8 segments with decreasing opacity */}
-          {[...Array(8)].map((_, i) => {
-            const segmentAngle = 15; // 120 / 8
-            const startDeg = angle - 120 + (i * segmentAngle);
+          {/* Fading trail — full 360° behind needle, 24 segments */}
+          {[...Array(24)].map((_, i) => {
+            const segmentAngle = 15; // 360 / 24
+            const startDeg = angle - 360 + (i * segmentAngle);
             const endDeg = startDeg + segmentAngle;
-            const opacity = (i + 1) / 8; // 0.125 to 1.0
+            const opacity = trailVisible ? (i + 1) / 24 : 0; // closest to needle = 1.0, furthest = ~0.04
             const startRad = (startDeg - 90) * Math.PI / 180;
             const endRad = (endDeg - 90) * Math.PI / 180;
             const r = 36;
@@ -66,11 +71,11 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
                 d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`}
                 fill="none"
                 stroke="#22d3ee"
-                strokeWidth="2.5"
+                strokeWidth="3"
                 strokeLinecap="round"
-                opacity={opacity * (angle > 0 ? 1 : 0)}
+                opacity={opacity}
                 style={{
-                  transition: 'opacity 0.1s'
+                  transition: 'opacity 0.8s ease-out'
                 }}
               />
             );
