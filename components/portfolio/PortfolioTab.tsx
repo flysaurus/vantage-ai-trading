@@ -565,7 +565,7 @@ export function PortfolioTab() {
   };
 
   return (
-    <div className="min-h-0 bg-[#060a14] pb-32">
+    <div className="min-h-0 bg-[#060a14] pb-36">
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
