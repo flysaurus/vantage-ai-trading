@@ -1,532 +1,426 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { useBroker } from '@/components/providers/BrokerProvider';
-import { usePortfolio } from '@/hooks/usePortfolio';
-import { getWatchlists } from '@/lib/supabase/watchlists';
-import { getAlerts } from '@/lib/supabase/alerts';
-import { 
-  Star, Bell, Newspaper, CalendarDays,
-  History, Plug, Settings2, HelpCircle,
-  ChevronRight, Building2, CircleDot, TrendingUp,
-  AlertTriangle, Shield
-} from 'lucide-react';
-import type { BrokerId } from '@/types/broker';
 
-interface SettingsItemProps {
-  icon: typeof Star;
-  title: string;
-  subtitle: string;
-  badge?: number | string;
-  badgeColor?: string;
-  onClick?: () => void;
-}
-
-function capitalizeStyle(style: string): string {
-  return style.charAt(0).toUpperCase() + style.slice(1);
-}
-
-function SettingsItem({ icon: Icon, title, subtitle, badge, badgeColor, onClick }: SettingsItemProps) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: 12,
-        cursor: 'pointer', borderBottom: '1px solid #0f172a',
-      }}
-    >
-      <div style={{
-        width: 32, height: 32, borderRadius: 8,
-        background: 'rgba(6,182,212,0.1)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={16} style={{ color: '#06b6d4' }} />
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>
-      </div>
-      {badge !== undefined && badge !== '' ? (
-        <span style={{ background: badgeColor || '#ef4444', color: 'white', fontSize: 9, padding: '2px 6px', borderRadius: 8, fontWeight: 700 }}>
-          {badge}
-        </span>
-      ) : null}
-      <ChevronRight size={14} style={{ color: '#64748b' }} />
-    </div>
-  );
-}
-
-const BROKER_EMOJIS: Record<string, string> = {
-  alpaca: '🦙',
-  tastytrade: '🍝',
-  ibkr: '🏦',
-  schwab: '📊',
-  robinhood: '🌮',
-};
-
-const BROKER_NAMES: Record<string, string> = {
-  alpaca: 'Alpaca Markets',
-  tastytrade: 'tastytrade',
-  ibkr: 'Interactive Brokers',
-  schwab: 'Charles Schwab',
-  robinhood: 'Robinhood',
-};
+import { useState } from 'react';
 
 export function SettingsTab() {
-  const { user, signOut } = useAuth();
-  const router = useRouter();
-  const { account } = usePortfolio();
-  const { isConnected, brokerId, accountPreview, environment } = useBroker();
-  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [brokerExpanded, setBrokerExpanded] = useState(false);
+  const [riskLevel, setRiskLevel] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  const [brokerConnected, setBrokerConnected] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
-  // Toast notification for items not yet built
-  const [toast, setToast] = useState<string | null>(null);
+  const sectionHeader = (label: string) => (
+    <div
+      style={{
+        padding: '20px 16px 8px 16px',
+        fontSize: '11px',
+        fontWeight: '600',
+        color: '#64748b',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+      }}
+    >
+      {label}
+    </div>
+  );
 
-  // Real counts from DB
-  const [watchlistCount, setWatchlistCount] = useState(0);
-  const [watchlistSymbolCount, setWatchlistSymbolCount] = useState(0);
-  const [activeAlertCount, setActiveAlertCount] = useState(0);
-  const [triggeredAlertCount, setTriggeredAlertCount] = useState(0);
-  const [riskTolerance, setRiskTolerance] = useState<string>('moderate');
-
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2000);
-  }, []);
-
-  const handleRiskChange = useCallback(async (value: string) => {
-    setRiskTolerance(value);
-    await fetch('/api/user/preferences', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ risk_tolerance: value })
-    });
-  }, []);
-
-  // Load real watchlist and alert counts
-  useEffect(() => {
-    if (!user) return;
-    getWatchlists(user.id).then(wls => {
-      setWatchlistCount(wls.length);
-      setWatchlistSymbolCount(wls.reduce((sum, w) => sum + (w.stocks?.length || 0), 0));
-    }).catch(() => {});
-    getAlerts(user.id, true).then(alerts => {
-      setActiveAlertCount(alerts.length);
-      setTriggeredAlertCount(alerts.filter(a => a.triggeredAt).length);
-    }).catch(() => {});
-  }, [user]);
-
-  const holdingsCount = account?.positions?.length || 0;
-
-  const handleDisconnect = async () => {
-    if (!brokerId || !isConnected) return;
-    setDisconnecting(true);
-    try {
-      const res = await fetch('/api/broker/disconnect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brokerId }),
-      });
-      if (res.ok) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('vantage:brokerConnected');
-          localStorage.removeItem('vantage:brokerId');
-        }
-        setShowDisconnectConfirm(false);
-        // Reload so BrokerProvider re-checks status
-        window.location.reload();
-      } else {
-        showToast('Failed to disconnect. Please try again.');
-      }
-    } catch {
-      showToast('Network error. Please try again.');
-    }
-    setDisconnecting(false);
+  const riskPill = (level: 'conservative' | 'moderate' | 'aggressive', label: string) => {
+    const active = riskLevel === level;
+    return (
+      <button
+        key={level}
+        onClick={() => setRiskLevel(level)}
+        style={{
+          borderRadius: '6px',
+          padding: '4px 8px',
+          fontSize: '11px',
+          fontWeight: '500',
+          background: active ? 'rgba(34,211,238,0.2)' : 'transparent',
+          color: active ? '#22d3ee' : '#64748b',
+          border: active ? '1px solid rgba(34,211,238,0.4)' : '1px solid #334155',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label}
+      </button>
+    );
   };
-
-  const handleChangeBroker = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('vantage:onboarded');
-      localStorage.removeItem('vantage:brokerSkipped');
-      localStorage.removeItem('vantage:brokerConnected');
-      localStorage.removeItem('vantage:brokerId');
-      window.location.reload();
-    }
-  };
-
-  const brokerSubtitle = isConnected && brokerId
-    ? `${BROKER_EMOJIS[brokerId] || ''} ${BROKER_NAMES[brokerId] || brokerId} · ${environment || 'Connected'}`
-    : 'Not connected';
 
   return (
-    <div style={{ padding: '12px 16px 120px' }}>
-      {/* Portfolio & Research */}
-      <div className="section" style={{ marginTop: 0 }}>
-        <SettingsItem
-          icon={TrendingUp}
-          title="Investor Style"
-          subtitle={user?.investorStyle ? `${capitalizeStyle(user.investorStyle)} · Tap to change` : 'Tap to set your style'}
-          badge={user?.investorStyle ? capitalizeStyle(user.investorStyle) : undefined}
-          badgeColor="#06b6d4"
-          onClick={() => router.push('/investor-style')}
-        />
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* ═══════════════════════════════════════════════════════
+          1. PROFILE
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Profile')}
 
-      {/* Risk Tolerance */}
-      <div className="section" style={{ marginTop: 12 }}>
-        <div style={{ padding: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9', marginBottom: 4 }}>
-            Risk Tolerance
-          </div>
-          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 12 }}>
-            Adjusts stock recommendations within your {user?.investorStyle ? capitalizeStyle(user.investorStyle) : 'Value'}-Style approach
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            {[
-              { value: 'conservative', label: 'Conservative', emoji: '🛡️', desc: 'Lower volatility, established names' },
-              { value: 'moderate', label: 'Moderate', emoji: '⚖️', desc: 'Balanced risk and reward' },
-              { value: 'aggressive', label: 'Aggressive', emoji: '🚀', desc: 'Higher growth, higher risk' }
-            ].map(option => (
-              <button
-                key={option.value}
-                onClick={() => handleRiskChange(option.value)}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  padding: 12,
-                  borderRadius: 16,
-                  border: `1px solid ${riskTolerance === option.value ? '#06b6d4' : '#334155'}`,
-                  background: riskTolerance === option.value ? 'rgba(6,182,212,0.1)' : '#0f172a',
-                  cursor: 'pointer',
-                }}
-              >
-                <span style={{ fontSize: 24 }}>{option.emoji}</span>
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: riskTolerance === option.value ? '#22d3ee' : '#cbd5e1',
-                  marginTop: 4,
-                }}>
-                  {option.label}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div style={{
-            textAlign: 'center',
-            fontSize: 10,
-            color: '#64748b',
-            marginTop: 12,
-          }}>
-            {[
-              { value: 'conservative', desc: 'Lower volatility, established names' },
-              { value: 'moderate', desc: 'Balanced risk and reward' },
-              { value: 'aggressive', desc: 'Higher growth, higher risk' }
-            ].find(o => o.value === riskTolerance)?.desc}
-          </div>
-        </div>
-      </div>
-
-      {/* Portfolio & Research */}
-      <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem
-          icon={Star} title="Watchlists"
-          subtitle={`${watchlistCount} list${watchlistCount !== 1 ? 's' : ''} · ${watchlistSymbolCount} symbol${watchlistSymbolCount !== 1 ? 's' : ''}`}
-          onClick={() => router.push('/watchlists')}
-        />
-        <SettingsItem
-          icon={Bell} title="Price Alerts"
-          subtitle={activeAlertCount === 0 ? 'No active alerts' : `${activeAlertCount} active alert${activeAlertCount !== 1 ? 's' : ''}`}
-          badge={triggeredAlertCount > 0 ? triggeredAlertCount : undefined}
-          badgeColor="#ef4444"
-          onClick={() => router.push('/price-alerts')}
-        />
-        <SettingsItem
-          icon={Newspaper} title="News Feed" subtitle="Coming soon"
-        />
-        <SettingsItem
-          icon={CalendarDays} title="Earnings Calendar"
-          subtitle="Coming soon"
-        />
-      </div>
-
-      {/* Account & History */}
-      <div className="section" style={{ marginTop: 12 }}>
-        <SettingsItem
-          icon={History} title="Trade History" subtitle="Coming soon"
-        />
-      </div>
-
-      {/* Broker Connection */}
-      <div className="section" style={{ marginTop: 12 }}>
+      <div style={{ margin: '0 16px' }}>
+        {/* Investor Style */}
         <div
-          onClick={() => setBrokerExpanded(!brokerExpanded)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 12, padding: 12,
-            cursor: 'pointer', borderBottom: brokerExpanded ? '1px solid #0f172a' : 'none',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderBottom: '1px solid #0f1829',
+            borderRadius: '10px 10px 0 0',
+            minHeight: '52px',
+            cursor: 'pointer',
           }}
         >
-          <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: 'rgba(6,182,212,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Plug size={16} style={{ color: '#06b6d4' }} />
+          <div>
+            <p style={{ fontSize: '15px', color: '#ffffff' }}>Investor Style</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Lynch · Growth Focus</p>
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Connected Brokers</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-              {brokerSubtitle}
-            </div>
-          </div>
-          <div style={{
-            width: 10, height: 10, borderRadius: '50%',
-            background: isConnected ? '#22c55e' : '#64748b',
-            boxShadow: isConnected ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
-            flexShrink: 0,
-          }} />
-          <ChevronRight
-            size={14}
-            style={{
-              color: '#64748b',
-              transform: brokerExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s',
-            }}
-          />
+          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
         </div>
 
-        {/* Expandable Details */}
-        {brokerExpanded && (
-          <div style={{ padding: '0 12px 12px' }}>
-            {/* Account Preview (shown when connected) */}
-            {isConnected && accountPreview ? (
-              <div style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: '#0f172a',
-                border: '1px solid #1e293b',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 8,
-                marginBottom: 10,
-              }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Equity</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>
-                    ${accountPreview.equity?.toLocaleString() ?? '—'}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Buying Power</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>
-                    ${accountPreview.buyingPower?.toLocaleString() ?? '—'}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: accountPreview.status === 'active' ? '#4ade80' : '#fbbf24' }}>
-                    {accountPreview.status ?? '—'}
-                  </div>
-                </div>
-              </div>
-            ) : isConnected ? null : (
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px', lineHeight: 1.5 }}>
-                Connect your broker to get institutional-quality analysis of your actual holdings — free.
-              </p>
-            )}
-
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleChangeBroker}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition"
-              >
-                {isConnected ? 'Change Broker' : 'Connect Broker →'}
-              </button>
-              {isConnected && (
-                <button
-                  onClick={() => setShowDisconnectConfirm(true)}
-                  style={{
-                    flex: 1,
-                    padding: '8px 0',
-                    borderRadius: 8,
-                    border: '1px solid rgba(239,68,68,0.3)',
-                    background: 'rgba(239,68,68,0.08)',
-                    color: '#f87171',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-
-            {/* Security Link */}
-            <div style={{ marginTop: 10, fontSize: 10 }}>
-              <a
-                href="/security"
-                style={{
-                  color: '#06b6d4',
-                  textDecoration: 'none',
-                  fontWeight: 500,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <Shield size={12} />
-                Learn about how we secure your data →
-              </a>
-            </div>
+        {/* Risk Tolerance */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderRadius: '0 0 10px 10px',
+            minHeight: '52px',
+          }}
+        >
+          <p style={{ fontSize: '15px', color: '#ffffff' }}>Risk Tolerance</p>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {riskPill('conservative', 'Conservative')}
+            {riskPill('moderate', 'Moderate')}
+            {riskPill('aggressive', 'Aggressive')}
           </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          DEMO BADGE
+          ═══════════════════════════════════════════════════════ */}
+      <div
+        style={{
+          margin: '12px 16px',
+          background: 'linear-gradient(135deg, #1e3a5f, #1a2235)',
+          border: '1px solid rgba(34,211,238,0.2)',
+          borderRadius: '12px',
+          padding: '14px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <p style={{ fontSize: '13px', fontWeight: '700', color: '#22d3ee' }}>Demo Mode</p>
+          <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            30 days free · Upgrade for real portfolio
+          </p>
+        </div>
+        <button
+          style={{
+            background: '#22d3ee',
+            color: '#000000',
+            borderRadius: '6px',
+            padding: '6px 14px',
+            fontSize: '12px',
+            fontWeight: '700',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Upgrade
+        </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          2. BROKER
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Broker')}
+
+      <div style={{ margin: '0 16px' }}>
+        {!brokerConnected ? (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '14px 16px',
+              background: '#1a2235',
+              borderRadius: '10px',
+              minHeight: '52px',
+            }}
+          >
+            <div>
+              <p style={{ fontSize: '15px', color: '#ffffff' }}>Connected Broker</p>
+              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Not connected</p>
+            </div>
+            <button
+              onClick={() => setBrokerConnected(true)}
+              style={{
+                background: '#22d3ee',
+                color: '#000000',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Connect →
+            </button>
+          </div>
+        ) : (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '14px 16px',
+                background: '#1a2235',
+                borderBottom: '1px solid #0f1829',
+                borderRadius: '10px 10px 0 0',
+                minHeight: '52px',
+                cursor: 'pointer',
+              }}
+            >
+              <div>
+                <p style={{ fontSize: '15px', color: '#ffffff' }}>
+                  Alpaca ·{' '}
+                  <span style={{ color: '#10b981' }}>Connected ✓</span>
+                </p>
+              </div>
+              <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+            </div>
+            <div
+              onClick={() => setBrokerConnected(false)}
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '14px 16px',
+                background: '#1a2235',
+                borderRadius: '0 0 10px 10px',
+                minHeight: '52px',
+                cursor: 'pointer',
+              }}
+            >
+              <p style={{ fontSize: '15px', color: '#ef4444' }}>Disconnect</p>
+            </div>
+          </>
         )}
       </div>
 
-      {/* System */}
-      <div className="section" style={{ marginTop: 12 }}>
-        {/* <SettingsItem
-          icon={CreditCard} title="Account & Funding" subtitle="Deposits, withdrawals, tax docs"
-          onClick={() => router.push('/account')}
-        /> */}
-        <SettingsItem
-          icon={Settings2} title="Preferences" subtitle="Appearance, notifications & security"
-          onClick={() => router.push('/preferences')}
-        />
-        <SettingsItem
-          icon={HelpCircle} title="Help & Support" subtitle="Documentation & contact"
-          onClick={() => router.push('/help')}
-        />
+      {/* ═══════════════════════════════════════════════════════
+          3. TOOLS
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Tools')}
+
+      <div style={{ margin: '0 16px' }}>
+        {[
+          { label: 'Watchlists', sub: '2 lists · 7 symbols' },
+          { label: 'Price Alerts', sub: '2 active' },
+          { label: 'Earnings Calendar', sub: '10 holdings tracked' },
+          { label: 'News Feed', sub: 'AI-curated' },
+          { label: 'Trade History', sub: 'All time activity' },
+        ].map((row, i, arr) => (
+          <div
+            key={row.label}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '14px 16px',
+              background: '#1a2235',
+              borderBottom: i < arr.length - 1 ? '1px solid #0f1829' : 'none',
+              borderRadius:
+                arr.length === 1
+                  ? '10px'
+                  : i === 0
+                  ? '10px 10px 0 0'
+                  : i === arr.length - 1
+                  ? '0 0 10px 10px'
+                  : 0,
+              minHeight: '52px',
+              cursor: 'pointer',
+            }}
+          >
+            <div>
+              <p style={{ fontSize: '15px', color: '#ffffff' }}>{row.label}</p>
+              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{row.sub}</p>
+            </div>
+            <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+          </div>
+        ))}
       </div>
 
-      {/* Toast notification */}
-      {toast && (
-        <div style={{
-          position: 'fixed', top: 60, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 200, padding: '10px 20px', borderRadius: 20,
-          background: '#1e293b', border: '1px solid #06b6d4', color: '#e2e8f0',
-          fontSize: 13, fontWeight: 500, boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-          whiteSpace: 'nowrap',
-        }}>
-          {toast}
-        </div>
-      )}
+      {/* ═══════════════════════════════════════════════════════
+          4. ACCOUNT
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Account')}
 
-      {/* Disconnect Confirmation Modal */}
-      {showDisconnectConfirm && (
+      <div style={{ margin: '0 16px' }}>
+        {/* Preferences */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderBottom: '1px solid #0f1829',
+            borderRadius: '10px 10px 0 0',
+            minHeight: '52px',
+            cursor: 'pointer',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: '15px', color: '#ffffff' }}>Preferences</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Appearance · Security</p>
+          </div>
+          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+        </div>
+
+        {/* Help & Support */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderBottom: '1px solid #0f1829',
+            borderRadius: '0 0 10px 10px',
+            minHeight: '52px',
+            cursor: 'pointer',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: '15px', color: '#ffffff' }}>Help & Support</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Docs · Contact</p>
+          </div>
+          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+        </div>
+      </div>
+
+      {/* Sign Out — standalone, no card styling */}
+      <div style={{ margin: '0 16px', marginTop: '12px' }}>
+        <div
+          onClick={() => setShowSignOutConfirm(true)}
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderRadius: '10px',
+            minHeight: '52px',
+            cursor: 'pointer',
+          }}
+        >
+          <p style={{ fontSize: '15px', color: '#ef4444' }}>Sign Out</p>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          5. FOOTER
+          ═══════════════════════════════════════════════════════ */}
+      <div
+        style={{
+          textAlign: 'center',
+          padding: '24px 16px 8px 16px',
+        }}
+      >
+        <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', letterSpacing: '0.1em' }}>
+          Vantage
+        </p>
+        <p style={{ fontSize: '11px', color: '#334155', marginTop: '4px' }}>v0.1.0</p>
+        <p style={{ fontSize: '11px', color: '#334155', marginTop: '4px' }}>
+          AI-First · Mobile-First · Built with ❤️
+        </p>
+      </div>
+
+      {/* Spacer for bottom nav */}
+      <div style={{ height: '120px', flexShrink: 0 }} />
+
+      {/* ═══════════════════════════════════════════════════════
+          SIGN OUT CONFIRMATION MODAL
+          ═══════════════════════════════════════════════════════ */}
+      {showSignOutConfirm && (
         <>
           <div
-            onClick={() => setShowDisconnectConfirm(false)}
+            onClick={() => setShowSignOutConfirm(false)}
             style={{
-              position: 'fixed', inset: 0,
-              background: 'rgba(0,0,0,0.6)', zIndex: 100,
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 9998,
             }}
           />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: '#1e293b', border: '1px solid #334155',
-            borderRadius: 16, zIndex: 101,
-            width: '92%', maxWidth: 400,
-            padding: 24,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <AlertTriangle size={24} style={{ color: '#fbbf24' }} />
-              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Disconnect Broker?</h3>
-            </div>
-            <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, margin: '0 0 20px' }}>
-              Are you sure? This will permanently remove your broker connection.
-              All portfolio data will stop updating.
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '360px',
+              zIndex: 9999,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>🚪</div>
+            <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' }}>
+              Sign out of Vantage?
             </p>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>
+              You&apos;ll need to sign back in to access your portfolio.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
               <button
-                onClick={() => setShowDisconnectConfirm(false)}
-                disabled={disconnecting}
+                onClick={() => setShowSignOutConfirm(false)}
                 style={{
                   flex: 1,
-                  padding: '10px 0',
-                  borderRadius: 8,
-                  border: '1px solid #334155',
+                  padding: '12px 0',
                   background: 'transparent',
+                  border: '1px solid #475569',
+                  borderRadius: '10px',
                   color: '#94a3b8',
-                  fontSize: 13,
-                  fontWeight: 600,
+                  fontSize: '14px',
+                  fontWeight: '600',
                   cursor: 'pointer',
-                  fontFamily: 'inherit',
                 }}
               >
                 Cancel
               </button>
               <button
-                onClick={handleDisconnect}
-                disabled={disconnecting}
+                onClick={() => {
+                  // sign-out logic here
+                  setShowSignOutConfirm(false);
+                }}
                 style={{
                   flex: 1,
-                  padding: '10px 0',
-                  borderRadius: 8,
+                  padding: '12px 0',
+                  background: '#ef4444',
                   border: 'none',
-                  background: 'rgba(239,68,68,0.9)',
-                  color: 'white',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: disconnecting ? 'wait' : 'pointer',
-                  fontFamily: 'inherit',
-                  opacity: disconnecting ? 0.7 : 1,
+                  borderRadius: '10px',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
                 }}
               >
-                {disconnecting ? 'Disconnecting...' : 'Yes, Disconnect'}
+                Sign Out
               </button>
             </div>
           </div>
         </>
       )}
-
-      {/* Sign Out */}
-      <div style={{ marginTop: 12 }}>
-        <button
-          onClick={async () => {
-            await signOut();
-            window.location.href = '/login';
-          }}
-          style={{
-            width: '100%', padding: '12px',
-            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-            borderRadius: 10, color: '#f87171', fontSize: 14, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'inherit',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          }}
-        >
-          Sign Out
-        </button>
-      </div>
-
-      {/* Vantage Version */}
-      <div style={{ textAlign: 'center', marginTop: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, background: 'linear-gradient(135deg, #06b6d4, #0d9488)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          Vantage v0.1.0
-        </div>
-        <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 4 }}>
-          AI-First · Mobile-First · Built with ❤️
-        </div>
-      </div>
-
-      <style jsx>{`
-        .section {
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 16px;
-          overflow: hidden;
-        }
-        .section > div:last-child { border-bottom: none; }
-      `}</style>
     </div>
   );
 }
