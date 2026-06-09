@@ -56,6 +56,8 @@ export default function WatchlistTab() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [showDeleteListConfirm, setShowDeleteListConfirm] = useState(false);
+  const [showNewListModal, setShowNewListModal] = useState(false);
+  const [newListName, setNewListName] = useState('');
 
   const activeList = lists.find((l) => l.id === activeListId) || lists[0];
 
@@ -519,6 +521,11 @@ export default function WatchlistTab() {
             ))}
 
             <button
+              onClick={() => {
+                setNewListName('');
+                setShowNewListModal(true);
+                setShowListSelector(false);
+              }}
               style={{
                 width: '100%',
                 marginTop: '16px',
@@ -953,6 +960,126 @@ export default function WatchlistTab() {
                 }}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      {/* ─── 9. New List Modal ─── */}
+      {showNewListModal && (
+        <>
+          <div
+            onClick={() => setShowNewListModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 9998,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '380px',
+              zIndex: 9999,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+              }}
+            >
+              <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                New Watchlist
+              </p>
+              <button
+                onClick={() => setShowNewListModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <input
+              type="text"
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+              placeholder="List name..."
+              autoFocus
+              style={{
+                width: '100%',
+                background: '#0f1829',
+                border: '1px solid #2a3448',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                color: '#ffffff',
+                fontSize: '15px',
+                outline: 'none',
+                marginBottom: '16px',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setShowNewListModal(false)}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  background: 'transparent',
+                  border: '1px solid #475569',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const trimmed = newListName.trim();
+                  if (!trimmed) return;
+                  const newList: WatchlistData = {
+                    id: Date.now().toString(),
+                    name: trimmed,
+                    items: [],
+                  };
+                  setLists((prev) => [...prev, newList]);
+                  setActiveListId(newList.id);
+                  setShowNewListModal(false);
+                  setNewListName('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  background: '#22d3ee',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#000000',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Create
               </button>
             </div>
           </div>
