@@ -47,16 +47,30 @@ export function AITab() {
   // ── fetch market news ──
   const fetchMarketNews = async () => {
     try {
+      const financialKeywords = [
+        'market', 'stock', 'fed', 'rate', 'inflation',
+        'economy', 'gdp', 'earnings', 'nasdaq', 'dow',
+        's&p', 'treasury', 'bond', 'yield', 'trade',
+        'tariff', 'recession', 'growth', 'jobs', 'payroll',
+      ];
+
       const res = await fetch('/api/finnhub/news?category=general');
       const data = await res.json();
       if (data && data.length > 0) {
-        const headline = data[0].headline || '';
+        const relevant = data.find((item: { headline?: string; summary?: string }) =>
+          financialKeywords.some((kw) =>
+            item.headline?.toLowerCase().includes(kw) ||
+            item.summary?.toLowerCase().includes(kw)
+          )
+        );
+        const item = relevant || data[0];
+        const headline = item.headline || '';
         setMarketHeadline(
           headline.length > 60
             ? headline.substring(0, 57) + '...'
             : headline
         );
-        setMarketNewsUrl(data[0].url || '');
+        setMarketNewsUrl(item.url || '');
       }
     } catch (e) {
       console.error(e);
@@ -731,8 +745,12 @@ export function AITab() {
         {messages.length === 0 && !loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {[
-              'NVDA down 4.2% today — want analysis?',
-              'META earnings in 3 days — prepare?',
+              earnings[0]
+                ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} day${earnings[0].daysUntil === 1 ? '' : 's'} — want analysis?`
+                : 'NVDA — analyze my largest position?',
+              portfolioSummary
+                ? `${portfolioSummary.split(' ')[0]} is moving today — why?`
+                : 'META — analyze my largest position?',
               'Your portfolio is down 0.9% — why?',
             ].map((suggestion) => (
               <div
