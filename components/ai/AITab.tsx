@@ -281,7 +281,7 @@ export function AITab() {
           onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
         >
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: '16px' }}>📡</span>
+            <span>📡</span>
             <span
               style={{
                 fontSize: '13px',
@@ -726,7 +726,7 @@ export function AITab() {
         }}
       >
         <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
-        <span style={{ fontSize: '11px', color: '#334155' }}>Ask Vantage AI</span>
+        <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>Ask Vantage AI</span>
         <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
       </div>
 
