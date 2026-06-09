@@ -72,10 +72,9 @@ export function TradeTab() {
     const fetchQuote = async () => {
       setQuoteLoading(true);
       try {
-        const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
         const [quoteRes, metricRes] = await Promise.all([
-          fetch(`https://finnhub.io/api/v1/quote?symbol=${selectedSymbol}&token=${key}`),
-          fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${selectedSymbol}&metric=all&token=${key}`)
+          fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(selectedSymbol)}`),
+          fetch(`/api/finnhub/metric?symbol=${encodeURIComponent(selectedSymbol)}`)
         ]);
         const quote = await quoteRes.json();
         const metric = await metricRes.json();
@@ -157,7 +156,7 @@ export function TradeTab() {
             placeholder="Search symbol..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            onFocus={() => searchResults.length > 0 && setShowResults(true)}
+
             style={{
               background: 'transparent',
               border: 'none',
@@ -195,6 +194,7 @@ export function TradeTab() {
                   setSelectedSymbol(r.symbol);
                   setSelectedResult({ description: r.description, type: r.type });
                   setSearchQuery(r.symbol);
+                  setSearchResults([]);
                   setShowResults(false);
                 }}
                 style={{
