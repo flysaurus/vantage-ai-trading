@@ -17,9 +17,9 @@ export default function MarketOverview() {
   const fetchIndices = async () => {
     try {
       const symbols = [
-        { symbol: '^DJI', label: 'DOW' },
-        { symbol: '^GSPC', label: 'S&P 500' },
-        { symbol: '^IXIC', label: 'NASDAQ' }
+        { symbol: 'DIA', label: 'DOW' },
+        { symbol: 'SPY', label: 'S&P 500' },
+        { symbol: 'QQQ', label: 'NASDAQ' }
       ];
       const results = await Promise.all(
         symbols.map(async ({ symbol, label }) => {
