@@ -399,7 +399,7 @@ export default function WatchlistTab() {
       )}
 
       {/* Spacer for bottom nav */}
-      <div style={{ height: '80px', flexShrink: 0 }} />
+      <div style={{ height: '120px', flexShrink: 0 }} />
 
       {/* ─── 4. List Selector Bottom Sheet ─── */}
       {showListSelector && (
@@ -423,6 +423,7 @@ export default function WatchlistTab() {
               borderTopLeftRadius: '16px',
               borderTopRightRadius: '16px',
               padding: '24px',
+              paddingBottom: '80px',
               zIndex: 9999,
               maxHeight: '60vh',
               overflowY: 'auto',
