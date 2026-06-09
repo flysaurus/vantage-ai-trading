@@ -8,6 +8,7 @@ import DemoBanner from '@/components/shared/DemoBanner';
 import { getDemoPortfolio } from '@/lib/demo-data';
 import type { Position, AccountSummary } from '@/types';
 import SellModal from './SellModal';
+import MarketOverview from '../shared/MarketOverview';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -568,6 +569,9 @@ export function PortfolioTab() {
     <div className="min-h-0 bg-[#060a14]" style={{ paddingBottom: '120px' }}>
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
+
+      {/* ─── Market Overview ─── */}
+      <MarketOverview />
 
       {/* 2. Account Card */}
       <AccountCard account={displayAccount} />

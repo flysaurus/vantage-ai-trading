@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
   { id: '1', symbol: 'META', side: 'buy', status: 'filled', qty: 25, price: 593.02, date: 'Jun 1 · 2:14 PM' },
@@ -154,6 +155,9 @@ export function TradeTab() {
 
   return (
     <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
+
+      {/* ─── Market Overview ─── */}
+      <MarketOverview />
 
       {/* ─── 1. SYMBOL SEARCH BAR ─── */}
       <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
