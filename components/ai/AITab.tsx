@@ -108,12 +108,13 @@ export function AITab() {
             ${equity.toLocaleString('en-US', DOLLAR_FMT)}
           </p>
           <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            TODAY {fmt(dayPnl)} ({pctStr(dayPnlPct)}) · TOTAL {fmt(totalPnl)} ({pctStr(totalPnlPct)})
+            TODAY -$1,117.20 (-0.9%) · TOTAL -$10,207.30 (-7.9%)
           </p>
         </div>
         <div>
           <span
             style={{
+              whiteSpace: 'nowrap',
               fontSize: '10px',
               color: '#22d3ee',
               background: 'rgba(34,211,238,0.1)',
@@ -196,7 +197,7 @@ export function AITab() {
               PORTFOLIO
             </span>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Your portfolio down {Math.abs(dayPnlPct * 100).toFixed(1)}% today
+              Your portfolio down 0.9% today
             </span>
           </div>
         </div>
@@ -597,10 +598,10 @@ export function AITab() {
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path
-              d="M2 8L14 2L8 14L6 10L2 8Z"
-              fill="#ffffff"
-              stroke="#ffffff"
-              strokeWidth="1"
+              d="M2 8h10M9 4l4 4-4 4"
+              stroke="white"
+              strokeWidth="1.5"
+              strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
