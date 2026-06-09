@@ -4,20 +4,15 @@ import { useState, useEffect } from 'react';
 export default function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [angle, setAngle] = useState(0);
   const [returning, setReturning] = useState(false);
-  const [trailVisible, setTrailVisible] = useState(false);
   const [textVisible, setTextVisible] = useState(false);
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    // Start sweep after 300ms — show trail, sweep clockwise
-    const t1 = setTimeout(() => {
-      setTrailVisible(true);
-      setAngle(120);
-    }, 300);
-    // Return to north after sweep completes — fade trail, then return needle
+    // Start sweep after 300ms
+    const t1 = setTimeout(() => setAngle(120), 300);
+    // Return to north after sweep completes
     const t2 = setTimeout(() => {
-      setTrailVisible(false);
       setReturning(true);
       setAngle(0);
     }, 1800);
@@ -38,54 +33,23 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
   return (
     <div className={`fixed inset-0 z-50 bg-black flex flex-col items-center justify-center transition-opacity duration-500 ${exiting ? 'opacity-0' : 'opacity-100'}`}>
 
-      {/* Compass with sweeping needle and fading trail */}
-      <div className="relative mb-10">
-        <svg width="80" height="80" viewBox="0 0 80 80">
+      {/* Compass with sweeping needle */}
+      <div className="relative" style={{ marginBottom: '36px' }}>
+        <svg width="180" height="180" viewBox="0 0 180 180">
 
           {/* Outer ring */}
           <circle
-            cx="40" cy="40" r="36"
+            cx="90" cy="90" r="82"
             fill="none"
             stroke="#1e3a5f"
-            strokeWidth="1.5"
+            strokeWidth="4"
           />
-
-          {/* Fading trail — full 360° behind needle, 24 segments */}
-          {[...Array(24)].map((_, i) => {
-            const segmentAngle = 15; // 360 / 24
-            const startDeg = angle - 360 + (i * segmentAngle);
-            const endDeg = startDeg + segmentAngle;
-            const opacity = trailVisible ? (i + 1) / 24 : 0; // closest to needle = 1.0, furthest = ~0.04
-            const startRad = (startDeg - 90) * Math.PI / 180;
-            const endRad = (endDeg - 90) * Math.PI / 180;
-            const r = 36;
-            const cx = 40, cy = 40;
-            const x1 = cx + r * Math.cos(startRad);
-            const y1 = cy + r * Math.sin(startRad);
-            const x2 = cx + r * Math.cos(endRad);
-            const y2 = cy + r * Math.sin(endRad);
-            const largeArc = segmentAngle > 180 ? 1 : 0;
-            return (
-              <path
-                key={i}
-                d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`}
-                fill="none"
-                stroke="#22d3ee"
-                strokeWidth="3"
-                strokeLinecap="round"
-                opacity={opacity}
-                style={{
-                  transition: 'opacity 0.8s ease-out'
-                }}
-              />
-            );
-          })}
 
           {/* Needle — north point (dominant, tall) */}
           <g
             style={{
               transform: `rotate(${angle}deg)`,
-              transformOrigin: '40px 40px',
+              transformOrigin: '90px 90px',
               transition: returning
                 ? 'transform 0.8s ease-in-out'
                 : 'transform 1.5s ease-out'
@@ -93,28 +57,22 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
           >
             {/* North point — cyan, tall */}
             <polygon
-              points="40,8 43,40 40,46 37,40"
+              points="90,18 98,90 90,108 82,90"
               fill="#22d3ee"
             />
             {/* South point — slate, short */}
             <polygon
-              points="40,72 43,40 40,46 37,40"
+              points="90,162 98,90 90,108 82,90"
               fill="#334155"
             />
             {/* Center dot */}
-            <circle cx="40" cy="40" r="3" fill="#0f172a" />
-            <circle cx="40" cy="40" r="1.5" fill="#22d3ee" />
+            <circle cx="90" cy="90" r="5.5" fill="#0f172a" />
+            <circle cx="90" cy="90" r="3" fill="#22d3ee" />
           </g>
 
-          {/* Cardinal points */}
-          <text x="40" y="6" textAnchor="middle"
-            fill="#22d3ee" fontSize="8" fontWeight="700">N</text>
-          <text x="40" y="77" textAnchor="middle"
-            fill="#475569" fontSize="6">S</text>
-          <text x="76" y="43" textAnchor="middle"
-            fill="#475569" fontSize="6">E</text>
-          <text x="4" y="43" textAnchor="middle"
-            fill="#475569" fontSize="6">W</text>
+          {/* N label */}
+          <text x="90" y="12" textAnchor="middle"
+            fill="#22d3ee" fontSize="18" fontWeight="700">N</text>
 
         </svg>
       </div>
