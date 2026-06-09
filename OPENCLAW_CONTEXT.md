@@ -918,7 +918,64 @@ ALWAYS include:
 
 ---
 
-## 15. DEMO PORTFOLIO SYSTEM
+## 15. PRODUCT TIERS
+
+### Demo (30 days free — no account required)
+```
+- Full app experience with fake money
+- Real market prices via Finnhub
+- Simulated demo trading (orders update demo portfolio)
+- 25 AI messages/day
+- Daily Brief + Weekly Snapshot
+- All 5 investor style portfolios
+- After 30 days → upgrade prompt to Silver or Gold
+```
+
+### Silver (price TBD/month)
+```
+- Connect real broker via Snaptrade (50+ brokerages)
+  OR CSV import (any broker, manual refresh)
+  OR Alpaca OAuth (read-only scope)
+- Real portfolio, real P&L, real positions
+- AI analysis — no trade execution
+- 25 AI messages/day
+- Daily Brief + Weekly Snapshot
+- Target: Fidelity/Schwab/Vanguard/TD users
+```
+
+### Gold (price TBD/month)
+```
+- Everything in Silver
+- Real trade execution via Alpaca
+  (future: Tastytrade, Tradier, IBKR)
+- 50 AI messages/day
+- Priority AI (Sonnet for all queries)
+- Advanced alerts
+- Target: active traders who want AI-assisted execution
+```
+
+### Broker Integration Strategy
+```
+Primary aggregator: Snaptrade
+  - 50+ brokerages via OAuth
+  - Read-only for Silver
+  - Next.js SDK available
+  - Cost: ~$0.20/connected account/month
+
+Trading execution: Alpaca
+  - Gold tier only
+  - Paper trading for demo
+  - Real trading for Gold
+
+CSV Import: always available
+  - Any broker, any account
+  - Manual upload, AI parses holdings
+  - Good for privacy-conscious Fidelity/Vanguard users
+
+Future (v0.2+): Tradier, Tastytrade, IBKR
+```
+
+## 16. DEMO PORTFOLIO SYSTEM
 
 Single source of truth: `lib/portfolio-operations.ts`
 Same DB tables as real users. `is_demo` flag on positions and orders.
@@ -933,13 +990,22 @@ Same DB tables as real users. `is_demo` flag on positions and orders.
 | Munger (Dividend)   | BRK.B COST V MA MSFT WM UNH SPGI ROL NVO    |
 | Soros (Macro)       | GLD TLT EEM FXI GDX USO SPY QQQ UUP BITO    |
 
-### Transitions
+### Demo Trading (simulated)
 ```
-First login (no positions)  → auto-seed demo portfolio
-Style change (demo)         → confirmation modal → reseed
-Broker connect              → clear demo → sync real positions
-Broker disconnect           → clear real → reseed demo
-Any transition              → clear portfolio cache
+User places order in demo mode:
+  → Real current price fetched from Finnhub
+  → Position added/updated in Supabase with is_demo=true
+  → P&L calculated against real market prices
+  → Feels real, uses fake buying power
+
+Demo buying power: $140,000 starting balance
+Demo transitions:
+  First visit (no account) → auto-seed Lynch Growth style
+  Style change → confirmation modal → reseed
+  Account created → demo persists, linked to user
+  Silver/Gold upgrade → real positions replace demo
+  Downgrade → demo resumes
+  Any transition → clear portfolio cache
 ```
 
 ---

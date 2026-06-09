@@ -1,166 +1,656 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { getDemoInsight } from '@/lib/demo-data';
-import { AIChat } from './AIChat';
-import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
-import DailyBriefCard from '@/components/ai/DailyBriefCard';
-import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
-import BuildBasketModal from '@/components/BuildBasketModal';
-import DemoBanner from '@/components/shared/DemoBanner';
 
-function generateInsight(account: import('@/types').AccountSummary | null): string | null {
-  if (!account || account.positions.length === 0) return null;
+const DOLLAR_FMT: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+};
 
-  const positions = account.positions;
-  const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
+const fmt = (v: number) => {
+  const prefix = v >= 0 ? '+' : '';
+  return `${prefix}$${Math.abs(v).toLocaleString('en-US', DOLLAR_FMT)}`;
+};
 
-  // Sector concentration
-  const sectors: Record<string, number> = {};
-  positions.forEach((p) => {
-    const s = p.sector || 'Other';
-    sectors[s] = (sectors[s] || 0) + p.marketValue;
-  });
-  const topSector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0];
-  const topSectorPct = topSector ? ((topSector[1] / totalValue) * 100).toFixed(0) : '0';
+const pctStr = (v: number) => {
+  const prefix = v >= 0 ? '+' : '';
+  return `${prefix}${(v * 100).toFixed(1)}%`;
+};
 
-  // Biggest mover today
-  const sortedByDay = [...positions].sort(
-    (a, b) => Math.abs(b.dayChangePercent) - Math.abs(a.dayChangePercent)
-  );
-  const biggestMover = sortedByDay[0];
-
-  // Biggest position
-  const biggestPos = [...positions].sort((a, b) => b.marketValue - a.marketValue)[0];
-  const biggestPct = ((biggestPos.marketValue / totalValue) * 100).toFixed(0);
-
-  // Day P&L
-  const dayPnlStr =
-    account.dayPnl >= 0
-      ? `+$${account.dayPnl.toFixed(0)}`
-      : `-$${Math.abs(account.dayPnl).toFixed(0)}`;
-
-  // Build insight
-  const parts: string[] = [];
-
-  if (topSector && Number(topSectorPct) > 30) {
-    parts.push(
-      `${topSector[0]} is ${topSectorPct}% of your portfolio — consider diversifying.`
-    );
-  }
-
-  if (biggestPos && Number(biggestPct) > 20) {
-    parts.push(`${biggestPos.symbol} alone is ${biggestPct}% of holdings.`);
-  }
-
-  if (biggestMover && Math.abs(biggestMover.dayChangePercent) > 2) {
-    const dir = biggestMover.dayChangePercent >= 0 ? 'up' : 'down';
-    parts.push(
-      `${biggestMover.symbol} is ${dir} ${Math.abs(biggestMover.dayChangePercent).toFixed(1)}% today.`
-    );
-  }
-
-  if (account.dayPnl !== 0) {
-    const pnlDir = account.dayPnl >= 0 ? 'up' : 'down';
-    parts.push(
-      `Portfolio ${pnlDir} ${dayPnlStr} (${account.dayPnlPercent >= 0 ? '+' : ''}${account.dayPnlPercent.toFixed(1)}%).`
-    );
-  }
-
-  return parts.length > 0
-    ? parts.join(' ')
-    : `${positions.length} positions across ${Object.keys(sectors).length} sectors. Portfolio value: $${totalValue.toFixed(0)}.`;
+interface Message {
+  role: 'user' | 'ai';
+  content: string;
 }
 
 export function AITab() {
   const { account } = usePortfolio();
   const { isConnected } = useBroker();
-  const { user } = useAuth();
 
-  const insight = useMemo(() => {
-    if (account && !isConnected) {
-      return getDemoInsight(account);
-    }
-    return generateInsight(account);
-  }, [account, isConnected]);
+  // ── state ──
+  const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
+  const [snapshotExpanded, setSnapshotExpanded] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const [showBasketModal, setShowBasketModal] = useState(false);
+  // ── helpers ──
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+  };
 
-  // Lazy tracking: trigger background refresh of suggestion outcomes
-  useEffect(() => {
-    fetch('/api/ai/suggestions/track', { method: 'POST' }).catch(() => {});
-  }, []);
+  const sendMessage = (text: string) => {
+    if (!text.trim() || loading) return;
+    setMessages((prev) => [...prev, { role: 'user', content: text.trim() }]);
+    setInput('');
+    setLoading(true);
+    scrollToBottom();
 
-  // Listen for build-basket-modal open events from child components
-  useEffect(() => {
-    function handleOpenBasket() {
-      setShowBasketModal(true);
-    }
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          content:
+            "I'm analyzing your portfolio. Full AI advisor coming soon — your positions look interesting! Stay tuned for deeper analysis.",
+        },
+      ]);
+      setLoading(false);
+      scrollToBottom();
+    }, 1500);
+  };
 
-    window.addEventListener('vantage-open-basket-modal', handleOpenBasket);
-    return () => {
-      window.removeEventListener('vantage-open-basket-modal', handleOpenBasket);
-    };
-  }, []);
+  const clearChat = () => {
+    setMessages([]);
+  };
+
+  // ── derived data ──
+  const equity = account?.equity ?? 0;
+  const dayPnl = account?.dayPnl ?? 0;
+  const dayPnlPct = account?.dayPnlPercent ?? 0;
+  const totalPnl = account?.totalPnl ?? 0;
+  const totalPnlPct = account?.totalPnlPercent ?? 0;
+
+  // ── styles ──
+  const cardBox: React.CSSProperties = {
+    background: '#1a2235',
+    border: '1px solid #2a3448',
+    borderRadius: '10px',
+  };
+
+  const COLLAPSIBLE_HEADER: React.CSSProperties = {
+    padding: '12px 16px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    cursor: 'pointer',
+  };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-      }}
-    >
-      <AIChat>
-        {/* ── Card stack: Demo Banner → Account → Insight → Daily Brief → Weekly Snapshot ── */}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* ─── 1. Compact Account Card ─── */}
+      <div
+        style={{
+          ...cardBox,
+          margin: '12px 16px 0 16px',
+          padding: '12px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <p style={{ fontSize: '22px', fontWeight: '700', color: '#ffffff' }}>
+            ${equity.toLocaleString('en-US', DOLLAR_FMT)}
+          </p>
+          <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            TODAY {fmt(dayPnl)} ({pctStr(dayPnlPct)}) · TOTAL {fmt(totalPnl)} ({pctStr(totalPnlPct)})
+          </p>
+        </div>
+        <div>
+          <span
+            style={{
+              fontSize: '10px',
+              color: '#22d3ee',
+              background: 'rgba(34,211,238,0.1)',
+              border: '1px solid rgba(34,211,238,0.2)',
+              borderRadius: '4px',
+              padding: '2px 8px',
+            }}
+          >
+            {isConnected ? 'Live' : 'Demo Mode'}
+          </span>
+        </div>
+      </div>
 
-        {/* Demo Banner */}
-        {!isConnected && <DemoBanner />}
-
-        {/* Account Summary */}
-        {account && (
-          <div className="px-4 pt-3 pb-2">
-            <AccountSummaryCard account={account} />
+      {/* ─── 2. Daily Brief Card ─── */}
+      <div
+        style={{
+          ...cardBox,
+          margin: '12px 16px 0 16px',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div
+          style={COLLAPSIBLE_HEADER}
+          onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: '14px' }}>📡</span>
+            <span
+              style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#ffffff',
+                marginLeft: '8px',
+              }}
+            >
+              Daily Brief
+            </span>
+            <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
+              · Today
+            </span>
           </div>
-        )}
+          <span style={{ fontSize: '10px', color: '#64748b' }}>
+            {dailyBriefExpanded ? '▲' : '▼'}
+          </span>
+        </div>
 
-        {/* Today's Key Insight */}
-        <div className="mx-4 mb-3">
-          <div className="bg-slate-800/40 rounded-2xl border border-slate-700/50 px-4 py-3">
-            <p className="text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <span>📊</span>
-              Today&apos;s Key Insight
-            </p>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              {insight || 'Connect your portfolio to see insights.'}
-            </p>
+        {/* Preview (always visible) */}
+        <div style={{ padding: '0 16px 12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+            <span
+              style={{
+                fontSize: '9px',
+                fontWeight: '700',
+                color: '#22d3ee',
+                background: 'rgba(34,211,238,0.15)',
+                borderRadius: '3px',
+                padding: '1px 5px',
+                marginRight: '6px',
+              }}
+            >
+              MARKET
+            </span>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              Markets mixed, tech leading gains
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <span
+              style={{
+                fontSize: '9px',
+                fontWeight: '700',
+                color: '#10b981',
+                background: 'rgba(16,185,129,0.15)',
+                borderRadius: '3px',
+                padding: '1px 5px',
+                marginRight: '6px',
+              }}
+            >
+              PORTFOLIO
+            </span>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              Your portfolio down {Math.abs(dayPnlPct * 100).toFixed(1)}% today
+            </span>
           </div>
         </div>
 
-        {/* Daily Brief — color-coded labeled lines, collapsed by default */}
-        <DailyBriefCard />
+        {/* Expanded */}
+        {dailyBriefExpanded && (
+          <div
+            style={{
+              padding: '0 16px 12px 16px',
+              borderTop: '1px solid #2a3448',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px', marginTop: '12px' }}>
+              <span
+                style={{
+                  fontSize: '9px',
+                  fontWeight: '700',
+                  color: '#f59e0b',
+                  background: 'rgba(245,158,11,0.15)',
+                  borderRadius: '3px',
+                  padding: '1px 5px',
+                  marginRight: '6px',
+                }}
+              >
+                WATCH
+              </span>
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                NVDA earnings in 3 days
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span
+                style={{
+                  fontSize: '9px',
+                  fontWeight: '700',
+                  color: '#a855f7',
+                  background: 'rgba(168,85,247,0.15)',
+                  borderRadius: '3px',
+                  padding: '1px 5px',
+                  marginRight: '6px',
+                }}
+              >
+                EARNINGS
+              </span>
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                CRM reports this week
+              </span>
+            </div>
+            <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
+              Generated now · Updates tomorrow
+            </p>
+          </div>
+        )}
+      </div>
 
-        {/* Weekly Snapshot — health metrics pills, expandable markdown */}
-        <WeeklySnapshotCard />
-      </AIChat>
-
-      {/* Build Basket Modal — triggered by custom event from child components */}
-      <BuildBasketModal
-        isOpen={showBasketModal}
-        onClose={() => setShowBasketModal(false)}
-        onBasketGenerated={(userMsg, data) => {
-          setShowBasketModal(false);
-          // Dispatch event so AIChat can receive and display the result
-          window.dispatchEvent(
-            new CustomEvent('vantage-basket-generated', {
-              detail: { userMsg, data },
-            })
-          );
+      {/* ─── 3. Weekly Snapshot Card ─── */}
+      <div
+        style={{
+          margin: '8px 16px 0 16px',
+          background: 'rgba(26,34,53,0.6)',
+          border: '1px solid rgba(42,52,72,0.6)',
+          borderRadius: '10px',
+          overflow: 'hidden',
         }}
-      />
+      >
+        {/* Header */}
+        <div
+          style={COLLAPSIBLE_HEADER}
+          onClick={() => setSnapshotExpanded(!snapshotExpanded)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: '14px' }}>📊</span>
+            <span
+              style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#ffffff',
+                marginLeft: '8px',
+              }}
+            >
+              Weekly Snapshot
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                fontSize: '14px',
+                color: '#64748b',
+                cursor: 'pointer',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              ↻
+            </span>
+            <span style={{ fontSize: '10px', color: '#64748b' }}>
+              {snapshotExpanded ? '▲' : '▼'}
+            </span>
+          </div>
+        </div>
+
+        {/* Summary (always visible) */}
+        <div style={{ padding: '0 16px 12px 16px' }}>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            {/* Health Score */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                <span
+                  style={{
+                    fontSize: '18px',
+                    fontWeight: '700',
+                    color: '#10b981',
+                  }}
+                >
+                  7.2
+                </span>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>/10</span>
+              </div>
+              <p style={{ fontSize: '10px', color: '#64748b' }}>
+                Portfolio Health
+              </p>
+            </div>
+
+            {/* Risk */}
+            <div>
+              <span
+                style={{
+                  fontSize: '14px',
+                  fontWeight: '700',
+                  color: '#10b981',
+                }}
+              >
+                LOW
+              </span>
+              <p style={{ fontSize: '10px', color: '#64748b' }}>
+                Risk Level
+              </p>
+            </div>
+
+            {/* Opportunities */}
+            <div>
+              <span
+                style={{
+                  fontSize: '18px',
+                  fontWeight: '700',
+                  color: '#22d3ee',
+                }}
+              >
+                2
+              </span>
+              <p style={{ fontSize: '10px', color: '#64748b' }}>
+                Opportunities
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Expanded */}
+        {snapshotExpanded && (
+          <div
+            style={{
+              padding: '0 16px 12px 16px',
+              borderTop: '1px solid rgba(42,52,72,0.6)',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '13px',
+                color: '#94a3b8',
+                lineHeight: '1.6',
+                marginTop: '12px',
+              }}
+            >
+              Your portfolio shows strong long-term growth despite short-term
+              volatility. Tech concentration at 68% warrants attention. META and
+              GOOGL remain core positions with solid fundamentals.
+            </p>
+            <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
+              Generated Jun 9 · Refresh uses 1 deep analysis
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ─── 4. Divider ─── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          margin: '16px 16px 0 16px',
+          gap: '8px',
+        }}
+      >
+        <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
+        <span style={{ fontSize: '11px', color: '#334155' }}>Ask Vantage AI</span>
+        <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
+      </div>
+
+      {/* ─── 5. Chat Messages Area ─── */}
+      <div
+        style={{
+          minHeight: '200px',
+          maxHeight: '300px',
+          overflowY: 'auto',
+          padding: '12px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}
+      >
+        {/* Empty state — suggestion chips */}
+        {messages.length === 0 && !loading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {[
+              'NVDA down 4.2% today — want analysis?',
+              'META earnings in 3 days — prepare?',
+              'Your portfolio is down 0.9% — why?',
+            ].map((suggestion) => (
+              <div
+                key={suggestion}
+                onClick={() => sendMessage(suggestion)}
+                style={{
+                  background: '#1a2235',
+                  border: '1px solid #2a3448',
+                  borderRadius: '20px',
+                  padding: '8px 14px',
+                  fontSize: '12px',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                {suggestion}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Messages */}
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            style={{
+              alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              background:
+                msg.role === 'user'
+                  ? 'rgba(34,211,238,0.15)'
+                  : '#1a2235',
+              border:
+                msg.role === 'user'
+                  ? '1px solid rgba(34,211,238,0.2)'
+                  : '1px solid #2a3448',
+              borderRadius:
+                msg.role === 'user'
+                  ? '16px 16px 4px 16px'
+                  : '16px 16px 16px 4px',
+              padding: '10px 14px',
+              maxWidth: msg.role === 'user' ? '80%' : '85%',
+              fontSize: '14px',
+              color: '#ffffff',
+              lineHeight: '1.5',
+            }}
+          >
+            {msg.content}
+          </div>
+        ))}
+
+        {/* Thinking indicator */}
+        {loading && (
+          <div
+            style={{
+              alignSelf: 'flex-start',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 0',
+            }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 18 18"
+              style={{ animation: 'spin 2s linear infinite' }}
+            >
+              <circle
+                cx="9"
+                cy="9"
+                r="7"
+                fill="none"
+                stroke="#22d3ee"
+                strokeWidth="2"
+                strokeDasharray="33"
+                strokeDashoffset="22"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span style={{ fontSize: '13px', color: '#64748b' }}>
+              Analyzing your portfolio —
+            </span>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* ─── 6. Quick Actions 2×2 Grid ─── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '8px',
+          padding: '0 16px',
+          marginTop: '8px',
+        }}
+      >
+        {[
+          { icon: '🧺', label: 'Build Basket', msg: 'build-basket' },
+          { icon: '📡', label: 'Market Pulse', msg: 'Give me a market pulse for today' },
+          { icon: '📋', label: 'Tax Check', msg: 'Check my portfolio for tax loss harvesting opportunities' },
+          { icon: '⚡', label: 'Alerts', msg: 'Scan my portfolio for urgent alerts' },
+        ].map((btn) => (
+          <div
+            key={btn.label}
+            onClick={() => {
+              if (btn.msg === 'build-basket') {
+                window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
+              } else {
+                sendMessage(btn.msg);
+              }
+            }}
+            style={{
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '10px',
+              padding: '12px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: '#ffffff',
+              fontWeight: '500',
+            }}
+          >
+            {btn.icon} {btn.label}
+          </div>
+        ))}
+      </div>
+
+      {/* ─── 7. Input Bar ─── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '12px 16px',
+          borderTop: '1px solid #1e2d45',
+          marginTop: '8px',
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendMessage(input);
+            }
+          }}
+          placeholder="Ask about your portfolio..."
+          style={{
+            flex: 1,
+            background: '#1a2235',
+            border: '1px solid #2a3448',
+            borderRadius: '20px',
+            padding: '10px 16px',
+            color: '#ffffff',
+            fontSize: '14px',
+            outline: 'none',
+          }}
+        />
+
+        {/* Send button */}
+        <div
+          onClick={() => sendMessage(input)}
+          style={{
+            width: '36px',
+            height: '36px',
+            background: input.trim() ? '#22d3ee' : '#1e2d45',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: input.trim() ? 'pointer' : 'default',
+            flexShrink: 0,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M2 8L14 2L8 14L6 10L2 8Z"
+              fill="#ffffff"
+              stroke="#ffffff"
+              strokeWidth="1"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+
+        {/* Trash button */}
+        <div
+          onClick={clearChat}
+          style={{
+            width: '36px',
+            height: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: '#334155',
+            flexShrink: 0,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      </div>
+
+      {/* ─── 8. Footer ─── */}
+      <p
+        style={{
+          textAlign: 'center',
+          fontSize: '10px',
+          color: '#334155',
+          padding: '4px 16px 16px 16px',
+        }}
+      >
+        Powered by AI · Not financial advice · 25 messages remaining today
+      </p>
+
+      {/* ─── Keyframes ─── */}
+      <style jsx>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
