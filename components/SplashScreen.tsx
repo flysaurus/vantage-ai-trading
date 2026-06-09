@@ -42,7 +42,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
           <circle
             cx="90" cy="90" r="82"
             fill="none"
-            stroke="white"
+            stroke="#22d3ee"
             strokeWidth="4"
           />
 
@@ -72,8 +72,8 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
           </g>
 
           {/* N label */}
-          <text x="90" y="12" textAnchor="middle"
-            fill="white" fontSize="10" fontWeight="600">N</text>
+          <text x="90" y="5" textAnchor="middle"
+            fill="#22d3ee" fontSize="10" fontWeight="700">N</text>
 
         </svg>
       </div>
