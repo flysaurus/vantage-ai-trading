@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 interface IndexData {
   symbol: string;
   label: string;
+  sublabel: string;
   value: number;
   change: number;
   changePct: number;
@@ -17,12 +18,13 @@ export default function MarketOverview() {
   const fetchIndices = async () => {
     try {
       const symbols = [
-        { symbol: 'DIA', label: 'DOW' },
-        { symbol: 'SPY', label: 'S&P 500' },
-        { symbol: 'QQQ', label: 'NASDAQ' }
+        { symbol: 'SPY', label: 'SPY', sublabel: 'S&P 500 ETF' },
+        { symbol: 'QQQ', label: 'QQQ', sublabel: 'Nasdaq ETF' },
+        { symbol: 'DIA', label: 'DIA', sublabel: 'Dow ETF' },
+        { symbol: 'IWM', label: 'IWM', sublabel: 'Russell 2000' }
       ];
       const results = await Promise.all(
-        symbols.map(async ({ symbol, label }) => {
+        symbols.map(async ({ symbol, label, sublabel }) => {
           const res = await fetch(
             `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
           );
@@ -30,6 +32,7 @@ export default function MarketOverview() {
           return {
             symbol,
             label,
+            sublabel,
             value: data.c || data.pc || 0,
             change: data.c ? (data.d ?? 0) : 0,
             changePct: data.c ? (data.dp ?? 0) : 0,
@@ -51,21 +54,27 @@ export default function MarketOverview() {
     return () => clearInterval(interval);
   }, []);
 
+  const gridStyle: React.CSSProperties = {
+    margin: '12px 16px 0 16px',
+    background: '#1a2235',
+    border: '1px solid #2a3448',
+    borderRadius: '10px',
+    padding: '14px 16px',
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '12px'
+  };
+
   if (loading) {
     return (
-      <div style={{
-        margin: '12px 16px 0 16px',
-        background: '#1a2235',
-        border: '1px solid #2a3448',
-        borderRadius: '10px',
-        padding: '12px 16px',
-        display: 'flex',
-        justifyContent: 'space-between'
-      }}>
-        {['DOW', 'S&P 500', 'NASDAQ'].map(label => (
+      <div style={gridStyle}>
+        {['SPY', 'QQQ', 'DIA', 'IWM'].map((label, i) => (
           <div key={label} style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#334155', marginBottom: '4px' }}>{label}</div>
-            <div style={{ fontSize: '14px', color: '#334155' }}>—</div>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '2px' }}>{label}</div>
+            <div style={{ fontSize: '10px', color: '#334155', marginBottom: '4px' }}>
+              {['S&P 500 ETF', 'Nasdaq ETF', 'Dow ETF', 'Russell 2000'][i]}
+            </div>
+            <div style={{ fontSize: '15px', color: '#334155' }}>—</div>
           </div>
         ))}
       </div>
@@ -73,25 +82,22 @@ export default function MarketOverview() {
   }
 
   return (
-    <div style={{
-      margin: '12px 16px 0 16px',
-      background: '#1a2235',
-      border: '1px solid #2a3448',
-      borderRadius: '10px',
-      padding: '12px 16px',
-      display: 'flex',
-      justifyContent: 'space-between'
-    }}>
+    <div style={gridStyle}>
       {indices.map((idx) => (
-        <div key={idx.symbol} style={{ textAlign: 'center', flex: 1 }}>
+        <div key={idx.symbol} style={{ textAlign: 'center' }}>
+          <div style={{
+            fontSize: '13px',
+            fontWeight: '700',
+            color: '#ffffff'
+          }}>
+            {idx.label}
+          </div>
           <div style={{
             fontSize: '10px',
             color: '#64748b',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
             marginBottom: '4px'
           }}>
-            {idx.label}
+            {idx.sublabel}
           </div>
           <div style={{
             fontSize: '15px',
@@ -99,12 +105,7 @@ export default function MarketOverview() {
             color: '#ffffff',
             marginBottom: '2px'
           }}>
-            {idx.value >= 1000
-              ? idx.value.toLocaleString('en-US', {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0
-                })
-              : idx.value.toFixed(2)}
+            ${idx.value.toFixed(2)}
           </div>
           <div style={{
             fontSize: '11px',
@@ -114,7 +115,7 @@ export default function MarketOverview() {
               : '#64748b'
           }}>
             {idx.isLive
-              ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(0)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
+              ? `${idx.change >= 0 ? '+' : ''}$${Math.abs(idx.change).toFixed(2)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
               : 'Closed'}
           </div>
         </div>
