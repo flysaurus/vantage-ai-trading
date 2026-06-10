@@ -113,14 +113,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const portfolioTotalValue = livePositions.reduce((sum, p) => sum + p.marketValue, 0);
   const portfolioTodayPnl = livePositions.reduce((sum, p) => sum + p.todayChange, 0);
   const portfolioTotalPnl = livePositions.reduce((sum, p) => sum + p.totalPnl, 0);
+  const portfolioTodayPnlPct = portfolioTotalValue > 0 ? portfolioTodayPnl / (portfolioTotalValue - portfolioTodayPnl) : 0;
+  const portfolioTotalPnlPct = portfolioTotalValue > 0 ? portfolioTotalPnl / (portfolioTotalValue - portfolioTotalPnl) : 0;
 
   // ── portfolio context for AI ──
   const portfolioContext = buildPortfolioContext({
     totalValue: portfolioTotalValue,
     todayPnl: portfolioTodayPnl,
-    todayPnlPct: portfolioTotalValue > 0 ? portfolioTodayPnl / (portfolioTotalValue - portfolioTodayPnl) : 0,
+    todayPnlPct: portfolioTodayPnlPct,
     totalPnl: portfolioTotalPnl,
-    totalPnlPct: portfolioTotalValue > 0 ? portfolioTotalPnl / (portfolioTotalValue - portfolioTotalPnl) : 0,
+    totalPnlPct: portfolioTotalPnlPct,
     buyingPower: 145217,
     cash: 11617,
     investorStyle: 'Lynch Growth',
@@ -361,7 +363,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* ─── 1. Compact Account Card ─── */}
-      <div
+      <button
+        onClick={() => {
+          const hasLiveQuotes = Object.keys(liveQuotes).length > 0;
+          const statusMsg = hasLiveQuotes
+            ? 'Portfolio uses live market prices from Finnhub'
+            : 'Portfolio prices are demo data — connect a broker for live prices';
+          sendMessage(`Give me a quick portfolio health check. ${statusMsg}`);
+        }}
         style={{
           ...cardBox,
           margin: '12px 16px 0 16px',
@@ -369,17 +378,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          width: 'calc(100% - 32px)',
+          cursor: 'pointer',
+          border: 'none',
+          textAlign: 'left' as const,
         }}
+        className="hover:border-cyan-500/30 active:scale-[0.98] transition-all duration-150"
       >
-        <div>
+        <div style={{ flex: 1 }}>
           <p style={{ fontSize: '22px', fontWeight: '700', color: '#ffffff' }}>
-            ${equity.toLocaleString('en-US', DOLLAR_FMT)}
+            ${(portfolioTotalValue || equity).toLocaleString('en-US', DOLLAR_FMT)}
           </p>
           <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            TODAY -$1,117 (-0.9%) · TOTAL -$10,207 (-7.9%)
+            TODAY {fmt(portfolioTodayPnl)} ({pctStr(portfolioTodayPnlPct)}){' '}
+            · TOTAL {fmt(portfolioTotalPnl)} ({pctStr(portfolioTotalPnlPct)})
           </p>
         </div>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span
             style={{
               whiteSpace: 'nowrap',
@@ -394,8 +409,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
           >
             {isConnected ? 'Live' : 'Demo Mode'}
           </span>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#64748b"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
         </div>
-      </div>
+      </button>
 
       {/* ─── 2. Daily Brief Card ─── */}
       <div
