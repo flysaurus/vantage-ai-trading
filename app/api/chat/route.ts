@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
 
-const client = new Anthropic()
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 export async function POST(req: Request) {
   try {

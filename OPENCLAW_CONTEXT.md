@@ -1084,3 +1084,85 @@ Prompt 8 — Charts: portfolio sparkline + position mini charts (real Finnhub da
 ---
 
 *End of OPENCLAW_CONTEXT.md*
+
+---
+
+## 19. FEATURE BACKLOG (not built yet)
+
+These features were identified during development but deferred.
+Build in priority order after core app is stable.
+
+### Phase 4 — Notifications & Alerts
+- [ ] Push notifications (OneSignal or Firebase FCM)
+  - Earnings release alerts (user said "monitor ADBE earnings")
+  - Price movement alerts (>5% moves)
+  - Portfolio daily summary push
+  - Requires: notification service + backend job + iOS/Android permissions
+- [ ] Alert placeholder UI (Option 2)
+  - User taps "Set Alert" → toast "Alert set for ADBE earnings"
+  - Stored in localStorage/Supabase
+  - No actual push yet — visual confirmation only
+  - Wire to real push when notification service is ready
+
+### Phase 4 — AI Enhancements
+- [ ] AI-suggested monitoring ("Want me to monitor this?")
+  - Currently blocked in system prompt
+  - Re-enable when push notifications are built
+- [ ] Conversation persistence across sessions
+  - Currently session-based only
+  - Wire to Supabase when auth is ready
+- [ ] Daily Brief — AI generated (not static)
+  - Currently uses Finnhub news + hardcoded content
+  - Replace with real Claude Haiku generation on daily cron
+- [ ] Weekly Snapshot — AI generated
+  - Currently hardcoded Opportunities/Risks/Recommendations
+  - Replace with real Claude Sonnet deep analysis
+  - Triggered by refresh button or weekly cron
+
+### Phase 4 — Portfolio Features
+- [ ] Demo trading — orders update real portfolio
+  - Buy/Sell modals currently UI only
+  - Wire to Supabase to persist demo positions
+  - P&L tracks with real Finnhub prices
+- [ ] Portfolio sparkline — real Finnhub data
+  - Currently "Chart coming soon" placeholder
+  - Wire to /api/portfolio/history endpoint
+- [ ] Position mini charts in expanded card
+  - 7-day sparkline per stock
+  - Wire to /api/stock/candles/[symbol]
+
+### Phase 5 — Broker Integration
+- [ ] Snaptrade integration (Silver tier)
+  - 50+ brokerages via OAuth
+  - Read-only portfolio sync
+  - Next.js SDK available
+- [ ] Alpaca integration (Gold tier)
+  - Real trade execution
+  - Paper trading for demo
+- [ ] CSV import (any tier)
+  - Upload Fidelity/Schwab/Vanguard export
+  - AI parses holdings
+
+### Phase 5 — Monetization
+- [ ] Stripe subscriptions
+  - Demo → Silver → Gold upgrade flow
+  - Webhook to update user tier in Supabase
+- [ ] Message limit enforcement via Supabase
+  - Currently localStorage only
+  - Wire to server-side counting when auth ready
+- [ ] Upgrade prompts at limit
+
+### Phase 6 — Advanced Features
+- [ ] Investor Style page
+  - Full page with Lynch/Buffett/Livermore/Munger/Soros
+  - Style switching with confirmation + reseed
+- [ ] Price Alerts page
+- [ ] Earnings Calendar page
+- [ ] News Feed page (AI-curated)
+- [ ] Trade History page
+- [ ] Preferences page (appearance, security)
+- [ ] Help & Support page
+- [ ] Build Basket modal — AI generation
+  - Currently opens modal but no AI generation
+  - Wire to Claude Sonnet for basket recommendations
+
