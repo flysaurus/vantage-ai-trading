@@ -219,7 +219,6 @@ export function SettingsTab() {
 
       <div style={{ margin: '0 16px' }}>
         {[
-          { label: 'Watchlists', sub: '2 lists · 7 symbols' },
           { label: 'Price Alerts', sub: '2 active' },
           { label: 'Earnings Calendar', sub: '10 holdings tracked' },
           { label: 'News Feed', sub: 'AI-curated' },
