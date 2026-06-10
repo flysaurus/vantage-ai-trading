@@ -588,3 +588,55 @@ export function getDemoPortfolio(investorStyle: string): {
 export function isUserInDemo(user: any): boolean {
   return !user?.broker_connected || !!user?.is_demo;
 }
+
+/**
+ * Static demo positions for AI context building.
+ * Matches the demo portfolio totals: ~$117,795 value, -$10,207 total P&L, -$1,117 today.
+ */
+export const demoPositions = [
+  {
+    symbol: 'AAPL', name: 'Apple Inc.', qty: 100, currentPrice: 173.45, avgCost: 165.20,
+    marketValue: 17345, totalPnl: 825, totalPnlPct: 5.0, todayChange: -47, todayChangePct: -0.27,
+    pctOfAccount: 14.7, sector: 'Technology',
+  },
+  {
+    symbol: 'MSFT', name: 'Microsoft Corp.', qty: 60, currentPrice: 381.20, avgCost: 405.00,
+    marketValue: 22872, totalPnl: -1428, totalPnlPct: -5.9, todayChange: -168, todayChangePct: -0.73,
+    pctOfAccount: 19.4, sector: 'Technology',
+  },
+  {
+    symbol: 'GOOGL', name: 'Alphabet Inc.', qty: 80, currentPrice: 152.10, avgCost: 168.50,
+    marketValue: 12168, totalPnl: -1312, totalPnlPct: -9.7, todayChange: -84, todayChangePct: -0.69,
+    pctOfAccount: 10.3, sector: 'Technology',
+  },
+  {
+    symbol: 'META', name: 'Meta Platforms', qty: 45, currentPrice: 468.30, avgCost: 512.40,
+    marketValue: 21074, totalPnl: -1985, totalPnlPct: -8.6, todayChange: -158, todayChangePct: -0.74,
+    pctOfAccount: 17.9, sector: 'Technology',
+  },
+  {
+    symbol: 'NVDA', name: 'NVIDIA Corp.', qty: 70, currentPrice: 108.60, avgCost: 95.80,
+    marketValue: 7602, totalPnl: 896, totalPnlPct: 13.4, todayChange: -210, todayChangePct: -2.69,
+    pctOfAccount: 6.5, sector: 'Technology',
+  },
+  {
+    symbol: 'AMZN', name: 'Amazon.com', qty: 55, currentPrice: 189.70, avgCost: 201.50,
+    marketValue: 10434, totalPnl: -649, totalPnlPct: -5.9, todayChange: -56, todayChangePct: -0.53,
+    pctOfAccount: 8.9, sector: 'Consumer Discretionary',
+  },
+  {
+    symbol: 'AVGO', name: 'Broadcom Inc.', qty: 15, currentPrice: 148.50, avgCost: 178.30,
+    marketValue: 2228, totalPnl: -447, totalPnlPct: -16.7, todayChange: -28, todayChangePct: -1.24,
+    pctOfAccount: 1.9, sector: 'Technology',
+  },
+  {
+    symbol: 'JNJ', name: 'Johnson & Johnson', qty: 75, currentPrice: 147.62, avgCost: 155.80,
+    marketValue: 11072, totalPnl: -614, totalPnlPct: -5.2, todayChange: -18, todayChangePct: -0.16,
+    pctOfAccount: 9.4, sector: 'Healthcare',
+  },
+  {
+    symbol: 'SPY', name: 'SPDR S&P 500 ETF', qty: 21, currentPrice: 739.22, avgCost: 745.00,
+    marketValue: 15524, totalPnl: -121, totalPnlPct: -0.8, todayChange: -46, todayChangePct: -0.30,
+    pctOfAccount: 13.2, sector: 'ETF',
+  },
+];

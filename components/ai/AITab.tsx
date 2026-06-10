@@ -2,6 +2,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { buildPortfolioContext } from '@/lib/ai-context';
+import { demoPositions } from '@/lib/demo-data';
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -44,6 +46,33 @@ export function AITab() {
   const [portfolioSummary, setPortfolioSummary] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── portfolio context for AI ──
+  const portfolioContext = buildPortfolioContext({
+    totalValue: 118066,
+    todayPnl: -1117,
+    todayPnlPct: -0.9,
+    totalPnl: -10207,
+    totalPnlPct: -7.9,
+    buyingPower: 145217,
+    cash: 11617,
+    investorStyle: 'Lynch Growth',
+    riskTolerance: 'Moderate',
+    positions: demoPositions.map(p => ({
+      symbol: p.symbol,
+      name: p.name,
+      qty: p.qty,
+      currentPrice: p.currentPrice,
+      avgCost: p.avgCost,
+      marketValue: p.marketValue,
+      totalPnl: p.totalPnl,
+      totalPnlPct: p.totalPnlPct,
+      todayChange: p.todayChange,
+      todayChangePct: p.todayChangePct,
+      pctOfAccount: p.pctOfAccount,
+      sector: p.sector,
+    }))
+  });
 
   // ── fetch market news ──
   const fetchMarketNews = async () => {
@@ -165,45 +194,80 @@ export function AITab() {
     }, 50);
   };
 
-  const sendMessage = (text: string) => {
-    if (!text.trim() || loading) return;
-    setMessages((prev) => [...prev, { role: 'user', content: text.trim() }]);
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || loading) return;
+
+    const userMessage = { role: 'user' as const, content };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
     setLoading(true);
-    scrollToBottom();
 
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'ai',
-          content:
-            "I'm analyzing your portfolio. Full AI advisor coming soon — your positions look interesting! Stay tuned for deeper analysis.",
-        },
-      ]);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          portfolioContext,
+          mode: 'chat'
+        })
+      });
+
+      if (!res.ok) throw new Error('API error');
+
+      // Handle streaming
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let aiContent = '';
+
+      // Add empty AI message to update in place
+      setMessages(prev => [...prev, { role: 'ai', content: '' }]);
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.text) {
+                aiContent += data.text;
+                // Update last message in place
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    role: 'ai',
+                    content: aiContent
+                  };
+                  return updated;
+                });
+              }
+            } catch (e) {
+              // skip malformed chunks
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        content: 'Sorry — I encountered an error. Please try again.'
+      }]);
+    } finally {
       setLoading(false);
       scrollToBottom();
-    }, 1500);
+    }
   };
 
   // ── send to chat from tappable rows ──
   const sendToChat = (message: string) => {
-    setMessages((prev) => [...prev, { role: 'user', content: message }]);
-    setLoading(true);
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'ai',
-          content:
-            "I'm analyzing your portfolio. Full AI advisor coming soon — your positions look interesting! Stay tuned for deeper analysis.",
-        },
-      ]);
-      setLoading(false);
-    }, 1500);
-    setTimeout(() => {
-      document.getElementById('chat-area')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    sendMessage(message);
   };
 
   // ── derived data ──
