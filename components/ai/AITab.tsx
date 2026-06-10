@@ -363,14 +363,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* ─── 1. Compact Account Card ─── */}
-      <button
-        onClick={() => {
-          const hasLiveQuotes = Object.keys(liveQuotes).length > 0;
-          const statusMsg = hasLiveQuotes
-            ? 'Portfolio uses live market prices from Finnhub'
-            : 'Portfolio prices are demo data — connect a broker for live prices';
-          sendMessage(`Give me a quick portfolio health check. ${statusMsg}`);
-        }}
+      <div
         style={{
           ...cardBox,
           margin: '12px 16px 0 16px',
@@ -378,14 +371,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          width: 'calc(100% - 32px)',
-          cursor: 'pointer',
-          border: 'none',
-          textAlign: 'left' as const,
         }}
-        className="hover:border-cyan-500/30 active:scale-[0.98] transition-all duration-150"
       >
-        <div style={{ flex: 1 }}>
+        <div>
           <p style={{ fontSize: '22px', fontWeight: '700', color: '#ffffff' }}>
             ${(portfolioTotalValue || equity).toLocaleString('en-US', DOLLAR_FMT)}
           </p>
@@ -394,7 +382,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             · TOTAL {fmt(portfolioTotalPnl)} ({pctStr(portfolioTotalPnlPct)})
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div>
           <span
             style={{
               whiteSpace: 'nowrap',
@@ -409,20 +397,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
           >
             {isConnected ? 'Live' : 'Demo Mode'}
           </span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#64748b"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
         </div>
-      </button>
+      </div>
 
       {/* ─── 2. Daily Brief Card ─── */}
       <div

@@ -32,7 +32,7 @@ const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
 };
 
 function AppShell() {
-  const { activeTab } = useTabStore();
+  const { activeTab, setTab } = useTabStore();
   const { user, isDataLoaded } = useAuth();
   const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -77,6 +77,18 @@ function AppShell() {
     const timer = setTimeout(() => setGreeting(''), 4000);
     return () => clearTimeout(timer);
   }, [user, isDataLoaded]);
+
+  // ── Listen for cross-component navigation events ──
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.tab && ['portfolio', 'invest', 'ai', 'watchlist', 'settings'].includes(detail.tab)) {
+        setTab(detail.tab);
+      }
+    };
+    window.addEventListener('vantage-navigate', handler);
+    return () => window.removeEventListener('vantage-navigate', handler);
+  }, [setTab]);
 
   // Detect desktop width
   useEffect(() => {
