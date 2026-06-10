@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { buildPortfolioContext } from '@/lib/ai-context';
@@ -864,7 +865,78 @@ export function AITab() {
               lineHeight: '1.5',
             }}
           >
-            {msg.content}
+            {msg.role === 'ai' ? (
+              <div>
+                <ReactMarkdown
+                  components={{
+                    p: ({ children }) => (
+                      <p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>
+                        {children}
+                      </p>
+                    ),
+                    strong: ({ children }) => (
+                      <strong style={{ color: '#ffffff', fontWeight: '700' }}>
+                        {children}
+                      </strong>
+                    ),
+                    ul: ({ children }) => (
+                      <ul style={{
+                        margin: '4px 0 8px 0',
+                        paddingLeft: '16px',
+                        listStyleType: 'disc'
+                      }}>
+                        {children}
+                      </ul>
+                    ),
+                    li: ({ children }) => (
+                      <li style={{ margin: '4px 0', lineHeight: '1.5' }}>
+                        {children}
+                      </li>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 style={{
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        color: '#22d3ee',
+                        margin: '12px 0 6px 0',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }}>
+                        {children}
+                      </h3>
+                    ),
+                    code: ({ children }) => (
+                      <code style={{
+                        background: '#0f1829',
+                        borderRadius: '4px',
+                        padding: '1px 6px',
+                        fontSize: '12px',
+                        color: '#22d3ee'
+                      }}>
+                        {children}
+                      </code>
+                    ),
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+                {loading && i === messages.length - 1 && (
+                  <span style={{
+                    display: 'inline-block',
+                    width: '2px',
+                    height: '14px',
+                    background: '#22d3ee',
+                    marginLeft: '2px',
+                    verticalAlign: 'middle',
+                    animation: 'blink 1s step-end infinite'
+                  }} />
+                )}
+              </div>
+            ) : (
+              <span style={{ lineHeight: '1.5', wordBreak: 'break-word' }}>
+                {msg.content}
+              </span>
+            )}
           </div>
         ))}
 
@@ -1055,6 +1127,10 @@ export function AITab() {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
       `}</style>
 
