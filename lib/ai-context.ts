@@ -37,7 +37,14 @@ export function buildPortfolioContext(portfolio: PortfolioContext): string {
     )
     .join('\n')
 
+  const priceAnchor = portfolio.positions
+    .map(p => `${p.symbol}: $${p.currentPrice.toFixed(2)} (as of now)`)
+    .join(' | ')
+
   return `
+⚠️ CURRENT MARKET PRICES (use these, ignore training data):
+${priceAnchor}
+
 PORTFOLIO CONTEXT (as of now):
 Total Value: $${portfolio.totalValue.toLocaleString()}
 Today P&L: ${portfolio.todayPnl >= 0 ? '+' : ''}$${Math.abs(portfolio.todayPnl).toFixed(0)} (${portfolio.todayPnlPct.toFixed(1)}%)
