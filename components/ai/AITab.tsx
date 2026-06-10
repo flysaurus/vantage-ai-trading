@@ -26,14 +26,18 @@ interface Message {
   content: string;
 }
 
-export function AITab() {
+interface AITabProps {
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+}
+
+export function AITab({ messages, setMessages }: AITabProps) {
   const { account } = usePortfolio();
   const { isConnected } = useBroker();
 
   // ── state ──
   const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [earnings, setEarnings] = useState<{

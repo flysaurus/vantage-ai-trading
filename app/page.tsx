@@ -24,8 +24,7 @@ let brokerGateDismissedThisSession = false;
 
 const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['ai', 'invest', 'portfolio']);
 
-const TAB_COMPONENTS: Record<TabId, React.FC> = {
-  ai: AITab,
+const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
   invest: TradeTab,
   portfolio: PortfolioTab,
   watchlist: WatchlistTab,
@@ -42,6 +41,9 @@ function AppShell() {
   const [greeting, setGreeting] = useState('');
   const [showGreeting, setShowGreeting] = useState(false);
   const greetingShown = useRef(false);
+  const [chatMessages, setChatMessages] = useState<
+    { role: 'user' | 'ai'; content: string }[]
+  >([]);
 
   // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
   useEffect(() => {
@@ -164,7 +166,11 @@ function AppShell() {
       {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
       <WatchlistBar />
       <div className="content-area" key={activeTab}>
-        {React.createElement(TAB_COMPONENTS[activeTab])}
+        {activeTab === 'ai' ? (
+          <AITab messages={chatMessages} setMessages={setChatMessages} />
+        ) : (
+          React.createElement(TAB_COMPONENTS[activeTab])
+        )}
       </div>
       {!isDesktop && <BottomNav />}
     </>
