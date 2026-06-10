@@ -40,6 +40,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lastMessageTime, setLastMessageTime] = useState(0);
+  const RATE_LIMIT_MS = 20000;
   const [earnings, setEarnings] = useState<{
     symbol: string;
     date: string;
@@ -201,6 +203,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || loading) return;
+
+    // Rate limiting
+    const now = Date.now();
+    if (now - lastMessageTime < RATE_LIMIT_MS) {
+      const secondsLeft = Math.ceil((RATE_LIMIT_MS - (now - lastMessageTime)) / 1000);
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        content: `Please wait ${secondsLeft} seconds before sending another message.`
+      }]);
+      return;
+    }
+    setLastMessageTime(now);
 
     const userMessage = { role: 'user' as const, content };
     const newMessages = [...messages, userMessage];
@@ -1047,6 +1061,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             }
           }}
           placeholder="Ask about your portfolio..."
+          maxLength={500}
           style={{
             flex: 1,
             background: '#1a2235',
@@ -1058,6 +1073,17 @@ export function AITab({ messages, setMessages }: AITabProps) {
             outline: 'none',
           }}
         />
+
+        {input.length > 400 && (
+          <p style={{
+            fontSize: '10px',
+            color: input.length >= 500 ? '#ef4444' : '#64748b',
+            textAlign: 'right',
+            marginTop: '4px',
+          }}>
+            {500 - input.length} characters remaining
+          </p>
+        )}
 
         {/* Send button */}
         <div
