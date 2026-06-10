@@ -350,7 +350,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
         >
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span>📡</span>
+            <span>🗞️</span>
             <span
               style={{
                 fontSize: '13px',
