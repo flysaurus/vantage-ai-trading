@@ -111,9 +111,6 @@ export async function POST(req: Request) {
       searchContext = await searchWeb(screening.searchQuery)
     }
 
-    console.log('SCREENING RESULT:', JSON.stringify(screening))
-    console.log('SEARCH CONTEXT LENGTH:', searchContext.length)
-
     // Build full system with search results
     const fullSystem = [
       systemPrompt,
