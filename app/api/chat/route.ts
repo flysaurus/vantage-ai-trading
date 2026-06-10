@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     // Finance guard — check last user message
     const lastMessage: string = messages[messages.length - 1]?.content || ''
     const nonFinancePatterns = [
-      /recipe|cook|food|sport|movie|music|weather|joke|poem/i
+      /^(tell me a joke|write me a poem|what's the weather|recipe for|how to cook|sports score|movie recommendation)/i
     ]
     if (nonFinancePatterns.some(p => p.test(lastMessage))) {
       return Response.json({
