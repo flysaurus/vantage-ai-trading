@@ -51,34 +51,81 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [marketHeadline, setMarketHeadline] = useState('');
   const [marketNewsUrl, setMarketNewsUrl] = useState('');
   const [portfolioSummary, setPortfolioSummary] = useState('');
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, { c: number; d: number; dp: number; pc: number }>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ── fetch live quotes for all positions on mount ──
+  useEffect(() => {
+    const fetchQuotes = async () => {
+      const symbols = [...new Set(demoPositions.map(p => p.symbol))];
+      try {
+        const results = await Promise.all(
+          symbols.map(async (symbol) => {
+            try {
+              const res = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`);
+              const data = await res.json();
+              return [symbol, data] as const;
+            } catch {
+              return [symbol, null] as const;
+            }
+          })
+        );
+        const quotes: Record<string, any> = {};
+        for (const [sym, data] of results) {
+          if (data && typeof data.c === 'number') {
+            quotes[sym] = data;
+          }
+        }
+        setLiveQuotes(quotes);
+      } catch {
+        // keep demo fallback prices
+      }
+    };
+    fetchQuotes();
+  }, []);
+
+  // ── live positions with fresh Finnhub quotes overlaid on demo data ──
+  const livePositions = demoPositions.map(p => {
+    const quote = liveQuotes[p.symbol];
+    const currentPrice = quote?.c ? quote.c : p.currentPrice;
+    const todayChange = quote?.d != null ? Math.round(p.qty * quote.d * 100) / 100 : p.todayChange;
+    const todayChangePct = quote?.dp != null ? quote.dp / 100 : p.todayChangePct;
+    const marketValue = Math.round(p.qty * currentPrice * 100) / 100;
+    const totalPnl = Math.round(p.qty * (currentPrice - p.avgCost) * 100) / 100;
+    const totalPnlPct = p.avgCost > 0 ? (currentPrice - p.avgCost) / p.avgCost : 0;
+    return {
+      symbol: p.symbol,
+      name: p.name,
+      qty: p.qty,
+      currentPrice,
+      avgCost: p.avgCost,
+      marketValue,
+      totalPnl,
+      totalPnlPct,
+      todayChange,
+      todayChangePct,
+      pctOfAccount: p.pctOfAccount,
+      sector: p.sector,
+    };
+  });
+
+  const portfolioTotalValue = livePositions.reduce((sum, p) => sum + p.marketValue, 0);
+  const portfolioTodayPnl = livePositions.reduce((sum, p) => sum + p.todayChange, 0);
+  const portfolioTotalPnl = livePositions.reduce((sum, p) => sum + p.totalPnl, 0);
+
   // ── portfolio context for AI ──
   const portfolioContext = buildPortfolioContext({
-    totalValue: 118066,
-    todayPnl: -1117,
-    todayPnlPct: -0.9,
-    totalPnl: -10207,
-    totalPnlPct: -7.9,
+    totalValue: portfolioTotalValue,
+    todayPnl: portfolioTodayPnl,
+    todayPnlPct: portfolioTotalValue > 0 ? portfolioTodayPnl / (portfolioTotalValue - portfolioTodayPnl) : 0,
+    totalPnl: portfolioTotalPnl,
+    totalPnlPct: portfolioTotalValue > 0 ? portfolioTotalPnl / (portfolioTotalValue - portfolioTotalPnl) : 0,
     buyingPower: 145217,
     cash: 11617,
     investorStyle: 'Lynch Growth',
     riskTolerance: 'Moderate',
-    positions: demoPositions.map(p => ({
-      symbol: p.symbol,
-      name: p.name,
-      qty: p.qty,
-      currentPrice: p.currentPrice,
-      avgCost: p.avgCost,
-      marketValue: p.marketValue,
-      totalPnl: p.totalPnl,
-      totalPnlPct: p.totalPnlPct,
-      todayChange: p.todayChange,
-      todayChangePct: p.todayChangePct,
-      pctOfAccount: p.pctOfAccount,
-      sector: p.sector,
-    }))
+    positions: livePositions,
   });
 
   // ── fetch market news ──
