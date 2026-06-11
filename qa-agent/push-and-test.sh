@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-cd ~/projects/vantage
+cd ~/.openclaw/workspace/projects/vantage
 
 # Check if QA already running
 if [ -f /tmp/vantage-qa.lock ]; then
@@ -16,8 +16,8 @@ echo "📦 Pushing to master..."
 git push origin master
 
 echo "🔍 Triggering QA in background..."
-nohup bash ~/projects/vantage/qa-agent/post-deploy.sh > \
-  ~/projects/vantage/qa-agent/logs/qa-$(date +%Y%m%d-%H%M%S).log \
+nohup bash ~/.openclaw/workspace/projects/vantage/qa-agent/post-deploy.sh > \
+  ~/.openclaw/workspace/projects/vantage/qa-agent/logs/qa-$(date +%Y%m%d-%H%M%S).log \
   2>&1 &
 
 echo "✅ Push complete. QA running in background."
