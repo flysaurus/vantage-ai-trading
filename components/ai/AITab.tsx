@@ -1,10 +1,8 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { buildPortfolioContext } from '@/lib/ai-context';
-import { demoPositions } from '@/lib/demo-data';
+import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -32,7 +30,7 @@ interface AITabProps {
 }
 
 export function AITab({ messages, setMessages }: AITabProps) {
-  const { account } = usePortfolio();
+  const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
 
   // ── state ──
@@ -51,84 +49,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [marketHeadline, setMarketHeadline] = useState('');
   const [marketNewsUrl, setMarketNewsUrl] = useState('');
   const [portfolioSummary, setPortfolioSummary] = useState('');
-  const [liveQuotes, setLiveQuotes] = useState<Record<string, { c: number; d: number; dp: number; pc: number }>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── fetch live quotes for all positions on mount ──
-  useEffect(() => {
-    const fetchQuotes = async () => {
-      const symbols = [...new Set(demoPositions.map(p => p.symbol))];
-      try {
-        const results = await Promise.all(
-          symbols.map(async (symbol) => {
-            try {
-              const res = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`);
-              const data = await res.json();
-              return [symbol, data] as const;
-            } catch {
-              return [symbol, null] as const;
-            }
-          })
-        );
-        const quotes: Record<string, any> = {};
-        for (const [sym, data] of results) {
-          if (data && typeof data.c === 'number') {
-            quotes[sym] = data;
-          }
-        }
-        setLiveQuotes(quotes);
-      } catch {
-        // keep demo fallback prices
-      }
-    };
-    fetchQuotes();
-  }, []);
-
-  // ── live positions with fresh Finnhub quotes overlaid on demo data ──
-  const livePositions = demoPositions.map(p => {
-    const quote = liveQuotes[p.symbol];
-    const currentPrice = quote?.c ? quote.c : p.currentPrice;
-    const todayChange = quote?.d != null ? Math.round(p.qty * quote.d * 100) / 100 : p.todayChange;
-    const todayChangePct = quote?.dp != null ? quote.dp / 100 : p.todayChangePct;
-    const marketValue = Math.round(p.qty * currentPrice * 100) / 100;
-    const totalPnl = Math.round(p.qty * (currentPrice - p.avgCost) * 100) / 100;
-    const totalPnlPct = p.avgCost > 0 ? (currentPrice - p.avgCost) / p.avgCost : 0;
-    return {
-      symbol: p.symbol,
-      name: p.name,
-      qty: p.qty,
-      currentPrice,
-      avgCost: p.avgCost,
-      marketValue,
-      totalPnl,
-      totalPnlPct,
-      todayChange,
-      todayChangePct,
-      pctOfAccount: p.pctOfAccount,
-      sector: p.sector,
-    };
-  });
-
-  const portfolioTotalValue = livePositions.reduce((sum, p) => sum + p.marketValue, 0);
-  const portfolioTodayPnl = livePositions.reduce((sum, p) => sum + p.todayChange, 0);
-  const portfolioTotalPnl = livePositions.reduce((sum, p) => sum + p.totalPnl, 0);
-  const portfolioTodayPnlPct = portfolioTotalValue > 0 ? portfolioTodayPnl / (portfolioTotalValue - portfolioTodayPnl) : 0;
-  const portfolioTotalPnlPct = portfolioTotalValue > 0 ? portfolioTotalPnl / (portfolioTotalValue - portfolioTotalPnl) : 0;
-
-  // ── portfolio context for AI ──
-  const portfolioContext = buildPortfolioContext({
-    totalValue: portfolioTotalValue,
-    todayPnl: portfolioTodayPnl,
-    todayPnlPct: portfolioTodayPnlPct,
-    totalPnl: portfolioTotalPnl,
-    totalPnlPct: portfolioTotalPnlPct,
-    buyingPower: 145217,
-    cash: 11617,
-    investorStyle: 'Lynch Growth',
-    riskTolerance: 'Moderate',
-    positions: livePositions,
-  });
+  // ── portfolio context for AI (shared live-priced data from PortfolioProvider) ──
+  const portfolioContext = buildLivePortfolioContext(liveAccount);
 
   // ── fetch market news ──
   const fetchMarketNews = async () => {
@@ -338,12 +263,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
     sendMessage(message);
   };
 
-  // ── derived data ──
-  const equity = account?.equity ?? 0;
-  const dayPnl = account?.dayPnl ?? 0;
-  const dayPnlPct = account?.dayPnlPercent ?? 0;
-  const totalPnl = account?.totalPnl ?? 0;
-  const totalPnlPct = account?.totalPnlPercent ?? 0;
+  // ── derived data from shared portfolio context ──
+  const equity = liveAccount?.equity ?? 0;
+  const dayPnl = liveAccount?.dayPnl ?? 0;
+  const dayPnlPct = liveAccount?.dayPnlPercent ?? 0;
+  const totalPnl = liveAccount?.totalPnl ?? 0;
+  const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
 
   // ── styles ──
   const cardBox: React.CSSProperties = {
@@ -375,11 +300,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
       >
         <div>
           <p style={{ fontSize: '22px', fontWeight: '700', color: '#ffffff' }}>
-            ${(portfolioTotalValue || equity).toLocaleString('en-US', DOLLAR_FMT)}
+            ${equity.toLocaleString('en-US', DOLLAR_FMT)}
           </p>
           <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            TODAY {fmt(portfolioTodayPnl)} ({pctStr(portfolioTodayPnlPct)}){' '}
-            · TOTAL {fmt(portfolioTotalPnl)} ({pctStr(portfolioTotalPnlPct)})
+            TODAY {fmt(dayPnl)} ({pctStr(dayPnlPct)}){' '}
+            · TOTAL {fmt(totalPnl)} ({pctStr(totalPnlPct)})
           </p>
         </div>
         <div>

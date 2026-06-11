@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useLivePortfolio } from '@/context/PortfolioContext';
 import DemoBanner from '@/components/shared/DemoBanner';
-import { getDemoPortfolio } from '@/lib/demo-data';
 import type { Position, AccountSummary } from '@/types';
 import SellModal from './SellModal';
 import MarketOverview from '../shared/MarketOverview';
@@ -414,77 +414,11 @@ function BuyModal({
 
 // ─── Build Demo Account ───────────────────────────────────
 
-type QuoteEntry = {
-  price: number;
-  change: number;
-  changePercent: number;
-  previousClose: number;
-};
-
-function buildDemoAccount(
-  demo: ReturnType<typeof getDemoPortfolio>,
-  quotes: Record<string, QuoteEntry> | null,
-): AccountSummary {
-  const positions: Position[] = demo.positions.map((dp) => {
-    const q = quotes?.[dp.symbol];
-    const currentPrice = q?.price ?? dp.avgCost;
-    const marketValue = currentPrice * dp.qty;
-    const dayChange = q?.change ? q.change * dp.qty : 0;
-    const dayChangePercent = q?.changePercent ?? 0;
-    const totalPnl = (currentPrice - dp.avgCost) * dp.qty;
-    const totalPnlPercent =
-      dp.avgCost > 0 ? (currentPrice / dp.avgCost - 1) * 100 : 0;
-
-    return {
-      symbol: dp.symbol,
-      name: dp.name,
-      qty: dp.qty,
-      avgCost: dp.avgCost,
-      currentPrice,
-      marketValue,
-      dayChange,
-      dayChangePercent,
-      totalPnl,
-      totalPnlPercent,
-      profitLossPct: totalPnlPercent,
-      portfolioPercent: 0,
-      sector: dp.sector,
-      weekHigh52: dp.weekHigh52,
-      weekLow52: dp.weekLow52,
-    };
-  });
-
-  const totalEquity = positions.reduce((s, p) => s + p.marketValue, 0);
-  positions.forEach((p) => {
-    p.portfolioPercent =
-      totalEquity > 0 ? (p.marketValue / totalEquity) * 100 : 0;
-  });
-
-  const cash = 11617.4;
-  const buyingPower = 145217.48;
-  const dayPnl = positions.reduce((s, p) => s + p.dayChange, 0);
-  const dayPnlPercent =
-    totalEquity > 0 ? (dayPnl / (totalEquity - dayPnl)) * 100 : 0;
-  const totalPnl = positions.reduce((s, p) => s + p.totalPnl, 0);
-  const totalPnlPercent =
-    totalEquity > 0 ? (totalPnl / (totalEquity - totalPnl)) * 100 : 0;
-
-  return {
-    equity: totalEquity + cash,
-    buyingPower,
-    cash,
-    dayPnl,
-    dayPnlPercent,
-    totalPnl,
-    totalPnlPercent,
-    positions,
-  };
-}
-
 // ─── Main Tab ─────────────────────────────────────────────
 
 export function PortfolioTab() {
-  const { account, loading } = usePortfolio();
+  const { account, loading: brokerLoading } = usePortfolio();
+  const { account: liveAccount, loading: liveLoading } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -495,37 +429,14 @@ export function PortfolioTab() {
   const [selectMode, setSelectMode] = useState(false);
   const [showBuySymbol, setShowBuySymbol] = useState<Position | null>(null);
 
-  const investorStyle = user?.investorStyle || 'lynch';
-  const [displayAccount, setDisplayAccount] = useState<AccountSummary | null>(null);
-  const [quotesLoading, setQuotesLoading] = useState(false);
-
-  useEffect(() => {
-    if (isConnected && account) {
-      setDisplayAccount(account);
-      return;
-    }
-    if (isConnected && !account) return;
-
-    const demo = getDemoPortfolio(investorStyle);
-    setQuotesLoading(true);
-    fetch('/api/market/quotes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbols: demo.positions.map((p) => p.symbol) }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        setDisplayAccount(buildDemoAccount(demo, data.quotes || null));
-        setQuotesLoading(false);
-      })
-      .catch(() => {
-        setDisplayAccount(buildDemoAccount(demo, null));
-        setQuotesLoading(false);
-      });
-  }, [isConnected, account, investorStyle]);
+  // ── account data: broker if connected, shared context otherwise ──
+  const displayAccount: AccountSummary | null = isConnected
+    ? account || null
+    : liveAccount || null;
+  const loading = isConnected ? brokerLoading : liveLoading;
 
   // Loading
-  if (loading || quotesLoading) {
+  if (loading) {
     return (
       <div className="px-4 pt-4 space-y-3 pb-24">
         <div className="h-10 bg-slate-800 rounded-lg animate-pulse" />

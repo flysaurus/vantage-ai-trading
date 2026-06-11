@@ -12,6 +12,7 @@ import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
+import { PortfolioProvider } from '@/context/PortfolioContext';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
@@ -206,7 +207,9 @@ function AppShell() {
 export default function Home() {
   return (
     <BrokerProvider>
-      <AppShell />
+      <PortfolioProvider>
+        <AppShell />
+      </PortfolioProvider>
     </BrokerProvider>
   );
 }
