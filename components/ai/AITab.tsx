@@ -466,6 +466,45 @@ Give me a market pulse check — how are the major indexes performing today, wha
   const totalPnl = liveAccount?.totalPnl ?? 0;
   const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
 
+  // ── computed risk scoring (from live data) ──
+  const riskData = (() => {
+    const positions = liveAccount?.positions || [];
+
+    // Sector concentration
+    const sectorTotals: Record<string, number> = {};
+    let totalValue = 0;
+    for (const p of positions) {
+      const mv = p.marketValue || 0;
+      sectorTotals[p.sector || 'Other'] = (sectorTotals[p.sector || 'Other'] || 0) + mv;
+      totalValue += mv;
+    }
+    const maxSectorPct = totalValue > 0
+      ? Math.max(0, ...Object.values(sectorTotals).map(v => (v / totalValue) * 100))
+      : 0;
+    const maxSectorName = Object.entries(sectorTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unknown';
+    let sectorRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+    if (maxSectorPct > 60) sectorRisk = 'HIGH';
+    else if (maxSectorPct >= 40) sectorRisk = 'MEDIUM';
+
+    // Single position loss check
+    let posRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+    for (const p of positions) {
+      const lossPct = p.totalPnlPercent ?? 0;
+      if (lossPct < -40) posRisk = 'HIGH';
+      else if (lossPct < -20 && posRisk !== 'HIGH') posRisk = 'MEDIUM';
+    }
+
+    // Overall: highest of the two
+    let overall: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+    if (sectorRisk === 'HIGH' || posRisk === 'HIGH') overall = 'HIGH';
+    else if (sectorRisk === 'MEDIUM' || posRisk === 'MEDIUM') overall = 'MEDIUM';
+
+    const riskColor = overall === 'HIGH' ? '#ef4444' : overall === 'MEDIUM' ? '#f59e0b' : '#22d3ee';
+    const riskLabel = overall;
+
+    return { maxSectorPct, maxSectorName, sectorRisk, posRisk, overall, riskColor, riskLabel };
+  })();
+
   // ── suggestion chips (computed from live portfolio data) ──
   const suggestionChips: string[] = (() => {
     const chips: string[] = [];
@@ -911,10 +950,10 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 style={{
                   fontSize: '14px',
                   fontWeight: '700',
-                  color: '#10b981',
+                  color: riskData.riskColor,
                 }}
               >
-                LOW
+                {riskData.riskLabel}
               </span>
               <p style={{ fontSize: '10px', color: '#64748b' }}>
                 Risk Level
@@ -1001,16 +1040,30 @@ Give me a market pulse check — how are the major indexes performing today, wha
               }}>
                 ⚠️ RISKS
               </p>
-              {[
-                {
-                  text: 'Tech concentration at 68% — above 50% threshold',
-                  msg: 'How should I reduce my tech concentration?',
-                },
-                {
-                  text: 'NFLX position down 91% — review sizing',
-                  msg: "Should I cut my NFLX position? It's down 91%",
-                },
-              ].map((item, i) => (
+              {(() => {
+                const riskItems: { text: string; msg: string }[] = [];
+                
+                // Sector concentration risk
+                if (riskData.maxSectorPct > 40) {
+                  riskItems.push({
+                    text: `${riskData.maxSectorName} concentration at ${Math.round(riskData.maxSectorPct)}% — above 40% threshold`,
+                    msg: `How should I reduce my ${riskData.maxSectorName} concentration?`,
+                  });
+                }
+
+                // NFLX position risk (dynamic from live data)
+                const nflx = liveAccount?.positions?.find(p => p.symbol === 'NFLX');
+                if (nflx && nflx.totalPnl < 0) {
+                  const pct = Math.abs(nflx.totalPnlPercent).toFixed(0);
+                  riskItems.push({
+                    text: `NFLX down ${pct}% from cost basis ($${nflx.avgCost.toFixed(2)} → $${nflx.currentPrice.toFixed(2)})`,
+                    msg: `Should I cut my NFLX position? It's down ${pct}%`,
+                  });
+                } else if (nflx && nflx.totalPnl >= 0) {
+                  // NFLX is profitable — no risk item needed
+                }
+
+                return riskItems.length > 0 ? riskItems.map((item, i) => (
                 <div
                   key={i}
                   onClick={(e) => sendToChat(item.msg, e)}
@@ -1029,7 +1082,10 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
                   <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
-              ))}
+              )) : (
+                <p style={{ fontSize: '12px', color: '#64748b', padding: '4px 0' }}>No significant risks detected.</p>
+              );
+              })()}
             </div>
 
             {/* Recommendations */}
@@ -1041,16 +1097,27 @@ Give me a market pulse check — how are the major indexes performing today, wha
               }}>
                 💡 RECOMMENDATIONS
               </p>
-              {[
-                {
-                  text: 'Consider adding healthcare or financials for diversification',
-                  msg: 'What healthcare or financial stocks should I add?',
-                },
-                {
-                  text: 'Review NFLX position — down 91% from cost basis',
-                  msg: 'Give me a full analysis of my NFLX position',
-                },
-              ].map((item, i) => (
+              {(() => {
+                const recs: { text: string; msg: string }[] = [];
+                
+                const nflxPos = liveAccount?.positions?.find(p => p.symbol === 'NFLX');
+                if (nflxPos && nflxPos.totalPnlPercent < -20) {
+                  recs.push({
+                    text: `Review NFLX position — down ${Math.abs(nflxPos.totalPnlPercent).toFixed(0)}% from cost basis`,
+                    msg: 'Give me a full analysis of my NFLX position',
+                  });
+                }
+                
+                if (riskData.maxSectorPct >= 40) {
+                  const otherSectors = ['Healthcare', 'Financial Services', 'Consumer', 'Industrials']
+                    .filter(s => s !== riskData.maxSectorName);
+                  recs.push({
+                    text: `Consider adding ${otherSectors[0]?.toLowerCase() || 'other sectors'} for diversification`,
+                    msg: `What ${otherSectors[0]?.toLowerCase() || 'diversification'} stocks should I add?`,
+                  });
+                }
+                
+                return recs.length > 0 ? recs.map((item, i) => (
                 <div
                   key={i}
                   onClick={(e) => sendToChat(item.msg, e)}
@@ -1069,7 +1136,10 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
                   <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
-              ))}
+              )) : (
+                <p style={{ fontSize: '12px', color: '#64748b', padding: '4px 0' }}>Your portfolio is well-balanced.</p>
+              );
+              })()}
             </div>
 
             <p style={{

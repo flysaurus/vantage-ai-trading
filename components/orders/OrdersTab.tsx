@@ -16,7 +16,7 @@ const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 function formatOrderDate(date: string) {
   const d = new Date(date);
   return (
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
     ' · ' +
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   );
