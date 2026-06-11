@@ -63,6 +63,31 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     }
   }, [isOpen]);
 
+  // ── Remove stock from basket (must be above early return for hook ordering) ──
+  const removeStock = useCallback((symbol: string) => {
+    if (!basketData || basketData.stocks.length <= 2) return;
+    const bNum = parseInt(budget) || 10000;
+    const remaining = basketData.stocks.filter(s => s.symbol !== symbol);
+    const totalAlloc = remaining.reduce((sum, s) => sum + s.allocation, 0);
+    const updated = remaining.map(s => {
+      const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
+      const dollarAmount = (newAlloc / 100) * bNum;
+      const shares = s.price && s.price > 0 ? +(dollarAmount / s.price).toFixed(2) : 0;
+      return { ...s, allocation: newAlloc, dollarAmount, shares };
+    });
+    const newTotal = updated.reduce((sum, s) => sum + s.allocation, 0);
+    if (newTotal !== 100) {
+      updated[0].allocation = +(updated[0].allocation + (100 - newTotal)).toFixed(1);
+      updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
+      updated[0].shares = updated[0].price && updated[0].price > 0
+        ? +(updated[0].dollarAmount / updated[0].price).toFixed(2)
+        : 0;
+    }
+    setBasketData({ ...basketData, stocks: updated });
+    setRemoveFlash(true);
+    setTimeout(() => setRemoveFlash(false), 1500);
+  }, [basketData, budget]);
+
   if (!isOpen) return null;
 
   const themeData = THEMES.find(t => t.key === selectedTheme);
@@ -141,32 +166,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       setIsGenerating(false);
     }
   }
-
-  // ── Remove stock from basket ──
-  const removeStock = useCallback((symbol: string) => {
-    if (!basketData || basketData.stocks.length <= 2) return;
-    const remaining = basketData.stocks.filter(s => s.symbol !== symbol);
-    // Redistribute allocation proportionally
-    const totalAlloc = remaining.reduce((sum, s) => sum + s.allocation, 0);
-    const updated = remaining.map(s => {
-      const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
-      const dollarAmount = (newAlloc / 100) * budgetNum;
-      const shares = s.price && s.price > 0 ? +(dollarAmount / s.price).toFixed(2) : 0;
-      return { ...s, allocation: newAlloc, dollarAmount, shares };
-    });
-    // Fix rounding to sum to exactly 100
-    const newTotal = updated.reduce((sum, s) => sum + s.allocation, 0);
-    if (newTotal !== 100) {
-      updated[0].allocation = +(updated[0].allocation + (100 - newTotal)).toFixed(1);
-      updated[0].dollarAmount = (updated[0].allocation / 100) * budgetNum;
-      updated[0].shares = updated[0].price && updated[0].price > 0
-        ? +(updated[0].dollarAmount / updated[0].price).toFixed(2)
-        : 0;
-    }
-    setBasketData({ ...basketData, stocks: updated });
-    setRemoveFlash(true);
-    setTimeout(() => setRemoveFlash(false), 1500);
-  }, [basketData, budgetNum]);
 
   // ── Add to portfolio ──
   async function addToPortfolio() {
