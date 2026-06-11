@@ -234,103 +234,42 @@ export function OrdersTab() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'start',
-              marginBottom: 6,
+              marginBottom: 4,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>{order.symbol}</span>
-              <span className={`side-badge ${order.side}`}>{order.side}</span>
+            {/* LEFT — symbol, type+shares, total cost */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>{order.symbol}</span>
+                <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>
+                {order.type} · {order.qty} shares
+              </div>
+              {order.status === 'filled' && order.filledPrice != null && (
+                <div style={{ fontSize: 11, color: '#64748b' }}>
+                  Total Cost: ${((order.filledQty ?? order.qty) * order.filledPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              )}
             </div>
-            <span className="status-badge" style={statusStyle(order.status)}>
-              {order.status}
-            </span>
-          </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 6,
-              marginBottom: 8,
-              padding: 8,
-              background: '#0f172a',
-              borderRadius: 6,
-            }}
-          >
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontSize: 8,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  marginBottom: 1,
-                }}
-              >
-                Type
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600 }}>{order.type}</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontSize: 8,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  marginBottom: 1,
-                }}
-              >
-                Qty
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600 }}>{order.qty}</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontSize: 8,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  marginBottom: 1,
-                }}
-              >
-                {order.type === 'market'
-                  ? 'Fill'
-                  : order.type === 'limit'
-                  ? 'Price'
-                  : 'Stop'}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600 }}>
-                $
-                {(
-                  order.filledPrice ??
-                  order.limitPrice ??
-                  order.stopPrice ??
-                  0
-                ).toFixed(2)}
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontSize: 8,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  marginBottom: 1,
-                }}
-              >
-                TIF
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600 }}>
-                {order.timeInForce.toUpperCase()}
+            {/* RIGHT — status, price/share, date */}
+            <div style={{ textAlign: 'right' }}>
+              <span className="status-badge" style={statusStyle(order.status)}>
+                {order.status.toUpperCase()}
+              </span>
+              {order.filledPrice != null && (
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                  ${order.filledPrice.toFixed(2)}/share
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                {formatOrderDate(order.createdAt)}
               </div>
             </div>
           </div>
 
-          {order.bracketOrder && (
-            <div style={{ fontSize: 10, color: '#06b6d4', marginBottom: 6 }}>
-              🛡️ Bracket: SL ${order.bracketOrder.stopLoss} / TP ${order.bracketOrder.takeProfit}
-            </div>
-          )}
-
+          {/* Actions row */}
           <div
             style={{
               display: 'flex',
@@ -338,11 +277,12 @@ export function OrdersTab() {
               alignItems: 'center',
               fontSize: 10,
               color: '#64748b',
+              paddingTop: 8,
+              borderTop: '1px solid #1e293b',
             }}
           >
             <span>
-              {order.status === 'filled' ? 'Filled' : 'Placed'}:{' '}
-              {formatOrderDate(order.createdAt)}
+              {order.bracketOrder ? `🛡️ SL $${order.bracketOrder.stopLoss} / TP $${order.bracketOrder.takeProfit}` : ''}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
               {(order.status === 'open' || order.status === 'pending') && (
