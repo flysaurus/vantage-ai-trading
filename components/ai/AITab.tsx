@@ -14,12 +14,12 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
 };
 
 const fmt = (v: number) => {
-  const prefix = v >= 0 ? '+' : '';
+  const prefix = v > 0 ? '+' : v < 0 ? '-' : '';
   return `${prefix}$${Math.abs(v).toLocaleString('en-US', DOLLAR_FMT)}`;
 };
 
 const pctStr = (v: number) => {
-  const prefix = v >= 0 ? '+' : '';
+  const prefix = v > 0 ? '+' : v < 0 ? '-' : '';
   return `${prefix}${Math.abs(v).toFixed(1)}%`;
 };
 
@@ -406,9 +406,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
           <p style={{ fontSize: '22px', fontWeight: '700', color: '#ffffff' }}>
             ${equity.toLocaleString('en-US', DOLLAR_FMT)}
           </p>
-          <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            TODAY {fmt(dayPnl)} ({pctStr(dayPnlPct)}){' '}
-            · TOTAL {fmt(totalPnl)} ({pctStr(totalPnlPct)})
+          <p style={{ fontSize: '11px', marginTop: '2px' }}>
+            <span style={{ color: dayPnl > 0 ? '#10b981' : dayPnl < 0 ? '#ef4444' : '#6b7280' }}>
+              TODAY {fmt(dayPnl)} ({pctStr(dayPnlPct)})
+            </span>
+            {' · '}
+            <span style={{ color: totalPnl > 0 ? '#10b981' : totalPnl < 0 ? '#ef4444' : '#6b7280' }}>
+              TOTAL {fmt(totalPnl)} ({pctStr(totalPnlPct)})
+            </span>
           </p>
         </div>
         <div>
@@ -1410,9 +1415,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
               background: '#0a0f1e',
               borderTop: '1px solid #1e2d45',
               borderRadius: '20px 20px 0 0',
-              height: 'calc(100vh - 40px)',
+              maxHeight: 'calc(100dvh - env(safe-area-inset-top))',
+              paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
               display: 'flex',
               flexDirection: 'column',
+              flex: 1,
             }}
           >
             {/* Header */}
@@ -1548,7 +1555,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
             {/* Start New Conversation button */}
             <div style={{
-              padding: '12px 20px calc(20px + env(safe-area-inset-bottom)) 20px',
+              padding: '12px 20px 20px 20px',
               borderTop: '1px solid #1e2d45',
               flexShrink: 0,
             }}>
