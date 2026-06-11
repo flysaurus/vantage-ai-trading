@@ -11,9 +11,9 @@ if (!fs.existsSync(SCREENSHOTS_DIR)) {
 }
 
 // Helper to take and save screenshot
-async function screenshot(page: Page, name: string) {
+async function screenshot(page: Page, name: string, fullPage = false) {
   const filepath = path.join(SCREENSHOTS_DIR, `${name}.png`);
-  await page.screenshot({ path: filepath, fullPage: false });
+  await page.screenshot({ path: filepath, fullPage });
   return filepath;
 }
 
@@ -74,6 +74,7 @@ test.describe('Portfolio Tab', () => {
 
   test.beforeEach(async ({ page }) => {
     await setupDemoMode(page);
+    await clickTab(page, 'Portfolio');
   });
 
   test('loads without error', async ({ page }) => {
@@ -95,8 +96,12 @@ test.describe('Portfolio Tab', () => {
   });
 
   test('shows 10 holdings', async ({ page }) => {
-    // Scroll to show holding cards
-    await page.evaluate(() => window.scrollTo(0, 500));
+    // Explicitly navigate to Portfolio tab
+    await clickTab(page, 'portfolio');
+    await page.waitForTimeout(1000);
+    
+    // Scroll past the account summary to show holding cards
+    await page.evaluate(() => window.scrollTo(0, 600));
     await page.waitForTimeout(1000);
 
     // Verify no error states
@@ -105,7 +110,7 @@ test.describe('Portfolio Tab', () => {
     ).count();
     expect(errorText).toBe(0);
 
-    await screenshot(page, '03_portfolio_holdings');
+    await screenshot(page, '03_portfolio_holdings', true);
     // Visual review by Claude QA will check exact tickers
   });
 
@@ -143,7 +148,8 @@ test.describe('Portfolio Tab', () => {
   });
 
   test('buying power equals cash', async ({ page }) => {
-    await page.evaluate(() => window.scrollTo(0, 300));
+    // Stay at top to capture account summary with buying power
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(1000);
 
     await screenshot(page, '06_portfolio_buying_power');
@@ -231,8 +237,6 @@ test.describe('Invest Tab', () => {
     await page.evaluate(() => window.scrollTo(0, 500));
     await page.waitForTimeout(1000);
 
-    await screenshot(page, '12_invest_order_history');
-
     // Check for new seed orders
     const newOrders = ['SPY', 'QQQ', 'ISRG', 'JPM', 'COST'];
     for (const ticker of newOrders) {
@@ -240,6 +244,11 @@ test.describe('Invest Tab', () => {
       const visible = await el.isVisible().catch(() => false);
       console.log(`Order ${ticker} visible:`, visible);
     }
+
+    // Scroll past the order form to show order history section
+    await page.evaluate(() => window.scrollTo(0, 1500));
+    await page.waitForTimeout(500);
+    await screenshot(page, '12_invest_order_history', true);
   });
 
   test('order dates include year', async ({ page }) => {

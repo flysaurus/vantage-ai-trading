@@ -1,17 +1,24 @@
 #!/bin/bash
-# Use this instead of plain 'git push origin master'
-# It pushes and automatically triggers QA
-
 set -e
 cd ~/projects/vantage
+
+# Check if QA already running
+if [ -f /tmp/vantage-qa.lock ]; then
+  LOCK_AGE=$(( $(date +%s) - $(stat -c %Y /tmp/vantage-qa.lock 2>/dev/null || echo 0) ))
+  if [ $LOCK_AGE -lt 600 ]; then
+    echo "⚠️ QA already running (${LOCK_AGE}s ago). Skipping QA trigger."
+    git push origin master
+    exit 0
+  fi
+fi
 
 echo "📦 Pushing to master..."
 git push origin master
 
 echo "🔍 Triggering QA in background..."
-nohup ~/projects/vantage/qa-agent/post-deploy.sh > \
+nohup bash ~/projects/vantage/qa-agent/post-deploy.sh > \
   ~/projects/vantage/qa-agent/logs/qa-$(date +%Y%m%d-%H%M%S).log \
   2>&1 &
 
 echo "✅ Push complete. QA running in background."
-echo "   Results will arrive via Telegram in ~2 minutes."
+echo "   Results via Telegram in ~2 minutes."

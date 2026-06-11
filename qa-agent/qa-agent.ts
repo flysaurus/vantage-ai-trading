@@ -105,7 +105,9 @@ Respond ONLY with valid JSON, no markdown:
   const text = data.content?.[0]?.text || '{}';
 
   try {
-    return JSON.parse(text);
+    // Strip markdown code fences if present
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    return JSON.parse(cleaned);
   } catch {
     return { pass: [], fail: [text], warnings: [] };
   }
@@ -234,7 +236,52 @@ async function runVisualQA(): Promise<string[]> {
 }
 
 // ─── MAIN ───
+const LOCK_FILE = '/tmp/vantage-qa.lock';
+const LAST_RUN_FILE = '/tmp/vantage-qa-lastrun';
+const MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 min minimum between runs
+
+function acquireLock(): boolean {
+  // Rate limit check
+  if (fs.existsSync(LAST_RUN_FILE)) {
+    const lastRun = parseInt(fs.readFileSync(LAST_RUN_FILE, 'utf8'));
+    const elapsed = Date.now() - lastRun;
+    if (elapsed < MIN_INTERVAL_MS) {
+      const wait = Math.ceil((MIN_INTERVAL_MS - elapsed) / 1000);
+      console.log(`Too soon. Wait ${wait}s before next run.`);
+      return false;
+    }
+  }
+
+  // Stale lock check
+  if (fs.existsSync(LOCK_FILE)) {
+    const lockAge = Date.now() - fs.statSync(LOCK_FILE).mtimeMs;
+    if (lockAge > 10 * 60 * 1000) {
+      fs.unlinkSync(LOCK_FILE);
+      console.log('Removed stale lock file');
+    } else {
+      console.log('QA already running, exiting');
+      return false;
+    }
+  }
+
+  fs.writeFileSync(LOCK_FILE, String(Date.now()));
+  fs.writeFileSync(LAST_RUN_FILE, String(Date.now()));
+  return true;
+}
+
+function releaseLock(): void {
+  if (fs.existsSync(LOCK_FILE)) {
+    fs.unlinkSync(LOCK_FILE);
+  }
+}
+
 async function main() {
+  if (!acquireLock()) {
+    console.log('Another QA instance running. Exiting.');
+    process.exit(0);
+  }
+
+  try {
   console.log('🔍 Starting QA Agent...');
 
   await sendTelegram(
@@ -296,9 +343,13 @@ async function main() {
 
   console.log('QA complete. Report sent to Telegram.');
   process.exit(fails > 0 ? 1 : 0);
+  } finally {
+    releaseLock();
+  }
 }
 
 main().catch(async (e) => {
+  releaseLock();
   console.error('QA Agent error:', e);
   await sendTelegram(`❌ *QA Agent Error*\n${e.message}`);
   process.exit(1);
