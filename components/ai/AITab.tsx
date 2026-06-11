@@ -489,8 +489,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
       chips.push('How is my portfolio performing today?');
     }
 
-    const dayDir = dayPnl >= 0 ? 'up' : 'down';
-    chips.push(`Your portfolio is ${dayDir} ${fmt(Math.abs(dayPnl))} (${pctStr(dayPnlPct)}) today — why?`);
+    const isDown = dayPnl < 0;
+    const direction = isDown ? 'down' : 'up';
+    const absAmount = Math.abs(dayPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const absPct = Math.abs(dayPnlPct).toFixed(1);
+    chips.push(`Your portfolio is ${direction} $${absAmount} (${absPct}%) today — why?`);
     return chips;
   })();
 
@@ -1112,11 +1115,13 @@ Give me a market pulse check — how are the major indexes performing today, wha
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '12px 16px',
+          padding: '16px 12px',
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
-          background: 'radial-gradient(ellipse at center top, rgba(34,211,238,0.04) 0%, transparent 70%)',
+          background: '#0d1526',
+          borderTop: '2px solid rgba(34,211,238,0.4)',
+          borderRadius: '0 0 16px 16px',
         }}
       >
         {/* AI Greeting on fresh session */}
