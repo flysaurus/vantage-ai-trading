@@ -1122,6 +1122,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           background: '#0d1526',
           borderTop: '2px solid rgba(34,211,238,0.4)',
           borderRadius: '0 0 16px 16px',
+          marginTop: '12px',
         }}
       >
         {/* AI Greeting on fresh session */}
