@@ -204,23 +204,50 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (greeting || previousSession) return;
 
     const fetchGreeting = async () => {
+      console.log('Greeting: fetching...');
+      
+      // Fallback after 8 seconds
+      const fallback = setTimeout(() => {
+        console.log('Greeting: timed out, using fallback');
+        setGreetingDots(false);
+        setGreeting('Good to see you. What would you like to explore today?');
+      }, 8000);
+
       try {
         const res = await fetch('/api/ai/greeting', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ portfolioContext }),
         });
+        console.log('Greeting response:', res.status);
+        
         if (res.ok) {
           const data = await res.json();
-          // Show typing dots for 1.5s, then reveal
-          setTimeout(() => {
+          console.log('Greeting text:', data.greeting);
+          clearTimeout(fallback);
+          const text = data.greeting?.trim();
+          if (text) {
+            setTimeout(() => {
+              setGreetingDots(false);
+              setGreeting(text);
+            }, 1500);
+          } else {
+            // Empty greeting from API
+            console.log('Greeting: empty response, using fallback');
             setGreetingDots(false);
-            setGreeting(data.greeting);
-          }, 1500);
+            setGreeting('Good to see you. What would you like to explore today?');
+          }
+        } else {
+          console.log('Greeting: API error, using fallback');
+          clearTimeout(fallback);
+          setGreetingDots(false);
+          setGreeting('Good to see you. What would you like to explore today?');
         }
-      } catch {
-        // silently fall back to no greeting
+      } catch (err) {
+        console.log('Greeting: fetch failed', err);
+        clearTimeout(fallback);
         setGreetingDots(false);
+        setGreeting('Good to see you. What would you like to explore today?');
       }
     };
     fetchGreeting();
@@ -285,16 +312,17 @@ export function AITab({ messages, setMessages }: AITabProps) {
         });
       };
 
-      // Start typing animation — outputs 3 chars per ~15ms tick
+      // Start typing animation — character-at-a-time at CHAR_DELAY ms per char
+      const CHAR_DELAY = 12;
       const startTyping = () => {
         if (typingTimer) return;
         typingTimer = setInterval(() => {
           if (displayedLength < aiContent.length) {
-            displayedLength = Math.min(displayedLength + 3, aiContent.length);
+            displayedLength = Math.min(displayedLength + 1, aiContent.length);
             updateDisplay(aiContent.slice(0, displayedLength));
             scrollToBottom();
           }
-        }, 15);
+        }, CHAR_DELAY);
       };
 
       while (reader) {
@@ -629,7 +657,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </span>
         </div>
 
-        {/* Preview (always visible) */}
+        {/* Preview rows — only visible when expanded */}
+        {dailyBriefExpanded && (
         <div style={{ padding: '0 16px 12px 16px' }}>
           <div
             style={{
@@ -706,6 +735,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
           </div>
         </div>
+        )}
 
         {/* Expanded */}
         {dailyBriefExpanded && (
