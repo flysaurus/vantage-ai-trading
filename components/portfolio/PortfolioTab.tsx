@@ -101,6 +101,16 @@ function AccountCard({ account, isConnected }: { account: AccountSummary; isConn
 
 // ─── Position Card (checkbox + expandable card) ───────────
 
+function getExchange(symbol: string): string {
+  const nyse = ['JPM', 'UNH', 'ADBE', 'COST', 'LLY'];
+  const nasdaq = ['GOOGL', 'MSFT', 'NVDA'];
+  const nysearca = ['SPY', 'QQQ'];
+  if (nysearca.includes(symbol)) return 'NYSE Arca';
+  if (nasdaq.includes(symbol)) return 'NASDAQ';
+  if (nyse.includes(symbol)) return 'NYSE';
+  return '—';
+}
+
 function PositionCard({
   pos,
   isSelected,
@@ -171,7 +181,22 @@ function PositionCard({
 
           {/* MIDDLE — symbol + shares */}
           <div className="flex-1 min-w-0" style={{ marginLeft: '16px' }}>
-            <p className="text-base font-bold text-white">{pos.symbol}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <p className="text-base font-bold text-white">{pos.symbol}</p>
+              {pos.type === 'ETF' && (
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  background: 'rgba(34,211,238,0.18)',
+                  color: '#22d3ee',
+                  lineHeight: '16px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}>ETF</span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
           </div>
 
@@ -195,8 +220,35 @@ function PositionCard({
               marginBottom: '20px'
             }} />
 
-            {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+            {/* Metadata labels */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', marginBottom: '20px' }}>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Symbol</p>
+                <p className="text-sm font-semibold text-white">{pos.symbol}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Name</p>
+                <p className="text-sm font-semibold text-white">{pos.name || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Sector</p>
+                <p className="text-sm font-semibold text-white">{pos.sector || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Asset Type</p>
+                <p className="text-sm font-semibold text-white">{pos.type || 'Stock'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Exchange</p>
+                <p className="text-sm font-semibold text-white">{getExchange(pos.symbol)}</p>
+              </div>
+            </div>
+
+            {/* Divider before financials */}
+            <div style={{ borderTop: '1px solid #2a3448', marginBottom: '20px' }} />
+
+            {/* Financial grid */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                   Daily G/L
@@ -216,7 +268,7 @@ function PositionCard({
               </div>
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Current Px
+                  Current Bid
                 </p>
                 <p className="text-base font-semibold text-white">
                   ${pos.currentPrice.toFixed(2)}

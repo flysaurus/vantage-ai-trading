@@ -36,87 +36,88 @@ interface PositionDef {
   industry?: string;
   weekHigh52?: number;
   weekLow52?: number;
+  type?: 'Stock' | 'ETF';
 }
 
 export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
   buffett: {
-    label: 'Warren Buffett · Value Hunter',
-    description: 'Wide moat, long horizon',
+    label: 'Diversified Growth',
+    description: 'Broad-market core with growth tilt',
     positions: [
-      { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', industry: 'Consumer Electronics', qty: 100, avgCost: 165.20, weekHigh52: 207, weekLow52: 124 },
-      { symbol: 'KO', name: 'Coca-Cola Co.', sector: 'Consumer', industry: 'Beverages', qty: 300, avgCost: 58.40, weekHigh52: 73, weekLow52: 44 },
-      { symbol: 'BAC', name: 'Bank of America', sector: 'Financial Services', industry: 'Banking', qty: 400, avgCost: 32.80, weekHigh52: 41, weekLow52: 25 },
-      { symbol: 'AXP', name: 'American Express', sector: 'Financial Services', industry: 'Payments', qty: 80, avgCost: 168.50, weekHigh52: 211, weekLow52: 126 },
-      { symbol: 'CVX', name: 'Chevron Corp.', sector: 'Energy', industry: 'Oil & Gas', qty: 90, avgCost: 152.30, weekHigh52: 190, weekLow52: 114 },
-      { symbol: 'OXY', name: 'Occidental Petroleum', sector: 'Energy', industry: 'Oil & Gas', qty: 200, avgCost: 58.70, weekHigh52: 73, weekLow52: 44 },
-      { symbol: 'MCO', name: "Moody's Corp.", sector: 'Financial Services', industry: 'Credit Ratings', qty: 35, avgCost: 368.40, weekHigh52: 461, weekLow52: 276 },
-      { symbol: 'KHC', name: 'Kraft Heinz Co.', sector: 'Consumer', industry: 'Packaged Foods', qty: 250, avgCost: 34.20, weekHigh52: 43, weekLow52: 26 },
-      { symbol: 'VZ', name: 'Verizon Communications', sector: 'Media & Entertainment', industry: 'Wireless', qty: 300, avgCost: 38.60, weekHigh52: 48, weekLow52: 29 },
-      { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 75, avgCost: 155.80, weekHigh52: 195, weekLow52: 117 },
+      { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'Core ETF', industry: 'S&P 500 ETF', qty: 25, avgCost: 480.00, weekHigh52: 620, weekLow52: 380, type: 'ETF' },
+      { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Core ETF', industry: 'Nasdaq-100 ETF', qty: 20, avgCost: 415.00, weekHigh52: 560, weekLow52: 330, type: 'ETF' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 60, avgCost: 140.00, weekHigh52: 230, weekLow52: 140, type: 'Stock' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 20, avgCost: 415.00, weekHigh52: 520, weekLow52: 385, type: 'Stock' },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banking', qty: 45, avgCost: 195.00, weekHigh52: 285, weekLow52: 180, type: 'Stock' },
+      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Design Software', qty: 25, avgCost: 560.00, weekHigh52: 650, weekLow52: 420, type: 'Stock' },
+      { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', industry: 'Health Insurance', qty: 15, avgCost: 520.00, weekHigh52: 640, weekLow52: 460, type: 'Stock' },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 80, avgCost: 108.00, weekHigh52: 220, weekLow52: 102, type: 'Stock' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer', industry: 'Wholesale Retail', qty: 10, avgCost: 720.00, weekHigh52: 1020, weekLow52: 685, type: 'Stock' },
+      { symbol: 'LLY', name: 'Eli Lilly & Co.', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 12, avgCost: 750.00, weekHigh52: 980, weekLow52: 710, type: 'Stock' },
     ],
   },
   lynch: {
-    label: 'Peter Lynch · Growth Chaser',
-    description: 'Growth at reasonable price',
+    label: 'Diversified Growth',
+    description: 'Broad-market core with growth tilt',
     positions: [
-      { symbol: 'META', name: 'Meta Platforms', sector: 'Technology', industry: 'Social Media', qty: 50, avgCost: 288.30, weekHigh52: 625, weekLow52: 380 },
-      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 40, avgCost: 395, weekHigh52: 465, weekLow52: 380 },
-      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 45, avgCost: 178, weekHigh52: 205, weekLow52: 155 },
-      { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'Consumer', industry: 'E-Commerce', qty: 60, avgCost: 235, weekHigh52: 265, weekLow52: 165 },
-      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 30, avgCost: 110, weekHigh52: 150, weekLow52: 86 },
-      { symbol: 'CRM', name: 'Salesforce Inc.', sector: 'Technology', industry: 'Enterprise Software', qty: 70, avgCost: 175, weekHigh52: 315, weekLow52: 140 },
-      { symbol: 'NFLX', name: 'Netflix Inc.', sector: 'Media & Entertainment', industry: 'Streaming', qty: 250, avgCost: 95, weekHigh52: 1050, weekLow52: 540 },
-      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Design Software', qty: 20, avgCost: 400, weekHigh52: 570, weekLow52: 370 },
-      { symbol: 'UBER', name: 'Uber Technologies', sector: 'Technology', industry: 'Ridesharing', qty: 120, avgCost: 65, weekHigh52: 90, weekLow52: 55 },
-      { symbol: 'SQ', name: 'Block Inc.', sector: 'Financial Services', industry: 'Fintech', qty: 85, avgCost: 80, weekHigh52: 105, weekLow52: 55 },
+      { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'Core ETF', industry: 'S&P 500 ETF', qty: 25, avgCost: 480.00, weekHigh52: 620, weekLow52: 380, type: 'ETF' },
+      { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Core ETF', industry: 'Nasdaq-100 ETF', qty: 20, avgCost: 415.00, weekHigh52: 560, weekLow52: 330, type: 'ETF' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 60, avgCost: 140.00, weekHigh52: 230, weekLow52: 140, type: 'Stock' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 20, avgCost: 415.00, weekHigh52: 520, weekLow52: 385, type: 'Stock' },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banking', qty: 45, avgCost: 195.00, weekHigh52: 285, weekLow52: 180, type: 'Stock' },
+      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Design Software', qty: 25, avgCost: 560.00, weekHigh52: 650, weekLow52: 420, type: 'Stock' },
+      { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', industry: 'Health Insurance', qty: 15, avgCost: 520.00, weekHigh52: 640, weekLow52: 460, type: 'Stock' },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 80, avgCost: 108.00, weekHigh52: 220, weekLow52: 102, type: 'Stock' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer', industry: 'Wholesale Retail', qty: 10, avgCost: 720.00, weekHigh52: 1020, weekLow52: 685, type: 'Stock' },
+      { symbol: 'LLY', name: 'Eli Lilly & Co.', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 12, avgCost: 750.00, weekHigh52: 980, weekLow52: 710, type: 'Stock' },
     ],
   },
   livermore: {
-    label: 'Jesse Livermore · Momentum Rider',
-    description: 'Ride the trend, cut losses fast',
+    label: 'Diversified Growth',
+    description: 'Broad-market core with growth tilt',
     positions: [
-      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 80, avgCost: 420.50, weekHigh52: 526, weekLow52: 315 },
-      { symbol: 'AMD', name: 'Advanced Micro Devices', sector: 'Technology', industry: 'Semiconductors', qty: 150, avgCost: 142.30, weekHigh52: 178, weekLow52: 107 },
-      { symbol: 'TSLA', name: 'Tesla Inc.', sector: 'Automotive', industry: 'Electric Vehicles', qty: 60, avgCost: 215.80, weekHigh52: 270, weekLow52: 162 },
-      { symbol: 'SMCI', name: 'Super Micro Computer', sector: 'Technology', industry: 'Server Hardware', qty: 40, avgCost: 385.20, weekHigh52: 482, weekLow52: 289 },
-      { symbol: 'ARM', name: 'ARM Holdings', sector: 'Technology', industry: 'Chip Design', qty: 55, avgCost: 128.40, weekHigh52: 161, weekLow52: 96 },
-      { symbol: 'MSTR', name: 'MicroStrategy Inc.', sector: 'Technology', industry: 'Bitcoin Treasury', qty: 20, avgCost: 285.60, weekHigh52: 357, weekLow52: 214 },
-      { symbol: 'COIN', name: 'Coinbase Global', sector: 'Financial Services', industry: 'Crypto Exchange', qty: 45, avgCost: 168.30, weekHigh52: 210, weekLow52: 126 },
-      { symbol: 'PLTR', name: 'Palantir Technologies', sector: 'Technology', industry: 'Data Analytics', qty: 200, avgCost: 18.40, weekHigh52: 23, weekLow52: 14 },
-      { symbol: 'RKLB', name: 'Rocket Lab USA', sector: 'Industrials', industry: 'Space', qty: 300, avgCost: 8.20, weekHigh52: 10, weekLow52: 6 },
-      { symbol: 'SOFI', name: 'SoFi Technologies', sector: 'Financial Services', industry: 'Digital Banking', qty: 400, avgCost: 9.80, weekHigh52: 12, weekLow52: 7 },
+      { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'Core ETF', industry: 'S&P 500 ETF', qty: 25, avgCost: 480.00, weekHigh52: 620, weekLow52: 380, type: 'ETF' },
+      { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Core ETF', industry: 'Nasdaq-100 ETF', qty: 20, avgCost: 415.00, weekHigh52: 560, weekLow52: 330, type: 'ETF' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 60, avgCost: 140.00, weekHigh52: 230, weekLow52: 140, type: 'Stock' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 20, avgCost: 415.00, weekHigh52: 520, weekLow52: 385, type: 'Stock' },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banking', qty: 45, avgCost: 195.00, weekHigh52: 285, weekLow52: 180, type: 'Stock' },
+      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Design Software', qty: 25, avgCost: 560.00, weekHigh52: 650, weekLow52: 420, type: 'Stock' },
+      { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', industry: 'Health Insurance', qty: 15, avgCost: 520.00, weekHigh52: 640, weekLow52: 460, type: 'Stock' },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 80, avgCost: 108.00, weekHigh52: 220, weekLow52: 102, type: 'Stock' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer', industry: 'Wholesale Retail', qty: 10, avgCost: 720.00, weekHigh52: 1020, weekLow52: 685, type: 'Stock' },
+      { symbol: 'LLY', name: 'Eli Lilly & Co.', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 12, avgCost: 750.00, weekHigh52: 980, weekLow52: 710, type: 'Stock' },
     ],
   },
   soros: {
-    label: 'George Soros · Macro Strategist',
-    description: 'Global macro positioning',
+    label: 'Diversified Growth',
+    description: 'Broad-market core with growth tilt',
     positions: [
-      { symbol: 'GLD', name: 'SPDR Gold Trust', sector: 'Materials', industry: 'Gold ETF', qty: 150, avgCost: 185.40, weekHigh52: 232, weekLow52: 139 },
-      { symbol: 'TLT', name: 'iShares 20+ Year Treasury', sector: 'Financial Services', industry: 'Long Treasury ETF', qty: 300, avgCost: 92.80, weekHigh52: 116, weekLow52: 70 },
-      { symbol: 'EEM', name: 'iShares MSCI Emerging Markets', sector: 'International', industry: 'Emerging Markets ETF', qty: 200, avgCost: 38.60, weekHigh52: 48, weekLow52: 29 },
-      { symbol: 'FXI', name: 'iShares China Large-Cap', sector: 'International', industry: 'China ETF', qty: 250, avgCost: 24.30, weekHigh52: 30, weekLow52: 18 },
-      { symbol: 'GDX', name: 'VanEck Gold Miners ETF', sector: 'Materials', industry: 'Gold Miners ETF', qty: 180, avgCost: 28.40, weekHigh52: 36, weekLow52: 21 },
-      { symbol: 'USO', name: 'United States Oil Fund', sector: 'Energy', industry: 'Oil ETF', qty: 120, avgCost: 68.20, weekHigh52: 85, weekLow52: 51 },
-      { symbol: 'SPY', name: 'SPDR S&P 500 ETF', sector: 'Industrials', industry: 'S&P 500 ETF', qty: 40, avgCost: 445.80, weekHigh52: 557, weekLow52: 334 },
-      { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Technology', industry: 'Nasdaq ETF', qty: 30, avgCost: 368.40, weekHigh52: 461, weekLow52: 276 },
-      { symbol: 'UUP', name: 'Invesco DB USD Index Bullish', sector: 'Financial Services', industry: 'USD ETF', qty: 400, avgCost: 28.60, weekHigh52: 36, weekLow52: 21 },
-      { symbol: 'BITO', name: 'ProShares Bitcoin Strategy', sector: 'Financial Services', industry: 'Bitcoin ETF', qty: 100, avgCost: 22.40, weekHigh52: 28, weekLow52: 17 },
+      { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'Core ETF', industry: 'S&P 500 ETF', qty: 25, avgCost: 480.00, weekHigh52: 620, weekLow52: 380, type: 'ETF' },
+      { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Core ETF', industry: 'Nasdaq-100 ETF', qty: 20, avgCost: 415.00, weekHigh52: 560, weekLow52: 330, type: 'ETF' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 60, avgCost: 140.00, weekHigh52: 230, weekLow52: 140, type: 'Stock' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 20, avgCost: 415.00, weekHigh52: 520, weekLow52: 385, type: 'Stock' },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banking', qty: 45, avgCost: 195.00, weekHigh52: 285, weekLow52: 180, type: 'Stock' },
+      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Design Software', qty: 25, avgCost: 560.00, weekHigh52: 650, weekLow52: 420, type: 'Stock' },
+      { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', industry: 'Health Insurance', qty: 15, avgCost: 520.00, weekHigh52: 640, weekLow52: 460, type: 'Stock' },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 80, avgCost: 108.00, weekHigh52: 220, weekLow52: 102, type: 'Stock' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer', industry: 'Wholesale Retail', qty: 10, avgCost: 720.00, weekHigh52: 1020, weekLow52: 685, type: 'Stock' },
+      { symbol: 'LLY', name: 'Eli Lilly & Co.', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 12, avgCost: 750.00, weekHigh52: 980, weekLow52: 710, type: 'Stock' },
     ],
   },
   munger: {
-    label: 'Charlie Munger · Dividend Compounder',
-    description: 'Quality businesses held forever',
+    label: 'Diversified Growth',
+    description: 'Broad-market core with growth tilt',
     positions: [
-      { symbol: 'BRK.B', name: 'Berkshire Hathaway B', sector: 'Financial Services', industry: 'Conglomerate', qty: 100, avgCost: 325.40, weekHigh52: 407, weekLow52: 244 },
-      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer', industry: 'Wholesale Retail', qty: 45, avgCost: 568.20, weekHigh52: 710, weekLow52: 426 },
-      { symbol: 'V', name: 'Visa Inc.', sector: 'Financial Services', industry: 'Payments', qty: 80, avgCost: 228.60, weekHigh52: 286, weekLow52: 171 },
-      { symbol: 'MA', name: 'Mastercard Inc.', sector: 'Financial Services', industry: 'Payments', qty: 60, avgCost: 385.40, weekHigh52: 482, weekLow52: 289 },
-      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 55, avgCost: 312.80, weekHigh52: 391, weekLow52: 235 },
-      { symbol: 'WM', name: 'Waste Management Inc.', sector: 'Industrials', industry: 'Waste Management', qty: 70, avgCost: 168.30, weekHigh52: 210, weekLow52: 126 },
-      { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', industry: 'Health Insurance', qty: 25, avgCost: 485.60, weekHigh52: 607, weekLow52: 364 },
-      { symbol: 'SPGI', name: 'S&P Global Inc.', sector: 'Financial Services', industry: 'Data & Analytics', qty: 30, avgCost: 415.20, weekHigh52: 519, weekLow52: 311 },
-      { symbol: 'ROL', name: 'Rollins Inc.', sector: 'Consumer', industry: 'Pest Control', qty: 150, avgCost: 42.80, weekHigh52: 54, weekLow52: 32 },
-      { symbol: 'NVO', name: 'Novo Nordisk', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 65, avgCost: 108.40, weekHigh52: 136, weekLow52: 81 },
+      { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'Core ETF', industry: 'S&P 500 ETF', qty: 25, avgCost: 480.00, weekHigh52: 620, weekLow52: 380, type: 'ETF' },
+      { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Core ETF', industry: 'Nasdaq-100 ETF', qty: 20, avgCost: 415.00, weekHigh52: 560, weekLow52: 330, type: 'ETF' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 60, avgCost: 140.00, weekHigh52: 230, weekLow52: 140, type: 'Stock' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 20, avgCost: 415.00, weekHigh52: 520, weekLow52: 385, type: 'Stock' },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banking', qty: 45, avgCost: 195.00, weekHigh52: 285, weekLow52: 180, type: 'Stock' },
+      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Design Software', qty: 25, avgCost: 560.00, weekHigh52: 650, weekLow52: 420, type: 'Stock' },
+      { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', industry: 'Health Insurance', qty: 15, avgCost: 520.00, weekHigh52: 640, weekLow52: 460, type: 'Stock' },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 80, avgCost: 108.00, weekHigh52: 220, weekLow52: 102, type: 'Stock' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer', industry: 'Wholesale Retail', qty: 10, avgCost: 720.00, weekHigh52: 1020, weekLow52: 685, type: 'Stock' },
+      { symbol: 'LLY', name: 'Eli Lilly & Co.', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 12, avgCost: 750.00, weekHigh52: 980, weekLow52: 710, type: 'Stock' },
     ],
   },
 };
@@ -139,67 +140,64 @@ const DAY = 86400000;
 
 export const DEMO_ORDERS: Record<string, DemoOrderDef[]> = {
   buffett: [
-    { symbol: 'AAPL', qty: 50, side: 'buy', type: 'market', status: 'filled', filledPrice: 162.40, filledAt: new Date(NOW - 180 * DAY), timeInForce: 'day' },
-    { symbol: 'AAPL', qty: 50, side: 'buy', type: 'market', status: 'filled', filledPrice: 168.00, filledAt: new Date(NOW - 90 * DAY), timeInForce: 'day' },
-    { symbol: 'KO', qty: 300, side: 'buy', type: 'limit', status: 'filled', filledPrice: 58.40, filledAt: new Date(NOW - 365 * DAY), timeInForce: 'gtc' },
-    { symbol: 'BAC', qty: 400, side: 'buy', type: 'market', status: 'filled', filledPrice: 32.80, filledAt: new Date(NOW - 300 * DAY), timeInForce: 'day' },
-    { symbol: 'CVX', qty: 90, side: 'buy', type: 'limit', status: 'filled', filledPrice: 152.30, filledAt: new Date(NOW - 200 * DAY), timeInForce: 'gtc' },
-    { symbol: 'OXY', qty: 200, side: 'buy', type: 'market', status: 'filled', filledPrice: 58.70, filledAt: new Date(NOW - 150 * DAY), timeInForce: 'day' },
-    { symbol: 'MCO', qty: 35, side: 'buy', type: 'limit', status: 'filled', filledPrice: 368.40, filledAt: new Date(NOW - 240 * DAY), timeInForce: 'gtc' },
-    { symbol: 'KHC', qty: 250, side: 'buy', type: 'market', status: 'filled', filledPrice: 34.20, filledAt: new Date(NOW - 280 * DAY), timeInForce: 'day' },
-    { symbol: 'VZ', qty: 300, side: 'buy', type: 'market', status: 'filled', filledPrice: 38.60, filledAt: new Date(NOW - 320 * DAY), timeInForce: 'day' },
-    { symbol: 'JNJ', qty: 75, side: 'buy', type: 'limit', status: 'filled', filledPrice: 155.80, filledAt: new Date(NOW - 100 * DAY), timeInForce: 'gtc' },
-    { symbol: 'AXP', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 168.50, filledAt: new Date(NOW - 150 * DAY), timeInForce: 'day' },
+    { symbol: 'SPY', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 480.00, filledAt: new Date('2024-01-08T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'QQQ', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-01-08T14:31:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 140.00, filledAt: new Date('2024-01-15T14:45:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-02-05T15:00:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2024-02-20T19:30:00Z'), timeInForce: 'day' },
+    { symbol: 'ADBE', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 560.00, filledAt: new Date('2024-03-01T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'UNH', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 520.00, filledAt: new Date('2024-04-12T15:15:00Z'), timeInForce: 'day' },
+    { symbol: 'NVDA', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 108.00, filledAt: new Date('2024-08-15T14:15:00Z'), timeInForce: 'day' },
+    { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 720.00, filledAt: new Date('2024-05-03T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'LLY', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 750.00, filledAt: new Date('2024-06-18T14:45:00Z'), timeInForce: 'day' },
   ],
   lynch: [
-    { symbol: 'META', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 285.40, filledAt: new Date(NOW - 45 * DAY), timeInForce: 'day' },
-    { symbol: 'META', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 291.20, filledAt: new Date(NOW - 30 * DAY), timeInForce: 'day' },
-    { symbol: 'MSFT', qty: 40, side: 'buy', type: 'limit', status: 'filled', filledPrice: 395.00, filledAt: new Date(NOW - 60 * DAY), timeInForce: 'gtc' },
-    { symbol: 'GOOGL', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 178.00, filledAt: new Date(NOW - 90 * DAY), timeInForce: 'day' },
-    { symbol: 'NVDA', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 110.00, filledAt: new Date(NOW - 15 * DAY), timeInForce: 'day' },
-    { symbol: 'AMZN', qty: 60, side: 'buy', type: 'limit', status: 'filled', filledPrice: 235.00, filledAt: new Date(NOW - 75 * DAY), timeInForce: 'gtc' },
-    { symbol: 'CRM', qty: 70, side: 'buy', type: 'market', status: 'filled', filledPrice: 175.00, filledAt: new Date(NOW - 120 * DAY), timeInForce: 'day' },
-    { symbol: 'NFLX', qty: 250, side: 'buy', type: 'market', status: 'filled', filledPrice: 95.00, filledAt: new Date(NOW - 20 * DAY), timeInForce: 'day' },
-    { symbol: 'ADBE', qty: 20, side: 'buy', type: 'limit', status: 'filled', filledPrice: 400.00, filledAt: new Date(NOW - 50 * DAY), timeInForce: 'gtc' },
-    { symbol: 'UBER', qty: 120, side: 'buy', type: 'market', status: 'filled', filledPrice: 65.00, filledAt: new Date(NOW - 35 * DAY), timeInForce: 'day' },
-    { symbol: 'SQ', qty: 85, side: 'buy', type: 'market', status: 'filled', filledPrice: 80.00, filledAt: new Date(NOW - 10 * DAY), timeInForce: 'day' },
+    { symbol: 'SPY', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 480.00, filledAt: new Date('2024-01-08T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'QQQ', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-01-08T14:31:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 140.00, filledAt: new Date('2024-01-15T14:45:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-02-05T15:00:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2024-02-20T19:30:00Z'), timeInForce: 'day' },
+    { symbol: 'ADBE', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 560.00, filledAt: new Date('2024-03-01T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'UNH', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 520.00, filledAt: new Date('2024-04-12T15:15:00Z'), timeInForce: 'day' },
+    { symbol: 'NVDA', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 108.00, filledAt: new Date('2024-08-15T14:15:00Z'), timeInForce: 'day' },
+    { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 720.00, filledAt: new Date('2024-05-03T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'LLY', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 750.00, filledAt: new Date('2024-06-18T14:45:00Z'), timeInForce: 'day' },
   ],
   livermore: [
-    { symbol: 'NVDA', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 420.50, filledAt: new Date(NOW - 25 * DAY), timeInForce: 'day' },
-    { symbol: 'AMD', qty: 150, side: 'buy', type: 'market', status: 'filled', filledPrice: 142.30, filledAt: new Date(NOW - 18 * DAY), timeInForce: 'day' },
-    { symbol: 'TSLA', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 205.30, filledAt: new Date(NOW - 45 * DAY), timeInForce: 'day' },
-    { symbol: 'TSLA', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 236.80, filledAt: new Date(NOW - 12 * DAY), timeInForce: 'day' },
-    { symbol: 'SMCI', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 385.20, filledAt: new Date(NOW - 8 * DAY), timeInForce: 'day' },
-    { symbol: 'COIN', qty: 45, side: 'buy', type: 'limit', status: 'filled', filledPrice: 168.30, filledAt: new Date(NOW - 22 * DAY), timeInForce: 'gtc' },
-    { symbol: 'PLTR', qty: 200, side: 'buy', type: 'limit', status: 'filled', filledPrice: 18.40, filledAt: new Date(NOW - 90 * DAY), timeInForce: 'gtc' },
-    { symbol: 'RKLB', qty: 300, side: 'buy', type: 'market', status: 'filled', filledPrice: 8.20, filledAt: new Date(NOW - 6 * DAY), timeInForce: 'day' },
-    { symbol: 'SOFI', qty: 400, side: 'buy', type: 'market', status: 'filled', filledPrice: 9.80, filledAt: new Date(NOW - 4 * DAY), timeInForce: 'day' },
-    { symbol: 'MSTR', qty: 20, side: 'buy', type: 'limit', status: 'filled', filledPrice: 285.60, filledAt: new Date(NOW - 14 * DAY), timeInForce: 'gtc' },
-    { symbol: 'ARM', qty: 55, side: 'buy', type: 'market', status: 'filled', filledPrice: 128.40, filledAt: new Date(NOW - 10 * DAY), timeInForce: 'day' },
+    { symbol: 'SPY', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 480.00, filledAt: new Date('2024-01-08T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'QQQ', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-01-08T14:31:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 140.00, filledAt: new Date('2024-01-15T14:45:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-02-05T15:00:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2024-02-20T19:30:00Z'), timeInForce: 'day' },
+    { symbol: 'ADBE', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 560.00, filledAt: new Date('2024-03-01T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'UNH', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 520.00, filledAt: new Date('2024-04-12T15:15:00Z'), timeInForce: 'day' },
+    { symbol: 'NVDA', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 108.00, filledAt: new Date('2024-08-15T14:15:00Z'), timeInForce: 'day' },
+    { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 720.00, filledAt: new Date('2024-05-03T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'LLY', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 750.00, filledAt: new Date('2024-06-18T14:45:00Z'), timeInForce: 'day' },
   ],
   munger: [
-    { symbol: 'BRK.B', qty: 100, side: 'buy', type: 'market', status: 'filled', filledPrice: 325.40, filledAt: new Date(NOW - 400 * DAY), timeInForce: 'day' },
-    { symbol: 'COST', qty: 45, side: 'buy', type: 'limit', status: 'filled', filledPrice: 568.20, filledAt: new Date(NOW - 250 * DAY), timeInForce: 'gtc' },
-    { symbol: 'V', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 228.60, filledAt: new Date(NOW - 365 * DAY), timeInForce: 'day' },
-    { symbol: 'MA', qty: 60, side: 'buy', type: 'limit', status: 'filled', filledPrice: 385.40, filledAt: new Date(NOW - 180 * DAY), timeInForce: 'gtc' },
-    { symbol: 'MSFT', qty: 55, side: 'buy', type: 'market', status: 'filled', filledPrice: 312.80, filledAt: new Date(NOW - 210 * DAY), timeInForce: 'day' },
-    { symbol: 'NVO', qty: 65, side: 'buy', type: 'market', status: 'filled', filledPrice: 108.40, filledAt: new Date(NOW - 60 * DAY), timeInForce: 'day' },
-    { symbol: 'UNH', qty: 25, side: 'buy', type: 'limit', status: 'filled', filledPrice: 485.60, filledAt: new Date(NOW - 140 * DAY), timeInForce: 'gtc' },
-    { symbol: 'SPGI', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.20, filledAt: new Date(NOW - 170 * DAY), timeInForce: 'day' },
-    { symbol: 'WM', qty: 70, side: 'buy', type: 'market', status: 'filled', filledPrice: 168.30, filledAt: new Date(NOW - 290 * DAY), timeInForce: 'day' },
-    { symbol: 'ROL', qty: 150, side: 'buy', type: 'limit', status: 'filled', filledPrice: 42.80, filledAt: new Date(NOW - 330 * DAY), timeInForce: 'gtc' },
+    { symbol: 'SPY', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 480.00, filledAt: new Date('2024-01-08T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'QQQ', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-01-08T14:31:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 140.00, filledAt: new Date('2024-01-15T14:45:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-02-05T15:00:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2024-02-20T19:30:00Z'), timeInForce: 'day' },
+    { symbol: 'ADBE', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 560.00, filledAt: new Date('2024-03-01T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'UNH', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 520.00, filledAt: new Date('2024-04-12T15:15:00Z'), timeInForce: 'day' },
+    { symbol: 'NVDA', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 108.00, filledAt: new Date('2024-08-15T14:15:00Z'), timeInForce: 'day' },
+    { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 720.00, filledAt: new Date('2024-05-03T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'LLY', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 750.00, filledAt: new Date('2024-06-18T14:45:00Z'), timeInForce: 'day' },
   ],
   soros: [
-    { symbol: 'GLD', qty: 150, side: 'buy', type: 'market', status: 'filled', filledPrice: 185.40, filledAt: new Date(NOW - 120 * DAY), timeInForce: 'day' },
-    { symbol: 'TLT', qty: 200, side: 'buy', type: 'limit', status: 'filled', filledPrice: 89.60, filledAt: new Date(NOW - 90 * DAY), timeInForce: 'gtc' },
-    { symbol: 'TLT', qty: 100, side: 'buy', type: 'market', status: 'filled', filledPrice: 96.00, filledAt: new Date(NOW - 30 * DAY), timeInForce: 'day' },
-    { symbol: 'EEM', qty: 200, side: 'buy', type: 'market', status: 'filled', filledPrice: 38.60, filledAt: new Date(NOW - 150 * DAY), timeInForce: 'day' },
-    { symbol: 'FXI', qty: 250, side: 'buy', type: 'limit', status: 'filled', filledPrice: 24.30, filledAt: new Date(NOW - 180 * DAY), timeInForce: 'gtc' },
-    { symbol: 'GDX', qty: 180, side: 'buy', type: 'market', status: 'filled', filledPrice: 28.40, filledAt: new Date(NOW - 110 * DAY), timeInForce: 'day' },
-    { symbol: 'USO', qty: 120, side: 'buy', type: 'limit', status: 'filled', filledPrice: 68.20, filledAt: new Date(NOW - 80 * DAY), timeInForce: 'gtc' },
-    { symbol: 'SPY', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 445.80, filledAt: new Date(NOW - 200 * DAY), timeInForce: 'day' },
-    { symbol: 'QQQ', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 368.40, filledAt: new Date(NOW - 190 * DAY), timeInForce: 'day' },
-    { symbol: 'BITO', qty: 100, side: 'buy', type: 'market', status: 'filled', filledPrice: 22.40, filledAt: new Date(NOW - 20 * DAY), timeInForce: 'day' },
+    { symbol: 'SPY', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 480.00, filledAt: new Date('2024-01-08T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'QQQ', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-01-08T14:31:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 140.00, filledAt: new Date('2024-01-15T14:45:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2024-02-05T15:00:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2024-02-20T19:30:00Z'), timeInForce: 'day' },
+    { symbol: 'ADBE', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 560.00, filledAt: new Date('2024-03-01T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'UNH', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 520.00, filledAt: new Date('2024-04-12T15:15:00Z'), timeInForce: 'day' },
+    { symbol: 'NVDA', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 108.00, filledAt: new Date('2024-08-15T14:15:00Z'), timeInForce: 'day' },
+    { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 720.00, filledAt: new Date('2024-05-03T18:00:00Z'), timeInForce: 'day' },
+    { symbol: 'LLY', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 750.00, filledAt: new Date('2024-06-18T14:45:00Z'), timeInForce: 'day' },
   ],
 };
 
@@ -292,7 +290,7 @@ export function getDemoAccount(
     const rawPnlPercent = p.avgCost > 0
       ? Math.round(((currentPrice - p.avgCost) / p.avgCost) * 10000) / 100
       : 0;
-    const totalPnlPercent = Math.max(rawPnlPercent, -25);
+    const totalPnlPercent = rawPnlPercent;
 
     const weekHigh52 = p.weekHigh52 ?? Math.round(currentPrice * 1.2 * 100) / 100;
     const weekLow52 = p.weekLow52 ?? Math.round(currentPrice * 0.75 * 100) / 100;
@@ -312,13 +310,14 @@ export function getDemoAccount(
       sector: p.sector,
       weekHigh52,
       weekLow52,
+      type: p.type,
     };
   });
 
   const totalValue = positions.reduce((s, p) => s + p.marketValue, 0);
   const totalCost = positions.reduce((s, p) => s + p.qty * p.avgCost, 0);
   const totalPnl = totalValue - totalCost;
-  const totalPnlPercent = Math.max(totalCost > 0 ? (totalPnl / totalCost) * 100 : 0, -25);
+  const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
   for (const pos of positions) {
     pos.portfolioPercent = totalValue > 0 ? (pos.marketValue / totalValue) * 100 : 0;
@@ -327,9 +326,10 @@ export function getDemoAccount(
   const dayPnl = positions.reduce((s, p) => s + p.dayChange, 0);
   const dayPnlPercent = totalValue > 0 ? (dayPnl / (totalValue - dayPnl)) * 100 : 0;
 
-  const equity = totalValue;
-  const cash = Math.round(equity * 0.12 * 100) / 100;
-  const buyingPower = Math.round(equity * 1.5 * 100) / 100;
+  const CASH_BALANCE = 57585;
+  const equity = totalValue + CASH_BALANCE;
+  const cash = CASH_BALANCE;
+  const buyingPower = CASH_BALANCE;
 
   return {
     equity,
@@ -563,7 +563,7 @@ export const AVAILABLE_STYLES = Object.keys(DEMO_PORTFOLIOS);
 export function getDemoPortfolio(investorStyle: string): {
   name: string;
   description: string;
-  positions: Array<{ symbol: string; qty: number; avgCost: number; name: string; sector: string; industry?: string; weekHigh52?: number; weekLow52?: number }>;
+  positions: Array<{ symbol: string; qty: number; avgCost: number; name: string; sector: string; industry?: string; weekHigh52?: number; weekLow52?: number; type?: 'Stock' | 'ETF' }>;
 } {
   const portfolio = DEMO_PORTFOLIOS[investorStyle as InvestorStyle] || DEMO_PORTFOLIOS.lynch;
   return {
@@ -578,6 +578,7 @@ export function getDemoPortfolio(investorStyle: string): {
       industry: p.industry,
       weekHigh52: p.weekHigh52,
       weekLow52: p.weekLow52,
+      type: p.type,
     })),
   };
 }
@@ -592,52 +593,17 @@ export function isUserInDemo(user: any): boolean {
 
 /**
  * Static demo positions for AI context building.
- * Matches the demo portfolio totals: ~$117,795 value, -$10,207 total P&L, -$1,117 today.
+ * 10-position diversified portfolio: $95,545 value, +$3,130 total P&L.
  */
 export const demoPositions = [
-  {
-    symbol: 'AAPL', name: 'Apple Inc.', qty: 100, currentPrice: 173.45, avgCost: 165.20,
-    marketValue: 17345, totalPnl: 825, totalPnlPct: 5.0, todayChange: -47, todayChangePct: -0.27,
-    pctOfAccount: 14.7, sector: 'Technology',
-  },
-  {
-    symbol: 'MSFT', name: 'Microsoft Corp.', qty: 60, currentPrice: 381.20, avgCost: 405.00,
-    marketValue: 22872, totalPnl: -1428, totalPnlPct: -5.9, todayChange: -168, todayChangePct: -0.73,
-    pctOfAccount: 19.4, sector: 'Technology',
-  },
-  {
-    symbol: 'GOOGL', name: 'Alphabet Inc.', qty: 80, currentPrice: 152.10, avgCost: 168.50,
-    marketValue: 12168, totalPnl: -1312, totalPnlPct: -9.7, todayChange: -84, todayChangePct: -0.69,
-    pctOfAccount: 10.3, sector: 'Technology',
-  },
-  {
-    symbol: 'META', name: 'Meta Platforms', qty: 45, currentPrice: 468.30, avgCost: 512.40,
-    marketValue: 21074, totalPnl: -1985, totalPnlPct: -8.6, todayChange: -158, todayChangePct: -0.74,
-    pctOfAccount: 17.9, sector: 'Technology',
-  },
-  {
-    symbol: 'NVDA', name: 'NVIDIA Corp.', qty: 70, currentPrice: 108.60, avgCost: 95.80,
-    marketValue: 7602, totalPnl: 896, totalPnlPct: 13.4, todayChange: -210, todayChangePct: -2.69,
-    pctOfAccount: 6.5, sector: 'Technology',
-  },
-  {
-    symbol: 'AMZN', name: 'Amazon.com', qty: 55, currentPrice: 189.70, avgCost: 201.50,
-    marketValue: 10434, totalPnl: -649, totalPnlPct: -5.9, todayChange: -56, todayChangePct: -0.53,
-    pctOfAccount: 8.9, sector: 'Consumer Discretionary',
-  },
-  {
-    symbol: 'AVGO', name: 'Broadcom Inc.', qty: 15, currentPrice: 148.50, avgCost: 178.30,
-    marketValue: 2228, totalPnl: -447, totalPnlPct: -16.7, todayChange: -28, todayChangePct: -1.24,
-    pctOfAccount: 1.9, sector: 'Technology',
-  },
-  {
-    symbol: 'JNJ', name: 'Johnson & Johnson', qty: 75, currentPrice: 147.62, avgCost: 155.80,
-    marketValue: 11072, totalPnl: -614, totalPnlPct: -5.2, todayChange: -18, todayChangePct: -0.16,
-    pctOfAccount: 9.4, sector: 'Healthcare',
-  },
-  {
-    symbol: 'SPY', name: 'SPDR S&P 500 ETF', qty: 21, currentPrice: 739.22, avgCost: 745.00,
-    marketValue: 15524, totalPnl: -121, totalPnlPct: -0.8, todayChange: -46, todayChangePct: -0.30,
-    pctOfAccount: 13.2, sector: 'ETF',
-  },
+  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', qty: 25, currentPrice: 520.00, avgCost: 480.00, marketValue: 13000, totalPnl: 1000.00, totalPnlPct: 8.3, todayChange: 32.00, todayChangePct: 0.25, pctOfAccount: 13.6, sector: 'Core ETF' },
+  { symbol: 'QQQ', name: 'Invesco QQQ Trust', qty: 20, currentPrice: 450.00, avgCost: 415.00, marketValue: 9000, totalPnl: 700.00, totalPnlPct: 8.4, todayChange: 24.00, todayChangePct: 0.27, pctOfAccount: 9.4, sector: 'Core ETF' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', qty: 60, currentPrice: 155.00, avgCost: 140.00, marketValue: 9300, totalPnl: 900.00, totalPnlPct: 10.7, todayChange: 45.00, todayChangePct: 0.49, pctOfAccount: 9.7, sector: 'Technology' },
+  { symbol: 'MSFT', name: 'Microsoft Corp.', qty: 20, currentPrice: 450.00, avgCost: 415.00, marketValue: 9000, totalPnl: 700.00, totalPnlPct: 8.4, todayChange: 18.00, todayChangePct: 0.20, pctOfAccount: 9.4, sector: 'Technology' },
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', qty: 45, currentPrice: 220.00, avgCost: 195.00, marketValue: 9900, totalPnl: 1125.00, totalPnlPct: 12.8, todayChange: 38.00, todayChangePct: 0.39, pctOfAccount: 10.4, sector: 'Financial Services' },
+  { symbol: 'ADBE', name: 'Adobe Inc.', qty: 25, currentPrice: 485.00, avgCost: 560.00, marketValue: 12125, totalPnl: -1875.00, totalPnlPct: -13.4, todayChange: -28.00, todayChangePct: -0.23, pctOfAccount: 12.7, sector: 'Technology' },
+  { symbol: 'UNH', name: 'UnitedHealth Group', qty: 15, currentPrice: 316.00, avgCost: 520.00, marketValue: 4740, totalPnl: -3060.00, totalPnlPct: -39.2, todayChange: -22.00, todayChangePct: -0.46, pctOfAccount: 5.0, sector: 'Healthcare' },
+  { symbol: 'NVDA', name: 'NVIDIA Corp.', qty: 80, currentPrice: 135.00, avgCost: 108.00, marketValue: 10800, totalPnl: 2160.00, totalPnlPct: 25.0, todayChange: 56.00, todayChangePct: 0.52, pctOfAccount: 11.3, sector: 'Technology' },
+  { symbol: 'COST', name: 'Costco Wholesale', qty: 10, currentPrice: 760.00, avgCost: 720.00, marketValue: 7600, totalPnl: 400.00, totalPnlPct: 5.6, todayChange: 14.00, todayChangePct: 0.18, pctOfAccount: 8.0, sector: 'Consumer' },
+  { symbol: 'LLY', name: 'Eli Lilly & Co.', qty: 12, currentPrice: 840.00, avgCost: 750.00, marketValue: 10080, totalPnl: 1080.00, totalPnlPct: 12.0, todayChange: 22.00, todayChangePct: 0.22, pctOfAccount: 10.6, sector: 'Healthcare' },
 ];

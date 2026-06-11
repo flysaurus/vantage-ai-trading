@@ -46,6 +46,7 @@ export interface Position {
   sector?: string;
   weekHigh52?: number;
   weekLow52?: number;
+  type?: 'Stock' | 'ETF';
 }
 
 export interface SectorAllocation {
