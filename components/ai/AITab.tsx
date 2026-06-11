@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import dynamic from 'next/dynamic';
+import { persistChat, loadSessions, loadSessionMessages, groupSessionsByDay } from '@/lib/chat-history';
+import type { ChatSession } from '@/lib/chat-history';
 
 const WeeklySnapshotCard = dynamic(() => import('./WeeklySnapshotCard'), { ssr: false });
 
@@ -51,7 +53,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [marketHeadline, setMarketHeadline] = useState('');
   const [marketNewsUrl, setMarketNewsUrl] = useState('');
   const [portfolioSummary, setPortfolioSummary] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── portfolio context for AI (shared live-priced data from PortfolioProvider) ──
@@ -170,6 +176,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
     fetchPortfolioSummary();
   }, []);
 
+  // ── persist chat to localStorage whenever messages change ──
+  useEffect(() => {
+    const id = persistChat(messages, currentSessionId);
+    if (id !== currentSessionId) setCurrentSessionId(id);
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── helpers ──
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -177,7 +189,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }, 50);
   };
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
     // Rate limiting
@@ -205,7 +217,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         body: JSON.stringify({
           messages: newMessages,
           portfolioContext,
-          mode: 'chat'
+          mode
         })
       });
 
@@ -260,9 +272,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   };
 
-  // ── send to chat from tappable rows ──
+  // ── send to chat from tappable items (with toast + scroll) ──
   const sendToChat = (message: string) => {
     sendMessage(message);
+    // Show toast
+    setToast('💬 Sent to Vantage AI — scroll up to see response');
+    setTimeout(() => setToast(null), 2000);
+    // Scroll to chat area after a short delay for rendering
+    setTimeout(() => {
+      chatAreaRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
   };
 
   // ── derived data from shared portfolio context ──
@@ -357,6 +376,34 @@ export function AITab({ messages, setMessages }: AITabProps) {
         </div>
       </div>
 
+      {/* Toast notification */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            background: 'rgba(34,211,238,0.2)',
+            borderBottom: '1px solid rgba(34,211,238,0.4)',
+            padding: '10px 16px',
+            textAlign: 'center',
+            fontSize: '13px',
+            color: '#ffffff',
+            animation: 'slideDown 0.3s ease-out',
+          }}
+        >
+          {toast}
+          <style>{`
+            @keyframes slideDown {
+              from { transform: translateY(-100%); }
+              to { transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* ─── 2. Daily Brief Card ─── */}
       <div
         style={{
@@ -440,7 +487,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
               borderRadius: '6px',
               padding: '8px 10px',
             }}
-            onClick={() => sendToChat('Scan my portfolio for urgent alerts')}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
+              );
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           >
             <div style={{ display: 'flex', alignItems: 'center' }}>
             <span
@@ -576,6 +628,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       {/* ─── 5. Chat Messages Area ─── */}
       <div
+        ref={chatAreaRef}
         id="chat-area"
         style={{
           minHeight: '200px',
@@ -774,6 +827,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 sendMessage('Generate a new weekly portfolio snapshot');
               } else if (btn.msg === 'brief-refresh') {
                 sendMessage('Refresh the daily brief for today');
+              } else if (btn.label === 'Alerts') {
+                sendMessage(btn.msg, 'alerts');
               } else {
                 sendMessage(btn.msg);
               }
@@ -897,6 +952,29 @@ export function AITab({ messages, setMessages }: AITabProps) {
         </div>
       </div>
 
+      {/* Chat history link */}
+      {(() => {
+        const sessions = loadSessions();
+        if (sessions.length === 0) return null;
+        return (
+          <div
+            onClick={() => setShowHistory(true)}
+            style={{
+              padding: '6px 16px 4px 16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+            }}
+          >
+            <span style={{ fontSize: '10px', color: '#22d3ee' }}>
+              💬 {sessions.length} previous conversation{sessions.length === 1 ? '' : 's'} →
+            </span>
+          </div>
+        );
+      })()}
+
       {/* ─── 8. Footer ─── */}
       <p
         style={{
@@ -920,6 +998,119 @@ export function AITab({ messages, setMessages }: AITabProps) {
           50% { opacity: 0; }
         }
       `}</style>
+
+      {/* ─── Chat History Bottom Sheet ─── */}
+      {showHistory && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+          }}
+          onClick={() => setShowHistory(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#0f172a',
+              borderTop: '1px solid #2a3448',
+              borderRadius: '16px 16px 0 0',
+              maxHeight: '70vh',
+              overflow: 'auto',
+              padding: '20px 16px 32px 16px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+              }}
+            >
+              <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                Chat History
+              </p>
+              <button
+                onClick={() => setShowHistory(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
+              Last 7 days · Tap to resume
+            </p>
+            {(() => {
+              const sessions = loadSessions();
+              const groups = groupSessionsByDay(sessions);
+              if (groups.length === 0) {
+                return (
+                  <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '20px 0' }}>
+                    No previous conversations
+                  </p>
+                );
+              }
+              return groups.map((group, gi) => (
+                <div key={gi} style={{ marginBottom: '12px' }}>
+                  <p style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', marginBottom: '4px' }}>
+                    {group.label} · {group.sessions.length} conversation{group.sessions.length === 1 ? '' : 's'}
+                  </p>
+                  {group.sessions.map((session) => {
+                    const firstMsg = session.messages[0]?.content || 'Empty chat';
+                    const preview = firstMsg.length > 60 ? firstMsg.slice(0, 57) + '...' : firstMsg;
+                    const time = new Date(session.timestamp).toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    });
+                    return (
+                      <div
+                        key={session.id}
+                        onClick={() => {
+                          const msgs = loadSessionMessages(session.id);
+                          if (msgs) {
+                            setMessages(msgs);
+                            setCurrentSessionId(session.id);
+                          }
+                          setShowHistory(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: 'rgba(34,211,238,0.04)',
+                          border: '1px solid rgba(34,211,238,0.08)',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        <span style={{ fontSize: '12px', color: '#94a3b8', flex: 1 }}>
+                          {preview}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b', marginLeft: '8px', flexShrink: 0 }}>
+                          {time}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* ─── Clear Confirm Modal ─── */}
       {showClearConfirm && (
