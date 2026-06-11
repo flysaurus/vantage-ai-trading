@@ -5,6 +5,8 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { persistChat, loadSessions, loadSessionMessages, groupSessionsByDay } from '@/lib/chat-history';
 import type { ChatSession } from '@/lib/chat-history';
+import { useChatStorage } from '@/hooks/useChatStorage';
+import { saveChatMessage } from '@/lib/chat-service';
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -34,6 +36,15 @@ interface AITabProps {
 export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
+  
+  // ── Supabase chat storage (previous sessions + message count) ──
+  const {
+    previousSession,
+    remainingMessages: supabaseRemaining,
+    loadPreviousSession,
+    dismissPreviousSession,
+    clearMessages: clearSupabaseMessages,
+  } = useChatStorage();
 
   // ── state ──
   const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
@@ -57,6 +68,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastAiResponseRef = useRef<string>('');
 
   // ── portfolio context for AI (shared live-priced data from PortfolioProvider) ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
@@ -233,6 +245,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Dismiss toast when first chunk arrives (AI is now responding)
+        setToast(null);
+
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
 
@@ -257,6 +272,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
             }
           }
         }
+        // Capture final AI response for Supabase persistence
+        lastAiResponseRef.current = aiContent;
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -266,20 +283,30 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }]);
     } finally {
       setLoading(false);
+      // Persist AI response to Supabase (non-blocking)
+      if (lastAiResponseRef.current) {
+        saveChatMessage('pending', 'assistant', lastAiResponseRef.current).catch(() => {});
+        lastAiResponseRef.current = '';
+      }
       scrollToBottom();
     }
   };
 
-  // ── send to chat from tappable items (with toast + scroll) ──
-  const sendToChat = (message: string) => {
+  // ── send to chat from tappable items (flash + toast, no scroll) ──
+  const sendToChat = (message: string, e?: React.MouseEvent) => {
+    // Flash effect: add cyan border for 100ms on the tapped element
+    if (e) {
+      const el = e.currentTarget as HTMLElement;
+      el.style.transition = 'box-shadow 0s';
+      el.style.boxShadow = '0 0 0 2px #22d3ee';
+      setTimeout(() => {
+        el.style.transition = 'box-shadow 400ms ease-out';
+        el.style.boxShadow = '';
+      }, 100);
+    }
     sendMessage(message);
-    // Show toast
-    setToast('💬 Sent to Vantage AI — scroll up to see response');
-    setTimeout(() => setToast(null), 2000);
-    // Scroll to chat area after a short delay for rendering
-    setTimeout(() => {
-      chatAreaRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 150);
+    // Show toast — dismissed when AI streaming starts (in sendMessage)
+    setToast('Vantage AI is responding...');
   };
 
   // ── derived data from shared portfolio context ──
@@ -374,29 +401,105 @@ export function AITab({ messages, setMessages }: AITabProps) {
         </div>
       </div>
 
+      {/* Previous session banner */}
+      {previousSession && messages.length === 0 && (
+        <div
+          style={{
+            ...cardBox,
+            margin: '8px 16px 0 16px',
+            padding: '12px 16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+            💬 Previous conversation from {previousSession.date}
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={dismissPreviousSession}
+              style={{
+                background: 'transparent',
+                border: '1px solid #374151',
+                borderRadius: '6px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                padding: '4px 12px',
+                cursor: 'pointer',
+              }}
+            >
+              Start Fresh
+            </button>
+            <button
+              onClick={loadPreviousSession}
+              style={{
+                background: 'rgba(34,211,238,0.15)',
+                border: '1px solid #22d3ee',
+                borderRadius: '6px',
+                color: '#22d3ee',
+                fontSize: '12px',
+                padding: '4px 12px',
+                cursor: 'pointer',
+              }}
+            >
+              Load
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Toast notification */}
       {toast && (
         <div
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
+            bottom: '80px',
+            left: '50%',
+            transform: 'translateX(-50%)',
             zIndex: 9999,
-            background: 'rgba(34,211,238,0.2)',
-            borderBottom: '1px solid rgba(34,211,238,0.4)',
-            padding: '10px 16px',
-            textAlign: 'center',
-            fontSize: '13px',
-            color: '#ffffff',
-            animation: 'slideDown 0.3s ease-out',
+            background: 'rgba(34,211,238,0.15)',
+            border: '1px solid #22d3ee',
+            borderRadius: '8px',
+            padding: '8px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            whiteSpace: 'nowrap',
           }}
         >
-          {toast}
+          <span
+            className="vantage-pulse-dot"
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: '#22d3ee',
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: '13px', color: '#22d3ee' }}>{toast}</span>
           <style>{`
-            @keyframes slideDown {
-              from { transform: translateY(-100%); }
-              to { transform: translateY(0); }
+            @keyframes vantageSlideUp {
+              from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+              to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+            }
+            @keyframes vantageToastOut {
+              from { opacity: 1; transform: translateX(-50%) translateY(0); }
+              to   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+            }
+            @keyframes vantagePulse {
+              0%, 100% { transform: scale(1); opacity: 1; }
+              50%      { transform: scale(1.5); opacity: 0.4; }
+            }
+            .vantage-pulse-dot {
+              animation: vantagePulse 1.2s ease-in-out infinite;
+            }
+            .vantage-toast-in {
+              animation: vantageSlideUp 0.3s ease-out forwards;
+            }
+            .vantage-toast-out {
+              animation: vantageToastOut 0.3s ease-in forwards;
             }
           `}</style>
         </div>
@@ -535,9 +638,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 marginBottom: '6px',
                 marginTop: '12px',
               }}
-              onClick={() => {
+              onClick={(e) => {
                 if (earnings[0]) {
-                  sendToChat(`Tell me about ${earnings[0].symbol} upcoming earnings`);
+                  sendToChat(`Tell me about ${earnings[0].symbol} upcoming earnings`, e);
                 }
               }}
             >
@@ -575,8 +678,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 borderRadius: '6px',
                 padding: '8px 10px',
               }}
-              onClick={() => {
-                sendToChat(`Tell me about ${earnings[1].symbol} upcoming earnings`);
+              onClick={(e) => {
+                sendToChat(`Tell me about ${earnings[1].symbol} upcoming earnings`, e);
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -743,7 +846,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               ].map((item, i) => (
                 <div
                   key={i}
-                  onClick={() => sendToChat(item.msg)}
+                  onClick={(e) => sendToChat(item.msg, e)}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -783,7 +886,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               ].map((item, i) => (
                 <div
                   key={i}
-                  onClick={() => sendToChat(item.msg)}
+                  onClick={(e) => sendToChat(item.msg, e)}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -823,7 +926,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               ].map((item, i) => (
                 <div
                   key={i}
-                  onClick={() => sendToChat(item.msg)}
+                  onClick={(e) => sendToChat(item.msg, e)}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -886,7 +989,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
             {suggestionChips.map((suggestion) => (
               <div
                 key={suggestion}
-                onClick={() => sendMessage(suggestion)}
+                onClick={(e) => {
+                  // Flash effect
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.transition = 'box-shadow 0s';
+                  el.style.boxShadow = '0 0 0 2px #22d3ee';
+                  setTimeout(() => {
+                    el.style.transition = 'box-shadow 400ms ease-out';
+                    el.style.boxShadow = '';
+                  }, 100);
+                  setToast('Vantage AI is responding...');
+                  sendMessage(suggestion);
+                }}
                 style={{
                   background: '#1a2235',
                   border: '1px solid #2a3448',
@@ -1224,7 +1338,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           padding: '4px 16px 16px 16px',
         }}
       >
-        Powered by AI · Not financial advice · 25 messages remaining today
+        Powered by AI · Not financial advice · {supabaseRemaining} messages remaining today
       </p>
 
       {/* ─── Keyframes ─── */}
@@ -1417,6 +1531,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               <button
                 onClick={() => {
                   setMessages([]);
+                  clearSupabaseMessages();
                   setShowClearConfirm(false);
                 }}
                 style={{

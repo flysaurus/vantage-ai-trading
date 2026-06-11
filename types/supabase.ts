@@ -415,6 +415,29 @@ export interface Database {
           updated_at?: string;
         };
       };
+      chat_messages: {
+        Row: {
+          id: string;
+          user_id: string;
+          role: 'user' | 'assistant';
+          content: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          role: 'user' | 'assistant';
+          content: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          role?: 'user' | 'assistant';
+          content?: string;
+          created_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Enums: Record<string, never>;
@@ -448,6 +471,26 @@ export interface Database {
           p_user_id: string;
         };
         Returns: void;
+      };
+      insert_chat_message: {
+        Args: {
+          p_user_id: string;
+          p_role: string;
+          p_content: string;
+        };
+        Returns: string;
+      };
+      cleanup_old_chat_messages: {
+        Args: {
+          p_user_id: string;
+        };
+        Returns: void;
+      };
+      get_todays_message_count: {
+        Args: {
+          p_user_id: string;
+        };
+        Returns: number;
       };
     };
   };
