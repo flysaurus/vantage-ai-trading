@@ -224,6 +224,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         if (res.ok) {
           const data = await res.json();
           console.log('Greeting text:', data.greeting);
+          console.log('Greeting full response:', JSON.stringify(data));
           clearTimeout(fallback);
           const text = data.greeting?.trim();
           if (text) {
@@ -250,7 +251,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setGreeting('Good to see you. What would you like to explore today?');
       }
     };
-    fetchGreeting();
+    // Delay 500ms to ensure PortfolioContext is populated
+    setTimeout(() => fetchGreeting(), 500);
   }, [messages.length, greeting, previousSession, portfolioContext]);
 
   // ── helpers ──
@@ -513,7 +515,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'transparent' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -880,7 +882,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </div>
         </div>
 
-        {/* Summary (always visible) */}
+        {/* Summary — only visible when expanded */}
+        {snapshotExpanded && (
         <div style={{ padding: '0 16px 12px 16px' }}>
           <div style={{ display: 'flex', gap: '16px' }}>
             {/* Health Score */}
@@ -935,6 +938,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             </div>
           </div>
         </div>
+        )}
 
         {/* Expanded */}
         {snapshotExpanded && (
@@ -1121,8 +1125,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
           gap: '12px',
           background: '#0d1526',
           borderTop: '2px solid rgba(34,211,238,0.4)',
-          borderRadius: '0 0 16px 16px',
+          borderRadius: '16px',
           marginTop: '12px',
+          minHeight: '180px',
         }}
       >
         {/* AI Greeting on fresh session */}
@@ -1372,7 +1377,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
       </div>
 
       {/* ─── 6. Pinned Bottom Section ─── */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid #1e2d45' }}>
+      <div style={{ flexShrink: 0, borderTop: '1px solid #1e2d45', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         {/* Quick Actions 2×2 Grid */}
         <div
           style={{

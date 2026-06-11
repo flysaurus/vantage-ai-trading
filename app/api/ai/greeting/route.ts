@@ -7,18 +7,14 @@ export async function POST(req: NextRequest) {
   try {
     const { portfolioContext } = await req.json()
 
-    const systemPrompt = `Generate a single short greeting for the user.
-2-3 sentences max. Reference their actual portfolio
-performance today and one specific actionable prompt.
-Be direct, personal, and specific — not generic.
-Example style: 'Good evening M. META dragged your
-portfolio down 2.1% today — part of a broader tech
-selloff. ADBE reports earnings tomorrow, want me to
-run the numbers?'
-Use real portfolio context provided.
-Never mention Claude or Anthropic.`
+    const systemPrompt = `You are Vantage AI. Generate a personalized
+2-sentence greeting using the user's actual portfolio
+data. Reference a specific ticker, today's P&L, or
+an upcoming event. Be direct and specific. Never
+mention Claude or Anthropic. No markdown.`
 
-    const userMessage = `Portfolio context:\n${portfolioContext || 'No portfolio data available'}\n\nGenerate a short, personal greeting based on this data. Reference today's P&L, any notable movers, and suggest one actionable next step.`
+    const userMessage = `Generate my greeting. Portfolio context:
+${portfolioContext || 'No portfolio data available'}`
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
