@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import sharp from 'sharp';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -82,17 +83,36 @@ async function claudeReviewScreenshot(
             },
             {
               type: 'text',
-              text: `You are a QA agent reviewing a mobile app screenshot of Vantage, an AI portfolio analysis app.
+              text: `You are a QA agent reviewing a FULL PAGE
+screenshot of Vantage, a mobile portfolio app.
+
+IMPORTANT CONTEXT:
+- This is a FULL PAGE screenshot — scroll down
+ mentally to see all sections
+- The page has these sections TOP TO BOTTOM:
+ 1. Header (Vantage logo + market status)
+ 2. Market Overview (SPY/QQQ/DIA/IWM benchmarks)
+ 3. Account Value card (total portfolio value)
+ 4. Chart placeholder
+ 5. HOLDINGS section (individual stock cards)
+ 6. Bottom navigation
+
+- When checking for "position cards" or "holdings",
+ look in section 5 — NOT section 2
+- SPY and QQQ appearing in section 2 are market
+ benchmarks, NOT portfolio holdings
+- Portfolio holdings will show GOOGL, MSFT, JPM,
+ ADBE, ISRG, COST, LLY, NVDA plus possibly SPY/QQQ
 
 Review this screenshot against this checklist:
 ${checklist}
 
 Respond ONLY with valid JSON, no markdown:
 {
-  "pass": ["item text for passing items"],
-  "fail": ["item text for failing items"],
-  "warnings": ["item text for uncertain items"],
-  "notes": "any important observations"
+ "pass": ["item text for passing items"],
+ "fail": ["item text for failing items"],
+ "warnings": ["item text for uncertain items"],
+ "notes": "observations"
 }`,
             },
           ],
@@ -107,7 +127,12 @@ Respond ONLY with valid JSON, no markdown:
   try {
     // Strip markdown code fences if present
     const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    return JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned);
+    // Safety: ensure required arrays exist
+    if (!Array.isArray(parsed.pass)) parsed.pass = [];
+    if (!Array.isArray(parsed.fail)) parsed.fail = [];
+    if (!Array.isArray(parsed.warnings)) parsed.warnings = [];
+    return parsed;
   } catch {
     return { pass: [], fail: [text], warnings: [] };
   }
@@ -150,18 +175,71 @@ function runTests(): {
   }
 }
 
+// ─── STITCH SCREENSHOTS ───
+async function stitchScreenshots(
+  imagePaths: string[],
+  outputPath: string
+): Promise<void> {
+  const existingPaths = imagePaths.filter(p => fs.existsSync(p));
+  if (existingPaths.length === 0) return;
+
+  const images = await Promise.all(
+    existingPaths.map(p => sharp(p).toBuffer())
+  );
+
+  const metas = await Promise.all(
+    existingPaths.map(p => sharp(p).metadata())
+  );
+
+  const width = metas[0].width || 390;
+  const totalHeight = metas.reduce(
+    (sum, m) => sum + (m.height || 0), 0
+  );
+
+  const composite: sharp.OverlayOptions[] = [];
+  let currentY = 0;
+
+  for (let i = 0; i < images.length; i++) {
+    composite.push({
+      input: images[i],
+      top: currentY,
+      left: 0,
+    });
+    currentY += metas[i].height || 0;
+  }
+
+  await sharp({
+    create: {
+      width,
+      height: totalHeight,
+      channels: 3,
+      background: { r: 10, g: 15, b: 30 },
+    },
+  })
+    .composite(composite)
+    .png()
+    .toFile(outputPath);
+}
+
 // ─── VISUAL QA CHECKS ───
 async function runVisualQA(): Promise<string[]> {
   const findings: string[] = [];
 
   const checks = [
     {
-      screenshot: '03_portfolio_holdings.png',
+      screenshot: '03_STITCHED_portfolio.png',
       checklist: [
-        'Portfolio page shows holding cards below the market overview',
-        'Multiple position cards are visible with dollar amounts',
-        'Green values show positive G/L, red shows negative G/L',
-        'No error messages or broken UI visible',
+        'This is a TALL composite showing the FULL ' +
+        'portfolio page from top to bottom',
+        'At least 6-10 individual holding cards visible ' +
+        'in the HOLDINGS section (lower portion of image)',
+        'Tickers visible: GOOGL, MSFT, JPM, ADBE, ' +
+        'ISRG, COST, LLY, NVDA, SPY, QQQ',
+        'Each card shows share count and market value',
+        'Green or red P&amp;L coloring on cards',
+        'Buying Power equals Cash value',
+        'Account value is non-zero',
+        'No old tickers: META, AMZN, NFLX, CRM, UNH',
       ],
     },
     {
@@ -196,11 +274,17 @@ async function runVisualQA(): Promise<string[]> {
     {
       screenshot: '06_portfolio_buying_power.png',
       checklist: [
-        'Account value is displayed',
-        'Buying Power is displayed',
-        'TODAY and TOTAL P&L labels are gray (not colored)',
-        'P&L dollar amounts are colored red or green',
-        'Dashboard layout is clean with no overlapping',
+        'An ACCOUNT VALUE section shows a large ' +
+        'dollar amount (total portfolio value)',
+        'A BUYING POWER label and dollar amount visible',
+        'A CASH label and dollar amount visible',
+        'BUYING POWER and CASH show the same value',
+        'Both values are greater than $0',
+        'TODAY label (for daily P&amp;L) appears in gray text',
+        'TOTAL label (for all-time P&amp;L) appears in gray text',
+        'The P&amp;L dollar amounts next to TODAY/TOTAL ' +
+        'are colored red or green (not gray)',
+        'Demo Mode badge visible near account value',
       ],
     },
   ];

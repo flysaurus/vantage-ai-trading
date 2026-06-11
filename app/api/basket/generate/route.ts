@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const message = `Build a ${theme} basket with $${budgetNum.toLocaleString()} budget. Include 6-8 high-conviction US stocks that best represent this theme.`
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: [
         {

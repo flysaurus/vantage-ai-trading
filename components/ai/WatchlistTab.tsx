@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useLivePortfolio } from '@/context/PortfolioContext';
 
 interface WatchlistItem {
   symbol: string;
@@ -19,6 +20,7 @@ interface WatchlistData {
 }
 
 export default function WatchlistTab() {
+  const { account } = useLivePortfolio();
   const [lists, setLists] = useState<WatchlistData[]>([
     {
       id: '1',
@@ -43,6 +45,17 @@ export default function WatchlistTab() {
   const [activeListId, setActiveListId] = useState('1');
   const [loading, setLoading] = useState(true);
   const [showListSelector, setShowListSelector] = useState(false);
+
+  // Build position lookup from PortfolioContext (real owned shares)
+  const positionsMap = useMemo(() => {
+    const map: Record<string, { shares: number }> = {};
+    if (account?.positions) {
+      for (const p of account.positions) {
+        map[p.symbol] = { shares: p.qty };
+      }
+    }
+    return map;
+  }, [account?.positions]);
   const [showAddSymbol, setShowAddSymbol] = useState(false);
   const [addQuery, setAddQuery] = useState('');
   const [addResults, setAddResults] = useState<{ symbol: string; description: string; type: string }[]>([]);
@@ -378,7 +391,7 @@ export default function WatchlistTab() {
                     >
                       {item.symbol}
                     </span>
-                    {item.owned && (
+                    {positionsMap[item.symbol] && (
                       <span
                         style={{
                           fontSize: '10px',
@@ -390,7 +403,7 @@ export default function WatchlistTab() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {item.sharesOwned}sh
+                        {positionsMap[item.symbol].shares}sh
                       </span>
                     )}
                   </div>
@@ -431,7 +444,7 @@ export default function WatchlistTab() {
                       ? '—'
                       : `${item.change >= 0 ? '+' : ''}${item.changePct.toFixed(2)}%`}
                   </p>
-                  {item.owned && (
+                  {positionsMap[item.symbol] && (
                     <p
                       style={{
                         fontSize: '11px',

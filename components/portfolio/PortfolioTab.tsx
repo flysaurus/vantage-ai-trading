@@ -69,16 +69,6 @@ function AccountCard({ account, isConnected }: { account: AccountSummary; isConn
         {/* Divider */}
         <div style={{ borderTop: '1px solid #2a3448', margin: '16px 0' }} />
 
-        {/* Sparkline placeholder */}
-        <div style={{ height: '80px', background: '#1e2d45', borderRadius: '10px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: '#475569', fontSize: '12px' }}>
-            Chart coming soon
-          </span>
-        </div>
-
-        {/* Divider */}
-        <div style={{ borderTop: '1px solid #2a3448', margin: '0 0 16px 0' }} />
-
         {/* 2-col stats */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 0' }}>
           <div>
@@ -203,7 +193,7 @@ function PositionCard({
           {/* RIGHT — price + P&amp;L */}
           <div className="text-right flex-shrink-0 pr-3" style={{ paddingRight: '12px' }}>
             <p className="text-base font-semibold text-white">
-              ${pos.currentPrice.toFixed(2)}
+              ${pos.marketValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
               {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})

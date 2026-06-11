@@ -1,13 +1,12 @@
 'use client';
 
 /**
- * PortfolioContext — single source of truth for portfolio data.
+ * PortfolioContext — single source of truth for demo portfolio data.
  *
- * Fetches live Finnhub quotes for all position symbols, computes
- * AccountSummary from real prices, and provides it to all tabs.
- * Both AI tab and Portfolio tab read from this same context.
- *
- * No hardcoded values. Everything derived from live prices.
+ * - Seeds from demo-data on first load
+ * - Persists mutable state to localStorage (positions, cash, orders)
+ * - Supports executeTrade() for demo buy/sell
+ * - Live Finnhub quotes refresh every 60s, overlaying on persisted positions
  */
 
 import React, {
@@ -20,13 +19,48 @@ import React, {
 } from 'react';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { getDemoAccount, getDemoSymbols, getDemoSectorAllocations } from '@/lib/demo-data';
-import type { AccountSummary, Position, SectorAllocation } from '@/types';
+import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
+import type { AccountSummary, Position, Order } from '@/types';
 
-// ─── Types ─────────────────────────────────────────────────
+// ─── Demo-only types ───────────────────────────────────────
+
+interface DemoOrder {
+  id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  shares: number;
+  type: string;
+  fillPrice: number;
+  totalCost: number;
+  status: string;
+  createdAt: string;
+}
+
+interface DemoState {
+  positions: Position[];
+  cashBalance: number;
+  orders: DemoOrder[];
+  savedAt: number;
+}
+
+const STORAGE_KEY = 'vantage_demo_portfolio';
+const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// ─── Helpers ───────────────────────────────────────────────
+
+function generateOrderId(): string {
+  return `demo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ─── Context Types ─────────────────────────────────────────
+
+interface TradeResult {
+  success: boolean;
+  error?: string;
+}
 
 interface PortfolioContextValue {
-  /** Live-priced account summary (demo mode) or broker account */
+  /** Live-priced account summary */
   account: AccountSummary | null;
   /** Whether quotes are still loading */
   loading: boolean;
@@ -34,6 +68,19 @@ interface PortfolioContextValue {
   error: string | null;
   /** Force refresh quotes */
   refresh: () => void;
+  /** Execute a demo trade */
+  executeTrade: (
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    shares: number,
+    price: number
+  ) => TradeResult;
+  /** Demo order history */
+  demoOrders: DemoOrder[];
+  /** Toast message */
+  toast: { message: string; type: 'success' | 'error' } | null;
+  /** Dismiss toast */
+  dismissToast: () => void;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -41,6 +88,10 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   loading: true,
   error: null,
   refresh: () => {},
+  executeTrade: () => ({ success: false, error: 'Not initialized' }),
+  demoOrders: [],
+  toast: null,
+  dismissToast: () => {},
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -49,25 +100,122 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
+  // ── Persistent state (positions, cash, orders) ──
+  const [demoState, setDemoState] = useState<DemoState | null>(null);
+  const [demoOrders, setDemoOrders] = useState<DemoOrder[]>([]);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
   // Seed with demo data immediately — cards render on load, prices update async
   const [account, setAccount] = useState<AccountSummary | null>(() => {
     if (isConnected) return null;
     const style = (user?.investorStyle || 'buffett') as any;
-    // Build seed account with avgCost as fallback prices (no live quotes yet)
     return getDemoAccount(style, {});
   });
-  const [loading, setLoading] = useState(false); // seed data available immediately
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
-  const fetchData = useCallback(async () => {
+  // ── Load persisted demo state on mount ──
+  useEffect(() => {
     if (isConnected) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved: DemoState = JSON.parse(raw);
+        const age = Date.now() - saved.savedAt;
+        if (age < MAX_AGE_MS && saved.positions && saved.positions.length > 0) {
+          setDemoState(saved);
+          setDemoOrders(saved.orders || []);
+          return; // Will be picked up by the account recompute
+        }
+      }
+    } catch { /* ignore corrupt localStorage */ }
+    // Fallback: seed from demo-data
+    const style = (user?.investorStyle || 'buffett') as any;
+    const seedAccount = getDemoAccount(style, {});
+    const seedState: DemoState = {
+      positions: seedAccount?.positions || [],
+      cashBalance: seedAccount?.cash || 0,
+      orders: [],
+      savedAt: Date.now(),
+    };
+    setDemoState(seedState);
+  }, [isConnected, user?.investorStyle]);
+
+  // ── Persist demo state to localStorage ──
+  const persistDemoState = useCallback((state: DemoState) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
+    } catch { /* ignore quota exceeded */ }
+  }, []);
+
+  // ── Recompute AccountSummary from mutable state + live quotes ──
+  const recomputeAccount = useCallback(
+    (quotes: Record<string, any> | null) => {
+      if (!demoState) return;
+
+      const positions = demoState.positions.map((p) => {
+        const quote = quotes?.[p.symbol];
+        const hasLivePrice = quote && typeof quote.price === 'number' && quote.price > 0;
+        const currentPrice = hasLivePrice ? quote.price : p.avgCost;
+        const dayChange = hasLivePrice ? (quote.change || 0) * p.qty : 0;
+        const dayChangePercent = hasLivePrice && currentPrice > 0
+          ? ((quote.change || 0) / quote.previousClose) * 100
+          : 0;
+        const marketValue = p.qty * currentPrice;
+        const totalPnl = marketValue - (p.qty * p.avgCost);
+        const totalPnlPercent = p.avgCost > 0 ? (totalPnl / (p.qty * p.avgCost)) * 100 : 0;
+        const totalEquity = demoState.positions.reduce(
+          (sum, pos) => sum + pos.qty * currentPrice, 0
+        ) + demoState.cashBalance;
+        const portfolioPercent = totalEquity > 0 ? (marketValue / totalEquity) * 100 : 0;
+
+        return {
+          ...p,
+          currentPrice,
+          marketValue,
+          dayChange,
+          dayChangePercent,
+          totalPnl,
+          totalPnlPercent,
+          portfolioPercent,
+        };
+      });
+
+      const totalEquity = positions.reduce((sum, p) => sum + p.marketValue, 0) + demoState.cashBalance;
+      const totalCost = positions.reduce((sum, p) => sum + p.qty * p.avgCost, 0);
+      const totalPnl = totalEquity - totalCost - demoState.cashBalance;
+      const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+      const dayPnl = positions.reduce((sum, p) => sum + p.dayChange, 0);
+      const dayPnlPercent = totalEquity > 0 && dayPnl !== 0
+        ? (dayPnl / (totalEquity - dayPnl)) * 100
+        : 0;
+
+      const summary: AccountSummary = {
+        equity: totalEquity,
+        buyingPower: demoState.cashBalance,
+        cash: demoState.cashBalance,
+        dayPnl,
+        dayPnlPercent,
+        totalPnl,
+        totalPnlPercent,
+        positions,
+      };
+
+      setAccount(summary);
+    },
+    [demoState]
+  );
+
+  // ── Fetch live quotes + recompute ──
+  const fetchData = useCallback(async () => {
+    if (isConnected || !demoState) return;
 
     try {
       setError(null);
 
-      const style = (user?.investorStyle || 'buffett') as any;
-      const symbols = getDemoSymbols(style as any);
+      const symbols = demoState.positions.map((p) => p.symbol);
+      if (symbols.length === 0) return;
 
       console.log('[Portfolio] Fetching quotes for:', symbols);
       const res = await fetch('/api/market/quotes', {
@@ -82,33 +230,160 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       console.log('[Portfolio] Quote result:', JSON.stringify(data).slice(0, 200));
       if (!data?.quotes || !mountedRef.current) return;
 
-      const demoAccount = getDemoAccount(style, data.quotes);
-      if (!demoAccount) return;
-
-      setAccount(demoAccount);
+      recomputeAccount(data.quotes);
       setError(null);
     } catch (err) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : 'Failed to load market data');
       }
     }
-  }, [isConnected, user?.investorStyle]);
+  }, [isConnected, demoState, recomputeAccount]);
 
-  // Fetch on mount and when user/style changes
+  // Fetch on mount and when state changes
   useEffect(() => {
     mountedRef.current = true;
-    fetchData();
-
-    // Refresh every 60s
+    if (demoState) {
+      recomputeAccount(null); // initial render with avgCost
+      fetchData(); // then fetch live prices
+    }
     const interval = setInterval(fetchData, 60000);
     return () => {
       mountedRef.current = false;
       clearInterval(interval);
     };
-  }, [fetchData]);
+  }, [demoState, recomputeAccount, fetchData]);
+
+  // ── executeTrade ──
+  const executeTrade = useCallback(
+    (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number): TradeResult => {
+      if (!demoState) return { success: false, error: 'No portfolio loaded' };
+
+      const positions = [...demoState.positions];
+      let cashBalance = demoState.cashBalance;
+
+      if (side === 'BUY') {
+        const cost = shares * price;
+        if (cost > cashBalance) {
+          const msg = `Insufficient funds (need $${cost.toFixed(2)}, have $${cashBalance.toFixed(2)})`;
+          setToast({ message: `❌ ${msg}`, type: 'error' });
+          setTimeout(() => setToast(null), 4000);
+          return { success: false, error: msg };
+        }
+
+        const existingIdx = positions.findIndex((p) => p.symbol === symbol);
+        if (existingIdx >= 0) {
+          const existing = positions[existingIdx];
+          const newTotalCost = existing.qty * existing.avgCost + cost;
+          const newShares = existing.qty + shares;
+          const newAvgCost = newTotalCost / newShares;
+          positions[existingIdx] = {
+            ...existing,
+            qty: newShares,
+            avgCost: newAvgCost,
+          };
+        } else {
+          positions.push({
+            symbol,
+            name: symbol,
+            qty: shares,
+            avgCost: price,
+            currentPrice: price,
+            marketValue: cost,
+            dayChange: 0,
+            dayChangePercent: 0,
+            totalPnl: 0,
+            totalPnlPercent: 0,
+            portfolioPercent: 0,
+            type: 'Stock',
+          });
+        }
+
+        cashBalance -= cost;
+        setToast({
+          message: `✅ Bought ${shares} shares of ${symbol} at $${price.toFixed(2)}`,
+          type: 'success',
+        });
+        setTimeout(() => setToast(null), 3000);
+
+      } else {
+        // SELL
+        const existingIdx = positions.findIndex((p) => p.symbol === symbol);
+        if (existingIdx < 0) {
+          return { success: false, error: 'Position not found' };
+        }
+
+        const existing = positions[existingIdx];
+        if (shares > existing.qty) {
+          const msg = `Insufficient shares (have ${existing.qty}, trying to sell ${shares})`;
+          setToast({ message: `❌ ${msg}`, type: 'error' });
+          setTimeout(() => setToast(null), 4000);
+          return { success: false, error: msg };
+        }
+
+        const proceeds = shares * price;
+
+        if (shares === existing.qty) {
+          positions.splice(existingIdx, 1);
+        } else {
+          positions[existingIdx] = {
+            ...existing,
+            qty: existing.qty - shares,
+          };
+        }
+
+        cashBalance += proceeds;
+        setToast({
+          message: `✅ Sold ${shares} shares of ${symbol} at $${price.toFixed(2)}`,
+          type: 'success',
+        });
+        setTimeout(() => setToast(null), 3000);
+      }
+
+      // Add order to history
+      const newOrder: DemoOrder = {
+        id: generateOrderId(),
+        symbol,
+        side,
+        shares,
+        type: 'market',
+        fillPrice: price,
+        totalCost: shares * price,
+        status: 'FILLED',
+        createdAt: new Date().toISOString(),
+      };
+
+      const newOrders = [newOrder, ...demoOrders.slice(0, 49)]; // keep last 50
+      const newState: DemoState = {
+        positions,
+        cashBalance,
+        orders: newOrders,
+        savedAt: Date.now(),
+      };
+
+      setDemoState(newState);
+      setDemoOrders(newOrders);
+      persistDemoState(newState);
+
+      return { success: true };
+    },
+    [demoState, demoOrders, persistDemoState]
+  );
+
+  const dismissToast = useCallback(() => setToast(null), []);
 
   return (
-    <PortfolioContext.Provider value={{ account, loading, error, refresh: fetchData }}>
+    <PortfolioContext.Provider
+      value={{
+        account,
+        loading,
+        error,
+        refresh: fetchData,
+        executeTrade,
+        demoOrders,
+        toast,
+        dismissToast,
+      }}
+    >
       {children}
     </PortfolioContext.Provider>
   );
