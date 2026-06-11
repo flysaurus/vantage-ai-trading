@@ -65,7 +65,7 @@ export default function MarketOverview() {
   }, []);
 
   const gridStyle: React.CSSProperties = {
-    margin: '12px 16px 0 16px',
+    margin: '12px 0 0 0',
     background: '#1a2235',
     border: '1px solid #2a3448',
     borderRadius: '10px',
