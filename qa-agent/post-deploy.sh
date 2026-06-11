@@ -8,5 +8,5 @@ echo "⏳ Waiting ${DEPLOY_WAIT_SECONDS}s for Vercel deploy..."
 sleep ${DEPLOY_WAIT_SECONDS}
 
 echo "🔍 Running QA Agent..."
-cd ~/projects/vantage/qa-agent
+cd ~/.openclaw/workspace/projects/vantage/qa-agent
 npm run qa
