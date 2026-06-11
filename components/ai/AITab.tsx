@@ -1002,7 +1002,24 @@ export function AITab({ messages, setMessages }: AITabProps) {
       >
         <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
         <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>Ask Vantage AI</span>
-        <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
+        <button
+          onClick={() => setShowHistory(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            background: 'none',
+            border: 'none',
+            color: '#22d3ee',
+            fontSize: '11px',
+            opacity: 0.7,
+            cursor: 'pointer',
+            padding: '2px 4px',
+          }}
+        >
+          <span style={{ fontSize: '14px' }}>🕐</span>
+          History
+        </button>
       </div>
 
       {/* ─── 5. Chat Messages Area ─── */}
@@ -1269,7 +1286,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               sendMessage(input);
             }
           }}
-          placeholder="Ask about your portfolio..."
+          placeholder="Ask anything — markets, portfolio, strategy..."
           maxLength={500}
           style={{
             flex: 1,
@@ -1349,29 +1366,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
         </div>
       </div>
 
-      {/* Chat history link */}
-      {(() => {
-        const sessions = loadSessions();
-        if (sessions.length === 0) return null;
-        return (
-          <div
-            onClick={() => setShowHistory(true)}
-            style={{
-              padding: '6px 16px 4px 16px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-            }}
-          >
-            <span style={{ fontSize: '10px', color: '#22d3ee' }}>
-              💬 {sessions.length} previous conversation{sessions.length === 1 ? '' : 's'} →
-            </span>
-          </div>
-        );
-      })()}
-
       {/* ─── 8. Footer ─── */}
       <p
         style={{
@@ -1396,14 +1390,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
       `}</style>
 
-      {/* ─── Chat History Bottom Sheet ─── */}
+      {/* ─── Chat History Full-Screen Modal ─── */}
       {showHistory && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            zIndex: 99999,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'flex-end',
@@ -1413,101 +1407,175 @@ export function AITab({ messages, setMessages }: AITabProps) {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#0f172a',
-              borderTop: '1px solid #2a3448',
-              borderRadius: '16px 16px 0 0',
-              maxHeight: 'calc(100vh - 80px - env(safe-area-inset-bottom))',
-              overflowY: 'auto',
-              padding: '20px 16px calc(80px + env(safe-area-inset-bottom) + 16px) 16px',
+              background: '#0a0f1e',
+              borderTop: '1px solid #1e2d45',
+              borderRadius: '20px 20px 0 0',
+              height: 'calc(100vh - 40px)',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
+            {/* Header */}
             <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: '16px',
+                padding: '20px 20px 12px 20px',
+                flexShrink: 0,
               }}
             >
-              <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+              <p style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff' }}>
                 Chat History
               </p>
               <button
                 onClick={() => setShowHistory(false)}
                 style={{
-                  background: 'none',
+                  background: 'rgba(255,255,255,0.06)',
                   border: 'none',
-                  color: '#64748b',
-                  fontSize: '20px',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#94a3b8',
+                  fontSize: '16px',
                   cursor: 'pointer',
                 }}
               >
                 ✕
               </button>
             </div>
-            <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
+
+            {/* Subtitle */}
+            <p style={{
+              fontSize: '11px',
+              color: '#64748b',
+              padding: '0 20px 8px 20px',
+              flexShrink: 0,
+            }}>
               Last 7 days · Tap to resume
             </p>
-            {(() => {
-              const sessions = loadSessions();
-              const groups = groupSessionsByDay(sessions);
-              if (groups.length === 0) {
-                return (
-                  <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '20px 0' }}>
-                    No previous conversations
-                  </p>
-                );
-              }
-              return groups.map((group, gi) => (
-                <div key={gi} style={{ marginBottom: '12px' }}>
-                  <p style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', marginBottom: '4px' }}>
-                    {group.label} · {group.sessions.length} conversation{group.sessions.length === 1 ? '' : 's'}
-                  </p>
-                  {group.sessions.map((session) => {
-                    const firstMsg = session.messages[0]?.content || 'Empty chat';
-                    const preview = firstMsg.length > 60 ? firstMsg.slice(0, 57) + '...' : firstMsg;
-                    const time = new Date(session.timestamp).toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    });
-                    return (
-                      <div
-                        key={session.id}
-                        onClick={() => {
-                          const msgs = loadSessionMessages(session.id);
-                          if (msgs) {
-                            setMessages(msgs);
-                            setCurrentSessionId(session.id);
-                          }
-                          setShowHistory(false);
-                          setTimeout(() => {
-                            document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                          }, 200);
-                        }}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          background: 'rgba(34,211,238,0.04)',
-                          border: '1px solid rgba(34,211,238,0.08)',
-                          marginBottom: '4px',
-                        }}
-                      >
-                        <span style={{ fontSize: '12px', color: '#94a3b8', flex: 1 }}>
-                          {preview}
-                        </span>
-                        <span style={{ fontSize: '10px', color: '#64748b', marginLeft: '8px', flexShrink: 0 }}>
-                          {time}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ));
-            })()}
+
+            {/* Session list */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '0 20px 16px 20px',
+            }}>
+              {(() => {
+                const sessions = loadSessions();
+                const groups = groupSessionsByDay(sessions);
+                if (groups.length === 0) {
+                  return (
+                    <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '32px 0' }}>
+                      No previous conversations
+                    </p>
+                  );
+                }
+                return groups.map((group, gi) => (
+                  <div key={gi} style={{ marginBottom: '16px' }}>
+                    <p style={{
+                      fontSize: '10px',
+                      color: '#475569',
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      marginBottom: '8px',
+                    }}>
+                      {group.label} · {group.sessions.length} conversation{group.sessions.length === 1 ? '' : 's'}
+                    </p>
+                    {group.sessions.map((session, si) => {
+                      const firstMsg = session.messages[0]?.content || 'Empty chat';
+                      const preview = firstMsg.length > 55 ? firstMsg.slice(0, 52) + '...' : firstMsg;
+                      const time = new Date(session.timestamp).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      });
+                      const isLast = si === group.sessions.length - 1 && gi === groups.length - 1;
+                      return (
+                        <div key={session.id}>
+                          <div
+                            onClick={() => {
+                              const msgs = loadSessionMessages(session.id);
+                              if (msgs) {
+                                setMessages(msgs);
+                                setCurrentSessionId(session.id);
+                              }
+                              setShowHistory(false);
+                              setTimeout(() => {
+                                document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                              }, 200);
+                            }}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '10px 0',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{
+                              fontSize: '13px',
+                              color: '#cbd5e1',
+                              flex: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              marginRight: '12px',
+                            }}>
+                              {preview}
+                            </span>
+                            <span style={{
+                              fontSize: '11px',
+                              color: '#64748b',
+                              flexShrink: 0,
+                            }}>
+                              {time}
+                            </span>
+                          </div>
+                          {!isLast && (
+                            <div style={{ height: '1px', background: '#1e2d45', opacity: 0.5 }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+            </div>
+
+            {/* Start New Conversation button */}
+            <div style={{
+              padding: '12px 20px calc(20px + env(safe-area-inset-bottom)) 20px',
+              borderTop: '1px solid #1e2d45',
+              flexShrink: 0,
+            }}>
+              <button
+                onClick={() => {
+                  setShowHistory(false);
+                  setMessages([]);
+                  setCurrentSessionId(null);
+                  setTimeout(() => {
+                    document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                  }, 200);
+                }}
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: '1px solid rgba(34,211,238,0.4)',
+                  borderRadius: '10px',
+                  color: '#22d3ee',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  padding: '12px 0',
+                  cursor: 'pointer',
+                }}
+              >
+                ＋ Start New Conversation
+              </button>
+            </div>
           </div>
         </div>
       )}
