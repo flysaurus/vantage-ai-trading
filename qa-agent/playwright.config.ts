@@ -5,6 +5,9 @@ dotenv.config();
 export default defineConfig({
   testDir: './tests',
   timeout: 60000,
+  expect: {
+    timeout: 15000,
+  },
   retries: 1,
   workers: 1,
   reporter: [
@@ -21,6 +24,8 @@ export default defineConfig({
     hasTouch: true,
     screenshot: 'only-on-failure',
     video: 'off',
+    navigationTimeout: 30000,
+    actionTimeout: 15000,
   },
   projects: [
     {

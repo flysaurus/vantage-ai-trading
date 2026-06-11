@@ -10,11 +10,57 @@ if (!fs.existsSync(SCREENSHOTS_DIR)) {
   fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 }
 
+// ─── HELPERS ───────────────────────────────────────────────
+
 // Helper to take and save screenshot
 async function screenshot(page: Page, name: string, fullPage = false) {
   const filepath = path.join(SCREENSHOTS_DIR, `${name}.png`);
   await page.screenshot({ path: filepath, fullPage });
   return filepath;
+}
+
+// FIX 1: Wait for full app load (prices, content, React renders)
+async function waitForAppLoad(page: Page) {
+  // Wait for network to settle
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+
+  // Wait for no loading spinners
+  await page.waitForFunction(() => {
+    const spinners = document.querySelectorAll(
+      '[data-loading="true"], .animate-spin, .loading-spinner'
+    );
+    return spinners.length === 0;
+  }, { timeout: 10000 }).catch(() => {});
+
+  // Wait for $ prices to appear (Finnhub loaded)
+  await page.waitForFunction(() => {
+    const text = document.body.innerText;
+    return text.includes('$') && !text.includes('$0.00');
+  }, { timeout: 15000 }).catch(() => {});
+
+  // Final buffer for React re-renders
+  await page.waitForTimeout(2000);
+}
+
+// FIX 3: Navigate to tab and wait for content
+async function navigateToTab(page: Page, tabName: string) {
+  await page.locator(`text=${tabName}`).click();
+
+  // Wait for tab content to render
+  await page.waitForTimeout(500);
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+}
+
+// FIX 4: Scroll and wait for content
+async function scrollAndWait(page: Page, scrollY: number, waitForSelector?: string) {
+  await page.evaluate((y) => window.scrollTo(0, y), scrollY);
+
+  if (waitForSelector) {
+    await page.waitForSelector(waitForSelector, { timeout: 8000 }).catch(() => {});
+  }
+
+  await page.waitForTimeout(1000);
 }
 
 // Mock /api/auth/me to return a demo user — bypasses onboarding
@@ -38,7 +84,7 @@ async function setupDemoMode(page: Page) {
   });
 
   await page.goto(APP_URL, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(3000);
+  await waitForAppLoad(page);
 
   // If BrokerGate is showing, dismiss it
   const skipBtn = page.locator('text=Skip for now');
@@ -66,8 +112,33 @@ async function clickTab(page: Page, label: string) {
     const tab = nav.locator(`button:has-text("${label}")`).first();
     await tab.click();
   }
+  await page.waitForTimeout(500);
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(2000);
 }
+
+// ─── FIX 6: PRICE LOAD VERIFICATION ───
+test.describe('Pre-flight', () => {
+
+  test.beforeEach(async ({ page }) => {
+    await setupDemoMode(page);
+  });
+
+  test('live prices loaded (not $0.00)', async ({ page }) => {
+    // Market overview prices should not be $0.00
+    const zeroPrices = await page.locator('text=$0.00').count();
+
+    // Real prices should exist (at least 1)
+    const realPrices = await page.locator('text=/\\$[1-9][0-9]+\\.[0-9]{2}/').count();
+
+    console.log('Zero prices found:', zeroPrices);
+    console.log('Real prices found:', realPrices);
+
+    expect(realPrices).toBeGreaterThan(0);
+
+    await screenshot(page, '00_prices_loaded');
+  });
+});
 
 // ─── PORTFOLIO TAB TESTS ───
 test.describe('Portfolio Tab', () => {
@@ -98,11 +169,9 @@ test.describe('Portfolio Tab', () => {
   test('shows 10 holdings', async ({ page }) => {
     // Explicitly navigate to Portfolio tab
     await clickTab(page, 'portfolio');
-    await page.waitForTimeout(1000);
-    
-    // Scroll past the account summary to show holding cards
-    await page.evaluate(() => window.scrollTo(0, 600));
-    await page.waitForTimeout(1000);
+
+    // Scroll past market overview and wait for position cards
+    await scrollAndWait(page, 600, '.position-card, [data-testid*="position"]');
 
     // Verify no error states
     const errorText = await page.locator(
@@ -111,11 +180,14 @@ test.describe('Portfolio Tab', () => {
     expect(errorText).toBe(0);
 
     await screenshot(page, '03_portfolio_holdings', true);
-    // Visual review by Claude QA will check exact tickers
+
+    // Scroll further for remaining cards
+    await scrollAndWait(page, 1400);
+    await screenshot(page, '03b_portfolio_lower', true);
   });
 
   test('no old positions visible', async ({ page }) => {
-    await page.evaluate(() => window.scrollTo(0, 500));
+    await scrollAndWait(page, 500);
 
     // These should NOT exist
     const oldTickers = ['META', 'AMZN', 'NFLX', 'CRM', 'UNH'];
@@ -130,8 +202,7 @@ test.describe('Portfolio Tab', () => {
   });
 
   test('market value shows on cards (not just price)', async ({ page }) => {
-    await page.evaluate(() => window.scrollTo(0, 500));
-    await page.waitForTimeout(1000);
+    await scrollAndWait(page, 500);
 
     // SPY has 25 shares, market value should be $XX,XXX range not $XXX (single price)
     // Look for values with comma / 4+ digit numbers
@@ -162,7 +233,6 @@ test.describe('AI Tab', () => {
 
   test.beforeEach(async ({ page }) => {
     await setupDemoMode(page);
-    // Navigate to AI tab using the nav
     await clickTab(page, 'AI');
   });
 
@@ -188,8 +258,7 @@ test.describe('AI Tab', () => {
   });
 
   test('quick action buttons present', async ({ page }) => {
-    await page.evaluate(() => window.scrollTo(0, 500));
-    await page.waitForTimeout(1000);
+    await scrollAndWait(page, 500);
 
     const buttons = ['Build Basket', 'Market Pulse', 'Tax Check', 'Alerts'];
     for (const btn of buttons) {
@@ -234,8 +303,7 @@ test.describe('Invest Tab', () => {
   });
 
   test('order history shows correct orders', async ({ page }) => {
-    await page.evaluate(() => window.scrollTo(0, 500));
-    await page.waitForTimeout(1000);
+    await scrollAndWait(page, 500);
 
     // Check for new seed orders
     const newOrders = ['SPY', 'QQQ', 'ISRG', 'JPM', 'COST'];
@@ -246,15 +314,12 @@ test.describe('Invest Tab', () => {
     }
 
     // Scroll past the order form to show order history section
-    await page.evaluate(() => window.scrollTo(0, 1500));
-    await page.waitForTimeout(500);
+    await scrollAndWait(page, 1500);
     await screenshot(page, '12_invest_order_history', true);
   });
 
   test('order dates include year', async ({ page }) => {
-    // Scroll through the full order list
-    await page.evaluate(() => window.scrollTo(0, 2000));
-    await page.waitForTimeout(1000);
+    await scrollAndWait(page, 2000);
 
     // Check for dates in month+day format (e.g., "May 28")
     const monthPattern = page.locator('text=/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+\\d{1,2}/');
@@ -262,7 +327,6 @@ test.describe('Invest Tab', () => {
     console.log('Month-day dates visible:', monthCount);
     
     // Year may or may not appear depending on deploy version
-    // Just log — the format check verifies dates are rendered
     const yearPattern = page.locator('text=/20[2-9]\\d/');
     const yearCount = await yearPattern.count();
     console.log('Years in dates:', yearCount);
@@ -274,7 +338,7 @@ test.describe('Invest Tab', () => {
   });
 
   test('no old ghost orders', async ({ page }) => {
-    await page.evaluate(() => window.scrollTo(0, 500));
+    await scrollAndWait(page, 500);
 
     const ghostOrders = ['NFLX', 'CRM', 'META', 'AMZN'];
     for (const ticker of ghostOrders) {
