@@ -1,7 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
+import type { SystemBlock } from '@/lib/ai-provider'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  defaultHeaders: {
+    'anthropic-beta': 'prompt-caching-2024-07-31',
+  },
+})
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888'
 
@@ -111,12 +117,18 @@ export async function POST(req: Request) {
       searchContext = await searchWeb(screening.searchQuery)
     }
 
-    // Build full system with search results
-    const fullSystem = [
-      systemPrompt,
-      portfolioContext || '',
-      searchContext
-    ].filter(Boolean).join('\n\n')
+    // ── Prompt Caching: static instructions cached, dynamic context not ──
+    const systemBlocks: SystemBlock[] = [
+      {
+        type: 'text' as const,
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' as const },
+      },
+      {
+        type: 'text' as const,
+        text: [portfolioContext || '', searchContext].filter(Boolean).join('\n\n'),
+      },
+    ];
 
     // Use Haiku for chat, Sonnet for deep analysis
     const model = mode === 'deep'
@@ -126,7 +138,7 @@ export async function POST(req: Request) {
     const stream = await client.messages.stream({
       model,
       max_tokens: 1024,
-      system: fullSystem,
+      system: systemBlocks as any,
       messages: messages.map((m: any) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content

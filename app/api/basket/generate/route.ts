@@ -1,7 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  defaultHeaders: {
+    'anthropic-beta': 'prompt-caching-2024-07-31',
+  },
+})
 
 const BASKET_SYSTEM_PROMPT = `You are Vantage AI, a portfolio construction expert.
 Generate a thematic investment basket.
@@ -43,7 +48,13 @@ export async function POST(req: NextRequest) {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: BASKET_SYSTEM_PROMPT,
+      system: [
+        {
+          type: 'text' as const,
+          text: BASKET_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' as const },
+        },
+      ],
       messages: [{ role: 'user', content: message }]
     })
 
@@ -51,6 +62,17 @@ export async function POST(req: NextRequest) {
     const text = (response.content as any[])
       .map((block: any) => block.type === 'text' ? block.text : '')
       .join('')
+
+    // Log cache metrics
+    const usage = (response as any).usage || {};
+    console.log('[Cache]', JSON.stringify({
+      route: 'basket-generate',
+      inputTokens: usage.input_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens || 0,
+      cacheReadTokens: usage.cache_read_input_tokens || 0,
+      outputTokens: usage.output_tokens,
+      cacheHit: (usage.cache_read_input_tokens || 0) > 0,
+    }));
 
     // Find JSON object in the text
     const jsonMatch = text.match(/\{[\s\S]*\}/)

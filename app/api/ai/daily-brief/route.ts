@@ -11,6 +11,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
+import type { SystemBlock } from '@/lib/ai-provider';
+
+// Static format instructions — cached across all daily brief requests
+const DAILY_BRIEF_STATIC: SystemBlock = {
+  type: 'text',
+  text: `You are Vantage AI daily briefing engine.
+Write a concise daily brief using ONLY the data provided.
+NEVER invent numbers. NEVER say "no positions held."
+Use the actual holdings data provided.
+
+FORMAT (exactly 4 lines, no headers, no bullets):
+Line 1 - MARKET: One sentence on market direction with specific index numbers
+Line 2 - PORTFOLIO: One sentence mentioning 1-2 specific holdings and their move today
+Line 3 - WATCH: One sentence on the most important thing to monitor today
+Line 4 - EARNINGS: Only include if earnings exist for holdings this week. Skip this line if no earnings.
+
+Keep each line under 15 words.
+Start each line with the label: MARKET: PORTFOLIO: WATCH: EARNINGS:`,
+  cache_control: { type: 'ephemeral' },
+};
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 
@@ -236,30 +256,15 @@ export async function GET(req: NextRequest) {
 
     const dataBlock = dataLines.join('\n');
 
-    // 8. Call AI with strict format prompt
+    // 8. Call AI with cached static format instructions
     const aiResponse = await callChatAI({
       messages: [
-        {
-          role: 'system',
-          content: `You are Vantage AI daily briefing engine.
-Write a concise daily brief using ONLY the data provided.
-NEVER invent numbers. NEVER say "no positions held."
-Use the actual holdings data provided.
-
-FORMAT (exactly 4 lines, no headers, no bullets):
-Line 1 - MARKET: One sentence on market direction with specific index numbers
-Line 2 - PORTFOLIO: One sentence mentioning 1-2 specific holdings and their move today
-Line 3 - WATCH: One sentence on the most important thing to monitor today
-Line 4 - EARNINGS: Only include if earnings exist for holdings this week. Skip this line if no earnings.
-
-Keep each line under 15 words.
-Start each line with the label: MARKET: PORTFOLIO: WATCH: EARNINGS:`,
-        },
         {
           role: 'user',
           content: dataBlock,
         },
       ],
+      systemBlocks: [DAILY_BRIEF_STATIC],
       maxTokens: 200,
       temperature: 0.2,
     });

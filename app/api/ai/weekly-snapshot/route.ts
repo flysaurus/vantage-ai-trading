@@ -9,6 +9,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
+import type { SystemBlock } from '@/lib/ai-provider';
+
+// Static analysis instructions — cached across all snapshot requests
+const SNAPSHOT_STATIC: SystemBlock = {
+  type: 'text',
+  text: `You are Vantage AI portfolio health analyst.
+Analyze the portfolio data provided.
+
+Respond in markdown with these sections:
+## OVERALL HEALTH
+Include "OVERALL HEALTH: X/10" on its own line.
+[Brief explanation of the health score]
+
+## RISKS
+Include "OVERALL RISK: LOW|MEDIUM|HIGH" on its own line.
+[Brief analysis of risk factors]
+
+## OPPORTUNITIES
+[List each as a bullet point "• description" — count these]
+
+## SUMMARY
+[1 sentence overall assessment]
+
+Be specific. Use real numbers provided. Never invent. Be honest if data is incomplete.`,
+  cache_control: { type: 'ephemeral' },
+};
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 
@@ -180,36 +206,15 @@ export async function GET(req: NextRequest) {
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
 
-    // Call AI
+    // Call AI with cached static analysis instructions
     const aiResponse = await callChatAI({
       messages: [
-        {
-          role: 'system',
-          content: `You are Vantage AI portfolio health analyst.
-Analyze the portfolio data provided.
-
-Respond in markdown with these sections:
-## OVERALL HEALTH
-Include "OVERALL HEALTH: X/10" on its own line.
-[Brief explanation of the health score]
-
-## RISKS
-Include "OVERALL RISK: LOW|MEDIUM|HIGH" on its own line.
-[Brief analysis of risk factors]
-
-## OPPORTUNITIES
-[List each as a bullet point "• description" — count these]
-
-## SUMMARY
-[1 sentence overall assessment]
-
-Be specific. Use real numbers provided. Never invent. Be honest if data is incomplete.`,
-        },
         {
           role: 'user',
           content: dataBlock,
         },
       ],
+      systemBlocks: [SNAPSHOT_STATIC],
       maxTokens: 500,
       temperature: 0.2,
     });

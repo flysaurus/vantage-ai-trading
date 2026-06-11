@@ -13,6 +13,13 @@ export interface AIMessage {
   content: string;
 }
 
+/** Anthropic content block with optional cache control */
+export interface SystemBlock {
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral' };
+}
+
 export interface AIRequestOptions {
   messages: AIMessage[];
   maxTokens?: number;
@@ -22,6 +29,13 @@ export interface AIRequestOptions {
   model?: string;
   /** Request timeout in ms */
   timeoutMs?: number;
+  /**
+   * For Claude: split the system prompt into cached + dynamic blocks.
+   * When set, overrides the single 'system' message in messages[].
+   * Block 0 should be the STATIC part (cached).
+   * Last block should have cache_control: { type: 'ephemeral' }.
+   */
+  systemBlocks?: SystemBlock[];
 }
 
 export interface AIResponse {
@@ -137,20 +151,29 @@ export class ClaudeProvider implements AIProvider {
     const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
     if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY or CLAUDE_API_KEY');
 
+    const body: Record<string, any> = {
+      model: options.model || this.model,
+      max_tokens: options.maxTokens ?? 1000,
+      temperature: options.temperature ?? 0.3,
+      messages: userMessages.map(m => ({ role: m.role, content: m.content })),
+    };
+
+    // Support prompt-cached system blocks
+    if (options.systemBlocks && options.systemBlocks.length > 0) {
+      body.system = options.systemBlocks;
+    } else {
+      body.system = systemMessage?.content || '';
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
       },
-      body: JSON.stringify({
-        model: options.model || this.model,
-        max_tokens: options.maxTokens ?? 1000,
-        temperature: options.temperature ?? 0.3,
-        system: systemMessage?.content || '',
-        messages: userMessages.map(m => ({ role: m.role, content: m.content })),
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(options.timeoutMs ?? 30000),
     });
 
@@ -160,10 +183,21 @@ export class ClaudeProvider implements AIProvider {
       throw new Error(`Claude error: ${data.error?.message || `HTTP ${res.status}`}`);
     }
 
+    // Log cache metrics
+    const usage = data.usage || {};
+    console.log('[Cache]', JSON.stringify({
+      route: options.model || this.model,
+      inputTokens: usage.input_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens || 0,
+      cacheReadTokens: usage.cache_read_input_tokens || 0,
+      outputTokens: usage.output_tokens,
+      cacheHit: (usage.cache_read_input_tokens || 0) > 0,
+    }));
+
     return {
       content: data.content?.[0]?.text || '',
       model: data.model || this.model,
-      tokensUsed: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+      tokensUsed: (usage.input_tokens || 0) + (usage.output_tokens || 0),
     };
   }
 
@@ -174,21 +208,30 @@ export class ClaudeProvider implements AIProvider {
     const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
     if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY or CLAUDE_API_KEY');
 
+    const body: Record<string, any> = {
+      model: options.model || this.model,
+      max_tokens: options.maxTokens ?? 2048,
+      temperature: options.temperature ?? 0.7,
+      messages: userMessages.map(m => ({ role: m.role, content: m.content })),
+      stream: true,
+    };
+
+    // Support prompt-cached system blocks
+    if (options.systemBlocks && options.systemBlocks.length > 0) {
+      body.system = options.systemBlocks;
+    } else {
+      body.system = systemMessage?.content || '';
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
       },
-      body: JSON.stringify({
-        model: options.model || this.model,
-        max_tokens: options.maxTokens ?? 2048,
-        temperature: options.temperature ?? 0.7,
-        system: systemMessage?.content || '',
-        messages: userMessages.map(m => ({ role: m.role, content: m.content })),
-        stream: true,
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(options.timeoutMs ?? 60000),
     });
 
@@ -303,7 +346,7 @@ export async function callAnalystAI(
 
 /**
  * Call Claude Haiku for general chat.
- * Cheaper and faster for simple user queries.
+ * Passes systemBlocks through for prompt caching.
  */
 export async function callChatAI(
   options: AIRequestOptions
