@@ -41,7 +41,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState(0);
-  const RATE_LIMIT_MS = 20000;
+  const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
     symbol: string;
     date: string;
@@ -186,7 +186,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       const secondsLeft = Math.ceil((RATE_LIMIT_MS - (now - lastMessageTime)) / 1000);
       setMessages(prev => [...prev, {
         role: 'ai',
-        content: `Please wait ${secondsLeft} seconds before sending another message.`
+        content: `Please wait ${secondsLeft} second${secondsLeft === 1 ? '' : 's'} before sending another message.`
       }]);
       return;
     }
