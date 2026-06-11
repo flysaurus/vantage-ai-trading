@@ -8,6 +8,7 @@ import { useLivePortfolio } from '@/context/PortfolioContext';
 import DemoBanner from '@/components/shared/DemoBanner';
 import type { Position, AccountSummary } from '@/types';
 import SellModal from './SellModal';
+import PortfolioChart from './PortfolioChart';
 import MarketOverview from '../shared/MarketOverview';
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -65,6 +66,21 @@ function AccountCard({ account, isConnected }: { account: AccountSummary; isConn
             {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
           </span>
         </p>
+
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid #2a3448', margin: '16px 0' }} />
+
+        {/* Portfolio value chart */}
+        <PortfolioChart
+          positions={(account.positions || []).map((p) => ({
+            symbol: p.symbol,
+            shares: p.qty,
+            buyDate: p.buyDate,
+            avgCost: p.avgCost,
+            totalCost: p.totalCost,
+          }))}
+          cashBalance={account.cash ?? 0}
+        />
 
         {/* Divider */}
         <div style={{ borderTop: '1px solid #2a3448', margin: '16px 0' }} />
