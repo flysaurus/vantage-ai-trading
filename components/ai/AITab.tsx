@@ -7,6 +7,7 @@ import { persistChat, loadSessions, loadSessionMessages, groupSessionsByDay } fr
 import type { ChatSession } from '@/lib/chat-history';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
+import BuildBasketModal from '@/components/BuildBasketModal';
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -65,6 +66,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [showBuildBasket, setShowBuildBasket] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1231,31 +1233,39 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }}
       >
         {[
-          { icon: '⚡', label: 'Alerts', msg: 'Scan my portfolio for urgent alerts' },
-          { icon: '📊', label: 'Snapshot', msg: 'snapshot-refresh' },
-          { icon: '🔍', label: 'Screener', msg: 'screener' },
-          { icon: '📋', label: 'Brief', msg: 'brief-refresh' },
+          { icon: '🧺', label: 'Build Basket', action: 'basket' },
+          { icon: '📡', label: 'Market Pulse', action: 'pulse' },
+          { icon: '📋', label: 'Tax Check', action: 'tax' },
+          { icon: '⚡', label: 'Alerts', action: 'alerts' },
         ].map((btn) => (
           <div
             key={btn.label}
-            onClick={() => {
-              if (btn.msg === 'screener') {
-                sendMessage('Open the stock screener');
-              } else if (btn.msg === 'snapshot-refresh') {
-                sendMessage('Generate a new weekly portfolio snapshot');
-              } else if (btn.msg === 'brief-refresh') {
-                sendMessage('Refresh the daily brief for today');
-              } else if (btn.label === 'Alerts') {
-                sendMessage(btn.msg, 'alerts');
-              } else {
-                sendMessage(btn.msg);
+            onClick={(e) => {
+              if (btn.action === 'basket') {
+                setShowBuildBasket(true);
+              } else if (btn.action === 'pulse') {
+                sendToChat(
+                  'Give me a market pulse check — how are the major indexes performing today, what sectors are leading and lagging, and what should I know as an investor right now?',
+                  e
+                );
+              } else if (btn.action === 'tax') {
+                sendToChat(
+                  'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',
+                  e
+                );
+              } else if (btn.action === 'alerts') {
+                setToast('💬 Vantage AI is responding...');
+                sendMessage('Scan my portfolio for urgent alerts', 'alerts');
+                setTimeout(() => {
+                  document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }, 150);
               }
             }}
             style={{
               background: '#1a2235',
-              border: '1px solid #2a3448',
+              border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: '10px',
-              padding: '12px',
+              padding: '16px',
               textAlign: 'center',
               cursor: 'pointer',
               fontSize: '13px',
@@ -1673,6 +1683,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
           </div>
         </div>
       )}
+
+      {/* ─── Build Basket Modal ─── */}
+      <BuildBasketModal
+        isOpen={showBuildBasket}
+        onClose={() => setShowBuildBasket(false)}
+        onBasketGenerated={(msg) => {
+          setShowBuildBasket(false);
+          setToast('💬 Vantage AI is responding...');
+          sendMessage(msg);
+          setTimeout(() => {
+            document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          }, 400);
+        }}
+      />
     </div>
   );
 }
