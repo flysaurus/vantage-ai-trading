@@ -1,0 +1,20 @@
+{
+  "phase": "Phase 1 — Data & Foundation",
+  "checks": [
+    "Portfolio shows exactly 10 positions",
+    "SPY, QQQ, GOOGL, MSFT, JPM, ADBE, ISRG, COST, LLY, NVDA all visible",
+    "No old positions: META, AMZN, NFLX, CRM, UNH",
+    "Account value is non-zero and matches position math",
+    "Buying Power equals Cash value",
+    "Market value shows on each position card",
+    "Order history shows 10 filled buy orders",
+    "Order dates include year (2024)",
+    "Total cost shown on each order",
+    "No ghost orders: NFLX, CRM, META, AMZN",
+    "TODAY label is gray not red/green",
+    "TOTAL label is gray not red/green",
+    "P&L amounts are colored red or green",
+    "Demo Mode badge on same line as account value",
+    "Watchlist owned badges match portfolio share counts"
+  ]
+}

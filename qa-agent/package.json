@@ -1,0 +1,27 @@
+{
+  "name": "vantage-qa-agent",
+  "version": "1.0.0",
+  "description": "QA agent for Vantage — Playwright tests + Claude visual review",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "qa": "ts-node qa-agent.ts",
+    "qa:watch": "watch 'npm run qa' ../ --wait=120",
+    "report": "playwright show-report results/html"
+  },
+  "keywords": [],
+  "author": "Vantage QA",
+  "license": "ISC",
+  "dependencies": {
+    "@playwright/test": "^1.60.0",
+    "dotenv": "^17.4.2",
+    "form-data": "^4.0.5",
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.60.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
