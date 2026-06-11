@@ -20,7 +20,7 @@ const fmt = (v: number) => {
 
 const pctStr = (v: number) => {
   const prefix = v >= 0 ? '+' : '';
-  return `${prefix}${(v * 100).toFixed(1)}%`;
+  return `${prefix}${Math.abs(v).toFixed(1)}%`;
 };
 
 interface Message {
@@ -233,20 +233,42 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       if (!res.ok) throw new Error('API error');
 
-      // Handle streaming
+      // Handle streaming with typing delay
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let aiContent = '';
+      let displayedLength = 0;
+      let typingTimer: ReturnType<typeof setInterval> | null = null;
 
       // Add empty AI message to update in place
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
+
+      const updateDisplay = (text: string) => {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'ai', content: text };
+          return updated;
+        });
+      };
+
+      // Start typing animation — outputs 3 chars per ~15ms tick
+      const startTyping = () => {
+        if (typingTimer) return;
+        typingTimer = setInterval(() => {
+          if (displayedLength < aiContent.length) {
+            displayedLength = Math.min(displayedLength + 3, aiContent.length);
+            updateDisplay(aiContent.slice(0, displayedLength));
+            scrollToBottom();
+          }
+        }, 15);
+      };
 
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        // Dismiss toast when first chunk arrives (AI is now responding)
-        setToast(null);
+        // Dismiss toast when first chunk arrives
+        if (!typingTimer) setToast(null);
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -257,24 +279,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
               const data = JSON.parse(line.slice(6));
               if (data.text) {
                 aiContent += data.text;
-                // Update last message in place
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
-                    role: 'ai',
-                    content: aiContent
-                  };
-                  return updated;
-                });
+                startTyping();
               }
             } catch (e) {
               // skip malformed chunks
             }
           }
         }
-        // Capture final AI response for Supabase persistence
         lastAiResponseRef.current = aiContent;
       }
+
+      // Flush remaining text immediately when streaming completes
+      if (typingTimer) {
+        clearInterval(typingTimer);
+        typingTimer = null;
+      }
+      updateDisplay(aiContent);
+      scrollToBottom();
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, {
@@ -349,7 +370,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
 
     const dayDir = dayPnl >= 0 ? 'up' : 'down';
-    chips.push(`Your portfolio is ${dayDir} ${fmt(Math.abs(dayPnl))} (${pctStr(Math.abs(dayPnlPct))}) today — why?`);
+    chips.push(`Your portfolio is ${dayDir} ${fmt(Math.abs(dayPnl))} (${pctStr(dayPnlPct)}) today — why?`);
     return chips;
   })();
 
@@ -439,7 +460,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
               Start Fresh
             </button>
             <button
-              onClick={loadPreviousSession}
+              onClick={() => {
+                const msgs = loadPreviousSession();
+                if (msgs) {
+                  setMessages(msgs);
+                  setTimeout(() => {
+                    document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                  }, 200);
+                }
+              }}
               style={{
                 background: 'rgba(34,211,238,0.15)',
                 border: '1px solid #22d3ee',
@@ -1451,6 +1480,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
                             setCurrentSessionId(session.id);
                           }
                           setShowHistory(false);
+                          setTimeout(() => {
+                            document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                          }, 200);
                         }}
                         style={{
                           display: 'flex',

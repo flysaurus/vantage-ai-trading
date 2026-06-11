@@ -3,32 +3,32 @@
 /**
  * Chat storage hook — routes to Supabase when authenticated,
  * falls back to localStorage in demo mode.
+ *
+ * Does NOT manage messages state — that's owned by the parent (AppShell).
+ * Provides: previous session detection, message counts, clear/load helpers.
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { loadSessions, saveSessions } from '@/lib/chat-history';
-import type { ChatSession } from '@/lib/chat-history';
+import { loadSessions } from '@/lib/chat-history';
 import {
   fetchTodayMessages,
   fetchLastSession,
-  saveChatMessage,
   clearTodayMessages,
   getRemainingMessages,
 } from '@/lib/chat-service';
 
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'ai';
   content: string;
 }
 
-interface PreviousSession {
+export interface PreviousSession {
   messages: ChatMessage[];
   date: string; // localized date label
 }
 
 export function useChatStorage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [previousSession, setPreviousSession] = useState<PreviousSession | null>(null);
   const [remainingMessages, setRemainingMessages] = useState(25);
   const [loading, setLoading] = useState(true);
@@ -53,44 +53,30 @@ export function useChatStorage() {
     checkAuth();
   }, []);
 
-  // ── load messages on mount ──
+  // ── load previous session detection + message count on mount ──
   useEffect(() => {
     if (loading) return;
 
-    const loadMessages = async () => {
+    const detectPreviousSession = async () => {
       if (userIdRef.current) {
         // Supabase path
-        const todayMsgs = await fetchTodayMessages(userIdRef.current);
-
-        if (todayMsgs.length > 0) {
-          // Seamless continuation — restore today's messages
-          setMessages(
-            todayMsgs.map((m) => ({
-              role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        const lastMsgs = await fetchLastSession(userIdRef.current);
+        if (lastMsgs.length > 0) {
+          const sessionDate = new Date(lastMsgs[0].created_at);
+          const label = sessionDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'short',
+            day: 'numeric',
+          });
+          setPreviousSession({
+            messages: lastMsgs.map((m) => ({
+              role: m.role as 'user' | 'ai',
               content: m.content,
-            }))
-          );
-        } else {
-          // No messages today — check for prior session
-          const lastSessionMsgs = await fetchLastSession(userIdRef.current);
-          if (lastSessionMsgs.length > 0) {
-            const sessionDate = new Date(lastSessionMsgs[0].created_at);
-            const label = sessionDate.toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'short',
-              day: 'numeric',
-            });
-            setPreviousSession({
-              messages: lastSessionMsgs.map((m) => ({
-                role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
-                content: m.content,
-              })),
-              date: label,
-            });
-          }
+            })),
+            date: label,
+          });
         }
 
-        // Load message count
         const remaining = await getRemainingMessages(userIdRef.current);
         setRemainingMessages(remaining);
       } else {
@@ -99,132 +85,37 @@ export function useChatStorage() {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const todaySession = sessions.find(
-          (s) => new Date(s.timestamp).getTime() >= today.getTime()
-        );
+        const prevSessions = sessions
+          .filter((s) => new Date(s.timestamp).getTime() < today.getTime())
+          .sort((a, b) => b.lastActive - a.lastActive);
 
-        if (todaySession) {
-          setMessages(todaySession.messages as ChatMessage[]);
-        } else {
-          // Find most recent session before today
-          const prevSessions = sessions
-            .filter((s) => new Date(s.timestamp).getTime() < today.getTime())
-            .sort((a, b) => b.lastActive - a.lastActive);
-
-          if (prevSessions.length > 0) {
-            const prev = prevSessions[0];
-            const date = new Date(prev.timestamp).toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'short',
-              day: 'numeric',
-            });
-            setPreviousSession({
-              messages: prev.messages as ChatMessage[],
-              date,
-            });
-          }
+        if (prevSessions.length > 0) {
+          const prev = prevSessions[0];
+          const date = new Date(prev.timestamp).toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'short',
+            day: 'numeric',
+          });
+          setPreviousSession({
+            messages: prev.messages.map((m) => ({
+              role: m.role as 'user' | 'ai',
+              content: m.content,
+            })),
+            date,
+          });
         }
       }
     };
 
-    loadMessages();
+    detectPreviousSession();
   }, [loading]);
 
-  // ── persist messages ──
-  const persist = useCallback(
-    async (msgs: ChatMessage[]) => {
-      if (!userIdRef.current) {
-        // localStorage fallback
-        const sessions = loadSessions();
-        const now = Date.now();
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const existingIdx = sessions.findIndex(
-          (s) => new Date(s.timestamp).getTime() >= today.getTime()
-        );
-
-        const session: ChatSession = {
-          id: existingIdx >= 0 ? sessions[existingIdx].id : `sess_${now}`,
-          timestamp: existingIdx >= 0 ? sessions[existingIdx].timestamp : now,
-          lastActive: now,
-          messages: msgs.map((m) => ({
-            role: m.role === 'assistant' ? 'ai' as const : 'user' as const,
-            content: m.content,
-          })),
-        };
-
-        if (existingIdx >= 0) {
-          sessions[existingIdx] = session;
-        } else {
-          sessions.push(session);
-        }
-
-        saveSessions(sessions);
-        return;
-      }
-
-      // Supabase path — save individual messages
-      // (we persist per-message in a separate effect)
-    },
-    []
-  );
-
-  // ── send message (persists to Supabase + updates count) ──
-  const sendAndPersist = useCallback(
-    async (message: string, mode: 'chat' | 'alerts' = 'chat') => {
-      const userMsg: ChatMessage = { role: 'user', content: message };
-      const newMessages = [...messages, userMsg];
-      setMessages(newMessages);
-
-      if (userIdRef.current) {
-        saveChatMessage(userIdRef.current, 'user', message).catch(console.error);
-        // Refresh remaining count
-        const remaining = await getRemainingMessages(userIdRef.current);
-        setRemainingMessages(remaining);
-      } else {
-        persist(newMessages);
-      }
-
-      return { messages: newMessages, mode };
-    },
-    [messages, persist]
-  );
-
-  // ── on AI response, persist it ──
-  const persistAiResponse = useCallback(
-    (content: string) => {
-      if (userIdRef.current) {
-        saveChatMessage(userIdRef.current, 'assistant', content).catch(console.error);
-      }
-    },
-    []
-  );
-
-  // ── clear messages ──
-  const clearMessages = useCallback(async () => {
-    setMessages([]);
+  // ── load previous session (returns messages for caller to set) ──
+  const loadPreviousSession = useCallback((): ChatMessage[] | null => {
+    if (!previousSession) return null;
+    const msgs = previousSession.messages;
     setPreviousSession(null);
-
-    if (userIdRef.current) {
-      await clearTodayMessages(userIdRef.current);
-    } else {
-      const sessions = loadSessions();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const filtered = sessions.filter(
-        (s) => new Date(s.timestamp).getTime() < today.getTime()
-      );
-      saveSessions(filtered);
-    }
-  }, []);
-
-  // ── load previous session ──
-  const loadPreviousSession = useCallback(() => {
-    if (previousSession) {
-      setMessages(previousSession.messages);
-      setPreviousSession(null);
-    }
+    return msgs;
   }, [previousSession]);
 
   // ── dismiss previous session banner ──
@@ -232,17 +123,21 @@ export function useChatStorage() {
     setPreviousSession(null);
   }, []);
 
+  // ── clear today's messages ──
+  const clearMessages = useCallback(async () => {
+    if (userIdRef.current) {
+      await clearTodayMessages(userIdRef.current);
+      const remaining = await getRemainingMessages(userIdRef.current);
+      setRemainingMessages(remaining);
+    }
+  }, []);
+
   return {
-    messages,
-    setMessages,
     previousSession,
     remainingMessages,
     loading,
-    sendAndPersist,
-    persistAiResponse,
     clearMessages,
     loadPreviousSession,
     dismissPreviousSession,
-    persist,
   };
 }
