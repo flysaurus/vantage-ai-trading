@@ -49,21 +49,27 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
-  const [account, setAccount] = useState<AccountSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Seed with demo data immediately — cards render on load, prices update async
+  const [account, setAccount] = useState<AccountSummary | null>(() => {
+    if (isConnected) return null;
+    const style = (user?.investorStyle || 'buffett') as any;
+    // Build seed account with avgCost as fallback prices (no live quotes yet)
+    return getDemoAccount(style, {});
+  });
+  const [loading, setLoading] = useState(false); // seed data available immediately
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   const fetchData = useCallback(async () => {
-    if (isConnected) return; // broker handles live data
+    if (isConnected) return;
 
     try {
-      setLoading(true);
       setError(null);
 
       const style = (user?.investorStyle || 'buffett') as any;
       const symbols = getDemoSymbols(style as any);
 
+      console.log('[Portfolio] Fetching quotes for:', symbols);
       const res = await fetch('/api/market/quotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,6 +79,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) throw new Error('Market data fetch failed');
 
       const data = await res.json();
+      console.log('[Portfolio] Quote result:', JSON.stringify(data).slice(0, 200));
       if (!data?.quotes || !mountedRef.current) return;
 
       const demoAccount = getDemoAccount(style, data.quotes);
@@ -84,8 +91,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : 'Failed to load market data');
       }
-    } finally {
-      if (mountedRef.current) setLoading(false);
     }
   }, [isConnected, user?.investorStyle]);
 

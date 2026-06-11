@@ -279,9 +279,11 @@ export function getDemoAccount(
 
   const positions: Position[] = portfolio.positions.map((p) => {
     const quote = prices[p.symbol];
-    const currentPrice = quote?.price ?? 0;
-    const dayChangePx = quote?.change ?? 0;
-    const dayChangePct = quote?.changePercent ?? 0;
+    // Only use live price if quote actually has a valid price (not null/0/NaN)
+    const hasLivePrice = quote && typeof quote.price === 'number' && quote.price > 0;
+    const currentPrice = hasLivePrice ? quote.price : p.avgCost; // fallback to avg cost, not 0
+    const dayChangePx = hasLivePrice && typeof quote.change === 'number' ? quote.change : 0;
+    const dayChangePct = hasLivePrice && typeof quote.changePercent === 'number' ? quote.changePercent : 0;
 
     const marketValue = Math.round(p.qty * currentPrice * 100) / 100;
     const dayChange = Math.round(p.qty * dayChangePx * 100) / 100;
