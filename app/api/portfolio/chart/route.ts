@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
+const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY;
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 type Range = '1D' | '1W' | '1M' | 'YTD' | 'ALL';
