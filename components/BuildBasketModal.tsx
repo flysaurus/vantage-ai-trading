@@ -1,20 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import CompassIcon from '@/components/CompassIcon';
 
 const THEMES = [
-  { key: 'ai_infrastructure', emoji: '🤖', name: 'AI Infrastructure' },
+  { key: 'ai_tech', emoji: '🤖', name: 'AI & Tech' },
   { key: 'clean_energy', emoji: '🌱', name: 'Clean Energy' },
-  { key: 'cybersecurity', emoji: '🛡️', name: 'Cybersecurity' },
-  { key: 'healthcare_innovation', emoji: '🧬', name: 'Healthcare' },
-  { key: 'dividend_aristocrats', emoji: '💰', name: 'Dividends' },
-  { key: 'reshoring', emoji: '🏭', name: 'Reshoring' },
-  { key: 'fintech', emoji: '💳', name: 'Fintech' },
-  { key: 'consumer_comeback', emoji: '🛍️', name: 'Consumer' },
+  { key: 'healthcare', emoji: '🏥', name: 'Healthcare' },
+  { key: 'financials', emoji: '🏦', name: 'Financials' },
+  { key: 'defense', emoji: '🛡️', name: 'Defense' },
+  { key: 'consumer', emoji: '🛒', name: 'Consumer' },
+  { key: 'infrastructure', emoji: '🏗️', name: 'Infrastructure' },
+  { key: 'emerging', emoji: '🌍', name: 'Emerging Markets' },
+  { key: 'custom', emoji: '✏️', name: 'Custom' },
 ];
 
-type Step = 'theme' | 'budget' | 'custom';
+type Step = 'theme' | 'budget' | 'generating' | 'review';
+
+interface BasketStock {
+  symbol: string;
+  name: string;
+  allocation: number;
+  rationale: string;
+  shares?: number;
+  price?: number;
+  dollarAmount?: number;
+}
+
+interface BasketData {
+  theme: string;
+  rationale: string;
+  stocks: BasketStock[];
+}
 
 interface Props {
   isOpen: boolean;
@@ -29,291 +46,639 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [customName, setCustomName] = useState('');
   const [customDesc, setCustomDesc] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [basketData, setBasketData] = useState<BasketData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [removeFlash, setRemoveFlash] = useState(false);
+
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      setStep('theme');
+      setSelectedTheme(null);
+      setBudget('');
+      setCustomName('');
+      setCustomDesc('');
+      setBasketData(null);
+      setError(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const themeData = THEMES.find(t => t.key === selectedTheme);
+  const displayTheme = customName.trim() || themeData?.name || 'Custom';
+  const budgetNum = parseInt(budget) || 10000;
 
-  async function handleGenerate() {
+  // ── API: Generate basket ──
+  async function generateBasket() {
     if (!selectedTheme) return;
     setIsGenerating(true);
-    const budgetText = budget ? ` with a $${parseInt(budget).toLocaleString()} budget` : '';
-    const message = `Build me a ${themeData?.name} basket${budgetText}`;
+    setError(null);
+    setStep('generating');
+
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/basket/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, mode: 'theme', responseMode: 'detailed' }),
+        body: JSON.stringify({
+          theme: displayTheme,
+          budget: budgetNum,
+        }),
       });
-      const data = await res.json();
-      onClose();
-      onBasketGenerated(message, data);
-    } catch (err) {
-      console.error(err);
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to generate');
+      }
+
+      const data: BasketData = await res.json();
+
+      // Fetch live prices from Finnhub
+      const stocksWithPrices = await Promise.all(
+        data.stocks.map(async (stock) => {
+          try {
+            const qRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(stock.symbol)}`);
+            const qData = await qRes.json();
+            const price = qData?.c || 0;
+            const dollarAmount = (stock.allocation / 100) * budgetNum;
+            const shares = price > 0 ? +(dollarAmount / price).toFixed(2) : 0;
+            return { ...stock, price, dollarAmount, shares };
+          } catch {
+            return { ...stock, price: 0, dollarAmount: 0, shares: 0 };
+          }
+        })
+      );
+
+      // Filter out stocks with no price, redistribute
+      const valid = stocksWithPrices.filter(s => s.price > 0);
+      const invalidAlloc = stocksWithPrices
+        .filter(s => s.price <= 0)
+        .reduce((sum, s) => sum + s.allocation, 0);
+
+      if (valid.length > 0 && invalidAlloc > 0) {
+        const redistPer = invalidAlloc / valid.length;
+        valid.forEach(s => {
+          s.allocation = +(s.allocation + redistPer).toFixed(1);
+          s.dollarAmount = (s.allocation / 100) * budgetNum;
+          s.shares = +(s.dollarAmount / s.price!).toFixed(2);
+        });
+        // Normalize to 100
+        const totalAlloc = valid.reduce((sum, s) => sum + s.allocation, 0);
+        if (totalAlloc !== 100) {
+          const diff = 100 - totalAlloc;
+          valid[0].allocation = +(valid[0].allocation + diff).toFixed(1);
+          valid[0].dollarAmount = (valid[0].allocation / 100) * budgetNum;
+          valid[0].shares = +(valid[0].dollarAmount / valid[0].price!).toFixed(2);
+        }
+      }
+
+      setBasketData({ ...data, stocks: valid });
+      setStep('review');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to generate basket');
+      setStep('review'); // go to review so they see error state
     } finally {
       setIsGenerating(false);
     }
   }
 
-  async function handleGenerateCustom() {
-    if (!customName.trim() || !customDesc.trim()) return;
-    setIsGenerating(true);
-    const message = `Build me a custom basket called "${customName}". Focus on: ${customDesc}`;
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, mode: 'theme', responseMode: 'detailed' }),
-      });
-      const data = await res.json();
-      onClose();
-      onBasketGenerated(message, data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsGenerating(false);
+  // ── Remove stock from basket ──
+  const removeStock = useCallback((symbol: string) => {
+    if (!basketData || basketData.stocks.length <= 2) return;
+    const remaining = basketData.stocks.filter(s => s.symbol !== symbol);
+    // Redistribute allocation proportionally
+    const totalAlloc = remaining.reduce((sum, s) => sum + s.allocation, 0);
+    const updated = remaining.map(s => {
+      const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
+      const dollarAmount = (newAlloc / 100) * budgetNum;
+      const shares = s.price && s.price > 0 ? +(dollarAmount / s.price).toFixed(2) : 0;
+      return { ...s, allocation: newAlloc, dollarAmount, shares };
+    });
+    // Fix rounding to sum to exactly 100
+    const newTotal = updated.reduce((sum, s) => sum + s.allocation, 0);
+    if (newTotal !== 100) {
+      updated[0].allocation = +(updated[0].allocation + (100 - newTotal)).toFixed(1);
+      updated[0].dollarAmount = (updated[0].allocation / 100) * budgetNum;
+      updated[0].shares = updated[0].price && updated[0].price > 0
+        ? +(updated[0].dollarAmount / updated[0].price).toFixed(2)
+        : 0;
     }
-  }
+    setBasketData({ ...basketData, stocks: updated });
+    setRemoveFlash(true);
+    setTimeout(() => setRemoveFlash(false), 1500);
+  }, [basketData, budgetNum]);
 
-  function reset() {
-    setStep('theme');
-    setSelectedTheme(null);
-    setBudget('');
-    setCustomName('');
-    setCustomDesc('');
-    setIsGenerating(false);
+  // ── Add to portfolio ──
+  async function addToPortfolio() {
+    if (!basketData) return;
+    const msg = `Add ${basketData.theme} basket (${basketData.stocks.length} stocks, $${budgetNum.toLocaleString()}) to my portfolio`;
     onClose();
+    onBasketGenerated(msg, basketData);
   }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 flex-shrink-0 pt-safe">
-        <div className="flex items-center gap-3">
-          {step !== 'theme' && (
+  // ── Header ──
+  const header = (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '16px 20px',
+      background: '#0a0f1e',
+      borderBottom: '1px solid rgba(255,255,255,0.08)',
+      flexShrink: 0,
+    }}>
+      <button
+        onClick={() => {
+          if (step === 'theme') {
+            onClose();
+          } else if (step === 'budget') {
+            setStep('theme');
+          } else if (step === 'review') {
+            setStep('budget');
+          }
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#94a3b8',
+          fontSize: '18px',
+          padding: '4px',
+          cursor: 'pointer',
+          width: '32px',
+        }}
+      >
+        ←
+      </button>
+      <span style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff' }}>
+        Build Basket
+      </span>
+      <button
+        onClick={onClose}
+        style={{
+          background: 'rgba(255,255,255,0.06)',
+          border: 'none',
+          borderRadius: '50%',
+          width: '32px',
+          height: '32px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#94a3b8',
+          fontSize: '16px',
+          cursor: 'pointer',
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+
+  // ── Step 1: Theme Selection ──
+  const themeStep = (
+    <>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+          What do you want to invest in?
+        </p>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: '10px',
+        }}>
+          {THEMES.map(theme => (
             <button
-              onClick={() => setStep('theme')}
-              className="text-slate-400 p-1"
+              key={theme.key}
+              onClick={() => {
+                setSelectedTheme(theme.key);
+                if (theme.key === 'custom') {
+                  setStep('budget');
+                } else {
+                  setStep('budget');
+                }
+              }}
+              style={{
+                background: selectedTheme === theme.key
+                  ? 'rgba(34,211,238,0.08)'
+                  : '#1a2235',
+                border: selectedTheme === theme.key
+                  ? '1px solid #22d3ee'
+                  : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+                padding: '12px 8px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+              }}
             >
-              ←
+              <span style={{ fontSize: '24px' }}>{theme.emoji}</span>
+              <span style={{ fontSize: '11px', color: '#e2e8f0', textAlign: 'center' }}>
+                {theme.name}
+              </span>
             </button>
-          )}
-          <div>
-            <h2 className="text-white font-semibold text-lg">
-              {step === 'theme'
-                ? 'Build a Basket'
-                : step === 'custom'
-                  ? 'Custom Basket'
-                  : themeData?.name || ''}
-            </h2>
-            <p className="text-slate-400 text-xs">
-              {step === 'theme'
-                ? 'AI scores stocks for your style'
-                : step === 'custom'
-                  ? 'Describe your investment theme'
-                  : 'Set your budget'}
-            </p>
-          </div>
+          ))}
         </div>
 
-        <button
-          onClick={reset}
-          className="text-slate-400 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800"
-        >
-          ✕
-        </button>
+        {selectedTheme === 'custom' && (
+          <div style={{ marginTop: '12px' }}>
+            <input
+              type="text"
+              value={customName}
+              onChange={e => setCustomName(e.target.value)}
+              placeholder="Describe your basket theme..."
+              autoFocus
+              style={{
+                width: '100%',
+                background: '#1a2235',
+                border: '1px solid #22d3ee',
+                borderRadius: '10px',
+                padding: '12px',
+                color: '#ffffff',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* STEP: Theme selection */}
-      {step === 'theme' && (
-        <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
-          {/* Section label */}
-          <p className="text-slate-500 text-xs uppercase tracking-wider mb-3">
-            Select a theme
-          </p>
+      {/* Continue button */}
+      <div style={{
+        padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={() => {
+            if (selectedTheme === 'custom') {
+              setSelectedTheme(customName.trim() ? 'custom' : null);
+            }
+            setStep('budget');
+          }}
+          disabled={!selectedTheme || (selectedTheme === 'custom' && !customName.trim())}
+          style={{
+            width: '100%',
+            background: selectedTheme && (selectedTheme !== 'custom' || customName.trim())
+              ? '#22d3ee'
+              : 'rgba(34,211,238,0.2)',
+            border: 'none',
+            borderRadius: '10px',
+            color: selectedTheme && (selectedTheme !== 'custom' || customName.trim())
+              ? '#000000'
+              : 'rgba(34,211,238,0.4)',
+            fontSize: '14px',
+            fontWeight: '600',
+            padding: '14px 0',
+            cursor: selectedTheme && (selectedTheme !== 'custom' || customName.trim())
+              ? 'pointer'
+              : 'not-allowed',
+          }}
+        >
+          Continue →
+        </button>
+      </div>
+    </>
+  );
 
-          <div className="grid grid-cols-2 gap-3">
-            {THEMES.map(theme => (
-              <button
-                key={theme.key}
-                onClick={() => {
-                  setSelectedTheme(theme.key);
-                  setStep('budget');
-                }}
-                className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 hover:border-cyan-500/60 rounded-2xl p-4 text-left transition-all active:scale-95"
-              >
-                <span className="text-3xl flex-shrink-0">
-                  {theme.emoji}
-                </span>
-                <p className="text-white text-sm font-semibold leading-tight">
-                  {theme.name}
-                </p>
-              </button>
+  // ── Step 2: Budget ──
+  const budgetStep = (
+    <>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '24px' }}>
+          How much do you want to invest?
+        </p>
+
+        {/* Large dollar input */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '24px',
+          padding: '8px 0',
+          borderBottom: '1px solid #22d3ee',
+        }}>
+          <span style={{ fontSize: '28px', color: '#64748b', fontWeight: '300', marginRight: '4px' }}>
+            $
+          </span>
+          <input
+            type="number"
+            value={budget}
+            onChange={e => setBudget(e.target.value)}
+            placeholder="0"
+            inputMode="numeric"
+            autoFocus
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              fontSize: '28px',
+              fontWeight: '700',
+              width: '120px',
+              textAlign: 'center',
+              outline: 'none',
+            }}
+          />
+        </div>
+
+        {/* Quick-select pills */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '8px',
+          justifyContent: 'center',
+          marginBottom: '24px',
+        }}>
+          {[1000, 5000, 10000, 25000].map(amt => (
+            <button
+              key={amt}
+              onClick={() => setBudget(String(amt))}
+              style={{
+                background: budget === String(amt) ? 'rgba(34,211,238,0.1)' : 'transparent',
+                border: budget === String(amt) ? '1px solid #22d3ee' : '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '20px',
+                padding: '8px 16px',
+                color: budget === String(amt) ? '#22d3ee' : '#94a3b8',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              ${amt.toLocaleString()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Generate button */}
+      <div style={{
+        padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={generateBasket}
+          disabled={!budget || parseInt(budget) <= 0}
+          style={{
+            width: '100%',
+            background: budget && parseInt(budget) > 0 ? '#22d3ee' : 'rgba(34,211,238,0.2)',
+            border: 'none',
+            borderRadius: '10px',
+            color: budget && parseInt(budget) > 0 ? '#000000' : 'rgba(34,211,238,0.4)',
+            fontSize: '14px',
+            fontWeight: '600',
+            padding: '14px 0',
+            cursor: budget && parseInt(budget) > 0 ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Generate Basket →
+        </button>
+      </div>
+    </>
+  );
+
+  // ── Step 3: AI Generating ──
+  const generatingStep = (
+    <div style={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '32px',
+      gap: '16px',
+    }}>
+      <CompassIcon size={64} color="#22d3ee" animated={true} />
+      <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', textAlign: 'center' }}>
+        Vantage AI is building your basket...
+      </p>
+      <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center' }}>
+        Selecting top stocks for {displayTheme}
+      </p>
+      <span style={{
+        display: 'inline-block',
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        background: '#22d3ee',
+        animation: 'pulse 1.2s ease-in-out infinite',
+        marginTop: '8px',
+      }} />
+    </div>
+  );
+
+  // ── Step 4: Review Basket ──
+  const reviewStep = (
+    <>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        {error ? (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <p style={{ fontSize: '14px', color: '#ef4444', marginBottom: '12px' }}>
+              {error}
+            </p>
+            <button
+              onClick={generateBasket}
+              style={{
+                background: '#22d3ee',
+                border: 'none',
+                borderRadius: '10px',
+                color: '#000000',
+                fontSize: '14px',
+                fontWeight: '600',
+                padding: '12px 24px',
+                cursor: 'pointer',
+              }}
+            >
+              Try Again
+            </button>
+          </div>
+        ) : basketData ? (
+          <>
+            {/* Header info */}
+            <p style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff', marginBottom: '4px' }}>
+              {basketData.theme} Basket · ${budgetNum.toLocaleString()}
+            </p>
+            <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.5', marginBottom: '16px' }}>
+              {basketData.rationale}
+            </p>
+
+            {/* Allocation adjusted flash */}
+            {removeFlash && (
+              <p style={{
+                fontSize: '11px',
+                color: '#94a3b8',
+                textAlign: 'center',
+                marginBottom: '8px',
+                transition: 'opacity 0.3s',
+              }}>
+                Allocation adjusted
+              </p>
+            )}
+
+            {/* Stock rows */}
+            {basketData.stocks.map((stock, i) => (
+              <div key={stock.symbol}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  padding: '10px 0',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Line 1: Ticker + Name + allocation */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      justifyContent: 'space-between',
+                      marginBottom: '2px',
+                    }}>
+                      <div>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
+                          {stock.symbol}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>
+                          {stock.name}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>
+                          {stock.allocation}%
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#ffffff', fontWeight: '500' }}>
+                          ${(stock.dollarAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </span>
+                        {/* Remove button */}
+                        {basketData.stocks.length > 2 && (
+                          <button
+                            onClick={() => removeStock(stock.symbol)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#ef4444',
+                              fontSize: '16px',
+                              cursor: 'pointer',
+                              padding: '0 4px',
+                              lineHeight: 1,
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Line 2: Shares + price */}
+                    <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
+                      {stock.shares} shares @ ${(stock.price || 0).toFixed(2)}
+                    </p>
+                    {/* Line 3: Rationale */}
+                    {stock.rationale && (
+                      <p style={{
+                        fontSize: '11px',
+                        color: '#64748b',
+                        fontStyle: 'italic',
+                        margin: '2px 0 0 0',
+                        lineHeight: '1.4',
+                      }}>
+                        💡 {stock.rationale}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {i < basketData.stocks.length - 1 && (
+                  <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+                )}
+              </div>
             ))}
 
-            {/* Custom basket — full width, dashed border */}
-            <button
-              onClick={() => setStep('custom')}
-              className="col-span-2 flex items-center gap-3 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 border-dashed hover:border-cyan-500/60 rounded-2xl p-4 text-left transition-all"
-            >
-              <span className="text-3xl">✏️</span>
-              <div>
-                <p className="text-white text-sm font-semibold">
-                  Custom Basket
-                </p>
-                <p className="text-slate-400 text-xs">
-                  Describe your own theme
-                </p>
-              </div>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* STEP: Budget */}
-      {step === 'budget' && (
-        <>
-          <div className="flex-1 overflow-y-auto px-5 pt-6 pb-4">
-            {/* Theme preview */}
-            <div className="flex items-center gap-3 mb-6 p-4 bg-slate-800 rounded-2xl border border-slate-700">
-              <span className="text-4xl">
-                {themeData?.emoji}
+            {/* Total row */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              marginTop: '8px',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>Total</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
+                ${basketData.stocks.reduce((sum, s) => sum + (s.dollarAmount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
-              <div>
-                <p className="text-white font-semibold">
-                  {themeData?.name}
-                </p>
-                <p className="text-slate-400 text-xs">
-                  AI will score and rank stocks for your Growth-Style mandate
-                </p>
-              </div>
             </div>
+          </>
+        ) : (
+          <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '24px 0' }}>
+            No basket data available
+          </p>
+        )}
+      </div>
 
-            {/* Budget input */}
-            <p className="text-slate-400 text-xs uppercase tracking-wider mb-3">
-              Budget (optional)
-            </p>
+      {/* Bottom buttons */}
+      <div style={{
+        padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      }}>
+        <button
+          onClick={addToPortfolio}
+          disabled={!basketData}
+          style={{
+            width: '100%',
+            background: basketData ? '#22d3ee' : 'rgba(34,211,238,0.2)',
+            border: 'none',
+            borderRadius: '10px',
+            color: basketData ? '#000000' : 'rgba(34,211,238,0.4)',
+            fontSize: '14px',
+            fontWeight: '600',
+            padding: '14px 0',
+            cursor: basketData ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Add to Portfolio
+        </button>
+        <button
+          onClick={generateBasket}
+          disabled={!selectedTheme}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: '1px solid #22d3ee',
+            borderRadius: '10px',
+            color: '#22d3ee',
+            fontSize: '14px',
+            fontWeight: '500',
+            padding: '14px 0',
+            cursor: 'pointer',
+          }}
+        >
+          Regenerate
+        </button>
+      </div>
+    </>
+  );
 
-            <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400 text-3xl font-light">$</span>
-                <input
-                  type="number"
-                  value={budget}
-                  onChange={e => setBudget(e.target.value)}
-                  placeholder="0"
-                  className="bg-transparent text-white text-4xl font-bold flex-1 outline-none placeholder-slate-700"
-                  autoFocus
-                />
-              </div>
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: '#0a0f1e',
+      zIndex: 99999,
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {header}
 
-              {/* Quick amounts */}
-              <div className="grid grid-cols-4 gap-2 mt-4">
-                {[1000, 5000, 10000, 25000].map(amt => (
-                  <button
-                    key={amt}
-                    onClick={() => setBudget(String(amt))}
-                    className={`py-2.5 rounded-xl text-sm font-medium transition ${
-                      budget === String(amt)
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-700 text-slate-300'
-                    }`}
-                  >
-                    ${amt >= 1000 ? `${amt / 1000}K` : amt}
-                  </button>
-                ))}
-              </div>
-            </div>
+      {step === 'theme' && themeStep}
+      {step === 'budget' && budgetStep}
+      {step === 'generating' && generatingStep}
+      {step === 'review' && reviewStep}
 
-            <p className="text-slate-500 text-xs text-center">
-              Skip budget to set per-stock quantity on the next screen
-            </p>
-          </div>
-
-          {/* Generate button — pinned to bottom */}
-          <div className="flex-shrink-0 px-5 pb-8 pt-4 border-t border-slate-800">
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="w-full bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-2xl text-base transition-all flex items-center justify-center gap-2"
-            >
-              {isGenerating ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Scoring stocks...
-                </>
-              ) : (
-                `Generate ${themeData?.emoji} Basket`
-              )}
-            </button>
-            <p className="text-slate-600 text-xs text-center mt-2">
-              Uses 1 deep analysis
-            </p>
-          </div>
-        </>
-      )}
-
-      {/* STEP: Custom basket */}
-      {step === 'custom' && (
-        <>
-          <div className="flex-1 overflow-y-auto px-5 pt-6">
-            <div className="bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-700">
-              <p className="text-slate-400 text-xs mb-2">Basket name</p>
-              <input
-                type="text"
-                value={customName}
-                onChange={e => setCustomName(e.target.value)}
-                placeholder="e.g. Water Infrastructure"
-                className="bg-transparent text-white text-lg font-medium w-full outline-none placeholder-slate-600"
-                autoFocus
-              />
-            </div>
-
-            <div className="bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-700">
-              <p className="text-slate-400 text-xs mb-2">What do you want to invest in?</p>
-              <textarea
-                value={customDesc}
-                onChange={e => setCustomDesc(e.target.value)}
-                placeholder="e.g. Companies building water infrastructure, treatment, and distribution"
-                className="bg-transparent text-white text-sm w-full outline-none placeholder-slate-600 resize-none leading-relaxed"
-                rows={3}
-              />
-            </div>
-
-            <div className="bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-700">
-              <p className="text-slate-400 text-xs mb-2">Budget (optional)</p>
-              <div className="flex items-center gap-1">
-                <span className="text-slate-400 text-xl">$</span>
-                <input
-                  type="number"
-                  value={budget}
-                  onChange={e => setBudget(e.target.value)}
-                  placeholder="0"
-                  className="bg-transparent text-white text-2xl font-semibold flex-1 outline-none placeholder-slate-600"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Generate button — pinned */}
-          <div className="flex-shrink-0 px-5 pb-8 pt-4 border-t border-slate-800">
-            <button
-              onClick={handleGenerateCustom}
-              disabled={!customName.trim() || !customDesc.trim() || isGenerating}
-              className="w-full bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-2xl text-base transition flex items-center justify-center gap-2"
-            >
-              {isGenerating ? (
-                <>
-                  <CompassIcon size={18} color="white" animated={true} />
-                  Scoring stocks...
-                </>
-              ) : (
-                '✏️ Generate Custom Basket →'
-              )}
-            </button>
-          </div>
-        </>
-      )}
+      {/* Pulse animation keyframe */}
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(1.5); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
