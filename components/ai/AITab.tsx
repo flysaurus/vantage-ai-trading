@@ -316,6 +316,64 @@ export function AITab({ messages, setMessages }: AITabProps) {
   };
 
   // ── send to chat from tappable items (flash + toast + scroll to input) ──
+  // ── Market Pulse: fetch live quotes before sending ──
+  const handleMarketPulse = async (e: React.MouseEvent) => {
+    // Flash effect
+    const el = e.currentTarget as HTMLElement;
+    el.style.transition = 'box-shadow 0s';
+    el.style.boxShadow = '0 0 0 2px #22d3ee';
+    setTimeout(() => {
+      el.style.transition = 'box-shadow 400ms ease-out';
+      el.style.boxShadow = '';
+    }, 100);
+
+    setToast('💬 Vantage AI is responding...');
+
+    const symbols = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX'];
+    const quotes: Record<string, { c: number; d: number; dp: number }> = {};
+
+    try {
+      await Promise.all(
+        symbols.map(async (sym) => {
+          try {
+            const res = await fetch(`/api/finnhub/quote?symbol=${sym}`);
+            const data = await res.json();
+            quotes[sym] = { c: data.c || 0, d: data.d || 0, dp: data.dp || 0 };
+          } catch {
+            quotes[sym] = { c: 0, d: 0, dp: 0 };
+          }
+        })
+      );
+    } catch {
+      // proceed with whatever we have
+    }
+
+    const fmtChg = (d: number) => (d > 0 ? `+${d.toFixed(2)}` : d.toFixed(2));
+    const fmtPct = (dp: number) => (dp > 0 ? `+${dp.toFixed(2)}` : dp.toFixed(2));
+
+    const marketData = `LIVE MARKET DATA (real-time from Finnhub):
+S&P 500 ETF (SPY): $${quotes.SPY?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.SPY?.d || 0)} (${fmtPct(quotes.SPY?.dp || 0)}%)
+Nasdaq ETF (QQQ): $${quotes.QQQ?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.QQQ?.d || 0)} (${fmtPct(quotes.QQQ?.dp || 0)}%)
+Dow ETF (DIA): $${quotes.DIA?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.DIA?.d || 0)} (${fmtPct(quotes.DIA?.dp || 0)}%)
+Russell 2000 (IWM): $${quotes.IWM?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.IWM?.d || 0)} (${fmtPct(quotes.IWM?.dp || 0)}%)
+VIX: $${quotes.VIX?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.VIX?.d || 0)} (${fmtPct(quotes.VIX?.dp || 0)}%)
+
+Note: For sector performance, use the ETF moves above as proxies and your knowledge of sector correlations. QQQ weakness = tech pressure. IWM weakness = small cap risk-off. DIA vs QQQ spread = value vs growth rotation.
+
+Use this data to answer the following — do NOT search the web for prices, these are the real current numbers:
+
+Give me a market pulse check — how are the major indexes performing today, what sectors are leading and lagging, and what should I know as an investor right now?`;
+
+    sendMessage(marketData);
+
+    setTimeout(() => {
+      document.getElementById('chat-input')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      });
+    }, 150);
+  };
+
   const sendToChat = (message: string, e?: React.MouseEvent) => {
     // Flash effect: add cyan border for 100ms on the tapped element
     if (e) {
@@ -1244,10 +1302,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               if (btn.action === 'basket') {
                 setShowBuildBasket(true);
               } else if (btn.action === 'pulse') {
-                sendToChat(
-                  'Give me a market pulse check — how are the major indexes performing today, what sectors are leading and lagging, and what should I know as an investor right now?',
-                  e
-                );
+                handleMarketPulse(e);
               } else if (btn.action === 'tax') {
                 sendToChat(
                   'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',

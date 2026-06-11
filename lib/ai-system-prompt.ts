@@ -83,6 +83,7 @@ PRICE DATA RULES — CRITICAL:
 - If you mention a support/resistance level, it must be derived from the current price in context, not memory
 - Current prices are provided in real-time context — trust them over anything you were trained on
 - Example: if context shows NVDA at $208, do not reference $105 or any other price as current
+- When LIVE MARKET DATA is provided at the start of a message, use ONLY those numbers for prices and changes. Do not search the web or use training data for market prices — the provided data is current and authoritative.
 `
 
 export const ALERTS_SYSTEM_PROMPT = `
