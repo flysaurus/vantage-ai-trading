@@ -3,6 +3,9 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
+import dynamic from 'next/dynamic';
+
+const WeeklySnapshotCard = dynamic(() => import('./WeeklySnapshotCard'), { ssr: false });
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -35,7 +38,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── state ──
   const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
-  const [snapshotExpanded, setSnapshotExpanded] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState(0);
@@ -270,6 +272,36 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const totalPnl = liveAccount?.totalPnl ?? 0;
   const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
 
+  // ── suggestion chips (computed from live portfolio data) ──
+  const suggestionChips: string[] = (() => {
+    const chips: string[] = [];
+    const positions = liveAccount?.positions || [];
+
+    const largest = positions.reduce((a, b) =>
+      (a.marketValue || 0) > (b.marketValue || 0) ? a : b
+    , positions[0]);
+    if (largest) {
+      chips.push(`${largest.symbol} — analyze my largest position at $${largest.currentPrice?.toFixed(2) || '?'}`);
+    } else {
+      chips.push('Analyze my largest position');
+    }
+
+    const topMover = [...positions].sort((a, b) =>
+      Math.abs(b.dayChange || 0) - Math.abs(a.dayChange || 0)
+    )[0];
+    if (topMover && topMover.dayChange !== 0) {
+      const dir = topMover.dayChange >= 0 ? 'up' : 'down';
+      const pct = Math.abs(topMover.dayChangePercent || 0);
+      chips.push(`${topMover.symbol} is ${dir} ${pct.toFixed(1)}% today — why?`);
+    } else {
+      chips.push('How is my portfolio performing today?');
+    }
+
+    const dayDir = dayPnl >= 0 ? 'up' : 'down';
+    chips.push(`Your portfolio is ${dayDir} ${fmt(Math.abs(dayPnl))} (${pctStr(Math.abs(dayPnlPct))}) today — why?`);
+    return chips;
+  })();
+
   // ── styles ──
   const cardBox: React.CSSProperties = {
     background: '#1a2235',
@@ -408,11 +440,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               borderRadius: '6px',
               padding: '8px 10px',
             }}
-            onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
-              );
-            }}
+            onClick={() => sendToChat('Scan my portfolio for urgent alerts')}
           >
             <div style={{ display: 'flex', alignItems: 'center' }}>
             <span
@@ -530,249 +558,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       </div>
 
       {/* ─── 3. Weekly Snapshot Card ─── */}
-      <div
-        style={{
-          margin: '8px 16px 0 16px',
-          background: 'rgba(26,34,53,0.6)',
-          border: '1px solid rgba(42,52,72,0.6)',
-          borderRadius: '10px',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div
-          style={COLLAPSIBLE_HEADER}
-          onClick={() => setSnapshotExpanded(!snapshotExpanded)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px' }}>📊</span>
-            <span
-              style={{
-                fontSize: '13px',
-                fontWeight: '600',
-                color: '#ffffff',
-                marginLeft: '8px',
-              }}
-            >
-              Weekly Snapshot
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span
-              style={{
-                fontSize: '14px',
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              ↻
-            </span>
-            <span style={{ fontSize: '10px', color: '#64748b' }}>
-              {snapshotExpanded ? '▲' : '▼'}
-            </span>
-          </div>
-        </div>
-
-        {/* Summary (always visible) */}
-        <div style={{ padding: '0 16px 12px 16px' }}>
-          <div style={{ display: 'flex', gap: '16px' }}>
-            {/* Health Score */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'baseline' }}>
-                <span
-                  style={{
-                    fontSize: '18px',
-                    fontWeight: '700',
-                    color: '#10b981',
-                  }}
-                >
-                  7.2
-                </span>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>/10</span>
-              </div>
-              <p style={{ fontSize: '10px', color: '#64748b' }}>
-                Portfolio Health
-              </p>
-            </div>
-
-            {/* Risk */}
-            <div>
-              <span
-                style={{
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  color: '#10b981',
-                }}
-              >
-                LOW
-              </span>
-              <p style={{ fontSize: '10px', color: '#64748b' }}>
-                Risk Level
-              </p>
-            </div>
-
-            {/* Opportunities */}
-            <div>
-              <span
-                style={{
-                  fontSize: '18px',
-                  fontWeight: '700',
-                  color: '#22d3ee',
-                }}
-              >
-                2
-              </span>
-              <p style={{ fontSize: '10px', color: '#64748b' }}>
-                Opportunities
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Expanded */}
-        {snapshotExpanded && (
-          <div
-            style={{
-              padding: '0 16px 12px 16px',
-              borderTop: '1px solid rgba(42,52,72,0.6)',
-            }}
-          >
-            {/* Opportunities */}
-            <div style={{ marginTop: '12px' }}>
-              <p style={{
-                fontSize: '11px', color: '#22d3ee',
-                fontWeight: '700', letterSpacing: '0.05em',
-                marginBottom: '8px',
-              }}>
-                📈 OPPORTUNITIES
-              </p>
-              {[
-                {
-                  text: earnings[0]
-                    ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} days — prepare position`
-                    : 'NVDA showing oversold signals — consider adding',
-                  msg: earnings[0]
-                    ? `Help me prepare for ${earnings[0].symbol} earnings`
-                    : 'Analyze NVDA — is it showing oversold signals?',
-                },
-                {
-                  text: 'GOOGL trading below 52-week average — value entry',
-                  msg: 'Analyze GOOGL — is it a value entry at current price?',
-                },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  onClick={() => sendToChat(item.msg)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(34,211,238,0.06)',
-                    border: '1px solid rgba(34,211,238,0.12)',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
-                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Risks */}
-            <div style={{ marginTop: '12px' }}>
-              <p style={{
-                fontSize: '11px', color: '#f59e0b',
-                fontWeight: '700', letterSpacing: '0.05em',
-                marginBottom: '8px',
-              }}>
-                ⚠️ RISKS
-              </p>
-              {[
-                {
-                  text: 'Tech concentration at 68% — above 50% threshold',
-                  msg: 'How should I reduce my tech concentration?',
-                },
-                {
-                  text: 'NFLX position down 91% — review sizing',
-                  msg: "Should I cut my NFLX position? It's down 91%",
-                },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  onClick={() => sendToChat(item.msg)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(34,211,238,0.06)',
-                    border: '1px solid rgba(34,211,238,0.12)',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
-                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Recommendations */}
-            <div style={{ marginTop: '12px' }}>
-              <p style={{
-                fontSize: '11px', color: '#10b981',
-                fontWeight: '700', letterSpacing: '0.05em',
-                marginBottom: '8px',
-              }}>
-                💡 RECOMMENDATIONS
-              </p>
-              {[
-                {
-                  text: 'Consider adding healthcare or financials for diversification',
-                  msg: 'What healthcare or financial stocks should I add?',
-                },
-                {
-                  text: 'Review NFLX position — down 91% from cost basis',
-                  msg: 'Give me a full analysis of my NFLX position',
-                },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  onClick={() => sendToChat(item.msg)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(34,211,238,0.06)',
-                    border: '1px solid rgba(34,211,238,0.12)',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
-                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-                </div>
-              ))}
-            </div>
-
-            <p style={{
-              fontSize: '10px', color: '#94a3b8',
-              marginTop: '12px',
-            }}>
-              Generated Jun 9 · Refresh uses 1 deep analysis
-            </p>
-          </div>
-        )}
-      </div>
+      <WeeklySnapshotCard />
 
       {/* ─── 4. Divider ─── */}
       <div
@@ -804,15 +590,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         {/* Empty state — suggestion chips */}
         {messages.length === 0 && !loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {[
-              earnings[0]
-                ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} day${earnings[0].daysUntil === 1 ? '' : 's'} — want analysis?`
-                : 'NVDA — analyze my largest position?',
-              portfolioSummary
-                ? `${portfolioSummary.split(' ')[0]} is moving today — why?`
-                : 'META — analyze my largest position?',
-              'Your portfolio is down 0.9% — why?',
-            ].map((suggestion) => (
+            {suggestionChips.map((suggestion) => (
               <div
                 key={suggestion}
                 onClick={() => sendMessage(suggestion)}
@@ -982,16 +760,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }}
       >
         {[
-          { icon: '🧺', label: 'Build Basket', msg: 'build-basket' },
-          { icon: '📡', label: 'Market Pulse', msg: 'Give me a market pulse for today' },
-          { icon: '📋', label: 'Tax Check', msg: 'Check my portfolio for tax loss harvesting opportunities' },
           { icon: '⚡', label: 'Alerts', msg: 'Scan my portfolio for urgent alerts' },
+          { icon: '📊', label: 'Snapshot', msg: 'snapshot-refresh' },
+          { icon: '🔍', label: 'Screener', msg: 'screener' },
+          { icon: '📋', label: 'Brief', msg: 'brief-refresh' },
         ].map((btn) => (
           <div
             key={btn.label}
             onClick={() => {
-              if (btn.msg === 'build-basket') {
-                window.dispatchEvent(new CustomEvent('vantage-open-basket-modal'));
+              if (btn.msg === 'screener') {
+                sendMessage('Open the stock screener');
+              } else if (btn.msg === 'snapshot-refresh') {
+                sendMessage('Generate a new weekly portfolio snapshot');
+              } else if (btn.msg === 'brief-refresh') {
+                sendMessage('Refresh the daily brief for today');
               } else {
                 sendMessage(btn.msg);
               }
