@@ -292,7 +292,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   };
 
-  // ── send to chat from tappable items (flash + toast, no scroll) ──
+  // ── send to chat from tappable items (flash + toast + scroll to input) ──
   const sendToChat = (message: string, e?: React.MouseEvent) => {
     // Flash effect: add cyan border for 100ms on the tapped element
     if (e) {
@@ -305,8 +305,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }, 100);
     }
     sendMessage(message);
-    // Show toast — dismissed when AI streaming starts (in sendMessage)
-    setToast('Vantage AI is responding...');
+    // Show toast — dismissed when AI streaming starts
+    setToast('💬 Vantage AI is responding...');
+    // Scroll to chat input bar after render
+    setTimeout(() => {
+      document.getElementById('chat-input')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      });
+    }, 150);
   };
 
   // ── derived data from shared portfolio context ──
@@ -998,8 +1005,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
                     el.style.transition = 'box-shadow 400ms ease-out';
                     el.style.boxShadow = '';
                   }, 100);
-                  setToast('Vantage AI is responding...');
+                  setToast('💬 Vantage AI is responding...');
                   sendMessage(suggestion);
+                  setTimeout(() => {
+                    document.getElementById('chat-input')?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'end',
+                    });
+                  }, 150);
                 }}
                 style={{
                   background: '#1a2235',
@@ -1206,6 +1219,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       {/* ─── 7. Input Bar ─── */}
       <div
+        id="chat-input"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -1373,9 +1387,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
               background: '#0f172a',
               borderTop: '1px solid #2a3448',
               borderRadius: '16px 16px 0 0',
-              maxHeight: '70vh',
-              overflow: 'auto',
-              padding: '20px 16px 32px 16px',
+              maxHeight: 'calc(100vh - 80px - env(safe-area-inset-bottom))',
+              overflowY: 'auto',
+              padding: '20px 16px calc(80px + env(safe-area-inset-bottom) + 16px) 16px',
             }}
           >
             <div
