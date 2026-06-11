@@ -8,6 +8,7 @@ import type { ChatSession } from '@/lib/chat-history';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import BuildBasketModal from '@/components/BuildBasketModal';
+import CompassIcon from '@/components/CompassIcon';
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -53,6 +54,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState(0);
+  const [greeting, setGreeting] = useState<string | null>(null);
+  const [greetingDots, setGreetingDots] = useState(true);
   const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
     symbol: string;
@@ -193,6 +196,35 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const id = persistChat(messages, currentSessionId);
     if (id !== currentSessionId) setCurrentSessionId(id);
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── AI greeting on fresh session ──
+  useEffect(() => {
+    // Only generate once per session: empty chat, no previous session loaded
+    if (messages.length > 0) return;
+    if (greeting || previousSession) return;
+
+    const fetchGreeting = async () => {
+      try {
+        const res = await fetch('/api/ai/greeting', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ portfolioContext }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Show typing dots for 1.5s, then reveal
+          setTimeout(() => {
+            setGreetingDots(false);
+            setGreeting(data.greeting);
+          }, 1500);
+        }
+      } catch {
+        // silently fall back to no greeting
+        setGreetingDots(false);
+      }
+    };
+    fetchGreeting();
+  }, [messages.length, greeting, previousSession, portfolioContext]);
 
   // ── helpers ──
   const scrollToBottom = () => {
@@ -451,49 +483,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* ─── 1. Compact Account Card ─── */}
-      <div
-        style={{
-          ...cardBox,
-          margin: '12px 16px 0 16px',
-          padding: '12px 16px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <p style={{ fontSize: '22px', fontWeight: '700', color: '#ffffff' }}>
-            ${equity.toLocaleString('en-US', DOLLAR_FMT)}
-          </p>
-          <p style={{ fontSize: '11px', marginTop: '2px' }}>
-            <span style={{ color: dayPnl > 0 ? '#10b981' : dayPnl < 0 ? '#ef4444' : '#6b7280' }}>
-              TODAY {fmt(dayPnl)} ({pctStr(dayPnlPct)})
-            </span>
-            {' · '}
-            <span style={{ color: totalPnl > 0 ? '#10b981' : totalPnl < 0 ? '#ef4444' : '#6b7280' }}>
-              TOTAL {fmt(totalPnl)} ({pctStr(totalPnlPct)})
-            </span>
-          </p>
-        </div>
-        <div>
-          <span
-            style={{
-              whiteSpace: 'nowrap',
-              display: 'inline-block',
-              fontSize: '10px',
-              color: '#22d3ee',
-              background: 'rgba(34,211,238,0.1)',
-              border: '1px solid rgba(34,211,238,0.2)',
-              borderRadius: '4px',
-              padding: '2px 8px',
-            }}
-          >
-            {isConnected ? 'Live' : 'Demo Mode'}
-          </span>
-        </div>
-      </div>
-
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -1056,7 +1045,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
         )}
       </div>
 
-      {/* ─── 4. Divider ─── */}
+      {/* ─── 4. Ask Vantage AI Header ─── */}
       <div
         style={{
           display: 'flex',
@@ -1065,7 +1054,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
           gap: '8px',
         }}
       >
-        <div style={{ flex: 1, height: '1px', background: '#1e2d45' }} />
         <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>Ask Vantage AI</span>
         <button
           onClick={() => setShowHistory(true)}
@@ -1092,17 +1080,84 @@ Give me a market pulse check — how are the major indexes performing today, wha
         ref={chatAreaRef}
         id="chat-area"
         style={{
-          minHeight: '200px',
-          maxHeight: '300px',
+          flex: 1,
           overflowY: 'auto',
           padding: '12px 16px',
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
+          background: 'radial-gradient(ellipse at center top, rgba(34,211,238,0.04) 0%, transparent 70%)',
         }}
       >
+        {/* AI Greeting on fresh session */}
+        {messages.length === 0 && !loading && greetingDots && (
+          <div
+            style={{
+              alignSelf: 'flex-start',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 14px',
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px 16px 16px 4px',
+            }}
+          >
+            <CompassIcon size={18} color="#22d3ee" />
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#22d3ee',
+                animation: 'vantagePulse 1.2s ease-in-out infinite',
+                animationDelay: '0s',
+              }} />
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#22d3ee',
+                animation: 'vantagePulse 1.2s ease-in-out infinite',
+                animationDelay: '0.2s',
+              }} />
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#22d3ee',
+                animation: 'vantagePulse 1.2s ease-in-out infinite',
+                animationDelay: '0.4s',
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* AI Greeting revealed */}
+        {messages.length === 0 && greeting && !greetingDots && (
+          <div
+            style={{
+              alignSelf: 'flex-start',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              padding: '10px 14px',
+              background: '#1a2235',
+              border: '1px solid #2a3448',
+              borderRadius: '16px 16px 16px 4px',
+              maxWidth: '85%',
+              fontSize: '14px',
+              color: '#ffffff',
+              lineHeight: '1.5',
+            }}
+          >
+            <CompassIcon size={18} color="#22d3ee" />
+            <span>{greeting}</span>
+          </div>
+        )}
+
         {/* Empty state — suggestion chips */}
-        {messages.length === 0 && !loading && (
+        {messages.length === 0 && !greetingDots && !loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {suggestionChips.map((suggestion) => (
               <div
@@ -1280,173 +1335,186 @@ Give me a market pulse check — how are the major indexes performing today, wha
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ─── 6. Quick Actions 2×2 Grid ─── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '8px',
-          padding: '0 16px',
-          marginTop: '8px',
-        }}
-      >
-        {[
-          { icon: '🧺', label: 'Build Basket', action: 'basket' },
-          { icon: '📡', label: 'Market Pulse', action: 'pulse' },
-          { icon: '📋', label: 'Tax Check', action: 'tax' },
-          { icon: '⚡', label: 'Alerts', action: 'alerts' },
-        ].map((btn) => (
-          <div
-            key={btn.label}
-            onClick={(e) => {
-              if (btn.action === 'basket') {
-                setShowBuildBasket(true);
-              } else if (btn.action === 'pulse') {
-                handleMarketPulse(e);
-              } else if (btn.action === 'tax') {
-                sendToChat(
-                  'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',
-                  e
-                );
-              } else if (btn.action === 'alerts') {
-                setToast('💬 Vantage AI is responding...');
-                sendMessage('Scan my portfolio for urgent alerts', 'alerts');
-                setTimeout(() => {
-                  document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                }, 150);
-              }
-            }}
-            style={{
-              background: '#1a2235',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '10px',
-              padding: '16px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              fontSize: '13px',
-              color: '#ffffff',
-              fontWeight: '500',
-            }}
-          >
-            {btn.icon} {btn.label}
-          </div>
-        ))}
-      </div>
-
-      {/* ─── 7. Input Bar ─── */}
-      <div
-        id="chat-input"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '12px 16px',
-          borderTop: '1px solid #1e2d45',
-          marginTop: '8px',
-        }}
-      >
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              sendMessage(input);
-            }
-          }}
-          placeholder="Ask anything — markets, portfolio, strategy..."
-          maxLength={500}
+      {/* ─── 6. Pinned Bottom Section ─── */}
+      <div style={{ flexShrink: 0, borderTop: '1px solid #1e2d45' }}>
+        {/* Quick Actions 2×2 Grid */}
+        <div
           style={{
-            flex: 1,
-            background: '#1a2235',
-            border: '1px solid #2a3448',
-            borderRadius: '20px',
-            padding: '10px 16px',
-            color: '#ffffff',
-            fontSize: '14px',
-            outline: 'none',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '8px',
+            padding: '8px 16px',
           }}
-        />
+        >
+          {[
+            { icon: '🧺', label: 'Build Basket', action: 'basket' },
+            { icon: '📡', label: 'Market Pulse', action: 'pulse' },
+            { icon: '📋', label: 'Tax Check', action: 'tax' },
+            { icon: '⚡', label: 'Alerts', action: 'alerts' },
+          ].map((btn) => (
+            <div
+              key={btn.label}
+              onClick={(e) => {
+                if (btn.action === 'basket') {
+                  setShowBuildBasket(true);
+                } else if (btn.action === 'pulse') {
+                  handleMarketPulse(e);
+                } else if (btn.action === 'tax') {
+                  sendToChat(
+                    'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',
+                    e
+                  );
+                } else if (btn.action === 'alerts') {
+                  setToast('💬 Vantage AI is responding...');
+                  sendMessage('Scan my portfolio for urgent alerts', 'alerts');
+                  setTimeout(() => {
+                    document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                  }, 150);
+                }
+              }}
+              style={{
+                background: '#1a2235',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                fontSize: '13px',
+                color: '#ffffff',
+                fontWeight: '500',
+              }}
+            >
+              {btn.icon} {btn.label}
+            </div>
+          ))}
+        </div>
 
+        {/* Character count warning */}
         {input.length > 400 && (
           <p style={{
             fontSize: '10px',
             color: input.length >= 500 ? '#ef4444' : '#64748b',
             textAlign: 'right',
-            marginTop: '4px',
+            padding: '0 16px',
+            margin: '0 0 2px 0',
           }}>
             {500 - input.length} characters remaining
           </p>
         )}
 
-        {/* Send button */}
+        {/* Input Bar — elevated pill */}
         <div
-          onClick={() => sendMessage(input)}
+          id="chat-input"
           style={{
-            width: '36px',
-            height: '36px',
-            background: input.trim() ? '#22d3ee' : '#1e2d45',
-            borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            cursor: input.trim() ? 'pointer' : 'default',
-            flexShrink: 0,
+            gap: '8px',
+            padding: '8px 16px 12px 16px',
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M2 8h10M9 4l4 4-4 4"
-              stroke="white"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(input);
+              }
+            }}
+            placeholder="Ask anything — markets, portfolio, strategy..."
+            maxLength={500}
+            style={{
+              flex: 1,
+              height: '52px',
+              background: '#1a2235',
+              border: '1.5px solid rgba(34,211,238,0.25)',
+              borderRadius: '26px',
+              padding: '0 18px',
+              color: '#ffffff',
+              fontSize: '14px',
+              outline: 'none',
+              transition: 'all 0.2s ease',
+              boxSizing: 'border-box',
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'rgba(34,211,238,0.6)';
+              e.target.style.boxShadow = '0 0 0 3px rgba(34,211,238,0.15)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'rgba(34,211,238,0.25)';
+              e.target.style.boxShadow = 'none';
+            }}
+          />
+
+          {/* Send button — Vantage compass */}
+          <div
+            onClick={() => sendMessage(input)}
+            style={{
+              width: '40px',
+              height: '40px',
+              minWidth: '40px',
+              background: input.trim() ? '#22d3ee' : '#1e2d45',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: input.trim() ? 'pointer' : 'default',
+              flexShrink: 0,
+              padding: '6px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s ease',
+            }}
+          >
+            <CompassIcon size={20} color={input.trim() ? '#0a0f1e' : '#64748b'} />
+          </div>
+
+          {/* Trash button */}
+          <div
+            onClick={() => {
+              if (messages.length === 0) return;
+              setShowClearConfirm(true);
+            }}
+            style={{
+              width: '36px',
+              height: '36px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#334155',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
         </div>
 
-        {/* Trash button */}
-        <div
-          onClick={() => {
-            if (messages.length === 0) return;
-            setShowClearConfirm(true);
-          }}
+        {/* Footer */}
+        <p
           style={{
-            width: '36px',
-            height: '36px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            color: '#334155',
-            flexShrink: 0,
+            textAlign: 'center',
+            fontSize: '10px',
+            color: '#64748b',
+            padding: '0 16px calc(12px + env(safe-area-inset-bottom)) 16px',
+            margin: 0,
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+          Powered by AI · Not financial advice ·{' '}
+          <span style={{ color: supabaseRemaining <= 5 ? '#f59e0b' : '#64748b' }}>
+            {supabaseRemaining} AI analyses available today
+          </span>
+        </p>
       </div>
-
-      {/* ─── 8. Footer ─── */}
-      <p
-        style={{
-          textAlign: 'center',
-          fontSize: '10px',
-          color: '#94a3b8',
-          padding: '4px 16px 16px 16px',
-        }}
-      >
-        Powered by AI · Not financial advice · {supabaseRemaining} messages remaining today
-      </p>
 
       {/* ─── Keyframes ─── */}
       <style jsx>{`

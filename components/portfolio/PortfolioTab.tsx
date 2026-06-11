@@ -26,61 +26,75 @@ const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
 // ─── Account Card ─────────────────────────────────────────
 
-function AccountCard({ account }: { account: AccountSummary }) {
+function AccountCard({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
   return (
     <div style={{ margin: '16px 16px 0 16px' }}>
       <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
         Account Value
       </div>
-      <div className="bg-[#1a2235] rounded-lg border border-[#2a3448] p-5">
-      <p className="text-4xl font-bold text-white">
-        ${account.equity.toLocaleString('en-US', DOLLAR_FMT)}
-      </p>
-      <p className={`text-sm mt-1 ${gain(account.totalPnl)}`}>
-        {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)}) all time
-      </p>
+      <div style={{ background: '#1a2235', borderRadius: '10px', border: '1px solid #2a3448', padding: '20px' }}>
+        {/* Row 1: Account Value + Demo Mode badge */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: '28px', fontWeight: '700', color: '#ffffff' }}>
+            ${account.equity.toLocaleString('en-US', DOLLAR_FMT)}
+          </span>
+          {!isConnected && (
+            <span style={{
+              fontSize: '10px',
+              color: '#22d3ee',
+              background: 'rgba(34,211,238,0.1)',
+              border: '1px solid rgba(34,211,238,0.2)',
+              borderRadius: '4px',
+              padding: '2px 8px',
+              whiteSpace: 'nowrap',
+            }}>
+              Demo Mode
+            </span>
+          )}
+        </div>
 
-      {/* Divider */}
-      <div className="border-t border-[#2a3448] my-3" />
-
-      {/* Sparkline placeholder */}
-      <div className="h-20 bg-[#1e2d45] rounded-lg my-3 flex items-center justify-center">
-        <span className="text-slate-600 text-xs">
-          Chart coming soon
-        </span>
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-[#2a3448] my-3" />
-
-      {/* 2-col stats */}
-      <div className="grid grid-cols-2 gap-y-4">
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Today P&amp;L</p>
-          <p className={`text-base font-semibold ${gain(account.dayPnl)}`}>
+        {/* Row 2: TODAY P&L · TOTAL P&L on one line */}
+        <p style={{ fontSize: '13px', marginTop: '6px', lineHeight: '1.5' }}>
+          <span style={{ color: '#6b7280' }}>TODAY</span>{' '}
+          <span style={{ color: account.dayPnl > 0 ? '#10b981' : account.dayPnl < 0 ? '#ef4444' : '#6b7280' }}>
             {fmt(account.dayPnl)} ({pctStr(account.dayPnlPercent)})
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total P&amp;L</p>
-          <p className={`text-base font-semibold ${gain(account.totalPnl)}`}>
+          </span>
+          {' · '}
+          <span style={{ color: '#6b7280' }}>TOTAL</span>{' '}
+          <span style={{ color: account.totalPnl > 0 ? '#10b981' : account.totalPnl < 0 ? '#ef4444' : '#6b7280' }}>
             {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
-          </p>
+          </span>
+        </p>
+
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid #2a3448', margin: '16px 0' }} />
+
+        {/* Sparkline placeholder */}
+        <div style={{ height: '80px', background: '#1e2d45', borderRadius: '10px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: '#475569', fontSize: '12px' }}>
+            Chart coming soon
+          </span>
         </div>
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Buying Power</p>
-          <p className="text-base font-semibold text-white">
-            ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Cash</p>
-          <p className="text-base font-semibold text-white">
-            ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
-          </p>
+
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid #2a3448', margin: '0 0 16px 0' }} />
+
+        {/* 2-col stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 0' }}>
+          <div>
+            <p style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Buying Power</p>
+            <p style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>
+              ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Cash</p>
+            <p style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>
+              ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
     </div>
   );
 }
@@ -486,7 +500,7 @@ export function PortfolioTab() {
       <MarketOverview />
 
       {/* 2. Account Card */}
-      <AccountCard account={displayAccount} />
+      <AccountCard account={displayAccount} isConnected={isConnected} />
 
       {/* 3. Column header */}
       {positions.length > 0 && (
