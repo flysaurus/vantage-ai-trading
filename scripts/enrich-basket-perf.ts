@@ -87,15 +87,15 @@ async function main() {
   }
 
   // 2. Extract unique stock symbols
-  const allSymbols = [...new Set(
-    baskets.flatMap((b: any) => (b.stocks || []).map((s: any) => s.symbol.toUpperCase()))
-  )];
+  const allSymbols: string[] = [...new Set(
+    baskets.flatMap((b: any) => (b.stocks || []).map((s: any) => String(s.symbol || '').toUpperCase()))
+  )] as string[];
   console.log(`→ ${allSymbols.length} unique stocks to query (Finnhub /stock/metric)\n`);
 
   // 3. Fetch performance for all unique stocks concurrently
   const perfMap: Record<string, any> = {};
-  const promises = allSymbols.map(sym =>
-    fetchStockPerformance(sym).then(p => { perfMap[sym] = p; })
+  const promises = allSymbols.map((sym: string) =>
+    fetchStockPerformance(sym).then((p: any) => { perfMap[sym] = p; })
   );
   await Promise.all(promises);
 

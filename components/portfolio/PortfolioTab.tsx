@@ -26,6 +26,13 @@ const pctStr = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
 const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
 
+const formatCurrency = (n: number) => {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 10000) return `${sign}$${(abs / 1000).toFixed(1)}K`;
+  return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
 // ─── Account Card ─────────────────────────────────────────
 
 function AccountCard({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
@@ -137,91 +144,96 @@ function PositionCard({
   showCheckbox?: boolean;
   baskets?: Basket[];
 }) {
-  const borderLColor =
-    pos.dayChange > 0 ? '#10b981' : pos.dayChange < 0 ? '#ef4444' : '#475569';
+  const livePrice = pos.currentPrice || pos.avgCost;
+  const marketValue = pos.qty * livePrice;
+  const totalPnL = marketValue - (pos.totalCost || 0);
+  const totalPnLPct = (pos.totalCost || 0) > 0 ? (totalPnL / pos.totalCost!) * 100 : 0;
+  const todayPnL = pos.dayChange || 0;
+  const todayPnLPct = pos.dayChangePercent || 0;
 
   // 52-week range ball position
   const weekPos =
     pos.weekHigh52 != null &&
     pos.weekLow52 != null &&
     pos.weekHigh52 !== pos.weekLow52
-      ? Math.min(
-          98,
-          Math.max(
-            2,
-            ((pos.currentPrice - pos.weekLow52) /
-              (pos.weekHigh52 - pos.weekLow52)) *
-              100,
-          ),
-        )
+      ? Math.min(98, Math.max(2, ((pos.currentPrice - pos.weekLow52) / (pos.weekHigh52 - pos.weekLow52)) * 100))
       : 50;
 
   return (
-    <div className="mb-4" style={{ marginLeft: '16px', marginRight: '16px' }}>
+    <div style={{ marginLeft: '16px', marginRight: '16px', marginBottom: '6px' }}>
       <div
-        className="bg-[#1a2235] border border-[#2a3448] rounded-lg"
-        style={{ borderLeft: `3px solid ${borderLColor}` }}
+        style={{
+          background: '#1a2235',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          borderLeft: `3px solid ${totalPnL >= 0 ? '#10b981' : '#ef4444'}`,
+        }}
       >
-        {/* Collapsed section */}
+        {/* Top row — ticker + market value */}
         <div
-          className="flex items-center pl-4 pr-4 py-3"
           onClick={onToggleExpand}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            padding: '12px 14px 8px',
+            cursor: 'pointer',
+          }}
         >
-          {/* LEFT — checkbox */}
-          {showCheckbox ? (
-            <div
-              className="w-8 flex-shrink-0 flex items-center"
-              onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
-            >
-              <div
-                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                  isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600 bg-transparent'
-                }`}
-                style={{ marginLeft: '12px' }}
-              >
-                {isSelected && (
-                  <span className="text-white text-[10px] leading-none">&#10003;</span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="w-8 flex-shrink-0" />
-          )}
-
-          {/* MIDDLE — symbol + shares */}
-          <div className="flex-1 min-w-0" style={{ marginLeft: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <p className="text-base font-bold text-white">{pos.symbol}</p>
+          {/* Left — ticker + shares */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+              {showCheckbox && (
+                <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ marginRight: '4px' }}>
+                  <div style={{
+                    width: '16px', height: '16px', borderRadius: '2px', border: `2px solid ${isSelected ? '#22d3ee' : '#475569'}`,
+                    background: isSelected ? '#22d3ee' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {isSelected && <span style={{ color: '#fff', fontSize: '10px', lineHeight: 1 }}>&#10003;</span>}
+                  </div>
+                </div>
+              )}
+              <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>{pos.symbol}</span>
               {pos.type === 'ETF' && (
                 <span style={{
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  background: 'rgba(34,211,238,0.18)',
-                  color: '#22d3ee',
-                  lineHeight: '16px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
+                  fontSize: '9px', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.4)',
+                  borderRadius: '3px', padding: '1px 5px', fontWeight: '600',
                 }}>ETF</span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
+            <span style={{ color: '#6b7280', fontSize: '12px' }}>
+              {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
+            </span>
             {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
-              <span key={b.id} style={{ fontSize: '10px', color: '#22d3ee', opacity: 0.7 }}>
+              <span key={b.id} style={{ fontSize: '10px', color: '#22d3ee', opacity: 0.7, display: 'block' }}>
                 Also in: {b.emoji} {b.name}
               </span>
             ))}
           </div>
 
-          {/* RIGHT — price + P&amp;L */}
-          <div className="text-right flex-shrink-0 pr-3" style={{ paddingRight: '12px' }}>
-            <p className="text-base font-semibold text-white">
-              ${pos.marketValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className={`text-xs mt-0.5 ${gain(pos.totalPnl)}`}>
-              {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
-            </p>
+          {/* Right — market value */}
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>
+              {formatCurrency(marketValue)}
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', marginLeft: '14px', marginRight: '14px' }} />
+
+        {/* Bottom row — TODAY + TOTAL 2x2 */}
+        <div onClick={onToggleExpand} style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr',
+          padding: '8px 14px 12px', gap: '4px', cursor: 'pointer',
+        }}>
+          <div style={{ color: '#4b5563', fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>TODAY</div>
+          <div style={{ color: '#4b5563', fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>TOTAL</div>
+          <div style={{ color: todayPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px', fontWeight: '500' }}>
+            {todayPnL >= 0 ? '+' : ''}{formatCurrency(todayPnL)} ({todayPnL >= 0 ? '+' : ''}{todayPnLPct.toFixed(1)}%)
+          </div>
+          <div style={{ color: totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px', fontWeight: '500', textAlign: 'right' }}>
+            {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%)
           </div>
         </div>
 
@@ -588,8 +600,18 @@ export function PortfolioTab() {
     }
   };
 
+  // ── Summary calculations for sticky footer ──
+  const cashBalance = liveAccount?.cash || 0;
+  const totalMarketValue = positions.reduce((sum, p) => sum + p.marketValue, 0) + cashBalance;
+  const totalTodayPnL = positions.reduce((sum, p) => sum + (p.dayChange || 0), 0);
+  const prevMarketValue = totalMarketValue - totalTodayPnL;
+  const totalTodayPct = prevMarketValue > 0 ? (totalTodayPnL / prevMarketValue) * 100 : 0;
+  const totalInvested = positions.reduce((sum, p) => sum + (p.totalCost || 0), 0);
+  const totalPnL = positions.reduce((sum, p) => sum + p.marketValue - (p.totalCost || 0), 0);
+  const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+
   return (
-    <div className="min-h-0 bg-[#060a14]" style={{ paddingBottom: '120px' }}>
+    <div className="min-h-0 bg-[#060a14]" style={{ paddingBottom: 'calc(100px + env(safe-area-inset-bottom))' }}>
       {/* 1. Demo banner */}
       {!isConnected && <DemoBanner />}
 
@@ -833,6 +855,59 @@ export function PortfolioTab() {
         />
       ))}
       <div style={{ height: '40px' }} />
+
+      {/* Sticky Portfolio Summary Footer */}
+      <div style={{
+        position: 'fixed',
+        bottom: 'calc(64px + env(safe-area-inset-bottom))',
+        left: 0, right: 0,
+        zIndex: 100,
+        background: 'linear-gradient(to top, #0a0f1e 60%, rgba(10,15,30,0.95) 80%, transparent 100%)',
+        paddingTop: '20px',
+        paddingBottom: '12px',
+        paddingLeft: '16px',
+        paddingRight: '16px',
+      }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+          background: 'rgba(26,34,53,0.95)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '14px',
+          padding: '10px 0',
+          boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
+        }}>
+          {/* Market Value */}
+          <div style={{ textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '0 8px' }}>
+            <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>
+              {totalMarketValue >= 10000 ? `$${(totalMarketValue / 1000).toFixed(1)}K` : formatCurrency(totalMarketValue)}
+            </div>
+            <div style={{ color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' }}>
+              Market Value
+            </div>
+          </div>
+          {/* Today P&L */}
+          <div style={{ textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '0 8px' }}>
+            <div style={{ color: totalTodayPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '13px', fontWeight: '600' }}>
+              {totalTodayPnL >= 0 ? '+' : ''}
+              {Math.abs(totalTodayPnL) >= 10000 ? `$${(Math.abs(totalTodayPnL) / 1000).toFixed(1)}K` : formatCurrency(totalTodayPnL)}
+            </div>
+            <div style={{ color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' }}>
+              Today {totalTodayPnL >= 0 ? '+' : ''}{totalTodayPct.toFixed(1)}%
+            </div>
+          </div>
+          {/* Total P&L */}
+          <div style={{ textAlign: 'center', padding: '0 8px' }}>
+            <div style={{ color: totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '13px', fontWeight: '600' }}>
+              {totalPnL >= 0 ? '+' : ''}
+              {Math.abs(totalPnL) >= 10000 ? `$${(Math.abs(totalPnL) / 1000).toFixed(1)}K` : formatCurrency(totalPnL)}
+            </div>
+            <div style={{ color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' }}>
+              Total {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* 5. Buy Modal */}
       {showBuySymbol && (
