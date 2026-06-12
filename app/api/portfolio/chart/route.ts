@@ -124,6 +124,73 @@ async function fetchYahooCandles(
   }
 }
 
+// ─── 1D fallback using quote API ──────────────────────────
+
+async function build1DQuoteFallback(
+  positions: PositionInput[],
+  cashBalance: number,
+  from: number,
+  to: number,
+): Promise<{ points: Array<{ timestamp: number; value: number }>; error?: string }> {
+  try {
+    // Fetch current quotes for all symbols
+    const quoteResults = await Promise.allSettled(
+      positions.map(async (p) => {
+        const url = `${FINNHUB_BASE}/quote?symbol=${encodeURIComponent(p.symbol)}&token=${FINNHUB_KEY}`;
+        const res = await fetch(url, { next: { revalidate: 30 } });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return {
+          symbol: p.symbol,
+          current: (data.c ?? data.pc ?? 0) as number,
+          prevClose: (data.pc ?? data.c ?? 0) as number,
+        };
+      }),
+    );
+
+    // Build 2-point chart: market open → current (or prevClose → current)
+    const now = Math.floor(Date.now() / 1000);
+    const openTs = from;
+
+    const computeValue = (useOpen: boolean) => {
+      let value = cashBalance;
+      for (let i = 0; i < positions.length; i++) {
+        const pos = positions[i];
+        const buyTime = pos.buyDate ? Math.floor(new Date(pos.buyDate).getTime() / 1000) : 0;
+        const buyCost = pos.totalCost ?? pos.shares * (pos.avgCost ?? 0);
+
+        if (openTs < buyTime) {
+          value += buyCost;
+          continue;
+        }
+
+        const quote = quoteResults[i];
+        if (quote.status === 'fulfilled' && quote.value) {
+          const price = useOpen ? quote.value.prevClose : quote.value.current;
+          if (price > 0) {
+            value += pos.shares * price;
+            continue;
+          }
+        }
+        value += pos.avgCost ? pos.shares * pos.avgCost : 0;
+      }
+      return Math.round(value * 100) / 100;
+    };
+
+    const points = [
+      { timestamp: openTs, value: computeValue(true) },
+    ];
+
+    if (now > openTs + 60) {
+      points.push({ timestamp: now, value: computeValue(false) });
+    }
+
+    return { points };
+  } catch {
+    return { points: [], error: 'No candle data available' };
+  }
+}
+
 // ─── Fetch Finnhub candles ──────────────────────────────
 
 async function fetchCandles(
@@ -193,7 +260,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (refTimestamps.length === 0) {
-      // No candles at all — return empty with a hint
+      // No candles at all — for 1D, fall back to quote-based estimate
+      if (range === '1D') {
+        const points = await build1DQuoteFallback(positions, cashBalance, from, to);
+        return NextResponse.json(points);
+      }
       return NextResponse.json({ points: [], error: 'No candle data available' });
     }
 
