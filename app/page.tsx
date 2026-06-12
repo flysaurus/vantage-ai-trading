@@ -41,6 +41,7 @@ function AppShell() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [greeting, setGreeting] = useState('');
   const [showGreeting, setShowGreeting] = useState(false);
+  const [showWelcomeToast, setShowWelcomeToast] = useState(false);
   const greetingShown = useRef(false);
   const [chatMessages, setChatMessages] = useState<
     { role: 'user' | 'ai'; content: string }[]
@@ -55,6 +56,9 @@ function AppShell() {
     if (fromLogin === 'true') {
       sessionStorage.removeItem('show_greeting');
       greetingShown.current = true;
+      // Show welcome toast at top of screen
+      setShowWelcomeToast(true);
+      setTimeout(() => setShowWelcomeToast(false), 3000);
       // Short delay to let the main app render fully behind the modal
       setTimeout(() => setShowGreeting(true), 300);
     }
@@ -193,6 +197,41 @@ function AppShell() {
     <div className="app-shell">
       {isDesktop && <DesktopSidebar />}
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
+
+      {/* Welcome-back toast — slides in from top on fresh login */}
+      {showWelcomeToast && (() => {
+        const initial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'M';
+        return (
+          <div style={{
+            position: 'fixed',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99997,
+            background: '#1a2235',
+            border: '1px solid rgba(34,211,238,0.3)',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+            animation: 'welcomeSlideDown 0.4s ease-out',
+          }}>
+            <span style={{ fontSize: '18px' }}>👋</span>
+            <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: '500' }}>
+              Welcome back, {initial}.<br />
+              <span style={{ color: '#22d3ee', fontSize: '12px' }}>Your portfolio is ready.</span>
+            </span>
+          </div>
+        );
+      })()}
+      <style>{`
+        @keyframes welcomeSlideDown {
+          from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+      `}</style>
 
       {/* Greeting modal — renders OVER fully loaded app with backdrop blur */}
       {showGreeting && (

@@ -2,7 +2,7 @@
 // Custom auth system — replaces Supabase Auth SDK entirely.
 // Session: HTTP-only cookie (set by /api/auth/login) + /api/auth/me for validation.
 // Frontend state: sessionStorage + in-memory React context.
-// 10-minute inactivity timeout with 1-minute warning before logout.
+// 15-minute inactivity timeout with 2-minute warning before logout.
 //
 // LOADING GUARANTEE:
 //   isLoading stays true until /api/auth/me confirms the session and
@@ -22,8 +22,8 @@ import React, {
 import type { User, VantageSession, InvestorStyle } from '@/types';
 import { storeSession, clearSession, getUser, storeUser, clearUser } from '@/lib/auth';
 
-const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-const WARNING_BEFORE = 60 * 1000;           // warn 1 minute before logout
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+const WARNING_BEFORE = 2 * 60 * 1000;       // warn 2 minutes before logout
 
 // ─── Context Type ─────────────────────────────────────────────
 
@@ -40,6 +40,11 @@ interface AuthContextValue {
   error: string | null;
   inactivityWarning: boolean;
   inactivityCountdown: number;
+  /** Manually trigger an activity reset (e.g. after API call) */
+  resetActivity: () => void;
+  /** Show welcome-back toast on fresh login */
+  showWelcomeBack: boolean;
+  dismissWelcomeBack: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ needsConfirmation: boolean } | void>;
   signOut: () => Promise<void>;
@@ -56,6 +61,9 @@ const AuthContext = createContext<AuthContextValue>({
   error: null,
   inactivityWarning: false,
   inactivityCountdown: 0,
+  resetActivity: () => {},
+  showWelcomeBack: false,
+  dismissWelcomeBack: () => {},
   signIn: async () => {},
   signUp: async () => {},
   signOut: async () => {},
@@ -93,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileNotFound, setProfileNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inactivityWarning, setInactivityWarning] = useState(false);
+  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
 
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
@@ -112,7 +121,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     warningRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
       setInactivityWarning(true);
-      let remaining = 60;
+      const warningTotal = Math.ceil(WARNING_BEFORE / 1000);
+      let remaining = warningTotal;
       setCountdown(remaining);
       countdownInterval.current = setInterval(() => {
         remaining--;
@@ -234,10 +244,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     resetInactivity();
 
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'mousemove'];
+    window.addEventListener('focus', resetInactivity);
     events.forEach(e => window.addEventListener(e, resetInactivity, { passive: true }));
 
     return () => {
+      window.removeEventListener('focus', resetInactivity);
       events.forEach(e => window.removeEventListener(e, resetInactivity));
       if (inactivityRef.current) clearTimeout(inactivityRef.current);
       if (warningRef.current) clearTimeout(warningRef.current);
@@ -351,6 +363,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearUser();
     clearSession();
     setInactivityWarning(false);
+    setShowWelcomeBack(false);
     setIsDataLoaded(false);
     setProfileNotFound(false);
     setError(null);
@@ -375,6 +388,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Context value ───────────────────────────────────────
 
+  const dismissWelcomeBack = useCallback(() => setShowWelcomeBack(false), []);
+
   const value: AuthContextValue = {
     user,
     session,
@@ -385,6 +400,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     inactivityWarning,
     inactivityCountdown: countdown,
+    resetActivity: resetInactivity,
+    showWelcomeBack,
+    dismissWelcomeBack,
     signIn,
     signUp,
     signOut,

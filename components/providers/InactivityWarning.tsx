@@ -1,134 +1,166 @@
-// ─── Inactivity Warning ──────────────────────────────────────
-// Shows a centered overlay (20% of screen) when the user is
-// about to be logged out due to inactivity. Tap anywhere to reset.
-// Hidden when session is active or user is not authenticated.
+// ─── Inactivity Warning + Welcome Back Toast ──────────────────
+// Shows a personalized warning overlay 2 minutes before session
+// expires (at 13 min of inactivity). Also shows a welcome-back
+// toast on fresh login.
+//
+// Mounted globally in app/layout.tsx.
 
 'use client';
 
 import { useAuth } from './AuthProvider';
 
 export function InactivityWarning() {
-  const { inactivityWarning, inactivityCountdown, isAuthenticated } = useAuth();
+  const {
+    inactivityWarning,
+    inactivityCountdown,
+    isAuthenticated,
+    user,
+    resetActivity,
+    signOut,
+  } = useAuth();
 
-  if (!inactivityWarning || !isAuthenticated) return null;
+  if (!isAuthenticated) return null;
 
-  const seconds = inactivityCountdown || 60;
-  const isCritical = seconds <= 15;
+  const userInitial = user?.name?.[0]?.toUpperCase()
+    || user?.email?.[0]?.toUpperCase()
+    || 'M';
 
-  const handleTap = () => {
-    window.dispatchEvent(new Event('click'));
+  const handleSignOut = () => {
+    signOut();
+  };
+
+  const handleKeepMeIn = () => {
+    resetActivity();
   };
 
   return (
     <>
-      {/* Semi-transparent backdrop */}
-      <div
-        onClick={handleTap}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9998,
-          background: 'rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(2px)',
-          animation: 'fadeIn 0.3s ease-out',
-        }}
-      />
+      {/* ─── Inactivity Warning Overlay ─── */}
+      {inactivityWarning && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={handleKeepMeIn}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.7)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 99998,
+            }}
+          />
 
-      {/* Centered warning panel — ~20% of screen */}
-      <div
-        onClick={handleTap}
-        style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 9999,
-          width: 'min(360px, 85vw)',
-          maxWidth: '90vw',
-          background: `linear-gradient(135deg, ${isCritical ? '#7f1d1d' : '#1e1b4b'}, ${isCritical ? '#450a0a' : '#0f172a'})`,
-          border: `2px solid ${isCritical ? 'rgba(239, 68, 68, 0.6)' : 'rgba(250, 204, 21, 0.5)'}`,
-          borderRadius: 20,
-          padding: '32px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 16,
-          textAlign: 'center',
-          cursor: 'pointer',
-          animation: 'fadeInScale 0.3s ease-out',
-          boxShadow: isCritical
-            ? '0 0 60px rgba(239, 68, 68, 0.3)'
-            : '0 0 40px rgba(250, 204, 21, 0.15)',
-        }}
-      >
-        {/* Icon */}
-        <div style={{
-          fontSize: 48,
-          lineHeight: 1,
-          filter: isCritical ? 'grayscale(0)' : 'grayscale(0)',
-        }}>
-          ⏰
-        </div>
+          {/* Personalized warning modal */}
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 99999,
+              background: '#1a2235',
+              border: '1px solid rgba(34,211,238,0.2)',
+              borderRadius: '20px',
+              padding: '28px 24px',
+              width: '320px',
+              textAlign: 'center',
+            }}
+          >
+            {/* Compass icon */}
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'rgba(34,211,238,0.1)',
+              border: '1px solid rgba(34,211,238,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              fontSize: '22px',
+            }}>
+              🧭
+            </div>
 
-        {/* Countdown — the big number */}
-        <div style={{
-          fontSize: 64,
-          fontWeight: 900,
-          lineHeight: 1,
-          color: isCritical ? '#ef4444' : '#facc15',
-          fontFamily: 'monospace',
-          letterSpacing: -2,
-          transition: 'color 0.3s ease',
-        }}>
-          {seconds}s
-        </div>
+            {/* Personalized message */}
+            <div style={{
+              color: '#ffffff',
+              fontSize: '18px',
+              fontWeight: '600',
+              marginBottom: '8px',
+            }}>
+              Still with us, {userInitial}?
+            </div>
 
-        {/* Main text */}
-        <div style={{
-          fontSize: 16,
-          fontWeight: 600,
-          color: isCritical ? '#fca5a5' : '#fde68a',
-          lineHeight: 1.4,
-        }}>
-          Logging out due to inactivity
-        </div>
+            <div style={{
+              color: '#6b7280',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              marginBottom: '24px',
+            }}>
+              Your session will end in{' '}
+              <span style={{
+                color: '#f59e0b',
+                fontWeight: '600',
+              }}>
+                2 minutes
+              </span>
+              {' '}to keep your portfolio secure.
+            </div>
 
-        {/* Tap prompt */}
-        <div style={{
-          fontSize: 14,
-          color: '#94a3b8',
-          lineHeight: 1.4,
-        }}>
-          Tap anywhere to stay signed in
-        </div>
+            {/* Countdown bar */}
+            <div style={{
+              height: '3px',
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '2px',
+              marginBottom: '20px',
+              overflow: 'hidden',
+            }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.round((inactivityCountdown || 120) / 120 * 100)}%`,
+                  background: '#f59e0b',
+                  borderRadius: '2px',
+                  transition: 'width 1s linear',
+                }}
+              />
+            </div>
 
-        {/* Pulsing indicator */}
-        <div style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: isCritical ? '#ef4444' : '#facc15',
-          animation: 'pulse 1s ease-in-out infinite',
-        }} />
-      </div>
+            {/* Buttons */}
+            <button
+              onClick={handleKeepMeIn}
+              style={{
+                width: '100%',
+                padding: '14px',
+                background: '#22d3ee',
+                color: '#0a0f1e',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                marginBottom: '12px',
+              }}
+            >
+              Keep me in →
+            </button>
 
-      <style jsx>{`
-        @keyframes fadeInScale {
-          from {
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.9);
-          }
-          to {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1);
-          }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.6); }
-        }
-      `}</style>
+            <button
+              onClick={handleSignOut}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#4b5563',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              Sign out now
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }
