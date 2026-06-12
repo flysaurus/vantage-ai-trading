@@ -1,5 +1,8 @@
 /**
  * GET /api/baskets — fetch active baskets with refresh schedule
+ *
+ * Returns both system-generated baskets (is_active=true, stocks as JSONB)
+ * and user-created baskets (status='active', basket_positions join).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -31,22 +34,20 @@ async function getUserIdFromSession(req: NextRequest): Promise<string> {
 }
 
 function getNextRefreshDate(from: Date): Date {
-  // Bi-weekly on Mondays — find the next Monday that's in an even week of the year
+  // Bi-weekly on Mondays — find next Monday in an even week
   const next = new Date(from);
   next.setHours(0, 0, 0, 0);
 
-  // Get to next Monday
   const daysUntilMonday = (8 - next.getDay()) % 7 || 7;
   next.setDate(next.getDate() + daysUntilMonday);
 
-  // Ensure it's an even week number (bi-weekly from week 1)
   const getWeekNumber = (d: Date): number => {
     const start = new Date(d.getFullYear(), 0, 1);
     const days = Math.floor((d.getTime() - start.getTime()) / 86400000);
     return Math.ceil((days + start.getDay() + 1) / 7);
   };
   if (getWeekNumber(next) % 2 !== 0) {
-    next.setDate(next.getDate() + 7); // skip to next even week
+    next.setDate(next.getDate() + 7);
   }
 
   return next;
@@ -55,42 +56,41 @@ function getNextRefreshDate(from: Date): Date {
 export async function GET(req: NextRequest) {
   try {
     const userId = await getUserIdFromSession(req);
-    if (userId === 'anonymous') {
-      const nextRefresh = getNextRefreshDate(new Date());
-      return NextResponse.json({
-        baskets: [],
-        nextRefresh: nextRefresh.toISOString(),
-        lastUpdated: null,
-        changelog: null,
-      });
-    }
-
     const supabase = createServerClient();
 
-    // Fetch system-generated active baskets (user_id = 'system')
-    const { data, error } = await (supabase as any)
+    // Fetch system-generated active baskets (stocks stored as JSONB)
+    const { data: systemBaskets, error: sysErr } = await (supabase as any)
       .from('baskets')
-      .select('*, basket_positions(*)')
+      .select('*')
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Baskets fetch error:', error);
-      return NextResponse.json({ baskets: [], error: error.message }, { status: 500 });
+    if (sysErr) {
+      console.error('System baskets fetch error:', sysErr);
     }
 
-    // Also fetch user-created active baskets
-    const { data: userBaskets } = await (supabase as any)
-      .from('baskets')
-      .select('*, basket_positions(*)')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
+    // Parse JSONB stocks for system baskets
+    const parsedSystem = (systemBaskets || []).map((b: any) => ({
+      ...b,
+      stocks: typeof b.stocks === 'string' ? JSON.parse(b.stocks || '[]') : (b.stocks || []),
+      performance: typeof b.performance === 'string' ? JSON.parse(b.performance || '{}') : (b.performance || {}),
+    }));
 
-    const allBaskets = [...(data || []), ...(userBaskets || [])];
+    // Fetch user-created active baskets (old schema with basket_positions join)
+    let userBaskets: any[] = [];
+    if (userId !== 'anonymous') {
+      const { data: ub } = await (supabase as any)
+        .from('baskets')
+        .select('*, basket_positions(*)')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      userBaskets = ub || [];
+    }
 
+    const allBaskets = [...parsedSystem, ...userBaskets];
     const nextRefresh = getNextRefreshDate(new Date());
-    const mostRecent = data?.[0];
+    const mostRecent = systemBaskets?.[0];
 
     return NextResponse.json({
       baskets: allBaskets,
