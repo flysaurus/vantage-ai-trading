@@ -176,48 +176,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 });
     }
 
-    // ── Fetch real Finnhub performance for all unique stocks ────
-    console.log('[Baskets] Fetching performance data for', baskets.length, 'baskets...');
+    // ── Build baskets (fast path, no Finnhub — VPS cron enriches perf later) ──
+    console.log('[Baskets] Building', baskets.length, 'baskets (performance via VPS cron)...');
+
     const weekOf = new Date().toISOString().split('T')[0];
 
-    // Collect all unique stock symbols, dedup across baskets
-    const allSymbols = [...new Set(
-      baskets.flatMap((b: any) => (b.stocks || []).map((s: any) => s.symbol.toUpperCase()))
-    )];
-    console.log('[Baskets]', allSymbols.length, 'unique stocks to query (Finnhub /stock/metric)...');
-
-    // Fetch performance in parallel — 2 Finnhub calls per stock with 5s timeout
-    const perfResults: Record<string, any> = {};
-    const perfPromises = allSymbols.map(sym =>
-      fetchStockPerformance(sym).then(
-        p => { perfResults[sym] = p; },
-        () => { perfResults[sym] = { '3m': 0, ytd: 0, '1y': 0, price: 0, best_timeframe: '1y' }; }
-      )
-    );
-    await Promise.allSettled(perfPromises);
-    const gotData = Object.values(perfResults).filter((p: any) => (p['3m'] !== 0 || p.ytd !== 0 || p['1y'] !== 0)).length;
-    console.log('[Baskets] Performance fetched —', gotData, '/', allSymbols.length, 'stocks have real data');
-
-    // Build enriched baskets with real performance + weighted averages
     const enrichedBaskets = baskets.map((basket: any) => {
-      const stocks = (basket.stocks || []).map((stock: any) => {
-        const sym = stock.symbol.toUpperCase();
-        const perf = perfResults[sym] || { '3m': 0, ytd: 0, '1y': 0, price: 0, best_timeframe: '1y' };
-        return {
-          ...stock,
-          symbol: sym,
-          price: perf.price || 0,
-          shares: +(stock.allocation / 100).toFixed(4),
-          performance: { '3m': perf['3m'] || 0, ytd: perf.ytd || 0, '1y': perf['1y'] || 0 },
-        };
-      });
-
-      // Weight-averaged basket performance
-      const basket3m = stocks.reduce((sum: number, s: any) => sum + (s.performance['3m'] || 0) * (s.allocation / 100), 0);
-      const basketYtd = stocks.reduce((sum: number, s: any) => sum + (s.performance.ytd || 0) * (s.allocation / 100), 0);
-      const basket1y = stocks.reduce((sum: number, s: any) => sum + (s.performance['1y'] || 0) * (s.allocation / 100), 0);
-      const basketBest = [{ k: '3m', v: basket3m }, { k: 'ytd', v: basketYtd }, { k: '1y', v: basket1y }]
-        .sort((a, b) => b.v - a.v)[0].k;
+      const stocks = (basket.stocks || []).map((stock: any) => ({
+        ...stock,
+        price: 0,
+        shares: +(stock.allocation / 100).toFixed(4),
+        performance: { '3m': 0, ytd: 0, '1y': 0 },
+      }));
 
       return {
         theme: basket.theme,
@@ -226,7 +196,7 @@ export async function POST(req: NextRequest) {
         thesis: basket.thesis || '',
         risk_note: basket.risk_note || '',
         stocks,
-        performance: { '3m': Math.round(basket3m * 10) / 10, ytd: Math.round(basketYtd * 10) / 10, '1y': Math.round(basket1y * 10) / 10, best_timeframe: basketBest },
+        performance: { '3m': 0, ytd: 0, '1y': 0, best_timeframe: '1y' },
         week_of: weekOf,
         is_active: true,
       };
