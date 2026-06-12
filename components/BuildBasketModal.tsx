@@ -7,7 +7,7 @@ import { useLivePortfolio } from '@/context/PortfolioContext';
 
 // ── 5-step flow: curated → custom_theme → budget → generating → review ──
 // Plus order_ticket after review for curated baskets
-type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review' | 'order_ticket';
+type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review' | 'basket_review' | 'basket_confirm';
 
 interface BasketStock {
   symbol: string;
@@ -36,6 +36,17 @@ interface CuratedBasket {
   stocks: BasketStock[];
   performance: { '3m': number; ytd: number; '1y': number; best_timeframe: string };
   created_at: string;
+}
+
+interface ReviewStock {
+  symbol: string;
+  name: string;
+  allocation: number;
+  price: number;
+  shares: number;
+  dollarAmount: number;
+  rationale: string;
+  isCustomAdded?: boolean;
 }
 
 interface Props {
@@ -80,6 +91,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ── Order ticket state ──
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<{ success: boolean; executed: number; failed: number; totalSpent: number; error?: string } | null>(null);
+
+  // ── Basket Review state ──
+  const [reviewStocks, setReviewStocks] = useState<ReviewStock[]>([]);
+  const [loadingPrices, setLoadingPrices] = useState(false);
+  const [priceError, setPriceError] = useState(false);
+  const [showAddInput, setShowAddInput] = useState(false);
+  const [addSymbolInput, setAddSymbolInput] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // ── Fetch curated baskets on open ──
   useEffect(() => {
@@ -183,7 +202,104 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     finally { setIsAddingStock(false); }
   }, [basketData, budget]);
 
-  // ── Build execution plan from selected curated basket ──
+  // ── Basket Review: fetch live prices ──
+  useEffect(() => {
+    if (step === 'basket_review' && selectedCurated && budget) fetchReviewPrices();
+  }, [step]);
+
+  async function fetchReviewPrices() {
+    if (!selectedCurated) return;
+    setLoadingPrices(true);
+    setPriceError(false);
+    const bNum = parseInt(budget) || 0;
+    const effectiveBudget = bNum * 0.95;
+
+    try {
+      const results = await Promise.allSettled(
+        selectedCurated.stocks.map(stock =>
+          fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(stock.symbol)}`).then(r => r.json())
+        )
+      );
+
+      const enriched: ReviewStock[] = selectedCurated.stocks.map((stock, i) => {
+        const result = results[i];
+        const price = result.status === 'fulfilled' ? (result.value.c || stock.price || 0) : (stock.price || 0);
+        const dollarAmount = (stock.allocation / 100) * effectiveBudget;
+        const shares = price > 0 ? dollarAmount / price : 0;
+        return {
+          ...stock,
+          price: Math.round(price * 100) / 100,
+          dollarAmount: Math.round(dollarAmount * 100) / 100,
+          shares: Math.round(shares * 1000000) / 1000000,
+        };
+      });
+
+      setReviewStocks(enriched);
+    } catch {
+      setPriceError(true);
+    } finally {
+      setLoadingPrices(false);
+    }
+  }
+
+  function onRemoveStock(symbol: string) {
+    if (reviewStocks.length <= 2) return;
+    const bNum = parseInt(budget) || 0;
+    const effectiveBudget = bNum * 0.95;
+    const remaining = reviewStocks.filter(s => s.symbol !== symbol);
+    const totalAlloc = remaining.reduce((sum, s) => sum + s.allocation, 0);
+    const updated = remaining.map(s => {
+      const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
+      const dollarAmount = Math.round(newAlloc / 100 * effectiveBudget * 100) / 100;
+      const shares = s.price > 0 ? dollarAmount / s.price : 0;
+      return { ...s, allocation: newAlloc, dollarAmount, shares };
+    });
+    const sum = updated.reduce((s, r) => s + r.allocation, 0);
+    if (sum !== 100 && updated.length > 0) {
+      updated[0].allocation = +(updated[0].allocation + (100 - sum)).toFixed(1);
+      updated[0].dollarAmount = Math.round(updated[0].allocation / 100 * effectiveBudget * 100) / 100;
+      updated[0].shares = updated[0].price > 0 ? updated[0].dollarAmount / updated[0].price : 0;
+    }
+    setReviewStocks(updated);
+  }
+
+  async function handleAddStock(symbol: string) {
+    if (!symbol.trim() || reviewStocks.length >= 10) return;
+    const s = symbol.trim().toUpperCase();
+    if (reviewStocks.find(st => st.symbol === s)) return;
+    try {
+      const qRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(s)}`);
+      const qData = await qRes.json();
+      const price = qData?.c || 0;
+      if (price <= 0) { setError(`Could not fetch price for ${s}`); return; }
+      const bNum = parseInt(budget) || 0;
+      const effectiveBudget = bNum * 0.95;
+      const newCount = reviewStocks.length + 1;
+      const allocPer = +(100 / newCount).toFixed(1);
+      const updated = reviewStocks.map(st => {
+        const dollarAmount = Math.round(allocPer / 100 * effectiveBudget * 100) / 100;
+        const shares = st.price > 0 ? dollarAmount / st.price : 0;
+        return { ...st, allocation: allocPer, dollarAmount, shares };
+      });
+      const newDollar = Math.round(allocPer / 100 * effectiveBudget * 100) / 100;
+      updated.push({
+        symbol: s, name: s, allocation: allocPer,
+        rationale: 'Manually added', price,
+        dollarAmount: newDollar, shares: newDollar / price,
+        isCustomAdded: true,
+      });
+      const total = updated.reduce((sum, st) => sum + st.allocation, 0);
+      if (total !== 100) {
+        updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
+        updated[0].dollarAmount = Math.round(updated[0].allocation / 100 * effectiveBudget * 100) / 100;
+        updated[0].shares = updated[0].price > 0 ? updated[0].dollarAmount / updated[0].price : 0;
+      }
+      setReviewStocks(updated);
+      setAddSymbolInput(''); setShowAddInput(false);
+    } catch (err: any) { setError(err?.message || `Failed to add ${s}`); }
+  }
+
+  // ── Build execution plan from selected curated basket (legacy, kept for safety) ──
   // (must be above early return per React hooks rules)
   const executionPlan = useMemo(() => {
     if (!selectedCurated || !budget) return null;
@@ -216,7 +332,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const goBack = () => {
     if (step === 'custom_theme') setStep('curated');
     else if (step === 'budget') setStep(selectedCurated ? 'curated' : 'custom_theme');
-    else if (step === 'order_ticket') setStep('budget');
+    else if (step === 'basket_confirm') setStep('basket_review');
+    else if (step === 'basket_review') setStep('budget');
     else if (step === 'review') setStep('budget');
   };
 
@@ -318,41 +435,46 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // ── Header (context-aware per step) ──
-  const header = (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '16px 20px', background: '#0a0f1e',
-      borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
-    }}>
-      {/* Left: back button or spacer */}
-      {step === 'curated' ? (
-        <div style={{ width: '40px' }} />
-      ) : (
-        <button onClick={step === 'budget' && selectedCurated ? () => setStep('curated') : goBack} style={{
-          color: '#22d3ee', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px',
-        }}>
-          ← {step === 'budget' && selectedCurated ? 'Baskets' : 'Back'}
-        </button>
-      )}
+  // ── StepHeader component ──
+  const StepHeader = ({
+    title, onBack, onClose, backLabel = '← Back',
+  }: { title: string; onBack: () => void; onClose: () => void; backLabel?: string }) => {
+    const isFirstStep = step === 'curated';
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+        flexShrink: 0,
+      }}>
+        {isFirstStep ? (
+          <div style={{ width: '70px' }} />
+        ) : (
+          <button onClick={onBack} style={{
+            color: '#22d3ee', background: 'none', border: 'none',
+            fontSize: '14px', cursor: 'pointer', padding: '4px', minWidth: '70px', textAlign: 'left',
+          }}>{backLabel}</button>
+        )}
+        <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>{title}</span>
+        <button onClick={onClose} style={{
+          color: '#6b7280', background: 'none', border: 'none',
+          fontSize: '22px', cursor: 'pointer', lineHeight: 1, minWidth: '70px', textAlign: 'right',
+        }}>×</button>
+      </div>
+    );
+  };
 
-      {/* Center: step title */}
-      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>
-        {step === 'curated' ? 'Build Basket' :
-         step === 'custom_theme' ? 'Custom Basket' :
-         step === 'budget' ? 'Set Budget' :
-         step === 'generating' ? 'Generating...' :
-         step === 'review' ? 'Review Order' :
-         step === 'order_ticket' ? 'Confirm Order' : ''}
-      </span>
-
-      {/* Right: close button */}
-      <button onClick={onClose} style={{
-        color: '#6b7280', fontSize: '22px', background: 'none',
-        border: 'none', cursor: 'pointer', padding: '4px 8px', lineHeight: 1,
-      }}>×</button>
-    </div>
-  );
+  const stepHeader = (() => {
+    switch (step) {
+      case 'curated': return <StepHeader title="Build Basket" onBack={goBack} onClose={onClose} backLabel="← Back" />;
+      case 'custom_theme': return <StepHeader title="Custom Basket" onBack={goBack} onClose={onClose} backLabel="← Back" />;
+      case 'budget': return <StepHeader title="Set Budget" onBack={() => selectedCurated ? setStep('curated') : setStep('custom_theme')} onClose={onClose} backLabel={selectedCurated ? '← Baskets' : '← Back'} />;
+      case 'generating': return <StepHeader title="Generating..." onBack={goBack} onClose={onClose} backLabel="← Back" />;
+      case 'review': return <StepHeader title="Review Order" onBack={goBack} onClose={onClose} backLabel="← Back" />;
+      case 'basket_review': return <StepHeader title="Review Order" onBack={() => setStep('budget')} onClose={onClose} backLabel="← Budget" />;
+      case 'basket_confirm': return <StepHeader title="Confirm Order" onBack={() => setStep('basket_review')} onClose={onClose} backLabel="← Review" />;
+      default: return null;
+    }
+  })();
 
   // ────────────────────────────────────────────────────────────
   // STEP 0: CURATED BASKETS
@@ -692,7 +814,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         background: 'linear-gradient(transparent, #0a0f1e 30%)',
       }}>
         <button
-          onClick={() => selectedCurated ? setStep('order_ticket') : generateBasket()}
+          onClick={() => selectedCurated ? setStep('basket_review') : generateBasket()}
           disabled={!budget || parseInt(budget) <= 0}
           style={{
             width: '100%',
@@ -881,12 +1003,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   );
 
   // ────────────────────────────────────────────────────────────
-  // STEP 4.5: ORDER TICKET (curated basket confirmation)
+  // ────────────────────────────────────────────────────────────
+  // STEP: BASKET REVIEW (live prices + customize)
   // ────────────────────────────────────────────────────────────
 
   // ── Confirm and execute basket order ──
   async function handleConfirmOrder() {
-    if (!selectedCurated) return;
+    if (!selectedCurated || reviewStocks.length === 0) return;
     setExecuting(true);
     setExecutionResult(null);
     const bNum = parseInt(budget) || 0;
@@ -894,7 +1017,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       selectedCurated.id,
       selectedCurated.name,
       selectedCurated.emoji,
-      selectedCurated.stocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
+      reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
       bNum,
     );
     setExecutionResult(result);
@@ -905,20 +1028,214 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         setStep('curated');
         setSelectedCurated(null);
         setBudget('');
+        setReviewStocks([]);
         onClose();
-        onBasketGenerated(`🧺 Bought "${selectedCurated.name}" — ${result.executed} of ${selectedCurated.stocks.length} stocks filled for $${result.totalSpent.toFixed(2)}`, result);
+        onBasketGenerated(`🧺 Bought "${selectedCurated.name}" — ${result.executed} of ${reviewStocks.length} stocks filled for $${result.totalSpent.toFixed(2)}`, result);
       }, 2500);
     }
   }
 
-  const orderTicketStep = (
+  const basketReviewStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
+        {/* Basket summary */}
+        <div style={{
+          padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(34,211,238,0.04)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#ffffff', fontWeight: '600' }}>
+              {selectedCurated?.emoji} {selectedCurated?.name}
+            </span>
+            <span style={{ color: '#22d3ee' }}>${(parseInt(budget) || 0).toLocaleString()} budget</span>
+          </div>
+          <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '4px' }}>
+            Effective: ${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })} · 5% buffer held (~${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })})
+          </div>
+        </div>
+
+        {/* Loading state */}
+        {loadingPrices && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', padding: '48px 0' }}>
+            <CompassIcon size={48} color="#22d3ee" animated={true} />
+            <span style={{ color: '#6b7280', fontSize: '13px' }}>Fetching live prices...</span>
+          </div>
+        )}
+
+        {/* Stock list */}
+        {!loadingPrices && (
+          <>
+            {/* Execution Plan header with Customize toggle */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '10px 16px',
+              marginBottom: '4px',
+            }}>
+              <span style={{
+                color: '#4b5563',
+                fontSize: '10px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+              }}>
+                Execution Plan
+              </span>
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                style={{
+                  color: isEditMode ? '#22d3ee' : '#9ca3af',
+                  background: 'none',
+                  border: isEditMode
+                    ? '1px solid rgba(34,211,238,0.3)'
+                    : '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '6px',
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {isEditMode ? 'Done' : 'Customize'}
+              </button>
+            </div>
+
+            {reviewStocks.map((stock, i) => (
+              <div key={stock.symbol} style={{
+                display: 'flex', alignItems: 'center',
+                padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: '8px',
+              }}>
+                {/* Remove button — only in edit mode */}
+                {isEditMode && (
+                  <button
+                    onClick={() => onRemoveStock(stock.symbol)}
+                    disabled={reviewStocks.length <= 2}
+                    style={{
+                      color: reviewStocks.length <= 2 ? '#1f2937' : '#ef4444',
+                      background: 'none', border: 'none', fontSize: '20px',
+                      cursor: reviewStocks.length <= 2 ? 'not-allowed' : 'pointer',
+                      flexShrink: 0, lineHeight: 1, width: '28px', textAlign: 'center',
+                    }}
+                  >×</button>
+                )}
+
+                {/* Stock info */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <div>
+                      <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '14px' }}>{stock.symbol}</span>
+                      <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '6px' }}>{stock.name}</span>
+                      {stock.isCustomAdded && (
+                        <span style={{ fontSize: '9px', color: '#22d3ee', marginLeft: '4px', background: 'rgba(34,211,238,0.1)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
+                      )}
+                    </div>
+                    <span style={{ color: '#22d3ee', fontWeight: '600', fontSize: '13px' }}>{stock.allocation}%</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280', fontSize: '11px' }}>
+                    <span>{stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}</span>
+                    <span style={{ color: '#9ca3af' }}>= ${stock.dollarAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Add stock button — only in edit mode */}
+            {isEditMode && reviewStocks.length < 10 && (
+              <div style={{ padding: '8px 16px' }}>
+                {showAddInput ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input autoFocus placeholder="Enter ticker (e.g. AAPL)" value={addSymbolInput}
+                      onChange={e => setAddSymbolInput(e.target.value.toUpperCase())}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleAddStock(addSymbolInput);
+                        if (e.key === 'Escape') { setShowAddInput(false); setAddSymbolInput(''); }
+                      }}
+                      style={{
+                        flex: 1, background: '#0a0f1e', border: '1px solid rgba(34,211,238,0.3)',
+                        borderRadius: '8px', padding: '8px 12px', color: '#ffffff', fontSize: '13px',
+                      }}
+                    />
+                    <button onClick={() => handleAddStock(addSymbolInput)} style={{
+                      background: '#22d3ee', color: '#0a0f1e', border: 'none', borderRadius: '8px',
+                      padding: '8px 14px', fontWeight: '600', cursor: 'pointer', fontSize: '13px', flexShrink: 0,
+                    }}>Add</button>
+                    <button onClick={() => { setShowAddInput(false); setAddSymbolInput(''); }} style={{
+                      background: 'none', border: 'none', color: '#6b7280', fontSize: '20px',
+                      cursor: 'pointer', flexShrink: 0,
+                    }}>×</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowAddInput(true)} style={{
+                    width: '100%', padding: '10px', background: 'none',
+                    border: '1px dashed rgba(34,211,238,0.25)', borderRadius: '8px',
+                    color: '#22d3ee', fontSize: '13px', cursor: 'pointer',
+                  }}>+ Add Stock or ETF</button>
+                )}
+              </div>
+            )}
+
+            {/* Error */}
+            {error && <p style={{ fontSize: '11px', color: '#ef4444', padding: '8px 16px' }}>{error}</p>}
+
+            {/* Total row */}
+            <div style={{
+              margin: '8px 16px', padding: '12px',
+              background: 'rgba(255,255,255,0.03)', borderRadius: '10px',
+              display: 'flex', justifyContent: 'space-between',
+            }}>
+              <span style={{ color: '#9ca3af', fontSize: '13px' }}>Est. Total</span>
+              <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
+                ${reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0).toFixed(2)}
+              </span>
+            </div>
+
+            {/* Warning */}
+            <div style={{
+              margin: '0 16px 12px', padding: '10px 12px',
+              background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)',
+              borderRadius: '8px', color: '#f59e0b', fontSize: '11px', lineHeight: '1.5',
+            }}>
+              ⚠️ Market orders execute at live prices. Final amounts may vary slightly.
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Fixed bottom button */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        padding: '12px 16px',
+        paddingBottom: 'calc(12px + env(safe-area-inset-bottom) + 80px)',
+        background: 'linear-gradient(transparent, #0a0f1e 40%)',
+        display: 'flex', flexDirection: 'column', gap: '8px',
+      }}>
+        <button
+          onClick={() => setStep('basket_confirm')}
+          disabled={reviewStocks.length < 2 || loadingPrices}
+          style={{
+            width: '100%', padding: '16px',
+            background: reviewStocks.length >= 2 ? '#22d3ee' : 'rgba(34,211,238,0.2)',
+            color: reviewStocks.length >= 2 ? '#0a0f1e' : '#6b7280',
+            border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600',
+            cursor: reviewStocks.length >= 2 ? 'pointer' : 'not-allowed',
+          }}
+        >Review & Confirm →</button>
+      </div>
+    </>
+  );
+
+  // ────────────────────────────────────────────────────────────
+  // STEP: BASKET CONFIRM
+  // ────────────────────────────────────────────────────────────
+
+  const basketConfirmStep = (
+    <>
+      <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto', paddingBottom: 'calc(160px + env(safe-area-inset-bottom))' }}>
         {executionResult ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>{executionResult.success ? '✅' : '⚠️'}</div>
             <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', marginBottom: '8px' }}>
-              {executionResult.success 
+              {executionResult.success
                 ? (executionResult.failed > 0 ? 'Partial Execution' : 'Order Complete!')
                 : 'Order Failed'}
             </p>
@@ -954,80 +1271,89 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               )}
             </div>
           </div>
-        ) : (
+        ) : selectedCurated ? (
           <>
-            {selectedCurated && (
-              <>
-                <div style={{ background: '#1a2235', borderRadius: '8px', padding: '14px 16px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>{selectedCurated.emoji}</span>
-                    <span style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>{selectedCurated.name}</span>
-                    <span style={{ fontSize: '10px', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.3)', borderRadius: '4px', padding: '2px 8px', marginLeft: 'auto' }}>MARKET</span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{selectedCurated.stocks.length} positions · Market order</p>
+            {/* Order summary card */}
+            <div style={{
+              background: '#1a2235', borderRadius: '16px', padding: '20px', marginBottom: '16px',
+            }}>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>{selectedCurated.emoji}</div>
+              <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
+                {selectedCurated.name}
+              </div>
+              <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '20px' }}>
+                {reviewStocks.length} positions · Market order · Day
+              </div>
+
+              {[
+                { label: 'Budget', value: `$${(parseInt(budget) || 0).toLocaleString()}`, color: '#ffffff' },
+                { label: 'Effective (5% buffer)', value: `$${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#22d3ee' },
+                { label: 'Est. buffer held', value: `~$${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#6b7280' },
+                { label: 'Est. Total', value: `$${reviewStocks.reduce((s, r) => s + r.dollarAmount, 0).toFixed(2)}`, color: '#ffffff', bold: true },
+              ].map(row => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '13px' }}>{row.label}</span>
+                  <span style={{ color: row.color, fontSize: '13px', fontWeight: row.bold ? '700' : '400' }}>{row.value}</span>
                 </div>
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Budget</span>
-                    <span style={{ fontSize: '12px', color: '#ffffff' }}>${parseInt(budget || '0').toLocaleString()}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Effective (5% buffer)</span>
-                    <span style={{ fontSize: '12px', color: '#22d3ee' }}>${(parseInt(budget || '0') * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Est. buffer</span>
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>~${orderEstBuffer.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                  </div>
-                </div>
-                {executionPlan && executionPlan.length > 0 && (
-                  <>
-                    <p style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Execution Plan</p>
-                    {executionPlan.map((p, i) => (
-                      <div key={p.symbol} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                        <div>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>{p.symbol}</span>
-                          <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>{p.name}</span>
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{p.shares.toFixed(4)}sh @ ${(p.price || 0).toFixed(2)}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{p.allocationPct}%</span>
-                          <div style={{ fontSize: '12px', color: '#ffffff', fontWeight: '500' }}>${p.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>Est. Total</span>
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>${orderEstTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                </div>
-                <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '8px', padding: '10px 12px', marginTop: '12px' }}>
-                  <p style={{ fontSize: '11px', color: '#f59e0b', margin: 0 }}>⚠️ Market orders execute at live prices. Final amounts may vary slightly.</p>
-                </div>
-                <p style={{ fontSize: '11px', color: '#4b5563', textAlign: 'center', marginTop: '16px' }}>Orders execute simultaneously at market price. Demo trades use live Finnhub prices.</p>
-              </>
-            )}
+              ))}
+            </div>
+
+            {/* Warning */}
+            <div style={{
+              padding: '10px 12px',
+              background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)',
+              borderRadius: '8px', color: '#f59e0b', fontSize: '11px', lineHeight: '1.5',
+              marginBottom: '12px',
+            }}>
+              ⚠️ Market orders execute at live prices. Demo trades use live Finnhub prices.
+            </div>
           </>
-        )}
+        ) : null}
       </div>
+
+      {/* Both buttons — ALWAYS visible above nav */}
       {!executionResult && selectedCurated && (
-        <div style={{ padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: '12px 16px',
+          paddingBottom: 'calc(90px + env(safe-area-inset-bottom))',
+          background: '#0a0f1e',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          zIndex: 200,
+        }}>
           <button onClick={handleConfirmOrder}
             disabled={executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance}
             style={{
-              width: '100%',
-              background: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.2)' : '#22d3ee',
-              border: 'none', borderRadius: '10px',
-              color: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.4)' : '#000',
-              fontSize: '14px', fontWeight: '600', padding: '14px 0',
+              width: '100%', padding: '16px',
+              background: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.4)' : '#22d3ee',
+              color: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.6)' : '#0a0f1e',
+              border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600',
               cursor: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'not-allowed' : 'pointer',
             }}
-          >{executing ? 'Executing...' : `Confirm & Buy →`}</button>
-          <button onClick={() => { setStep('budget'); setExecutionResult(null); }} style={{
-            width: '100%', background: 'transparent', border: '1px solid #ef4444', borderRadius: '10px',
-            color: '#ef4444', fontSize: '14px', fontWeight: '500', padding: '14px 0', cursor: 'pointer',
-          }}>Cancel Basket</button>
+          >{executing ? 'Executing...' : 'Confirm & Buy →'}</button>
+
+          <button
+            onClick={onClose}
+            style={{
+              width: '100%',
+              padding: '14px',
+              background: 'none',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: '12px',
+              fontSize: '15px',
+              color: '#ef4444',
+              cursor: 'pointer',
+              fontWeight: '500',
+            }}
+          >
+            Cancel
+          </button>
         </div>
       )}
     </>
@@ -1038,13 +1364,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       position: 'fixed', inset: 0, background: '#0a0f1e',
       zIndex: 99999, display: 'flex', flexDirection: 'column',
     }}>
-      {header}
+      {stepHeader}
       {step === 'curated' && curatedStep}
       {step === 'custom_theme' && customThemeStep}
       {step === 'budget' && budgetStep}
       {step === 'generating' && generatingStep}
       {step === 'review' && reviewStep}
-      {step === 'order_ticket' && orderTicketStep}
+      {step === 'basket_review' && basketReviewStep}
+      {step === 'basket_confirm' && basketConfirmStep}
 
       <style>{`
         @keyframes pulse {
