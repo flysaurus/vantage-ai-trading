@@ -20,6 +20,9 @@ const anthropic = new Anthropic({
 });
 
 // ── Fetch Finnhub performance data for a stock ────────────────
+// NOT called during cron generation (too many calls for Vercel's
+// 60s timeout). Performance is fetched separately by the client
+// or a lighter dedicated endpoint.
 
 async function fetchStockPerformance(symbol: string): Promise<{
   '3m': number; ytd: number; '1y': number;
@@ -174,61 +177,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 });
     }
 
-    // Fetch real performance for all stocks
-    console.log('[Baskets] Fetching performance data for', baskets.reduce((n, b) => n + (b.stocks?.length || 0), 0), 'stocks...');
+    // ── Build baskets without performance data ──────────────────
+    // Finnhub performance (3m/ytd/1y) requires 144 API calls
+    // for 6 baskets × 6 stocks × 4 endpoints — too slow for
+    // Vercel's 60s function timeout. Performance is filled
+    // client-side on-demand via the GET endpoint.
+    console.log('[Baskets] Building', baskets.length, 'baskets (skipping perf data)...');
 
     const weekOf = new Date().toISOString().split('T')[0];
 
-    const enrichedBaskets = await Promise.all(
-      baskets.map(async (basket: any) => {
-        const enrichedStocks = await Promise.all(
-          (basket.stocks || []).map(async (stock: any) => {
-            const perf = await fetchStockPerformance(stock.symbol).catch(() => ({
-              '3m': 0, ytd: 0, '1y': 0, price: 0, best_timeframe: '1y',
-            }));
+    const enrichedBaskets = baskets.map((basket: any) => {
+      const stocks = (basket.stocks || []).map((stock: any) => ({
+        ...stock,
+        price: 0,
+        shares: +(stock.allocation / 100).toFixed(4),
+        performance: { '3m': 0, ytd: 0, '1y': 0 },
+      }));
 
-            return {
-              ...stock,
-              price: perf.price,
-              shares: +(stock.allocation / 100).toFixed(4),
-              performance: {
-                '3m': perf['3m'],
-                ytd: perf.ytd,
-                '1y': perf['1y'],
-              },
-            };
-          })
-        );
-
-        // Calculate basket-level performance (weighted average)
-        const basketPerf = {
-          '3m': +enrichedStocks.reduce((sum, s) =>
-            sum + (s.performance['3m'] * (s.allocation || 0) / 100), 0
-          ).toFixed(1),
-          ytd: +enrichedStocks.reduce((sum, s) =>
-            sum + (s.performance.ytd * (s.allocation || 0) / 100), 0
-          ).toFixed(1),
-          '1y': +enrichedStocks.reduce((sum, s) =>
-            sum + (s.performance['1y'] * (s.allocation || 0) / 100), 0
-          ).toFixed(1),
-        };
-
-        const bestTimeframe = Object.entries(basketPerf)
-          .sort(([, a], [, b]) => (b as number) - (a as number))[0][0];
-
-        return {
-          theme: basket.theme,
-          emoji: basket.emoji,
-          name: basket.name,
-          thesis: basket.thesis || '',
-          risk_note: basket.risk_note || '',
-          stocks: enrichedStocks,
-          performance: { ...basketPerf, best_timeframe: bestTimeframe },
-          week_of: weekOf,
-          is_active: true,
-        };
-      })
-    );
+      return {
+        theme: basket.theme,
+        emoji: basket.emoji,
+        name: basket.name,
+        thesis: basket.thesis || '',
+        risk_note: basket.risk_note || '',
+        stocks,
+        performance: { '3m': 0, ytd: 0, '1y': 0, best_timeframe: '1y' },
+        week_of: weekOf,
+        is_active: true,
+      };
+    });
 
     // ── Generate changelog vs previous baskets ──
     let changelog: string | null = null;
