@@ -4,12 +4,18 @@ import { useLivePortfolio } from '@/context/PortfolioContext';
 import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
-  { id: '1', symbol: 'META', side: 'buy', status: 'filled', qty: 25, price: 593.02, date: 'Jun 1 · 2:14 PM' },
-  { id: '2', symbol: 'NVDA', side: 'buy', status: 'filled', qty: 30, price: 205.10, date: 'May 28 · 10:33 AM' },
-  { id: '3', symbol: 'GOOGL', side: 'buy', status: 'filled', qty: 45, price: 368.53, date: 'May 15 · 9:45 AM' },
-  { id: '4', symbol: 'AMZN', side: 'buy', status: 'filled', qty: 60, price: 246.03, date: 'May 10 · 11:20 AM' },
-  { id: '5', symbol: 'CRM', side: 'sell', status: 'open', qty: 20, price: undefined, date: 'Today · pending' },
-  { id: '6', symbol: 'NFLX', side: 'buy', status: 'cancelled', qty: 10, price: 85.00, date: 'Apr 22 · 3:45 PM' },
+  { id: '1', symbol: 'SPY', side: 'buy', status: 'filled', qty: 25, price: 480.00, date: 'Jan 8, 2024' },
+  { id: '2', symbol: 'QQQ', side: 'buy', status: 'filled', qty: 20, price: 415.00, date: 'Jan 8, 2024' },
+  { id: '3', symbol: 'GOOGL', side: 'buy', status: 'filled', qty: 60, price: 140.00, date: 'Jan 15, 2024' },
+  { id: '4', symbol: 'MSFT', side: 'buy', status: 'filled', qty: 20, price: 415.00, date: 'Feb 5, 2024' },
+  { id: '5', symbol: 'JPM', side: 'buy', status: 'filled', qty: 45, price: 195.00, date: 'Feb 20, 2024' },
+  { id: '6', symbol: 'ADBE', side: 'buy', status: 'filled', qty: 12, price: 560.00, date: 'Mar 1, 2024' },
+  { id: '7', symbol: 'ISRG', side: 'buy', status: 'filled', qty: 8, price: 395.00, date: 'Apr 12, 2024' },
+  { id: '8', symbol: 'COST', side: 'buy', status: 'filled', qty: 10, price: 720.00, date: 'May 3, 2024' },
+  { id: '9', symbol: 'LLY', side: 'buy', status: 'filled', qty: 18, price: 750.00, date: 'Jun 18, 2024' },
+  { id: '10', symbol: 'NVDA', side: 'buy', status: 'filled', qty: 80, price: 108.00, date: 'Aug 15, 2024' },
+  { id: '11', symbol: 'CRM', side: 'sell', status: 'open', qty: 20, price: undefined, date: 'Today · pending' },
+  { id: '12', symbol: 'NFLX', side: 'buy', status: 'cancelled', qty: 10, price: 85.00, date: 'Apr 22, 2024' },
 ];
 
 const statusBorder: Record<string, string> = {

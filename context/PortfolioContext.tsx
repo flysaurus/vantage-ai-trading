@@ -43,7 +43,9 @@ interface DemoState {
   savedAt: number;
 }
 
-const STORAGE_KEY = 'vantage_demo_portfolio';
+const STORAGE_VERSION = 'v2';
+const STORAGE_KEY = `vantage_demo_portfolio_${STORAGE_VERSION}`;
+const OLD_STORAGE_KEY = 'vantage_demo_portfolio';
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -119,6 +121,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isConnected) return;
     try {
+      // Clear old unversioned key to force fresh seed
+      localStorage.removeItem(OLD_STORAGE_KEY);
+
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved: DemoState = JSON.parse(raw);
@@ -130,16 +135,34 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch { /* ignore corrupt localStorage */ }
-    // Fallback: seed from demo-data
+    // Fallback: seed from demo-data (positions + generated orders)
     const style = (user?.investorStyle || 'buffett') as any;
     const seedAccount = getDemoAccount(style, {});
+    
+    // Generate orders from demo positions (matches current portfolio)
+    const seedOrders: DemoOrder[] = (seedAccount?.positions || []).map((p, i) => {
+      const fillPrice = p.avgCost || p.currentPrice;
+      return {
+        id: `demo-${p.symbol}-${i}`,
+        symbol: p.symbol,
+        side: 'BUY' as const,
+        shares: p.qty,
+        type: 'market' as const,
+        fillPrice,
+        totalCost: p.qty * fillPrice,
+        status: 'FILLED' as const,
+        createdAt: p.buyDate || new Date('2024-01-01').toISOString(),
+      };
+    });
+
     const seedState: DemoState = {
       positions: seedAccount?.positions || [],
       cashBalance: seedAccount?.cash || 0,
-      orders: [],
+      orders: seedOrders,
       savedAt: Date.now(),
     };
     setDemoState(seedState);
+    setDemoOrders(seedOrders);
   }, [isConnected, user?.investorStyle]);
 
   // ── Persist demo state to localStorage ──
