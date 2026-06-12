@@ -1230,7 +1230,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
   const basketConfirmStep = (
     <>
-      <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto', paddingBottom: 'calc(160px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto', paddingBottom: '200px' }}>
         {executionResult ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>{executionResult.success ? '✅' : '⚠️'}</div>
@@ -1318,14 +1318,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           bottom: 0,
           left: 0,
           right: 0,
-          padding: '12px 16px',
-          paddingBottom: 'calc(90px + env(safe-area-inset-bottom))',
+          zIndex: 10000,
           background: '#0a0f1e',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          padding: '12px 16px',
+          paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
           display: 'flex',
           flexDirection: 'column',
           gap: '10px',
-          zIndex: 200,
         }}>
           <button onClick={handleConfirmOrder}
             disabled={executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance}
@@ -1361,8 +1361,16 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: '#0a0f1e',
-      zIndex: 99999, display: 'flex', flexDirection: 'column',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+      background: '#0a0f1e',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
     }}>
       {stepHeader}
       {step === 'curated' && curatedStep}

@@ -859,51 +859,141 @@ export function PortfolioTab() {
       {/* Sticky Portfolio Summary Footer */}
       <div style={{
         position: 'fixed',
-        bottom: 'calc(64px + env(safe-area-inset-bottom))',
-        left: 0, right: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
         zIndex: 100,
-        background: 'linear-gradient(to top, #0a0f1e 60%, rgba(10,15,30,0.95) 80%, transparent 100%)',
-        paddingTop: '20px',
-        paddingBottom: '12px',
+        background: 'linear-gradient(' +
+          'to top,' +
+          '#0a0f1e 65%,' +
+          'transparent 100%' +
+        ')',
+        paddingTop: '24px',
+        paddingBottom: 'calc(8px + env(safe-area-inset-bottom) + 64px)',
         paddingLeft: '16px',
         paddingRight: '16px',
       }}>
+        {/* Label above pill */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-          background: 'rgba(26,34,53,0.95)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '14px',
-          padding: '10px 0',
-          boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
+          textAlign: 'center',
+          marginBottom: '6px',
         }}>
+          <span style={{
+            color: 'rgba(255,255,255,0.3)',
+            fontSize: '9px',
+            fontWeight: '600',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}>
+            Portfolio Summary
+          </span>
+        </div>
+
+        {/* Three-column pill */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          background: 'rgba(26,34,53,0.98)',
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: '16px',
+          padding: '12px 0',
+          boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
+        }}>
+
           {/* Market Value */}
-          <div style={{ textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '0 8px' }}>
-            <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>
-              {totalMarketValue >= 10000 ? `$${(totalMarketValue / 1000).toFixed(1)}K` : formatCurrency(totalMarketValue)}
+          <div style={{
+            textAlign: 'center',
+            borderRight: '1px solid rgba(255,255,255,0.08)',
+            padding: '0 8px',
+          }}>
+            <div style={{
+              color: '#ffffff',
+              fontSize: '14px',
+              fontWeight: '700',
+              letterSpacing: '-0.01em',
+            }}>
+              {totalMarketValue >= 10000
+                ? `$${(totalMarketValue/1000).toFixed(1)}K`
+                : `$${totalMarketValue.toFixed(0)}`
+              }
             </div>
-            <div style={{ color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' }}>
+            <div style={{
+              color: 'rgba(255,255,255,0.45)',
+              fontSize: '9px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginTop: '3px',
+              fontWeight: '500',
+            }}>
               Market Value
             </div>
           </div>
+
           {/* Today P&L */}
-          <div style={{ textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '0 8px' }}>
-            <div style={{ color: totalTodayPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '13px', fontWeight: '600' }}>
+          <div style={{
+            textAlign: 'center',
+            borderRight: '1px solid rgba(255,255,255,0.08)',
+            padding: '0 8px',
+          }}>
+            <div style={{
+              color: totalTodayPnL >= 0
+                ? '#34d399'
+                : '#f87171',
+              fontSize: '14px',
+              fontWeight: '700',
+            }}>
               {totalTodayPnL >= 0 ? '+' : ''}
-              {Math.abs(totalTodayPnL) >= 10000 ? `$${(Math.abs(totalTodayPnL) / 1000).toFixed(1)}K` : formatCurrency(totalTodayPnL)}
+              {Math.abs(totalTodayPnL) >= 10000
+                ? `$${(Math.abs(totalTodayPnL)/1000).toFixed(1)}K`
+                : `$${Math.abs(totalTodayPnL).toFixed(0)}`
+              }
             </div>
-            <div style={{ color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' }}>
-              Today {totalTodayPnL >= 0 ? '+' : ''}{totalTodayPct.toFixed(1)}%
+            <div style={{
+              color: totalTodayPnL >= 0
+                ? 'rgba(52,211,153,0.7)'
+                : 'rgba(248,113,113,0.7)',
+              fontSize: '9px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginTop: '3px',
+              fontWeight: '500',
+            }}>
+              Today {totalTodayPnL >= 0 ? '+' : ''}
+              {totalTodayPct.toFixed(1)}%
             </div>
           </div>
+
           {/* Total P&L */}
-          <div style={{ textAlign: 'center', padding: '0 8px' }}>
-            <div style={{ color: totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '13px', fontWeight: '600' }}>
+          <div style={{
+            textAlign: 'center',
+            padding: '0 8px',
+          }}>
+            <div style={{
+              color: totalPnL >= 0
+                ? '#34d399'
+                : '#f87171',
+              fontSize: '14px',
+              fontWeight: '700',
+            }}>
               {totalPnL >= 0 ? '+' : ''}
-              {Math.abs(totalPnL) >= 10000 ? `$${(Math.abs(totalPnL) / 1000).toFixed(1)}K` : formatCurrency(totalPnL)}
+              {Math.abs(totalPnL) >= 10000
+                ? `$${(Math.abs(totalPnL)/1000).toFixed(1)}K`
+                : `$${Math.abs(totalPnL).toFixed(0)}`
+              }
             </div>
-            <div style={{ color: '#4b5563', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' }}>
-              Total {totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%
+            <div style={{
+              color: totalPnL >= 0
+                ? 'rgba(52,211,153,0.7)'
+                : 'rgba(248,113,113,0.7)',
+              fontSize: '9px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginTop: '3px',
+              fontWeight: '500',
+            }}>
+              Total {totalPnL >= 0 ? '+' : ''}
+              {totalPnLPct.toFixed(1)}%
             </div>
           </div>
         </div>
