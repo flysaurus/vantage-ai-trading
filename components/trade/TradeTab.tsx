@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore } from '@/store';
+import BuildBasketModal from '@/components/BuildBasketModal';
 import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
@@ -57,6 +58,7 @@ export function TradeTab() {
   const [limitPrice, setLimitPrice] = useState('');
   const [tif, setTif] = useState<'day' | 'gtc'>('day');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
+  const [showBuildBasket, setShowBuildBasket] = useState(false);
 
   // ─── Symbol search state ───
   const [searchQuery, setSearchQuery] = useState('');
@@ -694,11 +696,27 @@ export function TradeTab() {
       </div>
 
       {/* ─── 3. STRATEGIES SECTION ─── */}
-      <div style={{ margin: '0 16px 16px 16px' }}>
+      <div style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
         <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
           STRATEGIES
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+          <div
+            onClick={() => setShowBuildBasket(true)}
+            style={{
+              background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(34,211,238,0.05))',
+              border: '1px solid rgba(34,211,238,0.3)',
+              borderRadius: '8px',
+              padding: '12px 8px',
+              textAlign: 'center',
+              color: '#22d3ee',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            🧺 Build Basket
+          </div>
           {['DCA', 'Rebalance', 'Tax Harvest'].map(name => (
             <div
               key={name}
@@ -914,6 +932,21 @@ export function TradeTab() {
 
       {/* ─── 5. Bottom spacer ─── */}
       <div style={{ height: '80px' }} />
+
+      {/* ─── Build Basket Modal ─── */}
+      <BuildBasketModal
+        isOpen={showBuildBasket}
+        onClose={() => setShowBuildBasket(false)}
+        onBasketGenerated={(msg, result) => {
+          setShowBuildBasket(false);
+          if (result?.success) {
+            // Navigate to Portfolio tab → baskets section
+            window.dispatchEvent(new CustomEvent('vantage-navigate', {
+              detail: { tab: 'portfolio', section: 'baskets-section' },
+            }));
+          }
+        }}
+      />
     </div>
   );
 }

@@ -8,7 +8,6 @@ import { useLivePortfolio, buildLivePortfolioContext } from '@/context/Portfolio
 import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import BuildBasketModal from '@/components/BuildBasketModal';
 import CompassIcon from '@/components/CompassIcon';
 
 // ── Message counter (localStorage, per-day) ──
@@ -96,7 +95,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [showBuildBasket, setShowBuildBasket] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1768,7 +1766,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           }}
         >
           {[
-            { icon: '🧺', label: 'Build Basket', action: 'basket' },
+            { icon: '💡', label: 'Strategy Ideas', action: 'strategy' },
             { icon: '📡', label: 'Market Pulse', action: 'pulse' },
             { icon: '📋', label: 'Tax Check', action: 'tax' },
             { icon: '⚡', label: 'Alerts', action: 'alerts' },
@@ -1776,8 +1774,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
             <div
               key={btn.label}
               onClick={(e) => {
-                if (btn.action === 'basket') {
-                  setShowBuildBasket(true);
+                if (btn.action === 'strategy') {
+                  window.dispatchEvent(new CustomEvent('vantage-navigate', { detail: { tab: 'invest', section: 'strategies' } }));
                 } else if (btn.action === 'pulse') {
                   handleMarketPulse(e);
                 } else if (btn.action === 'tax') {
@@ -2280,19 +2278,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ─── Build Basket Modal ─── */}
-      <BuildBasketModal
-        isOpen={showBuildBasket}
-        onClose={() => setShowBuildBasket(false)}
-        onBasketGenerated={(msg) => {
-          setShowBuildBasket(false);
-          setToast('💬 Vantage AI is responding...');
-          sendMessage(msg);
-          setTimeout(() => {
-            document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-          }, 400);
-        }}
-      />
     </div>
   );
 }

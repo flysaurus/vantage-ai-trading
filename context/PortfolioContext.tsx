@@ -744,6 +744,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     });
     setTimeout(() => setToast(null), 4000);
 
+    console.log('[BasketBuy] Complete:', {
+      basketName,
+      stockCount: executionPlan.length,
+      spent: totalSpent,
+      cashBefore: demoState.cashBalance,
+      cashAfter: cashBalance,
+      positions: executed,
+    });
+
     return { success: executed > 0, executed, failed, totalSpent };
   }, [demoState, demoOrders, persistDemoState, loadBaskets]);
 

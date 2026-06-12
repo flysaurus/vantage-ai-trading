@@ -89,6 +89,11 @@ function AppShell() {
       const detail = (e as CustomEvent).detail;
       if (detail?.tab && ['portfolio', 'invest', 'ai', 'watchlist', 'settings'].includes(detail.tab)) {
         setTab(detail.tab);
+        if (detail.section) {
+          setTimeout(() => {
+            document.getElementById(detail.section)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 300);
+        }
       }
     };
     window.addEventListener('vantage-navigate', handler);

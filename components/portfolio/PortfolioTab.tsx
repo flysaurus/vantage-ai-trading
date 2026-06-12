@@ -623,7 +623,7 @@ export function PortfolioTab() {
 
       {/* 2.5: Basket Section */}
       {baskets.length > 0 && (
-        <div style={{ marginTop: '20px', paddingLeft: '16px', paddingRight: '16px' }}>
+        <div style={{ marginTop: '20px', paddingLeft: '16px', paddingRight: '16px' }} id="baskets-section">
           <span className="text-xs text-slate-500 uppercase tracking-wider" style={{ marginBottom: '8px', display: 'block' }}>
             Baskets
           </span>
