@@ -95,8 +95,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatAreaRef = useRef<HTMLDivElement>(null);
+
+  // ── Claude-like scroll behavior refs ──
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
+  const isUserScrollingRef = useRef(false);
+  const wasAtBottomRef = useRef(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAiResponseRef = useRef<string>('');
 
@@ -409,11 +415,57 @@ export function AITab({ messages, setMessages }: AITabProps) {
   }, [messages.length, greeting, previousSession, portfolioContext, user, investorStyle, liveAccount, getCurrentMarketPeriod]);
 
   // ── helpers ──
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 50);
-  };
+  function isAtBottom(): boolean {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    const threshold = 80;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  }
+
+  function scrollToBottom(smooth = true) {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'instant' as ScrollBehavior });
+  }
+
+  // ── Track user scroll intent ──
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    let scrollTimeout: NodeJS.Timeout;
+    const handleScroll = () => {
+      isUserScrollingRef.current = true;
+      wasAtBottomRef.current = isAtBottom();
+      setShowScrollButton(!isAtBottom());
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => { isUserScrollingRef.current = false; }, 150);
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => { container.removeEventListener('scroll', handleScroll); clearTimeout(scrollTimeout); };
+  }, []);
+
+  // ── Auto-scroll when messages change ──
+  const prevMessageCountRef = useRef(0);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (messages.length === 1) { scrollToBottom(false); prevMessageCountRef.current = 1; return; }
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === 'user') {
+      scrollToBottom(true);
+      wasAtBottomRef.current = true;
+    } else if (lastMsg.role === 'ai') {
+      if (wasAtBottomRef.current) scrollToBottom(true);
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length]);
+
+  // ── Scroll during streaming — only if at bottom ──
+  useEffect(() => {
+    if (!loading) return;
+    if (wasAtBottomRef.current && !isUserScrollingRef.current) {
+      scrollToBottom(false);
+    }
+  }, [messages, loading]);
 
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
@@ -596,13 +648,8 @@ Use this data to answer the following — do NOT search the web for prices, thes
 Give me a market pulse check — how are the major indexes performing today, what sectors are leading and lagging, and what should I know as an investor right now?`;
 
     sendMessage(marketData);
-
-    setTimeout(() => {
-      document.getElementById('chat-input')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end',
-      });
-    }, 150);
+    wasAtBottomRef.current = true;
+    scrollToBottom(true);
   };
 
   const sendToChat = (message: string, e?: React.MouseEvent) => {
@@ -617,15 +664,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
       }, 100);
     }
     sendMessage(message);
-    // Show toast — dismissed when AI streaming starts
     setToast('💬 Vantage AI is responding...');
-    // Scroll to chat input bar after render
-    setTimeout(() => {
-      document.getElementById('chat-input')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end',
-      });
-    }, 150);
+    wasAtBottomRef.current = true;
+    scrollToBottom(true);
   };
 
   // ── derived data from shared portfolio context ──
@@ -759,9 +800,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 const msgs = loadPreviousSession();
                 if (msgs) {
                   setMessages(msgs);
-                  setTimeout(() => {
-                    document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                  }, 200);
+                  wasAtBottomRef.current = true;
+                  scrollToBottom(false);
                 }
               }}
               style={{
@@ -1353,11 +1393,12 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
       {/* ─── 5. Chat Messages Area ─── */}
       <div
-        ref={chatAreaRef}
+        ref={messagesContainerRef}
         id="chat-area"
         style={{
           flex: 1,
           overflowY: 'auto',
+          overflowX: 'hidden',
           padding: '16px 12px',
           display: 'flex',
           flexDirection: 'column',
@@ -1367,6 +1408,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
           borderRadius: '16px',
           marginTop: '12px',
           minHeight: '180px',
+          WebkitOverflowScrolling: 'touch',
+          position: 'relative',
         }}
       >
         {/* AI Greeting on fresh session */}
@@ -1482,12 +1525,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   }, 100);
                   setToast('💬 Vantage AI is responding...');
                   sendMessage(suggestion);
-                  setTimeout(() => {
-                    document.getElementById('chat-input')?.scrollIntoView({
-                      behavior: 'smooth',
-                      block: 'end',
-                    });
-                  }, 150);
+                  wasAtBottomRef.current = true;
+                  scrollToBottom(true);
                 }}
                 style={{
                   background: '#1a2235',
@@ -1718,7 +1757,38 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+        <div ref={bottomAnchorRef} style={{ height: '1px' }} />
+
+        {/* Scroll-to-bottom button */}
+        {showScrollButton && (
+          <button
+            onClick={() => {
+              scrollToBottom(true);
+              wasAtBottomRef.current = true;
+              setShowScrollButton(false);
+            }}
+            style={{
+              position: 'absolute',
+              bottom: '16px',
+              right: '16px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: 'rgba(26,34,53,0.95)',
+              border: '1px solid rgba(34,211,238,0.3)',
+              color: '#22d3ee',
+              fontSize: '16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+            }}
+          >
+            ↓
+          </button>
+        )}
       </div>
 
       {/* ─── 6. Pinned Bottom Section ─── */}
@@ -1788,9 +1858,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 } else if (btn.action === 'alerts') {
                   setToast('💬 Vantage AI is responding...');
                   sendMessage('Scan my portfolio for urgent alerts', 'alerts');
-                  setTimeout(() => {
-                    document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                  }, 150);
+                  wasAtBottomRef.current = true;
+                  scrollToBottom(true);
                 }
               }}
               style={{
@@ -2100,9 +2169,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
                             setCurrentSessionId(session.id);
                           }
                           setShowHistory(false);
-                          setTimeout(() => {
-                            document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                          }, 200);
+                          wasAtBottomRef.current = true;
+                          scrollToBottom(false);
                         }}
                         style={{
                           background: '#1a2235',
@@ -2171,9 +2239,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   setShowHistory(false);
                   setMessages([]);
                   setCurrentSessionId(null);
-                  setTimeout(() => {
-                    document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                  }, 200);
+                  wasAtBottomRef.current = true;
+                  scrollToBottom(false);
                 }}
                 style={{
                   width: '100%',
