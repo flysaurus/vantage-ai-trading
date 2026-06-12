@@ -1,6 +1,7 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
@@ -10,6 +11,30 @@ import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import BuildBasketModal from '@/components/BuildBasketModal';
 import CompassIcon from '@/components/CompassIcon';
+
+// ── Message counter (localStorage, per-day) ──
+const MESSAGE_LIMIT = 25;
+const getCountKey = () => {
+  const today = new Date().toDateString();
+  return `vantage_msg_count_${today}`;
+};
+
+function getMessageCount(): number {
+  if (typeof window === 'undefined') return 0;
+  return parseInt(localStorage.getItem(getCountKey()) || '0', 10);
+}
+
+function incrementMessageCount(): number {
+  if (typeof window === 'undefined') return 0;
+  const current = getMessageCount();
+  const next = current + 1;
+  localStorage.setItem(getCountKey(), String(next));
+  return next;
+}
+
+function getRemainingMessages(): number {
+  return Math.max(0, MESSAGE_LIMIT - getMessageCount());
+}
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
@@ -46,7 +71,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── Supabase chat storage (previous sessions + message count) ──
   const {
     previousSession,
-    remainingMessages: supabaseRemaining,
     loadPreviousSession,
     dismissPreviousSession,
     clearMessages: clearSupabaseMessages,
@@ -79,8 +103,62 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAiResponseRef = useRef<string>('');
 
+  // ── Smooth streaming: character queue with drainer ──
+  const charQueueRef = useRef<string[]>([]);
+  const isDrainingRef = useRef(false);
+  const displayedContentRef = useRef('');
+  const streamDoneRef = useRef(false);
+
+  const startDrainer = useCallback(() => {
+    if (isDrainingRef.current) return;
+    isDrainingRef.current = true;
+
+    const drain = () => {
+      if (charQueueRef.current.length === 0) {
+        isDrainingRef.current = false;
+        // If stream is done, mark message complete
+        if (streamDoneRef.current) {
+          streamDoneRef.current = false;
+        }
+        return;
+      }
+
+      // Take up to 3 chars at once for speed but still feel smooth
+      const batch = charQueueRef.current.splice(0, 3).join('');
+      displayedContentRef.current += batch;
+
+      setMessages(prev => {
+        const updated = [...prev];
+        if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
+          updated[updated.length - 1] = {
+            role: 'ai' as const,
+            content: displayedContentRef.current,
+          };
+        }
+        return updated;
+      });
+
+      // 12ms per character effectively (36ms for 3 chars)
+      setTimeout(drain, 12);
+    };
+
+    drain();
+  }, [setMessages]);
+
   // ── portfolio context for AI (shared live-priced data from PortfolioProvider) ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
+
+  // ── Local remaining messages (replaces supabaseRemaining for reliability) ──
+  const [localRemaining, setLocalRemaining] = useState(25);
+
+  // Refresh remaining count on mount and after each message
+  const refreshRemaining = useCallback(() => {
+    setLocalRemaining(getRemainingMessages());
+  }, []);
+
+  useEffect(() => {
+    refreshRemaining();
+  }, [refreshRemaining]);
 
   // ── fetch market news ──
   const fetchMarketNews = async () => {
@@ -275,7 +353,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (!content.trim() || loading) return;
 
     // Message limit check (soft — 25/day)
-    if (supabaseRemaining <= 0) {
+    const remaining = getRemainingMessages();
+    if (remaining <= 0) {
       setMessages(prev => [...prev, {
         role: 'ai',
         content: '📊 You\'ve used all 25 messages today. Your daily limit resets at midnight UTC.\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.'
@@ -317,43 +396,24 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       if (!res.ok) throw new Error('API error');
 
-      // Handle streaming with typing delay
+      // ── Queue-based smooth streaming (like Claude) ──
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
-      let aiContent = '';
-      let displayedLength = 0;
-      let typingTimer: ReturnType<typeof setInterval> | null = null;
+
+      // Reset queue state
+      charQueueRef.current = [];
+      displayedContentRef.current = '';
+      streamDoneRef.current = false;
 
       // Add empty AI message to update in place
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
-
-      const updateDisplay = (text: string) => {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'ai', content: text };
-          return updated;
-        });
-      };
-
-      // Start typing animation — character-at-a-time at CHAR_DELAY ms per char
-      const CHAR_DELAY = 12;
-      const startTyping = () => {
-        if (typingTimer) return;
-        typingTimer = setInterval(() => {
-          if (displayedLength < aiContent.length) {
-            displayedLength = Math.min(displayedLength + 1, aiContent.length);
-            updateDisplay(aiContent.slice(0, displayedLength));
-            scrollToBottom();
-          }
-        }, CHAR_DELAY);
-      };
 
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
 
         // Dismiss toast when first chunk arrives
-        if (!typingTimer) setToast(null);
+        setToast(null);
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -363,23 +423,39 @@ export function AITab({ messages, setMessages }: AITabProps) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.text) {
-                aiContent += data.text;
-                startTyping();
+                // Push each character to queue
+                charQueueRef.current.push(...data.text.split(''));
+                lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
+                startDrainer();
+                scrollToBottom();
               }
             } catch (e) {
               // skip malformed chunks
             }
           }
         }
-        lastAiResponseRef.current = aiContent;
       }
 
-      // Flush remaining text immediately when streaming completes
-      if (typingTimer) {
-        clearInterval(typingTimer);
-        typingTimer = null;
+      // Stream complete — let drainer finish naturally (no flush dump)
+      streamDoneRef.current = true;
+
+      // Wait for drainer to finish
+      while (isDrainingRef.current || charQueueRef.current.length > 0) {
+        await new Promise(r => setTimeout(r, 50));
       }
-      updateDisplay(aiContent);
+
+      // One final render with complete content (safety backstop)
+      const finalContent = displayedContentRef.current;
+      setMessages(prev => {
+        const updated = [...prev];
+        if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
+          updated[updated.length - 1] = {
+            role: 'ai' as const,
+            content: finalContent,
+          };
+        }
+        return updated;
+      });
       scrollToBottom();
     } catch (error) {
       console.error('Chat error:', error);
@@ -389,6 +465,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }]);
     } finally {
       setLoading(false);
+      // Increment message counter (localStorage)
+      incrementMessageCount();
+      refreshRemaining();
       // Persist user message + AI response to Supabase (non-blocking)
       if (userId) {
         saveChatMessage(userId, 'user', content).catch(() => {});
@@ -1268,28 +1347,69 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </div>
         )}
 
-        {/* AI Greeting revealed */}
-        {messages.length === 0 && greeting && !greetingDots && (
+        {/* AI Greeting revealed — special opening-statement treatment */}
+        {messages.length === 0 && greeting && !greetingDots && (() => {
+          const hour = new Date().getHours();
+          const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+          return (
           <div
             style={{
               alignSelf: 'flex-start',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '8px',
-              padding: '10px 14px',
-              background: '#1a2235',
-              border: '1px solid #2a3448',
-              borderRadius: '16px 16px 16px 4px',
-              maxWidth: '85%',
+              padding: '16px',
+              background: 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(26,34,53,0.95) 100%)',
+              border: '1px solid rgba(34,211,238,0.2)',
+              borderRadius: '16px',
+              maxWidth: '90%',
               fontSize: '14px',
               color: '#ffffff',
-              lineHeight: '1.5',
+              lineHeight: '1.6',
             }}
           >
-            <CompassIcon size={18} color="#22d3ee" />
-            <span>{greeting}</span>
+            {/* Header with compass and label */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '10px',
+            }}>
+              <CompassIcon size={16} color="#22d3ee" />
+              <span style={{
+                color: '#22d3ee',
+                fontSize: '11px',
+                fontWeight: '600',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}>
+                Vantage AI
+              </span>
+              <span style={{
+                color: '#4b5563',
+                fontSize: '11px',
+              }}>
+                · Good {timeOfDay}
+              </span>
+            </div>
+
+            {/* Greeting text rendered with markdown */}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ children }) => (
+                  <p style={{ margin: '0 0 6px 0', lineHeight: '1.6' }}>{children}</p>
+                ),
+                strong: ({ children }) => (
+                  <strong style={{ color: '#ffffff', fontWeight: '600' }}>{children}</strong>
+                ),
+                em: ({ children }) => (
+                  <em style={{ color: '#94a3b8' }}>{children}</em>
+                ),
+              }}
+            >
+              {greeting}
+            </ReactMarkdown>
           </div>
-        )}
+          );
+        })()}
 
         {/* Empty state — suggestion chips */}
         {messages.length === 0 && !greetingDots && !loading && (
@@ -1360,6 +1480,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             {msg.role === 'ai' ? (
               <div>
                 <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
                   components={{
                     p: ({ children }) => (
                       <p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>
@@ -1385,6 +1506,16 @@ Give me a market pulse check — how are the major indexes performing today, wha
                         {children}
                       </li>
                     ),
+                    h2: ({ children }) => (
+                      <h2 style={{
+                        fontSize: '14px',
+                        fontWeight: '700',
+                        color: '#ffffff',
+                        margin: '12px 0 8px 0',
+                      }}>
+                        {children}
+                      </h2>
+                    ),
                     h3: ({ children }) => (
                       <h3 style={{
                         fontSize: '13px',
@@ -1407,6 +1538,72 @@ Give me a market pulse check — how are the major indexes performing today, wha
                       }}>
                         {children}
                       </code>
+                    ),
+                    table: ({ children }) => (
+                      <div style={{
+                        overflowX: 'auto',
+                        marginTop: '8px',
+                        marginBottom: '8px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                      }}>
+                        <table style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          fontSize: '12px',
+                        }}>
+                          {children}
+                        </table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead style={{
+                        background: 'rgba(34,211,238,0.1)',
+                      }}>
+                        {children}
+                      </thead>
+                    ),
+                    tbody: ({ children }) => (
+                      <tbody>{children}</tbody>
+                    ),
+                    th: ({ children }) => (
+                      <th style={{
+                        padding: '8px 12px',
+                        textAlign: 'left',
+                        color: '#22d3ee',
+                        fontWeight: '600',
+                        fontSize: '11px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        borderBottom: '1px solid rgba(255,255,255,0.1)',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td style={{
+                        padding: '8px 12px',
+                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                        color: '#e2e8f0',
+                        verticalAlign: 'top',
+                      }}>
+                        {children}
+                      </td>
+                    ),
+                    tr: ({ children }) => (
+                      <tr style={{
+                        transition: 'background 0.1s',
+                      }}>
+                        {children}
+                      </tr>
+                    ),
+                    hr: () => (
+                      <hr style={{
+                        border: 'none',
+                        borderTop: '1px solid rgba(255,255,255,0.1)',
+                        margin: '12px 0',
+                      }} />
                     ),
                   }}
                 >
@@ -1472,6 +1669,39 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
       {/* ─── 6. Pinned Bottom Section ─── */}
       <div style={{ flexShrink: 0, borderTop: '1px solid #1e2d45', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        {/* Upsell banner — shown at 2 remaining */}
+        {localRemaining === 2 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              margin: '0 16px 4px 16px',
+              padding: '8px 12px',
+              background: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05))',
+              border: '1px solid rgba(245,158,11,0.25)',
+              borderRadius: '10px',
+              fontSize: '12px',
+              color: '#f59e0b',
+            }}
+          >
+            <span>⚡ 2 AI analyses remaining — <span style={{ color: '#ffffff', fontWeight: '600' }}>upgrade for 50+</span></span>
+            <span
+              onClick={() => refreshRemaining()}
+              style={{
+                cursor: 'pointer',
+                color: '#94a3b8',
+                fontSize: '16px',
+                lineHeight: '1',
+                padding: '2px 4px',
+              }}
+              title="Dismiss"
+            >
+              ×
+            </span>
+          </div>
+        )}
+
         {/* Quick Actions 2×2 Grid */}
         <div
           style={{
@@ -1534,11 +1764,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
         }}>
           <span style={{
             fontSize: '10px',
-            color: supabaseRemaining <= 5 ? '#f59e0b' : supabaseRemaining <= 2 ? '#ef4444' : '#64748b',
+            color: localRemaining <= 5 ? '#f59e0b' : '#64748b',
           }}>
-            {supabaseRemaining} message{supabaseRemaining !== 1 ? 's' : ''} remaining today
+            {localRemaining} message{localRemaining !== 1 ? 's' : ''} remaining today
           </span>
-          {supabaseRemaining <= 5 && (
+          {localRemaining <= 5 && (
             <span style={{ fontSize: '10px', color: '#64748b' }}>
               Free tier · Resets midnight UTC
             </span>
@@ -1566,6 +1796,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
             alignItems: 'center',
             gap: '8px',
             padding: '8px 16px 12px 16px',
+            opacity: localRemaining <= 0 && !loading ? 0.5 : 1,
+            pointerEvents: localRemaining <= 0 && !loading ? 'none' : 'auto',
           }}
         >
           <input
@@ -1576,37 +1808,40 @@ Give me a market pulse check — how are the major indexes performing today, wha
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage(input);
+                if (localRemaining > 0) sendMessage(input);
               }
             }}
-            placeholder="Ask anything — markets, portfolio, strategy..."
+            placeholder={localRemaining <= 0 ? 'Daily limit reached — resets tomorrow at midnight' : 'Ask anything — markets, portfolio, strategy...'}
             maxLength={500}
+            disabled={localRemaining <= 0}
             style={{
               flex: 1,
               height: '52px',
               background: '#1a2235',
-              border: '1.5px solid rgba(34,211,238,0.25)',
+              border: localRemaining <= 0 ? '1.5px solid #2a3448' : '1.5px solid rgba(34,211,238,0.25)',
               borderRadius: '26px',
               padding: '0 18px',
-              color: '#ffffff',
+              color: localRemaining <= 0 ? '#4b5563' : '#ffffff',
               fontSize: '14px',
               outline: 'none',
               transition: 'all 0.2s ease',
               boxSizing: 'border-box',
+              cursor: localRemaining <= 0 ? 'not-allowed' : 'text',
             }}
             onFocus={(e) => {
+              if (localRemaining <= 0) return;
               e.target.style.borderColor = 'rgba(34,211,238,0.6)';
               e.target.style.boxShadow = '0 0 0 3px rgba(34,211,238,0.15)';
             }}
             onBlur={(e) => {
-              e.target.style.borderColor = 'rgba(34,211,238,0.25)';
+              e.target.style.borderColor = localRemaining <= 0 ? '#2a3448' : 'rgba(34,211,238,0.25)';
               e.target.style.boxShadow = 'none';
             }}
           />
 
           {/* Send button — Vantage compass */}
           <div
-            onClick={() => sendMessage(input)}
+            onClick={() => { if (localRemaining > 0) sendMessage(input); }}
             style={{
               width: '40px',
               height: '40px',
@@ -1666,8 +1901,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
           }}
         >
           Powered by AI · Not financial advice ·{' '}
-          <span style={{ color: supabaseRemaining <= 5 ? '#f59e0b' : '#64748b' }}>
-            {supabaseRemaining} AI analyses available today
+          <span style={{ color: localRemaining <= 5 ? '#f59e0b' : '#64748b' }}>
+            {localRemaining} AI analyses available today
           </span>
         </p>
       </div>
