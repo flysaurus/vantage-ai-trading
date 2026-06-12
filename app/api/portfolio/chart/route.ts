@@ -28,10 +28,19 @@ function getRangeParams(range: Range) {
     case '1D': {
       const open = new Date();
       open.setHours(9, 30, 0, 0);
+      // If market hasn't opened yet today, use yesterday
+      if (open.getTime() > Date.now()) {
+        open.setDate(open.getDate() - 1);
+        // Skip weekends
+        if (open.getDay() === 6) open.setDate(open.getDate() - 1);
+        if (open.getDay() === 0) open.setDate(open.getDate() - 2);
+      }
+      const close = new Date(open);
+      close.setHours(16, 0, 0, 0);
       return {
         from: Math.floor(open.getTime() / 1000),
-        to: now,
-        resolution: '5',
+        to: Math.min(Math.floor(close.getTime() / 1000), Math.floor(Date.now() / 1000)),
+        resolution: '60',
       };
     }
     case '1W':
