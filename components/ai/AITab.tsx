@@ -221,7 +221,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const res = await fetch('/api/ai/greeting', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ portfolioContext }),
+          body: JSON.stringify({
+            portfolioContext,
+            investorStyle: investorStyle,
+            riskTolerance: user?.riskTolerance || 'Moderate',
+            name: user?.name || 'M',
+          }),
         });
         console.log('Greeting response:', res.status);
         
