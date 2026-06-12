@@ -279,68 +279,132 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (id !== currentSessionId) setCurrentSessionId(id);
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Market period helper ──
+  const getCurrentMarketPeriod = useCallback((): string => {
+    const now = new Date();
+    const day = now.getDay();
+    if (day === 0 || day === 6) return 'closed';
+    const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const h = et.getHours() + et.getMinutes() / 60;
+    if (h >= 4 && h < 9.5) return 'premarket';
+    if (h >= 9.5 && h < 16) return 'open';
+    if (h >= 16 && h < 20) return 'afterhours';
+    return 'closed';
+  }, []);
+
   // ── AI greeting on fresh session ──
   useEffect(() => {
-    // Only generate once per session: empty chat, no previous session loaded
     if (messages.length > 0) return;
     if (greeting || previousSession) return;
 
     const fetchGreeting = async () => {
       console.log('Greeting: fetching...');
-      
-      // Fallback after 8 seconds
+
+      // Fallback after 8 seconds — time-aware
       const fallback = setTimeout(() => {
         console.log('Greeting: timed out, using fallback');
         setGreetingDots(false);
-        setGreeting('Good to see you. What would you like to explore today?');
+        const market = getCurrentMarketPeriod();
+        const userInit = user?.name?.[0]?.toUpperCase() || 'M';
+        const fallbacks: Record<string, string> = {
+          premarket: `Pre-market, ${userInit}. Markets open soon — what's on your mind?`,
+          open: `Morning, ${userInit}. Markets are moving — anything you want to dig into?`,
+          afterhours: `After hours, ${userInit}. The close is in — want to review the day?`,
+          closed: `Evening, ${userInit}. Good time to think ahead — what's on your mind?`,
+        };
+        setGreeting(fallbacks[market] || fallbacks.closed);
       }, 8000);
 
       try {
+        // Fetch SPY quote + earnings in parallel
+        const userInit = user?.name?.[0]?.toUpperCase() || 'M';
+        const invStyle = (user?.investorStyle || investorStyle || 'Lynch') as string;
+        const risk = (user?.riskTolerance || 'Moderate') as string;
+        const positions = liveAccount?.positions || [];
+        const equity = liveAccount?.equity ?? 0;
+        const cash = liveAccount?.cash ?? 0;
+        const dayPnl = liveAccount?.dayPnl ?? 0;
+        const dayPnlPct = liveAccount?.dayPnlPercent ?? 0;
+        const totalPnl = liveAccount?.totalPnl ?? 0;
+        const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
+        const symbols = positions.map(p => p.symbol);
+
+        const [spyRes, earnRes] = await Promise.allSettled([
+          fetch('/api/finnhub/quote?symbol=SPY').then(r => r.ok ? r.json() : null).catch(() => null),
+          symbols.length > 0
+            ? fetch(`/api/finnhub/earnings-calendar?symbols=${symbols.join(',')}`).then(r => r.ok ? r.json() : []).catch(() => [])
+            : Promise.resolve([]),
+        ]);
+
+        const spyQuote = spyRes.status === 'fulfilled' ? spyRes.value : null;
+        const earnings = earnRes.status === 'fulfilled' ? earnRes.value : [];
+        const lastHookType = typeof window !== 'undefined'
+          ? localStorage.getItem('vantage_last_hook_type')
+          : null;
+
         const res = await fetch('/api/ai/greeting', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            portfolioContext,
-            investorStyle: investorStyle,
-            riskTolerance: user?.riskTolerance || 'Moderate',
-            name: user?.name || 'M',
+            userInitial: userInit,
+            investorStyle: invStyle,
+            riskTolerance: risk,
+            portfolioValue: equity + cash,
+            todayPnL: dayPnl,
+            todayPnLPct: dayPnlPct,
+            totalPnL: totalPnl,
+            totalPnLPct: totalPnlPct,
+            spyReturn: spyQuote?.d || 0,
+            spyReturnPct: spyQuote?.dp || 0,
+            positions: positions.map(p => ({
+              symbol: p.symbol,
+              totalPnLPct: p.totalPnlPercent || 0,
+              dailyPnLPct: p.dayChangePercent || 0,
+            })),
+            upcomingEarnings: earnings,
+            lastHookType,
           }),
         });
         console.log('Greeting response:', res.status);
-        
+
         if (res.ok) {
           const data = await res.json();
           console.log('Greeting text:', data.greeting);
-          console.log('Greeting full response:', JSON.stringify(data));
           clearTimeout(fallback);
           const text = data.greeting?.trim();
           if (text) {
+            // Save hook type for next session
+            if (data.hookType && typeof window !== 'undefined') {
+              localStorage.setItem('vantage_last_hook_type', data.hookType);
+            }
             setTimeout(() => {
               setGreetingDots(false);
               setGreeting(text);
             }, 1500);
           } else {
-            // Empty greeting from API
             console.log('Greeting: empty response, using fallback');
+            const market = getCurrentMarketPeriod();
             setGreetingDots(false);
-            setGreeting('Good to see you. What would you like to explore today?');
+            setGreeting(`Good to see you, ${userInit}. What would you like to explore today?`);
           }
         } else {
           console.log('Greeting: API error, using fallback');
           clearTimeout(fallback);
+          const market = getCurrentMarketPeriod();
           setGreetingDots(false);
-          setGreeting('Good to see you. What would you like to explore today?');
+          setGreeting(`Good to see you, ${userInit}. What would you like to explore today?`);
         }
       } catch (err) {
         console.log('Greeting: fetch failed', err);
         clearTimeout(fallback);
+        const market = getCurrentMarketPeriod();
+        const userInit = user?.name?.[0]?.toUpperCase() || 'M';
         setGreetingDots(false);
-        setGreeting('Good to see you. What would you like to explore today?');
+        setGreeting(`Good to see you, ${userInit}. What would you like to explore today?`);
       }
     };
-    // Delay 500ms to ensure PortfolioContext is populated
     setTimeout(() => fetchGreeting(), 500);
-  }, [messages.length, greeting, previousSession, portfolioContext]);
+  }, [messages.length, greeting, previousSession, portfolioContext, user, investorStyle, liveAccount, getCurrentMarketPeriod]);
 
   // ── helpers ──
   const scrollToBottom = () => {
@@ -1347,7 +1411,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </div>
         )}
 
-        {/* AI Greeting revealed — special opening-statement treatment */}
+        {/* AI Greeting revealed — personalized opening */}
         {messages.length === 0 && greeting && !greetingDots && (() => {
           const hour = new Date().getHours();
           const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
@@ -1355,58 +1419,46 @@ Give me a market pulse check — how are the major indexes performing today, wha
           <div
             style={{
               alignSelf: 'flex-start',
-              padding: '16px',
               background: 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(26,34,53,0.95) 100%)',
               border: '1px solid rgba(34,211,238,0.2)',
               borderRadius: '16px',
+              padding: '14px 16px',
+              marginBottom: '16px',
               maxWidth: '90%',
-              fontSize: '14px',
-              color: '#ffffff',
-              lineHeight: '1.6',
             }}
           >
-            {/* Header with compass and label */}
+            {/* Header */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              marginBottom: '10px',
+              gap: '6px',
+              marginBottom: '8px',
             }}>
-              <CompassIcon size={16} color="#22d3ee" />
+              <span style={{ fontSize: '14px' }}>🧭</span>
               <span style={{
                 color: '#22d3ee',
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: '600',
-                letterSpacing: '0.08em',
+                letterSpacing: '0.1em',
                 textTransform: 'uppercase',
               }}>
                 Vantage AI
               </span>
-              <span style={{
-                color: '#4b5563',
-                fontSize: '11px',
-              }}>
-                · Good {timeOfDay}
+              <span style={{ color: '#374151', fontSize: '10px' }}>
+                · {timeOfDay}
               </span>
             </div>
 
-            {/* Greeting text rendered with markdown */}
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => (
-                  <p style={{ margin: '0 0 6px 0', lineHeight: '1.6' }}>{children}</p>
-                ),
-                strong: ({ children }) => (
-                  <strong style={{ color: '#ffffff', fontWeight: '600' }}>{children}</strong>
-                ),
-                em: ({ children }) => (
-                  <em style={{ color: '#94a3b8' }}>{children}</em>
-                ),
-              }}
-            >
+            {/* Greeting text — plain italic */}
+            <p style={{
+              color: '#e2e8f0',
+              fontSize: '14px',
+              lineHeight: '1.6',
+              margin: 0,
+              fontStyle: 'italic',
+            }}>
               {greeting}
-            </ReactMarkdown>
+            </p>
           </div>
           );
         })()}
