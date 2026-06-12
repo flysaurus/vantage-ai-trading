@@ -12,25 +12,72 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
+import { buildUserProfileContext } from '@/lib/ai/userProfile';
+import type { UserProfile } from '@/lib/ai/userProfile';
+
+const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
 // Static format instructions — cached across all daily brief requests
 const DAILY_BRIEF_STATIC: SystemBlock = {
   type: 'text',
   text: `You are Vantage AI daily briefing engine.
-Write a concise daily brief using ONLY the data provided.
-NEVER invent numbers. NEVER say "no positions held."
+Write a concise daily brief using real news items AND
+portfolio data provided below. NEVER invent numbers.
+NEVER say "no positions held."
 Use the actual holdings data provided.
 
 FORMAT (exactly 4 lines, no headers, no bullets):
-Line 1 - MARKET: One sentence on market direction with specific index numbers
+Line 1 - MARKET: One sentence on market direction with real index numbers
 Line 2 - PORTFOLIO: One sentence mentioning 1-2 specific holdings and their move today
-Line 3 - WATCH: One sentence on the most important thing to monitor today
+Line 3 - WATCH: One sentence on the most important thing to monitor today (from real news if available)
 Line 4 - EARNINGS: Only include if earnings exist for holdings this week. Skip this line if no earnings.
 
 Keep each line under 15 words.
 Start each line with the label: MARKET: PORTFOLIO: WATCH: EARNINGS:`,
   cache_control: { type: 'ephemeral' },
 };
+
+// ─── Fetch real market news from SearXNG ──────────────
+async function fetchMarketNews(
+  positions: any[]
+): Promise<{ title: string; url: string; source: string }[]> {
+  const topTickers = positions
+    .sort((a: any, b: any) => (b.market_value || 0) - (a.market_value || 0))
+    .slice(0, 3)
+    .map((p: any) => p.symbol);
+
+  const queries = [
+    'stock market news today',
+    `${topTickers[0] || 'SPY'} stock news`,
+    `${topTickers[1] || ''} ${topTickers[2] || ''} earnings`,
+  ].filter(q => q.trim());
+
+  const allNews: { title: string; url: string; source: string }[] = [];
+
+  for (const query of queries) {
+    try {
+      const res = await fetch(
+        `${SEARXNG_URL}/search?q=${encodeURIComponent(query)}&format=json&categories=news&language=en`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      const data = await res.json();
+
+      if (data.results?.length) {
+        allNews.push(
+          ...data.results.slice(0, 2).map((r: any) => ({
+            title: r.title,
+            url: r.url,
+            source: r.engine || 'News',
+          })),
+        );
+      }
+    } catch {
+      console.log('[Brief] SearXNG unavailable for:', query);
+    }
+  }
+
+  return allNews.slice(0, 5);
+}
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 
@@ -185,7 +232,10 @@ export async function GET(req: NextRequest) {
       relevantEarnings = [];
     }
 
-    // 6. Get investor style
+    // 7. Fetch real market news from SearXNG
+    const newsItems = await fetchMarketNews(positions);
+
+    // 8. Build user profile context
     let investorStyle = 'buffett';
     let portfolioMode = 'demo';
     try {
@@ -210,7 +260,18 @@ export async function GET(req: NextRequest) {
       // use defaults
     }
 
-    // 7. Build data block for AI
+    const styleMap: Record<string, UserProfile['investorStyle']> = {
+      buffett: 'Buffett', lynch: 'Lynch', livermore: 'Livermore',
+      munger: 'Munger', soros: 'Soros', growth: 'Lynch', dividend: 'Buffett',
+    };
+    const profile: UserProfile = {
+      investorStyle: styleMap[investorStyle] || 'Lynch',
+      riskTolerance: 'Moderate',
+      name: investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1),
+    };
+    const profileContext = buildUserProfileContext(profile);
+
+    // 9. Build data block for AI
     const dateStr = new Date().toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -253,6 +314,17 @@ export async function GET(req: NextRequest) {
     } else {
       dataLines.push('  (none — no holdings reporting earnings this week)');
     }
+
+    // Add real news items
+    if (newsItems.length > 0) {
+      dataLines.push('');
+      dataLines.push('REAL NEWS HEADLINES (use these — do not fabricate):');
+      dataLines.push(...newsItems.map((n, i) => `  [${i + 1}] ${n.title} (${n.source})`));
+    }
+
+    // Add profile context
+    dataLines.push('');
+    dataLines.push(profileContext);
 
     const dataBlock = dataLines.join('\n');
 
