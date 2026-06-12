@@ -1775,7 +1775,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
               key={btn.label}
               onClick={(e) => {
                 if (btn.action === 'strategy') {
-                  window.dispatchEvent(new CustomEvent('vantage-navigate', { detail: { tab: 'invest', section: 'strategies' } }));
+                  sendMessage(
+                    'Based on my portfolio and current market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'
+                  );
                 } else if (btn.action === 'pulse') {
                   handleMarketPulse(e);
                 } else if (btn.action === 'tax') {

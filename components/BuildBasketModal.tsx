@@ -7,7 +7,7 @@ import { useLivePortfolio } from '@/context/PortfolioContext';
 
 // ── 5-step flow: curated → custom_theme → budget → generating → review ──
 // Plus order_ticket after review for curated baskets
-type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review' | 'basket_review' | 'basket_confirm';
+type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review' | 'basket_review' | 'basket_confirm' | 'success';
 
 interface BasketStock {
   symbol: string;
@@ -47,6 +47,16 @@ interface ReviewStock {
   dollarAmount: number;
   rationale: string;
   isCustomAdded?: boolean;
+}
+
+interface BasketResult {
+  basketName: string;
+  basketEmoji: string;
+  stocks: Array<{ symbol: string; shares: number; price: number; totalCost: number }>;
+  totalSpent: number;
+  cashRemaining: number;
+  executed: number;
+  failed: number;
 }
 
 interface Props {
@@ -91,6 +101,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ── Order ticket state ──
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<{ success: boolean; executed: number; failed: number; totalSpent: number; error?: string } | null>(null);
+  const [basketResult, setBasketResult] = useState<BasketResult | null>(null);
 
   // ── Basket Review state ──
   const [reviewStocks, setReviewStocks] = useState<ReviewStock[]>([]);
@@ -472,6 +483,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       case 'review': return <StepHeader title="Review Order" onBack={goBack} onClose={onClose} backLabel="← Back" />;
       case 'basket_review': return <StepHeader title="Review Order" onBack={() => setStep('budget')} onClose={onClose} backLabel="← Budget" />;
       case 'basket_confirm': return <StepHeader title="Confirm Order" onBack={() => setStep('basket_review')} onClose={onClose} backLabel="← Review" />;
+      case 'success': return null;
       default: return null;
     }
   })();
@@ -1023,15 +1035,22 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     setExecutionResult(result);
     setExecuting(false);
     if (result.success) {
-      setTimeout(() => {
-        setExecutionResult(null);
-        setStep('curated');
-        setSelectedCurated(null);
-        setBudget('');
-        setReviewStocks([]);
-        onClose();
-        onBasketGenerated(`🧺 Bought "${selectedCurated.name}" — ${result.executed} of ${reviewStocks.length} stocks filled for $${result.totalSpent.toFixed(2)}`, result);
-      }, 2500);
+      const b = selectedCurated!;
+      setBasketResult({
+        basketName: b.name,
+        basketEmoji: b.emoji,
+        stocks: reviewStocks.map(s => ({
+          symbol: s.symbol,
+          shares: s.shares,
+          price: s.price,
+          totalCost: s.dollarAmount,
+        })),
+        totalSpent: result.totalSpent,
+        cashRemaining: cashBalance - result.totalSpent,
+        executed: result.executed,
+        failed: result.failed,
+      });
+      setStep('success');
     }
   }
 
@@ -1380,6 +1399,189 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       {step === 'review' && reviewStep}
       {step === 'basket_review' && basketReviewStep}
       {step === 'basket_confirm' && basketConfirmStep}
+      {step === 'success' && basketResult && (
+        <>
+          {/* Scrollable content */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '32px 16px 200px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}>
+            {/* Success icon */}
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(16,185,129,0.15)',
+              border: '2px solid rgba(16,185,129,0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '28px',
+              color: '#10b981',
+              marginBottom: '16px',
+            }}>
+              ✓
+            </div>
+
+            {/* Title */}
+            <div style={{ color: '#ffffff', fontSize: '22px', fontWeight: '700', marginBottom: '4px' }}>
+              Basket Purchased
+            </div>
+            <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px' }}>
+              {basketResult.executed} positions filled
+              {basketResult.failed > 0 && ` · ${basketResult.failed} failed`}
+            </div>
+
+            {/* Basket name card */}
+            <div style={{
+              background: '#1a2235',
+              border: '1px solid rgba(34,211,238,0.2)',
+              borderRadius: '16px',
+              padding: '16px',
+              width: '100%',
+              marginBottom: '16px',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '16px',
+                paddingBottom: '12px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <span style={{ fontSize: '24px' }}>{basketResult.basketEmoji}</span>
+                <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '16px' }}>{basketResult.basketName}</span>
+              </div>
+
+              {/* Stock list */}
+              {basketResult.stocks.map(stock => (
+                <div key={stock.symbol} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingBottom: '10px',
+                  marginBottom: '10px',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                }}>
+                  <div>
+                    <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>{stock.symbol}</span>
+                    <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '8px' }}>
+                      {stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}
+                    </span>
+                  </div>
+                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                    ${stock.totalCost.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+
+              {/* Totals */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px' }}>
+                <span style={{ color: '#6b7280', fontSize: '12px' }}>Total spent</span>
+                <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '13px' }}>
+                  ${basketResult.totalSpent.toFixed(2)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+                <span style={{ color: '#6b7280', fontSize: '12px' }}>Cash remaining</span>
+                <span style={{ color: '#22d3ee', fontSize: '12px' }}>
+                  ${basketResult.cashRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Partial execution warning */}
+            {basketResult.failed > 0 && (
+              <div style={{
+                background: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.2)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                width: '100%',
+                color: '#f59e0b',
+                fontSize: '12px',
+                marginBottom: '16px',
+              }}>
+                ⚠️ {basketResult.failed} position{basketResult.failed > 1 ? 's' : ''} could not be filled. Prices may have moved.
+              </div>
+            )}
+          </div>
+
+          {/* Fixed bottom buttons */}
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10000,
+            background: '#0a0f1e',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            padding: '12px 16px',
+            paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+          }}>
+            {/* Primary — View in Portfolio */}
+            <button
+              onClick={() => {
+                setBasketResult(null);
+                setStep('curated');
+                setSelectedCurated(null);
+                setBudget('');
+                setReviewStocks([]);
+                onClose();
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent('vantage-navigate', {
+                    detail: { tab: 'portfolio', scrollTo: 'baskets' },
+                  }));
+                }, 100);
+              }}
+              style={{
+                width: '100%',
+                padding: '16px',
+                background: '#22d3ee',
+                color: '#0a0f1e',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '700',
+                cursor: 'pointer',
+              }}
+            >
+              View in Portfolio →
+            </button>
+
+            {/* Secondary — Done */}
+            <button
+              onClick={() => {
+                setBasketResult(null);
+                setStep('curated');
+                setSelectedCurated(null);
+                setBudget('');
+                setReviewStocks([]);
+                onClose();
+              }}
+              style={{
+                width: '100%',
+                padding: '14px',
+                background: 'none',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '12px',
+                fontSize: '15px',
+                color: '#9ca3af',
+                cursor: 'pointer',
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </>
+      )}
 
       <style>{`
         @keyframes pulse {

@@ -94,6 +94,11 @@ function AppShell() {
             document.getElementById(detail.section)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 300);
         }
+        if (detail.scrollTo === 'baskets') {
+          setTimeout(() => {
+            document.getElementById('baskets-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 300);
+        }
       }
     };
     window.addEventListener('vantage-navigate', handler);
