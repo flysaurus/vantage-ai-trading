@@ -365,10 +365,14 @@ function PositionCard({
 
 function BuyModal({
   position,
+  buyingPower,
   onClose,
+  onExecute,
 }: {
   position: Position;
+  buyingPower: number;
   onClose: () => void;
+  onExecute: (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number) => { success: boolean; error?: string };
 }) {
   const [shares, setShares] = useState(1);
   const [orderType, setOrderType] = useState<'Market' | 'Limit' | 'Stop'>('Market');
@@ -467,7 +471,7 @@ function BuyModal({
 
         {/* Buying Power */}
         <p className="text-xs text-slate-500 mt-3">
-          Buying Power: $145,217.48
+          Buying Power: ${buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
         </p>
 
         {/* Buttons */}
@@ -475,8 +479,21 @@ function BuyModal({
           <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
             Cancel
           </button>
-          <button className="flex-1 bg-cyan-500 text-white rounded-lg py-3 text-sm font-semibold">
-            Confirm Buy
+          <button
+            onClick={() => {
+              const price = orderType === 'Limit' && limitPrice ? parseFloat(limitPrice) : position.currentPrice;
+              if (!price || isNaN(price) || price <= 0) return;
+              const result = onExecute(position.symbol, 'BUY', shares, price);
+              if (result.success) onClose();
+            }}
+            disabled={estCost > buyingPower}
+            className={`flex-1 rounded-lg py-3 text-sm font-semibold ${
+              estCost > buyingPower
+                ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                : 'bg-cyan-500 text-white'
+            }`}
+          >
+            {estCost > buyingPower ? 'Insufficient Funds' : 'Confirm Buy'}
           </button>
         </div>
       </div>
@@ -490,7 +507,7 @@ function BuyModal({
 
 export function PortfolioTab() {
   const { account, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, executeTrade } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -674,7 +691,12 @@ export function PortfolioTab() {
       {showBuySymbol && (
         <BuyModal
           position={showBuySymbol}
+          buyingPower={displayAccount?.buyingPower ?? 0}
           onClose={() => setShowBuySymbol(null)}
+          onExecute={(symbol, side, shares, price) => {
+            const result = executeTrade(symbol, side, shares, price);
+            return result;
+          }}
         />
       )}
 
@@ -683,6 +705,12 @@ export function PortfolioTab() {
           positions={sellModalPositions}
           onClose={() => setSellModalPositions(null)}
           onConfirm={() => {
+            // Execute sell for each selected position
+            if (sellModalPositions) {
+              for (const pos of sellModalPositions) {
+                executeTrade(pos.symbol, 'SELL', pos.qty, pos.currentPrice);
+              }
+            }
             setSellModalPositions(null);
             setSelectedSymbols([]);
             setSelectMode(false);

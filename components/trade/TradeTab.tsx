@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { useLivePortfolio } from '@/context/PortfolioContext';
 import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
@@ -18,8 +19,9 @@ const statusBorder: Record<string, string> = {
   cancelled: '#475569',
 };
 
-function getBorderColor(order: typeof DEMO_ORDERS[number]) {
-  if (order.status === 'filled') return order.side === 'buy' ? '#10b981' : '#ef4444';
+function getBorderColor(order: any): string {
+  const side = (order.side || '').toUpperCase();
+  if (order.status === 'filled') return side === 'BUY' ? '#10b981' : '#ef4444';
   if (order.status === 'open') return '#f59e0b';
   return '#475569';
 }
@@ -76,6 +78,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const { account, executeTrade, demoOrders: liveOrders } = useLivePortfolio();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -148,7 +151,21 @@ export function TradeTab() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const filteredOrders = DEMO_ORDERS.filter(o => {
+  // Use live orders from PortfolioContext if available, fall back to demo seed
+  const displayOrders = liveOrders.length > 0 ? liveOrders : DEMO_ORDERS;
+  
+  // Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
+  const normalizedOrders = displayOrders.map((o: any) => ({
+    id: o.id,
+    symbol: o.symbol,
+    side: (o.side || '').toUpperCase(),
+    status: (o.status || '').toLowerCase(),
+    shares: o.shares ?? o.qty ?? 0,
+    price: o.fillPrice ?? o.price ?? 0,
+    date: o.createdAt ?? o.date ?? '',
+  }));
+
+  const filteredOrders = normalizedOrders.filter((o: any) => {
     if (historyTab === 'all') return true;
     return o.status === historyTab;
   });
@@ -630,6 +647,27 @@ export function TradeTab() {
 
         {/* PLACE ORDER BUTTON */}
         <button
+          onClick={() => {
+            if (!selectedSymbol) return;
+            const price = orderType === 'limit' && limitPrice
+              ? parseFloat(limitPrice)
+              : symbolQuote?.price;
+            if (!price || isNaN(price) || price <= 0) return;
+            const shares = qtyType === 'dollars' && price > 0
+              ? Math.floor(parseFloat(qty || '0') / price)
+              : parseInt(qty || '0');
+            if (!shares || shares <= 0) return;
+            const result = executeTrade(
+              selectedSymbol,
+              side === 'buy' ? 'BUY' : 'SELL',
+              shares,
+              price,
+            );
+            if (result.success) {
+              setQty('');
+              setLimitPrice('');
+            }
+          }}
           style={{
             width: '100%',
             padding: '16px',
@@ -639,7 +677,8 @@ export function TradeTab() {
             color: '#ffffff',
             fontSize: '16px',
             fontWeight: '700',
-            cursor: 'pointer'
+            cursor: selectedSymbol ? 'pointer' : 'not-allowed',
+            opacity: selectedSymbol ? 1 : 0.5,
           }}
         >
           Place Order
@@ -761,14 +800,14 @@ export function TradeTab() {
                   padding: '2px 6px',
                   fontSize: '11px',
                   fontWeight: '600',
-                  background: order.side === 'buy' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-                  color: order.side === 'buy' ? '#10b981' : '#ef4444'
+                  background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                  color: order.side === 'BUY' ? '#10b981' : '#ef4444'
                 }}>
-                  {order.side.toUpperCase()}
+                  {order.side}
                 </span>
               </div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
-                market · {order.qty} shares
+                market · {order.shares} shares
               </div>
             </div>
 
@@ -783,10 +822,12 @@ export function TradeTab() {
                 {order.status.toUpperCase()}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {order.price ? `$${order.price.toFixed(2)}/share` : 'pending'}
+                {order.price ? `$${(order.price as number).toFixed(2)}/share` : 'pending'}
               </div>
               <div style={{ fontSize: '11px', color: '#475569' }}>
-                {order.date}
+                {typeof order.date === 'string' && order.date.includes('T')
+                  ? new Date(order.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+                  : order.date}
               </div>
             </div>
           </div>
