@@ -44,7 +44,7 @@ function getRangeParams(range: Range) {
       return {
         from: now - 30 * 86400,
         to: now,
-        resolution: 'D',
+        resolution: '60',
       };
     case 'YTD': {
       const jan1 = new Date(today.getFullYear(), 0, 1);
@@ -60,6 +60,58 @@ function getRangeParams(range: Range) {
         to: now,
         resolution: 'W',
       };
+  }
+}
+
+// ─── Fetch Yahoo Finance candles (fallback) ───────────────
+
+async function fetchYahooCandles(
+  symbol: string,
+  from: number,
+  to: number,
+  resolution: string,
+): Promise<CandleResult | null> {
+  // Map our resolution to Yahoo interval
+  const intervalMap: Record<string, string> = {
+    '5': '5m',
+    '60': '1h',
+    'D': '1d',
+    'W': '1wk',
+  };
+  const interval = intervalMap[resolution] || '1d';
+
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+    `?period1=${from}&period2=${to}&interval=${interval}&events=history`;
+
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Vantage/1.0' },
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result) return null;
+
+    const timestamps = result.timestamp as number[];
+    const quotes = result.indicators?.quote?.[0];
+    const closes = quotes?.close as (number | null)[];
+    if (!timestamps || !closes) return null;
+
+    console.log(`[Chart] Yahoo ${symbol}: ${timestamps.length} points (interval=${interval})`);
+
+    const map: Record<number, number> = {};
+    timestamps.forEach((t: number, i: number) => {
+      if (closes[i] != null) {
+        map[t] = closes[i];
+      }
+    });
+
+    return { timestamps, map };
+  } catch {
+    return null;
   }
 }
 
@@ -111,11 +163,15 @@ export async function POST(req: NextRequest) {
 
     const { from, to, resolution } = getRangeParams(range);
 
-    // Fetch candles for all symbols in parallel
+    // Fetch candles for all symbols in parallel (Finnhub → Yahoo fallback)
     const candleResults = await Promise.allSettled(
-      positions.map((p) =>
-        fetchCandles(p.symbol, from, to, resolution),
-      ),
+      positions.map(async (p) => {
+        const result = await fetchCandles(p.symbol, from, to, resolution);
+        if (result) return result;
+        // Fallback to Yahoo Finance
+        console.log(`[Chart] Finnhub failed for ${p.symbol}, trying Yahoo Finance`);
+        return fetchYahooCandles(p.symbol, from, to, resolution);
+      }),
     );
 
     // Get reference timestamps from first successful result
