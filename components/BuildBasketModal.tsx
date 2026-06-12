@@ -62,6 +62,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       setCustomDesc('');
       setBasketData(null);
       setError(null);
+      setAddStockSymbol('');
+      setShowAddStock(false);
     }
   }, [isOpen]);
 
@@ -179,6 +181,63 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     onBasketGenerated(msg, basketData);
   }
 
+  // ── State for Add Stock input ──
+  const [addStockSymbol, setAddStockSymbol] = useState('');
+  const [showAddStock, setShowAddStock] = useState(false);
+  const [isAddingStock, setIsAddingStock] = useState(false);
+
+  // ── Add stock to existing basket ──
+  const addStock = useCallback(async (symbol: string) => {
+    if (!basketData || !symbol.trim() || basketData.stocks.length >= 8) return;
+    const s = symbol.trim().toUpperCase();
+    if (basketData.stocks.find(st => st.symbol === s)) return; // already in basket
+    setIsAddingStock(true);
+    try {
+      const qRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(s)}`);
+      const qData = await qRes.json();
+      const price = qData?.c || 0;
+      if (price <= 0) {
+        setError(`Could not fetch price for ${s}`);
+        return;
+      }
+      const bNum = parseInt(budget) || 10000;
+      // Give new stock equal split, redistribute all
+      const newCount = basketData.stocks.length + 1;
+      const allocPer = +(100 / newCount).toFixed(1);
+      const updated = basketData.stocks.map(st => {
+        const dollarAmount = (allocPer / 100) * bNum;
+        const shares = st.price && st.price > 0 ? +(dollarAmount / st.price).toFixed(2) : 0;
+        return { ...st, allocation: allocPer, dollarAmount, shares };
+      });
+      const newDollar = (allocPer / 100) * bNum;
+      const newShares = +(newDollar / price).toFixed(2);
+      updated.push({
+        symbol: s,
+        name: s, // will be replaced by profile lookup below
+        allocation: allocPer,
+        rationale: 'Manually added',
+        price,
+        dollarAmount: newDollar,
+        shares: newShares,
+      });
+      // Normalize to 100
+      const total = updated.reduce((sum, st) => sum + st.allocation, 0);
+      if (total !== 100) {
+        updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
+        updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
+        updated[0].shares = updated[0].price && updated[0].price > 0
+          ? +(updated[0].dollarAmount / updated[0].price!).toFixed(2) : 0;
+      }
+      setBasketData({ ...basketData, stocks: updated });
+      setAddStockSymbol('');
+      setShowAddStock(false);
+    } catch (err: any) {
+      setError(err?.message || `Failed to add ${s}`);
+    } finally {
+      setIsAddingStock(false);
+    }
+  }, [basketData, budget]);
+
   // ── Header ──
   const header = (
     <div style={{
@@ -191,48 +250,45 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       flexShrink: 0,
     }}>
       <button
-        onClick={() => {
-          if (step === 'theme') {
-            onClose();
-          } else if (step === 'budget') {
-            setStep('theme');
-          } else if (step === 'review') {
-            setStep('budget');
-          }
-        }}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#94a3b8',
-          fontSize: '18px',
-          padding: '4px',
-          cursor: 'pointer',
-          width: '32px',
-        }}
-      >
-        ←
-      </button>
-      <span style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff' }}>
-        Build Basket
-      </span>
-      <button
         onClick={onClose}
         style={{
-          background: 'rgba(255,255,255,0.06)',
+          color: '#6b7280',
+          fontSize: '24px',
+          background: 'none',
           border: 'none',
-          borderRadius: '50%',
-          width: '32px',
-          height: '32px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#94a3b8',
-          fontSize: '16px',
           cursor: 'pointer',
+          padding: '0 8px',
+          lineHeight: 1,
         }}
       >
-        ✕
+        ×
       </button>
+      <span style={{
+        color: '#ffffff',
+        fontWeight: '600',
+        fontSize: '16px',
+      }}>
+        Build Basket
+      </span>
+      {step !== 'theme' && step !== 'generating' ? (
+        <button
+          onClick={() => {
+            if (step === 'budget') setStep('theme');
+            else if (step === 'review') setStep('budget');
+          }}
+          style={{
+            color: '#22d3ee',
+            fontSize: '14px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          ← Back
+        </button>
+      ) : (
+        <div style={{ width: '40px' }} />
+      )}
     </div>
   );
 
@@ -604,6 +660,101 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                 ${basketData.stocks.reduce((sum, s) => sum + (s.dollarAmount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
             </div>
+
+            {/* Add Stock section */}
+            {!showAddStock ? (
+              <button
+                onClick={() => setShowAddStock(true)}
+                disabled={basketData.stocks.length >= 8}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '1px dashed rgba(34,211,238,0.3)',
+                  borderRadius: '8px',
+                  color: basketData.stocks.length >= 8 ? '#4b5563' : '#22d3ee',
+                  background: 'none',
+                  cursor: basketData.stocks.length >= 8 ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  marginTop: '12px',
+                }}
+              >
+                + Add Stock
+              </button>
+            ) : (
+              <div style={{ marginTop: '12px' }}>
+                <input
+                  type="text"
+                  value={addStockSymbol}
+                  onChange={e => setAddStockSymbol(e.target.value)}
+                  placeholder="Enter ticker (e.g. AAPL)"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && addStockSymbol.trim()) {
+                      addStock(addStockSymbol);
+                    } else if (e.key === 'Escape') {
+                      setShowAddStock(false);
+                      setAddStockSymbol('');
+                    }
+                  }}
+                  autoFocus
+                  disabled={isAddingStock}
+                  style={{
+                    width: '100%',
+                    background: '#1a2235',
+                    border: '1px solid rgba(34,211,238,0.3)',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  marginTop: '8px',
+                }}>
+                  <button
+                    onClick={() => {
+                      setShowAddStock(false);
+                      setAddStockSymbol('');
+                    }}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '6px',
+                      padding: '8px 0',
+                      color: '#94a3b8',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => addStockSymbol.trim() && addStock(addStockSymbol)}
+                    disabled={!addStockSymbol.trim() || isAddingStock}
+                    style={{
+                      flex: 1,
+                      background: addStockSymbol.trim() && !isAddingStock ? '#22d3ee' : 'rgba(34,211,238,0.2)',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '8px 0',
+                      color: addStockSymbol.trim() && !isAddingStock ? '#000000' : 'rgba(34,211,238,0.4)',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: addStockSymbol.trim() && !isAddingStock ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {isAddingStock ? 'Fetching...' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {error && (
+              <p style={{ fontSize: '11px', color: '#ef4444', marginTop: '6px' }}>{error}</p>
+            )}
           </>
         ) : (
           <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '24px 0' }}>

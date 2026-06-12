@@ -1919,7 +1919,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
         }
       `}</style>
 
-      {/* ─── Chat History Full-Screen Modal ─── */}
+      {/* ─── Chat History Full-Screen Modal (simplified — last 3 sessions) ─── */}
       {showHistory && (
         <div
           style={{
@@ -1952,12 +1952,12 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: '20px 20px 12px 20px',
+                padding: '20px 20px 8px 20px',
                 flexShrink: 0,
               }}
             >
               <p style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff' }}>
-                Chat History
+                Recent Conversations
               </p>
               <button
                 onClick={() => setShowHistory(false)}
@@ -1983,13 +1983,13 @@ Give me a market pulse check — how are the major indexes performing today, wha
             <p style={{
               fontSize: '11px',
               color: '#64748b',
-              padding: '0 20px 8px 20px',
+              padding: '0 20px 16px 20px',
               flexShrink: 0,
             }}>
-              Last 7 days · Tap to resume
+              Last 7 days
             </p>
 
-            {/* Session list */}
+            {/* Session cards — max 3 */}
             <div style={{
               flex: 1,
               overflowY: 'auto',
@@ -1997,83 +1997,113 @@ Give me a market pulse check — how are the major indexes performing today, wha
             }}>
               {(() => {
                 const sessions = loadSessions();
-                const groups = groupSessionsByDay(sessions);
-                if (groups.length === 0) {
+                // Sort by lastActive desc, take last 3
+                const recent = [...sessions]
+                  .sort((a, b) => b.lastActive - a.lastActive)
+                  .slice(0, 3);
+
+                if (recent.length === 0) {
                   return (
                     <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '32px 0' }}>
-                      No previous conversations
+                      No recent conversations
                     </p>
                   );
                 }
-                return groups.map((group, gi) => (
-                  <div key={gi} style={{ marginBottom: '16px' }}>
-                    <p style={{
-                      fontSize: '10px',
-                      color: '#475569',
-                      fontWeight: '600',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      marginBottom: '8px',
-                    }}>
-                      {group.label} · {group.sessions.length} conversation{group.sessions.length === 1 ? '' : 's'}
-                    </p>
-                    {group.sessions.map((session, si) => {
-                      const firstMsg = session.messages[0]?.content || 'Empty chat';
-                      const preview = firstMsg.length > 55 ? firstMsg.slice(0, 52) + '...' : firstMsg;
-                      const time = new Date(session.timestamp).toLocaleTimeString('en-US', {
+
+                return recent.map((session, i) => {
+                  // Find first AI response for preview
+                  const aiMsg = session.messages.find(m => m.role === 'ai');
+                  const preview = aiMsg
+                    ? (aiMsg.content.length > 100 ? aiMsg.content.slice(0, 97) + '...' : aiMsg.content)
+                    : (session.messages[0]?.content?.slice(0, 80) + '...' || 'Empty chat');
+                  const firstUser = session.messages.find(m => m.role === 'user');
+                  const displayPreview = firstUser
+                    ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"`
+                    : preview;
+                  const date = new Date(session.timestamp);
+                  const now = new Date();
+                  const isToday = date.toDateString() === now.toDateString();
+                  const yesterday = new Date(now);
+                  yesterday.setDate(yesterday.getDate() - 1);
+                  const isYesterday = date.toDateString() === yesterday.toDateString();
+                  const dateLabel = isToday
+                    ? `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                    : isYesterday
+                    ? `Yesterday, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                    : date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
                         hour: 'numeric',
                         minute: '2-digit',
                       });
-                      const isLast = si === group.sessions.length - 1 && gi === groups.length - 1;
-                      return (
-                        <div key={session.id}>
-                          <div
-                            onClick={() => {
-                              const msgs = loadSessionMessages(session.id);
-                              if (msgs) {
-                                setMessages(msgs);
-                                setCurrentSessionId(session.id);
-                              }
-                              setShowHistory(false);
-                              setTimeout(() => {
-                                document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                              }, 200);
-                            }}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '10px 0',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <span style={{
-                              fontSize: '13px',
-                              color: '#cbd5e1',
-                              flex: 1,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              marginRight: '12px',
-                            }}>
-                              {preview}
-                            </span>
-                            <span style={{
-                              fontSize: '11px',
-                              color: '#64748b',
-                              flexShrink: 0,
-                            }}>
-                              {time}
-                            </span>
-                          </div>
-                          {!isLast && (
-                            <div style={{ height: '1px', background: '#1e2d45', opacity: 0.5 }} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ));
+
+                  return (
+                    <div key={session.id}>
+                      <div
+                        onClick={() => {
+                          const msgs = loadSessionMessages(session.id);
+                          if (msgs) {
+                            setMessages(msgs);
+                            setCurrentSessionId(session.id);
+                          }
+                          setShowHistory(false);
+                          setTimeout(() => {
+                            document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                          }, 200);
+                        }}
+                        style={{
+                          background: '#1a2235',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '12px',
+                          padding: '14px 16px',
+                          marginBottom: i < recent.length - 1 ? '10px' : '0',
+                          cursor: 'pointer',
+                          transition: 'border-color 0.15s',
+                        }}
+                        onMouseEnter={e => {
+                          (e.currentTarget as HTMLElement).style.borderColor = 'rgba(34,211,238,0.3)';
+                        }}
+                        onMouseLeave={e => {
+                          (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)';
+                        }}
+                      >
+                        {/* Date label */}
+                        <p style={{
+                          fontSize: '11px',
+                          color: '#64748b',
+                          fontWeight: '500',
+                          margin: '0 0 6px 0',
+                        }}>
+                          {dateLabel}
+                        </p>
+
+                        {/* Preview (first user message) */}
+                        <p style={{
+                          fontSize: '13px',
+                          color: '#cbd5e1',
+                          lineHeight: '1.5',
+                          margin: '0 0 8px 0',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}>
+                          {displayPreview}
+                        </p>
+
+                        {/* Message count */}
+                        <p style={{
+                          fontSize: '11px',
+                          color: '#475569',
+                          margin: 0,
+                        }}>
+                          {session.messages.length} message{session.messages.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                });
               })()}
             </div>
 
