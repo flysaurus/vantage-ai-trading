@@ -30,6 +30,9 @@
     },
     "app/api/screener/search/route.ts": {
       "maxDuration": 55
+    },
+    "app/api/baskets/generate/route.ts": {
+      "maxDuration": 60
     }
   }
 }
