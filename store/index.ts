@@ -3,12 +3,14 @@ import type {
   Quote, MarketIndex, AccountSummary, Order, OrderFormState, 
   ChatMessage, ConfidenceBreakdown, WatchlistItem, Position 
 } from '@/types';
+import { saveCurrentSession, generateSessionId } from '@/lib/chat-history';
 
 // ─── localStorage helpers ───
 const STORAGE_KEYS = {
   watchlist: 'vantage:watchlist',
   indexSymbols: 'vantage:indexSymbols',
   chatMessages: 'vantage:chatMessages',
+  chatSessionId: 'vantage:chatSessionId',
 } as const;
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -167,12 +169,15 @@ interface ChatStore {
   clearChat: () => void;
   persistChat: () => void;
   sessionCount: number;
+  currentSessionId: string;
 }
 
 const initialChatMessages = loadFromStorage<ChatMessage[]>(STORAGE_KEYS.chatMessages, []);
+const initialSessionId = loadFromStorage<string>(STORAGE_KEYS.chatSessionId, generateSessionId());
 
 export const useChatStore = create<ChatStore>((set) => ({
   messages: initialChatMessages,
+  currentSessionId: initialSessionId,
   isLoading: false,
   confidence: null,
   lastCost: 0,
@@ -216,15 +221,27 @@ export const useChatStore = create<ChatStore>((set) => ({
   setRemainingCalls: (calls) => set({ remainingCalls: calls }),
   setError: (error) => set({ error }),
   clearChat: () => {
+    const newId = generateSessionId();
     saveToStorage(STORAGE_KEYS.chatMessages, []);
+    saveToStorage(STORAGE_KEYS.chatSessionId, newId);
     set((s) => ({
       messages: [],
       sessionCount: s.sessionCount + 1,
+      currentSessionId: newId,
     }));
   },
   persistChat: () => {
-    const { messages } = useChatStore.getState();
+    const { messages, currentSessionId } = useChatStore.getState();
     saveToStorage(STORAGE_KEYS.chatMessages, messages);
+    // Also save as device-keyed session for history across auth changes
+    if (typeof window !== 'undefined' && messages.length > 0) {
+      const formatted = messages.map(m => ({
+        role: (m.role === 'assistant' ? 'ai' : 'user') as 'user' | 'ai',
+        content: m.content,
+        timestamp: m.timestamp,
+      }));
+      saveCurrentSession(currentSessionId, formatted);
+    }
   },
 }));
 

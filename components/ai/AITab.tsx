@@ -5,8 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
-import { persistChat, loadSessions, loadSessionMessages, groupSessionsByDay } from '@/lib/chat-history';
-import type { ChatSession } from '@/lib/chat-history';
+import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import BuildBasketModal from '@/components/BuildBasketModal';
@@ -73,7 +72,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     previousSession,
     loadPreviousSession,
     dismissPreviousSession,
-    clearMessages: clearSupabaseMessages,
+    refreshSessions,
   } = useChatStorage();
 
   // ── state ──
@@ -273,10 +272,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
     fetchPortfolioSummary();
   }, []);
 
-  // ── persist chat to localStorage whenever messages change ──
+  // ── persist chat to device-keyed localStorage whenever messages change ──
   useEffect(() => {
-    const id = persistChat(messages, currentSessionId);
-    if (id !== currentSessionId) setCurrentSessionId(id);
+    if (messages.length > 0) {
+      const formatted = messages.map(m => ({
+        role: (m.role as string === 'assistant' ? 'ai' : 'user') as 'user' | 'ai',
+        content: m.content,
+      }));
+      saveCurrentSession(currentSessionId || '', formatted);
+    }
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Market period helper ──
@@ -2048,13 +2052,10 @@ Give me a market pulse check — how are the major indexes performing today, wha
               padding: '0 20px 16px 20px',
             }}>
               {(() => {
-                const sessions = loadSessions();
-                // Sort by lastActive desc, take last 3
-                const recent = [...sessions]
-                  .sort((a, b) => b.lastActive - a.lastActive)
-                  .slice(0, 3);
+                const sessions = getRecentSessions(3);
+                // Already sorted by updatedAt desc, limited to 3
 
-                if (recent.length === 0) {
+                if (sessions.length === 0) {
                   return (
                     <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '32px 0' }}>
                       No recent conversations
@@ -2062,7 +2063,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   );
                 }
 
-                return recent.map((session, i) => {
+                return sessions.map((session, i) => {
                   // Find first AI response for preview
                   const aiMsg = session.messages.find(m => m.role === 'ai');
                   const preview = aiMsg
@@ -2072,7 +2073,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   const displayPreview = firstUser
                     ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"`
                     : preview;
-                  const date = new Date(session.timestamp);
+                  const date = new Date(session.updatedAt);
                   const now = new Date();
                   const isToday = date.toDateString() === now.toDateString();
                   const yesterday = new Date(now);
@@ -2108,7 +2109,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                           border: '1px solid rgba(255,255,255,0.08)',
                           borderRadius: '12px',
                           padding: '14px 16px',
-                          marginBottom: i < recent.length - 1 ? '10px' : '0',
+                          marginBottom: i < sessions.length - 1 ? '10px' : '0',
                           cursor: 'pointer',
                           transition: 'border-color 0.15s',
                         }}
@@ -2258,7 +2259,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
               <button
                 onClick={() => {
                   setMessages([]);
-                  clearSupabaseMessages();
                   setShowClearConfirm(false);
                 }}
                 style={{

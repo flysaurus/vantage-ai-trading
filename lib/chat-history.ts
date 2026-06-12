@@ -1,151 +1,156 @@
 'use client';
 
 /**
- * Chat history — localStorage-backed sessions with 7-day rolling retention.
+ * Chat history — device-keyed localStorage sessions.
  *
- * Session = >30 min gap between messages creates a new session.
- * Sessions are resumable (not read-only).
+ * Keyed to a stable device ID so sessions survive auth changes
+ * (logout / re-login / incognito → same device sees same history).
+ *
+ * Retention: max 20 sessions, 7-day rolling window.
+ * Sessions include the full message array for resumption.
  */
 
-const STORAGE_KEY = 'vantage-chat-sessions';
-const SESSION_GAP_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// ── Device ID ─────────────────────────────────────────────────
+// Stable across page loads, survives re-auth, unique per browser profile.
 
-export interface ChatSession {
-  id: string;
-  timestamp: number; // ms, epoch of first message
-  lastActive: number; // ms, epoch of last message
-  messages: { role: 'user' | 'ai'; content: string }[];
+export function getDeviceId(): string {
+  if (typeof window === 'undefined') return 'ssr';
+  let key = localStorage.getItem('vantage_device_id');
+  if (!key) {
+    key = 'device_' + Math.random().toString(36).slice(2);
+    localStorage.setItem('vantage_device_id', key);
+  }
+  return key;
 }
 
-/** Load all sessions from localStorage, prune expired */
-export function loadSessions(): ChatSession[] {
+const DEVICE_ID = typeof window !== 'undefined' ? getDeviceId() : 'ssr';
+const HISTORY_KEY = `vantage_chat_history_${DEVICE_ID}`;
+const MAX_SESSIONS = 20;
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// ── Types ─────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'ai';
+  content: string;
+  timestamp?: number;
+}
+
+export interface ChatSessionRecord {
+  id: string;
+  date: string;              // formatted locale date e.g. "Wednesday, Jun 11"
+  preview: string;           // first 80 chars of first AI response
+  messageCount: number;
+  updatedAt: number;         // epoch ms of last update
+  messages: ChatMessage[];   // full message array for resumption
+}
+
+// ── Core helpers ──────────────────────────────────────────────
+
+/** Load sessions, trimming expired */
+export function loadSessions(): ChatSessionRecord[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
-    const sessions: ChatSession[] = JSON.parse(raw);
+    const sessions: ChatSessionRecord[] = JSON.parse(raw);
     const cutoff = Date.now() - MAX_AGE_MS;
-    return sessions.filter((s) => s.lastActive > cutoff);
+    return sessions.filter(s => s.updatedAt > cutoff);
   } catch {
     return [];
   }
 }
 
-/** Save sessions to localStorage */
-export function saveSessions(sessions: ChatSession[]): void {
+/** Save sessions to device-keyed localStorage */
+export function saveSessions(sessions: ChatSessionRecord[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+    const cutoff = Date.now() - MAX_AGE_MS;
+    const trimmed = sessions.filter(s => s.updatedAt > cutoff).slice(0, MAX_SESSIONS);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
   } catch {
-    // storage full — prune oldest
-    const pruned = sessions.slice(-50);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
-    } catch {
-      // give up
-    }
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(sessions.slice(-5))); } catch {}
   }
 }
 
-/** Persist current chat as the latest session. Creates new if gap > 30m. */
-export function persistChat(
-  messages: { role: 'user' | 'ai'; content: string }[],
-  currentSessionId: string | null,
-): string {
-  if (messages.length === 0) return currentSessionId || generateSessionId();
+/** Generate a session ID */
+export function generateSessionId(): string {
+  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ── Session persistence ───────────────────────────────────────
+
+/**
+ * Save the current chat as a session. Creates new or updates existing.
+ * Call this after EVERY AI response to keep history live.
+ */
+export function saveCurrentSession(
+  currentSessionId: string,
+  messages: ChatMessage[],
+): void {
+  if (messages.length === 0) return;
 
   const sessions = loadSessions();
-  const now = Date.now();
+  const existing = sessions.findIndex(s => s.id === currentSessionId);
 
-  // Find or create session
-  const lastSession = sessions[sessions.length - 1];
-  const shouldCreateNew =
-    !lastSession || !currentSessionId || now - lastSession.lastActive > SESSION_GAP_MS;
+  // Build preview from first AI response
+  const firstAi = messages.find(m => m.role === 'ai');
+  const preview = firstAi
+    ? (firstAi.content?.slice(0, 80) || '') + (firstAi.content?.length > 80 ? '...' : '')
+    : 'New conversation';
 
-  if (shouldCreateNew) {
-    const newSession: ChatSession = {
-      id: generateSessionId(),
-      timestamp: now,
-      lastActive: now,
-      messages,
-    };
-    sessions.push(newSession);
-    saveSessions(sessions);
-    return newSession.id;
-  }
+  const now = new Date();
+  const date = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+  const time = now.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 
-  // Update existing session
-  const idx = sessions.findIndex((s) => s.id === currentSessionId);
-  if (idx >= 0) {
-    sessions[idx] = { ...sessions[idx], messages, lastActive: now };
-    saveSessions(sessions);
-    return currentSessionId!;
-  }
-
-  // Fallback: session ID not found, create new
-  const fallback: ChatSession = {
-    id: generateSessionId(),
-    timestamp: now,
-    lastActive: now,
-    messages,
+  const sessionData: ChatSessionRecord = {
+    id: currentSessionId,
+    date: `${date}, ${time}`,
+    preview,
+    messageCount: messages.length,
+    updatedAt: Date.now(),
+    messages: [...messages],
   };
-  sessions.push(fallback);
+
+  if (existing >= 0) {
+    sessions[existing] = sessionData;
+  } else {
+    sessions.unshift(sessionData);
+  }
+
   saveSessions(sessions);
-  return fallback.id;
 }
 
-/** Load a specific session's messages by ID */
-export function loadSessionMessages(
-  sessionId: string,
-): { role: 'user' | 'ai'; content: string }[] | null {
+/**
+ * Load a specific session's messages by ID.
+ * Returns null if not found or expired.
+ */
+export function loadSessionMessages(sessionId: string): ChatMessage[] | null {
   const sessions = loadSessions();
-  const session = sessions.find((s) => s.id === sessionId);
+  const session = sessions.find(s => s.id === sessionId);
   return session ? session.messages : null;
 }
 
-/** Group sessions by day for the bottom sheet */
-export function groupSessionsByDay(sessions: ChatSession[]): {
-  label: string;
-  sessions: ChatSession[];
-}[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-
-  const groups: { label: string; sessions: ChatSession[] }[] = [];
-  const todaySessions: ChatSession[] = [];
-  const yesterdaySessions: ChatSession[] = [];
-  const olderMap: Map<string, ChatSession[]> = new Map();
-
-  for (const s of sessions) {
-    const d = new Date(s.timestamp);
-    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    if (day.getTime() === today.getTime()) {
-      todaySessions.push(s);
-    } else if (day.getTime() === yesterday.getTime()) {
-      yesterdaySessions.push(s);
-    } else {
-      const key = d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      });
-      if (!olderMap.has(key)) olderMap.set(key, []);
-      olderMap.get(key)!.push(s);
-    }
-  }
-
-  if (todaySessions.length) {
-    groups.push({ label: 'Today', sessions: todaySessions.reverse() });
-  }
-  if (yesterdaySessions.length) {
-    groups.push({ label: 'Yesterday', sessions: yesterdaySessions.reverse() });
-  }
-  for (const [label, sess] of olderMap) {
-    groups.push({ label, sessions: sess.reverse() });
-  }
-
-  return groups;
+/**
+ * Get recent sessions (last N) for the history modal.
+ * Returns sessions sorted by most recent first.
+ */
+export function getRecentSessions(limit: number = 3): ChatSessionRecord[] {
+  return loadSessions()
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, limit);
 }
 
-function generateSessionId(): string {
-  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+/**
+ * Delete a specific session by ID.
+ */
+export function deleteSession(sessionId: string): void {
+  const sessions = loadSessions().filter(s => s.id !== sessionId);
+  saveSessions(sessions);
 }
