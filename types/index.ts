@@ -240,6 +240,8 @@ export interface User {
   investorStyle: InvestorStyle;
   investorStyleSetAt?: string;
   investorStyleOnboarded: boolean;
+  riskTolerance?: 'Conservative' | 'Moderate' | 'Aggressive';
+  name?: string;
   createdAt: string;
   updatedAt?: string;
 }

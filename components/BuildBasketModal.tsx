@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import CompassIcon from '@/components/CompassIcon';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 const THEMES = [
   { key: 'ai_tech', emoji: '🤖', name: 'AI & Tech' },
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }: Props) {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('theme');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const [budget, setBudget] = useState('');
@@ -108,6 +110,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         body: JSON.stringify({
           theme: displayTheme,
           budget: budgetNum,
+          investorStyle: user?.investorStyle || 'Lynch',
+          riskTolerance: user?.riskTolerance || 'Moderate',
         }),
       });
 

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { persistChat, loadSessions, loadSessionMessages, groupSessionsByDay } from '@/lib/chat-history';
 import type { ChatSession } from '@/lib/chat-history';
@@ -38,6 +39,9 @@ interface AITabProps {
 export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
+  const { user } = useAuth();
+  const userId = user?.id || null;
+  const investorStyle = user?.investorStyle || 'Lynch';
   
   // ── Supabase chat storage (previous sessions + message count) ──
   const {
@@ -265,6 +269,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
+    // Message limit check (soft — 25/day)
+    if (supabaseRemaining <= 0) {
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        content: '📊 You\'ve used all 25 messages today. Your daily limit resets at midnight UTC.\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.'
+      }]);
+      return;
+    }
+
     // Rate limiting
     const now = Date.now();
     if (now - lastMessageTime < RATE_LIMIT_MS) {
@@ -290,7 +303,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
         body: JSON.stringify({
           messages: newMessages,
           portfolioContext,
-          mode
+          mode,
+          investorStyle: investorStyle,
+          riskTolerance: user?.riskTolerance || 'Moderate',
+          name: user?.name || 'M',
         })
       });
 
@@ -368,10 +384,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }]);
     } finally {
       setLoading(false);
-      // Persist AI response to Supabase (non-blocking)
-      if (lastAiResponseRef.current) {
-        saveChatMessage('pending', 'assistant', lastAiResponseRef.current).catch(() => {});
-        lastAiResponseRef.current = '';
+      // Persist user message + AI response to Supabase (non-blocking)
+      if (userId) {
+        saveChatMessage(userId, 'user', content).catch(() => {});
+        if (lastAiResponseRef.current) {
+          saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch(() => {});
+          lastAiResponseRef.current = '';
+        }
       }
       scrollToBottom();
     }
@@ -1498,6 +1517,27 @@ Give me a market pulse check — how are the major indexes performing today, wha
               {btn.icon} {btn.label}
             </div>
           ))}
+        </div>
+
+        {/* Message count + remaining */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0 16px',
+          margin: '0 0 2px 0',
+        }}>
+          <span style={{
+            fontSize: '10px',
+            color: supabaseRemaining <= 5 ? '#f59e0b' : supabaseRemaining <= 2 ? '#ef4444' : '#64748b',
+          }}>
+            {supabaseRemaining} message{supabaseRemaining !== 1 ? 's' : ''} remaining today
+          </span>
+          {supabaseRemaining <= 5 && (
+            <span style={{ fontSize: '10px', color: '#64748b' }}>
+              Free tier · Resets midnight UTC
+            </span>
+          )}
         </div>
 
         {/* Character count warning */}

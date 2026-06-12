@@ -64,15 +64,22 @@ const AuthContext = createContext<AuthContextValue>({
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-function getLocalOnboarding(): { onboarded: boolean; style: InvestorStyle } {
-  if (typeof window === 'undefined') return { onboarded: false, style: 'buffett' };
+function getLocalOnboarding(): { onboarded: boolean; style: InvestorStyle; riskTolerance: string } {
+  if (typeof window === 'undefined') return { onboarded: false, style: 'buffett', riskTolerance: 'Moderate' };
   try {
+    const style = (localStorage.getItem('vantage:investorStyle') as InvestorStyle) || 'buffett';
+    const styleRiskMap: Record<string, string> = {
+      growth: 'Aggressive', buffett: 'Moderate', lynch: 'Moderate',
+      livermore: 'Aggressive', soros: 'Aggressive', dividend: 'Conservative',
+    };
+    const riskTolerance = localStorage.getItem('vantage:riskTolerance') || styleRiskMap[style] || 'Moderate';
     return {
       onboarded: localStorage.getItem('vantage:onboarded') === 'true',
-      style: (localStorage.getItem('vantage:investorStyle') as InvestorStyle) || 'buffett',
+      style,
+      riskTolerance,
     };
   } catch {
-    return { onboarded: false, style: 'buffett' };
+    return { onboarded: false, style: 'buffett', riskTolerance: 'Moderate' };
   }
 }
 
@@ -158,14 +165,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const local = getLocalOnboarding();
         const cached = getUser();
 
+        const style = (data.user.investorStyle || cached?.investorStyle || local.style || 'buffett') as InvestorStyle;
+        const riskDerived = local.riskTolerance || 'Moderate';
+
         const u: User = {
           id: data.user.id,
           email: data.user.email,
           displayName: data.user.displayName || data.user.email.split('@')[0],
           avatarUrl: data.user.avatarUrl,
-          investorStyle: ((data.user.investorStyle || cached?.investorStyle || local.style || 'buffett') as InvestorStyle),
+          investorStyle: style,
           investorStyleSetAt: data.user.investorStyleSetAt || undefined,
           investorStyleOnboarded: data.user.investorStyleOnboarded === true,
+          riskTolerance: (data.user.riskTolerance || riskDerived) as User['riskTolerance'],
+          name: data.user.displayName || data.user.email?.split('@')[0] || 'M',
           createdAt: data.user.createdAt || '',
         };
 
@@ -271,15 +283,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const local = getLocalOnboarding();
     const cached = getUser();
 
+    const style = (meData.user.investorStyle || cached?.investorStyle || local.style || 'buffett') as InvestorStyle;
+    const riskDerived = local.riskTolerance || 'Moderate';
+
     const u: User = {
       id: meData.user.id,
       email: meData.user.email,
       displayName: meData.user.displayName || meData.user.email.split('@')[0],
       avatarUrl: meData.user.avatarUrl,
-      investorStyle: ((meData.user.investorStyle || cached?.investorStyle || local.style || 'buffett') as InvestorStyle),
+      investorStyle: style,
       investorStyleSetAt: meData.user.investorStyleSetAt || undefined,
       investorStyleOnboarded: meData.user.investorStyleOnboarded === true,
-      createdAt: data.user.createdAt || '',
+      riskTolerance: (meData.user.riskTolerance || riskDerived) as User['riskTolerance'],
+      name: meData.user.displayName || meData.user.email?.split('@')[0] || 'M',
+      createdAt: meData.user.createdAt || '',
     };
 
     const vs: VantageSession = {

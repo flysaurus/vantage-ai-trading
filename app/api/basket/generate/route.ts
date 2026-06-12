@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildUserProfileContext } from '@/lib/ai/userProfile'
+import type { UserProfile } from '@/lib/ai/userProfile'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -9,7 +11,9 @@ const client = new Anthropic({
 })
 
 const BASKET_SYSTEM_PROMPT = `You are Vantage AI, a portfolio construction expert.
-Generate a thematic investment basket.
+Generate a thematic investment basket tailored to the user's investor style.
+The user's style context is provided in the message.
+
 Return ONLY valid JSON, no markdown, no explanation.
 
 Format:
@@ -35,7 +39,7 @@ Rules:
 
 export async function POST(req: NextRequest) {
   try {
-    const { theme, budget } = await req.json()
+    const { theme, budget, investorStyle, riskTolerance } = await req.json()
 
     if (!theme) {
       return NextResponse.json({ error: 'Theme required' }, { status: 400 })
@@ -43,7 +47,19 @@ export async function POST(req: NextRequest) {
 
     const budgetNum = budget ? parseInt(String(budget)) : 10000
 
-    const message = `Build a ${theme} basket with $${budgetNum.toLocaleString()} budget. Include 6-8 high-conviction US stocks that best represent this theme.`
+    // Build user profile for style-aware basket generation
+    const profile: UserProfile = {
+      investorStyle: investorStyle || 'Lynch',
+      riskTolerance: riskTolerance || 'Moderate',
+      name: 'M',
+    }
+    const profileContext = buildUserProfileContext(profile)
+
+    const message = [
+      `Build a ${theme} basket with $${budgetNum.toLocaleString()} budget. Include 6-8 high-conviction US stocks that best represent this theme.`,
+      '',
+      profileContext,
+    ].join('\n')
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
