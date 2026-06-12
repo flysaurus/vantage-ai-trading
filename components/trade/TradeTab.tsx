@@ -815,6 +815,11 @@ export function TradeTab() {
               <div style={{ fontSize: '12px', color: '#64748b' }}>
                 market · {order.shares} shares
               </div>
+              {order.price && order.status === 'filled' && (
+                <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                  Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              )}
             </div>
 
             {/* RIGHT */}
@@ -831,9 +836,15 @@ export function TradeTab() {
                 {order.price ? `$${(order.price as number).toFixed(2)}/share` : 'pending'}
               </div>
               <div style={{ fontSize: '11px', color: '#475569' }}>
-                {typeof order.date === 'string' && order.date.includes('T')
-                  ? new Date(order.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-                  : order.date}
+                {(() => {
+                  try {
+                    const d = new Date(order.date);
+                    if (!isNaN(d.getTime())) {
+                      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    }
+                  } catch {}
+                  return order.date || '';
+                })()}
               </div>
             </div>
           </div>

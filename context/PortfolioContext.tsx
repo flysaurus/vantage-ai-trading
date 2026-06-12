@@ -151,7 +151,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         fillPrice,
         totalCost: p.qty * fillPrice,
         status: 'FILLED' as const,
-        createdAt: p.buyDate || new Date('2024-01-01').toISOString(),
+        createdAt: new Date(p.buyDate ? (p.buyDate + 'T14:30:00Z') : '2024-01-01T14:30:00Z').toISOString(),
       };
     });
 
