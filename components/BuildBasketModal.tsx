@@ -183,6 +183,30 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     finally { setIsAddingStock(false); }
   }, [basketData, budget]);
 
+  // ── Build execution plan from selected curated basket ──
+  // (must be above early return per React hooks rules)
+  const executionPlan = useMemo(() => {
+    if (!selectedCurated || !budget) return null;
+    const bNum = parseInt(budget) || 0;
+    const effectiveBudget = bNum * 0.95;
+    return selectedCurated.stocks.map(stock => {
+      const dollarAmount = (stock.allocation / 100) * effectiveBudget;
+      const price = stock.price || 0;
+      const shares = price > 0 ? dollarAmount / price : 0;
+      return {
+        symbol: stock.symbol,
+        name: stock.name,
+        allocationPct: stock.allocation,
+        price,
+        shares: Math.round(shares * 10000) / 10000,
+        totalCost: Math.round(dollarAmount * 100) / 100,
+      };
+    }).filter(p => p.shares > 0);
+  }, [selectedCurated, budget]);
+
+  const orderEstTotal = executionPlan?.reduce((sum, p) => sum + p.totalCost, 0) || 0;
+  const orderEstBuffer = (parseInt(budget) || 0) - orderEstTotal;
+
   if (!isOpen) return null;
 
   const budgetNum = parseInt(budget) || 10000;
@@ -845,29 +869,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   // STEP 4.5: ORDER TICKET (curated basket confirmation)
   // ────────────────────────────────────────────────────────────
-
-  // ── Build execution plan from selected curated basket ──
-  const executionPlan = useMemo(() => {
-    if (!selectedCurated || !budget) return null;
-    const bNum = parseInt(budget) || 0;
-    const effectiveBudget = bNum * 0.95;
-    return selectedCurated.stocks.map(stock => {
-      const dollarAmount = (stock.allocation / 100) * effectiveBudget;
-      const price = stock.price || 0;
-      const shares = price > 0 ? dollarAmount / price : 0;
-      return {
-        symbol: stock.symbol,
-        name: stock.name,
-        allocationPct: stock.allocation,
-        price,
-        shares: Math.round(shares * 10000) / 10000,
-        totalCost: Math.round(dollarAmount * 100) / 100,
-      };
-    }).filter(p => p.shares > 0);
-  }, [selectedCurated, budget]);
-
-  const orderEstTotal = executionPlan?.reduce((sum, p) => sum + p.totalCost, 0) || 0;
-  const orderEstBuffer = (parseInt(budget) || 0) - orderEstTotal;
 
   // ── Confirm and execute basket order ──
   async function handleConfirmOrder() {
