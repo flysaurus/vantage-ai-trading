@@ -79,6 +79,8 @@ async function fetchCandles(
     const res = await fetch(url, { next: { revalidate: 60 } });
     const data = await res.json();
 
+    console.log(`[Chart] Finnhub ${symbol}: s=${data.s} t=${data.t?.length || 0} c=${data.c?.length || 0} r=${resolution}`, data.error ? `err=${data.error}` : '');
+
     if (data.s !== 'ok' || !data.t || !data.c) return null;
 
     const map: Record<number, number> = {};
@@ -100,6 +102,8 @@ export async function POST(req: NextRequest) {
     const positions: PositionInput[] = body.positions || [];
     const cashBalance: number = body.cashBalance ?? 0;
     const range: Range = body.range || '1M';
+
+    console.log(`[Chart] Request: ${positions.length} positions, range=${range}, cash=${cashBalance}`);
 
     if (positions.length === 0) {
       return NextResponse.json({ points: [] });
