@@ -8,11 +8,11 @@ interface QuickActionsProps {
 
 const ACTIONS = [
   {
-    icon: '🧺',
-    label: 'Build Basket',
-    mode: 'basket',
-    message: '',
-    isBasket: true,
+    icon: '💡',
+    label: 'Strategy Ideas',
+    mode: 'strategy_ideas',
+    message:
+      'Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas tailored to my holdings and risk profile.',
   },
   {
     icon: '📡',
@@ -46,13 +46,7 @@ export default function QuickActions({
           <button
             key={action.mode}
             disabled={disabled}
-            onClick={() => {
-              if (action.isBasket) {
-                onOpenBasket();
-              } else {
-                onAction(action.mode, action.message);
-              }
-            }}
+            onClick={() => onAction(action.mode, action.message)}
             className="flex items-center justify-center gap-2 bg-slate-800 border border-slate-700 hover:border-cyan-500/40 hover:bg-slate-700/80 active:scale-95 active:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl py-2.5 px-4 text-slate-300 text-sm font-medium w-full transition-all duration-150 select-none"
           >
             <span className="text-base leading-none">{action.icon}</span>

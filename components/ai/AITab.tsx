@@ -1832,50 +1832,64 @@ Give me a market pulse check — how are the major indexes performing today, wha
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '8px',
-            padding: '8px 16px',
+            padding: '0 12px',
+            marginBottom: '8px',
           }}
         >
           {[
-            { icon: '💡', label: 'Strategy Ideas', action: 'strategy' },
-            { icon: '📡', label: 'Market Pulse', action: 'pulse' },
-            { icon: '📋', label: 'Tax Check', action: 'tax' },
-            { icon: '⚡', label: 'Alerts', action: 'alerts' },
-          ].map((btn) => (
-            <div
-              key={btn.label}
-              onClick={(e) => {
-                if (btn.action === 'strategy') {
-                  sendMessage(
-                    'Based on my portfolio and current market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'
-                  );
-                } else if (btn.action === 'pulse') {
-                  handleMarketPulse(e);
-                } else if (btn.action === 'tax') {
-                  sendToChat(
-                    'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',
-                    e
-                  );
-                } else if (btn.action === 'alerts') {
-                  setToast('💬 Vantage AI is responding...');
-                  sendMessage('Scan my portfolio for urgent alerts', 'alerts');
-                  wasAtBottomRef.current = true;
-                  scrollToBottom(true);
-                }
-              }}
+            {
+              icon: '💡',
+              label: 'Strategy Ideas',
+              onClick: () => {
+                const msg = 'Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas tailored to my holdings and risk profile.';
+                sendMessage(msg);
+                setToast('💬 Vantage AI is responding...');
+                wasAtBottomRef.current = true;
+                scrollToBottom(true);
+              },
+            },
+            {
+              icon: '📡',
+              label: 'Market Pulse',
+              onClick: (e: React.MouseEvent) => handleMarketPulse(e),
+            },
+            {
+              icon: '📋',
+              label: 'Tax Check',
+              onClick: (e: React.MouseEvent) => sendToChat(
+                'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',
+                e
+              ),
+            },
+            {
+              icon: '⚡',
+              label: 'Alerts',
+              onClick: () => {
+                setToast('💬 Vantage AI is responding...');
+                sendMessage('Scan my portfolio for urgent alerts', 'alerts');
+                wasAtBottomRef.current = true;
+                scrollToBottom(true);
+              },
+            },
+          ].map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
               style={{
                 background: '#1a2235',
                 border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '10px',
-                padding: '10px 12px',
-                textAlign: 'center',
+                borderRadius: '12px',
+                padding: '14px 12px',
                 cursor: 'pointer',
-                fontSize: '13px',
-                color: '#ffffff',
-                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                textAlign: 'left',
               }}
             >
-              {btn.icon} {btn.label}
-            </div>
+              <span style={{ fontSize: '18px' }}>{action.icon}</span>
+              <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '500' }}>{action.label}</span>
+            </button>
           ))}
         </div>
 

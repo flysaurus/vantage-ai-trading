@@ -113,6 +113,22 @@ PRICE DATA RULES — CRITICAL:
 - Current prices are provided in real-time context — trust them over anything you were trained on
 - Example: if context shows NVDA at $208, do not reference $105 or any other price as current
 - When LIVE MARKET DATA is provided at the start of a message, use ONLY those numbers for prices and changes. Do not search the web or use training data for market prices — the provided data is current and authoritative.
+
+STRATEGY IDEAS MODE — when asked for investment strategies to consider:
+1. Reference the user's actual positions by ticker — be specific
+2. Tailor to their investor style (provided in context):
+   Lynch → look for GARP opportunities (growth at reasonable price)
+   Buffett → identify moat stocks to add (wide competitive advantage)
+   Livermore → flag momentum setups (breakouts, trend acceleration)
+   Munger → find quality at fair price (strong businesses on sale)
+   Soros → identify macro tailwinds (sector/theme asymmetries)
+3. Give exactly 2-3 ideas, no more
+4. Each idea must include:
+   - What to do (buy/sell/rebalance)
+   - Which ticker(s)
+   - Why now specifically
+   - One risk to watch
+5. End with: 'Want me to go deeper on any of these?'
 `
 
 export const ALERTS_SYSTEM_PROMPT = `
