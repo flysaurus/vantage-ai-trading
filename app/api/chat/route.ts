@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
 import type { SystemBlock } from '@/lib/ai-provider'
+import { buildUserProfileContext } from '@/lib/ai/userProfile'
+import type { UserProfile } from '@/lib/ai/userProfile'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -91,7 +93,16 @@ Note: search results are from today.
 // ─── POST Handler ───
 export async function POST(req: Request) {
   try {
-    const { messages, portfolioContext, mode } = await req.json()
+    const body = await req.json()
+    const { messages, portfolioContext, mode } = body
+
+    // Build user profile context from request
+    const profile: UserProfile = {
+      investorStyle: body.investorStyle || 'Lynch',
+      riskTolerance: body.riskTolerance || 'Moderate',
+      name: body.name || 'M',
+    }
+    const profileContext = buildUserProfileContext(profile)
 
     // Finance guard — check last user message
     const lastMessage: string = messages[messages.length - 1]?.content || ''
@@ -126,7 +137,7 @@ export async function POST(req: Request) {
       },
       {
         type: 'text' as const,
-        text: [portfolioContext || '', searchContext].filter(Boolean).join('\n\n'),
+        text: [profileContext, portfolioContext || '', searchContext].filter(Boolean).join('\n\n'),
       },
     ];
 

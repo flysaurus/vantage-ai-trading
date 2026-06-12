@@ -10,29 +10,48 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
+import { buildUserProfileContext } from '@/lib/ai/userProfile';
+import type { UserProfile } from '@/lib/ai/userProfile';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
   type: 'text',
   text: `You are Vantage AI portfolio health analyst.
-Analyze the portfolio data provided.
+Generate a Weekly Portfolio Snapshot framed for the user's specific
+investor style and risk tolerance (provided in the message).
 
-Respond in markdown with these sections:
-## OVERALL HEALTH
-Include "OVERALL HEALTH: X/10" on its own line.
-[Brief explanation of the health score]
+Structure your analysis as:
 
-## RISKS
-Include "OVERALL RISK: LOW|MEDIUM|HIGH" on its own line.
-[Brief analysis of risk factors]
+PORTFOLIO HEALTH (score X/10):
+Score based on:
+- Diversification (sector spread)
+- Position sizing (no single position >25%)
+- Thesis integrity (are all positions still valid?)
+- Recent momentum (60-day trend)
+Never score above 7 when any position is down >30%
+Never score above 5 when any position is down >40%
 
-## OPPORTUNITIES
-[List each as a bullet point "• description" — count these]
+RISK LEVEL (LOW/MEDIUM/HIGH):
+LOW: no sector >40%, no position down >20%
+MEDIUM: sector 40-60% OR position down 20-40%
+HIGH: sector >60% OR position down >40%
 
-## SUMMARY
-[1 sentence overall assessment]
+OPPORTUNITIES (list 2-3):
+Each opportunity must include:
+- What the opportunity is
+- Why it fits the investor's style
+- A specific price level to act at
 
-Be specific. Use real numbers provided. Never invent. Be honest if data is incomplete.`,
+RISKS (list 2-3):
+Each risk must include:
+- What the risk is
+- Which position(s) it affects
+- Recommended action
+
+Be specific. Use actual ticker symbols and
+dollar amounts from the portfolio context.
+Never be generic. Frame all analysis through
+the investor's chosen style lens.`,
   cache_control: { type: 'ephemeral' },
 };
 
@@ -171,6 +190,20 @@ export async function GET(req: NextRequest) {
       // use defaults
     }
 
+    // Build user profile for AI injection
+    const profileName = investorStyle.charAt(0).toUpperCase() + investorStyle.slice(1);
+    const riskLabel = riskTolerance === 'high' ? 'Aggressive' : riskTolerance === 'low' ? 'Conservative' : 'Moderate';
+    const styleMap: Record<string, UserProfile['investorStyle']> = {
+      buffett: 'Buffett', lynch: 'Lynch', livermore: 'Livermore',
+      munger: 'Munger', soros: 'Soros', growth: 'Lynch', dividend: 'Buffett',
+    };
+    const profile: UserProfile = {
+      investorStyle: styleMap[investorStyle] || 'Lynch',
+      riskTolerance: riskLabel,
+      name: profileName,
+    };
+    const profileContext = buildUserProfileContext(profile);
+
     // Build position data block
     const positionLines = positions.map((p: any) => {
       const q = quotes[p.symbol] || {};
@@ -195,6 +228,7 @@ export async function GET(req: NextRequest) {
       'PORTFOLIO:',
       ...positionLines,
       '',
+      profileContext,
     ].join('\n');
 
     // Build prompt
@@ -206,8 +240,9 @@ export async function GET(req: NextRequest) {
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
 
-    // Call AI with cached static analysis instructions
+    // Call AI with cached static analysis instructions + explicit model
     const aiResponse = await callChatAI({
+      model: 'claude-sonnet-4-6',
       messages: [
         {
           role: 'user',

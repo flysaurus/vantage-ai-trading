@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildUserProfileContext } from '@/lib/ai/userProfile'
+import type { UserProfile } from '@/lib/ai/userProfile'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -11,15 +13,31 @@ const client = new Anthropic({
 const GREETING_SYSTEM_PROMPT = `You are Vantage AI. Generate a personalized
 2-sentence greeting using the user's actual portfolio
 data. Reference a specific ticker, today's P&L, or
-an upcoming event. Be direct and specific. Never
-mention Claude or Anthropic. No markdown.`;
+an upcoming event. Match the user's investor style
+and risk tolerance in tone. Be direct and specific.
+Never mention Claude or Anthropic. No markdown.`;
 
 export async function POST(req: NextRequest) {
   try {
-    const { portfolioContext } = await req.json()
+    const body = await req.json()
+    const { portfolioContext } = body
+
+    // Build user profile context from request body
+    const profile: UserProfile = {
+      investorStyle: body.investorStyle || 'Lynch',
+      riskTolerance: body.riskTolerance || 'Moderate',
+      name: body.name || 'M',
+    }
+    const profileContext = buildUserProfileContext(profile)
+
+    console.log('[Greeting] key:', !!process.env.ANTHROPIC_API_KEY)
+    console.log('[Greeting] model: claude-haiku-4-5-20251001')
+    console.log('[Greeting] profile:', JSON.stringify({ style: profile.investorStyle, risk: profile.riskTolerance }))
 
     const userMessage = `Generate my greeting. Portfolio context:
-${portfolioContext || 'No portfolio data available'}`
+${portfolioContext || 'No portfolio data available'}
+
+${profileContext}`
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -52,7 +70,9 @@ ${portfolioContext || 'No portfolio data available'}`
 
     return NextResponse.json({ greeting: text })
   } catch (error: any) {
-    console.error('Greeting generation error:', error)
+    console.error('[Greeting] Error:', error?.message || error)
+    console.error('[Greeting] Status:', error?.status || 'unknown')
+    console.error('[Greeting] Full:', JSON.stringify(error, Object.getOwnPropertyNames(error)))
     return NextResponse.json(
       { error: error?.message || 'Failed to generate greeting' },
       { status: 500 }
