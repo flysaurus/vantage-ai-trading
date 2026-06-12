@@ -92,6 +92,63 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     setTimeout(() => setRemoveFlash(false), 1500);
   }, [basketData, budget]);
 
+  // ── State for Add Stock input ──
+  const [addStockSymbol, setAddStockSymbol] = useState('');
+  const [showAddStock, setShowAddStock] = useState(false);
+  const [isAddingStock, setIsAddingStock] = useState(false);
+
+  // ── Add stock to existing basket ──
+  const addStock = useCallback(async (symbol: string) => {
+    if (!basketData || !symbol.trim() || basketData.stocks.length >= 8) return;
+    const s = symbol.trim().toUpperCase();
+    if (basketData.stocks.find(st => st.symbol === s)) return; // already in basket
+    setIsAddingStock(true);
+    try {
+      const qRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(s)}`);
+      const qData = await qRes.json();
+      const price = qData?.c || 0;
+      if (price <= 0) {
+        setError(`Could not fetch price for ${s}`);
+        return;
+      }
+      const bNum = parseInt(budget) || 10000;
+      // Give new stock equal split, redistribute all
+      const newCount = basketData.stocks.length + 1;
+      const allocPer = +(100 / newCount).toFixed(1);
+      const updated = basketData.stocks.map(st => {
+        const dollarAmount = (allocPer / 100) * bNum;
+        const shares = st.price && st.price > 0 ? +(dollarAmount / st.price).toFixed(2) : 0;
+        return { ...st, allocation: allocPer, dollarAmount, shares };
+      });
+      const newDollar = (allocPer / 100) * bNum;
+      const newShares = +(newDollar / price).toFixed(2);
+      updated.push({
+        symbol: s,
+        name: s, // will be replaced by profile lookup below
+        allocation: allocPer,
+        rationale: 'Manually added',
+        price,
+        dollarAmount: newDollar,
+        shares: newShares,
+      });
+      // Normalize to 100
+      const total = updated.reduce((sum, st) => sum + st.allocation, 0);
+      if (total !== 100) {
+        updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
+        updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
+        updated[0].shares = updated[0].price && updated[0].price > 0
+          ? +(updated[0].dollarAmount / updated[0].price!).toFixed(2) : 0;
+      }
+      setBasketData({ ...basketData, stocks: updated });
+      setAddStockSymbol('');
+      setShowAddStock(false);
+    } catch (err: any) {
+      setError(err?.message || `Failed to add ${s}`);
+    } finally {
+      setIsAddingStock(false);
+    }
+  }, [basketData, budget]);
+
   if (!isOpen) return null;
 
   const themeData = THEMES.find(t => t.key === selectedTheme);
@@ -180,63 +237,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     onClose();
     onBasketGenerated(msg, basketData);
   }
-
-  // ── State for Add Stock input ──
-  const [addStockSymbol, setAddStockSymbol] = useState('');
-  const [showAddStock, setShowAddStock] = useState(false);
-  const [isAddingStock, setIsAddingStock] = useState(false);
-
-  // ── Add stock to existing basket ──
-  const addStock = useCallback(async (symbol: string) => {
-    if (!basketData || !symbol.trim() || basketData.stocks.length >= 8) return;
-    const s = symbol.trim().toUpperCase();
-    if (basketData.stocks.find(st => st.symbol === s)) return; // already in basket
-    setIsAddingStock(true);
-    try {
-      const qRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(s)}`);
-      const qData = await qRes.json();
-      const price = qData?.c || 0;
-      if (price <= 0) {
-        setError(`Could not fetch price for ${s}`);
-        return;
-      }
-      const bNum = parseInt(budget) || 10000;
-      // Give new stock equal split, redistribute all
-      const newCount = basketData.stocks.length + 1;
-      const allocPer = +(100 / newCount).toFixed(1);
-      const updated = basketData.stocks.map(st => {
-        const dollarAmount = (allocPer / 100) * bNum;
-        const shares = st.price && st.price > 0 ? +(dollarAmount / st.price).toFixed(2) : 0;
-        return { ...st, allocation: allocPer, dollarAmount, shares };
-      });
-      const newDollar = (allocPer / 100) * bNum;
-      const newShares = +(newDollar / price).toFixed(2);
-      updated.push({
-        symbol: s,
-        name: s, // will be replaced by profile lookup below
-        allocation: allocPer,
-        rationale: 'Manually added',
-        price,
-        dollarAmount: newDollar,
-        shares: newShares,
-      });
-      // Normalize to 100
-      const total = updated.reduce((sum, st) => sum + st.allocation, 0);
-      if (total !== 100) {
-        updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
-        updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
-        updated[0].shares = updated[0].price && updated[0].price > 0
-          ? +(updated[0].dollarAmount / updated[0].price!).toFixed(2) : 0;
-      }
-      setBasketData({ ...basketData, stocks: updated });
-      setAddStockSymbol('');
-      setShowAddStock(false);
-    } catch (err: any) {
-      setError(err?.message || `Failed to add ${s}`);
-    } finally {
-      setIsAddingStock(false);
-    }
-  }, [basketData, budget]);
 
   // ── Header ──
   const header = (
