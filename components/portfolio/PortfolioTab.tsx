@@ -7,6 +7,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import DemoBanner from '@/components/shared/DemoBanner';
 import type { Position, AccountSummary } from '@/types';
+import type { Basket } from '@/context/PortfolioContext';
 import SellModal from './SellModal';
 import PortfolioChart from './PortfolioChart';
 import MarketOverview from '../shared/MarketOverview';
@@ -125,6 +126,7 @@ function PositionCard({
   onToggleExpand,
   onBuy,
   showCheckbox = false,
+  baskets = [],
 }: {
   pos: Position;
   isSelected: boolean;
@@ -133,6 +135,7 @@ function PositionCard({
   onToggleExpand: () => void;
   onBuy?: () => void;
   showCheckbox?: boolean;
+  baskets?: Basket[];
 }) {
   const borderLColor =
     pos.dayChange > 0 ? '#10b981' : pos.dayChange < 0 ? '#ef4444' : '#475569';
@@ -204,6 +207,11 @@ function PositionCard({
               )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">{pos.qty} shares</p>
+            {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
+              <span key={b.id} style={{ fontSize: '10px', color: '#22d3ee', opacity: 0.7 }}>
+                Also in: {b.emoji} {b.name}
+              </span>
+            ))}
           </div>
 
           {/* RIGHT — price + P&amp;L */}
@@ -304,6 +312,15 @@ function PositionCard({
                   ${(pos.avgCost * pos.qty).toLocaleString('en-US', DOLLAR_FMT)}
                 </p>
               </div>
+              {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).length > 0 && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
+                    <span key={b.id} style={{ fontSize: '11px', color: '#22d3ee', opacity: 0.8 }}>
+                      {b.emoji} Also in: {b.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 52-Week Range */}
@@ -507,7 +524,7 @@ function BuyModal({
 
 export function PortfolioTab() {
   const { account, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, executeTrade } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, executeTrade, baskets, sellBasketPositions } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -517,6 +534,11 @@ export function PortfolioTab() {
     useState<{symbol:string, qty:number, currentPrice:number}[] | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [showBuySymbol, setShowBuySymbol] = useState<Position | null>(null);
+
+  // ── Basket state ──
+  const [expandedBasket, setExpandedBasket] = useState<string | null>(null);
+  const [basketSellMode, setBasketSellMode] = useState<Record<string, boolean>>({});
+  const [basketSelected, setBasketSelected] = useState<Record<string, boolean>>({});
 
   // ── account data: broker if connected, shared context otherwise ──
   const displayAccount: AccountSummary | null = isConnected
@@ -576,6 +598,130 @@ export function PortfolioTab() {
 
       {/* 2. Account Card */}
       <AccountCard account={displayAccount} isConnected={isConnected} />
+
+      {/* 2.5: Basket Section */}
+      {baskets.length > 0 && (
+        <div style={{ marginTop: '20px', paddingLeft: '16px', paddingRight: '16px' }}>
+          <span className="text-xs text-slate-500 uppercase tracking-wider" style={{ marginBottom: '8px', display: 'block' }}>
+            Baskets
+          </span>
+          {baskets.map(basket => {
+            const isExpanded = expandedBasket === basket.id;
+            const isSellMode = basketSellMode[basket.id];
+            const selCount = Object.values(basketSelected).filter(Boolean).length;
+            const allSel = basket.positions.filter(p => p.status === 'active').every(p => basketSelected[p.symbol]);
+
+            return (
+              <div key={basket.id} style={{
+                background: '#1a2235', border: '1px solid rgba(34,211,238,0.15)',
+                borderRadius: '12px', marginBottom: '8px', overflow: 'hidden',
+              }}>
+                {/* Header row */}
+                <div onClick={() => { setExpandedBasket(isExpanded ? null : basket.id); if (isExpanded) { setBasketSellMode(prev => ({ ...prev, [basket.id]: false })); setBasketSelected({}); } }} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '14px 16px', cursor: 'pointer',
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '18px' }}>{basket.emoji}</span>
+                      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>{basket.name}</span>
+                      {basket.status === 'partial' && (
+                        <span style={{ fontSize: '10px', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '1px 6px' }}>PARTIAL</span>
+                      )}
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '2px' }}>
+                      {basket.activeCount} of {basket.positionCount} positions
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '16px' }}>
+                      ${basket.marketValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </div>
+                    <div style={{ color: basket.totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px' }}>
+                      {basket.totalPnL >= 0 ? '+' : ''}${basket.totalPnL.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      {' '}({basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded view */}
+                {isExpanded && (
+                  <>
+                    {/* Sell mode toggle */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span style={{ color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{basket.activeCount} positions</span>
+                      <button onClick={(e) => { e.stopPropagation(); setBasketSellMode(prev => ({ ...prev, [basket.id]: !isSellMode })); setBasketSelected({}); }} style={{
+                        color: '#ef4444', background: 'none', border: '1px solid rgba(239,68,68,0.3)',
+                        borderRadius: '6px', padding: '3px 10px', fontSize: '12px', cursor: 'pointer',
+                      }}>{isSellMode ? 'Cancel' : 'Sell Positions'}</button>
+                    </div>
+
+                    {/* Position rows */}
+                    {basket.positions.filter(p => p.status === 'active').map(pos => (
+                      <div key={pos.symbol} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid rgba(255,255,255,0.04)', gap: '10px' }}>
+                        {isSellMode && (
+                          <input type="checkbox"
+                            checked={basketSelected[pos.symbol] || false}
+                            onChange={() => { setBasketSelected(prev => ({ ...prev, [pos.symbol]: !prev[pos.symbol] })); }}
+                            style={{ accentColor: '#22d3ee', width: '18px', height: '18px', flexShrink: 0 }}
+                          />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>{pos.symbol}</span>
+                            <span style={{ color: '#ffffff', fontWeight: '500' }}>${(pos.marketValue || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                            <span style={{ color: '#6b7280', fontSize: '11px' }}>{pos.shares.toFixed(4)}sh · {pos.allocationPct}%</span>
+                            <span style={{ color: (pos.totalPnL || 0) >= 0 ? '#10b981' : '#ef4444', fontSize: '11px' }}>
+                              {(pos.totalPnL || 0) >= 0 ? '+' : ''}${(pos.totalPnL || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              {' '}({(pos.totalPnLPct || 0).toFixed(1)}%)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Sell mode footer */}
+                    {isSellMode && (
+                      <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af', fontSize: '12px', cursor: 'pointer' }}>
+                          <input type="checkbox"
+                            checked={allSel}
+                            onChange={() => {
+                              const toggle: Record<string, boolean> = {};
+                              const activeSymbols = basket.positions.filter(p => p.status === 'active').map(p => p.symbol);
+                              activeSymbols.forEach(s => { toggle[s] = !allSel; });
+                              setBasketSelected(prev => ({ ...prev, ...toggle }));
+                            }}
+                            style={{ accentColor: '#22d3ee' }}
+                          />
+                          Select all
+                        </label>
+                        <button onClick={async () => {
+                          const toSell = Object.entries(basketSelected).filter(([, v]) => v).map(([k]) => k);
+                          if (!toSell.length) return;
+                          const result = await sellBasketPositions(basket.id, toSell);
+                          if (result.success) {
+                            setBasketSellMode(prev => ({ ...prev, [basket.id]: false }));
+                            setBasketSelected({});
+                          }
+                        }} disabled={selCount === 0} style={{
+                          flex: 1, padding: '10px',
+                          background: selCount > 0 ? '#ef4444' : 'rgba(239,68,68,0.2)',
+                          color: '#ffffff', border: 'none', borderRadius: '8px',
+                          fontSize: '14px', fontWeight: '600',
+                          cursor: selCount > 0 ? 'pointer' : 'not-allowed',
+                        }}>Sell {selCount > 0 ? `${selCount} position${selCount > 1 ? 's' : ''}` : 'Selected'}</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* 3. Column header */}
       {positions.length > 0 && (
@@ -683,6 +829,7 @@ export function PortfolioTab() {
           onToggleExpand={() => toggleExpand(pos.symbol)}
           onBuy={() => setShowBuySymbol(pos)}
           showCheckbox={selectMode}
+          baskets={baskets}
         />
       ))}
       <div style={{ height: '40px' }} />

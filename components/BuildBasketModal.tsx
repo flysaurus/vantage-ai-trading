@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompassIcon from '@/components/CompassIcon';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useLivePortfolio } from '@/context/PortfolioContext';
 
 // ── 5-step flow: curated → custom_theme → budget → generating → review ──
-type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review';
+// Plus order_ticket after review for curated baskets
+type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review' | 'order_ticket';
 
 interface BasketStock {
   symbol: string;
@@ -44,6 +46,8 @@ interface Props {
 
 export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }: Props) {
   const { user } = useAuth();
+  const { account, executeBasketTrade } = useLivePortfolio();
+  const cashBalance = account?.cash || 0;
 
   // ── Step state ──
   const [step, setStep] = useState<Step>('curated');
@@ -72,6 +76,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [addStockSymbol, setAddStockSymbol] = useState('');
   const [showAddStock, setShowAddStock] = useState(false);
   const [isAddingStock, setIsAddingStock] = useState(false);
+
+  // ── Order ticket state ──
+  const [executing, setExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<{ success: boolean; executed: number; failed: number; totalSpent: number; error?: string } | null>(null);
 
   // ── Fetch curated baskets on open ──
   useEffect(() => {
@@ -184,6 +192,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const goBack = () => {
     if (step === 'custom_theme') setStep('curated');
     else if (step === 'budget') setStep(selectedCurated ? 'curated' : 'custom_theme');
+    else if (step === 'order_ticket') setStep('budget');
     else if (step === 'review') setStep('budget');
   };
 
@@ -302,7 +311,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '16px' }}>
         Build Basket {step === 'curated' ? '' : (
           <span style={{ color: '#22d3ee', fontSize: '12px', fontWeight: '400' }}>
-            {step === 'custom_theme' ? 'Custom →' : step === 'budget' ? 'Budget →' : step === 'generating' ? 'Generating →' : 'Review →'}
+            {step === 'custom_theme' ? 'Custom →' : step === 'budget' ? 'Budget →' : step === 'generating' ? 'Generating →' : step === 'order_ticket' ? 'Confirm →' : 'Review →'}
           </span>
         )}
       </span>
@@ -645,7 +654,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
       <div style={{ padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px', flexShrink: 0 }}>
         <button
-          onClick={() => selectedCurated ? addCuratedToPortfolio() : generateBasket()}
+          onClick={() => selectedCurated ? setStep('order_ticket') : generateBasket()}
           disabled={!budget || parseInt(budget) <= 0}
           style={{
             width: '100%',
@@ -656,7 +665,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             cursor: budget && parseInt(budget) > 0 ? 'pointer' : 'not-allowed',
           }}
         >
-          {selectedCurated ? 'Add to Portfolio' : 'Generate Basket →'}
+          {selectedCurated ? 'Review Order →' : 'Generate Basket →'}
         </button>
       </div>
     </>
@@ -833,6 +842,182 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     </>
   );
 
+  // ────────────────────────────────────────────────────────────
+  // STEP 4.5: ORDER TICKET (curated basket confirmation)
+  // ────────────────────────────────────────────────────────────
+
+  // ── Build execution plan from selected curated basket ──
+  const executionPlan = useMemo(() => {
+    if (!selectedCurated || !budget) return null;
+    const bNum = parseInt(budget) || 0;
+    const effectiveBudget = bNum * 0.95;
+    return selectedCurated.stocks.map(stock => {
+      const dollarAmount = (stock.allocation / 100) * effectiveBudget;
+      const price = stock.price || 0;
+      const shares = price > 0 ? dollarAmount / price : 0;
+      return {
+        symbol: stock.symbol,
+        name: stock.name,
+        allocationPct: stock.allocation,
+        price,
+        shares: Math.round(shares * 10000) / 10000,
+        totalCost: Math.round(dollarAmount * 100) / 100,
+      };
+    }).filter(p => p.shares > 0);
+  }, [selectedCurated, budget]);
+
+  const orderEstTotal = executionPlan?.reduce((sum, p) => sum + p.totalCost, 0) || 0;
+  const orderEstBuffer = (parseInt(budget) || 0) - orderEstTotal;
+
+  // ── Confirm and execute basket order ──
+  async function handleConfirmOrder() {
+    if (!selectedCurated) return;
+    setExecuting(true);
+    setExecutionResult(null);
+    const bNum = parseInt(budget) || 0;
+    const result = await executeBasketTrade(
+      selectedCurated.id,
+      selectedCurated.name,
+      selectedCurated.emoji,
+      selectedCurated.stocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
+      bNum,
+    );
+    setExecutionResult(result);
+    setExecuting(false);
+    if (result.success) {
+      setTimeout(() => {
+        setExecutionResult(null);
+        setStep('curated');
+        setSelectedCurated(null);
+        setBudget('');
+        onClose();
+        onBasketGenerated(`🧺 Bought "${selectedCurated.name}" — ${result.executed} of ${selectedCurated.stocks.length} stocks filled for $${result.totalSpent.toFixed(2)}`, result);
+      }, 2500);
+    }
+  }
+
+  const orderTicketStep = (
+    <>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        {executionResult ? (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>{executionResult.success ? '✅' : '⚠️'}</div>
+            <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', marginBottom: '8px' }}>
+              {executionResult.success 
+                ? (executionResult.failed > 0 ? 'Partial Execution' : 'Order Complete!')
+                : 'Order Failed'}
+            </p>
+            {executionResult.success && (
+              <>
+                <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+                  {executionResult.executed} positions filled · ${executionResult.totalSpent.toFixed(2)} spent
+                </p>
+                {executionResult.failed > 0 && (
+                  <p style={{ fontSize: '12px', color: '#f59e0b', marginBottom: '16px' }}>
+                    {executionResult.failed} position{executionResult.failed > 1 ? 's' : ''} could not be filled
+                  </p>
+                )}
+              </>
+            )}
+            {!executionResult.success && (
+              <p style={{ fontSize: '13px', color: '#ef4444', marginBottom: '16px' }}>
+                {executionResult.error || 'Unknown error'}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '16px' }}>
+              {executionResult.success && (
+                <button onClick={() => onClose()} style={{
+                  background: '#22d3ee', border: 'none', borderRadius: '10px',
+                  color: '#000', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
+                }}>View Portfolio</button>
+              )}
+              {!executionResult.success && (
+                <button onClick={handleConfirmOrder} style={{
+                  background: '#22d3ee', border: 'none', borderRadius: '10px',
+                  color: '#000', fontSize: '14px', fontWeight: '600', padding: '12px 24px', cursor: 'pointer',
+                }}>Try Again</button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            {selectedCurated && (
+              <>
+                <div style={{ background: '#1a2235', borderRadius: '8px', padding: '14px 16px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>{selectedCurated.emoji}</span>
+                    <span style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>{selectedCurated.name}</span>
+                    <span style={{ fontSize: '10px', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.3)', borderRadius: '4px', padding: '2px 8px', marginLeft: 'auto' }}>MARKET</span>
+                  </div>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{selectedCurated.stocks.length} positions · Market order</p>
+                </div>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>Budget</span>
+                    <span style={{ fontSize: '12px', color: '#ffffff' }}>${parseInt(budget || '0').toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>Effective (5% buffer)</span>
+                    <span style={{ fontSize: '12px', color: '#22d3ee' }}>${(parseInt(budget || '0') * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>Est. buffer</span>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>~${orderEstBuffer.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+                {executionPlan && executionPlan.length > 0 && (
+                  <>
+                    <p style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Execution Plan</p>
+                    {executionPlan.map((p, i) => (
+                      <div key={p.symbol} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                        <div>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>{p.symbol}</span>
+                          <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>{p.name}</span>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{p.shares.toFixed(4)}sh @ ${(p.price || 0).toFixed(2)}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{p.allocationPct}%</span>
+                          <div style={{ fontSize: '12px', color: '#ffffff', fontWeight: '500' }}>${p.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>Est. Total</span>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>${orderEstTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '8px', padding: '10px 12px', marginTop: '12px' }}>
+                  <p style={{ fontSize: '11px', color: '#f59e0b', margin: 0 }}>⚠️ Market orders execute at live prices. Final amounts may vary slightly.</p>
+                </div>
+                <p style={{ fontSize: '11px', color: '#4b5563', textAlign: 'center', marginTop: '16px' }}>Orders execute simultaneously at market price. Demo trades use live Finnhub prices.</p>
+              </>
+            )}
+          </>
+        )}
+      </div>
+      {!executionResult && selectedCurated && (
+        <div style={{ padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button onClick={handleConfirmOrder}
+            disabled={executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance}
+            style={{
+              width: '100%',
+              background: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.2)' : '#22d3ee',
+              border: 'none', borderRadius: '10px',
+              color: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.4)' : '#000',
+              fontSize: '14px', fontWeight: '600', padding: '14px 0',
+              cursor: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'not-allowed' : 'pointer',
+            }}
+          >{executing ? 'Executing...' : `Confirm & Buy →`}</button>
+          <button onClick={() => { setStep('budget'); setExecutionResult(null); }} style={{
+            width: '100%', background: 'transparent', border: '1px solid #ef4444', borderRadius: '10px',
+            color: '#ef4444', fontSize: '14px', fontWeight: '500', padding: '14px 0', cursor: 'pointer',
+          }}>Cancel Basket</button>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: '#0a0f1e',
@@ -844,6 +1029,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       {step === 'budget' && budgetStep}
       {step === 'generating' && generatingStep}
       {step === 'review' && reviewStep}
+      {step === 'order_ticket' && orderTicketStep}
 
       <style>{`
         @keyframes pulse {

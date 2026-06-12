@@ -28,52 +28,51 @@ async function fetchStockPerformance(symbol: string): Promise<{
   '3m': number; ytd: number; '1y': number;
   price: number; best_timeframe: string;
 }> {
-  const now = Math.floor(Date.now() / 1000);
-  const threeMonthsAgo = now - 90 * 86400;
-  const oneYearAgo = now - 365 * 86400;
-  const janFirst = Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000);
+  try {
+    const [quoteRes, metricRes] = await Promise.all([
+      fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`,
+        { signal: AbortSignal.timeout(5000) },
+      ).then(r => r.ok ? (r.json() as any) : { c: 0 }).catch(() => ({ c: 0 })),
+      fetch(
+        `https://finnhub.io/api/v1/stock/metric?symbol=${symbol}&metric=all&token=${process.env.FINNHUB_API_KEY}`,
+        { signal: AbortSignal.timeout(5000) },
+      ).then(r => r.ok ? (r.json() as any) : { metric: {} }).catch(() => ({ metric: {} })),
+    ]);
 
-  async function getClose(from: number): Promise<number> {
-    try {
-      const res = await fetch(
-        `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${from + 7 * 86400}&token=${process.env.FINNHUB_API_KEY}`,
-        { signal: AbortSignal.timeout(6000) },
-      );
-      const data = await res.json();
-      return data.c?.[0] || 0;
-    } catch {
-      return 0;
-    }
+    const currentPrice = quoteRes.c || 0;
+    const m = metricRes.metric || {};
+
+    // Use metric data if available, else fallback to 0
+    const threeMonthReturn = m['13WeekPriceReturnDaily'] ?? 0;
+    const ytdReturn = m.ytdPriceReturnDaily ?? m.ytdReturnDaily ?? 0;
+    const oneYearReturn = m['52WeekPriceReturnDaily'] ?? 0;
+    const high52 = m['52WeekHigh'] || currentPrice;
+    const low52 = m['52WeekLow'] || currentPrice;
+    const high52return = low52 > 0 ? ((currentPrice - low52) / low52) * 100 : 0;
+
+    // Use the best available metric for 1y, fallback to 52-week range return
+    const ret1y = oneYearReturn !== 0 ? oneYearReturn : high52return;
+    const retYtd = ytdReturn;
+    const ret3m = threeMonthReturn;
+
+    const performances = {
+      '3m': Math.round(ret3m * 10) / 10,
+      'ytd': Math.round(retYtd * 10) / 10,
+      '1y': Math.round(ret1y * 10) / 10,
+    };
+
+    const best = (Object.entries(performances) as [string, number][])
+      .sort(([, a], [, b]) => b - a)[0][0];
+
+    return {
+      ...performances,
+      price: currentPrice,
+      best_timeframe: best,
+    };
+  } catch {
+    return { '3m': 0, ytd: 0, '1y': 0, price: 0, best_timeframe: '1y' };
   }
-
-  const [quote, price3m, priceYtd, price1y] = await Promise.all([
-    fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`,
-      { signal: AbortSignal.timeout(5000) },
-    ).then(r => r.ok ? (r.json() as any) : { c: 0 }).catch(() => ({ c: 0 })),
-    getClose(threeMonthsAgo),
-    getClose(janFirst),
-    getClose(oneYearAgo),
-  ]);
-
-  const currentPrice = quote.c || 0;
-  const ret3m = price3m > 0 ? ((currentPrice - price3m) / price3m) * 100 : 0;
-  const retYtd = priceYtd > 0 ? ((currentPrice - priceYtd) / priceYtd) * 100 : 0;
-  const ret1y = price1y > 0 ? ((currentPrice - price1y) / price1y) * 100 : 0;
-
-  const best = [
-    { key: '3m', val: ret3m },
-    { key: 'ytd', val: retYtd },
-    { key: '1y', val: ret1y },
-  ].sort((a, b) => b.val - a.val)[0].key;
-
-  return {
-    '3m': Math.round(ret3m * 10) / 10,
-    ytd: Math.round(retYtd * 10) / 10,
-    '1y': Math.round(ret1y * 10) / 10,
-    price: currentPrice,
-    best_timeframe: best,
-  };
 }
 
 // ── Basket generation system prompt ───────────────────────────

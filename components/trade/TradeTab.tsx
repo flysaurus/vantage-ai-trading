@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useLivePortfolio } from '@/context/PortfolioContext';
+import { useTabStore } from '@/store';
 import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
@@ -48,6 +49,7 @@ function formatQuoteDate(ts: number) {
 }
 
 export function TradeTab() {
+  const { setTab: setActiveTab } = useTabStore();
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>('market');
   const [qtyType, setQtyType] = useState<'shares' | 'dollars'>('shares');
@@ -84,7 +86,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, baskets } = useLivePortfolio();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -748,6 +750,60 @@ export function TradeTab() {
         </div>
       </div>
 
+      {/* ─── 3.5: MY BASKETS ─── */}
+      {baskets.length > 0 && (
+        <div style={{ margin: '0 16px 16px 16px' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+            MY BASKETS
+          </div>
+          {baskets.map(basket => (
+            <div key={basket.id} style={{
+              background: '#1a2235',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '8px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div>
+                  <span style={{ fontSize: '16px' }}>{basket.emoji}</span>
+                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px', marginLeft: '8px' }}>
+                    {basket.name}
+                  </span>
+                </div>
+                <span style={{
+                  color: basket.totalPnL >= 0 ? '#10b981' : '#ef4444',
+                  fontSize: '13px', fontWeight: '500',
+                }}>
+                  {basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%
+                </span>
+              </div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginBottom: '10px' }}>
+                Bought {new Date(basket.boughtAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${basket.totalCost.toLocaleString()} invested · {basket.activeCount} positions active
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => { setActiveTab('portfolio'); }}
+                  style={{
+                    flex: 1, padding: '8px', background: 'transparent',
+                    border: '1px solid rgba(34,211,238,0.4)', borderRadius: '8px',
+                    color: '#22d3ee', fontSize: '13px', cursor: 'pointer',
+                  }}
+                >Manage</button>
+                <button
+                  onClick={() => { setActiveTab('portfolio'); }}
+                  style={{
+                    flex: 1, padding: '8px', background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px',
+                    color: '#ef4444', fontSize: '13px', cursor: 'pointer',
+                  }}
+                >Sell</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ─── 4. ORDER HISTORY ─── */}
       <div style={{ margin: '0 16px' }}>
         <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
@@ -813,8 +869,13 @@ export function TradeTab() {
                 </span>
               </div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
-                market · {order.shares} shares
+                market · {'shares' in order ? order.shares : (order as any).qty || 0} shares
               </div>
+              {(order as any).id?.toString().includes('-b') && (
+                <span style={{ fontSize: '11px', color: '#22d3ee', opacity: 0.7 }}>
+                  via 🧺 Basket
+                </span>
+              )}
               {order.price && order.status === 'filled' && (
                 <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
                   Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
