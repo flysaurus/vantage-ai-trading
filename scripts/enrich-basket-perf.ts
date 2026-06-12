@@ -62,11 +62,14 @@ async function fetchStockPerformance(symbol: string) {
   }
 }
 
-async function updateBasketPerformance(basketId: string, performance: any) {
+async function updateBasketPerformance(basketId: string, performance: any, stocks: any[]) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/baskets?id=eq.${basketId}`, {
     method: 'PATCH',
     headers: { ...supabaseHeaders, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ performance: JSON.stringify(performance) }),
+    body: JSON.stringify({
+      performance: JSON.stringify(performance),
+      stocks: JSON.stringify(stocks),
+    }),
   });
   if (!res.ok) {
     console.error(`  ⚠️ Failed to update basket ${basketId}: ${res.status}`);
@@ -108,15 +111,30 @@ async function main() {
 
   for (const basket of baskets) {
     const stocks = basket.stocks || [];
-    const b3m = stocks.reduce((sum: number, s: any) => {
+
+    // Inject individual stock performance
+    const enrichedStocks = stocks.map((s: any) => {
+      const p = perfMap[s.symbol.toUpperCase()];
+      return {
+        ...s,
+        performance: {
+          '3m': p?.['3m'] ?? 0,
+          ytd: p?.ytd ?? 0,
+          '1y': p?.['1y'] ?? 0,
+        },
+        price: p?.price ?? 0,
+      };
+    });
+
+    const b3m = enrichedStocks.reduce((sum: number, s: any) => {
       const p = perfMap[s.symbol.toUpperCase()];
       return sum + ((p?.['3m'] || 0) * (s.allocation / 100));
     }, 0);
-    const bytd = stocks.reduce((sum: number, s: any) => {
+    const bytd = enrichedStocks.reduce((sum: number, s: any) => {
       const p = perfMap[s.symbol.toUpperCase()];
       return sum + ((p?.ytd || 0) * (s.allocation / 100));
     }, 0);
-    const b1y = stocks.reduce((sum: number, s: any) => {
+    const b1y = enrichedStocks.reduce((sum: number, s: any) => {
       const p = perfMap[s.symbol.toUpperCase()];
       return sum + ((p?.['1y'] || 0) * (s.allocation / 100));
     }, 0);
@@ -128,7 +146,7 @@ async function main() {
     console.log(`   ${basket.emoji || ''} ${basket.name}`);
     console.log(`      3m: ${perf['3m']}%  ytd: ${perf.ytd}%  1y: ${perf['1y']}%  · best=${best}`);
 
-    await updateBasketPerformance(basket.id, perf);
+    await updateBasketPerformance(basket.id, perf, enrichedStocks);
     updated++;
   }
 
