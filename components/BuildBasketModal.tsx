@@ -63,7 +63,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [changelogExpanded, setChangelogExpanded] = useState(false);
   const [selectedCurated, setSelectedCurated] = useState<CuratedBasket | null>(null);
   const [expandedPreview, setExpandedPreview] = useState<string | null>(null);
-  const [perfTimeframe, setPerfTimeframe] = useState<string>('best');
+  const [basketTimeframes, setBasketTimeframes] = useState<Record<string, string>>({});
 
   // ── Custom basket state ──
   const [customName, setCustomName] = useState('');
@@ -292,21 +292,18 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   }
 
   // ── Performance helpers ──
-  const getPerfValue = (basket: CuratedBasket): number => {
-    if (perfTimeframe === 'best') {
-      const key = basket.performance?.best_timeframe || '1y';
-      return basket.performance?.[key as keyof typeof basket.performance] as number || 0;
-    }
-    return 0;
-  };
-
   const getDisplayPerf = (basket: CuratedBasket): { value: number; label: string } => {
-    const best = basket.performance?.best_timeframe || '1y';
-    const perf = basket.performance || {};
-    if (perfTimeframe === 'best') {
-      return { value: (perf as any)[best] || 0, label: best.toUpperCase() };
-    }
-    return { value: 0, label: best.toUpperCase() };
+    const tf = basketTimeframes[basket.id] || basket.performance?.best_timeframe || '1y';
+    const val = (basket.performance as any)?.[tf] || 0;
+    return { value: val, label: tf };
+  };
+  const cycleTimeframe = (basketId: string) => {
+    setBasketTimeframes(prev => {
+      const order = ['3m', 'ytd', '1y'];
+      const current = prev[basketId] || '1y';
+      const next = order[(order.indexOf(current) + 1) % 3];
+      return { ...prev, [basketId]: next };
+    });
   };
 
   const formatLastUpdated = (iso: string | null): string => {
@@ -321,29 +318,39 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // ── Header (context-aware) ──
+  // ── Header (context-aware per step) ──
   const header = (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '16px 20px', background: '#0a0f1e',
       borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
     }}>
-      <button onClick={onClose} style={{
-        color: '#6b7280', fontSize: '24px', background: 'none',
-        border: 'none', cursor: 'pointer', padding: '0 8px', lineHeight: 1,
-      }}>×</button>
-      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '16px' }}>
-        Build Basket {step === 'curated' ? '' : (
-          <span style={{ color: '#22d3ee', fontSize: '12px', fontWeight: '400' }}>
-            {step === 'custom_theme' ? 'Custom →' : step === 'budget' ? 'Budget →' : step === 'generating' ? 'Generating →' : step === 'order_ticket' ? 'Confirm →' : 'Review →'}
-          </span>
-        )}
+      {/* Left: back button or spacer */}
+      {step === 'curated' ? (
+        <div style={{ width: '40px' }} />
+      ) : (
+        <button onClick={step === 'budget' && selectedCurated ? () => setStep('curated') : goBack} style={{
+          color: '#22d3ee', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px',
+        }}>
+          ← {step === 'budget' && selectedCurated ? 'Baskets' : 'Back'}
+        </button>
+      )}
+
+      {/* Center: step title */}
+      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>
+        {step === 'curated' ? 'Build Basket' :
+         step === 'custom_theme' ? 'Custom Basket' :
+         step === 'budget' ? 'Set Budget' :
+         step === 'generating' ? 'Generating...' :
+         step === 'review' ? 'Review Order' :
+         step === 'order_ticket' ? 'Confirm Order' : ''}
       </span>
-      {step !== 'curated' && step !== 'generating' ? (
-        <button onClick={goBack} style={{
-          color: '#22d3ee', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer',
-        }}>← Back</button>
-      ) : <div style={{ width: '40px' }} />}
+
+      {/* Right: close button */}
+      <button onClick={onClose} style={{
+        color: '#6b7280', fontSize: '22px', background: 'none',
+        border: 'none', cursor: 'pointer', padding: '4px 8px', lineHeight: 1,
+      }}>×</button>
     </div>
   );
 
@@ -451,7 +458,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                   <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>{basket.name}</span>
                 </div>
                 {/* Performance badge */}
-                <div style={{ textAlign: 'right' }}>
+                <div onClick={() => cycleTimeframe(basket.id)} style={{ textAlign: 'right', cursor: 'pointer' }}>
                   <span style={{
                     fontSize: '14px', fontWeight: '700',
                     color: isPositive ? '#34d399' : '#f87171',
@@ -460,9 +467,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                   </span>
                   <span style={{
                     display: 'block', fontSize: '10px',
-                    color: isPositive ? '#34d399' : '#f87171',
-                    opacity: 0.7,
-                  }}>{perf.label}</span>
+                    color: '#6b7280', textTransform: 'uppercase',
+                  }}>
+                    {perf.label.toUpperCase()} · tap to cycle
+                  </span>
                 </div>
               </div>
 
@@ -634,7 +642,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   const budgetStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 'calc(100px + env(safe-area-inset-bottom))' }}>
         {selectedCurated && (
           <div style={{
             background: '#1a2235', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
@@ -676,7 +684,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         </div>
       </div>
 
-      <div style={{ padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px', flexShrink: 0 }}>
+      {/* Fixed bottom button */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        padding: '12px 20px',
+        paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 80px)',
+        background: 'linear-gradient(transparent, #0a0f1e 30%)',
+      }}>
         <button
           onClick={() => selectedCurated ? setStep('order_ticket') : generateBasket()}
           disabled={!budget || parseInt(budget) <= 0}
