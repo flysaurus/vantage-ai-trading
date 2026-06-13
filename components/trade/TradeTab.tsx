@@ -696,7 +696,7 @@ export function TradeTab() {
       </div>
 
       {/* ─── 3. STRATEGIES SECTION ─── */}
-      <div style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
+      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
         <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
           STRATEGIES
         </div>

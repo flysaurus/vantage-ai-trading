@@ -1395,6 +1395,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
       <div
         ref={messagesContainerRef}
         id="chat-area"
+        data-testid="chat-area"
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -1828,6 +1829,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
         {/* Quick Actions 2×2 Grid */}
         <div
+          data-testid="quick-actions"
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
@@ -1929,7 +1931,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
         {/* Input Bar — elevated pill */}
         <div
-          id="chat-input"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1942,6 +1943,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
           <input
             ref={inputRef}
             type="text"
+            id="chat-input"
+            data-testid="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

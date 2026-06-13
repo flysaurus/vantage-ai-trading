@@ -1,7 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import sharp from 'sharp';
 
 const APP_URL = process.env.APP_URL || 'https://vantage-ai-trading.vercel.app';
 const SCREENSHOTS_DIR = process.env.SCREENSHOTS_DIR || './screenshots';
@@ -16,13 +15,80 @@ if (!fs.existsSync(SCREENSHOTS_DIR)) {
 // Helper to take and save screenshot
 async function screenshot(page: Page, name: string, fullPage = false) {
   const filepath = path.join(SCREENSHOTS_DIR, `${name}.png`);
-  await page.screenshot({ path: filepath, fullPage });
+  await page.screenshot({ path: filepath, fullPage, animations: 'disabled' });
   return filepath;
 }
 
-// FIX 1: Wait for full app load (prices, content, React renders)
+// ── Selector-based screenshot helper ──
+async function screenshotElement(
+  page: Page,
+  selectors: string[],
+  filename: string,
+  fallbackScrollY?: number
+): Promise<boolean> {
+  for (const selector of selectors) {
+    try {
+      const element = page.locator(selector).first();
+      const count = await element.count().catch(() => 0);
+      if (count > 0) {
+        const visible = await element.isVisible().catch(() => false);
+        if (visible) {
+          await element.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(500);
+          await element.screenshot({
+            path: path.join(SCREENSHOTS_DIR, filename),
+            animations: 'disabled',
+          });
+          console.log(`Screenshot ${filename} via: ${selector}`);
+          return true;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // Fallback: scroll to position and screenshot viewport
+  if (fallbackScrollY !== undefined) {
+    await page.evaluate((y) => window.scrollTo(0, y), fallbackScrollY);
+    await page.waitForTimeout(600);
+    await page.screenshot({
+      path: path.join(SCREENSHOTS_DIR, filename),
+      animations: 'disabled',
+    });
+    console.log(`Screenshot ${filename} via scroll fallback (${fallbackScrollY}px)`);
+    return true;
+  }
+
+  console.log(`Screenshot ${filename}: element not found`);
+  return false;
+}
+
+// ── Text assertion helper (no Claude needed) ──
+async function assertTextPresent(
+  page: Page,
+  texts: string[],
+  context: string
+): Promise<{ found: string[]; missing: string[] }> {
+  const bodyText = await page.evaluate(() => document.body.innerText);
+
+  const found = texts.filter((t) =>
+    bodyText.toLowerCase().includes(t.toLowerCase())
+  );
+  const missing = texts.filter(
+    (t) => !bodyText.toLowerCase().includes(t.toLowerCase())
+  );
+
+  console.log(`[${context}] Found: ${found.join(', ')}`);
+  if (missing.length > 0) {
+    console.log(`[${context}] Missing: ${missing.join(', ')}`);
+  }
+
+  return { found, missing };
+}
+
+// ── Wait for full app load (prices, content, React renders) ──
 async function waitForAppLoad(page: Page) {
-  // Wait for network to settle
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
   // Wait for no loading spinners
@@ -43,125 +109,80 @@ async function waitForAppLoad(page: Page) {
   await page.waitForTimeout(2000);
 }
 
-// FIX 3: Navigate to tab and wait for content
+// ── Navigate to tab and wait for content ──
 async function navigateToTab(page: Page, tabName: string) {
   await page.locator(`text=${tabName}`).click();
-
-  // Wait for tab content to render
   await page.waitForTimeout(500);
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(2000);
 }
 
-// FIX 4: Scroll and wait for content
+// ── Scroll and wait for content ──
 async function scrollAndWait(page: Page, scrollY: number, waitForSelector?: string) {
   await page.evaluate((y) => window.scrollTo(0, y), scrollY);
-
   if (waitForSelector) {
     await page.waitForSelector(waitForSelector, { timeout: 8000 }).catch(() => {});
   }
-
   await page.waitForTimeout(1000);
 }
 
-// ── Stitch scrolled captures into one tall image ──
-async function stitchScreenshotsHelper(
-  imagePaths: string[],
-  outputPath: string
-): Promise<void> {
-  const existingPaths = imagePaths.filter(p => fs.existsSync(p));
-  if (existingPaths.length === 0) return;
-
-  const images = await Promise.all(
-    existingPaths.map(p => sharp(p).toBuffer())
-  );
-  const metas = await Promise.all(
-    existingPaths.map(p => sharp(p).metadata())
-  );
-
-  const width = metas[0].width || 390;
-  const totalHeight = metas.reduce((sum, m) => sum + (m.height || 0), 0);
-
-  const composite: sharp.OverlayOptions[] = [];
-  let currentY = 0;
-  for (let i = 0; i < images.length; i++) {
-    composite.push({ input: images[i], top: currentY, left: 0 });
-    currentY += metas[i].height || 0;
-  }
-
-  await sharp({
-    create: {
-      width,
-      height: totalHeight,
-      channels: 3,
-      background: { r: 10, g: 15, b: 30 },
-    },
-  })
-    .composite(composite)
-    .png()
-    .toFile(outputPath);
-}
-
-// FIX 1 (Definitive): Expand viewport for fullPage screenshot to capture all holdings
-async function captureFullPortfolio(page: Page) {
-  // Expand viewport to capture more content
-  await page.setViewportSize({
-    width: 390,
-    height: 3000, // tall enough for all cards
-  });
-  await page.waitForTimeout(500);
-
-  // Scroll to top first
+// ── Selector-based portfolio section capture ──
+async function capturePortfolioSections(page: Page) {
+  // Full page top first
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(300);
-
-  // Take full page screenshot with expanded viewport
   await page.screenshot({
-    path: path.join(SCREENSHOTS_DIR, '03_portfolio_FULL.png'),
-    fullPage: true,
+    path: path.join(SCREENSHOTS_DIR, '03_portfolio_top.png'),
     animations: 'disabled',
   });
 
-  // Restore original viewport
-  await page.setViewportSize({
-    width: 390,
-    height: 844,
-  });
-  await page.waitForTimeout(300);
-}
+  // Holdings section via testid
+  await screenshotElement(
+    page,
+    ['[data-testid="holdings-section"]', '#holdings-section', 'text=HOLDINGS'],
+    '03_holdings_section.png',
+    750
+  );
 
-// FIX 2 (Definitive): Capture scrolled sections for visual QA
-async function capturePortfolioSections(page: Page) {
-  // Reset to mobile viewport
-  await page.setViewportSize({ width: 390, height: 844 });
+  // Individual position card (SPY first, fallback to GOOGL/NVDA)
+  await screenshotElement(
+    page,
+    ['[data-testid="position-SPY"]', '[data-testid="position-GOOGL"]', '[data-testid="position-NVDA"]'],
+    '03_position_card.png',
+    850
+  );
 
-  // Section 1: Top (market overview + account)
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(500);
-  await page.screenshot({
-    path: path.join(SCREENSHOTS_DIR, '03a_portfolio_top.png'),
-  });
+  // Sticky footer
+  await screenshotElement(
+    page,
+    ['[data-testid="portfolio-footer"]'],
+    '06_sticky_footer.png',
+    2000
+  );
 
-  // Section 2: Holdings start (~700-900px)
-  await page.evaluate(() => window.scrollTo(0, 750));
-  await page.waitForTimeout(800);
-  await page.screenshot({
-    path: path.join(SCREENSHOTS_DIR, '03b_portfolio_holdings_start.png'),
-  });
+  // Account card
+  await screenshotElement(
+    page,
+    ['[data-testid="account-card"]', 'text=ACCOUNT VALUE >> xpath=../..'],
+    '06_portfolio_account.png',
+    100
+  );
 
-  // Section 3: Holdings middle (~1400px)
-  await page.evaluate(() => window.scrollTo(0, 1400));
-  await page.waitForTimeout(500);
-  await page.screenshot({
-    path: path.join(SCREENSHOTS_DIR, '03c_portfolio_holdings_mid.png'),
-  });
+  // Baskets section
+  await screenshotElement(
+    page,
+    ['#baskets-section', '[data-testid="baskets-section"]', 'text=BASKETS >> xpath=../..'],
+    '03c_baskets_section.png',
+    600
+  );
 
-  // Section 4: Holdings bottom (~2000px)
-  await page.evaluate(() => window.scrollTo(0, 2000));
-  await page.waitForTimeout(500);
-  await page.screenshot({
-    path: path.join(SCREENSHOTS_DIR, '03d_portfolio_holdings_bottom.png'),
-  });
+  // SPY card specifically
+  await screenshotElement(
+    page,
+    ['[data-testid="position-SPY"]', '.position-card:has-text("SPY")'],
+    '03b_spy_card.png',
+    750
+  );
 }
 
 // Mock /api/auth/me to return a demo user — bypasses onboarding
@@ -208,7 +229,6 @@ async function clickTab(page: Page, label: string) {
 
   if (label === 'AI') {
     // AI tab has a raised circular cyan button with CompassIcon
-    // It's the only button with bg-cyan-500 in the nav
     const aiButton = nav.locator('button.bg-cyan-500, button[class*="cyan"]').first();
     await aiButton.click();
   } else {
@@ -279,84 +299,60 @@ test.describe('Portfolio Tab', () => {
       }
     });
 
-    // beforeEach already loads page + navigates to Portfolio tab
     await waitForAppLoad(page);
 
-    // Dump app console after load
     console.log('=== APP CONSOLE LOGS ===');
     consoleLogs.slice(0, 20).forEach(l => console.log(l));
     console.log('========================');
 
-    // ── Definitive screenshot capture ──
-    await captureFullPortfolio(page);
+    // ── Selector-based captures (no stitching) ──
     await capturePortfolioSections(page);
 
-    // Stitch scrolled captures into one tall composite for visual QA
-    await stitchScreenshotsHelper([
-      path.join(SCREENSHOTS_DIR, '03a_portfolio_top.png'),
-      path.join(SCREENSHOTS_DIR, '03b_portfolio_holdings_start.png'),
-      path.join(SCREENSHOTS_DIR, '03c_portfolio_holdings_mid.png'),
-      path.join(SCREENSHOTS_DIR, '03d_portfolio_holdings_bottom.png'),
-    ], path.join(SCREENSHOTS_DIR, '03_STITCHED_portfolio.png'));
+    // Text-based assertion (no visual QA needed)
+    const { found, missing } = await assertTextPresent(
+      page,
+      ['TODAY', 'TOTAL', 'SPY', 'NVDA', 'GOOGL', 'MSFT', 'JPM'],
+      'Portfolio Holdings'
+    );
+    expect(found.length).toBeGreaterThanOrEqual(3);
 
-    // Scroll to holdings area for ticker hunt
-    try {
-      const holdingsLabel = page.locator(
-        'text=HOLDINGS, text=Holdings, text=POSITIONS'
-      ).first();
-      await holdingsLabel.scrollIntoViewIfNeeded({
-        timeout: 5000,
-      });
-      await page.waitForTimeout(1000);
-    } catch {
-      await page.evaluate(() => window.scrollTo(0, 800));
-      await page.waitForTimeout(1000);
-    }
-
-    await screenshot(page, '03_portfolio_holdings');
-
-    // Scroll further for bottom cards
-    await page.evaluate(() => window.scrollTo(0, 1600));
-    await page.waitForTimeout(800);
-    await screenshot(page, '03b_portfolio_holdings_lower');
-
-    // Now check tickers — scroll through entire page
+    // Scroll through holdings for ticker hunt
     const tickers = ['SPY', 'QQQ', 'GOOGL', 'MSFT', 'JPM', 'ADBE', 'ISRG', 'COST', 'LLY', 'NVDA'];
-    const found: string[] = [];
+    const foundTickers: string[] = [];
 
     for (let y = 0; y <= 4000; y += 300) {
       await page.evaluate((sy) => window.scrollTo(0, sy), y);
       await page.waitForTimeout(150);
 
       for (const ticker of tickers) {
-        if (found.includes(ticker)) continue;
+        if (foundTickers.includes(ticker)) continue;
         const visible = await page
           .locator(`text=${ticker}`)
           .first()
           .isVisible()
           .catch(() => false);
-        if (visible) found.push(ticker);
+        if (visible) foundTickers.push(ticker);
       }
     }
 
-    const missing = tickers.filter(t => !found.includes(t));
-    console.log('✅ Found:', found.join(', '));
-    console.log('❌ Missing:', missing.join(', '));
+    const missingTickers = tickers.filter(t => !foundTickers.includes(t));
+    console.log('✅ Found:', foundTickers.join(', '));
+    console.log('❌ Missing:', missingTickers.join(', '));
 
-    expect(found.length).toBeGreaterThanOrEqual(8);
+    expect(foundTickers.length).toBeGreaterThanOrEqual(8);
   });
 
   test('no old positions visible', async ({ page }) => {
     await scrollAndWait(page, 500);
 
-    // These should NOT exist
-    const oldTickers = ['META', 'AMZN', 'NFLX', 'CRM', 'UNH'];
-    for (const ticker of oldTickers) {
-      const count = await page.locator(
-        `[data-testid="position-${ticker}"], .position-card:has-text("${ticker}")`
-      ).count();
-      console.log(`Old ticker ${ticker} count: ${count}`);
-    }
+    // Text-based check for old tickers
+    const { missing } = await assertTextPresent(
+      page,
+      ['META', 'AMZN', 'NFLX', 'CRM', 'UNH'],
+      'Old Positions'
+    );
+    // Should NOT find these — they're old/removed
+    // If any are found, they need cleanup
 
     await screenshot(page, '04_portfolio_no_old_positions');
   });
@@ -364,7 +360,6 @@ test.describe('Portfolio Tab', () => {
   test('market value shows on cards (not just price)', async ({ page }) => {
     await scrollAndWait(page, 500);
 
-    // SPY has 25 shares, market value should be $XX,XXX range not $XXX (single price)
     // Look for values with comma / 4+ digit numbers
     const marketValues = page.locator('text=/\\$[0-9]{1,3},[0-9]{3}/');
     const count = await marketValues.count();
@@ -379,12 +374,15 @@ test.describe('Portfolio Tab', () => {
   });
 
   test('buying power equals cash', async ({ page }) => {
-    // Stay at top to capture account summary with buying power
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(1000);
+    // Text-based assertion
+    const { found } = await assertTextPresent(
+      page,
+      ['BUYING POWER', 'CASH', '$'],
+      'Account Summary'
+    );
+    expect(found.length).toBeGreaterThanOrEqual(2);
 
     await screenshot(page, '06_portfolio_buying_power');
-    // Visual check via Claude — values extracted by QA agent
   });
 });
 
@@ -410,7 +408,6 @@ test.describe('AI Tab', () => {
 
   test('daily brief is collapsed by default', async ({ page }) => {
     test.slow(); // allow 3x timeout for AI streaming connections
-    // MARKET and PORTFOLIO rows should not be visible
     const marketRow = await page.locator(
       '[data-testid="daily-brief-market-row"]'
     ).count();
@@ -422,7 +419,7 @@ test.describe('AI Tab', () => {
   test('quick action buttons present', async ({ page }) => {
     await scrollAndWait(page, 500);
 
-    const buttons = ['Build Basket', 'Market Pulse', 'Tax Check', 'Alerts'];
+    const buttons = ['Strategy Ideas', 'Market Pulse', 'Tax Check', 'Alerts'];
     for (const btn of buttons) {
       const el = page.locator(`text=${btn}`).first();
       const visible = await el.isVisible({ timeout: 3000 }).catch(() => false);

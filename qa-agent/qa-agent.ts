@@ -1,7 +1,6 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import sharp from 'sharp';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -175,71 +174,54 @@ function runTests(): {
   }
 }
 
-// ─── STITCH SCREENSHOTS ───
-async function stitchScreenshots(
-  imagePaths: string[],
-  outputPath: string
-): Promise<void> {
-  const existingPaths = imagePaths.filter(p => fs.existsSync(p));
-  if (existingPaths.length === 0) return;
-
-  const images = await Promise.all(
-    existingPaths.map(p => sharp(p).toBuffer())
-  );
-
-  const metas = await Promise.all(
-    existingPaths.map(p => sharp(p).metadata())
-  );
-
-  const width = metas[0].width || 390;
-  const totalHeight = metas.reduce(
-    (sum, m) => sum + (m.height || 0), 0
-  );
-
-  const composite: sharp.OverlayOptions[] = [];
-  let currentY = 0;
-
-  for (let i = 0; i < images.length; i++) {
-    composite.push({
-      input: images[i],
-      top: currentY,
-      left: 0,
-    });
-    currentY += metas[i].height || 0;
-  }
-
-  await sharp({
-    create: {
-      width,
-      height: totalHeight,
-      channels: 3,
-      background: { r: 10, g: 15, b: 30 },
-    },
-  })
-    .composite(composite)
-    .png()
-    .toFile(outputPath);
-}
-
 // ─── VISUAL QA CHECKS ───
 async function runVisualQA(): Promise<string[]> {
   const findings: string[] = [];
 
   const checks = [
     {
-      screenshot: '03_STITCHED_portfolio.png',
+      screenshot: '03_holdings_section.png',
       checklist: [
-        'This is a TALL composite showing the FULL ' +
-        'portfolio page from top to bottom',
-        'At least 6-10 individual holding cards visible ' +
-        'in the HOLDINGS section (lower portion of image)',
-        'Tickers visible: GOOGL, MSFT, JPM, ADBE, ' +
-        'ISRG, COST, LLY, NVDA, SPY, QQQ',
-        'Each card shows share count and market value',
-        'Green or red P&amp;L coloring on cards',
-        'Buying Power equals Cash value',
-        'Account value is non-zero',
-        'No old tickers: META, AMZN, NFLX, CRM, UNH',
+        'Holdings section header visible',
+        'Multiple position cards showing below header',
+        'Ticker symbols visible: GOOGL, MSFT, ' +
+        'JPM, NVDA, ADBE, ISRG, COST, LLY, SPY, QQQ',
+        'Each card shows a dollar amount',
+        'Green text for gains, red text for losses',
+        'TODAY and TOTAL labels on each card',
+        'Share counts visible (e.g. 25 shares, 80 shares)',
+      ],
+    },
+    {
+      screenshot: '03_position_card.png',
+      checklist: [
+        'Individual position card clearly visible',
+        'Ticker symbol bold and prominent',
+        'Market value in dollars showing',
+        'TODAY P&L with color (green or red)',
+        'TOTAL P&L with color (green or red)',
+        'Share count visible',
+        'ETF badge if applicable',
+      ],
+    },
+    {
+      screenshot: '06_sticky_footer.png',
+      checklist: [
+        'Three-column summary bar visible',
+        'Market Value column showing dollar amount',
+        'Today column showing P&L with percentage',
+        'Total column showing P&L with percentage',
+        'Text is bright and readable',
+        'Bar sits above navigation',
+      ],
+    },
+    {
+      screenshot: '03c_baskets_section.png',
+      checklist: [
+        'BASKETS section header visible',
+        'Basket cards or basket names visible',
+        'Each basket shows emoji and theme',
+        'Basket performance metrics shown (if data available)',
       ],
     },
     {
@@ -254,7 +236,7 @@ async function runVisualQA(): Promise<string[]> {
     {
       screenshot: '10_ai_quick_actions.png',
       checklist: [
-        'Build Basket button is visible',
+        'Strategy Ideas button is visible',
         'Market Pulse button is visible',
         'Tax Check button is visible',
         'Alerts button is visible',

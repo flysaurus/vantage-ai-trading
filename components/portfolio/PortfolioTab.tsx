@@ -37,7 +37,7 @@ const formatCurrency = (n: number) => {
 
 function AccountCard({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
   return (
-    <div style={{ margin: '16px 16px 0 16px' }}>
+    <div data-testid="account-card" style={{ margin: '16px 16px 0 16px' }}>
       <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
         Account Value
       </div>
@@ -162,6 +162,7 @@ function PositionCard({
   return (
     <div style={{ marginLeft: '16px', marginRight: '16px', marginBottom: '6px' }}>
       <div
+        data-testid={`position-${pos.symbol}`}
         style={{
           background: '#1a2235',
           borderRadius: '12px',
@@ -623,7 +624,7 @@ export function PortfolioTab() {
 
       {/* 2.5: Basket Section */}
       {baskets.length > 0 && (
-        <div style={{ marginTop: '20px', paddingLeft: '16px', paddingRight: '16px' }} id="baskets-section">
+        <div data-testid="baskets-section" style={{ marginTop: '20px', paddingLeft: '16px', paddingRight: '16px' }} id="baskets-section">
           <span className="text-xs text-slate-500 uppercase tracking-wider" style={{ marginBottom: '8px', display: 'block' }}>
             Baskets
           </span>
@@ -747,7 +748,7 @@ export function PortfolioTab() {
 
       {/* 3. Column header */}
       {positions.length > 0 && (
-        <div className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '20px', marginBottom: '10px' }}>
+        <div data-testid="holdings-section" id="holdings-section" className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '20px', marginBottom: '10px' }}>
           {/* Checkbox spacer — always present so Holdings never shifts */}
           <div className="w-8 flex-shrink-0 flex items-center">
             {selectMode && (
@@ -857,7 +858,7 @@ export function PortfolioTab() {
       <div style={{ height: '40px' }} />
 
       {/* Sticky Portfolio Summary Footer */}
-      <div style={{
+      <div data-testid="portfolio-footer" style={{
         position: 'fixed',
         bottom: 0,
         left: 0,
