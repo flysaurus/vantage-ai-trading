@@ -352,6 +352,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     };
   }, [isOpen]);
 
+  // ── Basket review budget validation (must be above early return) ──
+  useEffect(() => {
+    if (step === 'basket_review') {
+      doValidateBudget();
+    }
+  }, [reviewStocks, budget, step]);
+
   if (!isOpen) return null;
 
   const budgetNum = parseInt(budget) || 10000;
@@ -1159,9 +1166,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   }
 
   // Run validation when reviewStocks or budget changes
-  useEffect(() => {
-    if (step === 'basket_review') doValidateBudget();
-  }, [reviewStocks, budget, step]);
+  // (moved above early return — see useEffect block before if (!isOpen) return null)
 
   // ── Confirm and execute basket order ──
   async function handleConfirmOrder() {
