@@ -1,12 +1,12 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import * as dotenv from 'dotenv';
 dotenv.config();
+import * as fs from 'fs';
+import * as path from 'path';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 const SCREENSHOTS_DIR = process.env.SCREENSHOTS_DIR || './screenshots';
 
-async function claudeReviewScreenshot(imagePath: string, checklistItems: string[]): Promise<any> {
+async function claudeReviewScreenshot(imagePath: string, checklistItems: string[]): Promise<{ pass: string[]; fail: string[]; warnings: string[]; notes?: string }> {
   if (!fs.existsSync(imagePath)) {
     return { pass: [], fail: ['Screenshot not found'], warnings: [] };
   }
@@ -27,74 +27,90 @@ async function claudeReviewScreenshot(imagePath: string, checklistItems: string[
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageData } },
-          { type: 'text', text: `Review this mobile app screenshot (Vantage AI trading app) against:
+          { type: 'text', text: `You are a QA agent reviewing screenshots of Vantage, a mobile portfolio app.
+
+Review this screenshot against this checklist:
 ${checklist}
 
-Respond ONLY valid JSON: {"pass": [...], "fail": [...], "warnings": [...], "notes": "..."}` },
-        ],
-      }],
+Respond ONLY with valid JSON, no markdown:
+{ "pass": ["item text for passing items"], "fail": ["item text for failing items"], "warnings": ["item text for uncertain items"], "notes": "observations" }` }
+        ]
+      }]
     }),
   });
-  
   const data = await response.json() as any;
   const text = data.content?.[0]?.text || '{}';
   try {
-    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    return JSON.parse(cleaned);
+    const cleaned = text.replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed.pass)) parsed.pass = [];
+    if (!Array.isArray(parsed.fail)) parsed.fail = [];
+    if (!Array.isArray(parsed.warnings)) parsed.warnings = [];
+    return parsed;
   } catch {
     return { pass: [], fail: [text], warnings: [] };
   }
 }
 
 async function main() {
+  console.log('🔍 Running Visual QA only...\n');
+  
   const checks = [
     {
-      file: '03_portfolio_holdings.png',
-      items: ['Portfolio page shows holding cards below the market overview','Multiple position cards visible with dollar amounts','Green values show positive G/L, red shows negative G/L','No error messages or broken UI visible'],
+      file: '03_holdings_section.png',
+      label: 'HOLDINGS SECTION',
+      checklist: [
+        'Holdings section header visible',
+        'Multiple position cards showing below header',
+        'Ticker symbols visible: GOOGL, MSFT, JPM, NVDA, ADBE, ISRG, COST, LLY, SPY, QQQ',
+        'Each card shows a dollar amount',
+        'Green text for gains, red text for losses',
+        'TODAY and TOTAL labels on each card',
+        'Share counts visible (e.g. 25 shares, 80 shares)',
+      ],
     },
     {
-      file: '07_ai_tab_load.png',
-      items: ['AI tab header ("Ask Vantage AI" or similar) visible','History button visible','Daily Brief card area shown','No broken layout or overlapping'],
+      file: '03_position_card.png',
+      label: 'INDIVIDUAL POSITION CARD',
+      checklist: [
+        'Individual position card clearly visible',
+        'Ticker symbol bold and prominent',
+        'Market value in dollars showing',
+        'TODAY P&L with color (green or red)',
+        'TOTAL P&L with color (green or red)',
+        'Share count visible',
+        'ETF badge if applicable',
+      ],
     },
     {
-      file: '10_ai_quick_actions.png',
-      items: ['Build Basket button visible','Market Pulse button visible','Tax Check button visible','Alerts button visible','Buttons in 2x2 grid','Buttons not hidden behind bottom nav'],
-    },
-    {
-      file: '12_invest_order_history.png',
-      items: ['Order history list visible','Orders show ticker symbols','Each order shows status (FILLED etc)','Order cards show BUY type and share count'],
-    },
-    {
-      file: '06_portfolio_buying_power.png',
-      items: ['Account value displayed','Buying Power displayed','TODAY and TOTAL P&L labels are gray','P&L dollar amounts colored red or green','Dashboard layout clean'],
+      file: '06_sticky_footer.png',
+      label: 'STICKY FOOTER',
+      checklist: [
+        'Three-column summary bar visible',
+        'Market Value column showing dollar amount',
+        'Today column showing P&L with percentage',
+        'Total column showing P&L with percentage',
+        'Text is bright and readable',
+        'Bar sits above navigation',
+      ],
     },
   ];
 
-  let totalPass = 0, totalFail = 0, totalWarn = 0;
-  
-  for (const c of checks) {
-    const fp = path.join(SCREENSHOTS_DIR, c.file);
-    console.log(`\n📸 Reviewing ${c.file}...`);
+  for (const check of checks) {
+    const imgPath = path.join(SCREENSHOTS_DIR, check.file);
+    const size = fs.existsSync(imgPath) ? `${(fs.statSync(imgPath).size / 1024).toFixed(1)}KB` : 'MISSING';
+    console.log(`─── ${check.label} (${check.file}) [${size}] ───`);
     
-    if (!fs.existsSync(fp)) {
-      console.log(`  ⚠️ Missing`);
-      continue;
-    }
+    const result = await claudeReviewScreenshot(imgPath, check.checklist);
     
-    const r = await claudeReviewScreenshot(fp, c.items);
-    console.log(`  ✅ ${r.pass.length} pass, ❌ ${r.fail.length} fail, ⚠️ ${r.warnings.length} warnings`);
-    for (const p of r.pass) console.log(`    ✅ ${p}`);
-    for (const f of r.fail) console.log(`    ❌ ${f}`);
-    for (const w of r.warnings) console.log(`    ⚠️ ${w}`);
-    if (r.notes) console.log(`    📝 ${r.notes}`);
-    
-    totalPass += r.pass.length;
-    totalFail += r.fail.length;
-    totalWarn += r.warnings.length;
+    for (const item of result.pass) console.log(`  ✅ ${item}`);
+    for (const item of result.fail) console.log(`  ❌ ${item}`);
+    for (const item of result.warnings) console.log(`  ⚠️ ${item}`);
+    if (result.notes) console.log(`  📝 ${result.notes}`);
+    console.log('');
   }
   
-  console.log(`\n━━━ SUMMARY ━━━`);
-  console.log(`✅ ${totalPass} pass  ❌ ${totalFail} fail  ⚠️ ${totalWarn} warnings`);
+  console.log('Visual QA complete.');
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(console.error);

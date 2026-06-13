@@ -4,6 +4,11 @@ dotenv.config();
 
 export default defineConfig({
   testDir: './tests',
+  // Run both functional and visual test files
+  testMatch: [
+    '**/functional.spec.ts',
+    '**/vantage.spec.ts',
+  ],
   timeout: 60000,
   expect: {
     timeout: 15000,

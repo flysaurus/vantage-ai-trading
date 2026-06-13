@@ -174,102 +174,74 @@ function runTests(): {
   }
 }
 
-// ─── VISUAL QA CHECKS ───
+// ─── VISUAL QA CHECKS (Claude-only, no text assertions) ───
+const VISUAL_CHECKS = [
+  {
+    screenshot: '03_position_card.png',
+    checklist: [
+      'A single stock position card is visible',
+      'Card has a colored left border ' +
+      '(green for gain, red for loss)',
+      'TODAY and TOTAL appear as small ' +
+      'gray uppercase labels',
+      'Dollar amounts are colored ' +
+      '(green or red, not white)',
+      'Design looks professional and clean',
+      'Text is readable at mobile size',
+    ],
+  },
+  {
+    screenshot: '06_sticky_footer.png',
+    checklist: [
+      'A horizontal bar with three columns visible',
+      'Numbers are bright white and large',
+      'Labels below numbers are smaller and dimmer',
+      'Bar has a subtle border or shadow',
+      'Overall design feels premium',
+      'Sits clearly above navigation bar',
+    ],
+  },
+  {
+    screenshot: 'p2_01_greeting.png',
+    checklist: [
+      'Greeting bubble has distinct styling ' +
+      'from regular chat bubbles',
+      'Has a subtle cyan border or background',
+      'Compass icon or Vantage AI label present',
+      'Text is italic or styled differently',
+      'Feels like an advisor speaking, ' +
+      'not a system message',
+    ],
+  },
+  {
+    screenshot: 'p2_10_invest_strategies.png',
+    checklist: [
+      'Strategy grid visible with multiple buttons',
+      'Build Basket is highlighted or distinct ' +
+      'from unavailable strategies',
+      'Unavailable strategies have a Soon badge',
+      'Grid layout is clean and even',
+      'Icons and labels are clear',
+    ],
+  },
+  {
+    screenshot: 'p2_11_basket_curated.png',
+    checklist: [
+      'Multiple basket cards visible',
+      'Each card has an emoji, name, and description',
+      'Performance badge visible top right of each card',
+      'Ticker pills row visible on each card',
+      'Risk warning in italic below tickers',
+      'Preview and Invest buttons clearly visible',
+      'Overall design is premium and trustworthy',
+    ],
+  },
+];
+
 async function runVisualQA(): Promise<string[]> {
   const findings: string[] = [];
 
-  const checks = [
-    {
-      screenshot: '03_holdings_section.png',
-      checklist: [
-        'Holdings section header visible',
-        'Multiple position cards showing below header',
-        'Ticker symbols visible: GOOGL, MSFT, ' +
-        'JPM, NVDA, ADBE, ISRG, COST, LLY, SPY, QQQ',
-        'Each card shows a dollar amount',
-        'Green text for gains, red text for losses',
-        'TODAY and TOTAL labels on each card',
-        'Share counts visible (e.g. 25 shares, 80 shares)',
-      ],
-    },
-    {
-      screenshot: '03_position_card.png',
-      checklist: [
-        'Individual position card clearly visible',
-        'Ticker symbol bold and prominent',
-        'Market value in dollars showing',
-        'TODAY P&L with color (green or red)',
-        'TOTAL P&L with color (green or red)',
-        'Share count visible',
-        'ETF badge if applicable',
-      ],
-    },
-    {
-      screenshot: '06_sticky_footer.png',
-      checklist: [
-        'Three-column summary bar visible',
-        'Market Value column showing dollar amount',
-        'Today column showing P&L with percentage',
-        'Total column showing P&L with percentage',
-        'Text is bright and readable',
-        'Bar sits above navigation',
-      ],
-    },
-    {
-      screenshot: '03c_baskets_section.png',
-      checklist: [
-        'BASKETS section header visible',
-        'Basket cards or basket names visible',
-        'Each basket shows emoji and theme',
-        'Basket performance metrics shown (if data available)',
-      ],
-    },
-    {
-      screenshot: '07_ai_tab_load.png',
-      checklist: [
-        'AI tab header ("Ask Vantage AI" or similar) is visible',
-        'History button is visible',
-        'Daily Brief card area is shown',
-        'No broken layout or overlapping elements',
-      ],
-    },
-    {
-      screenshot: '10_ai_quick_actions.png',
-      checklist: [
-        'Strategy Ideas button is visible',
-        'Market Pulse button is visible',
-        'Tax Check button is visible',
-        'Alerts button is visible',
-        'Buttons are in a 2x2 grid layout',
-        'Buttons are not hidden behind the bottom nav',
-      ],
-    },
-    {
-      screenshot: '12_invest_order_history.png',
-      checklist: [
-        'Order history list is visible',
-        'Orders show ticker symbols',
-        'Each order shows status (FILLED etc)',
-        'Order cards show BUY type and share count',
-      ],
-    },
-    {
-      screenshot: '06_portfolio_buying_power.png',
-      checklist: [
-        'An ACCOUNT VALUE section shows a large ' +
-        'dollar amount (total portfolio value)',
-        'A BUYING POWER label and dollar amount visible',
-        'A CASH label and dollar amount visible',
-        'BUYING POWER and CASH show the same value',
-        'Both values are greater than $0',
-        'TODAY label (for daily P&amp;L) appears in gray text',
-        'TOTAL label (for all-time P&amp;L) appears in gray text',
-        'The P&amp;L dollar amounts next to TODAY/TOTAL ' +
-        'are colored red or green (not gray)',
-        'Demo Mode badge visible near account value',
-      ],
-    },
-  ];
+  const checks = VISUAL_CHECKS;
 
   for (const check of checks) {
     const imagePath = path.join(SCREENSHOTS_DIR, check.screenshot);
@@ -373,21 +345,23 @@ async function main() {
   const warnings = visualFindings.filter(f => f.startsWith('⚠️')).length;
 
   // Build report
-  const statusEmoji = fails === 0 ? '✅' : fails < 3 ? '⚠️' : '❌';
+  const statusEmoji = fails === 0 && testResults.failed === 0 ? '✅' : testResults.failed < 2 && fails < 3 ? '⚠️' : '❌';
 
   const report = [
     `${statusEmoji} *Vantage QA Report*`,
     `${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`,
     '',
-    `*Automated Tests:* ${testResults.passed} passed, ${testResults.failed} failed`,
-    `*Visual QA:* ${passes} pass, ${fails} fail, ${warnings} warnings`,
+    '*Functional Tests (Playwright):*',
+    `${testResults.passed} passed · ${testResults.failed} failed`,
     '',
-    '*Findings:*',
-    ...visualFindings.slice(0, 20), // Telegram limit
+    '*Visual Tests (Claude):*',
+    `${passes} pass · ${fails} fail · ${warnings} warnings`,
     '',
-    fails === 0
-      ? '🚀 All checks passed — safe to proceed!'
-      : `🔧 ${fails} issue(s) need fixing before next phase`,
+    fails === 0 && testResults.failed === 0
+      ? '✅ All checks passed'
+      : '🔧 Issues found — see details below',
+    '',
+    ...visualFindings.slice(0, 15),
   ].join('\n');
 
   await sendTelegram(report);
