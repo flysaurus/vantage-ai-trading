@@ -1,16 +1,13 @@
 // ─── POST /api/ai/greeting ───────────────────────────────────
-// Generates a personalized 1-2 sentence greeting using real portfolio
-// context, upcoming earnings, P&L, market conditions, and the user's
-// investor profile. Uses Anthropic Claude Haiku with prompt caching.
+// Generates a personalized two-part greeting (opener ||| hook)
+// using durable portfolio data only — no intraday prices/P&L.
+// Uses Anthropic Claude Haiku with prompt caching.
 //
 // Body: {
 //   userInitial, investorStyle, riskTolerance,
-//   portfolioValue, todayPnL, todayPnLPct, totalPnL, totalPnLPct,
-//   spyReturn, spyReturnPct,
-//   positions: [{ symbol, totalPnLPct, dailyPnLPct }],
+//   totalPnLPct, cashBalance, cashPct, totalInvested,
+//   positions: [{ symbol, totalPnLPct, totalPnL, marketValue }],
 //   upcomingEarnings: [...],
-//   lastHookType: string | null,
-//   marketStatus: { isOpen, period, opener } | null,
 // }
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -52,57 +49,55 @@ function getMarketStatus(): {
 
 // ─── Greeting system prompt ────────────────────────────────────
 
-const GREETING_SYSTEM = `You are Vantage AI, a warm and intelligent portfolio advisor. Generate a greeting that feels like a trusted advisor who checked in before the user did — brief, sharp, and personal.
+const GREETING_SYSTEM = `You are Vantage AI.
+Generate a greeting for a returning user.
 
-GREETING FORMAT (strict):
-"{opener}, {initial}. {one insightful hook}"
+OUTPUT FORMAT — two parts separated by ||| :
+ [time-based opener with initial] ||| [hook sentence]
 
-RULES:
-- Total length: 1-2 sentences MAX. Never more.
-- Address user by their initial only (e.g. "M.")
-- The hook must reference REAL data from context
-- Tone: warm, confident, slightly playful — like a friend, not like a Bloomberg terminal
-- Never mention Peter Lynch, Warren Buffett, or any investor name
-- Never use generic phrases like "markets are moving" or "interesting times"
-- Never start with "I"
-- Never mention Claude or Anthropic
+Example outputs:
+ Morning, M. ||| GOOGL is your biggest winner at +155% total — want to dig into what's driving it?
+ Pre-market, M. ||| LLY reports earnings Thursday — your second largest position by value.
+ Evening, M. ||| You're sitting on $65K cash — 33% of your portfolio idle.
+ Afternoon, M. ||| ADBE is your only red position at -60% total. Worth a conversation.
+ Morning, M. ||| Your portfolio has 10 positions across 4 sectors — reasonably diversified for a growth investor.
 
-HOOK SELECTION (pick most relevant):
+STRICT RULES — these are non-negotiable:
+ ❌ NEVER mention today's price change %
+ ❌ NEVER mention today's P&L in dollars
+ ❌ NEVER mention intraday market direction
+ ❌ NEVER say "up X% today" or "down X% today"
+ ❌ NEVER reference intraday moves
+ ✅ ONLY use total return since purchase
+   (e.g. "+155% total" or "+155% since you bought")
+ ✅ ONLY use upcoming scheduled events
+   (earnings dates, Fed meetings)
+ ✅ ONLY use portfolio structure facts
+   (cash %, position count, sector %)
+ ✅ ONLY use relative facts
+   (biggest winner, only loser, largest position)
+ ✅ Time opener must match actual time:
+   Pre-market (4am-9:30am ET): "Pre-market, M."
+   Market hours (9:30am-4pm ET):
+     Before noon: "Morning, M."
+     After noon: "Afternoon, M."
+   After hours (4pm-8pm ET): "After hours, M."
+   Evening (8pm-4am ET): "Evening, M."
+   Weekend: "Morning/Afternoon/Evening, M."
 
-1. UPCOMING EVENT (highest priority):
-   Use when earnings/Fed/macro data within 48h
-   Example: "LLY reports Thursday — your largest pharma position."
-
-2. END OF DAY (after 4pm ET):
-   Use closing summary with SPY comparison
-   Example: "Solid close. Portfolio up $1,469 while SPY gained 0.8% — you beat it today."
-
-3. MARKET HOURS — SPY COMPARISON:
-   Use during open market
-   Formula based on spread:
-   - Portfolio >> SPY (+1%+): "Markets up 0.6%, you're up 1.8% — NVDA carrying the load today."
-   - Portfolio ≈ SPY (within 0.5%): "Moving with the market — up 0.7% alongside SPY's 0.8%."
-   - Portfolio << SPY (-1%+): "Markets up 0.8% but you're flat — ADBE dragging. Worth a look."
-   - Market down, you down less: "Rough day out there — SPY down 1.2%, you're only down 0.4%. Holding up."
-   - Market down, you down more: "Markets down 0.8%, you're down 1.4% — tech concentration showing today."
-
-4. MACRO/SECTOR IMPACT:
-   Use when macro event is recent (today/yesterday)
-   Example: "Inflation print just dropped — growth stocks taking heat, your portfolio is feeling it."
-
-5. PORTFOLIO SIGNAL (always available fallback):
-   Most interesting signal from positions
-   Example: "ADBE down three days running. Might be worth a conversation."
-
-Never repeat the same hook type in consecutive sessions (track in the request if possible).`;
+TONE: warm, direct, slightly playful.
+Like a trusted advisor who checked in before you did.
+One hook sentence max — never two ideas.
+Never mention Claude, Anthropic, or any AI model.`;
 
 // ─── Hook type detection ───────────────────────────────────────
 
-function detectHookType(greeting: string): string {
-  if (greeting.includes('report') || greeting.includes('earnings')) return 'event';
-  if (greeting.includes('close') || greeting.includes('today')) return 'eod';
-  if (greeting.includes('SPY') || greeting.includes('market')) return 'market';
-  if (greeting.includes('inflation') || greeting.includes('Fed') || greeting.includes('sector')) return 'macro';
+function detectHookType(hook: string): string {
+  if (!hook) return 'signal';
+  if (hook.includes('report') || hook.includes('earnings')) return 'event';
+  if (hook.includes('cash') || hook.includes('% of your portfolio') || hook.includes('sitting on')) return 'structure';
+  if (hook.includes('SPY') || hook.includes('market')) return 'market';
+  if (hook.includes('inflation') || hook.includes('Fed') || hook.includes('sector')) return 'macro';
   return 'signal';
 }
 
@@ -115,16 +110,11 @@ export async function POST(req: NextRequest) {
       userInitial = 'M',
       investorStyle = 'Lynch',
       riskTolerance = 'Moderate',
-      portfolioValue = 0,
-      todayPnL = 0,
-      todayPnLPct = 0,
-      totalPnL = 0,
       totalPnLPct = 0,
-      spyReturn = 0,
-      spyReturnPct = 0,
+      cashBalance = 0,
+      cashPct = 0,
       positions = [],
       upcomingEarnings = [],
-      lastHookType = null,
     } = body;
 
     const market = getMarketStatus();
@@ -136,7 +126,13 @@ export async function POST(req: NextRequest) {
     const biggestWinner = sortedByPct[0];
     const biggestLaggard = sortedByPct[sortedByPct.length - 1];
 
-    // ── Build dynamic context ──
+    // Find largest position by market value
+    const sortedByValue = [...positions].sort((a: any, b: any) =>
+      (b.marketValue || 0) - (a.marketValue || 0)
+    );
+    const largestPosition = sortedByValue[0];
+
+    // ── Build dynamic context (durable data only — NO intraday) ──
     const dynamicContext = `
 CURRENT CONTEXT:
 User initial: ${userInitial}
@@ -145,32 +141,27 @@ Market status: ${market.period}
 Investor style: ${investorStyle}
 Risk tolerance: ${riskTolerance}
 
-PORTFOLIO TODAY:
-Value: $${portfolioValue.toLocaleString()}
-Today P&L: ${todayPnL >= 0 ? '+' : ''}$${Math.abs(todayPnL).toLocaleString()} (${todayPnLPct >= 0 ? '+' : ''}${todayPnLPct.toFixed(1)}%)
-Total P&L: ${totalPnL >= 0 ? '+' : ''}$${Math.abs(totalPnL).toLocaleString()} (${totalPnLPct >= 0 ? '+' : ''}${totalPnLPct.toFixed(1)}%)
+PORTFOLIO (durable data — use for total returns only):
+Total P&L: ${totalPnLPct >= 0 ? '+' : ''}${totalPnLPct.toFixed(1)}%
+Cash balance: $${cashBalance.toLocaleString()}
+Cash % of portfolio: ${cashPct.toFixed(1)}%
+Position count: ${positions.length}
 
-MARKET BENCHMARK:
-SPY today: ${spyReturnPct >= 0 ? '+' : ''}${spyReturnPct.toFixed(2)}%
-Portfolio vs SPY spread: ${(todayPnLPct - spyReturnPct).toFixed(2)}%
-
-TOP POSITIONS (by value):
-${positions.slice(0, 5).map((p: any) =>
-  `${p.symbol}: ${p.totalPnLPct >= 0 ? '+' : ''}${(p.totalPnLPct || 0).toFixed(1)}% total, ${(p.dailyPnLPct || 0) >= 0 ? '+' : ''}${(p.dailyPnLPct || 0).toFixed(1)}% today`
+POSITIONS (total return since purchase):
+${positions.map((p: any) =>
+  `${p.symbol}: ${(p.totalPnLPct || 0) >= 0 ? '+' : ''}${(p.totalPnLPct || 0).toFixed(1)}% total, $${((p.marketValue || 0)).toLocaleString()} value`
 ).join('\n')}
 
-${biggestWinner ? `NOTABLE POSITIONS:
-Biggest winner: ${biggestWinner.symbol} (+${(biggestWinner.totalPnLPct || 0).toFixed(1)}%)
-Biggest laggard: ${biggestLaggard?.symbol} (${(biggestLaggard?.totalPnLPct || 0).toFixed(1)}%)` : ''}
+${biggestWinner ? `NOTABLE:
+Biggest winner: ${biggestWinner.symbol} (+${(biggestWinner.totalPnLPct || 0).toFixed(1)}% total)
+Biggest laggard: ${biggestLaggard?.symbol} (${(biggestLaggard?.totalPnLPct || 0).toFixed(1)}% total)
+Largest position: ${largestPosition?.symbol} ($${((largestPosition?.marketValue || 0)).toLocaleString()})` : ''}
 
 UPCOMING EVENTS (next 48h):
 ${upcomingEarnings.length > 0
   ? upcomingEarnings.map((e: any) =>
     `${e.symbol} earnings ${e.date}`).join('\n')
   : 'None scheduled'}
-
-LAST HOOK TYPE USED: ${lastHookType || 'none'}
-(Do not repeat this hook type)
 
 Opener to use: "${market.opener}"
 `;
@@ -195,17 +186,24 @@ Opener to use: "${market.opener}"
       }],
     });
 
-    const greeting = response.content[0]?.type === 'text'
+    const fullText = response.content[0]?.type === 'text'
       ? (response.content[0] as any).text?.trim()
       : null;
 
-    if (!greeting) throw new Error('Empty response');
+    if (!fullText) throw new Error('Empty response');
 
-    console.log('[Greeting] Success:', greeting);
+    console.log('[Greeting] Raw:', fullText);
+
+    const parts = fullText.split('|||').map((p: string) => p.trim());
+    const opener = parts[0] || `${market.opener}, ${userInitial}.`;
+    const hook = parts[1] || null;
+
+    console.log('[Greeting] Parsed:', { opener, hook });
 
     return NextResponse.json({
-      greeting,
-      hookType: detectHookType(greeting),
+      opener,
+      hook,
+      hookType: detectHookType(hook || ''),
     });
   } catch (error: any) {
     console.error('[Greeting] Error:', error.message);

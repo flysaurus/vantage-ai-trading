@@ -80,8 +80,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState(0);
-  const [greeting, setGreeting] = useState<string | null>(null);
-  const [greetingDots, setGreetingDots] = useState(true);
+  const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
+  const [greetingHook, setGreetingHook] = useState<string | null>(null);
+  const [greetingLoaded, setGreetingLoaded] = useState(false);
   const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
     symbol: string;
@@ -287,132 +288,155 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Market period helper ──
-  const getCurrentMarketPeriod = useCallback((): string => {
-    const now = new Date();
-    const day = now.getDay();
-    if (day === 0 || day === 6) return 'closed';
-    const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const h = et.getHours() + et.getMinutes() / 60;
-    if (h >= 4 && h < 9.5) return 'premarket';
-    if (h >= 9.5 && h < 16) return 'open';
-    if (h >= 16 && h < 20) return 'afterhours';
-    return 'closed';
+  // ── Greeting cache key (per-day) ──
+  const GREETING_CACHE_KEY = useCallback(() => {
+    const today = new Date().toDateString();
+    return `vantage_greeting_${today}`;
   }, []);
 
-  // ── AI greeting on fresh session ──
+  // ── Static fallback greetings — shown instantly ──
+  const STATIC_FALLBACKS: Record<string, { opener: string; hook: string }> = {
+    premarket: { opener: 'Pre-market, M.', hook: 'Markets open soon — your portfolio is ready.' },
+    open_morning: { opener: 'Morning, M.', hook: 'Your portfolio is live and ready to review.' },
+    open_afternoon: { opener: 'Afternoon, M.', hook: 'Markets are moving — ask me anything.' },
+    afterhours: { opener: 'After hours, M.', hook: 'Markets closed — good time to plan ahead.' },
+    evening: { opener: 'Evening, M.', hook: 'A quiet moment to think through your positions.' },
+  };
+
+  function getMarketPeriod(): keyof typeof STATIC_FALLBACKS {
+    const now = new Date();
+    const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const hour = et.getHours();
+    const min = et.getMinutes();
+    const day = et.getDay();
+    const timeInMin = hour * 60 + min;
+    const isWeekend = day === 0 || day === 6;
+
+    if (isWeekend || timeInMin < 240 || timeInMin >= 1200) return 'evening';
+    if (timeInMin < 570) return 'premarket';
+    if (timeInMin < 720) return 'open_morning';
+    if (timeInMin < 960) return 'open_afternoon';
+    if (timeInMin < 1200) return 'afterhours';
+    return 'evening';
+  }
+
+  function cleanOldGreetingCache() {
+    const today = new Date().toDateString();
+    const keys = Object.keys(localStorage);
+    keys.forEach(key => {
+      if (key.startsWith('vantage_greeting_') && key !== `vantage_greeting_${today}`) {
+        localStorage.removeItem(key);
+      }
+    });
+  }
+
+  // ── Greeting fetch ref — prevent re-fetch on tab switch ──
+  const greetingFetchedRef = useRef(false);
+
+  // Clean old cache keys on mount
+  useEffect(() => {
+    cleanOldGreetingCache();
+  }, []);
+
+  // ── AI greeting on fresh session (cache-first) ──
   useEffect(() => {
     if (messages.length > 0) return;
-    if (greeting || previousSession) return;
+    if (greetingFetchedRef.current) return;
+    greetingFetchedRef.current = true;
 
-    const fetchGreeting = async () => {
-      console.log('Greeting: fetching...');
+    loadGreeting();
 
-      // Fallback after 8 seconds — time-aware
-      const fallback = setTimeout(() => {
-        console.log('Greeting: timed out, using fallback');
-        setGreetingDots(false);
-        const market = getCurrentMarketPeriod();
-        const userInit = user?.name?.[0]?.toUpperCase() || 'M';
-        const fallbacks: Record<string, string> = {
-          premarket: `Pre-market, ${userInit}. Markets open soon — what's on your mind?`,
-          open: `Morning, ${userInit}. Markets are moving — anything you want to dig into?`,
-          afterhours: `After hours, ${userInit}. The close is in — want to review the day?`,
-          closed: `Evening, ${userInit}. Good time to think ahead — what's on your mind?`,
-        };
-        setGreeting(fallbacks[market] || fallbacks.closed);
-      }, 8000);
+    async function loadGreeting() {
+      // Step 1: Show static fallback immediately
+      const period = getMarketPeriod();
+      const fallback = STATIC_FALLBACKS[period];
+      setGreetingOpener(fallback.opener);
+      setGreetingHook(fallback.hook);
+      setGreetingLoaded(true);
 
+      const cacheKey = GREETING_CACHE_KEY();
+
+      // Step 2: Check today's cache
       try {
-        // Fetch SPY quote + earnings in parallel
-        const userInit = user?.name?.[0]?.toUpperCase() || 'M';
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const { opener, hook } = JSON.parse(cached);
+          // Smooth swap from fallback to cached
+          setTimeout(() => {
+            setGreetingOpener(opener);
+            setGreetingHook(hook);
+          }, 200);
+          return; // No API call needed
+        }
+      } catch {
+        localStorage.removeItem(cacheKey);
+      }
+
+      // Step 3: Generate fresh (no cache found)
+      try {
         const invStyle = (user?.investorStyle || investorStyle || 'Lynch') as string;
         const risk = (user?.riskTolerance || 'Moderate') as string;
         const positions = liveAccount?.positions || [];
         const equity = liveAccount?.equity ?? 0;
         const cash = liveAccount?.cash ?? 0;
-        const dayPnl = liveAccount?.dayPnl ?? 0;
-        const dayPnlPct = liveAccount?.dayPnlPercent ?? 0;
-        const totalPnl = liveAccount?.totalPnl ?? 0;
+        const totalInvested = positions.reduce((sum: number, p: any) => sum + (p.costBasis || 0) * (p.qty || 0), 0);
         const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
-        const symbols = positions.map(p => p.symbol);
+        const cashPct = equity + cash > 0 ? (cash / (equity + cash)) * 100 : 0;
+        const symbols = positions.map((p: any) => p.symbol);
 
-        const [spyRes, earnRes] = await Promise.allSettled([
-          fetch('/api/finnhub/quote?symbol=SPY').then(r => r.ok ? r.json() : null).catch(() => null),
-          symbols.length > 0
-            ? fetch(`/api/finnhub/earnings-calendar?symbols=${symbols.join(',')}`).then(r => r.ok ? r.json() : []).catch(() => [])
-            : Promise.resolve([]),
-        ]);
-
-        const spyQuote = spyRes.status === 'fulfilled' ? spyRes.value : null;
-        const earnings = earnRes.status === 'fulfilled' ? earnRes.value : [];
-        const lastHookType = typeof window !== 'undefined'
-          ? localStorage.getItem('vantage_last_hook_type')
-          : null;
+        let upcomingEarnings: any[] = [];
+        try {
+          if (symbols.length > 0) {
+            const earnRes = await fetch(`/api/finnhub/earnings-calendar?symbols=${symbols.join(',')}`);
+            if (earnRes.ok) upcomingEarnings = await earnRes.json();
+          }
+        } catch (_) { /* earnings fetch is optional */ }
 
         const res = await fetch('/api/ai/greeting', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userInitial: userInit,
+            userInitial: 'M.',
             investorStyle: invStyle,
             riskTolerance: risk,
-            portfolioValue: equity + cash,
-            todayPnL: dayPnl,
-            todayPnLPct: dayPnlPct,
-            totalPnL: totalPnl,
             totalPnLPct: totalPnlPct,
-            spyReturn: spyQuote?.d || 0,
-            spyReturnPct: spyQuote?.dp || 0,
-            positions: positions.map(p => ({
+            cashBalance: cash,
+            cashPct,
+            positions: positions.map((p: any) => ({
               symbol: p.symbol,
               totalPnLPct: p.totalPnlPercent || 0,
-              dailyPnLPct: p.dayChangePercent || 0,
+              totalPnL: p.totalPnl || 0,
+              marketValue: p.marketValue || 0,
             })),
-            upcomingEarnings: earnings,
-            lastHookType,
+            upcomingEarnings: upcomingEarnings || [],
           }),
+          signal: AbortSignal.timeout(8000),
         });
-        console.log('Greeting response:', res.status);
 
-        if (res.ok) {
-          const data = await res.json();
-          console.log('Greeting text:', data.greeting);
-          clearTimeout(fallback);
-          const text = data.greeting?.trim();
-          if (text) {
-            // Save hook type for next session
-            if (data.hookType && typeof window !== 'undefined') {
-              localStorage.setItem('vantage_last_hook_type', data.hookType);
-            }
-            setTimeout(() => {
-              setGreetingDots(false);
-              setGreeting(text);
-            }, 1500);
-          } else {
-            console.log('Greeting: empty response, using fallback');
-            const market = getCurrentMarketPeriod();
-            setGreetingDots(false);
-            setGreeting(`Good to see you, ${userInit}. What would you like to explore today?`);
-          }
-        } else {
-          console.log('Greeting: API error, using fallback');
-          clearTimeout(fallback);
-          const market = getCurrentMarketPeriod();
-          setGreetingDots(false);
-          setGreeting(`Good to see you, ${userInit}. What would you like to explore today?`);
+        if (!res.ok) throw new Error('API failed');
+
+        const data = await res.json();
+
+        if (data.opener && data.hook) {
+          // Cache for today
+          localStorage.setItem(cacheKey, JSON.stringify({
+            opener: data.opener,
+            hook: data.hook,
+            generatedAt: Date.now(),
+          }));
+
+          // Smooth swap from fallback to personalized
+          setTimeout(() => {
+            setGreetingOpener(data.opener);
+            setGreetingHook(data.hook);
+          }, 200);
         }
-      } catch (err) {
-        console.log('Greeting: fetch failed', err);
-        clearTimeout(fallback);
-        const market = getCurrentMarketPeriod();
-        const userInit = user?.name?.[0]?.toUpperCase() || 'M';
-        setGreetingDots(false);
-        setGreeting(`Good to see you, ${userInit}. What would you like to explore today?`);
+      } catch (e) {
+        // Static fallback stays — no crash
+        console.log('[Greeting] Using fallback:', e);
       }
-    };
-    setTimeout(() => fetchGreeting(), 500);
-  }, [messages.length, greeting, previousSession, portfolioContext, user, investorStyle, liveAccount, getCurrentMarketPeriod]);
+    }
+  }, []); // empty deps — runs once per session
 
   // ── helpers ──
   function isAtBottom(): boolean {
@@ -1413,8 +1437,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
           position: 'relative',
         }}
       >
-        {/* AI Greeting on fresh session */}
-        {messages.length === 0 && !loading && greetingDots && (
+        {/* AI Greeting on fresh session — loading dots */}
+        {messages.length === 0 && !loading && !greetingLoaded && (
           <div
             style={{
               alignSelf: 'flex-start',
@@ -1457,32 +1481,29 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </div>
         )}
 
-        {/* AI Greeting revealed — personalized opening */}
-        {messages.length === 0 && greeting && !greetingDots && (() => {
-          const hour = new Date().getHours();
-          const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-          return (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              background: 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(26,34,53,0.95) 100%)',
-              border: '1px solid rgba(34,211,238,0.2)',
-              borderRadius: '16px',
-              padding: '14px 16px',
-              marginBottom: '16px',
-              maxWidth: '90%',
-            }}
-          >
-            {/* Header */}
+        {/* AI Greeting — two-line layout with styled initial */}
+        {greetingLoaded && (
+          <div style={{
+            background: 'linear-gradient(135deg, ' +
+              'rgba(34,211,238,0.06) 0%, ' +
+              'rgba(26,34,53,0.98) 100%)',
+            border: '1px solid rgba(34,211,238,0.18)',
+            borderRadius: '16px',
+            padding: '16px 18px',
+            marginBottom: '16px',
+            transition: 'opacity 0.3s ease',
+          }}>
+
+            {/* Tiny header row */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              marginBottom: '8px',
+              marginBottom: '10px',
             }}>
-              <span style={{ fontSize: '14px' }}>🧭</span>
+              <span style={{ fontSize: '13px' }}>🧭</span>
               <span style={{
-                color: '#22d3ee',
+                color: 'rgba(34,211,238,0.6)',
                 fontSize: '10px',
                 fontWeight: '600',
                 letterSpacing: '0.1em',
@@ -1490,27 +1511,41 @@ Give me a market pulse check — how are the major indexes performing today, wha
               }}>
                 Vantage AI
               </span>
-              <span style={{ color: '#374151', fontSize: '10px' }}>
-                · {timeOfDay}
-              </span>
             </div>
 
-            {/* Greeting text — plain italic */}
-            <p style={{
-              color: '#e2e8f0',
-              fontSize: '14px',
-              lineHeight: '1.6',
-              margin: 0,
-              fontStyle: 'italic',
+            {/* Line 1 — opener with styled initial */}
+            <div style={{
+              fontSize: '20px',
+              fontWeight: '700',
+              letterSpacing: '-0.01em',
+              lineHeight: 1.2,
+              marginBottom: '8px',
             }}>
-              {greeting}
-            </p>
+              {greetingOpener && greetingOpener.split(/\b(M\.)\b/).map((part, i) =>
+                part === 'M.' ? (
+                  <span key={i} style={{ color: '#22d3ee' }}>M.</span>
+                ) : (
+                  <span key={i} style={{ color: '#ffffff' }}>{part}</span>
+                )
+              )}
+            </div>
+
+            {/* Line 2 — hook */}
+            {greetingHook && (
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '400',
+                color: '#9ca3af',
+                lineHeight: '1.6',
+              }}>
+                {greetingHook}
+              </div>
+            )}
           </div>
-          );
-        })()}
+        )}
 
         {/* Empty state — suggestion chips */}
-        {messages.length === 0 && !greetingDots && !loading && (
+        {messages.length === 0 && greetingLoaded && !loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {suggestionChips.map((suggestion) => (
               <div
