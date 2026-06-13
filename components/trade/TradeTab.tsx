@@ -186,6 +186,60 @@ export function TradeTab() {
       {/* ─── Market Overview ─── */}
       <MarketOverview />
 
+      {/* ─── 2. STRATEGIES SECTION ─── */}
+      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
+        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+          STRATEGIES
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', padding: '0 16px', marginBottom: '20px' }}>
+          {[
+            { id: 'build-basket', icon: '🧺', label: 'Build Basket', description: 'AI-curated themed portfolios', available: true, onClick: () => setShowBuildBasket(true) },
+            { id: 'dca', icon: '📊', label: 'DCA', description: 'Dollar cost averaging', available: false },
+            { id: 'rebalance', icon: '⚖️', label: 'Rebalance', description: 'Optimize allocations', available: false },
+            { id: 'tax-harvest', icon: '🌾', label: 'Tax Harvest', description: 'Offset gains with losses', available: false },
+            { id: 'momentum', icon: '📈', label: 'Momentum', description: 'Ride market leaders', available: false },
+            { id: 'mean-reversion', icon: '📉', label: 'Mean Rev.', description: 'Buy the dip', available: false },
+          ].map(strategy => (
+            <button
+              key={strategy.id}
+              onClick={strategy.available ? strategy.onClick : undefined}
+              style={{
+                background: '#1a2235',
+                border: strategy.id === 'build-basket'
+                  ? '1px solid rgba(34,211,238,0.3)'
+                  : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '12px',
+                padding: '14px 8px',
+                cursor: strategy.available ? 'pointer' : 'default',
+                textAlign: 'center',
+                opacity: strategy.available ? 1 : 0.5,
+                position: 'relative',
+              }}
+            >
+              {!strategy.available && (
+                <div style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  background: 'rgba(34,211,238,0.15)',
+                  color: '#22d3ee',
+                  fontSize: '8px',
+                  fontWeight: '600',
+                  padding: '2px 5px',
+                  borderRadius: '4px',
+                  letterSpacing: '0.05em',
+                }}>
+                  SOON
+                </div>
+              )}
+              <div style={{ fontSize: '22px', marginBottom: '6px' }}>{strategy.icon}</div>
+              <div style={{ color: strategy.available ? '#ffffff' : '#6b7280', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>{strategy.label}</div>
+              <div style={{ color: '#4b5563', fontSize: '10px', lineHeight: '1.3' }}>{strategy.description}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ─── 1. SYMBOL SEARCH BAR ─── */}
       <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
         <div style={{
@@ -693,60 +747,6 @@ export function TradeTab() {
         >
           Place Order
         </button>
-      </div>
-
-      {/* ─── 3. STRATEGIES SECTION ─── */}
-      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
-          STRATEGIES
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', padding: '0 16px', marginBottom: '20px' }}>
-          {[
-            { id: 'build-basket', icon: '🧺', label: 'Build Basket', description: 'AI-curated themed portfolios', available: true, onClick: () => setShowBuildBasket(true) },
-            { id: 'dca', icon: '📊', label: 'DCA', description: 'Dollar cost averaging', available: false },
-            { id: 'rebalance', icon: '⚖️', label: 'Rebalance', description: 'Optimize allocations', available: false },
-            { id: 'tax-harvest', icon: '🌾', label: 'Tax Harvest', description: 'Offset gains with losses', available: false },
-            { id: 'momentum', icon: '📈', label: 'Momentum', description: 'Ride market leaders', available: false },
-            { id: 'mean-reversion', icon: '📉', label: 'Mean Rev.', description: 'Buy the dip', available: false },
-          ].map(strategy => (
-            <button
-              key={strategy.id}
-              onClick={strategy.available ? strategy.onClick : undefined}
-              style={{
-                background: '#1a2235',
-                border: strategy.id === 'build-basket'
-                  ? '1px solid rgba(34,211,238,0.3)'
-                  : '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '12px',
-                padding: '14px 8px',
-                cursor: strategy.available ? 'pointer' : 'default',
-                textAlign: 'center',
-                opacity: strategy.available ? 1 : 0.5,
-                position: 'relative',
-              }}
-            >
-              {!strategy.available && (
-                <div style={{
-                  position: 'absolute',
-                  top: '6px',
-                  right: '6px',
-                  background: 'rgba(34,211,238,0.15)',
-                  color: '#22d3ee',
-                  fontSize: '8px',
-                  fontWeight: '600',
-                  padding: '2px 5px',
-                  borderRadius: '4px',
-                  letterSpacing: '0.05em',
-                }}>
-                  SOON
-                </div>
-              )}
-              <div style={{ fontSize: '22px', marginBottom: '6px' }}>{strategy.icon}</div>
-              <div style={{ color: strategy.available ? '#ffffff' : '#6b7280', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>{strategy.label}</div>
-              <div style={{ color: '#4b5563', fontSize: '10px', lineHeight: '1.3' }}>{strategy.description}</div>
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* ─── 3.5: MY BASKETS ─── */}

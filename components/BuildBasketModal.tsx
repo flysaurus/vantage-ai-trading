@@ -110,6 +110,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [showAddInput, setShowAddInput] = useState(false);
   const [addSymbolInput, setAddSymbolInput] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
+  const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
+  const [canProceed, setCanProceed] = useState(true);
 
   // ── Fetch curated baskets on open ──
   useEffect(() => {
@@ -333,6 +335,22 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
   const orderEstTotal = executionPlan?.reduce((sum, p) => sum + p.totalCost, 0) || 0;
   const orderEstBuffer = (parseInt(budget) || 0) - orderEstTotal;
+
+  // ── Scroll trap: prevent background scroll when modal is open ──
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalWidth = document.body.style.width;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.width = originalWidth;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -724,7 +742,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   const customThemeStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: '200px' }}>
         <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
           Describe the basket you want
         </p>
@@ -756,17 +774,53 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         </div>
       </div>
 
-      <div style={{ padding: '12px 20px calc(16px + env(safe-area-inset-bottom)) 20px', flexShrink: 0 }}>
+      {/* Fixed bottom buttons */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10000,
+        background: '#0a0f1e',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        padding: '12px 16px',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      }}>
         <button
           onClick={() => setStep('budget')}
           disabled={!customName.trim()}
           style={{
-            width: '100%', background: customName.trim() ? '#22d3ee' : 'rgba(34,211,238,0.2)',
-            border: 'none', borderRadius: '10px', color: customName.trim() ? '#000000' : 'rgba(34,211,238,0.4)',
-            fontSize: '14px', fontWeight: '600', padding: '14px 0',
+            width: '100%',
+            padding: '16px',
+            background: customName.trim() ? '#22d3ee' : 'rgba(34,211,238,0.2)',
+            color: customName.trim() ? '#0a0f1e' : '#6b7280',
+            border: 'none',
+            borderRadius: '12px',
+            fontSize: '16px',
+            fontWeight: '600',
             cursor: customName.trim() ? 'pointer' : 'not-allowed',
           }}
-        >Continue →</button>
+        >
+          Generate Basket →
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            fontSize: '14px',
+            color: '#6b7280',
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
       </div>
     </>
   );
@@ -818,26 +872,52 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         </div>
       </div>
 
-      {/* Fixed bottom button */}
+      {/* Fixed bottom buttons */}
       <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        padding: '12px 20px',
-        paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 80px)',
-        background: 'linear-gradient(transparent, #0a0f1e 30%)',
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10000,
+        background: '#0a0f1e',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        padding: '12px 16px',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
       }}>
         <button
           onClick={() => selectedCurated ? setStep('basket_review') : generateBasket()}
           disabled={!budget || parseInt(budget) <= 0}
           style={{
             width: '100%',
+            padding: '16px',
             background: budget && parseInt(budget) > 0 ? '#22d3ee' : 'rgba(34,211,238,0.2)',
-            border: 'none', borderRadius: '10px',
-            color: budget && parseInt(budget) > 0 ? '#000000' : 'rgba(34,211,238,0.4)',
-            fontSize: '14px', fontWeight: '600', padding: '14px 0',
+            color: budget && parseInt(budget) > 0 ? '#0a0f1e' : '#6b7280',
+            border: 'none',
+            borderRadius: '12px',
+            fontSize: '16px',
+            fontWeight: '600',
             cursor: budget && parseInt(budget) > 0 ? 'pointer' : 'not-allowed',
           }}
         >
           {selectedCurated ? 'Review Order →' : 'Generate Basket →'}
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            fontSize: '14px',
+            color: '#6b7280',
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
         </button>
       </div>
     </>
@@ -1019,6 +1099,70 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // STEP: BASKET REVIEW (live prices + customize)
   // ────────────────────────────────────────────────────────────
 
+  // ── Quantity adjustment & budget validation ──
+  function doValidateBudget() {
+    if (!budget) return;
+    const bNum = parseInt(budget) || 0;
+    const total = reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0);
+    const effectiveBudget = bNum * 0.95;
+
+    if (total > effectiveBudget) {
+      setBudgetWarning(
+        `Total $${total.toFixed(2)} exceeds effective budget $${effectiveBudget.toFixed(2)}. Reduce quantities.`
+      );
+      setCanProceed(false);
+    } else if (total > bNum) {
+      setBudgetWarning(
+        `Total exceeds stated budget. Within 5% buffer — acceptable.`
+      );
+      setCanProceed(true);
+    } else {
+      setBudgetWarning(null);
+      setCanProceed(true);
+    }
+  }
+
+  function adjustShares(symbol: string, delta: number) {
+    setReviewStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.symbol !== symbol) return s;
+        const newShares = Math.max(
+          0.0001,
+          Math.round((s.shares + delta) * 10000) / 10000
+        );
+        return {
+          ...s,
+          shares: newShares,
+          dollarAmount: Math.round(newShares * s.price * 100) / 100,
+        };
+      });
+      return updated;
+    });
+    // validate after state update
+    setTimeout(() => doValidateBudget(), 0);
+  }
+
+  function setSharesValue(symbol: string, shares: number) {
+    if (isNaN(shares) || shares < 0) return;
+    setReviewStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.symbol !== symbol) return s;
+        return {
+          ...s,
+          shares,
+          dollarAmount: Math.round(shares * s.price * 100) / 100,
+        };
+      });
+      return updated;
+    });
+    setTimeout(() => doValidateBudget(), 0);
+  }
+
+  // Run validation when reviewStocks or budget changes
+  useEffect(() => {
+    if (step === 'basket_review') doValidateBudget();
+  }, [reviewStocks, budget, step]);
+
   // ── Confirm and execute basket order ──
   async function handleConfirmOrder() {
     if (!selectedCurated || reviewStocks.length === 0) return;
@@ -1056,7 +1200,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
   const basketReviewStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '200px' }}>
         {/* Basket summary */}
         <div style={{
           padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -1121,7 +1265,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
             {reviewStocks.map((stock, i) => (
               <div key={stock.symbol} style={{
-                display: 'flex', alignItems: 'center',
+                display: 'flex', alignItems: 'flex-start',
                 padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: '8px',
               }}>
                 {/* Remove button — only in edit mode */}
@@ -1134,6 +1278,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                       background: 'none', border: 'none', fontSize: '20px',
                       cursor: reviewStocks.length <= 2 ? 'not-allowed' : 'pointer',
                       flexShrink: 0, lineHeight: 1, width: '28px', textAlign: 'center',
+                      marginTop: '2px',
                     }}
                   >×</button>
                 )}
@@ -1150,9 +1295,58 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     </div>
                     <span style={{ color: '#22d3ee', fontWeight: '600', fontSize: '13px' }}>{stock.allocation}%</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280', fontSize: '11px' }}>
-                    <span>{stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}</span>
-                    <span style={{ color: '#9ca3af' }}>= ${stock.dollarAmount.toFixed(2)}</span>
+                  <div style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>
+                    {stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}
+                  </div>
+
+                  {/* Quantity controls */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <button
+                      onClick={() => adjustShares(stock.symbol, -0.01)}
+                      style={{
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.08)', border: 'none',
+                        color: '#ffffff', fontSize: '16px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >−</button>
+                    <input
+                      type="number"
+                      value={stock.shares.toFixed(4)}
+                      onChange={e => setSharesValue(stock.symbol, parseFloat(e.target.value) || 0)}
+                      style={{
+                        width: '80px',
+                        background: '#0a0f1e',
+                        border: '1px solid rgba(34,211,238,0.3)',
+                        borderRadius: '6px',
+                        padding: '4px 8px',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        textAlign: 'center',
+                      }}
+                    />
+                    <button
+                      onClick={() => adjustShares(stock.symbol, 0.01)}
+                      style={{
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.08)', border: 'none',
+                        color: '#ffffff', fontSize: '16px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >+</button>
+                    <span style={{
+                      color: '#9ca3af',
+                      fontSize: '12px',
+                      marginLeft: 'auto',
+                    }}>
+                      = ${stock.dollarAmount.toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1196,15 +1390,46 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             {/* Error */}
             {error && <p style={{ fontSize: '11px', color: '#ef4444', padding: '8px 16px' }}>{error}</p>}
 
-            {/* Total row */}
+            {/* Budget Warning */}
+            {budgetWarning && (
+              <div style={{
+                margin: '8px 16px',
+                padding: '8px 12px',
+                background: canProceed
+                  ? 'rgba(251,191,36,0.08)'
+                  : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${canProceed
+                  ? 'rgba(251,191,36,0.3)'
+                  : 'rgba(239,68,68,0.3)'}`,
+                borderRadius: '8px',
+                color: canProceed ? '#f59e0b' : '#ef4444',
+                fontSize: '11px',
+              }}>{canProceed ? '⚠️' : '❌'} {budgetWarning}
+              </div>
+            )}
+
+            {/* Running total */}
             <div style={{
-              margin: '8px 16px', padding: '12px',
-              background: 'rgba(255,255,255,0.03)', borderRadius: '10px',
-              display: 'flex', justifyContent: 'space-between',
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+              margin: '4px 0',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.02)',
             }}>
-              <span style={{ color: '#9ca3af', fontSize: '13px' }}>Est. Total</span>
-              <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
+              <span style={{ color: '#6b7280', fontSize: '13px' }}>
+                Running total
+              </span>
+              <span style={{
+                color: canProceed ? '#ffffff' : '#ef4444',
+                fontWeight: '700',
+                fontSize: '13px',
+              }}>
                 ${reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0).toFixed(2)}
+                {' / '}
+                <span style={{ color: '#22d3ee' }}>
+                  ${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </span>
             </div>
 
@@ -1220,25 +1445,48 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         )}
       </div>
 
-      {/* Fixed bottom button */}
+      {/* Fixed bottom buttons */}
       <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10000,
+        background: '#0a0f1e',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
         padding: '12px 16px',
-        paddingBottom: 'calc(12px + env(safe-area-inset-bottom) + 80px)',
-        background: 'linear-gradient(transparent, #0a0f1e 40%)',
-        display: 'flex', flexDirection: 'column', gap: '8px',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
       }}>
         <button
           onClick={() => setStep('basket_confirm')}
-          disabled={reviewStocks.length < 2 || loadingPrices}
+          disabled={!canProceed || reviewStocks.length < 2 || loadingPrices}
           style={{
             width: '100%', padding: '16px',
-            background: reviewStocks.length >= 2 ? '#22d3ee' : 'rgba(34,211,238,0.2)',
-            color: reviewStocks.length >= 2 ? '#0a0f1e' : '#6b7280',
+            background: canProceed && reviewStocks.length >= 2 ? '#22d3ee' : 'rgba(34,211,238,0.2)',
+            color: canProceed && reviewStocks.length >= 2 ? '#0a0f1e' : '#6b7280',
             border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600',
-            cursor: reviewStocks.length >= 2 ? 'pointer' : 'not-allowed',
+            cursor: canProceed && reviewStocks.length >= 2 ? 'pointer' : 'not-allowed',
           }}
         >Review & Confirm →</button>
+
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            fontSize: '14px',
+            color: '#6b7280',
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
       </div>
     </>
   );
