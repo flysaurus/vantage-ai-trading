@@ -172,6 +172,8 @@ interface PortfolioContextValue {
   cancelBasketOrder: (basketId: string) => void;
   /** Execute all pending OPEN orders at current market prices */
   executePendingOrders: () => Promise<void>;
+  /** Pending basket orders (OPEN status, awaiting market open) */
+  pendingBaskets: any[];
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -190,6 +192,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   cancelOrder: () => {},
   cancelBasketOrder: () => {},
   executePendingOrders: async () => {},
+  pendingBaskets: [],
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -248,6 +251,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [demoOrders, setDemoOrders] = useState<DemoOrder[]>(initialPersistedState?.orders || []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [baskets, setBaskets] = useState<Basket[]>([]);
+  const [pendingBaskets, setPendingBaskets] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('vantage_pending_baskets');
+      if (raw) return JSON.parse(raw).filter((b: any) => b.status === 'OPEN');
+    } catch { }
+    return [];
+  });
 
   // ── Account: from persisted state if available, otherwise seed ──
   const [account, setAccount] = useState<AccountSummary | null>(() => {
@@ -688,6 +699,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           return b;
         });
         if (hasChanges) localStorage.setItem('vantage_pending_baskets', JSON.stringify(updated));
+        // Also update in-memory state
+        setPendingBaskets(updated.filter((b: any) => b.status === 'OPEN'));
       }
     } catch { /* ignore */ }
 
@@ -886,6 +899,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         // Update pending baskets (remove executed ones)
         if (stillPending.length !== pendingBaskets.length) {
           localStorage.setItem('vantage_pending_baskets', JSON.stringify(stillPending));
+          setPendingBaskets(stillPending.filter((b: any) => b.status === 'OPEN'));
           loadBasketsRef.current(); // refresh baskets state
         }
       }
@@ -965,6 +979,18 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadBaskets();
   }, [loadBaskets]);
+
+  // ── Auto-execute pending baskets on market open ──
+  useEffect(() => {
+    if (pendingBaskets.length === 0) return;
+    const market = getMarketStatus();
+    if (!market.isOpen) return;
+    // Small delay to ensure all init is complete
+    const timer = setTimeout(() => {
+      executePendingOrders();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [pendingBaskets.length > 0]); // Only trigger when we have pending baskets
 
   useEffect(() => {
     if (baskets.length > 0) {
@@ -1139,11 +1165,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           status: 'OPEN',
           submittedAt: new Date().toISOString(),
           note: `Pending · ${market.nextOpenLabel}`,
+          nextOpenLabel: market.nextOpenLabel,
         };
         const raw = localStorage.getItem('vantage_pending_baskets');
         const pending = raw ? JSON.parse(raw) : [];
         pending.push(pendingBasket);
         localStorage.setItem('vantage_pending_baskets', JSON.stringify(pending));
+        setPendingBaskets(prev => [...prev, pendingBasket]);
       } catch { /* ignore */ }
 
       setToast({
@@ -1388,6 +1416,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         cancelOrder,
         cancelBasketOrder,
         executePendingOrders,
+        pendingBaskets,
       }}
     >
       {children}

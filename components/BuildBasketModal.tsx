@@ -1181,26 +1181,39 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // STEP: BASKET REVIEW (live prices + customize)
   // ────────────────────────────────────────────────────────────
 
-  // ── Quantity adjustment & budget validation (unified) — whole shares ──
-  function updateShares(symbol: string, newShares: number) {
+  // ── Dollar amount editing & budget validation (unified) ──
+  function updateDollarAmount(symbol: string, newAmount: number) {
     const bNum = parseInt(budget) || 0;
-    const shares = Math.max(1, Math.floor(newShares));
     if (!bNum) return;
+    
+    // Minimum = price of 1 share (at least 1 share price floor)
+    const stockItem = reviewStocks.find(s => s.symbol === symbol);
+    if (!stockItem) return;
+    const minAmount = stockItem.price; // at least 1 share
+    const clamped = Math.max(minAmount, newAmount);
 
     setReviewStocks(prev => {
       const updated = prev.map(s => {
         if (s.symbol !== symbol) return s;
-        const dollarAmount = Math.round(shares * s.price * 100) / 100;
+        const dollarAmount = Math.round(clamped * 100) / 100;
+        const estimatedShares = Math.floor(dollarAmount / s.price);
         return {
           ...s,
-          shares,
           dollarAmount,
-          allocation: Math.round((dollarAmount / (bNum * 0.95)) * 100),
+          estimatedShares,
+          shares: estimatedShares, // sync shares for execution
+          allocation: 0, // recomputed below
         };
       });
 
-      // Check total vs budget
+      // Recalculate allocation % based on dollar amounts
       const total = updated.reduce((sum, s) => sum + s.dollarAmount, 0);
+      const withAlloc = updated.map(s => ({
+        ...s,
+        allocation: Math.round((s.dollarAmount / total) * 100),
+      }));
+
+      // Check total vs budget
       const effectiveBudget = bNum * 0.95;
       const hardLimit = bNum * 1.0;
 
@@ -1221,7 +1234,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         setCanProceed(true);
       }
 
-      return updated;
+      return withAlloc;
     });
   }
 
@@ -1326,29 +1339,32 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               marginBottom: '4px',
             }}>
               <span style={{
-                color: '#4b5563',
-                fontSize: '10px',
+                color: '#ffffff',
+                fontSize: '15px',
                 fontWeight: '600',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
+                letterSpacing: '-0.01em',
               }}>
                 Execution Plan
               </span>
               <button
                 onClick={() => setIsEditMode(!isEditMode)}
                 style={{
-                  color: isEditMode ? '#22d3ee' : '#9ca3af',
-                  background: 'none',
+                  background: isEditMode
+                    ? 'rgba(34,211,238,0.15)'
+                    : 'rgba(255,255,255,0.06)',
                   border: isEditMode
-                    ? '1px solid rgba(34,211,238,0.3)'
-                    : '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '6px',
-                  padding: '4px 12px',
-                  fontSize: '12px',
+                    ? '1px solid rgba(34,211,238,0.5)'
+                    : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '8px',
+                  padding: '7px 16px',
+                  color: isEditMode ? '#22d3ee' : '#e2e8f0',
+                  fontSize: '13px',
+                  fontWeight: '500',
                   cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                {isEditMode ? 'Done' : 'Customize'}
+                {isEditMode ? '✓ Done' : '✏️ Customize'}
               </button>
             </div>
 
@@ -1374,7 +1390,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
                 {/* Stock info */}
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  {/* Ticker + allocation */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <div>
                       <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '14px' }}>{stock.symbol}</span>
                       <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '6px' }}>{stock.name}</span>
@@ -1384,62 +1401,59 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     </div>
                     <span style={{ color: '#22d3ee', fontWeight: '600', fontSize: '13px' }}>{stock.allocation}%</span>
                   </div>
-                  <div style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>
-                    {stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}
+
+                  {/* Estimated shares — subtle, below ticker */}
+                  <div style={{
+                    color: '#4b5563',
+                    fontSize: '11px',
+                    marginBottom: '8px',
+                    fontStyle: 'italic',
+                  }}>
+                    Est. ~{Math.floor(stock.dollarAmount / stock.price)} shares @ ${stock.price.toFixed(2)}
+                    {' '}
+                    <span style={{ color: '#374151' }}>· qty calculated at market price</span>
                   </div>
 
-                  {/* Quantity controls */}
+                  {/* Dollar amount controls */}
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    marginTop: '6px',
                   }}>
-                    {/* Decrease button */}
+                    {/* Decrease $10 */}
                     <button
-                      onClick={() => {
-                        const current = stock.shares;
-                        const newShares = Math.max(1, current - 1);
-                        updateShares(stock.symbol, newShares);
-                      }}
-                      disabled={stock.shares <= 1}
+                      onClick={() => updateDollarAmount(stock.symbol, Math.max(stock.price, stock.dollarAmount - 10))}
                       style={{
-                        width: '32px', height: '32px', borderRadius: '50%',
-                        background: stock.shares <= 1
-                          ? 'rgba(255,255,255,0.04)'
-                          : 'rgba(255,255,255,0.1)',
-                        border: 'none',
-                        color: stock.shares <= 1
-                          ? '#374151' : '#ffffff',
-                        fontSize: '18px',
-                        cursor: stock.shares <= 1
-                          ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        width: '36px', height: '36px', borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.08)', border: 'none',
+                        color: '#ffffff', fontSize: '18px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
                       }}
                     >−</button>
 
-                    {/* Click-to-edit shares */}
+                    {/* Dollar input */}
                     {editingSymbol === stock.symbol ? (
                       <input
                         autoFocus
                         type="number"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
+                        inputMode="decimal"
                         value={editValue}
                         onChange={e => setEditValue(e.target.value)}
                         onBlur={() => {
-                          const parsed = parseInt(editValue);
-                          if (!isNaN(parsed) && parsed >= 1) updateShares(stock.symbol, parsed);
+                          const parsed = parseFloat(editValue);
+                          if (!isNaN(parsed) && parsed >= stock.price) {
+                            updateDollarAmount(stock.symbol, parsed);
+                          }
                           setEditingSymbol(null);
                           setEditValue('');
                         }}
                         onKeyDown={e => {
                           if (e.key === 'Enter') {
-                            const parsed = parseInt(editValue);
-                            if (!isNaN(parsed) && parsed >= 1) updateShares(stock.symbol, parsed);
+                            const parsed = parseFloat(editValue);
+                            if (!isNaN(parsed) && parsed >= stock.price) {
+                              updateDollarAmount(stock.symbol, parsed);
+                            }
                             setEditingSymbol(null);
                             setEditValue('');
                           } else if (e.key === 'Escape') {
@@ -1448,11 +1462,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                           }
                         }}
                         style={{
-                          width: '64px',
+                          flex: 1,
                           background: '#0a0f1e',
                           border: '1px solid #22d3ee',
                           borderRadius: '8px',
-                          padding: '6px 8px',
+                          padding: '8px 10px',
                           color: '#ffffff',
                           fontSize: '14px',
                           fontWeight: '600',
@@ -1466,14 +1480,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                       <button
                         onClick={() => {
                           setEditingSymbol(stock.symbol);
-                          setEditValue(String(stock.shares));
+                          setEditValue(stock.dollarAmount.toFixed(2));
                         }}
                         style={{
-                          width: '64px',
+                          flex: 1,
                           background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: '1px solid rgba(255,255,255,0.12)',
                           borderRadius: '8px',
-                          padding: '6px 8px',
+                          padding: '8px 10px',
                           color: '#ffffff',
                           fontSize: '14px',
                           fontWeight: '600',
@@ -1481,30 +1495,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                           cursor: 'pointer',
                         }}
                       >
-                        {stock.shares}
+                        ${stock.dollarAmount.toFixed(2)}
                       </button>
                     )}
 
-                    {/* Increase button */}
+                    {/* Increase $10 */}
                     <button
-                      onClick={() => updateShares(stock.symbol, stock.shares + 1)}
+                      onClick={() => updateDollarAmount(stock.symbol, stock.dollarAmount + 10)}
                       style={{
-                        width: '32px', height: '32px', borderRadius: '50%',
-                        background: 'rgba(255,255,255,0.1)', border: 'none',
+                        width: '36px', height: '36px', borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.08)', border: 'none',
                         color: '#ffffff', fontSize: '18px', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
                       }}
                     >+</button>
-
-                    {/* Dollar amount */}
-                    <span style={{
-                      color: '#9ca3af',
-                      fontSize: '12px',
-                      marginLeft: 'auto',
-                    }}>
-                      = ${stock.dollarAmount.toFixed(2)}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -1579,6 +1584,48 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
             {/* Error */}
             {error && <p style={{ fontSize: '11px', color: '#ef4444', padding: '8px 16px' }}>{error}</p>}
+
+            {/* Running total with estimated label */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+              background: 'rgba(255,255,255,0.02)',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              marginTop: '8px',
+            }}>
+              <div>
+                <div style={{
+                  color: '#6b7280',
+                  fontSize: '12px',
+                }}>
+                  Estimated total
+                </div>
+                <div style={{
+                  color: '#4b5563',
+                  fontSize: '10px',
+                  fontStyle: 'italic',
+                  marginTop: '2px',
+                }}>
+                  Actual qty calculated at execution price
+                </div>
+              </div>
+              <div style={{
+                color: '#ffffff',
+                fontWeight: '700',
+                fontSize: '14px',
+                textAlign: 'right',
+              }}>
+                ${reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0).toFixed(2)}
+                <div style={{
+                  color: '#22d3ee',
+                  fontSize: '11px',
+                  fontWeight: '400',
+                }}>
+                  / ${((parseInt(budget) || 0) * 0.95).toFixed(2)} budget
+                </div>
+              </div>
+            </div>
 
             {/* Budget Warning */}
             {budgetWarning && (
@@ -1771,7 +1818,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               borderRadius: '8px', color: '#f59e0b', fontSize: '11px', lineHeight: '1.5',
               marginBottom: '12px',
             }}>
-              ⚠️ Market orders execute at live prices. Demo trades use live Finnhub prices.
+              ⚠️ Market orders execute at live prices. Final amounts may vary slightly.
             </div>
           </>
         ) : null}
