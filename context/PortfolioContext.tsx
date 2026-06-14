@@ -19,6 +19,7 @@ import React, {
 } from 'react';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import type { AccountSummary, Position, Order } from '@/types';
 
@@ -71,6 +72,14 @@ interface DemoOrder {
   totalCost: number;
   status: string;
   createdAt: string;
+  /** Price at which the order was submitted (for OPEN orders) */
+  submittedPrice?: number;
+  /** Cash reserved for OPEN BUY orders */
+  reservedCost?: number;
+  /** Optional note (e.g. 'pending execution') */
+  note?: string;
+  /** When the order was cancelled */
+  cancelledAt?: string;
 }
 
 interface DemoState {
@@ -97,6 +106,8 @@ function generateOrderId(): string {
 interface TradeResult {
   success: boolean;
   error?: string;
+  /** Whether the order was FILLED (market open) or OPEN (pending, market closed) */
+  status?: 'FILLED' | 'OPEN';
 }
 
 interface BasketTradeResult {
@@ -105,6 +116,7 @@ interface BasketTradeResult {
   failed: number;
   totalSpent: number;
   error?: string;
+  status?: 'FILLED' | 'OPEN';
 }
 
 interface BasketSellResult {
@@ -153,6 +165,12 @@ interface PortfolioContextValue {
     basketId: string,
     symbolsToSell: string[],
   ) => Promise<BasketSellResult>;
+  /** Cancel an OPEN order — releases reserved cash for BUY orders */
+  cancelOrder: (orderId: string) => void;
+  /** Cancel a pending basket order — releases reserved cash, marks OPEN orders as CANCELLED */
+  cancelBasketOrder: (basketId: string) => void;
+  /** Execute all pending OPEN orders at current market prices */
+  executePendingOrders: () => Promise<void>;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -168,6 +186,9 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   loadBaskets: () => {},
   executeBasketTrade: async () => ({ success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Not initialized' }),
   sellBasketPositions: async () => ({ success: false, proceeds: 0, executed: [], failed: [] }),
+  cancelOrder: () => {},
+  cancelBasketOrder: () => {},
+  executePendingOrders: async () => {},
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -356,11 +377,76 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number): TradeResult => {
       if (!demoState) return { success: false, error: 'No portfolio loaded' };
 
+      const market = getMarketStatus();
       const positions = [...demoState.positions];
       let cashBalance = demoState.cashBalance;
+      const cost = shares * price;
 
+      // ── OPEN ORDER (market closed) ──
+      if (!market.isOpen) {
+        if (side === 'BUY') {
+          if (cost > cashBalance) {
+            const msg = `Insufficient funds (need $${cost.toFixed(2)}, have $${cashBalance.toFixed(2)})`;
+            setToast({ message: `❌ ${msg}`, type: 'error' });
+            setTimeout(() => setToast(null), 4000);
+            return { success: false, error: msg, status: 'OPEN' };
+          }
+
+          // Reserve cash immediately
+          cashBalance -= cost;
+        } else {
+          // SELL — check shares exist
+          const existingIdx = positions.findIndex((p) => p.symbol === symbol);
+          if (existingIdx < 0) {
+            return { success: false, error: 'Position not found', status: 'OPEN' };
+          }
+          if (shares > positions[existingIdx].qty) {
+            const msg = `Insufficient shares (have ${positions[existingIdx].qty}, trying to sell ${shares})`;
+            setToast({ message: `❌ ${msg}`, type: 'error' });
+            setTimeout(() => setToast(null), 4000);
+            return { success: false, error: msg, status: 'OPEN' };
+          }
+        }
+
+        // Create OPEN order
+        const openOrder: DemoOrder = {
+          id: generateOrderId(),
+          symbol,
+          side,
+          shares,
+          type: 'market',
+          fillPrice: price,
+          totalCost: cost,
+          status: 'OPEN',
+          createdAt: new Date().toISOString(),
+          submittedPrice: price,
+          reservedCost: side === 'BUY' ? cost : 0,
+          note: `Pending · ${market.nextOpenLabel}`,
+        };
+
+        const newOrders = [openOrder, ...demoOrders.slice(0, 49)];
+        const newState: DemoState = {
+          positions,
+          cashBalance,
+          orders: newOrders,
+          savedAt: Date.now(),
+        };
+
+        setDemoState(newState);
+        setDemoOrders(newOrders);
+        persistDemoState(newState);
+
+        setToast({
+          message: `⏳ Order for ${symbol} queued — ${market.nextOpenLabel}`,
+          type: 'success',
+        });
+        setTimeout(() => setToast(null), 4000);
+
+        return { success: true, status: 'OPEN' };
+      }
+
+      // ── FILLED ORDER (market open) ──
       if (side === 'BUY') {
-        const cost = shares * price;
         if (cost > cashBalance) {
           const msg = `Insufficient funds (need $${cost.toFixed(2)}, have $${cashBalance.toFixed(2)})`;
           setToast({ message: `❌ ${msg}`, type: 'error' });
@@ -397,11 +483,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
 
         cashBalance -= cost;
-        setToast({
-          message: `✅ Bought ${shares} shares of ${symbol} at $${price.toFixed(2)}`,
-          type: 'success',
-        });
-        setTimeout(() => setToast(null), 3000);
 
       } else {
         // SELL
@@ -430,27 +511,23 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
 
         cashBalance += proceeds;
-        setToast({
-          message: `✅ Sold ${shares} shares of ${symbol} at $${price.toFixed(2)}`,
-          type: 'success',
-        });
-        setTimeout(() => setToast(null), 3000);
       }
 
-      // Add order to history
-      const newOrder: DemoOrder = {
+      // Add FILLED order to history
+      const filledOrder: DemoOrder = {
         id: generateOrderId(),
         symbol,
         side,
         shares,
         type: 'market',
         fillPrice: price,
-        totalCost: shares * price,
+        totalCost: cost,
         status: 'FILLED',
         createdAt: new Date().toISOString(),
+        submittedPrice: price,
       };
 
-      const newOrders = [newOrder, ...demoOrders.slice(0, 49)]; // keep last 50
+      const newOrders = [filledOrder, ...demoOrders.slice(0, 49)];
       const newState: DemoState = {
         positions,
         cashBalance,
@@ -462,14 +539,299 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       setDemoOrders(newOrders);
       persistDemoState(newState);
 
-      return { success: true };
+      const sideLabel = side === 'BUY' ? 'Bought' : 'Sold';
+      setToast({
+        message: `✅ ${sideLabel} ${shares} shares of ${symbol} at $${price.toFixed(2)}`,
+        type: 'success',
+      });
+      setTimeout(() => setToast(null), 3000);
+
+      return { success: true, status: 'FILLED' };
     },
     [demoState, demoOrders, persistDemoState]
   );
 
   const dismissToast = useCallback(() => setToast(null), []);
 
-  // ── loadBaskets ──
+  // ── cancelOrder ──
+  const cancelOrder = useCallback((orderId: string) => {
+    const order = demoOrders.find(o => o.id === orderId);
+    if (!order || order.status.toUpperCase() !== 'OPEN') return;
+
+    let cashBalance = demoState?.cashBalance ?? 0;
+
+    // Release reserved cash for BUY orders
+    if (order.side === 'BUY') {
+      const reserved = order.reservedCost ?? order.shares * (order.submittedPrice ?? order.fillPrice);
+      cashBalance += reserved;
+    }
+
+    // Mark order as CANCELLED
+    const updatedOrders = demoOrders.map(o =>
+      o.id === orderId
+        ? { ...o, status: 'CANCELLED' as const, cancelledAt: new Date().toISOString() }
+        : o
+    );
+
+    const newState: DemoState = {
+      positions: demoState?.positions || [],
+      cashBalance,
+      orders: updatedOrders,
+      savedAt: Date.now(),
+    };
+
+    setDemoState(newState);
+    setDemoOrders(updatedOrders);
+    persistDemoState(newState);
+
+    setToast({
+      message: `❌ Order for ${order.symbol} cancelled — $${((order.reservedCost ?? order.shares * (order.submittedPrice ?? order.fillPrice))).toFixed(2)} returned to buying power`,
+      type: 'success',
+    });
+    setTimeout(() => setToast(null), 4000);
+  }, [demoState, demoOrders, persistDemoState]);
+
+  // ── cancelBasketOrder ──
+  const cancelBasketOrder = useCallback((basketId: string) => {
+    if (!demoState) return;
+
+    let hasChanges = false;
+    let cashReleased = 0;
+
+    // 1. Find and cancel pending basket in localStorage
+    try {
+      const raw = localStorage.getItem('vantage_pending_baskets');
+      if (raw) {
+        const pendingBaskets = JSON.parse(raw);
+        const updated = pendingBaskets.map((b: any) => {
+          if (b.id === basketId && b.status === 'OPEN') {
+            hasChanges = true;
+            cashReleased += b.totalReserved || 0;
+            return { ...b, status: 'CANCELLED', cancelledAt: new Date().toISOString() };
+          }
+          return b;
+        });
+        if (hasChanges) localStorage.setItem('vantage_pending_baskets', JSON.stringify(updated));
+      }
+    } catch { /* ignore */ }
+
+    // 2. Mark all associated OPEN orders as CANCELLED
+    const updatedOrders = demoOrders.map(o => {
+      const oBasketId = (o as any).basketId || (
+        o.id?.toString().includes('-b') ? o.id?.toString().split('-b')[0] : null
+      );
+      // For basket orders, the id format is "timestamp-bN" — match loosely
+      if ((o as any).status?.toUpperCase() === 'OPEN' && (
+        (o as any).basketId === basketId || o.note?.includes('Pending')
+      )) {
+        // Release cash for any BUY basket orders not tracked by pending basket
+        if (o.side === 'BUY' && !hasChanges) {
+          cashReleased += o.reservedCost ?? o.shares * (o.submittedPrice ?? o.fillPrice);
+        }
+        hasChanges = true;
+        return { ...o, status: 'CANCELLED' as const, cancelledAt: new Date().toISOString() };
+      }
+      return o;
+    });
+
+    if (!hasChanges) {
+      setToast({ message: 'No pending basket orders found', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    // 3. Release reserved cash
+    const newState: DemoState = {
+      positions: [...demoState.positions],
+      cashBalance: demoState.cashBalance + cashReleased,
+      orders: updatedOrders,
+      savedAt: Date.now(),
+    };
+
+    setDemoState(newState);
+    setDemoOrders(updatedOrders);
+    persistDemoState(newState);
+
+    setToast({
+      message: `🛑 Basket order cancelled. $${cashReleased.toFixed(2)} returned to buying power.`,
+      type: 'success',
+    });
+    setTimeout(() => setToast(null), 4000);
+  }, [demoState, demoOrders, persistDemoState]);
+
+  // ── executePendingOrders ──
+  const executePendingOrders = useCallback(async () => {
+    const openOrders = demoOrders.filter(o => o.status.toUpperCase() === 'OPEN');
+    if (openOrders.length === 0 && !localStorage.getItem('vantage_pending_baskets')) return;
+
+    let positions = demoState ? [...demoState.positions] : [];
+    let cashBalance = demoState?.cashBalance ?? 0;
+    let updatedOrders = [...demoOrders];
+    let hasChanges = false;
+
+    // ── Execute OPEN orders ──
+    for (const order of openOrders) {
+      try {
+        // Fetch current market price from Finnhub
+        const quoteRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(order.symbol)}`);
+        const quote = await quoteRes.json();
+        const fillPrice = quote.c || order.submittedPrice || order.fillPrice;
+
+        if (order.side === 'BUY') {
+          // Cash was already reserved — apply order to positions
+          const cost = order.shares * fillPrice;
+          const existingIdx = positions.findIndex(p => p.symbol === order.symbol);
+          if (existingIdx >= 0) {
+            const existing = positions[existingIdx];
+            const newTotalCost = existing.qty * existing.avgCost + cost;
+            const newShares = existing.qty + order.shares;
+            positions[existingIdx] = { ...existing, qty: newShares, avgCost: newTotalCost / newShares };
+          } else {
+            positions.push({
+              symbol: order.symbol,
+              name: order.symbol,
+              qty: order.shares,
+              avgCost: fillPrice,
+              currentPrice: fillPrice,
+              marketValue: cost,
+              dayChange: 0,
+              dayChangePercent: 0,
+              totalPnl: 0,
+              totalPnlPercent: 0,
+              portfolioPercent: 0,
+              type: 'Stock',
+            });
+          }
+        } else {
+          // SELL order — remove shares from positions
+          const existingIdx = positions.findIndex(p => p.symbol === order.symbol);
+          if (existingIdx >= 0) {
+            const existing = positions[existingIdx];
+            const proceeds = order.shares * fillPrice;
+            if (order.shares >= existing.qty) {
+              positions.splice(existingIdx, 1);
+            } else {
+              positions[existingIdx] = { ...existing, qty: existing.qty - order.shares };
+            }
+            cashBalance += proceeds;
+          }
+        }
+
+        // Mark order as FILLED
+        updatedOrders = updatedOrders.map(o =>
+          o.id === order.id
+            ? { ...o, status: 'FILLED' as const, fillPrice, totalCost: order.shares * fillPrice }
+            : o
+        );
+        hasChanges = true;
+        console.log(`[executePending] Filled ${order.side} ${order.symbol} @ $${fillPrice.toFixed(2)}`);
+      } catch (err) {
+        console.error(`[executePending] Failed to fill ${order.symbol}:`, err);
+      }
+    }
+
+    // ── Execute pending baskets ──
+    try {
+      const raw = localStorage.getItem('vantage_pending_baskets');
+      if (raw) {
+        const pendingBaskets = JSON.parse(raw);
+        const stillPending: any[] = [];
+
+        for (const basket of pendingBaskets) {
+          if (basket.status !== 'OPEN') {
+            stillPending.push(basket);
+            continue;
+          }
+
+          console.log(`[executePending] Processing basket: ${basket.basketName}`);
+
+          // Execute each stock in the basket
+          for (const stock of basket.stocks) {
+            try {
+              const quoteRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(stock.symbol)}`);
+              const quote = await quoteRes.json();
+              const fillPrice = quote.c || stock.price;
+              const cost = stock.shares * fillPrice;
+
+              const existingIdx = positions.findIndex(p => p.symbol === stock.symbol);
+              if (existingIdx >= 0) {
+                const existing = positions[existingIdx];
+                const newTotalCost = existing.qty * existing.avgCost + cost;
+                const newShares = existing.qty + stock.shares;
+                positions[existingIdx] = { ...existing, qty: newShares, avgCost: newTotalCost / newShares };
+              } else {
+                positions.push({
+                  symbol: stock.symbol,
+                  name: stock.name || stock.symbol,
+                  qty: stock.shares,
+                  avgCost: fillPrice,
+                  currentPrice: fillPrice,
+                  marketValue: cost,
+                  dayChange: 0,
+                  dayChangePercent: 0,
+                  totalPnl: 0,
+                  totalPnlPercent: 0,
+                  portfolioPercent: 0,
+                  type: 'Stock',
+                });
+              }
+
+              // Save to basket localStorage
+              try {
+                const existingRaw = localStorage.getItem(BASKET_STORAGE_KEY);
+                const existing: BasketPosition[] = existingRaw ? JSON.parse(existingRaw) : [];
+                existing.push({
+                  id: crypto.randomUUID(),
+                  basketId: basket.id,
+                  basketName: basket.basketName,
+                  basketEmoji: basket.basketEmoji,
+                  symbol: stock.symbol,
+                  shares: stock.shares,
+                  avgCost: fillPrice,
+                  totalCost: cost,
+                  allocationPct: stock.allocationPct,
+                  status: 'active',
+                  boughtAt: new Date().toISOString(),
+                });
+                localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(existing));
+              } catch { /* ignore */ }
+
+              console.log(`[executePending] Basket ${basket.basketName}: filled ${stock.symbol} @ $${fillPrice.toFixed(2)}`);
+            } catch (err) {
+              console.error(`[executePending] Basket stock ${stock.symbol} failed:`, err);
+            }
+          }
+
+          // Mark basket as executed (don't keep in pending)
+          // Don't push to stillPending — it's done
+          hasChanges = true;
+        }
+
+        // Update pending baskets (remove executed ones)
+        if (stillPending.length !== pendingBaskets.length) {
+          localStorage.setItem('vantage_pending_baskets', JSON.stringify(stillPending));
+          loadBasketsRef.current(); // refresh baskets state
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (hasChanges) {
+      const newState: DemoState = { positions, cashBalance, orders: updatedOrders, savedAt: Date.now() };
+      setDemoState(newState);
+      setDemoOrders(updatedOrders);
+      persistDemoState(newState);
+
+      const filledCount = openOrders.length;
+      setToast({
+        message: `⚡ ${filledCount} pending order${filledCount !== 1 ? 's' : ''} executed at market price`,
+        type: 'success',
+      });
+      setTimeout(() => setToast(null), 4000);
+    }
+  }, [demoState, demoOrders, persistDemoState]);
+
+  const loadBasketsRef = useRef<() => void>(() => {});
+
   const loadBaskets = useCallback(() => {
     try {
       const raw = localStorage.getItem(BASKET_STORAGE_KEY);
@@ -520,6 +882,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Keep ref in sync
+  useEffect(() => { loadBasketsRef.current = loadBaskets; }, [loadBaskets]);
+
   // ── Load baskets on mount + refresh prices periodically ──
   useEffect(() => {
     loadBaskets();
@@ -531,7 +896,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── refreshBasketPrices (add real Finnhub quotes to baskets) ──
+  // ── refreshBasketPrices (direct Finnhub quotes for basket positions) ──
   const refreshBasketPrices = useCallback(async (basketList: Basket[]) => {
     if (!basketList.length) return;
 
@@ -543,49 +908,54 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     if (!allSymbols.length) return;
 
-    try {
-      const res = await fetch('/api/market/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols: allSymbols }),
+    // Fetch all quotes in parallel via Finnhub
+    const results = await Promise.allSettled(
+      allSymbols.map(symbol =>
+        fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`)
+          .then(r => r.json())
+          .then(q => ({ symbol, quote: q }))
+      )
+    );
+
+    // Build quote map from successful fetches
+    const quoteMap: Record<string, any> = {};
+    results.forEach(result => {
+      if (result.status === 'fulfilled') {
+        const { symbol, quote } = result.value;
+        if (quote.c > 0) {
+          quoteMap[symbol] = quote;
+        }
+      }
+    });
+
+    if (Object.keys(quoteMap).length === 0) return;
+
+    setBaskets(prev => prev.map(basket => {
+      const enrichedPositions = basket.positions.map(pos => {
+        const quote = quoteMap[pos.symbol];
+        if (!quote || pos.status !== 'active') return pos;
+        const currentPrice = quote.c;
+        const marketValue = pos.shares * currentPrice;
+        const totalPnL = marketValue - pos.totalCost;
+        const totalPnLPct = pos.totalCost > 0 ? (totalPnL / pos.totalCost) * 100 : 0;
+        const dailyPnL = pos.shares * (quote.d || 0);
+        return { ...pos, currentPrice, marketValue, totalPnL, totalPnLPct, dailyPnL };
       });
 
-      if (!res.ok) return;
+      const activePositions = enrichedPositions.filter(p => p.status === 'active');
+      const marketValue = activePositions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
+      const totalCost = activePositions.reduce((sum, p) => sum + p.totalCost, 0);
+      const totalPnL = marketValue - totalCost;
 
-      const data = await res.json();
-      const quoteMap: Record<string, any> = data?.quotes || {};
-
-      if (Object.keys(quoteMap).length === 0) return;
-
-      setBaskets(prev => prev.map(basket => {
-        const enrichedPositions = basket.positions.map(pos => {
-          const quote = quoteMap[pos.symbol];
-          if (!quote || pos.status !== 'active') return pos;
-          const currentPrice = quote.price || pos.avgCost;
-          const marketValue = pos.shares * currentPrice;
-          const totalPnL = marketValue - pos.totalCost;
-          const totalPnLPct = pos.totalCost > 0 ? (totalPnL / pos.totalCost) * 100 : 0;
-          const dailyPnL = pos.shares * (quote.change || 0);
-          return { ...pos, currentPrice, marketValue, totalPnL, totalPnLPct, dailyPnL };
-        });
-
-        const activePositions = enrichedPositions.filter(p => p.status === 'active');
-        const marketValue = activePositions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
-        const totalCost = activePositions.reduce((sum, p) => sum + p.totalCost, 0);
-        const totalPnL = marketValue - totalCost;
-
-        return {
-          ...basket,
-          positions: enrichedPositions,
-          marketValue,
-          totalPnL,
-          totalPnLPct: totalCost > 0 ? (totalPnL / totalCost) * 100 : 0,
-          dailyPnL: activePositions.reduce((sum, p) => sum + (p.dailyPnL || 0), 0),
-        };
-      }));
-    } catch {
-      // quote fetch failure is non-critical
-    }
+      return {
+        ...basket,
+        positions: enrichedPositions,
+        marketValue,
+        totalPnL,
+        totalPnLPct: totalCost > 0 ? (totalPnL / totalCost) * 100 : 0,
+        dailyPnL: activePositions.reduce((sum, p) => sum + (p.dailyPnL || 0), 0),
+      };
+    }));
   }, []);
 
   // ── executeBasketTrade ──
@@ -649,6 +1019,67 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
+    const market = getMarketStatus();
+
+    // ── OPEN ORDERS (market closed) — reserve cash, queue for execution ──
+    if (!market.isOpen) {
+      let cashBalance = demoState.cashBalance - totalSpend;
+
+      const basketOrders: DemoOrder[] = executionPlan.map((plan, i) => ({
+        id: generateOrderId() + `-b${i}`,
+        symbol: plan.symbol,
+        side: 'BUY' as const,
+        shares: plan.shares,
+        type: 'market' as const,
+        fillPrice: plan.price,
+        totalCost: plan.totalCost,
+        status: 'OPEN' as const,
+        createdAt: new Date().toISOString(),
+        submittedPrice: plan.price,
+        reservedCost: plan.totalCost,
+        note: `Pending · ${market.nextOpenLabel}`,
+      }));
+
+      const newOrders = [...basketOrders, ...demoOrders.slice(0, 50 - basketOrders.length)];
+      const newState: DemoState = {
+        positions: [...demoState.positions],
+        cashBalance,
+        orders: newOrders,
+        savedAt: Date.now(),
+      };
+
+      setDemoState(newState);
+      setDemoOrders(newOrders);
+      persistDemoState(newState);
+
+      // Store pending basket for execution when market opens
+      try {
+        const pendingBasket = {
+          id: basketId,
+          basketName,
+          basketEmoji,
+          stocks: executionPlan,
+          totalReserved: totalSpend,
+          status: 'OPEN',
+          submittedAt: new Date().toISOString(),
+          note: `Pending · ${market.nextOpenLabel}`,
+        };
+        const raw = localStorage.getItem('vantage_pending_baskets');
+        const pending = raw ? JSON.parse(raw) : [];
+        pending.push(pendingBasket);
+        localStorage.setItem('vantage_pending_baskets', JSON.stringify(pending));
+      } catch { /* ignore */ }
+
+      setToast({
+        message: `🧺 Basket "${basketName}" queued — ${market.nextOpenLabel}. ${executionPlan.length} stocks, $${totalSpend.toFixed(2)} reserved.`,
+        type: 'success',
+      });
+      setTimeout(() => setToast(null), 5000);
+
+      return { success: true, executed: executionPlan.length, failed: 0, totalSpent: totalSpend, status: 'OPEN' };
+    }
+
+    // ── FILLED ORDERS (market open) ──
     let executed = 0;
     let failed = 0;
     let totalSpent = 0;
@@ -753,7 +1184,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       positions: executed,
     });
 
-    return { success: executed > 0, executed, failed, totalSpent };
+    return { success: executed > 0, executed, failed, totalSpent, status: 'FILLED' };
   }, [demoState, demoOrders, persistDemoState, loadBaskets]);
 
   // ── sellBasketPositions ──
@@ -878,6 +1309,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         loadBaskets,
         executeBasketTrade,
         sellBasketPositions,
+        cancelOrder,
+        cancelBasketOrder,
+        executePendingOrders,
       }}
     >
       {children}

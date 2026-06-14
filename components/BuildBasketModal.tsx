@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompassIcon from '@/components/CompassIcon';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
+import { getMarketStatus } from '@/lib/market-hours';
 
 // ── 5-step flow: curated → custom_theme → budget → generating → review ──
 // Plus order_ticket after review for curated baskets
@@ -95,6 +96,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [error, setError] = useState<string | null>(null);
   const [removeFlash, setRemoveFlash] = useState(false);
   const [addStockSymbol, setAddStockSymbol] = useState('');
+  const [stockSearchResults, setStockSearchResults] = useState<any[]>([]);
+  const [stockSearchLoading, setStockSearchLoading] = useState(false);
   const [showAddStock, setShowAddStock] = useState(false);
   const [isAddingStock, setIsAddingStock] = useState(false);
 
@@ -109,6 +112,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [priceError, setPriceError] = useState(false);
   const [showAddInput, setShowAddInput] = useState(false);
   const [addSymbolInput, setAddSymbolInput] = useState('');
+  const [reviewSearchResults, setReviewSearchResults] = useState<any[]>([]);
+  const [reviewSearchLoading, setReviewSearchLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
   const [canProceed, setCanProceed] = useState(true);
@@ -153,6 +158,48 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       setShowAddStock(false);
     }
   }, [isOpen]);
+
+  // ── Auto-complete: addStockSymbol (review step) ──
+  useEffect(() => {
+    if (!addStockSymbol || addStockSymbol.trim().length < 1) {
+      setStockSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setStockSearchLoading(true);
+      try {
+        const res = await fetch(`/api/finnhub/search?q=${encodeURIComponent(addStockSymbol.trim())}`);
+        const data = await res.json();
+        const filtered = (data.result || [])
+          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF')
+          .slice(0, 8);
+        setStockSearchResults(filtered);
+      } catch { setStockSearchResults([]); }
+      finally { setStockSearchLoading(false); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [addStockSymbol]);
+
+  // ── Auto-complete: addSymbolInput (basket_review step) ──
+  useEffect(() => {
+    if (!addSymbolInput || addSymbolInput.trim().length < 1) {
+      setReviewSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setReviewSearchLoading(true);
+      try {
+        const res = await fetch(`/api/finnhub/search?q=${encodeURIComponent(addSymbolInput.trim())}`);
+        const data = await res.json();
+        const filtered = (data.result || [])
+          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF')
+          .slice(0, 8);
+        setReviewSearchResults(filtered);
+      } catch { setReviewSearchResults([]); }
+      finally { setReviewSearchLoading(false); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [addSymbolInput]);
 
   // ── Stock management hooks (above early return per TDZ rules) ──
   const removeStock = useCallback((symbol: string) => {
@@ -1040,13 +1087,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                 }}
               >+ Add Stock</button>
             ) : (
-              <div style={{ marginTop: '12px' }}>
+              <div style={{ marginTop: '12px', position: 'relative' }}>
                 <input type="text" value={addStockSymbol}
                   onChange={e => setAddStockSymbol(e.target.value)}
-                  placeholder="Enter ticker (e.g. AAPL)"
+                  placeholder="Search symbol or company..."
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && addStockSymbol.trim()) addStock(addStockSymbol);
-                    else if (e.key === 'Escape') { setShowAddStock(false); setAddStockSymbol(''); }
+                    if (e.key === 'Escape') { setShowAddStock(false); setAddStockSymbol(''); setStockSearchResults([]); }
                   }} autoFocus disabled={isAddingStock}
                   style={{
                     width: '100%', background: '#1a2235', border: '1px solid rgba(34,211,238,0.3)',
@@ -1054,21 +1100,47 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     outline: 'none', boxSizing: 'border-box',
                   }}
                 />
+                {/* Auto-complete dropdown */}
+                {stockSearchResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                    marginTop: 4, background: '#1e293b', border: '1px solid #334155',
+                    borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                    maxHeight: '200px', overflow: 'auto',
+                  }}>
+                    {stockSearchLoading && (
+                      <div style={{ padding: '8px 12px', fontSize: '11px', color: '#64748b' }}>Searching…</div>
+                    )}
+                    {stockSearchResults.map((r: any, i: number) => (
+                      <button
+                        key={r.symbol}
+                        onClick={() => {
+                          addStock(r.symbol);
+                          setAddStockSymbol('');
+                          setStockSearchResults([]);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'center', padding: '8px 12px',
+                          background: 'transparent', border: 'none',
+                          borderBottom: i < stockSearchResults.length - 1 ? '1px solid #33415550' : 'none',
+                          cursor: 'pointer', textAlign: 'left',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{r.symbol}</div>
+                          {r.description && <div style={{ fontSize: '10px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
+                        </div>
+                        <span style={{ fontSize: '10px', color: '#64748b', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                  <button onClick={() => { setShowAddStock(false); setAddStockSymbol(''); }} style={{
+                  <button onClick={() => { setShowAddStock(false); setAddStockSymbol(''); setStockSearchResults([]); }} style={{
                     flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: '6px', padding: '8px 0', color: '#94a3b8', fontSize: '12px', cursor: 'pointer',
                   }}>Cancel</button>
-                  <button onClick={() => addStockSymbol.trim() && addStock(addStockSymbol)}
-                    disabled={!addStockSymbol.trim() || isAddingStock}
-                    style={{
-                      flex: 1, background: addStockSymbol.trim() && !isAddingStock ? '#22d3ee' : 'rgba(34,211,238,0.2)',
-                      border: 'none', borderRadius: '6px', padding: '8px 0',
-                      color: addStockSymbol.trim() && !isAddingStock ? '#000' : 'rgba(34,211,238,0.4)',
-                      fontSize: '12px', fontWeight: '600',
-                      cursor: addStockSymbol.trim() && !isAddingStock ? 'pointer' : 'not-allowed',
-                    }}
-                  >{isAddingStock ? 'Fetching...' : 'Add'}</button>
                 </div>
               </div>
             )}
@@ -1185,6 +1257,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     setExecuting(false);
     if (result.success) {
       const b = selectedCurated!;
+      const market = getMarketStatus();
       setBasketResult({
         basketName: b.name,
         basketEmoji: b.emoji,
@@ -1198,7 +1271,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         cashRemaining: cashBalance - result.totalSpent,
         executed: result.executed,
         failed: result.failed,
-      });
+        status: result.status || 'FILLED',
+        marketLabel: market.nextOpenLabel || '',
+      } as any);
       setStep('success');
     }
   }
@@ -1361,26 +1436,58 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             {isEditMode && reviewStocks.length < 10 && (
               <div style={{ padding: '8px 16px' }}>
                 {showAddInput ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input autoFocus placeholder="Enter ticker (e.g. AAPL)" value={addSymbolInput}
-                      onChange={e => setAddSymbolInput(e.target.value.toUpperCase())}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') handleAddStock(addSymbolInput);
-                        if (e.key === 'Escape') { setShowAddInput(false); setAddSymbolInput(''); }
-                      }}
-                      style={{
-                        flex: 1, background: '#0a0f1e', border: '1px solid rgba(34,211,238,0.3)',
-                        borderRadius: '8px', padding: '8px 12px', color: '#ffffff', fontSize: '13px',
-                      }}
-                    />
-                    <button onClick={() => handleAddStock(addSymbolInput)} style={{
-                      background: '#22d3ee', color: '#0a0f1e', border: 'none', borderRadius: '8px',
-                      padding: '8px 14px', fontWeight: '600', cursor: 'pointer', fontSize: '13px', flexShrink: 0,
-                    }}>Add</button>
-                    <button onClick={() => { setShowAddInput(false); setAddSymbolInput(''); }} style={{
-                      background: 'none', border: 'none', color: '#6b7280', fontSize: '20px',
-                      cursor: 'pointer', flexShrink: 0,
-                    }}>×</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
+                      <input autoFocus placeholder="Search symbol or company..." value={addSymbolInput}
+                        onChange={e => setAddSymbolInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => {
+                          if (e.key === 'Escape') { setShowAddInput(false); setAddSymbolInput(''); setReviewSearchResults([]); }
+                        }}
+                        style={{
+                          flex: 1, background: '#0a0f1e', border: '1px solid rgba(34,211,238,0.3)',
+                          borderRadius: '8px', padding: '8px 12px', color: '#ffffff', fontSize: '13px',
+                        }}
+                      />
+                      <button onClick={() => { setShowAddInput(false); setAddSymbolInput(''); setReviewSearchResults([]); }} style={{
+                        background: 'none', border: 'none', color: '#6b7280', fontSize: '20px',
+                        cursor: 'pointer', flexShrink: 0,
+                      }}>×</button>
+                    </div>
+                    {/* Auto-complete dropdown */}
+                    {reviewSearchResults.length > 0 && (
+                      <div style={{
+                        background: '#1e293b', border: '1px solid #334155',
+                        borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                        maxHeight: '200px', overflow: 'auto', zIndex: 50,
+                      }}>
+                        {reviewSearchLoading && (
+                          <div style={{ padding: '8px 12px', fontSize: '11px', color: '#64748b' }}>Searching…</div>
+                        )}
+                        {reviewSearchResults.map((r: any, i: number) => (
+                          <button
+                            key={r.symbol}
+                            onClick={() => {
+                              handleAddStock(r.symbol);
+                              setAddSymbolInput('');
+                              setReviewSearchResults([]);
+                            }}
+                            style={{
+                              width: '100%', display: 'flex', justifyContent: 'space-between',
+                              alignItems: 'center', padding: '8px 12px',
+                              background: 'transparent', border: 'none',
+                              borderBottom: i < reviewSearchResults.length - 1 ? '1px solid #33415550' : 'none',
+                              cursor: 'pointer', textAlign: 'left',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{r.symbol}</div>
+                              {r.description && <div style={{ fontSize: '10px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
+                            </div>
+                            <span style={{ fontSize: '10px', color: '#64748b', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <button onClick={() => setShowAddInput(true)} style={{
@@ -1663,31 +1770,49 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             flexDirection: 'column',
             alignItems: 'center',
           }}>
-            {/* Success icon */}
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'rgba(16,185,129,0.15)',
-              border: '2px solid rgba(16,185,129,0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '28px',
-              color: '#10b981',
-              marginBottom: '16px',
-            }}>
-              ✓
-            </div>
+            {/* Success icon — ⏳ for pending, ✓ for filled */}
+            {(basketResult as any).status === 'OPEN' ? (
+              <div style={{
+                fontSize: '48px',
+                marginBottom: '16px',
+              }}>
+                ⏳
+              </div>
+            ) : (
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(16,185,129,0.15)',
+                border: '2px solid rgba(16,185,129,0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '28px',
+                color: '#10b981',
+                marginBottom: '16px',
+              }}>
+                ✓
+              </div>
+            )}
 
             {/* Title */}
             <div style={{ color: '#ffffff', fontSize: '22px', fontWeight: '700', marginBottom: '4px' }}>
-              Basket Purchased
+              {(basketResult as any).status === 'OPEN' ? 'Order Submitted' : 'Basket Purchased'}
             </div>
-            <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px' }}>
-              {basketResult.executed} positions filled
-              {basketResult.failed > 0 && ` · ${basketResult.failed} failed`}
-            </div>
+            
+            {/* Subtitle */}
+            {(basketResult as any).status === 'OPEN' ? (
+              <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px', textAlign: 'center' }}>
+                {(basketResult as any).marketLabel || 'Opens at market open'}<br />
+                Cash reserved · Can cancel anytime
+              </div>
+            ) : (
+              <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px' }}>
+                {basketResult.executed} positions filled immediately
+                {basketResult.failed > 0 && ` · ${basketResult.failed} failed`}
+              </div>
+            )}
 
             {/* Basket name card */}
             <div style={{
@@ -1708,6 +1833,16 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               }}>
                 <span style={{ fontSize: '24px' }}>{basketResult.basketEmoji}</span>
                 <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '16px' }}>{basketResult.basketName}</span>
+                {(basketResult as any).status === 'OPEN' && (
+                  <span style={{
+                    background: 'rgba(245,158,11,0.15)',
+                    border: '1px solid rgba(245,158,11,0.3)',
+                    borderRadius: '6px',
+                    padding: '2px 8px',
+                    fontSize: '11px',
+                    color: '#f59e0b',
+                  }}>Pending</span>
+                )}
               </div>
 
               {/* Stock list */}
@@ -1734,17 +1869,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
               {/* Totals */}
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px' }}>
-                <span style={{ color: '#6b7280', fontSize: '12px' }}>Total spent</span>
+                <span style={{ color: '#6b7280', fontSize: '12px' }}>
+                  {(basketResult as any).status === 'OPEN' ? 'Reserved' : 'Total spent'}
+                </span>
                 <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '13px' }}>
                   ${basketResult.totalSpent.toFixed(2)}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                <span style={{ color: '#6b7280', fontSize: '12px' }}>Cash remaining</span>
-                <span style={{ color: '#22d3ee', fontSize: '12px' }}>
-                  ${basketResult.cashRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
+              {(basketResult as any).status !== 'OPEN' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '12px' }}>Cash remaining</span>
+                  <span style={{ color: '#22d3ee', fontSize: '12px' }}>
+                    ${basketResult.cashRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Partial execution warning */}
@@ -1779,59 +1918,117 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             flexDirection: 'column',
             gap: '10px',
           }}>
-            {/* Primary — View in Portfolio */}
-            <button
-              onClick={() => {
-                setBasketResult(null);
-                setStep('curated');
-                setSelectedCurated(null);
-                setBudget('');
-                setReviewStocks([]);
-                onClose();
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent('vantage-navigate', {
-                    detail: { tab: 'portfolio', scrollTo: 'baskets' },
-                  }));
-                }, 100);
-              }}
-              style={{
-                width: '100%',
-                padding: '16px',
-                background: '#22d3ee',
-                color: '#0a0f1e',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '16px',
-                fontWeight: '700',
-                cursor: 'pointer',
-              }}
-            >
-              View in Portfolio →
-            </button>
-
-            {/* Secondary — Done */}
-            <button
-              onClick={() => {
-                setBasketResult(null);
-                setStep('curated');
-                setSelectedCurated(null);
-                setBudget('');
-                setReviewStocks([]);
-                onClose();
-              }}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: 'none',
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: '12px',
-                fontSize: '15px',
-                color: '#9ca3af',
-                cursor: 'pointer',
-              }}
-            >
-              Done
-            </button>
+            {(basketResult as any).status === 'OPEN' ? (
+              <>
+                {/* View Open Orders → */}
+                <button
+                  onClick={() => {
+                    setBasketResult(null);
+                    setStep('curated');
+                    setSelectedCurated(null);
+                    setBudget('');
+                    setReviewStocks([]);
+                    onClose();
+                    setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('vantage-navigate', {
+                        detail: { tab: 'invest', subTab: 'open' },
+                      }));
+                    }, 100);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    background: '#f59e0b',
+                    color: '#0a0f1e',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                  }}
+                >
+                  View Open Orders →
+                </button>
+                {/* Done */}
+                <button
+                  onClick={() => {
+                    setBasketResult(null);
+                    setStep('curated');
+                    setSelectedCurated(null);
+                    setBudget('');
+                    setReviewStocks([]);
+                    onClose();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'none',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '12px',
+                    fontSize: '15px',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                {/* View in Portfolio → */}
+                <button
+                  onClick={() => {
+                    setBasketResult(null);
+                    setStep('curated');
+                    setSelectedCurated(null);
+                    setBudget('');
+                    setReviewStocks([]);
+                    onClose();
+                    setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('vantage-navigate', {
+                        detail: { tab: 'portfolio', scrollTo: 'baskets' },
+                      }));
+                    }, 100);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    background: '#22d3ee',
+                    color: '#0a0f1e',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                  }}
+                >
+                  View in Portfolio →
+                </button>
+                {/* Done */}
+                <button
+                  onClick={() => {
+                    setBasketResult(null);
+                    setStep('curated');
+                    setSelectedCurated(null);
+                    setBudget('');
+                    setReviewStocks([]);
+                    onClose();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'none',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '12px',
+                    fontSize: '15px',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Done
+                </button>
+              </>
+            )}
           </div>
         </>
       )}

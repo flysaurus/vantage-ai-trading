@@ -12,7 +12,7 @@ import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
 import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
-import { PortfolioProvider } from '@/context/PortfolioContext';
+import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
@@ -99,11 +99,37 @@ function AppShell() {
             document.getElementById('baskets-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 300);
         }
+        if (detail.subTab) {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('vantage-set-subtab', {
+              detail: { subTab: detail.subTab },
+            }));
+          }, 200);
+        }
       }
     };
     window.addEventListener('vantage-navigate', handler);
     return () => window.removeEventListener('vantage-navigate', handler);
   }, [setTab]);
+
+  // ── Auto-execute pending orders on app focus ──
+  const { executePendingOrders } = useLivePortfolio();
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        executePendingOrders();
+      }
+    };
+    const handleFocus = () => {
+      executePendingOrders();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [executePendingOrders]);
 
   // Detect desktop width
   useEffect(() => {

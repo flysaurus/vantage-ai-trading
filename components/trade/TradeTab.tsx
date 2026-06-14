@@ -59,6 +59,8 @@ export function TradeTab() {
   const [tif, setTif] = useState<'day' | 'gtc'>('day');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
   const [showBuildBasket, setShowBuildBasket] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
+  const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
 
   // ─── Symbol search state ───
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,7 +90,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, baskets } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders } = useLivePortfolio();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -164,7 +166,39 @@ export function TradeTab() {
   // Use live orders from PortfolioContext if available, fall back to demo seed
   const displayOrders = liveOrders.length > 0 ? liveOrders : DEMO_ORDERS;
   
-  // Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
+  // Execute pending orders on tab mount
+  useEffect(() => {
+    executePendingOrders();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for sub-tab navigation (e.g. from basket success screen)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.subTab === 'open') {
+        setHistoryTab('open');
+      }
+    };
+    window.addEventListener('vantage-set-subtab', handler);
+    return () => window.removeEventListener('vantage-set-subtab', handler);
+  }, []);
+
+  // Load pending baskets from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('vantage_pending_baskets');
+      if (raw) {
+        const all = JSON.parse(raw);
+        setPendingBaskets(all.filter((b: any) => b.status === 'OPEN'));
+      } else {
+        setPendingBaskets([]);
+      }
+    } catch {
+      setPendingBaskets([]);
+    }
+  }, [baskets]); // re-check when baskets change
+
+  // ── Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
   const normalizedOrders = displayOrders.map((o: any) => ({
     id: o.id,
     symbol: o.symbol,
@@ -172,7 +206,10 @@ export function TradeTab() {
     status: (o.status || '').toLowerCase(),
     shares: o.shares ?? o.qty ?? 0,
     price: o.fillPrice ?? o.price ?? 0,
+    submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.price ?? 0,
     date: o.createdAt ?? o.date ?? '',
+    note: o.note ?? '',
+    reservedCost: o.reservedCost,
   }));
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
@@ -685,14 +722,73 @@ export function TradeTab() {
         {/* Est. value */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
           <span style={{ color: '#64748b', fontSize: '13px' }}>Est. value</span>
-          <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>$0.00</span>
+          <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>
+            {(() => {
+              const price = orderType === 'limit' && limitPrice
+                ? parseFloat(limitPrice)
+                : symbolQuote?.price;
+              if (!price || !qty || isNaN(price)) return '$0.00';
+              const shares = qtyType === 'dollars' && price > 0
+                ? parseFloat(qty) / price
+                : parseFloat(qty);
+              const estValue = shares * price;
+              return `$${estValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            })()}
+          </span>
         </div>
 
         {/* Buying Power */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
           <span style={{ color: '#64748b', fontSize: '13px' }}>Buying Power</span>
-          <span style={{ color: '#94a3b8', fontSize: '13px' }}>$145,217.48</span>
+          <span style={{
+            color: (() => {
+              const price = orderType === 'limit' && limitPrice
+                ? parseFloat(limitPrice)
+                : symbolQuote?.price;
+              if (!price || !qty || isNaN(price)) return '#94a3b8';
+              const shares = qtyType === 'dollars' && price > 0
+                ? parseFloat(qty) / price
+                : parseFloat(qty);
+              const estCost = shares * price;
+              const bp = account?.buyingPower ?? 0;
+              if (side === 'buy' && estCost > bp) return '#ef4444';
+              return '#94a3b8';
+            })(),
+            fontSize: '13px'
+          }}>
+            ${(account?.buyingPower ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
         </div>
+
+        {/* Insufficient funds warning */}
+        {side === 'buy' && (() => {
+          const price = orderType === 'limit' && limitPrice
+            ? parseFloat(limitPrice)
+            : symbolQuote?.price;
+          if (!price || !qty || isNaN(price)) return null;
+          const shares = qtyType === 'dollars' && price > 0
+            ? parseFloat(qty) / price
+            : parseFloat(qty);
+          const estCost = shares * price;
+          const bp = account?.buyingPower ?? 0;
+          if (estCost > bp) {
+            return (
+              <div style={{
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                marginBottom: '16px',
+                fontSize: '12px',
+                color: '#ef4444',
+                lineHeight: '1.5',
+              }}>
+                ⚠️ Insufficient buying power. You need ${estCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} but only have ${bp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available.
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         {/* Limit/Stop advisory */}
         {(orderType === 'limit' || orderType === 'stop') && (
@@ -721,6 +817,18 @@ export function TradeTab() {
               ? Math.floor(parseFloat(qty || '0') / price)
               : parseInt(qty || '0');
             if (!shares || shares <= 0) return;
+
+            // Pre-check buying power for BUY orders
+            if (side === 'buy') {
+              const estCost = shares * price;
+              const bp = account?.buyingPower ?? 0;
+              if (estCost > bp) {
+                // Error will be shown by executeTrade toast
+                executeTrade(selectedSymbol, 'BUY', shares, price);
+                return;
+              }
+            }
+
             const result = executeTrade(
               selectedSymbol,
               side === 'buy' ? 'BUY' : 'SELL',
@@ -741,20 +849,69 @@ export function TradeTab() {
             color: '#ffffff',
             fontSize: '16px',
             fontWeight: '700',
-            cursor: selectedSymbol ? 'pointer' : 'not-allowed',
-            opacity: selectedSymbol ? 1 : 0.5,
+            cursor: selectedSymbol && symbolQuote ? 'pointer' : 'not-allowed',
+            opacity: selectedSymbol && symbolQuote ? 1 : 0.5,
           }}
         >
-          Place Order
+          {side === 'buy' ? 'Place Buy Order' : 'Place Sell Order'}
         </button>
       </div>
 
       {/* ─── 3.5: MY BASKETS ─── */}
-      {baskets.length > 0 && (
+      {(baskets.length > 0 || pendingBaskets.length > 0) && (
         <div style={{ margin: '0 16px 16px 16px' }}>
           <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
             MY BASKETS
           </div>
+
+          {/* Pending baskets (not yet executed) */}
+          {pendingBaskets.map((pb: any) => (
+            <div key={pb.id} style={{
+              background: '#1a2235',
+              border: '1px solid rgba(245,158,11,0.3)',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '8px',
+            }}>
+              <div style={{
+                color: '#f59e0b',
+                fontSize: '11px',
+                marginBottom: '8px',
+              }}>
+                ⏳ Pending · Opens at market open
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div>
+                  <span style={{ fontSize: '16px' }}>{pb.basketEmoji}</span>
+                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px', marginLeft: '8px' }}>
+                    {pb.basketName}
+                  </span>
+                </div>
+                <span style={{ color: '#f59e0b', fontSize: '12px', fontWeight: '500' }}>
+                  ${pb.totalReserved?.toLocaleString()}
+                </span>
+              </div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginBottom: '10px' }}>
+                {pb.stocks?.length || 0} stocks · Submitted {new Date(pb.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </div>
+              <button
+                onClick={() => cancelBasketOrder(pb.id)}
+                style={{
+                  background: 'none',
+                  border: '1px solid rgba(239,68,68,0.3)',
+                  borderRadius: '8px',
+                  color: '#ef4444',
+                  fontSize: '13px',
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel Basket Order
+              </button>
+            </div>
+          ))}
+
+          {/* Active baskets */}
           {baskets.map(basket => (
             <div key={basket.id} style={{
               background: '#1a2235',
@@ -847,7 +1004,8 @@ export function TradeTab() {
               padding: '14px 16px',
               marginBottom: '8px',
               display: 'flex',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
             }}
           >
             {/* LEFT */}
@@ -867,23 +1025,42 @@ export function TradeTab() {
                   {order.side}
                 </span>
               </div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>
-                market · {'shares' in order ? order.shares : (order as any).qty || 0} shares
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>
+                market · {order.shares} shares
               </div>
+              {order.status === 'filled' && order.price && (
+                <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                  Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              )}
+              {order.status === 'open' && (
+                <>
+                  {order.submittedPrice > 0 && (
+                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                      Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  )}
+                  {order.note && (
+                    <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>
+                      ⏳ {order.note}
+                    </div>
+                  )}
+                  {!order.note && (
+                    <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
+                      ⏳ Pending execution
+                    </div>
+                  )}
+                </>
+              )}
               {(order as any).id?.toString().includes('-b') && (
                 <span style={{ fontSize: '11px', color: '#22d3ee', opacity: 0.7 }}>
                   via 🧺 Basket
                 </span>
               )}
-              {order.price && order.status === 'filled' && (
-                <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-                  Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-              )}
             </div>
 
             {/* RIGHT */}
-            <div style={{ textAlign: 'right' }}>
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{
                 fontSize: '11px',
                 fontWeight: '600',
@@ -906,6 +1083,35 @@ export function TradeTab() {
                   return order.date || '';
                 })()}
               </div>
+              {/* Cancel button for OPEN orders */}
+              {order.status === 'open' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmCancel({
+                      orderId: order.id,
+                      symbol: order.symbol,
+                      side: order.side,
+                      shares: order.shares,
+                      price: order.submittedPrice || order.price || 0,
+                    });
+                  }}
+                  style={{
+                    background: 'none',
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    borderRadius: '6px',
+                    color: '#ef4444',
+                    fontSize: '11px',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    fontWeight: '600',
+                    alignSelf: 'flex-end',
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -913,6 +1119,89 @@ export function TradeTab() {
 
       {/* ─── 5. Bottom spacer ─── */}
       <div style={{ height: '80px' }} />
+
+      {/* ─── Cancel Confirmation Modal ─── */}
+      {confirmCancel && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 10001,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+        }}>
+          <div style={{
+            background: '#1a2235',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '320px',
+            width: '100%',
+          }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
+              Cancel this order?
+            </div>
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              borderRadius: '8px',
+              padding: '12px',
+              marginBottom: '12px',
+            }}>
+              <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
+                {confirmCancel.symbol} <span style={{
+                  color: confirmCancel.side?.toUpperCase() === 'BUY' ? '#10b981' : '#ef4444',
+                  fontSize: '12px',
+                }}>{confirmCancel.side}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                {confirmCancel.shares} shares @ ${confirmCancel.price.toFixed(2)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+                ⚠ Reserved cash will be returned to your buying power.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setConfirmCancel(null)}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  color: '#9ca3af',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Keep Order
+              </button>
+              <button
+                onClick={() => {
+                  cancelOrder(confirmCancel.orderId);
+                  setConfirmCancel(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: 'rgba(239,68,68,0.15)',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  borderRadius: '10px',
+                  color: '#ef4444',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Build Basket Modal ─── */}
       <BuildBasketModal
