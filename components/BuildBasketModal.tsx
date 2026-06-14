@@ -116,7 +116,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [reviewSearchLoading, setReviewSearchLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
   const [canProceed, setCanProceed] = useState(true);
+  const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   // ── Fetch curated baskets on open ──
   useEffect(() => {
@@ -210,7 +213,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     const updated = remaining.map(s => {
       const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
       const dollarAmount = (newAlloc / 100) * bNum;
-      const shares = s.price && s.price > 0 ? +(dollarAmount / s.price).toFixed(2) : 0;
+      const shares = s.price && s.price > 0 ? Math.max(1, Math.floor(dollarAmount / s.price)) : 0;
       return { ...s, allocation: newAlloc, dollarAmount, shares };
     });
     const newTotal = updated.reduce((sum, s) => sum + s.allocation, 0);
@@ -218,7 +221,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       updated[0].allocation = +(updated[0].allocation + (100 - newTotal)).toFixed(1);
       updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
       updated[0].shares = updated[0].price && updated[0].price > 0
-        ? +(updated[0].dollarAmount / updated[0].price).toFixed(2) : 0;
+        ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price)) : 0;
     }
     setBasketData({ ...basketData, stocks: updated });
     setRemoveFlash(true);
@@ -240,21 +243,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       const allocPer = +(100 / newCount).toFixed(1);
       const updated = basketData.stocks.map(st => {
         const dollarAmount = (allocPer / 100) * bNum;
-        const shares = st.price && st.price > 0 ? +(dollarAmount / st.price).toFixed(2) : 0;
+        const shares = st.price && st.price > 0 ? Math.max(1, Math.floor(dollarAmount / st.price)) : 0;
         return { ...st, allocation: allocPer, dollarAmount, shares };
       });
       const newDollar = (allocPer / 100) * bNum;
       updated.push({
         symbol: s, name: s, allocation: allocPer,
         rationale: 'Manually added', price, dollarAmount: newDollar,
-        shares: +(newDollar / price).toFixed(2),
+        shares: Math.max(1, Math.floor(newDollar / price)),
       });
       const total = updated.reduce((sum, st) => sum + st.allocation, 0);
       if (total !== 100) {
         updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
         updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
         updated[0].shares = updated[0].price && updated[0].price > 0
-          ? +(updated[0].dollarAmount / updated[0].price!).toFixed(2) : 0;
+          ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price!)) : 0;
       }
       setBasketData({ ...basketData, stocks: updated });
       setAddStockSymbol(''); setShowAddStock(false);
@@ -285,7 +288,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         const result = results[i];
         const price = result.status === 'fulfilled' ? (result.value.c || stock.price || 0) : (stock.price || 0);
         const dollarAmount = (stock.allocation / 100) * effectiveBudget;
-        const shares = price > 0 ? dollarAmount / price : 0;
+        const shares = price > 0 ? Math.max(1, Math.floor(dollarAmount / price)) : 0;
         return {
           ...stock,
           price: Math.round(price * 100) / 100,
@@ -311,14 +314,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     const updated = remaining.map(s => {
       const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
       const dollarAmount = Math.round(newAlloc / 100 * effectiveBudget * 100) / 100;
-      const shares = s.price > 0 ? dollarAmount / s.price : 0;
+      const shares = s.price > 0 ? Math.max(1, Math.floor(dollarAmount / s.price)) : 0;
       return { ...s, allocation: newAlloc, dollarAmount, shares };
     });
     const sum = updated.reduce((s, r) => s + r.allocation, 0);
     if (sum !== 100 && updated.length > 0) {
       updated[0].allocation = +(updated[0].allocation + (100 - sum)).toFixed(1);
       updated[0].dollarAmount = Math.round(updated[0].allocation / 100 * effectiveBudget * 100) / 100;
-      updated[0].shares = updated[0].price > 0 ? updated[0].dollarAmount / updated[0].price : 0;
+      updated[0].shares = updated[0].price > 0 ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price)) : 0;
     }
     setReviewStocks(updated);
   }
@@ -338,21 +341,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       const allocPer = +(100 / newCount).toFixed(1);
       const updated = reviewStocks.map(st => {
         const dollarAmount = Math.round(allocPer / 100 * effectiveBudget * 100) / 100;
-        const shares = st.price > 0 ? dollarAmount / st.price : 0;
+        const shares = st.price > 0 ? Math.max(1, Math.floor(dollarAmount / st.price)) : 0;
         return { ...st, allocation: allocPer, dollarAmount, shares };
       });
       const newDollar = Math.round(allocPer / 100 * effectiveBudget * 100) / 100;
       updated.push({
         symbol: s, name: s, allocation: allocPer,
         rationale: 'Manually added', price,
-        dollarAmount: newDollar, shares: newDollar / price,
+        dollarAmount: newDollar, shares: Math.max(1, Math.floor(newDollar / price)),
         isCustomAdded: true,
       });
       const total = updated.reduce((sum, st) => sum + st.allocation, 0);
       if (total !== 100) {
         updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
         updated[0].dollarAmount = Math.round(updated[0].allocation / 100 * effectiveBudget * 100) / 100;
-        updated[0].shares = updated[0].price > 0 ? updated[0].dollarAmount / updated[0].price : 0;
+        updated[0].shares = updated[0].price > 0 ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price)) : 0;
       }
       setReviewStocks(updated);
       setAddSymbolInput(''); setShowAddInput(false);
@@ -368,7 +371,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     return selectedCurated.stocks.map(stock => {
       const dollarAmount = (stock.allocation / 100) * effectiveBudget;
       const price = stock.price || 0;
-      const shares = price > 0 ? dollarAmount / price : 0;
+      const shares = price > 0 ? Math.max(1, Math.floor(dollarAmount / price)) : 0;
       return {
         symbol: stock.symbol,
         name: stock.name,
@@ -441,7 +444,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           const qData = await qRes.json();
           const price = qData?.c || 0;
           const dollarAmount = (stock.allocation / 100) * budgetNum;
-          const shares = price > 0 ? +(dollarAmount / price).toFixed(2) : 0;
+          const shares = price > 0 ? Math.max(1, Math.floor(dollarAmount / price)) : 0;
           return { ...stock, price, dollarAmount, shares };
         } catch { return { ...stock, price: 0, dollarAmount: 0, shares: 0 }; }
       }));
@@ -452,14 +455,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         valid.forEach(s => {
           s.allocation = +(s.allocation + redistPer).toFixed(1);
           s.dollarAmount = (s.allocation / 100) * budgetNum;
-          s.shares = +(s.dollarAmount / s.price!).toFixed(2);
+          s.shares = Math.max(1, Math.floor(s.dollarAmount / s.price!));
         });
         const totalAlloc = valid.reduce((sum, s) => sum + s.allocation, 0);
         if (totalAlloc !== 100) {
           const diff = 100 - totalAlloc;
           valid[0].allocation = +(valid[0].allocation + diff).toFixed(1);
           valid[0].dollarAmount = (valid[0].allocation / 100) * budgetNum;
-          valid[0].shares = +(valid[0].dollarAmount / valid[0].price!).toFixed(2);
+          valid[0].shares = Math.max(1, Math.floor(valid[0].dollarAmount / valid[0].price!));
         }
       }
       setBasketData({ ...data, stocks: valid });
@@ -1178,63 +1181,69 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // STEP: BASKET REVIEW (live prices + customize)
   // ────────────────────────────────────────────────────────────
 
-  // ── Quantity adjustment & budget validation ──
+  // ── Quantity adjustment & budget validation (unified) — whole shares ──
+  function updateShares(symbol: string, newShares: number) {
+    const bNum = parseInt(budget) || 0;
+    const shares = Math.max(1, Math.floor(newShares));
+    if (!bNum) return;
+
+    setReviewStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.symbol !== symbol) return s;
+        const dollarAmount = Math.round(shares * s.price * 100) / 100;
+        return {
+          ...s,
+          shares,
+          dollarAmount,
+          allocation: Math.round((dollarAmount / (bNum * 0.95)) * 100),
+        };
+      });
+
+      // Check total vs budget
+      const total = updated.reduce((sum, s) => sum + s.dollarAmount, 0);
+      const effectiveBudget = bNum * 0.95;
+      const hardLimit = bNum * 1.0;
+
+      if (total > hardLimit) {
+        setBudgetError(`Total $${total.toFixed(2)} exceeds budget $${bNum.toFixed(2)}`);
+        setBudgetWarning(null);
+        setCanProceed(false);
+        return prev;
+      }
+
+      if (total > effectiveBudget) {
+        setBudgetWarning(`Using buffer. Total: $${total.toFixed(2)} / $${bNum.toFixed(2)}`);
+        setBudgetError(null);
+        setCanProceed(true);
+      } else {
+        setBudgetWarning(null);
+        setBudgetError(null);
+        setCanProceed(true);
+      }
+
+      return updated;
+    });
+  }
+
+  // Validate on initial render when stocks load
   function doValidateBudget() {
     if (!budget) return;
     const bNum = parseInt(budget) || 0;
     const total = reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0);
     const effectiveBudget = bNum * 0.95;
-
-    if (total > effectiveBudget) {
-      setBudgetWarning(
-        `Total $${total.toFixed(2)} exceeds effective budget $${effectiveBudget.toFixed(2)}. Reduce quantities.`
-      );
+    if (total > bNum) {
+      setBudgetError(`Total $${total.toFixed(2)} exceeds budget $${bNum.toFixed(2)}`);
+      setBudgetWarning(null);
       setCanProceed(false);
-    } else if (total > bNum) {
-      setBudgetWarning(
-        `Total exceeds stated budget. Within 5% buffer — acceptable.`
-      );
+    } else if (total > effectiveBudget) {
+      setBudgetWarning(`Using buffer. Total: $${total.toFixed(2)} / $${bNum.toFixed(2)}`);
+      setBudgetError(null);
       setCanProceed(true);
     } else {
       setBudgetWarning(null);
+      setBudgetError(null);
       setCanProceed(true);
     }
-  }
-
-  function adjustShares(symbol: string, delta: number) {
-    setReviewStocks(prev => {
-      const updated = prev.map(s => {
-        if (s.symbol !== symbol) return s;
-        const newShares = Math.max(
-          0.0001,
-          Math.round((s.shares + delta) * 10000) / 10000
-        );
-        return {
-          ...s,
-          shares: newShares,
-          dollarAmount: Math.round(newShares * s.price * 100) / 100,
-        };
-      });
-      return updated;
-    });
-    // validate after state update
-    setTimeout(() => doValidateBudget(), 0);
-  }
-
-  function setSharesValue(symbol: string, shares: number) {
-    if (isNaN(shares) || shares < 0) return;
-    setReviewStocks(prev => {
-      const updated = prev.map(s => {
-        if (s.symbol !== symbol) return s;
-        return {
-          ...s,
-          shares,
-          dollarAmount: Math.round(shares * s.price * 100) / 100,
-        };
-      });
-      return updated;
-    });
-    setTimeout(() => doValidateBudget(), 0);
   }
 
   // Run validation when reviewStocks or budget changes
@@ -1384,42 +1393,111 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
+                    marginTop: '6px',
                   }}>
+                    {/* Decrease button */}
                     <button
-                      onClick={() => adjustShares(stock.symbol, -0.01)}
+                      onClick={() => {
+                        const current = stock.shares;
+                        const newShares = Math.max(1, current - 1);
+                        updateShares(stock.symbol, newShares);
+                      }}
+                      disabled={stock.shares <= 1}
                       style={{
-                        width: '28px', height: '28px', borderRadius: '50%',
-                        background: 'rgba(255,255,255,0.08)', border: 'none',
-                        color: '#ffffff', fontSize: '16px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: '32px', height: '32px', borderRadius: '50%',
+                        background: stock.shares <= 1
+                          ? 'rgba(255,255,255,0.04)'
+                          : 'rgba(255,255,255,0.1)',
+                        border: 'none',
+                        color: stock.shares <= 1
+                          ? '#374151' : '#ffffff',
+                        fontSize: '18px',
+                        cursor: stock.shares <= 1
+                          ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         flexShrink: 0,
                       }}
                     >−</button>
-                    <input
-                      type="number"
-                      value={stock.shares.toFixed(4)}
-                      onChange={e => setSharesValue(stock.symbol, parseFloat(e.target.value) || 0)}
-                      style={{
-                        width: '80px',
-                        background: '#0a0f1e',
-                        border: '1px solid rgba(34,211,238,0.3)',
-                        borderRadius: '6px',
-                        padding: '4px 8px',
-                        color: '#ffffff',
-                        fontSize: '12px',
-                        textAlign: 'center',
-                      }}
-                    />
+
+                    {/* Click-to-edit shares */}
+                    {editingSymbol === stock.symbol ? (
+                      <input
+                        autoFocus
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onBlur={() => {
+                          const parsed = parseInt(editValue);
+                          if (!isNaN(parsed) && parsed >= 1) updateShares(stock.symbol, parsed);
+                          setEditingSymbol(null);
+                          setEditValue('');
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const parsed = parseInt(editValue);
+                            if (!isNaN(parsed) && parsed >= 1) updateShares(stock.symbol, parsed);
+                            setEditingSymbol(null);
+                            setEditValue('');
+                          } else if (e.key === 'Escape') {
+                            setEditingSymbol(null);
+                            setEditValue('');
+                          }
+                        }}
+                        style={{
+                          width: '64px',
+                          background: '#0a0f1e',
+                          border: '1px solid #22d3ee',
+                          borderRadius: '8px',
+                          padding: '6px 8px',
+                          color: '#ffffff',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          textAlign: 'center',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                          MozAppearance: 'textfield',
+                        } as React.CSSProperties}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingSymbol(stock.symbol);
+                          setEditValue(String(stock.shares));
+                        }}
+                        style={{
+                          width: '64px',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: '8px',
+                          padding: '6px 8px',
+                          color: '#ffffff',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {stock.shares}
+                      </button>
+                    )}
+
+                    {/* Increase button */}
                     <button
-                      onClick={() => adjustShares(stock.symbol, 0.01)}
+                      onClick={() => updateShares(stock.symbol, stock.shares + 1)}
                       style={{
-                        width: '28px', height: '28px', borderRadius: '50%',
-                        background: 'rgba(255,255,255,0.08)', border: 'none',
-                        color: '#ffffff', fontSize: '16px', cursor: 'pointer',
+                        width: '32px', height: '32px', borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.1)', border: 'none',
+                        color: '#ffffff', fontSize: '18px', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
                       }}
                     >+</button>
+
+                    {/* Dollar amount */}
                     <span style={{
                       color: '#9ca3af',
                       fontSize: '12px',
@@ -1507,16 +1585,25 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               <div style={{
                 margin: '8px 16px',
                 padding: '8px 12px',
-                background: canProceed
-                  ? 'rgba(251,191,36,0.08)'
-                  : 'rgba(239,68,68,0.08)',
-                border: `1px solid ${canProceed
-                  ? 'rgba(251,191,36,0.3)'
-                  : 'rgba(239,68,68,0.3)'}`,
+                background: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.3)',
                 borderRadius: '8px',
-                color: canProceed ? '#f59e0b' : '#ef4444',
+                color: '#f59e0b',
                 fontSize: '11px',
-              }}>{canProceed ? '⚠️' : '❌'} {budgetWarning}
+              }}>⚠️ {budgetWarning}
+              </div>
+            )}
+            {/* Budget Error (hard limit exceeded) */}
+            {budgetError && (
+              <div style={{
+                margin: '8px 16px',
+                padding: '8px 12px',
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: '8px',
+                color: '#ef4444',
+                fontSize: '11px',
+              }}>❌ {budgetError}
               </div>
             )}
 

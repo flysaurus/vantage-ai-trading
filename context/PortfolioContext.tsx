@@ -21,7 +21,8 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
-import type { AccountSummary, Position, Order } from '@/types';
+import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
+import type { AccountSummary, Position, Order, InvestorStyle } from '@/types';
 
 // ─── Basket types ──────────────────────────────────────────
 
@@ -197,42 +198,77 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
-  // ── Persistent state (positions, cash, orders) ──
-  const [demoState, setDemoState] = useState<DemoState | null>(null);
-  const [demoOrders, setDemoOrders] = useState<DemoOrder[]>([]);
+  // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
+  function loadPersistedDemoState(): DemoState | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      localStorage.removeItem(OLD_STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const saved: DemoState = JSON.parse(raw);
+      const age = Date.now() - (saved.savedAt || 0);
+      if (age < MAX_AGE_MS && saved.positions && saved.positions.length > 0) {
+        return saved;
+      }
+    } catch { /* ignore corrupt localStorage */ }
+    return null;
+  }
+
+  // ── Build AccountSummary from DemoState (no live quotes, for initial render) ──
+  function accountFromDemoState(state: DemoState): AccountSummary {
+    const positions = state.positions.map(p => ({
+      ...p,
+      currentPrice: p.avgCost,
+      marketValue: p.qty * p.avgCost,
+      dayChange: 0,
+      dayChangePercent: 0,
+      totalPnl: 0,
+      totalPnlPercent: 0,
+      portfolioPercent: 0,
+    }));
+    const totalEquity = positions.reduce((sum, p) => sum + p.marketValue, 0) + state.cashBalance;
+    positions.forEach(p => {
+      p.portfolioPercent = totalEquity > 0 ? (p.marketValue / totalEquity) * 100 : 0;
+    });
+    return {
+      equity: totalEquity,
+      buyingPower: state.cashBalance,
+      cash: state.cashBalance,
+      dayPnl: 0,
+      dayPnlPercent: 0,
+      totalPnl: 0,
+      totalPnlPercent: 0,
+      positions,
+    };
+  }
+
+  // ── Persistent state (positions, cash, orders) — load from localStorage first ──
+  const initialPersistedState = typeof window !== 'undefined' ? loadPersistedDemoState() : null;
+  const [demoState, setDemoState] = useState<DemoState | null>(initialPersistedState);
+  const [demoOrders, setDemoOrders] = useState<DemoOrder[]>(initialPersistedState?.orders || []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [baskets, setBaskets] = useState<Basket[]>([]);
 
-  // Seed with demo data immediately — cards render on load, prices update async
+  // ── Account: from persisted state if available, otherwise seed ──
   const [account, setAccount] = useState<AccountSummary | null>(() => {
     if (isConnected) return null;
-    const style = (user?.investorStyle || 'buffett') as any;
+    if (initialPersistedState) return accountFromDemoState(initialPersistedState);
+    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
     return getDemoAccount(style, {});
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
-  // ── Load persisted demo state on mount ──
-  useEffect(() => {
-    if (isConnected) return;
-    try {
-      // Clear old unversioned key to force fresh seed
-      localStorage.removeItem(OLD_STORAGE_KEY);
+  // ── Refs for latest state (used by Supabase sync to avoid stale closures) ──
+  const demoStateRef = useRef(demoState);
+  const basketPositionsRef = useRef<BasketPosition[]>([]);
+  useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved: DemoState = JSON.parse(raw);
-        const age = Date.now() - saved.savedAt;
-        if (age < MAX_AGE_MS && saved.positions && saved.positions.length > 0) {
-          setDemoState(saved);
-          setDemoOrders(saved.orders || []);
-          return; // Will be picked up by the account recompute
-        }
-      }
-    } catch { /* ignore corrupt localStorage */ }
-    // Fallback: seed from demo-data (positions + generated orders)
-    const style = (user?.investorStyle || 'buffett') as any;
+  // ── Seed fallback: if no persisted state was loaded, seed from demo-data ──
+  useEffect(() => {
+    if (isConnected || initialPersistedState) return;
+    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
     const seedAccount = getDemoAccount(style, {});
     
     // Generate orders from demo positions (matches current portfolio)
@@ -259,7 +295,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     };
     setDemoState(seedState);
     setDemoOrders(seedOrders);
-  }, [isConnected, user?.investorStyle]);
+  }, [isConnected, user?.investorStyle, initialPersistedState]);
 
   // ── Persist demo state to localStorage ──
   const persistDemoState = useCallback((state: DemoState) => {
@@ -267,6 +303,46 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
     } catch { /* ignore quota exceeded */ }
   }, []);
+
+  // ── Supabase: cross-device backup (fire-and-forget) ──
+  useEffect(() => {
+    if (!demoState || !user?.id) return;
+    // Debounce: only sync every 5s max
+    const timer = setTimeout(() => {
+      syncPortfolioToSupabase(user.id, {
+        positions: demoState.positions,
+        cashBalance: demoState.cashBalance,
+        orderHistory: demoState.orders || [],
+        basketPositions: basketPositionsRef.current,
+      });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [demoState, user?.id]);
+
+  // ── Supabase: load on mount (overrides localStorage if newer) ──
+  useEffect(() => {
+    if (!user?.id || !demoState) return;
+    const trySupabaseLoad = async () => {
+      const supabaseState = await loadPortfolioFromSupabase(user.id);
+      if (!supabaseState || !supabaseState.positions?.length) return;
+      // Compare timestamps — Supabase wins if newer
+      const localTs = initialPersistedState?.savedAt || 0;
+      if (supabaseState.savedAt > localTs) {
+        const merged: DemoState = {
+          positions: supabaseState.positions,
+          cashBalance: supabaseState.cashBalance,
+          orders: supabaseState.orderHistory || [],
+          savedAt: supabaseState.savedAt,
+        };
+        setDemoState(merged);
+        setDemoOrders(merged.orders);
+        // Also update localStorage as cache
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...merged, savedAt: Date.now() })); } catch {}
+      }
+    };
+    trySupabaseLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // ── Recompute AccountSummary from mutable state + live quotes ──
   const recomputeAccount = useCallback(
