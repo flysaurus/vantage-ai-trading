@@ -878,7 +878,7 @@ export function TradeTab() {
                 fontSize: '11px',
                 marginBottom: '8px',
               }}>
-                ⏳ Pending · Opens at market open
+                ⏳ Pending · {pb.nextOpenLabel || 'Opens at market open'}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div>
