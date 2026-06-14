@@ -1268,6 +1268,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     if (result.success) {
       const b = selectedCurated!;
       const market = getMarketStatus();
+      console.log('[Market]', {
+        isOpen: market.isOpen,
+        period: market.period,
+        label: market.label,
+        nextOpenLabel: market.nextOpenLabel,
+        resultStatus: result.status,
+        time: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }),
+      });
       setBasketResult({
         basketName: b.name,
         basketEmoji: b.emoji,
@@ -1970,18 +1978,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             )}
 
             {/* Title */}
-            <div style={{ color: '#ffffff', fontSize: '22px', fontWeight: '700', marginBottom: '4px' }}>
+            <div style={{ color: '#ffffff', fontSize: '26px', fontWeight: '800', marginBottom: '4px' }}>
               {(basketResult as any).status === 'OPEN' ? 'Order Submitted' : 'Basket Purchased'}
             </div>
             
             {/* Subtitle */}
             {(basketResult as any).status === 'OPEN' ? (
-              <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px', textAlign: 'center' }}>
-                {(basketResult as any).marketLabel || 'Opens at market open'}<br />
+              <div style={{ color: '#94a3b8', fontSize: '15px', marginBottom: '24px', textAlign: 'center' }}>
+                {(basketResult as any).marketLabel || 'Opens at market open'}
+              <div style={{ color: '#64748b', fontSize: '13px', lineHeight: '1.6', marginTop: '4px' }}>
                 Cash reserved · Can cancel anytime
+                <br />till order is executed
+              </div>
               </div>
             ) : (
-              <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '24px' }}>
+              <div style={{ color: '#94a3b8', fontSize: '15px', marginBottom: '24px' }}>
                 {basketResult.executed} positions filled immediately
                 {basketResult.failed > 0 && ` · ${basketResult.failed} failed`}
               </div>
@@ -2005,7 +2016,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                 borderBottom: '1px solid rgba(255,255,255,0.06)',
               }}>
                 <span style={{ fontSize: '24px' }}>{basketResult.basketEmoji}</span>
-                <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '16px' }}>{basketResult.basketName}</span>
+                <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px' }}>{basketResult.basketName}</span>
                 {(basketResult as any).status === 'OPEN' && (
                   <span style={{
                     background: 'rgba(245,158,11,0.15)',
@@ -2029,12 +2040,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                   borderBottom: '1px solid rgba(255,255,255,0.08)',
                 }}>
                   <div>
-                    <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>{stock.symbol}</span>
-                    <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '8px' }}>
+                    <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>{stock.symbol}</span>
+                    <span style={{ color: '#94a3b8', fontSize: '13px', marginLeft: '8px' }}>
                       {stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}
                     </span>
                   </div>
-                  <span style={{ color: '#e2e8f0', fontSize: '12px' }}>
+                  <span style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '500' }}>
                     ${stock.totalCost.toFixed(2)}
                   </span>
                 </div>
