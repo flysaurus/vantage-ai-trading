@@ -69,6 +69,12 @@ interface Props {
 export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }: Props) {
   const { user } = useAuth();
   const { account, executeBasketTrade } = useLivePortfolio();
+
+  // ── Helper: derive fractional shares from dollar amount and price (4 decimal places) ──
+  const calcShares = (dollarAmount: number, price: number) => {
+    if (!price || price <= 0) return 0;
+    return Math.round((dollarAmount / price) * 10000) / 10000;
+  };
   const cashBalance = account?.cash || 0;
 
   // ── Step state ──
@@ -213,7 +219,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     const updated = remaining.map(s => {
       const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
       const dollarAmount = (newAlloc / 100) * bNum;
-      const shares = s.price && s.price > 0 ? Math.max(1, Math.floor(dollarAmount / s.price)) : 0;
+      const shares = s.price && s.price > 0 ? calcShares(dollarAmount, s.price): 0;
       return { ...s, allocation: newAlloc, dollarAmount, shares };
     });
     const newTotal = updated.reduce((sum, s) => sum + s.allocation, 0);
@@ -221,7 +227,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       updated[0].allocation = +(updated[0].allocation + (100 - newTotal)).toFixed(1);
       updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
       updated[0].shares = updated[0].price && updated[0].price > 0
-        ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price)) : 0;
+        ? calcShares(updated[0].dollarAmount, updated[0].price) : 0;
     }
     setBasketData({ ...basketData, stocks: updated });
     setRemoveFlash(true);
@@ -243,21 +249,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       const allocPer = +(100 / newCount).toFixed(1);
       const updated = basketData.stocks.map(st => {
         const dollarAmount = (allocPer / 100) * bNum;
-        const shares = st.price && st.price > 0 ? Math.max(1, Math.floor(dollarAmount / st.price)) : 0;
+        const shares = st.price && st.price > 0 ? calcShares(dollarAmount, st.price): 0;
         return { ...st, allocation: allocPer, dollarAmount, shares };
       });
       const newDollar = (allocPer / 100) * bNum;
       updated.push({
         symbol: s, name: s, allocation: allocPer,
         rationale: 'Manually added', price, dollarAmount: newDollar,
-        shares: Math.max(1, Math.floor(newDollar / price)),
+        shares: calcShares(newDollar, price),
       });
       const total = updated.reduce((sum, st) => sum + st.allocation, 0);
       if (total !== 100) {
         updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
         updated[0].dollarAmount = (updated[0].allocation / 100) * bNum;
         updated[0].shares = updated[0].price && updated[0].price > 0
-          ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price!)) : 0;
+          ? calcShares(updated[0].dollarAmount, updated[0].price!) : 0;
       }
       setBasketData({ ...basketData, stocks: updated });
       setAddStockSymbol(''); setShowAddStock(false);
@@ -288,7 +294,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         const result = results[i];
         const price = result.status === 'fulfilled' ? (result.value.c || stock.price || 0) : (stock.price || 0);
         const dollarAmount = (stock.allocation / 100) * effectiveBudget;
-        const shares = price > 0 ? Math.max(1, Math.floor(dollarAmount / price)) : 0;
+        const shares = price > 0 ? calcShares(dollarAmount, price): 0;
         return {
           ...stock,
           price: Math.round(price * 100) / 100,
@@ -314,14 +320,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     const updated = remaining.map(s => {
       const newAlloc = +(s.allocation * (100 / totalAlloc)).toFixed(1);
       const dollarAmount = Math.round(newAlloc / 100 * effectiveBudget * 100) / 100;
-      const shares = s.price > 0 ? Math.max(1, Math.floor(dollarAmount / s.price)) : 0;
+      const shares = s.price > 0 ? calcShares(dollarAmount, s.price): 0;
       return { ...s, allocation: newAlloc, dollarAmount, shares };
     });
     const sum = updated.reduce((s, r) => s + r.allocation, 0);
     if (sum !== 100 && updated.length > 0) {
       updated[0].allocation = +(updated[0].allocation + (100 - sum)).toFixed(1);
       updated[0].dollarAmount = Math.round(updated[0].allocation / 100 * effectiveBudget * 100) / 100;
-      updated[0].shares = updated[0].price > 0 ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price)) : 0;
+      updated[0].shares = updated[0].price > 0 ? calcShares(updated[0].dollarAmount, updated[0].price) : 0;
     }
     setReviewStocks(updated);
   }
@@ -341,21 +347,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       const allocPer = +(100 / newCount).toFixed(1);
       const updated = reviewStocks.map(st => {
         const dollarAmount = Math.round(allocPer / 100 * effectiveBudget * 100) / 100;
-        const shares = st.price > 0 ? Math.max(1, Math.floor(dollarAmount / st.price)) : 0;
+        const shares = st.price > 0 ? calcShares(dollarAmount, st.price): 0;
         return { ...st, allocation: allocPer, dollarAmount, shares };
       });
       const newDollar = Math.round(allocPer / 100 * effectiveBudget * 100) / 100;
       updated.push({
         symbol: s, name: s, allocation: allocPer,
         rationale: 'Manually added', price,
-        dollarAmount: newDollar, shares: Math.max(1, Math.floor(newDollar / price)),
+        dollarAmount: newDollar, shares: calcShares(newDollar, price),
         isCustomAdded: true,
       });
       const total = updated.reduce((sum, st) => sum + st.allocation, 0);
       if (total !== 100) {
         updated[0].allocation = +(updated[0].allocation + (100 - total)).toFixed(1);
         updated[0].dollarAmount = Math.round(updated[0].allocation / 100 * effectiveBudget * 100) / 100;
-        updated[0].shares = updated[0].price > 0 ? Math.max(1, Math.floor(updated[0].dollarAmount / updated[0].price)) : 0;
+        updated[0].shares = updated[0].price > 0 ? calcShares(updated[0].dollarAmount, updated[0].price) : 0;
       }
       setReviewStocks(updated);
       setAddSymbolInput(''); setShowAddInput(false);
@@ -371,7 +377,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     return selectedCurated.stocks.map(stock => {
       const dollarAmount = (stock.allocation / 100) * effectiveBudget;
       const price = stock.price || 0;
-      const shares = price > 0 ? Math.max(1, Math.floor(dollarAmount / price)) : 0;
+      const shares = price > 0 ? calcShares(dollarAmount, price): 0;
       return {
         symbol: stock.symbol,
         name: stock.name,
@@ -444,7 +450,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           const qData = await qRes.json();
           const price = qData?.c || 0;
           const dollarAmount = (stock.allocation / 100) * budgetNum;
-          const shares = price > 0 ? Math.max(1, Math.floor(dollarAmount / price)) : 0;
+          const shares = price > 0 ? calcShares(dollarAmount, price): 0;
           return { ...stock, price, dollarAmount, shares };
         } catch { return { ...stock, price: 0, dollarAmount: 0, shares: 0 }; }
       }));
@@ -455,14 +461,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         valid.forEach(s => {
           s.allocation = +(s.allocation + redistPer).toFixed(1);
           s.dollarAmount = (s.allocation / 100) * budgetNum;
-          s.shares = Math.max(1, Math.floor(s.dollarAmount / s.price!));
+          s.shares = calcShares(s.dollarAmount, s.price!);
         });
         const totalAlloc = valid.reduce((sum, s) => sum + s.allocation, 0);
         if (totalAlloc !== 100) {
           const diff = 100 - totalAlloc;
           valid[0].allocation = +(valid[0].allocation + diff).toFixed(1);
           valid[0].dollarAmount = (valid[0].allocation / 100) * budgetNum;
-          valid[0].shares = Math.max(1, Math.floor(valid[0].dollarAmount / valid[0].price!));
+          valid[0].shares = calcShares(valid[0].dollarAmount, valid[0].price!);
         }
       }
       setBasketData({ ...data, stocks: valid });
@@ -542,7 +548,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         )}
         <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>{title}</span>
         <button onClick={onClose} style={{
-          color: '#6b7280', background: 'none', border: 'none',
+          color: '#94a3b8', background: 'none', border: 'none',
           fontSize: '22px', cursor: 'pointer', lineHeight: 1, minWidth: '70px', textAlign: 'right',
         }}>×</button>
       </div>
@@ -892,8 +898,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           <div style={{
             background: '#1a2235', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
           }}>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>Basket: </span>
-            <span style={{ fontSize: '12px', color: '#ffffff' }}>{selectedCurated.emoji} {selectedCurated.name}</span>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Basket: </span>
+            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>{selectedCurated.emoji} {selectedCurated.name}</span>
           </div>
         )}
         <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '24px' }}>
@@ -1196,7 +1202,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       const updated = prev.map(s => {
         if (s.symbol !== symbol) return s;
         const dollarAmount = Math.round(clamped * 100) / 100;
-        const estimatedShares = Math.floor(dollarAmount / s.price);
+        const estimatedShares = calcShares(dollarAmount, s.price);
         return {
           ...s,
           dollarAmount,
@@ -1314,8 +1320,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             </span>
             <span style={{ color: '#22d3ee' }}>${(parseInt(budget) || 0).toLocaleString()} budget</span>
           </div>
-          <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '4px' }}>
-            Effective: ${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })} · 5% buffer held (~${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })})
+          <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '4px' }}>
+            Effective: <span style={{ color: '#22d3ee' }}>${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}</span> · 5% buffer held (~${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })})
           </div>
         </div>
 
@@ -1323,7 +1329,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         {loadingPrices && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', padding: '48px 0' }}>
             <CompassIcon size={48} color="#22d3ee" animated={true} />
-            <span style={{ color: '#6b7280', fontSize: '13px' }}>Fetching live prices...</span>
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>Fetching live prices...</span>
           </div>
         )}
 
@@ -1371,7 +1377,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             {reviewStocks.map((stock, i) => (
               <div key={stock.symbol} style={{
                 display: 'flex', alignItems: 'flex-start',
-                padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: '8px',
+                padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', gap: '8px',
               }}>
                 {/* Remove button — only in edit mode */}
                 {isEditMode && (
@@ -1394,7 +1400,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <div>
                       <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '14px' }}>{stock.symbol}</span>
-                      <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '6px' }}>{stock.name}</span>
+                      <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '6px' }}>{stock.name}</span>
                       {stock.isCustomAdded && (
                         <span style={{ fontSize: '9px', color: '#22d3ee', marginLeft: '4px', background: 'rgba(34,211,238,0.1)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
                       )}
@@ -1404,14 +1410,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
                   {/* Estimated shares — subtle, below ticker */}
                   <div style={{
-                    color: '#4b5563',
+                    color: '#94a3b8',
                     fontSize: '11px',
                     marginBottom: '8px',
                     fontStyle: 'italic',
                   }}>
-                    Est. ~{Math.floor(stock.dollarAmount / stock.price)} shares @ ${stock.price.toFixed(2)}
+                    Est. ~{(stock.dollarAmount / stock.price).toFixed(4)} shares @ ${stock.price.toFixed(2)}
                     {' '}
-                    <span style={{ color: '#374151' }}>· qty calculated at market price</span>
+                    <span style={{ color: '#64748b' }}>· qty calculated at market price</span>
                   </div>
 
                   {/* Dollar amount controls */}
@@ -1585,99 +1591,154 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             {/* Error */}
             {error && <p style={{ fontSize: '11px', color: '#ef4444', padding: '8px 16px' }}>{error}</p>}
 
-            {/* Running total with estimated label */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              background: 'rgba(255,255,255,0.02)',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              marginTop: '8px',
-            }}>
-              <div>
-                <div style={{
-                  color: '#6b7280',
-                  fontSize: '12px',
-                }}>
-                  Estimated total
-                </div>
-                <div style={{
-                  color: '#4b5563',
-                  fontSize: '10px',
-                  fontStyle: 'italic',
-                  marginTop: '2px',
-                }}>
-                  Actual qty calculated at execution price
-                </div>
-              </div>
-              <div style={{
-                color: '#ffffff',
-                fontWeight: '700',
-                fontSize: '14px',
-                textAlign: 'right',
-              }}>
-                ${reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0).toFixed(2)}
-                <div style={{
-                  color: '#22d3ee',
-                  fontSize: '11px',
-                  fontWeight: '400',
-                }}>
-                  / ${((parseInt(budget) || 0) * 0.95).toFixed(2)} budget
-                </div>
-              </div>
-            </div>
+            {/* ── Running Total + Estimated Total ── */}
+            {(() => {
+              const runningTotal = reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0);
+              const bNum = parseInt(budget) || 0;
+              const effBudget = bNum * 0.95;
+              return (
+                <>
+                  <div style={{
+                    margin: '12px 16px 0',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Running total row */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '14px 16px',
+                      borderBottom: '1px solid rgba(255,255,255,0.06)',
+                    }}>
+                      <div>
+                        <div style={{
+                          color: '#ffffff',
+                          fontSize: '15px',
+                          fontWeight: '600',
+                        }}>
+                          Running Total
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>
+                          Updates as you adjust amounts
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                          color: runningTotal > bNum
+                            ? '#ef4444'
+                            : runningTotal > effBudget
+                            ? '#f59e0b'
+                            : '#10b981',
+                          fontSize: '18px',
+                          fontWeight: '700',
+                        }}>
+                          ${runningTotal.toFixed(2)}
+                        </div>
+                        <div style={{
+                          color: '#64748b',
+                          fontSize: '11px',
+                          marginTop: '2px',
+                        }}>
+                          of ${effBudget.toFixed(2)} budget
+                        </div>
+                      </div>
+                    </div>
 
-            {/* Budget Warning */}
-            {budgetWarning && (
-              <div style={{
-                margin: '8px 16px',
-                padding: '8px 12px',
-                background: 'rgba(251,191,36,0.08)',
-                border: '1px solid rgba(251,191,36,0.3)',
-                borderRadius: '8px',
-                color: '#f59e0b',
-                fontSize: '11px',
-              }}>⚠️ {budgetWarning}
-              </div>
-            )}
-            {/* Budget Error (hard limit exceeded) */}
-            {budgetError && (
-              <div style={{
-                margin: '8px 16px',
-                padding: '8px 12px',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: '8px',
-                color: '#ef4444',
-                fontSize: '11px',
-              }}>❌ {budgetError}
-              </div>
-            )}
+                    {/* Estimated total row */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '14px 16px',
+                    }}>
+                      <div>
+                        <div style={{
+                          color: '#ffffff',
+                          fontSize: '15px',
+                          fontWeight: '600',
+                        }}>
+                          Estimated Total
+                        </div>
+                        <div style={{
+                          color: '#64748b',
+                          fontSize: '11px',
+                          marginTop: '2px',
+                          fontStyle: 'italic',
+                        }}>
+                          Actual cost calculated at execution
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                          color: '#ffffff',
+                          fontSize: '18px',
+                          fontWeight: '700',
+                        }}>
+                          ~${runningTotal.toFixed(2)}
+                        </div>
+                        <div style={{
+                          color: '#64748b',
+                          fontSize: '11px',
+                          marginTop: '2px',
+                        }}>
+                          ±slippage at fill
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Running total */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              margin: '4px 0',
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(255,255,255,0.02)',
-            }}>
-              <span style={{ color: '#6b7280', fontSize: '13px' }}>
-                Running total
-              </span>
-              <span style={{
-                color: canProceed ? '#ffffff' : '#ef4444',
-                fontWeight: '700',
-                fontSize: '13px',
-              }}>
-                ${reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0).toFixed(2)}
-                {' / '}
-                <span style={{ color: '#22d3ee' }}>
-                  ${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </span>
-            </div>
+                  {/* Budget status bar */}
+                  {runningTotal > bNum && (
+                    <div style={{
+                      margin: '8px 16px 0',
+                      padding: '10px 14px',
+                      background: 'rgba(239,68,68,0.1)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      borderRadius: '8px',
+                      color: '#f87171',
+                      fontSize: '12px',
+                    }}>
+                      ❌ Total exceeds budget of ${bNum.toFixed(2)}.
+                      Reduce amounts to proceed.
+                    </div>
+                  )}
+
+                  {runningTotal > effBudget && runningTotal <= bNum && (
+                    <div style={{
+                      margin: '8px 16px 0',
+                      padding: '10px 14px',
+                      background: 'rgba(245,158,11,0.08)',
+                      border: '1px solid rgba(245,158,11,0.2)',
+                      borderRadius: '8px',
+                      color: '#fbbf24',
+                      fontSize: '12px',
+                    }}>
+                      ⚠️ Using price buffer.
+                      Within acceptable range.
+                    </div>
+                  )}
+
+                  {runningTotal <= effBudget && (
+                    <div style={{
+                      margin: '8px 16px 0',
+                      padding: '10px 14px',
+                      background: 'rgba(16,185,129,0.06)',
+                      border: '1px solid rgba(16,185,129,0.15)',
+                      borderRadius: '8px',
+                      color: '#34d399',
+                      fontSize: '12px',
+                    }}>
+                      ✓ Within budget ·
+                      ${(effBudget - runningTotal).toFixed(2)}
+                      remaining
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Warning */}
             <div style={{
@@ -1987,15 +2048,15 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                   alignItems: 'center',
                   paddingBottom: '10px',
                   marginBottom: '10px',
-                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
                 }}>
                   <div>
                     <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>{stock.symbol}</span>
-                    <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '8px' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '8px' }}>
                       {stock.shares.toFixed(4)}sh @ ${stock.price.toFixed(2)}
                     </span>
                   </div>
-                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                  <span style={{ color: '#e2e8f0', fontSize: '12px' }}>
                     ${stock.totalCost.toFixed(2)}
                   </span>
                 </div>
@@ -2003,7 +2064,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
               {/* Totals */}
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px' }}>
-                <span style={{ color: '#6b7280', fontSize: '12px' }}>
+                <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                   {(basketResult as any).status === 'OPEN' ? 'Reserved' : 'Total spent'}
                 </span>
                 <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '13px' }}>
