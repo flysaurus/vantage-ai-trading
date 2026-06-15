@@ -1,44 +1,72 @@
 -- ============================================================
--- VANTAGE ANONYMOUS SESSIONS MIGRATION
+-- ANONYMOUS SESSIONS MIGRATION
 -- ============================================================
 -- Run in: Supabase Dashboard → SQL Editor
 -- Adds tables for anonymous profiles and login streaks.
 -- ============================================================
 
--- 1. Add anonymous_id column to demo_portfolio_state
-ALTER TABLE demo_portfolio_state 
-  ADD COLUMN IF NOT EXISTS anonymous_id TEXT;
+-- 1. Add anonymous_id column to all user-data tables
+-- Uses a dynamic loop so missing tables are skipped gracefully.
 
-CREATE INDEX IF NOT EXISTS idx_demo_portfolio_anon_id 
-  ON demo_portfolio_state(anonymous_id);
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'demo_portfolio_state',
+      'chat_messages',
+      'pending_basket_orders',
+      'trade_history',
+      'watchlists',
+      'chat_history',
+      'account_snapshots',
+      'metrics',
+      'strategies',
+      'alerts',
+      'ai_suggestions',
+      'daily_suggestions',
+      'scanner_recommendations',
+      'recent_notifications'
+    ])
+  LOOP
+    -- Skip if column already exists
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_name = tbl AND column_name = 'anonymous_id'
+    ) THEN
+      BEGIN
+        EXECUTE format('ALTER TABLE %I ADD COLUMN anonymous_id TEXT;', tbl);
+      EXCEPTION
+        WHEN undefined_table THEN NULL;
+      END;
+    END IF;
+  END LOOP;
+END;
+$$;
 
--- 2. Add anonymous_id column to chat_messages
-ALTER TABLE chat_messages 
-  ADD COLUMN IF NOT EXISTS anonymous_id TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_chat_messages_anon_id 
-  ON chat_messages(anonymous_id);
-
--- 3. Add anonymous_id column to pending_basket_orders
-ALTER TABLE pending_basket_orders 
-  ADD COLUMN IF NOT EXISTS anonymous_id TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_pending_basket_anon_id 
-  ON pending_basket_orders(anonymous_id);
-
--- 4. Add anonymous_id to trade_history
-ALTER TABLE trade_history 
-  ADD COLUMN IF NOT EXISTS anonymous_id TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_trade_history_anon_id 
-  ON trade_history(anonymous_id);
-
--- 5. Add anonymous_id to watchlists
-ALTER TABLE watchlists 
-  ADD COLUMN IF NOT EXISTS anonymous_id TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_watchlists_anon_id 
-  ON watchlists(anonymous_id);
+-- 2. Add indexes (skips missing tables automatically with IF NOT EXISTS)
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'demo_portfolio_state',
+      'chat_messages',
+      'pending_basket_orders',
+      'trade_history',
+      'watchlists'
+    ])
+  LOOP
+    BEGIN
+      EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_anon_id ON %I(anonymous_id);', tbl, tbl);
+    EXCEPTION
+      WHEN undefined_table THEN NULL;
+    END;
+  END LOOP;
+END;
+$$;
 
 -- ============================================================
 -- ANONYMOUS PROFILES TABLE

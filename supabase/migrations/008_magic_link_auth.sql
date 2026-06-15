@@ -40,7 +40,14 @@ BEGIN
       SELECT 1 FROM information_schema.columns 
       WHERE table_name = tbl AND column_name = 'anonymous_id'
     ) THEN
-      EXECUTE format('ALTER TABLE %I ADD COLUMN anonymous_id TEXT;', tbl);
+      -- Wrap in BEGIN/EXCEPTION — table itself might not exist
+      BEGIN
+        EXECUTE format('ALTER TABLE %I ADD COLUMN anonymous_id TEXT;', tbl);
+      EXCEPTION
+        WHEN undefined_table THEN
+          -- Table doesn't exist — skip gracefully
+          NULL;
+      END;
     END IF;
   END LOOP;
 END;
