@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../lib/theme/tokens.css";
 
 /* ─── Global Font Size Overrides ─── */
 @layer base {
