@@ -402,7 +402,7 @@ function BuyModal({
   position: Position;
   buyingPower: number;
   onClose: () => void;
-  onExecute: (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number) => { success: boolean; error?: string };
+  onExecute: (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number) => Promise<{ success: boolean; error?: string }>;
 }) {
   const [shares, setShares] = useState(1);
   const [orderType, setOrderType] = useState<'Market' | 'Limit' | 'Stop'>('Market');
@@ -510,10 +510,10 @@ function BuyModal({
             Cancel
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               const price = orderType === 'Limit' && limitPrice ? parseFloat(limitPrice) : position.currentPrice;
               if (!price || isNaN(price) || price <= 0) return;
-              const result = onExecute(position.symbol, 'BUY', shares, price);
+              const result = await onExecute(position.symbol, 'BUY', shares, price);
               if (result.success) onClose();
             }}
             disabled={estCost > buyingPower}
@@ -537,7 +537,7 @@ function BuyModal({
 
 export function PortfolioTab() {
   const { account, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, executeTrade, baskets, sellBasketPositions } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, executeTrade, baskets, sellBasketPositions, pendingBaskets } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -578,6 +578,45 @@ export function PortfolioTab() {
   }
 
   const positions = displayAccount.positions || [];
+
+  // ── Basket grouping ──
+  const individualPositions = positions.filter(p => !p.basketId);
+  const basketPositions = positions.filter(p => !!p.basketId);
+  interface BasketGroup {
+    displayName: string;
+    emoji: string;
+    positions: Position[];
+    totalCost: number;
+    marketValue: number;
+    totalPnL: number;
+    totalPnLPct: number;
+  }
+  const basketGroups = basketPositions.reduce<Record<string, BasketGroup>>((groups, pos) => {
+    const key = pos.basketDisplayName || pos.basketName || 'Basket';
+    if (!groups[key]) {
+      groups[key] = {
+        displayName: key,
+        emoji: pos.basketEmoji || '🧺',
+        positions: [],
+        totalCost: 0,
+        marketValue: 0,
+        totalPnL: 0,
+        totalPnLPct: 0,
+      };
+    }
+    groups[key].positions.push(pos);
+    groups[key].totalCost += pos.totalCost || (pos.avgCost * pos.qty);
+    groups[key].marketValue += pos.marketValue;
+    groups[key].totalPnL += pos.marketValue - (pos.totalCost || (pos.avgCost * pos.qty));
+    return groups;
+  }, {});
+  // Compute PnL % after accumulating
+  for (const g of Object.values(basketGroups)) {
+    g.totalPnLPct = g.totalCost > 0 ? (g.totalPnL / g.totalCost) * 100 : 0;
+  }
+  const toggleGroup = (name: string) => {
+    setExpandedBasket(prev => prev === name ? null : name);
+  };
 
   const toggleSelect = (sym: string) => {
     setSelectedSymbols((prev) =>
@@ -772,7 +811,7 @@ export function PortfolioTab() {
               </button>
             )}
           </div>
-          <span className="text-xs text-slate-500 uppercase tracking-wider flex-1" style={{ marginLeft: '16px' }}>
+          <span className="flex-1" style={{ color: '#ffffff', fontSize: '16px', fontWeight: '700', letterSpacing: '-0.01em', marginLeft: '16px' }}>
             Holdings
           </span>
           {selectMode ? (
@@ -841,8 +880,8 @@ export function PortfolioTab() {
         </div>
       )}
 
-      {/* 4. Position Cards */}
-      {positions.map((pos) => (
+      {/* 4. Individual Positions (non-basket) */}
+      {individualPositions.map((pos) => (
         <PositionCard
           key={pos.symbol}
           pos={pos}
@@ -855,6 +894,210 @@ export function PortfolioTab() {
           baskets={baskets}
         />
       ))}
+
+      {/* 5. Basket Groups */}
+      {Object.entries(basketGroups).map(([name, group]) => {
+        const isExpanded = expandedBasket === name;
+        const pnl = group.totalPnL;
+        const pnlPct = group.totalPnLPct;
+        const isPos = pnl >= 0;
+        return (
+          <div
+            key={name}
+            style={{
+              marginLeft: '16px',
+              marginRight: '16px',
+              marginBottom: '8px',
+              background: '#1a2235',
+              border: '1px solid rgba(34,211,238,0.1)',
+              borderLeft: `3px solid ${isPos ? '#10b981' : '#ef4444'}`,
+              borderRadius: '12px',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Collapsed header */}
+            <div
+              onClick={() => toggleGroup(name)}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                cursor: 'pointer',
+              }}
+            >
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '3px',
+                }}>
+                  <span style={{ fontSize: '16px' }}>{group.emoji}</span>
+                  <span style={{
+                    color: '#ffffff',
+                    fontWeight: '600',
+                    fontSize: '15px',
+                  }}>
+                    {group.displayName}
+                  </span>
+                </div>
+                <span style={{ color: '#6b7280', fontSize: '11px' }}>
+                  {group.positions.length} position{group.positions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>
+                  {formatCurrency(group.marketValue)}
+                </div>
+                <div style={{
+                  color: isPos ? '#10b981' : '#ef4444',
+                  fontSize: '12px',
+                }}>
+                  {isPos ? '+' : ''}{formatCurrency(pnl)}{' '}
+                  ({isPos ? '+' : ''}{pnlPct.toFixed(1)}%)
+                </div>
+              </div>
+            </div>
+
+            {/* Expanded positions list */}
+            {isExpanded && (
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {group.positions.map((pos) => (
+                  <div
+                    key={pos.symbol}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 16px 10px 28px',
+                      borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
+                        {pos.symbol}
+                      </span>
+                      <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '8px' }}>
+                        {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: '#ffffff', fontWeight: '500', fontSize: '13px' }}>
+                        {formatCurrency(pos.marketValue)}
+                      </div>
+                      <div style={{
+                        color: (pos.marketValue - (pos.totalCost || 0)) >= 0 ? '#10b981' : '#ef4444',
+                        fontSize: '11px',
+                      }}>
+                        {((pos.marketValue - (pos.totalCost || 0)) >= 0 ? '+' : '')}
+                        {formatCurrency(pos.marketValue - (pos.totalCost || 0))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Sell Basket button */}
+                <div style={{ padding: '12px 16px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const sp = group.positions.map(p => ({
+                        symbol: p.symbol,
+                        qty: p.qty,
+                        currentPrice: p.currentPrice,
+                      }));
+                      setSellModalPositions(sp);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      background: '#ef4444',
+                      border: 'none',
+                      borderRadius: '10px',
+                      color: '#ffffff',
+                      fontSize: '14px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Sell Basket
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* 6. Pending Basket Orders */}
+      {pendingBaskets && pendingBaskets.length > 0 && (
+        <>
+          {pendingBaskets.map((pb: any) => (
+            <div
+              key={pb.id}
+              style={{
+                marginLeft: '16px',
+                marginRight: '16px',
+                marginBottom: '8px',
+                background: '#1a2235',
+                border: '1px solid rgba(245,158,11,0.2)',
+                borderLeft: '3px solid #f59e0b',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                opacity: 0.85,
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '6px',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <span style={{ fontSize: '16px' }}>
+                    {pb.basketEmoji || '🧺'}
+                  </span>
+                  <span style={{
+                    color: '#ffffff',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                  }}>
+                    {pb.basketDisplayName || pb.basketName || 'Basket'}
+                  </span>
+                </div>
+                <span style={{
+                  background: 'rgba(245,158,11,0.15)',
+                  color: '#f59e0b',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                }}>
+                  PENDING
+                </span>
+              </div>
+              <div style={{
+                color: '#f59e0b',
+                fontSize: '12px',
+                marginBottom: '4px',
+              }}>
+                ⏳ {pb.nextOpenLabel || 'awaiting market open'}
+              </div>
+              <div style={{
+                color: '#6b7280',
+                fontSize: '11px',
+              }}>
+                {pb.orders?.length || 0} positions ·
+                ${(pb.totalReserved || 0).toFixed(2)} reserved
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
       <div style={{ height: '40px' }} />
 
       {/* Sticky Portfolio Summary Footer */}
@@ -1006,8 +1249,8 @@ export function PortfolioTab() {
           position={showBuySymbol}
           buyingPower={displayAccount?.buyingPower ?? 0}
           onClose={() => setShowBuySymbol(null)}
-          onExecute={(symbol, side, shares, price) => {
-            const result = executeTrade(symbol, side, shares, price);
+          onExecute={async (symbol, side, shares, price) => {
+            const result = await executeTrade(symbol, side, shares, price);
             return result;
           }}
         />
@@ -1017,11 +1260,11 @@ export function PortfolioTab() {
         <SellModal
           positions={sellModalPositions}
           onClose={() => setSellModalPositions(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
             // Execute sell for each selected position
             if (sellModalPositions) {
               for (const pos of sellModalPositions) {
-                executeTrade(pos.symbol, 'SELL', pos.qty, pos.currentPrice);
+                await executeTrade(pos.symbol, 'SELL', pos.qty, pos.currentPrice);
               }
             }
             setSellModalPositions(null);

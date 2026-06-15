@@ -22,6 +22,9 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
+import { getBroker } from '@/lib/broker/broker-factory';
+import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
+import type { BrokerEngine, BrokerOrder } from '@/lib/broker/engine';
 import type { AccountSummary, Position, Order, InvestorStyle } from '@/types';
 
 // ─── Basket types ──────────────────────────────────────────
@@ -107,8 +110,8 @@ function generateOrderId(): string {
 interface TradeResult {
   success: boolean;
   error?: string;
-  /** Whether the order was FILLED (market open) or OPEN (pending, market closed) */
-  status?: 'FILLED' | 'OPEN';
+  /** Whether the order was FILLED (market open), OPEN (pending, market closed), or REJECTED */
+  status?: 'FILLED' | 'OPEN' | 'REJECTED';
 }
 
 interface BasketTradeResult {
@@ -142,7 +145,7 @@ interface PortfolioContextValue {
     side: 'BUY' | 'SELL',
     shares: number,
     price: number
-  ) => TradeResult;
+  ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
   /** Toast message */
@@ -158,6 +161,7 @@ interface PortfolioContextValue {
     basketId: string,
     basketName: string,
     basketEmoji: string,
+    displayName: string,
     stocks: Array<{ symbol: string; allocationPct: number; name: string }>,
     budget: number,
   ) => Promise<BasketTradeResult>;
@@ -167,11 +171,13 @@ interface PortfolioContextValue {
     symbolsToSell: string[],
   ) => Promise<BasketSellResult>;
   /** Cancel an OPEN order — releases reserved cash for BUY orders */
-  cancelOrder: (orderId: string) => void;
+  cancelOrder: (orderId: string) => Promise<void>;
   /** Cancel a pending basket order — releases reserved cash, marks OPEN orders as CANCELLED */
   cancelBasketOrder: (basketId: string) => void;
   /** Execute all pending OPEN orders at current market prices */
   executePendingOrders: () => Promise<void>;
+  /** All basket orders (grouped, from broker) */
+  basketOrders: any[];
   /** Pending basket orders (OPEN status, awaiting market open) */
   pendingBaskets: any[];
 }
@@ -181,17 +187,18 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   loading: true,
   error: null,
   refresh: () => {},
-  executeTrade: () => ({ success: false, error: 'Not initialized' }),
+  executeTrade: async () => ({ success: false, error: 'Not initialized' }),
   demoOrders: [],
   toast: null,
   dismissToast: () => {},
   baskets: [],
   loadBaskets: () => {},
-  executeBasketTrade: async () => ({ success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Not initialized' }),
+  executeBasketTrade: async () => ({ success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Not initialized' }) as any,
   sellBasketPositions: async () => ({ success: false, proceeds: 0, executed: [], failed: [] }),
-  cancelOrder: () => {},
+  cancelOrder: async () => {},
   cancelBasketOrder: () => {},
   executePendingOrders: async () => {},
+  basketOrders: [],
   pendingBaskets: [],
 });
 
@@ -251,6 +258,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [demoOrders, setDemoOrders] = useState<DemoOrder[]>(initialPersistedState?.orders || []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [baskets, setBaskets] = useState<Basket[]>([]);
+  const [basketOrders, setBasketOrders] = useState<any[]>([]);
   const [pendingBaskets, setPendingBaskets] = useState<any[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -274,41 +282,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // ── Refs for latest state (used by Supabase sync to avoid stale closures) ──
   const demoStateRef = useRef(demoState);
   const basketPositionsRef = useRef<BasketPosition[]>([]);
+  const brokerRef = useRef<BrokerEngine | null>(null);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
-  // ── Seed fallback: if no persisted state was loaded, seed from demo-data ──
-  useEffect(() => {
-    if (isConnected || initialPersistedState) return;
-    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
-    const seedAccount = getDemoAccount(style, {});
-    
-    // Generate orders from demo positions (matches current portfolio)
-    const seedOrders: DemoOrder[] = (seedAccount?.positions || []).map((p, i) => {
-      const fillPrice = p.avgCost || p.currentPrice;
-      return {
-        id: `demo-${p.symbol}-${i}`,
-        symbol: p.symbol,
-        side: 'BUY' as const,
-        shares: p.qty,
-        type: 'market' as const,
-        fillPrice,
-        totalCost: p.qty * fillPrice,
-        status: 'FILLED' as const,
-        createdAt: new Date(p.buyDate ? (p.buyDate + 'T14:30:00Z') : '2024-01-01T14:30:00Z').toISOString(),
-      };
-    });
 
-    const seedState: DemoState = {
-      positions: seedAccount?.positions || [],
-      cashBalance: seedAccount?.cash || 0,
-      orders: seedOrders,
-      savedAt: Date.now(),
-    };
-    setDemoState(seedState);
-    setDemoOrders(seedOrders);
-  }, [isConnected, user?.investorStyle, initialPersistedState]);
-
-  // ── Persist demo state to localStorage ──
   const persistDemoState = useCallback((state: DemoState) => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
@@ -459,466 +436,122 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     };
   }, [demoState, recomputeAccount, fetchData]);
 
+  // ── refreshStateFromBroker: sync broker state → React state ──
+  const refreshStateFromBroker = useCallback(async () => {
+    const b = brokerRef.current;
+    if (!b) return;
+    const [bPositions, bAccount, bOrders, bBasketOrders] = await Promise.all([
+      b.getPositions(),
+      b.getAccount(),
+      b.getOrders(),
+      b.getBasketOrders(),
+    ]);
+    const ctxPositions = bPositions.map((bp: any) => ({
+      symbol: bp.symbol, name: bp.symbol, qty: bp.shares, avgCost: bp.avgCost,
+      currentPrice: bp.avgCost, marketValue: bp.shares * bp.avgCost,
+      dayChange: 0, dayChangePercent: 0, totalPnl: 0, totalPnlPercent: 0,
+      portfolioPercent: 0, type: bp.type,
+      basketId: bp.basketId, basketName: bp.basketName, basketEmoji: bp.basketEmoji,
+    }));
+    const ctxOrders: DemoOrder[] = bOrders.map((bo: any) => ({
+      id: bo.id, symbol: bo.symbol, side: bo.side, shares: bo.shares, type: bo.type,
+      fillPrice: bo.fillPrice || bo.submittedPrice, totalCost: bo.totalCost,
+      status: bo.status, createdAt: bo.submittedAt, submittedPrice: bo.submittedPrice,
+      reservedCost: bo.reservedCost, note: bo.note, cancelledAt: bo.cancelledAt,
+    }));
+    const newState: DemoState = { positions: ctxPositions, cashBalance: bAccount.cashBalance, orders: ctxOrders, savedAt: Date.now() };
+    setDemoState(newState);
+    setDemoOrders(ctxOrders);
+    persistDemoState(newState);
+    // Sync basket orders from broker
+    setBasketOrders(bBasketOrders || []);
+    setPendingBaskets((bBasketOrders || []).filter((bo: any) => bo.status === 'OPEN'));
+  }, [persistDemoState]);
+
+  // ── Broker initialization ──
+  useEffect(() => {
+    brokerRef.current = getBroker('demo', user?.id);
+    brokerRef.current.getPositions().then(p => {
+      if (p.length > 0) refreshStateFromBroker();
+    });
+  }, [refreshStateFromBroker, user?.id]);
+
+  // ── Seed fallback: use broker.seedFromDemoData() ──
+  useEffect(() => {
+    if (isConnected || initialPersistedState) return;
+    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
+    (brokerRef.current as any)?.seedFromDemoData(style);
+    // Sync after seeding
+    setTimeout(async () => {
+      await refreshStateFromBroker();
+    }, 100);
+  }, [isConnected, user?.investorStyle, initialPersistedState, refreshStateFromBroker]);
+
   // ── executeTrade ──
   const executeTrade = useCallback(
-    (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number): TradeResult => {
-      if (!demoState) return { success: false, error: 'No portfolio loaded' };
-
-      const market = getMarketStatus();
-      const positions = [...demoState.positions];
-      let cashBalance = demoState.cashBalance;
-      const cost = shares * price;
-
-      // ── OPEN ORDER (market closed) ──
-      if (!market.isOpen) {
-        if (side === 'BUY') {
-          if (cost > cashBalance) {
-            const msg = `Insufficient funds (need $${cost.toFixed(2)}, have $${cashBalance.toFixed(2)})`;
-            setToast({ message: `❌ ${msg}`, type: 'error' });
-            setTimeout(() => setToast(null), 4000);
-            return { success: false, error: msg, status: 'OPEN' };
-          }
-
-          // Reserve cash immediately
-          cashBalance -= cost;
-        } else {
-          // SELL — check shares exist
-          const existingIdx = positions.findIndex((p) => p.symbol === symbol);
-          if (existingIdx < 0) {
-            return { success: false, error: 'Position not found', status: 'OPEN' };
-          }
-          if (shares > positions[existingIdx].qty) {
-            const msg = `Insufficient shares (have ${positions[existingIdx].qty}, trying to sell ${shares})`;
-            setToast({ message: `❌ ${msg}`, type: 'error' });
-            setTimeout(() => setToast(null), 4000);
-            return { success: false, error: msg, status: 'OPEN' };
-          }
-        }
-
-        // Create OPEN order
-        const openOrder: DemoOrder = {
-          id: generateOrderId(),
-          symbol,
-          side,
-          shares,
-          type: 'market',
-          fillPrice: price,
-          totalCost: cost,
-          status: 'OPEN',
-          createdAt: new Date().toISOString(),
-          submittedPrice: price,
-          reservedCost: side === 'BUY' ? cost : 0,
-          note: `Pending · ${market.nextOpenLabel}`,
-        };
-
-        const newOrders = [openOrder, ...demoOrders.slice(0, 49)];
-        const newState: DemoState = {
-          positions,
-          cashBalance,
-          orders: newOrders,
-          savedAt: Date.now(),
-        };
-
-        setDemoState(newState);
-        setDemoOrders(newOrders);
-        persistDemoState(newState);
-
-        setToast({
-          message: `⏳ Order for ${symbol} queued — ${market.nextOpenLabel}`,
-          type: 'success',
-        });
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number): Promise<TradeResult> => {
+      const b = brokerRef.current;
+      if (!b) return { success: false, error: 'Broker not initialized' };
+      const result = await b.placeOrder({ symbol, side, type: 'market', shares });
+      if (!result.success) {
+        setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);
-
-        return { success: true, status: 'OPEN' };
+        return { success: false, error: result.message || 'Order failed', status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
       }
-
-      // ── FILLED ORDER (market open) ──
-      if (side === 'BUY') {
-        if (cost > cashBalance) {
-          const msg = `Insufficient funds (need $${cost.toFixed(2)}, have $${cashBalance.toFixed(2)})`;
-          setToast({ message: `❌ ${msg}`, type: 'error' });
-          setTimeout(() => setToast(null), 4000);
-          return { success: false, error: msg };
-        }
-
-        const existingIdx = positions.findIndex((p) => p.symbol === symbol);
-        if (existingIdx >= 0) {
-          const existing = positions[existingIdx];
-          const newTotalCost = existing.qty * existing.avgCost + cost;
-          const newShares = existing.qty + shares;
-          const newAvgCost = newTotalCost / newShares;
-          positions[existingIdx] = {
-            ...existing,
-            qty: newShares,
-            avgCost: newAvgCost,
-          };
-        } else {
-          positions.push({
-            symbol,
-            name: symbol,
-            qty: shares,
-            avgCost: price,
-            currentPrice: price,
-            marketValue: cost,
-            dayChange: 0,
-            dayChangePercent: 0,
-            totalPnl: 0,
-            totalPnlPercent: 0,
-            portfolioPercent: 0,
-            type: 'Stock',
-          });
-        }
-
-        cashBalance -= cost;
-
+      await refreshStateFromBroker();
+      if (result.status === 'OPEN') {
+        setToast({ message: `⏳ Order for ${symbol} queued — ${result.nextOpenLabel}`, type: 'success' });
       } else {
-        // SELL
-        const existingIdx = positions.findIndex((p) => p.symbol === symbol);
-        if (existingIdx < 0) {
-          return { success: false, error: 'Position not found' };
-        }
-
-        const existing = positions[existingIdx];
-        if (shares > existing.qty) {
-          const msg = `Insufficient shares (have ${existing.qty}, trying to sell ${shares})`;
-          setToast({ message: `❌ ${msg}`, type: 'error' });
-          setTimeout(() => setToast(null), 4000);
-          return { success: false, error: msg };
-        }
-
-        const proceeds = shares * price;
-
-        if (shares === existing.qty) {
-          positions.splice(existingIdx, 1);
-        } else {
-          positions[existingIdx] = {
-            ...existing,
-            qty: existing.qty - shares,
-          };
-        }
-
-        cashBalance += proceeds;
+        const sideLabel = side === 'BUY' ? 'Bought' : 'Sold';
+        setToast({ message: `✅ ${sideLabel} ${result.filledShares || shares} shares of ${symbol} at $${price.toFixed(2)}`, type: 'success' });
       }
-
-      // Add FILLED order to history
-      const filledOrder: DemoOrder = {
-        id: generateOrderId(),
-        symbol,
-        side,
-        shares,
-        type: 'market',
-        fillPrice: price,
-        totalCost: cost,
-        status: 'FILLED',
-        createdAt: new Date().toISOString(),
-        submittedPrice: price,
-      };
-
-      const newOrders = [filledOrder, ...demoOrders.slice(0, 49)];
-      const newState: DemoState = {
-        positions,
-        cashBalance,
-        orders: newOrders,
-        savedAt: Date.now(),
-      };
-
-      setDemoState(newState);
-      setDemoOrders(newOrders);
-      persistDemoState(newState);
-
-      const sideLabel = side === 'BUY' ? 'Bought' : 'Sold';
-      setToast({
-        message: `✅ ${sideLabel} ${shares} shares of ${symbol} at $${price.toFixed(2)}`,
-        type: 'success',
-      });
-      setTimeout(() => setToast(null), 3000);
-
-      return { success: true, status: 'FILLED' };
+      setTimeout(() => setToast(null), result.status === 'FILLED' ? 3000 : 4000);
+      return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
     },
-    [demoState, demoOrders, persistDemoState]
+    [brokerRef, refreshStateFromBroker],
   );
 
   const dismissToast = useCallback(() => setToast(null), []);
 
   // ── cancelOrder ──
-  const cancelOrder = useCallback((orderId: string) => {
+  const cancelOrder = useCallback(async (orderId: string) => {
+    const b = brokerRef.current;
+    if (!b) return;
     const order = demoOrders.find(o => o.id === orderId);
-    if (!order || order.status.toUpperCase() !== 'OPEN') return;
-
-    let cashBalance = demoState?.cashBalance ?? 0;
-
-    // Release reserved cash for BUY orders
-    if (order.side === 'BUY') {
-      const reserved = order.reservedCost ?? order.shares * (order.submittedPrice ?? order.fillPrice);
-      cashBalance += reserved;
-    }
-
-    // Mark order as CANCELLED
-    const updatedOrders = demoOrders.map(o =>
-      o.id === orderId
-        ? { ...o, status: 'CANCELLED' as const, cancelledAt: new Date().toISOString() }
-        : o
-    );
-
-    const newState: DemoState = {
-      positions: demoState?.positions || [],
-      cashBalance,
-      orders: updatedOrders,
-      savedAt: Date.now(),
-    };
-
-    setDemoState(newState);
-    setDemoOrders(updatedOrders);
-    persistDemoState(newState);
-
-    setToast({
-      message: `❌ Order for ${order.symbol} cancelled — $${((order.reservedCost ?? order.shares * (order.submittedPrice ?? order.fillPrice))).toFixed(2)} returned to buying power`,
-      type: 'success',
-    });
+    const symbol = order?.symbol || 'Unknown';
+    const result = await b.cancelOrder(orderId);
+    if (!result.success) return;
+    await refreshStateFromBroker();
+    setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
     setTimeout(() => setToast(null), 4000);
-  }, [demoState, demoOrders, persistDemoState]);
+  }, [demoOrders, brokerRef, refreshStateFromBroker]);
 
   // ── cancelBasketOrder ──
-  const cancelBasketOrder = useCallback((basketId: string) => {
-    if (!demoState) return;
-
-    let hasChanges = false;
-    let cashReleased = 0;
-
-    // 1. Find and cancel pending basket in localStorage
-    try {
-      const raw = localStorage.getItem('vantage_pending_baskets');
-      if (raw) {
-        const pendingBaskets = JSON.parse(raw);
-        const updated = pendingBaskets.map((b: any) => {
-          if (b.id === basketId && b.status === 'OPEN') {
-            hasChanges = true;
-            cashReleased += b.totalReserved || 0;
-            return { ...b, status: 'CANCELLED', cancelledAt: new Date().toISOString() };
-          }
-          return b;
-        });
-        if (hasChanges) localStorage.setItem('vantage_pending_baskets', JSON.stringify(updated));
-        // Also update in-memory state
-        setPendingBaskets(updated.filter((b: any) => b.status === 'OPEN'));
-      }
-    } catch { /* ignore */ }
-
-    // 2. Mark all associated OPEN orders as CANCELLED
-    const updatedOrders = demoOrders.map(o => {
-      const oBasketId = (o as any).basketId || (
-        o.id?.toString().includes('-b') ? o.id?.toString().split('-b')[0] : null
-      );
-      // For basket orders, the id format is "timestamp-bN" — match loosely
-      if ((o as any).status?.toUpperCase() === 'OPEN' && (
-        (o as any).basketId === basketId || o.note?.includes('Pending')
-      )) {
-        // Release cash for any BUY basket orders not tracked by pending basket
-        if (o.side === 'BUY' && !hasChanges) {
-          cashReleased += o.reservedCost ?? o.shares * (o.submittedPrice ?? o.fillPrice);
-        }
-        hasChanges = true;
-        return { ...o, status: 'CANCELLED' as const, cancelledAt: new Date().toISOString() };
-      }
-      return o;
-    });
-
-    if (!hasChanges) {
-      setToast({ message: 'No pending basket orders found', type: 'error' });
+  const cancelBasketOrder = useCallback(async (basketId: string) => {
+    const b = brokerRef.current;
+    if (!b) return;
+    const result = await b.cancelBasketOrder(basketId);
+    if (!result.success) {
+      setToast({ message: result.message || 'No pending basket orders found', type: 'error' });
       setTimeout(() => setToast(null), 3000);
       return;
     }
-
-    // 3. Release reserved cash
-    const newState: DemoState = {
-      positions: [...demoState.positions],
-      cashBalance: demoState.cashBalance + cashReleased,
-      orders: updatedOrders,
-      savedAt: Date.now(),
-    };
-
-    setDemoState(newState);
-    setDemoOrders(updatedOrders);
-    persistDemoState(newState);
-
-    setToast({
-      message: `🛑 Basket order cancelled. $${cashReleased.toFixed(2)} returned to buying power.`,
-      type: 'success',
-    });
+    await refreshStateFromBroker();
+    setToast({ message: '🛑 Basket order cancelled. Cash returned to buying power.', type: 'success' });
     setTimeout(() => setToast(null), 4000);
-  }, [demoState, demoOrders, persistDemoState]);
+  }, [brokerRef, refreshStateFromBroker]);
 
   // ── executePendingOrders ──
   const executePendingOrders = useCallback(async () => {
-    const openOrders = demoOrders.filter(o => o.status.toUpperCase() === 'OPEN');
-    if (openOrders.length === 0 && !localStorage.getItem('vantage_pending_baskets')) return;
-
-    let positions = demoState ? [...demoState.positions] : [];
-    let cashBalance = demoState?.cashBalance ?? 0;
-    let updatedOrders = [...demoOrders];
-    let hasChanges = false;
-
-    // ── Execute OPEN orders ──
-    for (const order of openOrders) {
-      try {
-        // Fetch current market price from Finnhub
-        const quoteRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(order.symbol)}`);
-        const quote = await quoteRes.json();
-        const fillPrice = quote.c || order.submittedPrice || order.fillPrice;
-
-        if (order.side === 'BUY') {
-          // Cash was already reserved — apply order to positions
-          const cost = order.shares * fillPrice;
-          const existingIdx = positions.findIndex(p => p.symbol === order.symbol);
-          if (existingIdx >= 0) {
-            const existing = positions[existingIdx];
-            const newTotalCost = existing.qty * existing.avgCost + cost;
-            const newShares = existing.qty + order.shares;
-            positions[existingIdx] = { ...existing, qty: newShares, avgCost: newTotalCost / newShares };
-          } else {
-            positions.push({
-              symbol: order.symbol,
-              name: order.symbol,
-              qty: order.shares,
-              avgCost: fillPrice,
-              currentPrice: fillPrice,
-              marketValue: cost,
-              dayChange: 0,
-              dayChangePercent: 0,
-              totalPnl: 0,
-              totalPnlPercent: 0,
-              portfolioPercent: 0,
-              type: 'Stock',
-            });
-          }
-        } else {
-          // SELL order — remove shares from positions
-          const existingIdx = positions.findIndex(p => p.symbol === order.symbol);
-          if (existingIdx >= 0) {
-            const existing = positions[existingIdx];
-            const proceeds = order.shares * fillPrice;
-            if (order.shares >= existing.qty) {
-              positions.splice(existingIdx, 1);
-            } else {
-              positions[existingIdx] = { ...existing, qty: existing.qty - order.shares };
-            }
-            cashBalance += proceeds;
-          }
-        }
-
-        // Mark order as FILLED
-        updatedOrders = updatedOrders.map(o =>
-          o.id === order.id
-            ? { ...o, status: 'FILLED' as const, fillPrice, totalCost: order.shares * fillPrice }
-            : o
-        );
-        hasChanges = true;
-        console.log(`[executePending] Filled ${order.side} ${order.symbol} @ $${fillPrice.toFixed(2)}`);
-      } catch (err) {
-        console.error(`[executePending] Failed to fill ${order.symbol}:`, err);
-      }
-    }
-
-    // ── Execute pending baskets ──
-    try {
-      const raw = localStorage.getItem('vantage_pending_baskets');
-      if (raw) {
-        const pendingBaskets = JSON.parse(raw);
-        const stillPending: any[] = [];
-
-        for (const basket of pendingBaskets) {
-          if (basket.status !== 'OPEN') {
-            stillPending.push(basket);
-            continue;
-          }
-
-          console.log(`[executePending] Processing basket: ${basket.basketName}`);
-
-          // Execute each stock in the basket
-          for (const stock of basket.stocks) {
-            try {
-              const quoteRes = await fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(stock.symbol)}`);
-              const quote = await quoteRes.json();
-              const fillPrice = quote.c || stock.price;
-              const cost = stock.shares * fillPrice;
-
-              const existingIdx = positions.findIndex(p => p.symbol === stock.symbol);
-              if (existingIdx >= 0) {
-                const existing = positions[existingIdx];
-                const newTotalCost = existing.qty * existing.avgCost + cost;
-                const newShares = existing.qty + stock.shares;
-                positions[existingIdx] = { ...existing, qty: newShares, avgCost: newTotalCost / newShares };
-              } else {
-                positions.push({
-                  symbol: stock.symbol,
-                  name: stock.name || stock.symbol,
-                  qty: stock.shares,
-                  avgCost: fillPrice,
-                  currentPrice: fillPrice,
-                  marketValue: cost,
-                  dayChange: 0,
-                  dayChangePercent: 0,
-                  totalPnl: 0,
-                  totalPnlPercent: 0,
-                  portfolioPercent: 0,
-                  type: 'Stock',
-                });
-              }
-
-              // Save to basket localStorage
-              try {
-                const existingRaw = localStorage.getItem(BASKET_STORAGE_KEY);
-                const existing: BasketPosition[] = existingRaw ? JSON.parse(existingRaw) : [];
-                existing.push({
-                  id: crypto.randomUUID(),
-                  basketId: basket.id,
-                  basketName: basket.basketName,
-                  basketEmoji: basket.basketEmoji,
-                  symbol: stock.symbol,
-                  shares: stock.shares,
-                  avgCost: fillPrice,
-                  totalCost: cost,
-                  allocationPct: stock.allocationPct,
-                  status: 'active',
-                  boughtAt: new Date().toISOString(),
-                });
-                localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(existing));
-              } catch { /* ignore */ }
-
-              console.log(`[executePending] Basket ${basket.basketName}: filled ${stock.symbol} @ $${fillPrice.toFixed(2)}`);
-            } catch (err) {
-              console.error(`[executePending] Basket stock ${stock.symbol} failed:`, err);
-            }
-          }
-
-          // Mark basket as executed (don't keep in pending)
-          // Don't push to stillPending — it's done
-          hasChanges = true;
-        }
-
-        // Update pending baskets (remove executed ones)
-        if (stillPending.length !== pendingBaskets.length) {
-          localStorage.setItem('vantage_pending_baskets', JSON.stringify(stillPending));
-          setPendingBaskets(stillPending.filter((b: any) => b.status === 'OPEN'));
-          loadBasketsRef.current(); // refresh baskets state
-        }
-      }
-    } catch { /* ignore */ }
-
-    if (hasChanges) {
-      const newState: DemoState = { positions, cashBalance, orders: updatedOrders, savedAt: Date.now() };
-      setDemoState(newState);
-      setDemoOrders(updatedOrders);
-      persistDemoState(newState);
-
-      const filledCount = openOrders.length;
-      setToast({
-        message: `⚡ ${filledCount} pending order${filledCount !== 1 ? 's' : ''} executed at market price`,
-        type: 'success',
-      });
+    const b = brokerRef.current;
+    if (!b) return;
+    const filled = await b.executePendingOrders();
+    if (filled > 0) {
+      await refreshStateFromBroker();
+      setToast({ message: `🔔 Executed ${filled} pending orders`, type: 'success' });
       setTimeout(() => setToast(null), 4000);
     }
-  }, [demoState, demoOrders, persistDemoState]);
+  }, [brokerRef, refreshStateFromBroker]);
 
   const loadBasketsRef = useRef<() => void>(() => {});
 
@@ -991,6 +624,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }, 2000);
     return () => clearTimeout(timer);
   }, [pendingBaskets.length > 0]); // Only trigger when we have pending baskets
+
+  // ── Market open watcher: detect closed→open transitions ──
+  useMarketOpenWatcher(async () => {
+    const b = brokerRef.current;
+    if (!b) return;
+    await b.executePendingOrders();
+    await refreshStateFromBroker();
+    setToast({ message: '🔔 Market opened — pending orders executed', type: 'success' });
+    setTimeout(() => setToast(null), 4000);
+  });
 
   useEffect(() => {
     if (baskets.length > 0) {
@@ -1065,231 +708,36 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     basketId: string,
     basketName: string,
     basketEmoji: string,
+    displayName: string,
     stocks: Array<{ symbol: string; allocationPct: number; name: string }>,
     budget: number,
   ): Promise<BasketTradeResult> => {
-    if (!demoState) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'No portfolio' };
-
-    // 5% buffer
-    const effectiveBudget = budget * 0.95;
-
-    // Fetch live prices
-    const symbols = stocks.map(s => s.symbol);
-    let quoteMap: Record<string, any> = {};
-    try {
-      const res = await fetch('/api/market/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols }),
-      });
-      const data = await res.json();
-      quoteMap = data?.quotes || {};
-    } catch { /* continue with empty quotes */ }
-
-    // Build execution plan
-    const executionPlan = stocks.map(stock => {
-      const quote = quoteMap[stock.symbol];
-      const price = quote?.price || 0;
-      if (price === 0) return null;
-
-      const dollarAmount = (stock.allocationPct / 100) * effectiveBudget;
-      const shares = dollarAmount / price;
-      const totalCost = shares * price;
-
-      return {
-        symbol: stock.symbol,
-        name: stock.name,
-        allocationPct: stock.allocationPct,
-        price,
-        shares: Math.round(shares * 1000000) / 1000000,
-        totalCost: Math.round(totalCost * 100) / 100,
-      };
-    }).filter(Boolean) as Array<{
-      symbol: string; name: string; allocationPct: number;
-      price: number; shares: number; totalCost: number;
-    }>;
-
-    if (executionPlan.length === 0) {
-      return { success: false, executed: 0, failed: stocks.length, totalSpent: 0, error: 'Could not fetch prices' };
-    }
-
-    const totalSpend = executionPlan.reduce((sum, p) => sum + p.totalCost, 0);
-    if (totalSpend > demoState.cashBalance) {
-      return {
-        success: false, executed: 0, failed: stocks.length, totalSpent: 0,
-        error: `Insufficient funds. Need $${totalSpend.toFixed(2)}, have $${demoState.cashBalance.toFixed(2)}`,
-      };
-    }
-
-    const market = getMarketStatus();
-
-    // ── OPEN ORDERS (market closed) — reserve cash, queue for execution ──
-    if (!market.isOpen) {
-      let cashBalance = demoState.cashBalance - totalSpend;
-
-      const basketOrders: DemoOrder[] = executionPlan.map((plan, i) => ({
-        id: generateOrderId() + `-b${i}`,
-        symbol: plan.symbol,
-        side: 'BUY' as const,
-        shares: plan.shares,
-        type: 'market' as const,
-        fillPrice: plan.price,
-        totalCost: plan.totalCost,
-        status: 'OPEN' as const,
-        createdAt: new Date().toISOString(),
-        submittedPrice: plan.price,
-        reservedCost: plan.totalCost,
-        note: `Pending · ${market.nextOpenLabel}`,
-      }));
-
-      const newOrders = [...basketOrders, ...demoOrders.slice(0, 50 - basketOrders.length)];
-      const newState: DemoState = {
-        positions: [...demoState.positions],
-        cashBalance,
-        orders: newOrders,
-        savedAt: Date.now(),
-      };
-
-      setDemoState(newState);
-      setDemoOrders(newOrders);
-      persistDemoState(newState);
-
-      // Store pending basket for execution when market opens
-      try {
-        const pendingBasket = {
-          id: basketId,
-          basketName,
-          basketEmoji,
-          stocks: executionPlan,
-          totalReserved: totalSpend,
-          status: 'OPEN',
-          submittedAt: new Date().toISOString(),
-          note: `Pending · ${market.nextOpenLabel}`,
-          nextOpenLabel: market.nextOpenLabel,
-        };
-        const raw = localStorage.getItem('vantage_pending_baskets');
-        const pending = raw ? JSON.parse(raw) : [];
-        pending.push(pendingBasket);
-        localStorage.setItem('vantage_pending_baskets', JSON.stringify(pending));
-        setPendingBaskets(prev => [...prev, pendingBasket]);
-      } catch { /* ignore */ }
-
-      setToast({
-        message: `🧺 Basket "${basketName}" queued — ${market.nextOpenLabel}. ${executionPlan.length} stocks, $${totalSpend.toFixed(2)} reserved.`,
-        type: 'success',
-      });
-      setTimeout(() => setToast(null), 5000);
-
-      return { success: true, executed: executionPlan.length, failed: 0, totalSpent: totalSpend, status: 'OPEN' };
-    }
-
-    // ── FILLED ORDERS (market open) ──
-    let executed = 0;
-    let failed = 0;
-    let totalSpent = 0;
-    const newBasketPositions: BasketPosition[] = [];
-    let cashBalance = demoState.cashBalance;
-    let positions = [...demoState.positions];
-
-    for (const plan of executionPlan) {
-      try {
-        // Update individual positions
-        const existingIdx = positions.findIndex(p => p.symbol === plan.symbol);
-        if (existingIdx >= 0) {
-          const existing = positions[existingIdx];
-          const newShares = existing.qty + plan.shares;
-          const newCost = existing.qty * existing.avgCost + plan.totalCost;
-          positions[existingIdx] = {
-            ...existing,
-            qty: newShares,
-            avgCost: newCost / newShares,
-          };
-        } else {
-          positions.push({
-            symbol: plan.symbol,
-            name: plan.name || plan.symbol,
-            qty: plan.shares,
-            avgCost: plan.price,
-            currentPrice: plan.price,
-            marketValue: plan.totalCost,
-            dayChange: 0,
-            dayChangePercent: 0,
-            totalPnl: 0,
-            totalPnlPercent: 0,
-            portfolioPercent: 0,
-            type: 'Stock' as const,
-          });
-        }
-
-        newBasketPositions.push({
-          id: crypto.randomUUID(),
-          basketId,
-          basketName,
-          basketEmoji,
-          symbol: plan.symbol,
-          shares: plan.shares,
-          avgCost: plan.price,
-          totalCost: plan.totalCost,
-          allocationPct: plan.allocationPct,
-          status: 'active',
-          boughtAt: new Date().toISOString(),
-        });
-
-        executed++;
-        totalSpent += plan.totalCost;
-        cashBalance -= plan.totalCost;
-      } catch {
-        failed++;
-      }
-    }
-
-    // Save to localStorage
-    try {
-      const existingRaw = localStorage.getItem(BASKET_STORAGE_KEY);
-      const existing: BasketPosition[] = existingRaw ? JSON.parse(existingRaw) : [];
-      localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify([...existing, ...newBasketPositions]));
-    } catch { /* ignore */ }
-
-    // Add to order history
-    const basketOrders: DemoOrder[] = executionPlan
-      .filter(plan => newBasketPositions.some(np => np.symbol === plan.symbol))
-      .map((plan, i) => ({
-        id: generateOrderId() + `-b${i}`,
-        symbol: plan.symbol,
-        side: 'BUY' as const,
-        shares: plan.shares,
-        type: 'market' as const,
-        fillPrice: plan.price,
-        totalCost: plan.totalCost,
-        status: 'FILLED' as const,
-        createdAt: new Date().toISOString(),
-      }));
-
-    const newOrders = [...basketOrders, ...demoOrders.slice(0, 50 - basketOrders.length)];
-    const newState: DemoState = { positions, cashBalance, orders: newOrders, savedAt: Date.now() };
-
-    setDemoState(newState);
-    setDemoOrders(newOrders);
-    persistDemoState(newState);
-    await loadBaskets();
-
-    setToast({
-      message: `🧺 Bought ${executionPlan.length} stocks in "${basketName}" for $${totalSpent.toFixed(2)}`,
-      type: 'success',
-    });
-    setTimeout(() => setToast(null), 4000);
-
-    console.log('[BasketBuy] Complete:', {
+    const b = brokerRef.current;
+    if (!b) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Broker not initialized' };
+    const result = await b.placeBasketOrder({
+      basketId,
       basketName,
-      stockCount: executionPlan.length,
-      spent: totalSpent,
-      cashBefore: demoState.cashBalance,
-      cashAfter: cashBalance,
-      positions: executed,
+      basketEmoji,
+      basketDisplayName: displayName,
+      stocks: stocks.map(s => ({ symbol: s.symbol, dollarAmount: (s.allocationPct / 100) * budget * 0.95, allocationPct: s.allocationPct })),
+      totalBudget: budget,
     });
-
-    return { success: executed > 0, executed, failed, totalSpent, status: 'FILLED' };
-  }, [demoState, demoOrders, persistDemoState, loadBaskets]);
+    if (!result.success) {
+      setToast({ message: `❌ ${result.message || 'Basket order failed'}`, type: 'error' });
+      setTimeout(() => setToast(null), 4000);
+      return { success: false, executed: 0, failed: stocks.length, totalSpent: 0, error: result.message };
+    }
+    await refreshStateFromBroker();
+    await loadBaskets();
+    const totalSpent = result.orders.reduce((sum, o) => sum + (o.totalCost || o.reservedAmount || 0), 0);
+    if (result.status === 'OPEN') {
+      setToast({ message: `🧺 Basket "${basketName}" queued — ${result.nextOpenLabel}. ${result.orders.length} stocks, $${totalSpent.toFixed(2)} reserved.`, type: 'success' });
+    } else {
+      setToast({ message: `🧺 Bought ${result.orders.length} stocks in "${basketName}" for $${totalSpent.toFixed(2)}`, type: 'success' });
+    }
+    setTimeout(() => setToast(null), 5000);
+    return { success: true, executed: result.orders.length, failed: 0, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
+  }, [brokerRef, refreshStateFromBroker, loadBaskets]);
 
   // ── sellBasketPositions ──
   const sellBasketPositions = useCallback(async (
@@ -1416,6 +864,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         cancelOrder,
         cancelBasketOrder,
         executePendingOrders,
+        basketOrders,
         pendingBaskets,
       }}
     >

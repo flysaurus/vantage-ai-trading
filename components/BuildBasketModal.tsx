@@ -111,6 +111,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<{ success: boolean; executed: number; failed: number; totalSpent: number; error?: string } | null>(null);
   const [basketResult, setBasketResult] = useState<BasketResult | null>(null);
+  const [basketDisplayName, setBasketDisplayName] = useState('');
 
   // ── Basket Review state ──
   const [reviewStocks, setReviewStocks] = useState<ReviewStock[]>([]);
@@ -414,6 +415,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       doValidateBudget();
     }
   }, [reviewStocks, budget, step]);
+
+  // Initialize basketDisplayName when entering confirm step
+  useEffect(() => {
+    if (step === 'basket_confirm' && selectedCurated && !basketDisplayName) {
+      const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      setBasketDisplayName(`${selectedCurated.name} · ${today}`);
+    }
+  }, [step, selectedCurated, basketDisplayName]);
 
   if (!isOpen) return null;
 
@@ -1260,6 +1269,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       selectedCurated.id,
       selectedCurated.name,
       selectedCurated.emoji,
+      basketDisplayName || selectedCurated.name,
       reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
       bNum,
     );
@@ -1833,13 +1843,54 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           </div>
         ) : selectedCurated ? (
           <>
+            {/* Basket name input */}
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              marginBottom: '12px',
+            }}>
+              <div style={{
+                color: '#6b7280',
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: '8px',
+              }}>
+                Name your basket
+              </div>
+              <input
+                value={basketDisplayName}
+                onChange={e => setBasketDisplayName(e.target.value)}
+                maxLength={40}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontWeight: '500',
+                }}
+              />
+              <div style={{
+                color: '#374151',
+                fontSize: '10px',
+                marginTop: '4px',
+                textAlign: 'right',
+              }}>
+                {basketDisplayName.length}/40
+              </div>
+            </div>
+
             {/* Order summary card */}
             <div style={{
               background: '#1a2235', borderRadius: '16px', padding: '20px', marginBottom: '16px',
             }}>
               <div style={{ fontSize: '24px', marginBottom: '8px' }}>{selectedCurated.emoji}</div>
               <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
-                {selectedCurated.name}
+                {basketDisplayName || selectedCurated.name}
               </div>
               <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '20px' }}>
                 {reviewStocks.length} positions · Market order · Day

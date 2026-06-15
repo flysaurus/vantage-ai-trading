@@ -30,7 +30,14 @@ export interface AccountSummary {
   positions: Position[];
 }
 
-export interface Position {
+export interface BasketInfo {
+  basketId?: string;
+  basketName?: string;
+  basketEmoji?: string;
+  basketDisplayName?: string;
+}
+
+export interface Position extends BasketInfo {
   symbol: string;
   name?: string;
   qty: number;

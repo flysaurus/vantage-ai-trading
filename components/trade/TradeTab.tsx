@@ -60,6 +60,8 @@ export function TradeTab() {
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
   const [showBuildBasket, setShowBuildBasket] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
+  const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
+  const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; totalReserved: number } | null>(null);
   const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
 
   // ─── Symbol search state ───
@@ -90,7 +92,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders } = useLivePortfolio();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -807,7 +809,7 @@ export function TradeTab() {
 
         {/* PLACE ORDER BUTTON */}
         <button
-          onClick={() => {
+          onClick={async () => {
             if (!selectedSymbol) return;
             const price = orderType === 'limit' && limitPrice
               ? parseFloat(limitPrice)
@@ -824,12 +826,12 @@ export function TradeTab() {
               const bp = account?.buyingPower ?? 0;
               if (estCost > bp) {
                 // Error will be shown by executeTrade toast
-                executeTrade(selectedSymbol, 'BUY', shares, price);
+                await executeTrade(selectedSymbol, 'BUY', shares, price);
                 return;
               }
             }
 
-            const result = executeTrade(
+            const result = await executeTrade(
               selectedSymbol,
               side === 'buy' ? 'BUY' : 'SELL',
               shares,
@@ -992,129 +994,325 @@ export function TradeTab() {
           ))}
         </div>
 
-        {/* Order cards */}
-        {filteredOrders.map(order => (
-          <div
-            key={order.id}
-            style={{
-              background: '#1a2235',
-              border: '1px solid #2a3448',
-              borderLeft: `3px solid ${getBorderColor(order)}`,
-              borderRadius: '8px',
-              padding: '14px 16px',
-              marginBottom: '8px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-            }}
-          >
-            {/* LEFT */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
-                  {order.symbol}
-                </span>
-                <span style={{
-                  borderRadius: '4px',
-                  padding: '2px 6px',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-                  color: order.side === 'BUY' ? '#10b981' : '#ef4444'
-                }}>
-                  {order.side}
-                </span>
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>
-                market · {order.shares} shares
-              </div>
-              {order.status === 'filled' && order.price && (
-                <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                  Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-              )}
-              {order.status === 'open' && (
-                <>
-                  {order.submittedPrice > 0 && (
-                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-                      Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  )}
-                  {order.note && (
-                    <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>
-                      ⏳ {order.note}
-                    </div>
-                  )}
-                  {!order.note && (
-                    <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
-                      ⏳ Pending execution
-                    </div>
-                  )}
-                </>
-              )}
-              {(order as any).id?.toString().includes('-b') && (
-                <span style={{ fontSize: '11px', color: '#22d3ee', opacity: 0.7 }}>
-                  via 🧺 Basket
-                </span>
-              )}
-            </div>
+        {/* Filtered basket orders for current tab */}
+        {(() => {
+          const filteredBasketOrders = (liveBasketOrders || []).filter((bo: any) => {
+            if (historyTab === 'all') return true;
+            return bo.status === historyTab.toUpperCase();
+          });
+          // Individual orders without a basket
+          const soloOrders = filteredOrders.filter((o: any) => !o.basketOrderId && !o.id?.toString().includes('-b'));
 
-            {/* RIGHT */}
-            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                textTransform: 'uppercase',
-                ...getStatusStyle(order.status)
-              }}>
-                {order.status.toUpperCase()}
-              </div>
-              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {order.price ? `$${(order.price as number).toFixed(2)}/share` : 'pending'}
-              </div>
-              <div style={{ fontSize: '11px', color: '#475569' }}>
-                {(() => {
-                  try {
-                    const d = new Date(order.date);
-                    if (!isNaN(d.getTime())) {
-                      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    }
-                  } catch {}
-                  return order.date || '';
-                })()}
-              </div>
-              {/* Cancel button for OPEN orders */}
-              {order.status === 'open' && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmCancel({
-                      orderId: order.id,
-                      symbol: order.symbol,
-                      side: order.side,
-                      shares: order.shares,
-                      price: order.submittedPrice || order.price || 0,
-                    });
-                  }}
+          return (
+            <>
+              {/* ── BASKET ORDER GROUPS ── */}
+              {filteredBasketOrders.map((basket: any) => {
+                const isExpanded = expandedBasketOrder === basket.id;
+                return (
+                  <div
+                    key={basket.id}
+                    style={{
+                      background: '#1a2235',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px',
+                      marginBottom: '10px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Basket header — tap to expand */}
+                    <div
+                      onClick={() => setExpandedBasketOrder(isExpanded ? null : basket.id)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '14px 16px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginBottom: '4px',
+                        }}>
+                          <span style={{ fontSize: '18px' }}>
+                            {basket.basketEmoji || '🧺'}
+                          </span>
+                          <span style={{
+                            color: '#ffffff',
+                            fontWeight: '700',
+                            fontSize: '15px',
+                          }}>
+                            {basket.basketDisplayName || basket.basketName}
+                          </span>
+                        </div>
+                        <div style={{
+                          color: '#6b7280',
+                          fontSize: '11px',
+                        }}>
+                          {basket.orders?.length || 0} positions ·
+                          ${(basket.totalReserved || 0).toFixed(2)}
+                          {basket.status === 'OPEN' && (
+                            <span style={{ color: '#f59e0b' }}>
+                              {' · '}⏳ {basket.nextOpenLabel || 'awaiting market open'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          background: basket.status === 'OPEN' ? 'rgba(245,158,11,0.15)'
+                            : basket.status === 'FILLED' ? 'rgba(16,185,129,0.15)'
+                            : 'rgba(100,116,139,0.15)',
+                          color: basket.status === 'OPEN' ? '#f59e0b'
+                            : basket.status === 'FILLED' ? '#10b981'
+                            : '#64748b',
+                        }}>
+                          {basket.status}
+                        </span>
+                        <span style={{
+                          color: '#4b5563',
+                          fontSize: '14px',
+                          transform: isExpanded ? 'rotate(90deg)' : 'none',
+                          transition: 'transform 0.2s',
+                        }}>
+                          ›
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Expanded — individual orders */}
+                    {isExpanded && (
+                      <div style={{
+                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                      }}>
+                        {(basket.orders || []).map((order: any) => (
+                          <div key={order.id} style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            padding: '10px 16px',
+                            borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          }}>
+                            <div>
+                              <div style={{
+                                color: '#ffffff',
+                                fontWeight: '600',
+                                fontSize: '13px',
+                              }}>
+                                {order.symbol}
+                                <span style={{
+                                  color: '#10b981',
+                                  fontSize: '10px',
+                                  marginLeft: '6px',
+                                  background: 'rgba(16,185,129,0.15)',
+                                  padding: '1px 5px',
+                                  borderRadius: '3px',
+                                }}>
+                                  BUY
+                                </span>
+                              </div>
+                              <div style={{
+                                color: '#6b7280',
+                                fontSize: '11px',
+                                marginTop: '2px',
+                              }}>
+                                {order.shares?.toFixed(4)}sh
+                                {order.fillPrice
+                                  ? ` @ $${order.fillPrice.toFixed(2)}`
+                                  : ` @ ~$${(order.submittedPrice || 0).toFixed(2)}`
+                                }
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{
+                                color: order.status === 'FILLED' ? '#10b981'
+                                  : order.status === 'OPEN' ? '#f59e0b'
+                                  : '#64748b',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                              }}>
+                                {order.status}
+                              </div>
+                              <div style={{
+                                color: '#6b7280',
+                                fontSize: '11px',
+                              }}>
+                                ${(order.totalCost || 0).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Cancel basket — OPEN only */}
+                        {basket.status === 'OPEN' && (
+                          <div style={{ padding: '12px 16px' }}>
+                            <button
+                              onClick={() => setConfirmCancelBasket({
+                                basketOrderId: basket.id,
+                                basketDisplayName: basket.basketDisplayName || basket.basketName || 'Basket',
+                                orderCount: basket.orders?.length || 0,
+                                totalReserved: basket.totalReserved || 0,
+                              })}
+                              style={{
+                                width: '100%',
+                                padding: '10px',
+                                background: 'none',
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                borderRadius: '8px',
+                                color: '#ef4444',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Cancel Basket Order
+                            </button>
+                            <div style={{
+                              color: '#4b5563',
+                              fontSize: '10px',
+                              textAlign: 'center',
+                              marginTop: '6px',
+                            }}>
+                              Individual orders cannot be cancelled
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* ── INDIVIDUAL (NON-BASKET) ORDERS ── */}
+              {soloOrders.map(order => (
+                <div
+                  key={order.id}
                   style={{
-                    background: 'none',
-                    border: '1px solid rgba(239,68,68,0.4)',
-                    borderRadius: '6px',
-                    color: '#ef4444',
-                    fontSize: '11px',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    fontWeight: '600',
-                    alignSelf: 'flex-end',
+                    background: '#1a2235',
+                    border: '1px solid #2a3448',
+                    borderLeft: `3px solid ${getBorderColor(order)}`,
+                    borderRadius: '8px',
+                    padding: '14px 16px',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
                   }}
                 >
-                  Cancel
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+                  {/* LEFT */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                        {order.symbol}
+                      </span>
+                      <span style={{
+                        borderRadius: '4px',
+                        padding: '2px 6px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                        color: order.side === 'BUY' ? '#10b981' : '#ef4444'
+                      }}>
+                        {order.side}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>
+                      market · {order.shares} shares
+                    </div>
+                    {order.status === 'filled' && order.price && (
+                      <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                        Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
+                    {order.status === 'open' && (
+                      <>
+                        {order.submittedPrice > 0 && (
+                          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                            Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        )}
+                        {order.note && (
+                          <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>
+                            ⏳ {order.note}
+                          </div>
+                        )}
+                        {!order.note && (
+                          <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
+                            ⏳ Pending execution
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* RIGHT */}
+                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                      ...getStatusStyle(order.status)
+                    }}>
+                      {order.status.toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                      {order.price ? `$${(order.price as number).toFixed(2)}/share` : 'pending'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#475569' }}>
+                      {(() => {
+                        try {
+                          const d = new Date(order.date);
+                          if (!isNaN(d.getTime())) {
+                            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                          }
+                        } catch {}
+                        return order.date || '';
+                      })()}
+                    </div>
+                    {/* Cancel button for OPEN orders */}
+                    {order.status === 'open' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmCancel({
+                            orderId: order.id,
+                            symbol: order.symbol,
+                            side: order.side,
+                            shares: order.shares,
+                            price: order.submittedPrice || order.price || 0,
+                          });
+                        }}
+                        style={{
+                          background: 'none',
+                          border: '1px solid rgba(239,68,68,0.4)',
+                          borderRadius: '6px',
+                          color: '#ef4444',
+                          fontSize: '11px',
+                          padding: '4px 10px',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          fontWeight: '600',
+                          alignSelf: 'flex-end',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          );
+        })()}
       </div>
 
       {/* ─── 5. Bottom spacer ─── */}
@@ -1183,6 +1381,86 @@ export function TradeTab() {
                 onClick={() => {
                   cancelOrder(confirmCancel.orderId);
                   setConfirmCancel(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: 'rgba(239,68,68,0.15)',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  borderRadius: '10px',
+                  color: '#ef4444',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Cancel Basket Confirmation Modal ─── */}
+      {confirmCancelBasket && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 10002,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+        }}>
+          <div style={{
+            background: '#1a2235',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '320px',
+            width: '100%',
+          }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
+              Cancel basket order?
+            </div>
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              borderRadius: '8px',
+              padding: '12px',
+              marginBottom: '12px',
+            }}>
+              <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
+                🔨 {confirmCancelBasket.basketDisplayName}
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                {confirmCancelBasket.orderCount} orders · ${confirmCancelBasket.totalReserved.toFixed(2)} reserved
+              </div>
+              <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+                Cash will be returned to your buying power immediately.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setConfirmCancelBasket(null)}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  color: '#9ca3af',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Keep Order
+              </button>
+              <button
+                onClick={() => {
+                  cancelBasketOrder(confirmCancelBasket.basketOrderId);
+                  setConfirmCancelBasket(null);
                 }}
                 style={{
                   flex: 1,
