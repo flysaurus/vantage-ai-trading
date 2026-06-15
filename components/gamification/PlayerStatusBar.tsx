@@ -17,6 +17,7 @@ import { useInvestorScore } from '@/hooks/useInvestorScore';
 import { useAnonymousSession } from '@/hooks/useAnonymousSession';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getLevelColor } from '@/lib/theme/utils';
+import { ScoreDetailSheet } from './ScoreDetailSheet';
 
 // ─── Investor Style Definitions (inline, matching SettingsTab) ─
 
@@ -273,147 +274,11 @@ export function PlayerStatusBar() {
         </div>
       </div>
 
-      {/* ── Score Detail Sheet (placeholder) ──────────── */}
-      {showScoreSheet && (
-        <div
-          onClick={() => setShowScoreSheet(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-          }}
-        >
-          {/* Backdrop */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            backdropFilter: 'blur(4px)',
-          }} />
-
-          {/* Sheet */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: 'relative',
-              width: '100%',
-              maxWidth: '480px',
-              maxHeight: '70vh',
-              background: 'var(--bg-sheet)',
-              borderTopLeftRadius: 'var(--radius-lg)',
-              borderTopRightRadius: 'var(--radius-lg)',
-              padding: 'var(--space-6)',
-              paddingBottom: 'calc(var(--space-6) + env(safe-area-inset-bottom, 0px))',
-              animation: 'vantageSlideUp 0.3s ease-out',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 'var(--space-4)',
-            }}
-          >
-            {/* Handle */}
-            <div style={{
-              width: '36px',
-              height: '4px',
-              borderRadius: '2px',
-              background: 'var(--border-card)',
-              marginBottom: 'var(--space-2)',
-            }} />
-
-            {/* Level badge (large) */}
-            <div style={{
-              padding: '6px 20px',
-              borderRadius: 'var(--radius-full)',
-              background: `${levelColor}26`,
-              border: `1px solid ${levelColor}66`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}>
-              <span style={{ fontSize: '18px', color: levelColor, fontWeight: 700 }}>
-                {level}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--status-gain)' }}>↗</span>
-            </div>
-
-            {/* Score */}
-            <span style={{
-              fontSize: '48px',
-              fontWeight: 800,
-              color: 'var(--accent-primary)',
-              fontVariantNumeric: 'tabular-nums',
-              letterSpacing: '-0.02em',
-            }}>
-              {displayScore}
-            </span>
-
-            {/* Progress bar */}
-            <div style={{ width: '100%', maxWidth: '300px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Progress to next level
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                  {progress}%
-                </span>
-              </div>
-              <div style={{
-                width: '100%',
-                height: '6px',
-                borderRadius: 'var(--radius-full)',
-                background: 'var(--border-subtle)',
-                overflow: 'hidden',
-              }}>
-                <div style={{
-                  width: `${progress}%`,
-                  height: '100%',
-                  borderRadius: 'var(--radius-full)',
-                  background: `linear-gradient(90deg, var(--accent-primary), ${levelColor})`,
-                  transition: 'width var(--transition-slow)',
-                }} />
-              </div>
-            </div>
-
-            {/* Message */}
-            <p style={{
-              fontSize: '13px',
-              color: 'var(--text-muted)',
-              textAlign: 'center',
-              lineHeight: 1.5,
-              maxWidth: '280px',
-            }}>
-              {level === 'Legend'
-                ? 'You\'ve reached the highest level. Incredible.'
-                : progress < 30
-                  ? 'Keep trading and building baskets to climb the ranks.'
-                  : progress < 70
-                    ? 'You\'re making great progress. Stay consistent.'
-                    : 'Almost there — keep pushing forward.'}
-            </p>
-
-            {/* Close button */}
-            <button
-              onClick={() => setShowScoreSheet(false)}
-              style={{
-                marginTop: 'var(--space-2)',
-                padding: '8px 32px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-card)',
-                background: 'var(--bg-card)',
-                color: 'var(--text-secondary)',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ── Score Detail Sheet ───────────────────────── */}
+      <ScoreDetailSheet
+        open={showScoreSheet}
+        onClose={() => setShowScoreSheet(false)}
+      />
 
       {/* ── Style Picker Modal ────────────────────────── */}
       {showStylePicker && (
@@ -537,10 +402,6 @@ export function PlayerStatusBar() {
 
       {/* ── Keyframes ────────────────────────────────── */}
       <style>{`
-        @keyframes vantageSlideUp {
-          from { transform: translateY(100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
         @keyframes vantageArrowPulse {
           0%, 93% { opacity: 0.6; transform: scale(1); }
           96% { opacity: 1; transform: scale(1.25); }
