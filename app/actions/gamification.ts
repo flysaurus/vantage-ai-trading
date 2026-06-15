@@ -334,3 +334,58 @@ export async function getInvestorScore(
     return null;
   }
 }
+
+// ─── Learning XP ────────────────────────────────────────────
+
+/**
+ * Award learning XP when user taps "Got it" on a Learning Moment card.
+ * Increments total_score by xpAmount on investor_scores.
+ * Used by the learning system (Phase 4 Prompt 5).
+ */
+export async function addLearningXP(
+  anonymousId: string,
+  xpAmount: number
+): Promise<{ success: boolean; newScore?: number }> {
+  if (!anonymousId || xpAmount <= 0) return { success: false };
+
+  const supabase = createServerClient();
+
+  try {
+    // Ensure row exists
+    await (supabase as any)
+      .from('investor_scores')
+      .upsert(
+        { anonymous_id: anonymousId, total_score: 0 },
+        { onConflict: 'anonymous_id' }
+      );
+
+    // Fetch current score
+    const { data: current, error: fetchErr } = await (supabase as any)
+      .from('investor_scores')
+      .select('total_score')
+      .eq('anonymous_id', anonymousId)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error('[gamification] addLearningXP fetch error:', fetchErr.message);
+      return { success: false };
+    }
+
+    const newScore = (current?.total_score || 0) + xpAmount;
+
+    const { error: updateErr } = await (supabase as any)
+      .from('investor_scores')
+      .update({ total_score: newScore, updated_at: new Date().toISOString() })
+      .eq('anonymous_id', anonymousId);
+
+    if (updateErr) {
+      console.error('[gamification] addLearningXP update error:', updateErr.message);
+      return { success: false };
+    }
+
+    return { success: true, newScore };
+  } catch (err: any) {
+    console.error('[gamification] addLearningXP exception:', err.message);
+    return { success: false };
+  }
+}

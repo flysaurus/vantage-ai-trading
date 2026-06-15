@@ -11,6 +11,8 @@ import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSes
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import CompassIcon from '@/components/CompassIcon';
+import { useLearningMoment } from '@/hooks/useLearningMoment';
+import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
 
 // ── Message counter (localStorage, per-day) ──
 const MESSAGE_LIMIT = 25;
@@ -100,6 +102,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
+
+  // ── Learning moment detection ────────────────────────
+  const { learningCard, dismissLearning } =
+    useLearningMoment(lastAIResponse, currentSessionId);
 
   // ── Claude-like scroll behavior refs ──
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -625,8 +632,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
         saveChatMessage(userId, 'user', content).catch(() => {});
         if (lastAiResponseRef.current) {
           saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch(() => {});
+          // Trigger learning moment detection
+          setLastAIResponse(lastAiResponseRef.current);
           lastAiResponseRef.current = '';
         }
+      } else if (lastAiResponseRef.current) {
+        setLastAIResponse(lastAiResponseRef.current);
+        lastAiResponseRef.current = '';
       }
       scrollToBottom();
     }
@@ -2407,6 +2419,15 @@ Give me a market pulse check — how are the major indexes performing today, wha
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Learning Moment Card ─────────────────────── */}
+      {learningCard && (
+        <LearningMomentCard
+          card={learningCard}
+          onGotIt={() => dismissLearning(true)}
+          onDismiss={() => dismissLearning(false)}
+        />
       )}
 
     </div>
