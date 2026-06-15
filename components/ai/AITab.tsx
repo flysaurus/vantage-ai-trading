@@ -83,7 +83,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
   const [greetingHook, setGreetingHook] = useState<string | null>(null);
   const [greetingLoaded, setGreetingLoaded] = useState(false);
-  const userInitial = ((user?.name || user?.email || 'M')[0]?.toUpperCase() || 'M') + '.';
+  const localName = typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null;
+  const userInitial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
   const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
     symbol: string;
@@ -533,7 +534,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           mode,
           investorStyle: investorStyle,
           riskTolerance: user?.riskTolerance || 'Moderate',
-          name: user?.name || 'M',
+          name: user?.name || (typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null) || 'M',
         })
       });
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
@@ -19,6 +20,7 @@ import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
+import { isQuizComplete } from '@/lib/onboarding/quiz-logic';
 
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
@@ -46,6 +48,15 @@ function AppShell() {
   const [chatMessages, setChatMessages] = useState<
     { role: 'user' | 'ai'; content: string }[]
   >([]);
+
+  const router = useRouter();
+
+  // ── Quiz onboarding redirect (first-open only) ──
+  useEffect(() => {
+    if (!isQuizComplete()) {
+      router.replace('/onboarding');
+    }
+  }, [router]);
 
   // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
   useEffect(() => {
@@ -236,7 +247,8 @@ function AppShell() {
 
       {/* Welcome-back toast — slides in from top on fresh login */}
       {showWelcomeToast && (() => {
-        const initial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'M';
+        const localName = typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null;
+        const initial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
         return (
           <div style={{
             position: 'fixed',
