@@ -16,7 +16,6 @@ BEGIN
     SELECT unnest(ARRAY[
       'demo_portfolio_state',
       'chat_messages',
-      'pending_basket_orders',
       'trade_history',
       'watchlists',
       'chat_history',
@@ -54,7 +53,6 @@ BEGIN
     SELECT unnest(ARRAY[
       'demo_portfolio_state',
       'chat_messages',
-      'pending_basket_orders',
       'trade_history',
       'watchlists'
     ])
@@ -170,8 +168,7 @@ BEGIN
       'daily_suggestions',
       'scanner_recommendations',
       'recent_notifications',
-      'demo_portfolio_state',
-      'pending_basket_orders'
+      'demo_portfolio_state'
     ])
   LOOP
     BEGIN
