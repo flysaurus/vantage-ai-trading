@@ -94,12 +94,16 @@ export async function onBasketCreated(anonymousId: string): Promise<void> {
  *
  * - Increments trades_executed in investor_scores
  * - Compares tradeStyle to investor_style for consistency
- * - Checks: first_trade milestone
+ * - Checks: first_trade, portfolio_green milestones
  */
 export async function onTradeExecuted(
   anonymousId: string,
   tradeStyle?: string,
-  investorStyle?: string
+  investorStyle?: string,
+  /** Optional: current portfolio value (for portfolio_green check) */
+  portfolioValue?: number,
+  /** Optional: total cost basis (for portfolio_green check) */
+  portfolioCost?: number
 ): Promise<void> {
   if (!anonymousId) return;
 
@@ -126,6 +130,21 @@ export async function onTradeExecuted(
         type: 'milestone_earned',
         payload: { milestoneKey: 'first_trade', icon: '📈' },
       });
+    }
+
+    // Check portfolio_green: portfolio value > cost basis
+    if (
+      portfolioValue !== undefined &&
+      portfolioCost !== undefined &&
+      portfolioValue > portfolioCost
+    ) {
+      const portGreen = await checkAndAwardMilestone(anonymousId, 'portfolio_green');
+      if (portGreen) {
+        emitEvent({
+          type: 'milestone_earned',
+          payload: { milestoneKey: 'portfolio_green', icon: '💚' },
+        });
+      }
     }
 
     // Check style_master: if tradeStyle matches investorStyle and we've done 5+ trades
@@ -207,7 +226,7 @@ export async function onAISessionStarted(anonymousId: string): Promise<void> {
  * Call once per day when the user opens the app.
  *
  * - Records daily streak via /api/session/streak
- * - Checks: three_day_streak, seven_day_streak milestones
+ * - Checks: first_login, three_day_streak, seven_day_streak milestones
  * - Dispatches streak_updated event
  */
 export async function onDailyOpen(anonymousId: string): Promise<void> {
@@ -234,7 +253,16 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
         },
       });
 
-      // 2. Check streak milestones
+      // 2. Check first_login milestone (idempotent, safe to call every time)
+      const firstLogin = await checkAndAwardMilestone(anonymousId, 'first_login');
+      if (firstLogin) {
+        emitEvent({
+          type: 'milestone_earned',
+          payload: { milestoneKey: 'first_login', icon: '🚀' },
+        });
+      }
+
+      // 3. Check streak milestones
       if (streak.current_streak >= 3) {
         const threeDay = await checkAndAwardMilestone(anonymousId, 'three_day_streak');
         if (threeDay) {
@@ -250,7 +278,7 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
         if (sevenDay) {
           emitEvent({
             type: 'milestone_earned',
-            payload: { milestoneKey: 'seven_day_streak', icon: '💎' },
+            payload: { milestoneKey: 'seven_day_streak', icon: '🔥🔥' },
           });
         }
       }

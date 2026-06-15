@@ -49,7 +49,7 @@ export const MILESTONE_DEFINITIONS: Record<string, MilestoneDef> = {
     key: 'seven_day_streak',
     label: '7-Day Streak',
     description: 'Logged in 7 days in a row',
-    icon: '💎',
+    icon: '🔥🔥',
     points: 75,
   },
   first_ai_chat: {

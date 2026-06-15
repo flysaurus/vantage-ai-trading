@@ -524,7 +524,19 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
       // Fire gamification: trade executed
       if (anonymousId && result.status !== 'OPEN') {
-        onTradeExecuted(anonymousId, user?.investorStyle, user?.investorStyle).catch(() => {});
+        const b = brokerRef.current;
+        if (b) {
+          const [account, positions] = await Promise.all([
+            b.getAccount(),
+            b.getPositions(),
+          ]);
+          const positionsCost = positions.reduce((s, p) => s + (p.totalCost || 0), 0);
+          const pv = (account?.totalValue || 0);
+          const pc = positionsCost + (account?.cashBalance || 0);
+          onTradeExecuted(anonymousId, user?.investorStyle, user?.investorStyle, pv, pc).catch(() => {});
+        } else {
+          onTradeExecuted(anonymousId, user?.investorStyle, user?.investorStyle).catch(() => {});
+        }
       }
 
       return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };

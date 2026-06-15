@@ -23,6 +23,7 @@
   /* ── Accent ─────────────────────────────────────────────── */
   --accent-primary: #22d3ee;
   --accent-primary-10: rgba(34, 211, 238, 0.1);
+  --accent-primary-15: rgba(34, 211, 238, 0.15);
   --accent-primary-20: rgba(34, 211, 238, 0.2);
 
   /* ── Status ─────────────────────────────────────────────── */
@@ -36,6 +37,9 @@
   --streak-color: #f97316;
   --score-color: #22d3ee;
   --milestone-color: #a855f7;
+  --milestone-color-12: rgba(168, 85, 247, 0.12);
+  --milestone-color-15: rgba(168, 85, 247, 0.15);
+  --milestone-color-30: rgba(168, 85, 247, 0.3);
   --level-apprentice: #64748b;
   --level-trader: #22d3ee;
   --level-investor: #a855f7;

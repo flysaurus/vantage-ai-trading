@@ -3,6 +3,8 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 import { AuthGuard } from '@/components/providers/AuthGuard';
 import { InactivityWarning } from '@/components/providers/InactivityWarning';
 import { SplashGuard } from '@/components/SplashGuard';
+import { MilestoneToastProvider } from '@/context/MilestoneContext';
+import { MilestoneToastRenderer } from '@/components/gamification/MilestoneToastRenderer';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -57,10 +59,13 @@ export default function RootLayout({
       <body>
         <SplashGuard>
           <AuthProvider>
-            <AuthGuard>
-              {children}
-            </AuthGuard>
-            <InactivityWarning />
+            <MilestoneToastProvider>
+              <AuthGuard>
+                {children}
+              </AuthGuard>
+              <InactivityWarning />
+              <MilestoneToastRenderer />
+            </MilestoneToastProvider>
           </AuthProvider>
         </SplashGuard>
       </body>
