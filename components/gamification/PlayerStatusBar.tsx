@@ -179,7 +179,7 @@ export function PlayerStatusBar() {
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
             }}>
-              {streakDays === 1 ? 'day' : 'days'}
+              day streak
             </span>
           </div>
         </div>
@@ -262,12 +262,10 @@ export function PlayerStatusBar() {
             </span>
             <span style={{
               fontSize: '11px',
-              color: scoreChanged
-                ? 'var(--status-gain)'
-                : 'var(--status-gain)',
+              color: 'var(--status-gain)',
               lineHeight: 1,
-              opacity: scoreChanged ? 1 : 0.6,
-              transition: 'opacity var(--transition-base)',
+              opacity: 0.6,
+              animation: 'vantageArrowPulse 30s ease-in-out infinite',
             }}>
               ↗
             </span>
@@ -537,11 +535,16 @@ export function PlayerStatusBar() {
         </div>
       )}
 
-      {/* ── Slide-up keyframe ────────────────────────── */}
+      {/* ── Keyframes ────────────────────────────────── */}
       <style>{`
         @keyframes vantageSlideUp {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes vantageArrowPulse {
+          0%, 93% { opacity: 0.6; transform: scale(1); }
+          96% { opacity: 1; transform: scale(1.25); }
+          100% { opacity: 0.6; transform: scale(1); }
         }
       `}</style>
     </>
