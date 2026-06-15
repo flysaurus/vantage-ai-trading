@@ -787,32 +787,28 @@ export function PortfolioTab() {
 
       {/* 3. Column header */}
       {positions.length > 0 && (
-        <div data-testid="holdings-section" id="holdings-section" className="flex items-center" style={{ paddingLeft: '16px', paddingRight: '16px', marginTop: '20px', marginBottom: '10px' }}>
-          {/* Checkbox spacer — always present so Holdings never shifts */}
-          <div className="w-8 flex-shrink-0 flex items-center">
-            {selectMode && (
-              <button onClick={toggleSelectAll} aria-label="Select all">
-                <div
-                  className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                    allSelected
-                      ? 'bg-cyan-500 border-cyan-500'
-                      : someSelected
-                        ? 'bg-cyan-500/40 border-cyan-500'
-                        : 'border-slate-600 bg-transparent'
-                  }`}
-                  style={{ marginLeft: '12px' }}
-                >
-                  {(allSelected || someSelected) && (
-                    <span className="text-white text-[10px] leading-none">
-                      {allSelected ? '\u2713' : '\u2013'}
-                    </span>
-                  )}
-                </div>
-              </button>
-            )}
-          </div>
-          <span className="flex-1" style={{ color: '#ffffff', fontSize: '16px', fontWeight: '700', letterSpacing: '-0.01em', marginLeft: '16px' }}>
-            Holdings
+        <div data-testid="holdings-section" id="holdings-section" className="flex items-center" style={{ marginLeft: '16px', marginRight: '16px', padding: '0 14px', marginTop: '20px', marginBottom: '10px' }}>
+          {selectMode && (
+            <button onClick={toggleSelectAll} aria-label="Select all" style={{ marginRight: '4px' }}>
+              <div
+                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
+                  allSelected
+                    ? 'bg-cyan-500 border-cyan-500'
+                    : someSelected
+                      ? 'bg-cyan-500/40 border-cyan-500'
+                      : 'border-slate-600 bg-transparent'
+                }`}
+              >
+                {(allSelected || someSelected) && (
+                  <span className="text-white text-[10px] leading-none">
+                    {allSelected ? '\u2713' : '\u2013'}
+                  </span>
+                )}
+              </div>
+            </button>
+          )}
+          <span className="flex-1" style={{ color: '#ffffff', fontSize: '16px', fontWeight: '700', letterSpacing: '-0.01em', textTransform: 'uppercase' }}>
+            HOLDINGS
           </span>
           {selectMode ? (
             selectedSymbols.length === 0 ? (
