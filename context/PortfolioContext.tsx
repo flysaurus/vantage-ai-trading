@@ -19,6 +19,7 @@ import React, {
 } from 'react';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useAnonymousSession } from '@/hooks/useAnonymousSession';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
@@ -180,6 +181,14 @@ interface PortfolioContextValue {
   basketOrders: any[];
   /** Pending basket orders (OPEN status, awaiting market open) */
   pendingBaskets: any[];
+  /** Anonymous session ID (UUID) for demo users */
+  anonymousId: string;
+  /** Days remaining in demo period */
+  daysRemaining: number;
+  /** Whether demo is about to expire (≤ 3 days) */
+  showWarning: boolean;
+  /** Current login streak */
+  streak: import('@/lib/session/sync').StreakData | null;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -200,6 +209,10 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   executePendingOrders: async () => {},
   basketOrders: [],
   pendingBaskets: [],
+  anonymousId: '',
+  daysRemaining: 0,
+  showWarning: false,
+  streak: null,
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -207,6 +220,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected } = useBroker();
   const { user } = useAuth();
+  const { anonymousId, daysRemaining, showWarning, isAuthenticated: isAnonAuth, streak } = useAnonymousSession();
 
   // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
   function loadPersistedDemoState(): DemoState | null {
@@ -866,6 +880,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         executePendingOrders,
         basketOrders,
         pendingBaskets,
+        anonymousId,
+        daysRemaining,
+        showWarning,
+        streak,
       }}
     >
       {children}
