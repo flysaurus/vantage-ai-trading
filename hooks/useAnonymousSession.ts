@@ -22,6 +22,7 @@ import {
   isAnonymousSession,
 } from '@/lib/session/anonymous';
 import type { StreakData } from '@/lib/session/sync';
+import { onDailyOpen } from '@/lib/gamification/events';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -104,6 +105,9 @@ export function useAnonymousSession(): AnonymousSessionState {
             setStreak(data.streak);
             sessionStorage.setItem('vantage_streak_synced', today);
             todayStreakDone.current = today;
+
+            // Fire gamification: daily open + streak milestones
+            onDailyOpen(id).catch(() => {});
           }
         } catch (err) {
           console.error('[useAnonymousSession] Streak sync failed:', err);

@@ -7,6 +7,39 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { syncStreak } from '@/lib/session/sync';
+import { createServerClient } from '@/lib/supabase';
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  try {
+    const { searchParams } = new URL(req.url);
+    const anonymousId = searchParams.get('anonymousId');
+
+    if (!anonymousId) {
+      return NextResponse.json({ error: 'anonymousId is required' }, { status: 400 });
+    }
+
+    const supabase = createServerClient();
+    const { data, error } = await (supabase as any)
+      .from('streaks')
+      .select('*')
+      .eq('anonymous_id', anonymousId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[api/streak] GET error:', error.message);
+      return NextResponse.json({ error: 'Failed to fetch streak' }, { status: 500 });
+    }
+
+    if (!data) {
+      return NextResponse.json({ streak: null }, { status: 404 });
+    }
+
+    return NextResponse.json({ streak: data }, { status: 200 });
+  } catch (err: any) {
+    console.error('[api/streak] GET exception:', err.message);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {

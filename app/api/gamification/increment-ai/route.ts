@@ -1,0 +1,21 @@
+// ─── Gamification: Increment AI Sessions ────────────────────
+// POST /api/gamification/increment-ai
+
+import { NextRequest, NextResponse } from 'next/server';
+import { incrementAISessions } from '@/app/actions/gamification';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => null);
+    if (!body?.anonymousId) {
+      return NextResponse.json({ error: 'Missing anonymousId' }, { status: 400 });
+    }
+
+    const result = await incrementAISessions(body.anonymousId);
+
+    return NextResponse.json(result);
+  } catch (err: any) {
+    console.error('[api/gamification/increment-ai] Error:', err.message);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

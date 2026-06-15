@@ -19,6 +19,7 @@ import React, {
 } from 'react';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { onTradeExecuted } from '@/lib/gamification/events';
 import { useAnonymousSession } from '@/hooks/useAnonymousSession';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
@@ -520,6 +521,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         setToast({ message: `✅ ${sideLabel} ${result.filledShares || shares} shares of ${symbol} at $${price.toFixed(2)}`, type: 'success' });
       }
       setTimeout(() => setToast(null), result.status === 'FILLED' ? 3000 : 4000);
+
+      // Fire gamification: trade executed
+      if (anonymousId && result.status !== 'OPEN') {
+        onTradeExecuted(anonymousId, user?.investorStyle, user?.investorStyle).catch(() => {});
+      }
+
       return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
     },
     [brokerRef, refreshStateFromBroker],

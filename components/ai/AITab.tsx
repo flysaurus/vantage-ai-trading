@@ -3,6 +3,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
+import { onAISessionStarted } from '@/lib/gamification/events';
+import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
@@ -517,6 +519,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
       return;
     }
     setLastMessageTime(now);
+
+    // Fire gamification on first AI message
+    if (messages.length === 0) {
+      const anonId = getOrCreateAnonymousId();
+      onAISessionStarted(anonId).catch(() => {});
+    }
 
     const userMessage = { role: 'user' as const, content };
     const newMessages = [...messages, userMessage];

@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore } from '@/store';
 import BuildBasketModal from '@/components/BuildBasketModal';
+import { onBasketCreated } from '@/lib/gamification/events';
+import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
@@ -1444,6 +1446,9 @@ export function TradeTab() {
           onBasketGenerated={(msg, result) => {
             setShowBuildBasket(false);
             if (result?.success) {
+              // Fire gamification
+              const anonId = getOrCreateAnonymousId();
+              onBasketCreated(anonId).catch(() => {});
               // Navigate to Portfolio tab → baskets section
               window.dispatchEvent(new CustomEvent('vantage-navigate', {
                 detail: { tab: 'portfolio', section: 'baskets-section' },

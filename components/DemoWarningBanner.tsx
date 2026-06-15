@@ -1,9 +1,10 @@
 // ─── DemoWarningBanner ──────────────────────────────────────
-// Amber/yellow banner shown at the top of the Portfolio tab
+// Amber warning banner shown at the top of content area
 // when the demo period has ≤ 3 days remaining.
 //
-// Design: matches #0a0f1e background system, 36px height,
-// non-intrusive, dismissible per session (not permanently).
+// Design: 40px height, amber (#f59e0b at 10% opacity),
+// border-bottom amber. Dismissible per session via sessionStorage.
+// "Save →" button opens auth modal for magic link sign-up.
 
 'use client';
 
@@ -15,54 +16,81 @@ interface DemoWarningBannerProps {
 }
 
 export function DemoWarningBanner({ daysRemaining, onSaveProgress }: DemoWarningBannerProps) {
+  const SESSION_DISMISS_KEY = 'vantage_demo_banner_dismissed';
+
   const [dismissed, setDismissed] = useState(false);
 
-  // Reset dismissal if daysRemaining changes (e.g., drops to 0)
+  // Check sessionStorage on mount
   useEffect(() => {
-    // Re-show if we go from 3→2→1→0 (urgency increases)
-    // but not on re-mounts with the same value
+    try {
+      if (sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true') {
+        setDismissed(true);
+      }
+    } catch {}
+  }, []);
+
+  // Reset dismissal if daysRemaining drops to a more urgent tier
+  useEffect(() => {
+    try {
+      const lastKnown = sessionStorage.getItem('vantage_demo_banner_days');
+      if (lastKnown !== null && parseInt(lastKnown, 10) > daysRemaining) {
+        // Days decreased — re-show banner
+        sessionStorage.removeItem(SESSION_DISMISS_KEY);
+        sessionStorage.setItem('vantage_demo_banner_days', String(daysRemaining));
+        setDismissed(false);
+      }
+      if (lastKnown === null) {
+        sessionStorage.setItem('vantage_demo_banner_days', String(daysRemaining));
+      }
+    } catch {}
   }, [daysRemaining]);
 
   if (dismissed || daysRemaining > 3) return null;
 
-  const isUrgent = daysRemaining === 0;
-  const bgColor = isUrgent ? 'rgba(239, 68, 68, 0.12)' : 'rgba(251, 191, 36, 0.10)';
-  const borderColor = isUrgent ? 'rgba(239, 68, 68, 0.30)' : 'rgba(251, 191, 36, 0.25)';
-  const textColor = isUrgent ? '#fca5a5' : '#fbbf24';
-  const icon = isUrgent ? '⏰' : '⏳';
+  const isExpired = daysRemaining <= 0;
 
-  const message = isUrgent
-    ? 'Demo expired — save your progress to keep trading'
-    : daysRemaining === 1
-      ? 'Your demo expires tomorrow — save progress now'
-      : `Your demo expires in ${daysRemaining} days`;
+  const dismiss = () => {
+    try {
+      sessionStorage.setItem(SESSION_DISMISS_KEY, 'true');
+      sessionStorage.setItem('vantage_demo_banner_days', String(daysRemaining));
+    } catch {}
+    setDismissed(true);
+  };
 
   return (
     <div
       style={{
-        height: '36px',
+        height: '40px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 12px 0 16px',
-        background: bgColor,
-        borderBottom: `1px solid ${borderColor}`,
+        background: isExpired
+          ? 'rgba(239, 68, 68, 0.12)'
+          : 'rgba(245, 158, 11, 0.10)',
+        borderBottom: isExpired
+          ? '1px solid rgba(239, 68, 68, 0.25)'
+          : '1px solid rgba(245, 158, 11, 0.25)',
         backdropFilter: 'blur(8px)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-        <span style={{ fontSize: '13px', lineHeight: 1 }}>{icon}</span>
+        <span style={{ fontSize: '13px' }}>{isExpired ? '⏰' : '⚡'}</span>
         <span
           style={{
             fontSize: '12px',
             fontWeight: 500,
-            color: textColor,
+            color: isExpired ? '#fca5a5' : '#fbbf24',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}
         >
-          {message}
+          {isExpired
+            ? 'Demo expired — save your progress'
+            : daysRemaining === 1
+              ? 'Demo expires tomorrow — save your progress'
+              : `Demo expires in ${daysRemaining} days — save your progress`}
         </span>
       </div>
 
@@ -71,22 +99,24 @@ export function DemoWarningBanner({ daysRemaining, onSaveProgress }: DemoWarning
           <button
             onClick={onSaveProgress}
             style={{
-              background: isUrgent ? 'rgba(239, 68, 68, 0.20)' : 'rgba(251, 191, 36, 0.15)',
+              background: isExpired
+                ? 'rgba(239, 68, 68, 0.20)'
+                : 'rgba(245, 158, 11, 0.15)',
               border: 'none',
               borderRadius: '6px',
               padding: '4px 10px',
               fontSize: '11px',
               fontWeight: 600,
-              color: textColor,
+              color: isExpired ? '#fca5a5' : '#fbbf24',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
           >
-            {isUrgent ? 'Sign Up' : 'Save Progress'}
+            Save →
           </button>
         )}
         <button
-          onClick={() => setDismissed(true)}
+          onClick={dismiss}
           style={{
             background: 'none',
             border: 'none',

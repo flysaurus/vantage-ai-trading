@@ -156,39 +156,115 @@ export function SettingsTab() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          DEMO BADGE
+          ACCOUNT
           ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Account')}
+
+      {/* Demo Status Card */}
       <div
         style={{
-          margin: '12px 16px',
-          background: 'linear-gradient(135deg, #1e3a5f, #1a2235)',
-          border: '1px solid rgba(34,211,238,0.2)',
+          margin: '0 16px 12px 16px',
+          background: '#1a2235',
+          border: '1px solid rgba(245, 158, 11, 0.2)',
           borderRadius: '12px',
-          padding: '14px 16px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          padding: '16px',
         }}
       >
-        <div>
-          <p style={{ fontSize: '13px', fontWeight: '700', color: '#22d3ee' }}>Demo Mode</p>
-          <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            30 days free · Upgrade for real portfolio
-          </p>
+        {/* Header row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>
+              Demo Status
+            </p>
+            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              30-day free trial
+            </p>
+          </div>
+          {/* Tier badge */}
+          <span
+            style={{
+              background: 'rgba(245, 158, 11, 0.15)',
+              color: '#fbbf24',
+              fontSize: '10px',
+              fontWeight: '700',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              letterSpacing: '0.05em',
+            }}
+          >
+            DEMO
+          </span>
         </div>
+
+        {/* Days remaining */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '10px' }}>
+          <span style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', lineHeight: 1 }}>
+            {(() => {
+              try {
+                const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
+                if (!fo) return 30;
+                const expires = new Date(fo);
+                expires.setDate(expires.getDate() + 30);
+                const diff = expires.getTime() - Date.now();
+                return Math.max(0, Math.ceil(diff / 86_400_000));
+              } catch { return 30; }
+            })()}
+          </span>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>days left</span>
+        </div>
+
+        {/* Progress bar */}
+        {(() => {
+          try {
+            const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
+            let pct = 0;
+            if (fo) {
+              const first = new Date(fo).getTime();
+              const elapsed = Date.now() - first;
+              const total = 30 * 86_400_000;
+              pct = Math.min(100, Math.round((elapsed / total) * 100));
+            }
+            return (
+              <div
+                style={{
+                  height: '6px',
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: '3px',
+                  overflow: 'hidden',
+                  marginBottom: '10px',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${pct}%`,
+                    background: pct > 90
+                      ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                      : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                    borderRadius: '3px',
+                    transition: 'width 0.5s ease',
+                  }}
+                />
+              </div>
+            );
+          } catch { return null; }
+        })()}
+
+        {/* Upgrade CTA */}
         <button
           style={{
-            background: '#22d3ee',
+            width: '100%',
+            background: 'linear-gradient(135deg, #22d3ee, #06b6d4)',
             color: '#000000',
-            borderRadius: '6px',
-            padding: '6px 14px',
-            fontSize: '12px',
+            borderRadius: '8px',
+            padding: '10px 0',
+            fontSize: '13px',
             fontWeight: '700',
             border: 'none',
             cursor: 'pointer',
           }}
         >
-          Upgrade
+          Upgrade to Silver
         </button>
       </div>
 
