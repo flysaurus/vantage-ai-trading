@@ -2,6 +2,10 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { ShareCardModal } from '@/components/sharing/ShareCardModal';
+import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
+import type { Level } from '@/lib/theme/tokens';
+import { useInvestorScore } from '@/hooks/useInvestorScore';
 
 const INVESTOR_STYLES = [
   { id: 'lynch', name: 'Peter Lynch', subtitle: 'Growth Focus', description: 'Find growth before Wall Street does. GARP investing.', emoji: '📈' },
@@ -42,6 +46,8 @@ export function SettingsTab() {
   });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const { score, level } = useInvestorScore();
 
   async function selectStyle(styleId: string) {
     setSaving(true);
@@ -265,6 +271,81 @@ export function SettingsTab() {
           }}
         >
           Upgrade to Silver
+        </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          INVESTOR IDENTITY
+          ═══════════════════════════════════════════════════════ */}
+      {sectionHeader('Investor Identity')}
+
+      <div style={{ margin: '0 16px 12px 16px' }}>
+        {/* Style + Score row */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderRadius: '10px',
+            marginBottom: '8px',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: '15px', color: '#ffffff', margin: 0 }}>
+              {(() => {
+                const s = INVESTOR_STYLES.find(s => s.id === selectedStyle);
+                return s ? `${s.emoji} ${s.name}` : 'Lynch';
+              })()}
+            </p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+              {level} &middot; {score} pts
+            </p>
+          </div>
+          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+        </div>
+
+        {/* View & Share Card button */}
+        <button
+          onClick={() => setShowShareModal(true)}
+          style={{
+            width: '100%',
+            padding: '12px 0',
+            borderRadius: '10px',
+            border: 'none',
+            background: '#22d3ee',
+            color: '#0a0f1e',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            marginBottom: '8px',
+          }}
+        >
+          View &amp; Share Style Card
+        </button>
+
+        {/* Retake Quiz */}
+        <button
+          onClick={() => {
+            localStorage.removeItem('vantage_quiz_complete');
+            localStorage.removeItem('vantage_investor_style');
+            localStorage.removeItem('vantage_risk_tolerance');
+            window.location.href = '/onboarding';
+          }}
+          style={{
+            width: '100%',
+            padding: '10px 0',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'transparent',
+            color: '#64748b',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Retake Quiz
         </button>
       </div>
 
@@ -711,6 +792,16 @@ export function SettingsTab() {
           to { opacity: 1; transform: translateY(0); }
         }
       ` }} />
+
+      {/* Share Card Modal */}
+      <ShareCardModal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        styleId={selectedStyle as ShareStyleId}
+        score={score}
+        level={level as Level}
+        riskTolerance={riskLevel}
+      />
     </>
   );
 }

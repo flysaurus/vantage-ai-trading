@@ -17,6 +17,8 @@
 import React, { useState, useEffect } from 'react';
 import type { InvestorStyle } from '@/types';
 import { getStyleDescription, getStyleDisplayName } from '@/lib/onboarding/quiz-logic';
+import { ShareCardModal } from '@/components/sharing/ShareCardModal';
+import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
 import type { QuizResult } from '@/lib/onboarding/quiz-logic';
 
 const ALL_STYLES: { id: InvestorStyle; emoji: string; name: string }[] = [
@@ -36,6 +38,7 @@ interface ResultScreenProps {
 export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle>(result.style);
   const [visible, setVisible] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Preload localStorage values if they exist
   useEffect(() => {
@@ -269,6 +272,33 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
       >
         {userName ? `See you inside, ${userName}!` : 'See you inside!'}
       </p>
+
+      {/* Share your style link */}
+      <button
+        onClick={() => setShowShareModal(true)}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#22d3ee',
+          fontSize: '13px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginTop: '12px',
+          padding: '8px 16px',
+        }}
+      >
+        Share your style ↗
+      </button>
+
+      {/* Share Modal */}
+      <ShareCardModal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        styleId={result.style as ShareStyleId}
+        score={0}
+        level="Apprentice"
+        riskTolerance={result.riskTolerance}
+      />
     </div>
   );
 }
