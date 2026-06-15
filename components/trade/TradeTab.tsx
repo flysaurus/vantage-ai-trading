@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore } from '@/store';
 import BuildBasketModal from '@/components/BuildBasketModal';
@@ -92,7 +93,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast } = useLivePortfolio();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -279,130 +280,77 @@ export function TradeTab() {
         </div>
       </div>
 
-      {/* ─── 1. SYMBOL SEARCH BAR ─── */}
-      <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+      {/* ─── 1. ORDER CARD (search + order in one card) ─── */}
+      <div style={{
+        background: '#1a2235',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        margin: '0 16px 16px',
+        position: 'relative',
+      }}>
+        {/* Symbol search at top of card */}
         <div style={{
-          margin: '16px 16px 0 16px',
-          background: '#1a2235',
-          border: '1px solid #2a3448',
-          borderRadius: '10px',
-          padding: '12px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px'
+          padding: '14px 16px',
+          borderBottom: selectedSymbol && selectedResult ? '1px solid rgba(255,255,255,0.06)' : 'none',
         }}>
-          <span style={{ color: '#64748b', fontSize: '16px' }}>🔍</span>
           <input
-            placeholder="Search symbol..."
+            placeholder="Search symbol (e.g. AAPL)"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-
+            onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
             style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
+              width: '100%',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '10px',
+              padding: '10px 14px',
               color: '#ffffff',
-              fontSize: '15px',
-              flex: 1
+              fontSize: '14px',
+              outline: 'none',
             }}
           />
-        </div>
-
-        {/* Search Results Dropdown */}
-        {showResults && searchResults.length > 0 && (
-          <div style={{
-            position: 'absolute',
-            top: 'calc(100% - 16px)',
-            left: '16px',
-            right: '16px',
-            background: '#1a2235',
-            border: '1px solid #2a3448',
-            borderRadius: '10px',
-            marginTop: '4px',
-            zIndex: 100,
-            overflow: 'hidden'
-          }}>
-            {searchLoading && (
-              <div style={{ padding: '12px 16px', color: '#64748b', fontSize: '13px' }}>
-                Searching...
-              </div>
-            )}
-            {searchResults.map((r, i) => (
-              <div
-                key={r.symbol}
-                onClick={() => {
-                  skipSearchRef.current = true;
-                  setSelectedSymbol(r.symbol);
-                  setSelectedResult({ description: r.description, type: r.type });
-                  setSearchQuery('');
-                  setSearchResults([]);
-                  setShowResults(false);
-                }}
-                style={{
-                  padding: '12px 16px',
-                  borderBottom: i < searchResults.length - 1 ? '1px solid #2a3448' : 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
-                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>
+          {/* Autocomplete dropdown */}
+          {showResults && searchResults.length > 0 && (
+            <div style={{
+              marginTop: '8px',
+              background: '#0a0f1e',
+              borderRadius: '10px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}>
+              {searchResults.map((r, i) => (
+                <div
+                  key={r.symbol}
+                  onClick={() => {
+                    skipSearchRef.current = true;
+                    setSelectedSymbol(r.symbol);
+                    setSelectedResult({ description: r.description, type: r.type });
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setShowResults(false);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
                     {r.symbol}
                   </span>
-                  <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '12px', marginLeft: '8px' }}>
                     {r.description}
                   </span>
                 </div>
-                <span style={{
-                  fontSize: '11px',
-                  color: '#334155',
-                  background: '#0f1829',
-                  padding: '2px 6px',
-                  borderRadius: '4px'
-                }}>
-                  {r.type === 'ETP' ? 'ETF' : 'Stock'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Selected Symbol Indicator */}
-      {selectedSymbol && (
-        <div style={{
-          padding: '8px 16px',
-          margin: '8px 16px 0 16px',
-          background: '#1e3a5f',
-          border: '1px solid #22d3ee',
-          borderRadius: '8px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <span style={{ color: '#22d3ee', fontWeight: '700', fontSize: '14px' }}>
-            {selectedSymbol}
-          </span>
-          <button
-            onClick={() => { setSelectedSymbol(''); setSelectedResult(null); setSearchQuery(''); setSearchResults([]); setSymbolQuote(null); }}
-            style={{ color: '#64748b', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}
-          >
-            ×
-          </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ─── Symbol Card ─── */}
-      {symbolQuote && (
-        <div style={{
-          margin: '12px 16px 0 16px',
-          background: '#1a2235',
-          border: '1px solid #2a3448',
-          borderRadius: '12px',
-          padding: '16px'
-        }}>
+        {/* Order form below search — same card — when symbol is picked AND quote loaded */}
+        {selectedSymbol && selectedResult && symbolQuote && (
+          <div style={{ padding: '16px' }}>
           {/* Symbol name + type badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span style={{ fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>
@@ -840,6 +788,12 @@ export function TradeTab() {
             if (result.success) {
               setQty('');
               setLimitPrice('');
+              // Switch to the correct order history tab
+              setHistoryTab(result.status === 'FILLED' ? 'filled' : 'open');
+              // Scroll to order history
+              setTimeout(() => {
+                document.getElementById('order-history')?.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
             }
           }}
           style={{
@@ -857,6 +811,7 @@ export function TradeTab() {
         >
           {side === 'buy' ? 'Place Buy Order' : 'Place Sell Order'}
         </button>
+      </div>
       </div>
 
       {/* ─── 3.5: MY BASKETS ─── */}
@@ -963,7 +918,7 @@ export function TradeTab() {
       )}
 
       {/* ─── 4. ORDER HISTORY ─── */}
-      <div style={{ margin: '0 16px' }}>
+      <div id="order-history" style={{ margin: '0 16px' }}>
         <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
           ORDER HISTORY
         </div>
@@ -1482,19 +1437,55 @@ export function TradeTab() {
       )}
 
       {/* ─── Build Basket Modal ─── */}
-      <BuildBasketModal
-        isOpen={showBuildBasket}
-        onClose={() => setShowBuildBasket(false)}
-        onBasketGenerated={(msg, result) => {
-          setShowBuildBasket(false);
-          if (result?.success) {
-            // Navigate to Portfolio tab → baskets section
-            window.dispatchEvent(new CustomEvent('vantage-navigate', {
-              detail: { tab: 'portfolio', section: 'baskets-section' },
-            }));
-          }
-        }}
-      />
+      {showBuildBasket && createPortal(
+        <BuildBasketModal
+          isOpen={showBuildBasket}
+          onClose={() => setShowBuildBasket(false)}
+          onBasketGenerated={(msg, result) => {
+            setShowBuildBasket(false);
+            if (result?.success) {
+              // Navigate to Portfolio tab → baskets section
+              window.dispatchEvent(new CustomEvent('vantage-navigate', {
+                detail: { tab: 'portfolio', section: 'baskets-section' },
+              }));
+            }
+          }}
+        />,
+        document.body
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '60px',
+          left: '16px',
+          right: '16px',
+          zIndex: 10001,
+          background: '#1a2235',
+          border: `1px solid ${toast.type === 'error' ? '#ef4444' : '#22d3ee'}`,
+          borderRadius: '12px',
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          animation: 'slideDown 0.25s ease',
+        }}>
+          <span style={{ fontSize: '13px', color: '#ffffff', flex: 1 }}>{toast.message}</span>
+          <button
+            onClick={dismissToast}
+            style={{ color: '#6b7280', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
+          >×</button>
+        </div>
+      )}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      ` }} />
+
     </div>
   );
 }

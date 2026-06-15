@@ -399,13 +399,18 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     const originalOverflow = document.body.style.overflow;
     const originalPosition = document.body.style.position;
     const originalWidth = document.body.style.width;
+    const originalTop = document.body.style.top;
+    const scrollY = window.scrollY;
     document.body.style.overflow = 'hidden';
     document.body.style.position = 'fixed';
     document.body.style.width = '100%';
+    document.body.style.top = `-${scrollY}px`;
     return () => {
       document.body.style.overflow = originalOverflow;
       document.body.style.position = originalPosition;
       document.body.style.width = originalWidth;
+      document.body.style.top = originalTop;
+      window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -568,7 +573,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     switch (step) {
       case 'curated': return <StepHeader title="Build Basket" onBack={goBack} onClose={onClose} backLabel="← Back" />;
       case 'custom_theme': return <StepHeader title="Custom Basket" onBack={goBack} onClose={onClose} backLabel="← Back" />;
-      case 'budget': return <StepHeader title="Set Budget" onBack={() => selectedCurated ? setStep('curated') : setStep('custom_theme')} onClose={onClose} backLabel={selectedCurated ? '← Baskets' : '← Back'} />;
       case 'generating': return <StepHeader title="Generating..." onBack={goBack} onClose={onClose} backLabel="← Back" />;
       case 'review': return <StepHeader title="Review Order" onBack={goBack} onClose={onClose} backLabel="← Back" />;
       case 'basket_review': return <StepHeader title="Review Order" onBack={() => setStep('budget')} onClose={onClose} backLabel="← Budget" />;
@@ -583,7 +587,16 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   const curatedStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+      <div
+        style={{
+          flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px',
+          paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 80px)',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+        }}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
         {/* Subtitle row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
           <span style={{ fontSize: '11px', color: '#64748b' }}>
@@ -806,6 +819,40 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           </div>
         )}
       </div>
+
+      {/* Fixed Cancel button on curated step */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10001,
+        background: '#0a0f1e',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        padding: '12px 16px',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+      }}>
+        <button
+          onClick={() => {
+            onClose();
+            window.dispatchEvent(new CustomEvent('vantage-navigate', {
+              detail: { tab: 'invest' },
+            }));
+          }}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            fontSize: '14px',
+            color: '#6b7280',
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </>
   );
 
@@ -814,7 +861,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   const customThemeStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: '200px' }}>
+      <div
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: '200px', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
         <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
           Describe the basket you want
         </p>
@@ -902,7 +953,32 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   const budgetStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 'calc(100px + env(safe-area-inset-bottom))' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={() => selectedCurated ? setStep('curated') : setStep('custom_theme')}
+          style={{
+            color: '#22d3ee', background: 'none', border: 'none',
+            fontSize: '14px', cursor: 'pointer', padding: '4px 8px',
+            minWidth: '70px',
+          }}
+        >
+          {selectedCurated ? '← Baskets' : '← Back'}
+        </button>
+        <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>Set Budget</span>
+        <button onClick={onClose} style={{
+          color: '#6b7280', background: 'none', border: 'none',
+          fontSize: '22px', cursor: 'pointer', minWidth: '70px', textAlign: 'right',
+        }}>×</button>
+      </div>
+      <div
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: 'calc(100px + env(safe-area-inset-bottom))', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
         {selectedCurated && (
           <div style={{
             background: '#1a2235', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
@@ -1018,7 +1094,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ────────────────────────────────────────────────────────────
   const reviewStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+      <div
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px', paddingBottom: '200px', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
         {error ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <p style={{ fontSize: '14px', color: '#ef4444', marginBottom: '12px' }}>{error}</p>
@@ -1308,7 +1388,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
   const basketReviewStep = (
     <>
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '200px' }}>
+      <div
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 16px', paddingBottom: '200px', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
         {/* Basket summary */}
         <div style={{
           padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -1800,7 +1884,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
 
   const basketConfirmStep = (
     <>
-      <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto', paddingBottom: '200px' }}>
+      <div
+        style={{ flex: 1, padding: '20px 16px 200px', overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
         {executionResult ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>{executionResult.success ? '✅' : '⚠️'}</div>
@@ -1971,18 +2059,21 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   );
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 9999,
-      background: '#0a0f1e',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-    }}>
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999,
+        background: '#0a0f1e',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+      onTouchMove={e => e.stopPropagation()}
+    >
       {stepHeader}
       {step === 'curated' && curatedStep}
       {step === 'custom_theme' && customThemeStep}

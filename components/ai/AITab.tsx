@@ -83,6 +83,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
   const [greetingHook, setGreetingHook] = useState<string | null>(null);
   const [greetingLoaded, setGreetingLoaded] = useState(false);
+  const userInitial = ((user?.name || user?.email || 'M')[0]?.toUpperCase() || 'M') + '.';
   const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
     symbol: string;
@@ -396,7 +397,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userInitial: 'M.',
+            userInitial,
             investorStyle: invStyle,
             riskTolerance: risk,
             totalPnLPct: totalPnlPct,
@@ -1521,9 +1522,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
               lineHeight: 1.2,
               marginBottom: '8px',
             }}>
-              {greetingOpener && greetingOpener.split(/\b(M\.)\b/).map((part, i) =>
-                part === 'M.' ? (
-                  <span key={i} style={{ color: '#22d3ee' }}>M.</span>
+              {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
+                part === userInitial ? (
+                  <span key={i} style={{ color: '#22d3ee' }}>{userInitial}</span>
                 ) : (
                   <span key={i} style={{ color: '#ffffff' }}>{part}</span>
                 )

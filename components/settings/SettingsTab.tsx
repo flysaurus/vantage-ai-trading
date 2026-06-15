@@ -1,11 +1,65 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
+
+const INVESTOR_STYLES = [
+  { id: 'lynch', name: 'Peter Lynch', subtitle: 'Growth Focus', description: 'Find growth before Wall Street does. GARP investing.', emoji: '📈' },
+  { id: 'buffett', name: 'Warren Buffett', subtitle: 'Value Focus', description: 'Wonderful companies at fair prices. Think in decades.', emoji: '🏰' },
+  { id: 'livermore', name: 'Jesse Livermore', subtitle: 'Momentum Focus', description: 'Follow the tape. Cut losers fast. Ride winners.', emoji: '⚡' },
+  { id: 'munger', name: 'Charlie Munger', subtitle: 'Quality Focus', description: 'Extraordinary businesses at fair prices. Concentrate.', emoji: '🎯' },
+  { id: 'soros', name: 'George Soros', subtitle: 'Macro Focus', description: 'Find the dislocation. Asymmetric bets. Reflexivity.', emoji: '🌍' },
+];
+
+async function saveInvestorStyle(userId: string, style: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/db/users/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, investorStyle: style }),
+    });
+    if (res.ok) {
+      localStorage.setItem('vantage_investor_style', style);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export function SettingsTab() {
+  const { user } = useAuth() as any;
   const [riskLevel, setRiskLevel] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
   const [brokerConnected, setBrokerConnected] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [showStylePicker, setShowStylePicker] = useState(false);
+  const [selectedStyle, setSelectedStyle] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('vantage_investor_style') || user?.investorStyle || 'lynch';
+    }
+    return user?.investorStyle || 'lynch';
+  });
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function selectStyle(styleId: string) {
+    setSaving(true);
+    const success = user?.id ? await saveInvestorStyle(user.id, styleId) : false;
+    setSelectedStyle(styleId);
+    // Clear greeting cache so new style is reflected
+    try {
+      const today = new Date().toDateString().replace(/\s/g, '_');
+      localStorage.removeItem(`vantage_greeting_${today}`);
+    } catch {}
+    setSaving(false);
+    setShowStylePicker(false);
+    if (success) {
+      const styleName = INVESTOR_STYLES.find(s => s.id === styleId)?.name || styleId;
+      setToast(`Style updated to ${styleName} · AI will now think like ${styleName}`);
+      setTimeout(() => setToast(null), 3500);
+    }
+  }
 
   const sectionHeader = (label: string) => (
     <div
@@ -46,7 +100,8 @@ export function SettingsTab() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* ═══════════════════════════════════════════════════════
           1. PROFILE
           ═══════════════════════════════════════════════════════ */}
@@ -55,6 +110,7 @@ export function SettingsTab() {
       <div style={{ margin: '0 16px' }}>
         {/* Investor Style */}
         <div
+          onClick={() => setShowStylePicker(true)}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -69,7 +125,11 @@ export function SettingsTab() {
         >
           <div>
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Investor Style</p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Lynch · Growth Focus</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+              {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.name || 'Peter Lynch'} ·{' '}
+              {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.subtitle || 'Growth Focus'} ·{' '}
+              shapes all AI responses
+            </p>
           </div>
           <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
         </div>
@@ -420,6 +480,161 @@ export function SettingsTab() {
           </div>
         </>
       )}
+
+      {/* ═══════════════════════════════════════════════════════
+          INVESTOR STYLE PICKER MODAL
+          ═══════════════════════════════════════════════════════ */}
+      {showStylePicker && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: '#0a0f1e',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          {/* Header */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '16px' }}>
+              Investor Style
+            </span>
+            <button
+              onClick={() => {
+                setShowStylePicker(false);
+                setSelectedStyle(user?.investorStyle || 'lynch');
+              }}
+              style={{
+                color: '#6b7280',
+                background: 'none',
+                border: 'none',
+                fontSize: '22px',
+                cursor: 'pointer',
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={{
+            color: '#6b7280',
+            fontSize: '13px',
+            padding: '12px 16px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            Your style shapes how Vantage AI thinks, analyzes, and recommends. You can change this anytime.
+          </div>
+
+          {/* Style cards */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', paddingBottom: '100px' }}>
+            {INVESTOR_STYLES.map(style => {
+              const isActive = selectedStyle === style.id;
+              return (
+                <div
+                  key={style.id}
+                  onClick={() => setSelectedStyle(style.id)}
+                  style={{
+                    background: isActive ? 'rgba(34,211,238,0.08)' : '#1a2235',
+                    border: isActive ? '1px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.07)',
+                    borderRadius: '14px',
+                    padding: '16px',
+                    marginBottom: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <span style={{ fontSize: '24px' }}>{style.emoji}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div>
+                          <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>{style.name}</span>
+                          <span style={{ color: '#22d3ee', fontSize: '12px', marginLeft: '8px' }}>{style.subtitle}</span>
+                        </div>
+                        {isActive && (
+                          <span style={{ color: '#22d3ee', fontSize: '18px' }}>✓</span>
+                        )}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.5' }}>{style.description}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom save button */}
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10000,
+            background: '#0a0f1e',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            padding: '12px 16px',
+            paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+          }}>
+            <button
+              onClick={() => selectStyle(selectedStyle)}
+              disabled={saving}
+              style={{
+                width: '100%',
+                padding: '14px',
+                background: '#22d3ee',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '15px',
+                fontWeight: '600',
+                color: '#0a0f1e',
+                cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              {saving ? 'Saving…' : 'Save Style'}
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '60px',
+          left: '16px',
+          right: '16px',
+          zIndex: 10001,
+          background: '#1a2235',
+          border: '1px solid #22d3ee',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          animation: 'slideDown 0.25s ease',
+        }}>
+          <span style={{ fontSize: '13px', color: '#ffffff', flex: 1 }}>{toast}</span>
+          <button
+            onClick={() => setToast(null)}
+            style={{ color: '#6b7280', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
+          >×</button>
+        </div>
+      )}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      ` }} />
+    </>
   );
 }

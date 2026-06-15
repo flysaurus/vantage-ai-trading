@@ -55,7 +55,17 @@ Each risk must include:
 
 Lead with the dollar amounts at stake when relevant. "You can harvest $4,094 in losses from ADBE" is better than "ADBE presents a tax loss harvesting opportunity." Make every benefit concrete and specific.
 
-Use actual ticker symbols and dollar amounts from the portfolio context. Never be generic. Frame all analysis through the investor's chosen style lens.`,
+Use actual ticker symbols and dollar amounts from the portfolio context. Never be generic. Frame all analysis through the investor's chosen style lens.
+
+─── POSITION-SPECIFIC RULES ───
+Always scan for positions down >25% from cost basis and name them explicitly. For each losing position mention: the ticker, the % loss, and a specific action. Never use generic language like 'some positions' or 'certain holdings' — always name the ticker. If a position is down >40% call it out FIRST before any other risk.
+Example: 'ADBE is down 60% from your $560 cost basis — that's a broken story, not a dip. Lynch would have cut this months ago.' NOT: 'There is concentration risk in some technology positions.'
+
+─── RISK LEVEL OVERRIDES ───
+Any position down >40% → risk level MEDIUM minimum.
+Any position down >60% → risk level HIGH.
+ADBE at -60% means this portfolio cannot be LOW risk.
+Override any other scoring if these conditions are met.`,
   cache_control: { type: 'ephemeral' },
 };
 
@@ -208,18 +218,29 @@ export async function GET(req: NextRequest) {
     };
     const profileContext = buildUserProfileContext(profile);
 
-    // Build position data block
+    // Build position data block — with cost basis, total cost, and dollar P&L
     const positionLines = positions.map((p: any) => {
       const q = quotes[p.symbol] || {};
       const avgCost = p.avg_cost;
       const currentPrice = q.c ?? 0;
+      const shares = p.qty;
+      const totalCost = avgCost ? shares * avgCost : 0;
+      const marketValue = currentPrice ? shares * currentPrice : 0;
+      const totalPnL = avgCost && currentPrice
+        ? (currentPrice - avgCost) * shares
+        : 0;
       const pnl = avgCost && currentPrice
         ? ((currentPrice - avgCost) / avgCost) * 100
         : null;
       const pnlStr = pnl != null
         ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%`
         : 'N/A';
-      return `  ${p.symbol}: ${p.qty} shares @ $${avgCost || '?'} | Current: $${currentPrice || '?'} | P&L: ${pnlStr}`;
+      const totalPnLStr = totalPnL !== 0
+        ? `${totalPnL >= 0 ? '+' : ''}$${Math.abs(totalPnL).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+        : 'N/A';
+      return `  ${p.symbol}: ${shares} shares @ $${avgCost || '?'} | Current: $${currentPrice || '?'}
+    Cost basis: $${totalCost.toLocaleString('en-US', { maximumFractionDigits: 0 })} | Market value: $${marketValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+    P&L: ${pnlStr} (${totalPnLStr})`;
     });
 
     const dataBlock = [

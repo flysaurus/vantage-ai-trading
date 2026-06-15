@@ -46,12 +46,12 @@ export default function WatchlistTab() {
   const [loading, setLoading] = useState(true);
   const [showListSelector, setShowListSelector] = useState(false);
 
-  // Build position lookup from PortfolioContext (real owned shares)
+  // Build position lookup from PortfolioContext (real owned shares — sum across all positions including basket positions)
   const positionsMap = useMemo(() => {
     const map: Record<string, { shares: number }> = {};
     if (account?.positions) {
       for (const p of account.positions) {
-        map[p.symbol] = { shares: p.qty };
+        map[p.symbol] = { shares: (map[p.symbol]?.shares || 0) + p.qty };
       }
     }
     return map;
