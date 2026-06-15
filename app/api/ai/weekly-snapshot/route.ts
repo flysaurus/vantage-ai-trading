@@ -20,6 +20,11 @@ const SNAPSHOT_STATIC: SystemBlock = {
 Generate a Weekly Portfolio Snapshot framed for the user's specific
 investor style and risk tolerance (provided in the message).
 
+VOICE: Write this like a sharp analyst texting their notes to a friend, not a Bloomberg terminal report.
+Use real numbers. Call out what's actually wrong. Don't soften bad news — surface it clearly with a specific recommended action.
+
+Health scores must reflect reality: if ADBE is down 60%, the score cannot be above 6/10. Period.
+
 Structure your analysis as:
 
 PORTFOLIO HEALTH (score X/10):
@@ -48,10 +53,9 @@ Each risk must include:
 - Which position(s) it affects
 - Recommended action
 
-Be specific. Use actual ticker symbols and
-dollar amounts from the portfolio context.
-Never be generic. Frame all analysis through
-the investor's chosen style lens.`,
+Lead with the dollar amounts at stake when relevant. "You can harvest $4,094 in losses from ADBE" is better than "ADBE presents a tax loss harvesting opportunity." Make every benefit concrete and specific.
+
+Use actual ticker symbols and dollar amounts from the portfolio context. Never be generic. Frame all analysis through the investor's chosen style lens.`,
   cache_control: { type: 'ephemeral' },
 };
 
