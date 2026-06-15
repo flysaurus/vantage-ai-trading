@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
 import { MarketBar } from '@/components/layout/MarketBar';
 import { WatchlistBar } from '@/components/layout/WatchlistBar';
+import { PlayerStatusBar } from '@/components/gamification/PlayerStatusBar';
 import { AITab } from '@/components/ai/AITab';
 import { TradeTab } from '@/components/trade/TradeTab';
 import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
@@ -229,6 +230,7 @@ function AppShell() {
       <Header />
       {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
       <WatchlistBar />
+      <PlayerStatusBar />
       <div className="content-area" key={activeTab}>
         {activeTab === 'ai' ? (
           <AITab messages={chatMessages} setMessages={setChatMessages} />
