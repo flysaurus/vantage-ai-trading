@@ -3,10 +3,10 @@
 // Renders if no quiz completion flag in localStorage.
 //
 // Screen order:
-//  0. Splash (auto-advances after 2s)
-//  1-5. Q1 → Q2 → Q3 → Q4 → Q5
-//  6. Name capture
-//  7. Result screen
+//  0. Arrival (compass burst + typewriter, "Find my style →")
+//  1-5. Q1 → Q2 → Q3 → Q4 → Q5 (slide transitions)
+//  6. Name capture (slide-up)
+//  7. Result screen (compass burst + style reveal)
 //
 // On completion: saves style, name, risk to localStorage;
 // syncs to Supabase; navigates to /
@@ -15,7 +15,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { SplashScreen } from '@/components/onboarding/SplashScreen';
+import { ArrivalScreen } from '@/components/onboarding/ArrivalScreen';
 import { QuizQuestion } from '@/components/onboarding/QuizQuestion';
 import { NameCapture } from '@/components/onboarding/NameCapture';
 import { ResultScreen } from '@/components/onboarding/ResultScreen';
@@ -28,7 +28,7 @@ import {
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import type { InvestorStyle } from '@/types';
 
-type Screen = 'splash' | 'quiz' | 'name' | 'result';
+type Screen = 'arrival' | 'quiz' | 'name' | 'result';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -39,15 +39,15 @@ export default function OnboardingPage() {
     return null;
   }
 
-  const [screen, setScreen] = useState<Screen>('splash');
+  const [screen, setScreen] = useState<Screen>('arrival');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [userName, setUserName] = useState('');
   const [result, setResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
 
-  // ── Splash done ────────────────────────────────────────────
+  // ── Arrival done → quiz ────────────────────────────────────
 
-  const handleSplashDone = useCallback(() => {
+  const handleFindStyle = useCallback(() => {
     setScreen('quiz');
   }, []);
 
@@ -63,7 +63,7 @@ export default function OnboardingPage() {
         setQuestionIndex(newAnswers.length);
       }, 100);
     } else {
-      // All questions answered — score it and go to name capture
+      // All questions answered — score and go to name capture
       const quizResult = scoreQuiz(newAnswers);
       setResult(quizResult);
       setTimeout(() => {
@@ -92,7 +92,6 @@ export default function OnboardingPage() {
   // ── Enter Vantage ──────────────────────────────────────────
 
   const handleEnter = useCallback(async (style: InvestorStyle, riskTolerance: string) => {
-    // Save to localStorage
     try {
       localStorage.setItem('vantage:investorStyle', style);
       localStorage.setItem('vantage:riskTolerance', riskTolerance);
@@ -119,10 +118,8 @@ export default function OnboardingPage() {
       console.warn('[onboarding] Supabase sync failed (non-blocking):', err);
     }
 
-    // Mark complete and navigate
     markQuizComplete();
 
-    // Dispatch navigation event for bottom nav
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
@@ -132,33 +129,30 @@ export default function OnboardingPage() {
     router.push('/');
   }, [userName, router]);
 
-  // ── Render current screen ──────────────────────────────────
+  const quizBackground: React.CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 100,
+    background: '#0a0f1e',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    paddingTop: 'env(safe-area-inset-top)',
+    overflow: 'hidden',
+  };
 
-  if (screen === 'splash') {
-    return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#0a0f1e' }}>
-        <SplashScreen onDone={handleSplashDone} />
-      </div>
-    );
+  // ── Arrival screen ─────────────────────────────────────────
+
+  if (screen === 'arrival') {
+    return <ArrivalScreen onFindStyle={handleFindStyle} />;
   }
 
-  // Quiz screen (fixed background for smooth transitions)
+  // ── Quiz screen ────────────────────────────────────────────
+
   if (screen === 'quiz' && questionIndex < QUIZ_QUESTIONS.length) {
     return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 100,
-          background: '#0a0f1e',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-start',
-          paddingTop: 'env(safe-area-inset-top)',
-        }}
-      >
-        {/* Back button (only after Q1) */}
+      <div style={quizBackground}>
+        {/* Back button (after Q1) */}
         {questionIndex > 0 && (
           <button
             onClick={() => {
@@ -199,7 +193,8 @@ export default function OnboardingPage() {
     );
   }
 
-  // Name capture screen
+  // ── Name capture screen ────────────────────────────────────
+
   if (screen === 'name') {
     return (
       <div
@@ -212,6 +207,7 @@ export default function OnboardingPage() {
           flexDirection: 'column',
           justifyContent: 'flex-start',
           paddingTop: 'env(safe-area-inset-top)',
+          overflow: 'hidden',
         }}
       >
         <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
@@ -221,7 +217,8 @@ export default function OnboardingPage() {
     );
   }
 
-  // Result screen
+  // ── Result screen ──────────────────────────────────────────
+
   if (screen === 'result' && result) {
     return (
       <div
@@ -244,6 +241,5 @@ export default function OnboardingPage() {
     );
   }
 
-  // Fallback: redirect to main app
   return null;
 }

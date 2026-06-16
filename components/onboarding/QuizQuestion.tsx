@@ -1,14 +1,13 @@
 // ─── QuizQuestion ──────────────────────────────────────────
 // Renders a single quiz question with answer cards.
-// Slide transitions between questions with direction state.
+// Slide transitions between questions (320ms, ease-in-out).
 //
 // Layout:
-// - Progress bar (top, 4px, cyan fill)
-// - Question number ("2 of 5", muted)
-// - Question text (large, white)
-// - Answer cards (full-width, stacked, #1a2235 bg)
-// - Cyan border on hover/tap
-// - Selected state → 300ms delay → advance
+// - Progress bar (top, 3px, cyan fill, smooth 400ms)
+// - Question label (11px, muted, uppercase, letter-spacing)
+// - Question text (24px, white, semibold)
+// - Answer cards (full-width, stacked, 10px gap)
+// - Tap state: cyan border + bg, scale 0.98, auto-advance 280ms
 
 'use client';
 
@@ -37,7 +36,7 @@ export function QuizQuestion({
   useEffect(() => {
     mountedRef.current = true;
     setSelected(null);
-    // Trigger slide-in after a tick (for CSS transition)
+    // Trigger slide-in
     const t = setTimeout(() => setVisible(true), 16);
     return () => {
       mountedRef.current = false;
@@ -46,44 +45,42 @@ export function QuizQuestion({
   }, [question.id]);
 
   const handleSelect = (key: string) => {
-    if (selected) return; // Already selected — prevent double-tap
+    if (selected) return;
     setSelected(key);
-
-    // Brief delay to show selected state, then advance
+    // Show tap state, then auto-advance
     setTimeout(() => {
       if (mountedRef.current) {
         onAnswer(key);
       }
-    }, 350);
+    }, 280);
   };
 
   const progress = (questionNumber / totalQuestions) * 100;
 
-  const isRiskQuestion = question.id === 'q5';
-
   return (
     <div
       style={{
+        width: '100%',
         padding: '0 20px',
         transform: visible
           ? 'translateX(0)'
           : direction === 'forward'
-            ? 'translateX(40px)'
-            : 'translateX(-40px)',
+            ? 'translateX(100%)'
+            : 'translateX(-100%)',
         opacity: visible ? 1 : 0,
-        transition: 'transform 0.35s ease, opacity 0.3s ease',
+        transition: 'transform 320ms ease-in-out, opacity 320ms ease-in-out',
       }}
     >
       {/* Progress bar */}
       <div
         style={{
           width: '100%',
-          height: '4px',
-          background: '#1f2937',
+          height: '3px',
+          background: 'rgba(255,255,255,0.08)',
           borderRadius: '2px',
           overflow: 'hidden',
-          marginBottom: '32px',
-          marginTop: '24px',
+          marginBottom: '20px',
+          marginTop: '0',
         }}
       >
         <div
@@ -92,33 +89,33 @@ export function QuizQuestion({
             width: `${progress}%`,
             background: '#22d3ee',
             borderRadius: '2px',
-            transition: 'width 0.4s ease',
+            transition: 'width 400ms ease',
           }}
         />
       </div>
 
-      {/* Question number */}
+      {/* Question label */}
       <p
         style={{
-          fontSize: '13px',
-          color: '#64748b',
+          fontSize: '11px',
+          color: 'rgba(34,211,238,0.7)',
           fontWeight: 500,
           marginBottom: '12px',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.12em',
         }}
       >
-        {isRiskQuestion ? 'Risk Profile' : `Question ${questionNumber} of ${totalQuestions - 1}`}
+        {question.label}
       </p>
 
       {/* Question text */}
       <h2
         style={{
-          fontSize: '22px',
+          fontSize: '24px',
           fontWeight: 600,
           color: '#ffffff',
-          lineHeight: 1.4,
-          marginBottom: '28px',
+          lineHeight: 1.35,
+          marginBottom: '32px',
         }}
       >
         {question.question}
@@ -138,21 +135,22 @@ export function QuizQuestion({
               style={{
                 width: '100%',
                 textAlign: 'left',
-                padding: '16px 18px',
-                background: isSelected ? 'rgba(34, 211, 238, 0.10)' : '#1a2235',
+                padding: '16px',
+                background: isSelected ? 'rgba(34, 211, 238, 0.08)' : '#1a2235',
                 border: isSelected
                   ? '1px solid #22d3ee'
-                  : '1px solid #1e293b',
+                  : '1px solid rgba(255,255,255,0.06)',
                 borderRadius: '14px',
                 cursor: selected ? 'default' : 'pointer',
                 opacity: isDimmed ? 0.4 : 1,
-                transition: 'all 0.2s ease',
+                transform: isSelected ? 'scale(0.98)' : 'scale(1)',
+                transition: 'all 150ms ease',
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: '12px',
               }}
             >
-              {/* Option letter badge */}
+              {/* Letter badge */}
               <span
                 style={{
                   display: 'inline-flex',
@@ -160,24 +158,24 @@ export function QuizQuestion({
                   justifyContent: 'center',
                   width: '28px',
                   height: '28px',
-                  borderRadius: '8px',
-                  background: isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.12)',
+                  borderRadius: '50%',
+                  background: isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.15)',
                   color: isSelected ? '#0a0f1e' : '#22d3ee',
                   fontSize: '13px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                   flexShrink: 0,
                   marginTop: '1px',
-                  transition: 'all 0.2s ease',
+                  transition: 'all 150ms ease',
                 }}
               >
                 {option.key}
               </span>
 
-              {/* Option text */}
+              {/* Answer text */}
               <span
                 style={{
-                  fontSize: '14px',
-                  color: isSelected ? '#ffffff' : '#cbd5e1',
+                  fontSize: '15px',
+                  color: isSelected ? '#ffffff' : '#94a3b8',
                   lineHeight: 1.5,
                   fontWeight: isSelected ? 500 : 400,
                 }}

@@ -19,7 +19,6 @@ export interface QuizResult {
 
 // ─── Question → Style Mappings ────────────────────────────────
 
-// Q1: "You find a promising company nobody's talking about..."
 const Q1: Record<string, InvestorStyle> = {
   A: 'buffett',
   B: 'livermore',
@@ -28,8 +27,7 @@ const Q1: Record<string, InvestorStyle> = {
   E: 'lynch',
 };
 
-// Q2: "You made a conviction bet. Early signs suggest you might be wrong..."
-// B and D both map to livermore (counts as one vote)
+// B and D both map to livermore
 const Q2: Record<string, InvestorStyle> = {
   A: 'buffett',
   B: 'livermore',
@@ -38,7 +36,7 @@ const Q2: Record<string, InvestorStyle> = {
   E: 'soros',
 };
 
-// Q3: "You have capital but five great ideas. How do you allocate?"
+// A→buffett B→lynch C→lynch D→livermore E→munger
 const Q3: Record<string, InvestorStyle> = {
   A: 'buffett',
   B: 'lynch',
@@ -47,7 +45,7 @@ const Q3: Record<string, InvestorStyle> = {
   E: 'munger',
 };
 
-// Q4: "What information moves the needle most in your decisions?"
+// A→munger B→lynch C→buffett D→livermore E→soros
 const Q4: Record<string, InvestorStyle> = {
   A: 'munger',
   B: 'lynch',
@@ -56,7 +54,7 @@ const Q4: Record<string, InvestorStyle> = {
   E: 'soros',
 };
 
-// Q5 Risk: "How much volatility can you handle?"
+// Q5 Risk mapping
 const Q5_RISK: Record<string, 'Conservative' | 'Moderate' | 'Aggressive'> = {
   A: 'Conservative',
   B: 'Moderate',
@@ -67,17 +65,7 @@ const QUESTION_MAPS = [Q1, Q2, Q3, Q4];
 
 // ─── Scoring ─────────────────────────────────────────────────
 
-/**
- * Score the quiz from an array of answer letters (A-E).
- * answers[0-3] = Q1-Q4 (style), answers[4] = Q5 (risk)
- *
- * Tiebreak: when multiple styles have the same top count,
- * the last question (Q4) decides — if its mapping is among
- * the tied styles, winner = Q4's style. Otherwise, use Q3, etc.
- * If all fail to break, takes the first tied style.
- */
 export function scoreQuiz(answers: string[]): QuizResult {
-  // Count votes per style from Q1-Q4
   const votes: Record<InvestorStyle, number> = {
     buffett: 0,
     lynch: 0,
@@ -119,12 +107,10 @@ export function scoreQuiz(answers: string[]): QuizResult {
     if (q4Style && tied.includes(q4Style)) {
       winner = q4Style;
     } else {
-      // Fallback: take the first tied style
       winner = tied[0] || 'buffett';
     }
   }
 
-  // Q5 risk
   const riskTolerance = Q5_RISK[answers[4]] || 'Moderate';
 
   return {
@@ -135,41 +121,70 @@ export function scoreQuiz(answers: string[]): QuizResult {
   };
 }
 
-// ─── Style Descriptions ─────────────────────────────────────
+// ─── Style Content ───────────────────────────────────────────
 
-const STYLE_DESCRIPTIONS: Record<InvestorStyle, string> = {
-  buffett:
-    'You invest in businesses, not tickers. Long-term conviction and patience are your edge.',
-  lynch:
-    "You find opportunity where others aren't looking. Growth stories before they go mainstream.",
-  livermore:
-    'You read the tape. Timing, momentum, and discipline define how you move.',
-  munger:
-    'You think in mental models. Rational analysis and avoiding mistakes beats chasing wins.',
-  soros:
-    "You spot what the market's getting wrong. Macro trends and reflexivity are your weapons.",
+const STYLE_CONTENT: Record<InvestorStyle, { emoji: string; name: string; description: string }> = {
+  buffett: {
+    emoji: '\uD83C\uDFDB\uFE0F', // 🏛️
+    name: 'Buffett',
+    description: 'You invest in businesses, not tickers. Patience and conviction are your edge.',
+  },
+  lynch: {
+    emoji: '\uD83D\uDD0D', // 🔍
+    name: 'Lynch',
+    description: "You find growth before it's obvious. You're always watching for what others miss.",
+  },
+  livermore: {
+    emoji: '\uD83D\uDCC8', // 📈
+    name: 'Livermore',
+    description: 'You read momentum and act decisively. Timing and discipline define your edge.',
+  },
+  munger: {
+    emoji: '\uD83E\uDDE0', // 🧠
+    name: 'Munger',
+    description: 'You think in mental models. Rational analysis and avoiding mistakes beats chasing wins.',
+  },
+  soros: {
+    emoji: '\uD83C\uDF10', // 🌐
+    name: 'Soros',
+    description: "You spot what markets are getting wrong. Macro vision and reflexivity are your weapons.",
+  },
 };
 
-const STYLE_NAMES: Record<InvestorStyle, string> = {
-  buffett: 'Buffett',
-  lynch: 'Lynch',
-  livermore: 'Livermore',
-  munger: 'Munger',
-  soros: 'Soros',
-};
+export function getStyleContent(style: InvestorStyle) {
+  return STYLE_CONTENT[style] || STYLE_CONTENT.buffett;
+}
 
 export function getStyleDescription(style: InvestorStyle): string {
-  return STYLE_DESCRIPTIONS[style] || STYLE_DESCRIPTIONS.buffett;
+  return STYLE_CONTENT[style]?.description || STYLE_CONTENT.buffett.description;
 }
 
 export function getStyleDisplayName(style: InvestorStyle): string {
-  return STYLE_NAMES[style] || 'Buffett';
+  return STYLE_CONTENT[style]?.name || 'Buffett';
 }
 
-// ─── Quiz Questions (hardcoded) ──────────────────────────────
+export function getStyleEmoji(style: InvestorStyle): string {
+  return STYLE_CONTENT[style]?.emoji || '\uD83C\uDFDB\uFE0F';
+}
+
+// risk color tokens
+export const RISK_COLORS: Record<string, string> = {
+  conservative: '#10b981',
+  moderate: '#22d3ee',
+  aggressive: '#f59e0b',
+} as const;
+
+export const RISK_LABELS: Record<string, string> = {
+  Conservative: 'CONSERVATIVE',
+  Moderate: 'MODERATE',
+  Aggressive: 'AGGRESSIVE',
+} as const;
+
+// ─── Quiz Questions ──────────────────────────────────────────
 
 export interface QuizQuestion {
   id: string;
+  label: string;
   question: string;
   options: { key: string; text: string }[];
 }
@@ -177,57 +192,72 @@ export interface QuizQuestion {
 export const QUIZ_QUESTIONS: QuizQuestion[] = [
   {
     id: 'q1',
-    question: "You find a promising company nobody's talking about. What's your move?",
+    label: 'HOW YOU THINK',
+    question: "You spot a promising company nobody's talking about yet. What's your instinct?",
     options: [
-      { key: 'A', text: 'Deep research: cash flow, competitive moat, management quality. Patience wins.' },
-      { key: 'B', text: 'Check momentum and technicals. Is there a reason it\'s undervalued right now?' },
-      { key: 'C', text: 'Analyze macro environment. Is this a contrarian setup others are missing?' },
-      { key: 'D', text: 'Assess competitive position, management incentives, and business rationality.' },
-      { key: 'E', text: 'Research the growth story and earnings trajectory. Fundamentals catch up.' },
+      { key: 'A', text: "I dig deep — cash flow, competitive moat, management. If it checks out, I'm patient." },
+      { key: 'B', text: 'I check the setup. If momentum and technicals line up, timing is everything.' },
+      { key: 'C', text: 'I look for the contrarian angle. What is everyone else missing here?' },
+      { key: 'D', text: 'I assess the business rationally — competitive position, incentives, and long-term logic.' },
+      { key: 'E', text: "I follow the growth story. Strong earnings trajectory means the market will catch up eventually." },
     ],
   },
   {
     id: 'q2',
-    question: 'You made a conviction bet. Early signs suggest you might be wrong. What happens?',
+    label: 'HOW YOU HANDLE BEING WRONG',
+    question: 'You made a conviction bet. Early signs suggest you might be wrong. What happens next?',
     options: [
-      { key: 'A', text: 'Double down if the thesis is intact. Conviction means weathering the noise.' },
-      { key: 'B', text: 'Cut losses quickly. Capital efficiency matters more than being right.' },
-      { key: 'C', text: 'Deep analysis before deciding. Conviction needs evidence.' },
-      { key: 'D', text: 'Wait. The market hasn\'t proven me wrong yet — timing and setup still matter.' },
-      { key: 'E', text: 'Look for reflexive patterns. Are others panicking into opportunity?' },
+      { key: 'A', text: 'I hold if the thesis is intact. Real conviction means weathering the noise.' },
+      { key: 'B', text: 'I cut quickly. Being wrong fast is better than being wrong slowly.' },
+      { key: 'C', text: 'I go back to first principles before doing anything. Conviction needs proof.' },
+      { key: 'D', text: "I wait for the market to show me more. One data point isn't a verdict." },
+      { key: 'E', text: "I look at who's panicking and why. Others' fear might be my opportunity." },
     ],
   },
   {
     id: 'q3',
-    question: 'You have capital but five great ideas. How do you allocate?',
+    label: 'HOW YOU SIZE UP',
+    question: 'You have capital ready and five genuinely great ideas. How do you decide where the money goes?',
     options: [
-      { key: 'A', text: 'Concentrate in highest-conviction bets with the best risk/reward ratio.' },
-      { key: 'B', text: 'Diversify across all five. Reduce single-position risk.' },
-      { key: 'C', text: 'Size by growth trajectory and earnings surprise potential.' },
-      { key: 'D', text: 'Size by technical momentum and best entry opportunity.' },
-      { key: 'E', text: 'Analyze competitive moats and management quality. Best business wins more capital.' },
+      { key: 'A', text: 'Heavy into my top one or two. Concentration is how you win big.' },
+      { key: 'B', text: "Spread across all five. I'd rather reduce risk than maximize any single bet." },
+      { key: 'C', text: 'Largest position in the one with the best earnings surprise potential.' },
+      { key: 'D', text: 'I follow the momentum. Best technical setup gets the most capital.' },
+      { key: 'E', text: 'The one with the strongest competitive moat and best management gets the most.' },
     ],
   },
   {
     id: 'q4',
-    question: 'What information moves the needle most in your decisions?',
+    label: 'WHAT YOU TRUST',
+    question: "When it's time to make a big decision, what actually moves the needle?",
     options: [
-      { key: 'A', text: 'Competitive advantages and whether they\'ll persist long-term.' },
-      { key: 'B', text: 'Earnings growth and how the market has priced future expectations.' },
-      { key: 'C', text: 'Intrinsic value vs. market price. Cheap is enough.' },
-      { key: 'D', text: 'Technical patterns and momentum. Price leads fundamentals.' },
-      { key: 'E', text: 'Macro trends and where consensus is wrong.' },
+      { key: 'A', text: 'Whether the competitive advantages will still be there in 10 years.' },
+      { key: 'B', text: 'Earnings growth and how much of it the market has already priced in.' },
+      { key: 'C', text: "The gap between intrinsic value and price. If it's cheap enough, I don't need to be clever." },
+      { key: 'D', text: 'Price action and momentum. The tape usually knows before the news does.' },
+      { key: 'E', text: 'Where macro consensus is wrong. The biggest trades live in that gap.' },
     ],
   },
   {
     id: 'q5',
-    question: 'You have $10,000 to invest. How much volatility can you handle?',
+    label: 'HOW YOU SLEEP AT NIGHT',
+    question: "You have $10,000 invested. Markets get rough. What's your honest reaction?",
     options: [
-      { key: 'A', text: 'Small swings only. I prioritize stability over returns.' },
-      { key: 'B', text: 'Moderate swings are fine. 15-20% annual volatility doesn\'t bother me.' },
-      { key: 'C', text: 'I embrace volatility. 30%+ swings are part of the game.' },
+      { key: 'A', text: 'I check my positions carefully and lose some sleep. Stability matters more to me than upside.' },
+      { key: 'B', text: 'I keep an eye on things but stay calm. 15-20% swings are part of the game.' },
+      { key: 'C', text: 'I barely flinch. Volatility is just opportunity in disguise.' },
     ],
   },
+];
+
+// ─── All style pills for override ────────────────────────────
+
+export const ALL_STYLES: { id: InvestorStyle; emoji: string; name: string }[] = [
+  { id: 'buffett', emoji: '\uD83C\uDFDB\uFE0F', name: 'Buffett' },
+  { id: 'livermore', emoji: '\uD83D\uDCC8', name: 'Livermore' },
+  { id: 'lynch', emoji: '\uD83D\uDD0D', name: 'Lynch' },
+  { id: 'munger', emoji: '\uD83E\uDDE0', name: 'Munger' },
+  { id: 'soros', emoji: '\uD83C\uDF10', name: 'Soros' },
 ];
 
 // ─── LocalStorage ─────────────────────────────────────────────
@@ -235,7 +265,7 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
 const QUIZ_COMPLETE_KEY = 'vantage_quiz_complete';
 
 export function isQuizComplete(): boolean {
-  if (typeof window === 'undefined') return true; // Don't block SSR
+  if (typeof window === 'undefined') return true;
   try {
     return localStorage.getItem(QUIZ_COMPLETE_KEY) === 'true';
   } catch {
