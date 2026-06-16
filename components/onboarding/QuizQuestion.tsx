@@ -153,6 +153,9 @@ export function QuizQuestion({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'visible',
+          width: '100%',
+          minWidth: 0,
         }}
       >
         <AnswerCarousel

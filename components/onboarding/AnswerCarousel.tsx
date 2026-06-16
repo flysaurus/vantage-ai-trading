@@ -107,7 +107,7 @@ export function AnswerCarousel({
   const letters = ['A', 'B', 'C', 'D', 'E'];
 
   return (
-    <div>
+    <div style={{ width: '100%' }}>
       {/* Swipe hint (only when not hidden by parent) */}
       {!hideFooter && showSwipeHint && (
         <p
@@ -132,6 +132,7 @@ export function AnswerCarousel({
           display: 'flex',
           overflowX: 'scroll',
           scrollSnapType: 'x mandatory',
+          touchAction: 'pan-x',
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
           paddingLeft: '11vw',
