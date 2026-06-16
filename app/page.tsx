@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -18,6 +18,7 @@ import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext'
 import { useAuth } from '@/components/providers/AuthProvider';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
+import { BootSplash } from '@/components/onboarding/BootSplash';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
@@ -49,8 +50,19 @@ function AppShell() {
   const [chatMessages, setChatMessages] = useState<
     { role: 'user' | 'ai'; content: string }[]
   >([]);
+  const [showBootSplash, setShowBootSplash] = useState(true);
 
   const router = useRouter();
+
+  // ── Boot splash handler ───────────────────────────────────
+  const handleBootComplete = useCallback((route: 'main' | 'feature-splash' | 'quiz') => {
+    if (route === 'main') {
+      setShowBootSplash(false);
+    } else if (route === 'quiz') {
+      router.replace('/onboarding');
+    }
+    // 'feature-splash' shouldn't happen here (quiz already done)
+  }, [router]);
 
   // ── Quiz onboarding redirect (first-open only) ──
   useEffect(() => {
@@ -187,6 +199,11 @@ function AppShell() {
   // Prevents dashboard flicker when broker gate needs to appear.
   if (!isInitialized) {
     return null;
+  }
+
+  // Boot splash — shows once per app open for quiz-complete users
+  if (showBootSplash) {
+    return <BootSplash onComplete={handleBootComplete} />;
   }
 
   // Onboarding overlay

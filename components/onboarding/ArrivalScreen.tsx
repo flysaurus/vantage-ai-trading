@@ -1,15 +1,19 @@
 // ─── ArrivalScreen ──────────────────────────────────────────
-// Full-screen immersive intro shown before the quiz.
+// Full-screen immersive intro shown after Feature Splash.
+//
+// NOTE: The compass mark is already positioned at top-center
+// (56px, idle-rotating) from the Feature Splash → Arrival
+// transition. This screen starts directly at the typewriter
+// phase — no compass burst, no repositioning.
 //
 // Sequence:
-// 1. Compass burst animation (0-1200ms)
-// 2. Compass moves to top, typewriter text plays (1200ms+)
-// 3. CTA button fades in
+//   1. Typewriter lines play immediately
+//   2. CTA fades in after all lines complete
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { CompassBurst } from '@/lib/animations/compass-burst';
+import React, { useState, useEffect, useRef } from 'react';
+import { CompassMark } from '@/components/brand/CompassMark';
 import { useTypewriter } from '@/lib/animations/typewriter';
 
 interface ArrivalScreenProps {
@@ -23,20 +27,11 @@ const LINE_4 = 'Soros bets against the world.';
 const LINE_5 = "Let's find yours.";
 
 export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
-  const [animationPhase, setAnimationPhase] = useState<'compassBurst' | 'compassRest' | 'typewriter' | 'cta' | 'done'>('compassBurst');
+  const [animationPhase, setAnimationPhase] = useState<'typewriter' | 'cta' | 'done'>('typewriter');
   const [currentTypeLine, setCurrentTypeLine] = useState(0);
 
+  // Typewriter line sequencing — starts immediately
   useEffect(() => {
-    // Phase: compass burst completes → move to typewriter
-    const t1 = setTimeout(() => setAnimationPhase('typewriter'), 1600);
-    return () => clearTimeout(t1);
-  }, []);
-
-  // Typewriter line sequencing
-  useEffect(() => {
-    if (animationPhase !== 'typewriter') return;
-
-    // Line 1 types (35ms/char, ~24 chars ≈ 840ms)
     const nextLine = (index: number) => {
       if (index > 4) {
         // All lines done, show CTA
@@ -46,7 +41,6 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
 
       const speeds = [35, 30, 30, 30, 40];
       const pauses = [700, 200, 200, 900, 0];
-
       const chars = [LINE_1, LINE_2, LINE_3, LINE_4, LINE_5][index];
       const typeTime = chars.length * speeds[index];
 
@@ -62,37 +56,25 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
     };
 
     nextLine(0);
-  }, [animationPhase]);
+  }, []);
 
-  // Current display text for the active typewriter line
   const { displayText: line1Text } = useTypewriter(
-    animationPhase === 'typewriter' ? LINE_1 : '',
-    35,
-    animationPhase === 'typewriter' ? 0 : 999999,
+    LINE_1, 35, 0,
   );
-  const { displayText: line2Text, isDone: line2Done } = useTypewriter(
-    currentTypeLine >= 1 ? LINE_2 : '',
-    30,
-    currentTypeLine >= 1 ? 700 : 999999,
+  const { displayText: line2Text } = useTypewriter(
+    currentTypeLine >= 1 ? LINE_2 : '', 30, currentTypeLine >= 1 ? 700 : 999999,
   );
-  const { displayText: line3Text, isDone: line3Done } = useTypewriter(
-    currentTypeLine >= 2 ? LINE_3 : '',
-    30,
-    currentTypeLine >= 2 ? 200 : 999999,
+  const { displayText: line3Text } = useTypewriter(
+    currentTypeLine >= 2 ? LINE_3 : '', 30, currentTypeLine >= 2 ? 200 : 999999,
   );
-  const { displayText: line4Text, isDone: line4Done } = useTypewriter(
-    currentTypeLine >= 3 ? LINE_4 : '',
-    30,
-    currentTypeLine >= 3 ? 200 : 999999,
+  const { displayText: line4Text } = useTypewriter(
+    currentTypeLine >= 3 ? LINE_4 : '', 30, currentTypeLine >= 3 ? 200 : 999999,
   );
   const { displayText: line5Text } = useTypewriter(
-    currentTypeLine >= 4 ? LINE_5 : '',
-    40,
-    currentTypeLine >= 4 ? 900 : 999999,
+    currentTypeLine >= 4 ? LINE_5 : '', 40, currentTypeLine >= 4 ? 900 : 999999,
   );
 
   const showCta = animationPhase === 'cta' || animationPhase === 'done';
-  const compassSmall = animationPhase !== 'compassBurst';
 
   return (
     <div
@@ -104,88 +86,80 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: compassSmall ? 'flex-start' : 'center',
-        paddingTop: compassSmall ? 'max(80px, env(safe-area-inset-top, 20px) + 40px)' : 0,
         overflow: 'hidden',
       }}
     >
-      {/* Main compass / burst */}
+      {/* Compass mark — already in position from Feature Splash transition */}
       <div
         style={{
-          transform: compassSmall ? 'scale(0.5) translateY(-20px)' : 'scale(1)',
-          transition: 'transform 400ms ease-in-out',
-          marginBottom: compassSmall ? '12px' : '0',
+          marginTop: 'max(80px, env(safe-area-inset-top, 20px) + 40px)',
+          display: 'flex',
+          justifyContent: 'center',
         }}
       >
-        <CompassBurst
-          size={compassSmall ? 80 : 120}
-          particleLength={compassSmall ? 40 : 60}
-          onComplete={() => {}}
-        />
+        <CompassMark size={56} showBurst={false} glow idleRotate />
       </div>
 
       {/* Typewriter text area */}
-      {(animationPhase === 'typewriter' || animationPhase === 'cta' || animationPhase === 'done') && (
+      <div
+        style={{
+          width: '100%',
+          padding: '0 32px',
+          textAlign: 'center',
+          marginTop: '24px',
+        }}
+      >
+        {/* Line 1 */}
         <div
           style={{
-            width: '100%',
-            padding: '0 32px',
-            textAlign: 'center',
-            marginTop: '16px',
+            fontSize: '22px',
+            fontWeight: 600,
+            color: '#ffffff',
+            minHeight: '32px',
+            marginBottom: '20px',
           }}
         >
-          {/* Line 1 */}
-          <div
-            style={{
-              fontSize: '22px',
-              fontWeight: 600,
-              color: '#ffffff',
-              minHeight: '32px',
-              marginBottom: '20px',
-            }}
-          >
-            {line1Text}
-            {animationPhase === 'typewriter' && currentTypeLine === 0 && (
-              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-            )}
-          </div>
-
-          {/* Lines 2-4 */}
-          <div style={{ marginBottom: '16px' }}>
-            {[line2Text, line3Text, line4Text].map((text, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: '16px',
-                  color: '#64748b',
-                  minHeight: '24px',
-                  marginBottom: '4px',
-                }}
-              >
-                {text}
-                {currentTypeLine === i + 1 && animationPhase === 'typewriter' && (
-                  <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Line 5 */}
-          <div
-            style={{
-              fontSize: '22px',
-              fontWeight: 600,
-              color: '#ffffff',
-              minHeight: '32px',
-            }}
-          >
-            {line5Text}
-            {currentTypeLine === 4 && animationPhase === 'typewriter' && (
-              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-            )}
-          </div>
+          {line1Text}
+          {currentTypeLine === 0 && (
+            <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+          )}
         </div>
-      )}
+
+        {/* Lines 2-4 */}
+        <div style={{ marginBottom: '16px' }}>
+          {[line2Text, line3Text, line4Text].map((text, i) => (
+            <div
+              key={i}
+              style={{
+                fontSize: '16px',
+                color: '#64748b',
+                minHeight: '24px',
+                marginBottom: '4px',
+              }}
+            >
+              {text}
+              {currentTypeLine === i + 1 && (
+                <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Line 5 */}
+        <div
+          style={{
+            fontSize: '22px',
+            fontWeight: 600,
+            color: '#ffffff',
+            minHeight: '32px',
+          }}
+        >
+          {line5Text}
+          {currentTypeLine === 4 && (
+            <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+          )}
+        </div>
+      </div>
 
       {/* CTA */}
       {showCta && (
