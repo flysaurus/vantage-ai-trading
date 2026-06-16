@@ -10,7 +10,9 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 
-const PUBLIC_PATHS = ['/login', '/login-test', '/signup', '/verify-email', '/forgot-password', '/reset-password'];
+// Root ('/') and onboarding are completely public — no auth required.
+// Quiz check + demo mode gate in app/page.tsx (client-side only).
+const PUBLIC_PATHS = ['/', '/onboarding', '/login', '/login-test', '/signup', '/verify-email', '/forgot-password', '/reset-password'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
