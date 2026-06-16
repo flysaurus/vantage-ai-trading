@@ -5,16 +5,18 @@
 // idle-rotating). No compass burst — that's handled by
 // Boot Splash / Feature Splash transition.
 //
-// Structure:
-//   1. Fixed headline: "Every investor has a style." — fades in,
-//      stays on screen the entire sequence
-//   2. Support lines cycle beneath headline, one at a time,
-//      with tight 150ms gaps between lines:
-//      "Buffett waits decades." → "Livermore reads the tape."
-//      → "Soros bets against the world."
-//   3. Closing line: "Let's find yours." — lands at headline
-//      weight/size (confident close, not smaller)
-//   4. CTA: "Find my style →" + subtitle
+// Three-zone flex layout (full viewport):
+//   TOP zone: CompassMark 100px
+//   MIDDLE zone: flex:1, centered — fixed headline
+//     + cycling support lines + closing line as one block
+//   BOTTOM zone: CTA button + subtext, anchored near bottom
+//
+// Timing (retuned — deliberate, not rushed):
+//   Headline typed → hold 500ms → first support line
+//   Support typed → hold 450ms → fade 200ms → next support
+//   Last support → hold 400ms → closing line types in
+//   Closing typed → hold 400ms → CTA fades in
+//   Total ~5-6s to CTA
 
 'use client';
 
@@ -34,11 +36,18 @@ const SUPPORT_LINES = [
 ];
 const CLOSING_LINE = "Let's find yours.";
 
+// Timing constants
+const HEADLINE_HOLD = 500;      // after headline typed, before first support
+const SUPPORT_HOLD = 450;       // after each support typed, before fade out
+const SUPPORT_FADE = 200;       // fade out duration
+const CLOSING_PAUSE = 400;      // after last support fades, before closing types
+const CLOSING_HOLD = 400;       // after closing typed, before CTA
+
 export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
   const [phase, setPhase] = useState<'headline' | 'support' | 'closing' | 'cta' | 'done'>(
     'headline'
   );
-  const [supportIndex, setSupportIndex] = useState(-1); // -1 = none showing yet
+  const [supportIndex, setSupportIndex] = useState(-1);
   const headlineDone = useRef(false);
 
   const { displayText: headlineText, isDone: headlineTyped } = useTypewriter(
@@ -47,48 +56,40 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
     0,
   );
 
-  // ── Headline typed → show first support line ──────────────
+  // ── Headline typed → hold HEADLINE_HOLD → first support line
   useEffect(() => {
     if (headlineTyped && !headlineDone.current) {
       headlineDone.current = true;
       setTimeout(() => {
         setPhase('support');
         setSupportIndex(0);
-      }, 400);
+      }, HEADLINE_HOLD);
     }
   }, [headlineTyped]);
 
   // ── Support line sequencing ───────────────────────────────
-  const supportIndexRef = useRef(0);
-  useEffect(() => {
-    if (phase !== 'support') return;
-    supportIndexRef.current = supportIndex;
-  }, [phase, supportIndex]);
-
   useEffect(() => {
     if (phase !== 'support' || supportIndex < 0) return;
 
     const line = SUPPORT_LINES[supportIndex];
     const typeTime = line.length * 30;
-    const holdTime = 600;
-    const fadeTime = 200;
 
     if (supportIndex === SUPPORT_LINES.length - 1) {
-      // Last support line → close → closing line after 300ms pause
+      // Last support line → hold → fade → pause → closing
       const t = setTimeout(() => {
         setPhase('closing');
-      }, typeTime + holdTime + fadeTime + 300);
+      }, typeTime + SUPPORT_HOLD + SUPPORT_FADE + CLOSING_PAUSE);
       return () => clearTimeout(t);
     } else {
-      // Next support line after 150ms gap
+      // Next support line after hold + fade
       const t = setTimeout(() => {
         setSupportIndex((prev) => prev + 1);
-      }, typeTime + holdTime + fadeTime + 150);
+      }, typeTime + SUPPORT_HOLD + SUPPORT_FADE);
       return () => clearTimeout(t);
     }
   }, [phase, supportIndex]);
 
-  // ── Closing line typed → show CTA ────────────────────────
+  // ── Closing line typed → hold CLOSING_HOLD → CTA
   const { displayText: closingText, isDone: closingDone } = useTypewriter(
     phase === 'closing' ? CLOSING_LINE : '',
     35,
@@ -97,12 +98,12 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
 
   useEffect(() => {
     if (closingDone && phase === 'closing') {
-      const t = setTimeout(() => setPhase('cta'), 300);
+      const t = setTimeout(() => setPhase('cta'), CLOSING_HOLD);
       return () => clearTimeout(t);
     }
   }, [closingDone, phase]);
 
-  // ── Typewriter hook per support line ──────────────────────
+  // ── Typewriter hooks per support line ─────────────────────
   const { displayText: s0Text } = useTypewriter(
     supportIndex === 0 ? SUPPORT_LINES[0] : '',
     30,
@@ -135,145 +136,158 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+        height: '100dvh',
+        padding: '24px',
+        justifyContent: 'space-between',
         overflow: 'hidden',
       }}
     >
-      {/* Compass — 100px, idle-rotating, already positioned from Feature Splash */}
+      {/* ── TOP zone: Compass ─────────────────────────────── */}
       <div
         style={{
-          marginTop: 'max(64px, env(safe-area-inset-top, 20px) + 32px)',
           display: 'flex',
           justifyContent: 'center',
+          width: '100%',
+          paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
         }}
       >
         <CompassMark size={100} showBurst={false} glow idleRotate />
       </div>
 
-      {/* Fixed headline — fades in once, stays fixed */}
-      <h1
-        style={{
-          fontSize: 'var(--onb-headline-size)',
-          fontWeight: 'var(--onb-headline-weight)',
-          color: 'var(--onb-headline-color)',
-          textAlign: 'center',
-          marginTop: '28px',
-          marginBottom: '36px',
-          maxWidth: '320px',
-          padding: '0 24px',
-          opacity: 1,
-          transition: 'opacity 400ms ease',
-        }}
-      >
-        {headlineText}
-        {!headlineTyped && (
-          <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-        )}
-      </h1>
-
-      {/* Support lines container — fixed height, no layout jumps */}
+      {/* ── MIDDLE zone: headline + support/closing block ─── */}
       <div
         style={{
-          width: '100%',
-          maxWidth: '340px',
-          padding: '0 24px',
-          minHeight: '48px', // reserve space for the longest line
+          flex: 1,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          textAlign: 'center',
+          width: '100%',
+          maxWidth: '340px',
+          gap: '16px',
         }}
       >
-        {/* Support phase */}
-        {phase === 'support' && (
-          <p
-            key={supportIndex} // remounts per line for fresh fade-in
-            style={{
-              fontSize: 'var(--onb-body-size)',
-              fontWeight: 'var(--onb-body-weight)',
-              color: 'var(--onb-body-color)',
-              lineHeight: 'var(--onb-body-line-height)',
-              margin: 0,
-              animation: 'supportFadeIn 200ms ease',
-            }}
-          >
-            {currentSupportText}
-            <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-          </p>
-        )}
-
-        {/* Closing line — same weight/size as headline */}
-        {showClosing && (
-          <p
-            style={{
-              fontSize: 'var(--onb-headline-size)',
-              fontWeight: 'var(--onb-headline-weight)',
-              color: 'var(--onb-headline-color)',
-              lineHeight: 'var(--onb-body-line-height)',
-              margin: 0,
-              animation: phase === 'closing' ? 'supportFadeIn 200ms ease' : undefined,
-            }}
-          >
-            {closingText}
-            {!closingDone && (
-              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-            )}
-          </p>
-        )}
-      </div>
-
-      {/* CTA */}
-      {showCta && (
-        <div
+        {/* Fixed headline — fades in once, stays fixed */}
+        <h1
           style={{
-            position: 'absolute',
-            bottom: 'max(60px, env(safe-area-inset-bottom, 20px) + 32px)',
-            left: 0,
-            right: 0,
-            padding: '0 24px',
-            opacity: 0,
-            animation: 'fadeIn 400ms ease forwards',
+            fontSize: 'var(--onb-headline-size)',
+            fontWeight: 'var(--onb-headline-weight)',
+            color: 'var(--onb-headline-color)',
+            textAlign: 'center',
+            maxWidth: '320px',
+            margin: 0,
+            opacity: 1,
+            transition: 'opacity 400ms ease',
           }}
         >
-          <button
-            onClick={onFindStyle}
-            style={{
-              width: '100%',
-              padding: '16px 0',
-              background: '#22d3ee',
-              border: 'none',
-              borderRadius: '14px',
-              fontSize: '16px',
-              fontWeight: 600,
-              color: '#0a0f1e',
-              cursor: 'pointer',
-              transition: 'transform 0.15s ease',
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.transform = 'scale(0.97)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-          >
-            Find my style →
-          </button>
+          {headlineText}
+          {!headlineTyped && (
+            <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+          )}
+        </h1>
 
-          <p
+        {/* Support lines / closing line — fixed min-height, no jumps */}
+        <div
+          style={{
+            width: '100%',
+            minHeight: '48px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+          }}
+        >
+          {phase === 'support' && (
+            <p
+              key={supportIndex}
+              style={{
+                fontSize: 'var(--onb-body-size)',
+                fontWeight: 'var(--onb-body-weight)',
+                color: 'var(--onb-body-color)',
+                lineHeight: 'var(--onb-body-line-height)',
+                margin: 0,
+                animation: 'supportFadeIn 200ms ease',
+              }}
+            >
+              {currentSupportText}
+              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+            </p>
+          )}
+
+          {showClosing && (
+            <p
+              style={{
+                fontSize: 'var(--onb-headline-size)',
+                fontWeight: 'var(--onb-headline-weight)',
+                color: 'var(--onb-headline-color)',
+                lineHeight: 'var(--onb-body-line-height)',
+                margin: 0,
+                animation: phase === 'closing' ? 'supportFadeIn 200ms ease' : undefined,
+              }}
+            >
+              {closingText}
+              {!closingDone && (
+                <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+              )}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── BOTTOM zone: CTA ──────────────────────────────── */}
+      <div
+        style={{
+          width: '100%',
+          paddingBottom: 'max(4px, env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        {showCta && (
+          <div
             style={{
-              fontSize: '13px',
-              color: 'var(--onb-body-color)',
-              textAlign: 'center',
-              marginTop: '16px',
               opacity: 0,
               animation: 'fadeIn 400ms ease forwards',
-              animationDelay: '200ms',
             }}
           >
-            Takes 2 minutes. No account needed.
-          </p>
-        </div>
-      )}
+            <button
+              onClick={onFindStyle}
+              style={{
+                width: '100%',
+                padding: '16px 0',
+                background: '#22d3ee',
+                border: 'none',
+                borderRadius: '14px',
+                fontSize: '16px',
+                fontWeight: 600,
+                color: '#0a0f1e',
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease',
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.97)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              Find my style →
+            </button>
+
+            <p
+              style={{
+                fontSize: '13px',
+                color: 'var(--onb-body-color)',
+                textAlign: 'center',
+                marginTop: '16px',
+                opacity: 0,
+                animation: 'fadeIn 400ms ease forwards',
+                animationDelay: '200ms',
+              }}
+            >
+              Takes 2 minutes. No account needed.
+            </p>
+          </div>
+        )}
+      </div>
 
       <style>{`
         @keyframes fadeIn {

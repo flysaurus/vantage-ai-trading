@@ -25,12 +25,16 @@ interface AnswerCarouselProps {
   answers: AnswerOption[];
   onSelect: (key: string) => void;
   isFirstQuestion: boolean;
+  hideFooter?: boolean;
+  onActiveIndexChange?: (index: number) => void;
 }
 
 export function AnswerCarousel({
   answers,
   onSelect,
   isFirstQuestion,
+  hideFooter = false,
+  onActiveIndexChange,
 }: AnswerCarouselProps) {
   const { containerRef, registerCard, activeIndex, scrollToIndex } =
     useCarouselScroll({ cardCount: answers.length });
@@ -46,16 +50,21 @@ export function AnswerCarousel({
     setEntranceKey((k) => k + 1);
   }, [answers]);
 
+  // Notify parent of active index changes (for external dots rendering)
+  useEffect(() => {
+    onActiveIndexChange?.(activeIndex);
+  }, [activeIndex, onActiveIndexChange]);
+
   // Swipe hint visibility
   useEffect(() => {
-    if (!isFirstQuestion) return;
+    if (!isFirstQuestion || hideFooter) return;
     const alreadyShown =
       typeof window !== 'undefined' &&
       sessionStorage.getItem('vantage_swipe_hint_shown') === 'true';
     if (!alreadyShown) {
       setShowSwipeHint(true);
     }
-  }, [isFirstQuestion]);
+  }, [isFirstQuestion, hideFooter]);
 
   // On first scroll, hide the swipe hint permanently
   useEffect(() => {
@@ -99,8 +108,8 @@ export function AnswerCarousel({
 
   return (
     <div>
-      {/* Swipe hint */}
-      {showSwipeHint && (
+      {/* Swipe hint (only when not hidden by parent) */}
+      {!hideFooter && showSwipeHint && (
         <p
           style={{
             fontSize: '13px',
@@ -211,8 +220,10 @@ export function AnswerCarousel({
         })}
       </div>
 
-      {/* Dot indicator */}
-      <CarouselDots total={answers.length} activeIndex={activeIndex} />
+      {/* Dot indicator (only when not hidden by parent) */}
+      {!hideFooter && (
+        <CarouselDots total={answers.length} activeIndex={activeIndex} />
+      )}
 
       {/* Hide scrollbar + card pop keyframes */}
       <style>{`
