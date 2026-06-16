@@ -18,7 +18,8 @@ import { getDemoAccount } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
 
 const STORAGE_KEY = 'vantage_demo_state_v3';
-const PENDING_KEY = 'vantage_pending_baskets_v2';
+const PENDING_KEY = 'vantage_pending_baskets';
+const BASKET_POSITIONS_KEY = 'vantage_basket_positions_v1';
 const STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export class DemoBroker implements BrokerEngine {
@@ -420,6 +421,36 @@ export class DemoBroker implements BrokerEngine {
     // Market closed — store as pending
     await this.saveState();
 
+    const now = new Date().toISOString();
+    const nextOpenLabel = this.getNextOpenLabel();
+
+    // Save pending positions to basket_positions key so loadBaskets() finds them
+    try {
+      if (typeof window !== 'undefined') {
+        const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
+        const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
+        for (const s of executionPlan) {
+          savedPositions.push({
+            id: crypto.randomUUID(),
+            basketId: req.basketId,
+            basketName: req.basketName,
+            basketEmoji: req.basketEmoji,
+            basketDisplayName: req.basketDisplayName,
+            symbol: s.symbol,
+            shares: 0,
+            avgCost: 0,
+            totalCost: s.dollarAmount,
+            allocationPct: s.allocationPct,
+            status: 'pending',
+            boughtAt: now,
+            nextOpenLabel,
+            reservedAmount: s.dollarAmount,
+          });
+        }
+        localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(savedPositions));
+      }
+    } catch { /* ignore */ }
+
     // Save to pending baskets key (legacy compat)
     try {
       if (typeof window !== 'undefined') {
@@ -433,8 +464,8 @@ export class DemoBroker implements BrokerEngine {
           stocks: executionPlan,
           totalReserved: totalCost,
           status: 'OPEN',
-          submittedAt: new Date().toISOString(),
-          nextOpenLabel: this.getNextOpenLabel(),
+          submittedAt: now,
+          nextOpenLabel,
         });
         localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
       }
@@ -485,6 +516,27 @@ export class DemoBroker implements BrokerEngine {
     bo.status = 'CANCELLED';
     bo.cancelledAt = new Date().toISOString();
     await this.saveState();
+
+    // Clean up pending basket positions for this cancelled basket
+    try {
+      if (typeof window !== 'undefined') {
+        // Remove from basket_positions
+        const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
+        if (rawPos) {
+          const saved = JSON.parse(rawPos);
+          const kept = saved.filter((p: any) => !(p.basketId === bo.basketId && p.status === 'pending'));
+          localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(kept));
+        }
+        // Remove from pending baskets
+        const raw = localStorage.getItem(PENDING_KEY);
+        if (raw) {
+          const pending = JSON.parse(raw);
+          const kept = pending.filter((pb: any) => pb.id !== basketOrderId);
+          localStorage.setItem(PENDING_KEY, JSON.stringify(kept));
+        }
+      }
+    } catch { /* ignore */ }
+
     return { success: true };
   }
 
@@ -565,6 +617,51 @@ export class DemoBroker implements BrokerEngine {
 
     if (filled > 0) {
       await this.saveState();
+
+      // Update basket_positions: pending → active with real fill data
+      const executedBasketIds = new Set(
+        pendingBaskets.filter(b => b.status === 'FILLED').map(b => b.basketId)
+      );
+      try {
+        if (typeof window !== 'undefined' && executedBasketIds.size > 0) {
+          const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
+          const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
+          const updated = savedPositions.map((p: any) => {
+            if (p.status === 'pending' && executedBasketIds.has(p.basketId)) {
+              const filledOrder = this.state.orders.find(
+                (o: any) => o.symbol === p.symbol && o.basketOrderId && o.status === 'FILLED' && executedBasketIds.has(o.basketId)
+              );
+              if (filledOrder) {
+                return {
+                  ...p,
+                  status: 'active',
+                  shares: filledOrder.shares,
+                  avgCost: filledOrder.fillPrice,
+                  totalCost: filledOrder.totalCost,
+                  boughtAt: filledOrder.filledAt || p.boughtAt,
+                  nextOpenLabel: undefined,
+                  reservedAmount: undefined,
+                };
+              }
+            }
+            return p;
+          });
+          localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(updated));
+        }
+      } catch { /* ignore */ }
+
+      // Clean up pending baskets key for executed baskets
+      try {
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem(PENDING_KEY);
+          if (raw) {
+            const pending = JSON.parse(raw);
+            const kept = pending.filter((pb: any) => !executedBasketIds.has(pb.basketId || pb.id));
+            localStorage.setItem(PENDING_KEY, JSON.stringify(kept));
+          }
+        }
+      } catch { /* ignore */ }
+
       console.log(`[DemoBroker] Executed ${filled} pending orders`);
     }
     return filled;

@@ -670,13 +670,16 @@ export function PortfolioTab() {
           {baskets.map(basket => {
             const isExpanded = expandedBasket === basket.id;
             const isSellMode = basketSellMode[basket.id];
+            const isPending = basket.status === 'pending';
             const selCount = Object.values(basketSelected).filter(Boolean).length;
-            const allSel = basket.positions.filter(p => p.status === 'active').every(p => basketSelected[p.symbol]);
+            const allSel = basket.positions.filter(p => p.status === 'active' || p.status === 'pending').every(p => basketSelected[p.symbol]);
 
             return (
               <div key={basket.id} style={{
-                background: '#1a2235', border: '1px solid rgba(34,211,238,0.15)',
+                background: '#1a2235', border: isPending ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(34,211,238,0.15)',
                 borderRadius: '12px', marginBottom: '8px', overflow: 'hidden',
+                borderLeft: isPending ? '3px solid #f59e0b' : undefined,
+                opacity: isPending ? 0.85 : 1,
               }}>
                 {/* Header row */}
                 <div onClick={() => { setExpandedBasket(isExpanded ? null : basket.id); if (isExpanded) { setBasketSellMode(prev => ({ ...prev, [basket.id]: false })); setBasketSelected({}); } }} style={{
@@ -687,41 +690,56 @@ export function PortfolioTab() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '18px' }}>{basket.emoji}</span>
                       <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>{basket.name}</span>
+                      {isPending && (
+                        <span style={{ fontSize: '10px', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '1px 6px' }}>PENDING</span>
+                      )}
                       {basket.status === 'partial' && (
                         <span style={{ fontSize: '10px', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '1px 6px' }}>PARTIAL</span>
                       )}
                     </div>
                     <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '2px' }}>
-                      {basket.activeCount} of {basket.positionCount} positions
+                      {isPending
+                        ? <span style={{ color: '#f59e0b' }}>⏳ {basket.nextOpenLabel || 'awaiting market open'}</span>
+                        : `${basket.activeCount} of ${basket.positionCount} positions`
+                      }
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '16px' }}>
-                      ${basket.marketValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      ${isPending ? basket.totalCost.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : basket.marketValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </div>
-                    <div style={{ color: basket.totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px' }}>
-                      {basket.totalPnL >= 0 ? '+' : ''}${basket.totalPnL.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      {' '}({basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%)
-                    </div>
+                    {!isPending && (
+                      <div style={{ color: basket.totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px' }}>
+                        {basket.totalPnL >= 0 ? '+' : ''}${basket.totalPnL.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {' '}({basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%)
+                      </div>
+                    )}
+                    {isPending && (
+                      <div style={{ color: '#f59e0b', fontSize: '11px' }}>reserved</div>
+                    )}
                   </div>
                 </div>
 
                 {/* Expanded view */}
                 {isExpanded && (
                   <>
-                    {/* Sell mode toggle */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <span style={{ color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{basket.activeCount} positions</span>
-                      <button onClick={(e) => { e.stopPropagation(); setBasketSellMode(prev => ({ ...prev, [basket.id]: !isSellMode })); setBasketSelected({}); }} style={{
-                        color: '#ef4444', background: 'none', border: '1px solid rgba(239,68,68,0.3)',
-                        borderRadius: '6px', padding: '3px 10px', fontSize: '12px', cursor: 'pointer',
-                      }}>{isSellMode ? 'Cancel' : 'Sell Positions'}</button>
-                    </div>
+                    {/* Sell mode toggle — hidden for pending baskets */}
+                    {!isPending && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span style={{ color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{basket.activeCount} positions</span>
+                        <button onClick={(e) => { e.stopPropagation(); setBasketSellMode(prev => ({ ...prev, [basket.id]: !isSellMode })); setBasketSelected({}); }} style={{
+                          color: '#ef4444', background: 'none', border: '1px solid rgba(239,68,68,0.3)',
+                          borderRadius: '6px', padding: '3px 10px', fontSize: '12px', cursor: 'pointer',
+                        }}>{isSellMode ? 'Cancel' : 'Sell Positions'}</button>
+                      </div>
+                    )}
 
                     {/* Position rows */}
-                    {basket.positions.filter(p => p.status === 'active').map(pos => (
+                    {basket.positions.filter(p => p.status === 'active' || p.status === 'pending').map(pos => {
+                      const isPosPending = pos.status === 'pending';
+                      return (
                       <div key={pos.symbol} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid rgba(255,255,255,0.04)', gap: '10px' }}>
-                        {isSellMode && (
+                        {isSellMode && !isPosPending && (
                           <input type="checkbox"
                             checked={basketSelected[pos.symbol] || false}
                             onChange={() => { setBasketSelected(prev => ({ ...prev, [pos.symbol]: !prev[pos.symbol] })); }}
@@ -731,18 +749,24 @@ export function PortfolioTab() {
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>{pos.symbol}</span>
-                            <span style={{ color: '#ffffff', fontWeight: '500' }}>${(pos.marketValue || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                            <span style={{ color: isPosPending ? '#f59e0b' : '#ffffff', fontWeight: '500' }}>
+                              ${isPosPending ? (pos.reservedAmount || pos.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : (pos.marketValue || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                            <span style={{ color: '#6b7280', fontSize: '11px' }}>{pos.shares.toFixed(4)}sh · {pos.allocationPct}%</span>
-                            <span style={{ color: (pos.totalPnL || 0) >= 0 ? '#10b981' : '#ef4444', fontSize: '11px' }}>
-                              {(pos.totalPnL || 0) >= 0 ? '+' : ''}${(pos.totalPnL || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              {' '}({(pos.totalPnLPct || 0).toFixed(1)}%)
+                            <span style={{ color: '#6b7280', fontSize: '11px' }}>
+                              {isPosPending ? '⏳ pending' : `${pos.shares.toFixed(4)}sh · ${pos.allocationPct}%`}
                             </span>
+                            {!isPosPending && (
+                              <span style={{ color: (pos.totalPnL || 0) >= 0 ? '#10b981' : '#ef4444', fontSize: '11px' }}>
+                                {(pos.totalPnL || 0) >= 0 ? '+' : ''}${(pos.totalPnL || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                {' '}({(pos.totalPnLPct || 0).toFixed(1)}%)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )})}
 
                     {/* Sell mode footer */}
                     {isSellMode && (

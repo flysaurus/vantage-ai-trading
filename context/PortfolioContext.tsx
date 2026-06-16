@@ -41,13 +41,17 @@ export interface BasketPosition {
   avgCost: number;
   totalCost: number;
   allocationPct: number;
-  status: 'active' | 'partial' | 'closed';
+  status: 'active' | 'partial' | 'closed' | 'pending';
   boughtAt: string;
   currentPrice?: number;
   marketValue?: number;
   totalPnL?: number;
   totalPnLPct?: number;
   dailyPnL?: number;
+  /** For pending baskets: when the order will execute */
+  nextOpenLabel?: string;
+  /** Cash reserved for pending order */
+  reservedAmount?: number;
 }
 
 export interface Basket {
@@ -62,8 +66,9 @@ export interface Basket {
   dailyPnL: number;
   positionCount: number;
   activeCount: number;
-  status: 'active' | 'partial' | 'closed';
+  status: 'active' | 'partial' | 'closed' | 'pending';
   boughtAt: string;
+  nextOpenLabel?: string;
 }
 
 // ─── Demo-only types ───────────────────────────────────────
@@ -486,8 +491,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // ── Broker initialization ──
   useEffect(() => {
     brokerRef.current = getBroker('demo', user?.id);
-    brokerRef.current.getPositions().then(p => {
-      if (p.length > 0) refreshStateFromBroker();
+    // Always sync broker state to React — even with no positions (e.g. pending basket orders)
+    brokerRef.current.getPositions().then(() => {
+      refreshStateFromBroker();
     });
   }, [refreshStateFromBroker, user?.id]);
 
@@ -609,7 +615,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       // Build Basket objects
       const basketList = Object.entries(grouped).map(([basketId, posList]) => {
         const active = posList.filter(p => p.status === 'active');
-        const totalCost = posList.reduce((sum, p) => sum + p.totalCost, 0);
+        const pending = posList.filter(p => p.status === 'pending');
+        const totalCost = posList.reduce((sum, p) => sum + (p.totalCost || p.reservedAmount || 0), 0);
+        const allPending = pending.length === posList.length;
+        const allClosed = posList.every(p => p.status === 'closed');
 
         return {
           id: basketId,
@@ -617,18 +626,21 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           emoji: posList[0].basketEmoji,
           positions: posList,
           totalCost,
-          marketValue: 0,
+          marketValue: allPending ? 0 : 0,
           totalPnL: 0,
           totalPnLPct: 0,
           dailyPnL: 0,
           positionCount: posList.length,
           activeCount: active.length,
-          status: active.length === 0
-            ? 'closed' as const
-            : active.length < posList.length
-              ? 'partial' as const
-              : 'active' as const,
+          status: allPending
+            ? 'pending' as const
+            : allClosed
+              ? 'closed' as const
+              : active.length < posList.length
+                ? 'partial' as const
+                : 'active' as const,
           boughtAt: posList[0].boughtAt,
+          nextOpenLabel: pending.length > 0 ? posList.find(p => p.nextOpenLabel)?.nextOpenLabel : undefined,
         };
       });
 
