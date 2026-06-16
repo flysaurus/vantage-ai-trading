@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/auth/supabase-server';
 import { createServerClient } from '@/lib/supabase';
 import { getOrCreateProfile } from '@/lib/auth/session';
-import { verifyAnonId } from '@/app/api/auth/send-magic-link/route';
+import { verifyAnonId } from '@/lib/auth/magic-link';
 import { generateSessionToken, hashSessionToken } from '@/lib/crypto';
 
 const ANON_COOKIE = 'vantage-anon-id';

@@ -12,35 +12,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/auth/supabase-server';
-import crypto from 'crypto';
+import { signAnonId } from '@/lib/auth/magic-link';
 
 // Cookie name for the anonymous ID during magic link flow
 const ANON_COOKIE = 'vantage-anon-id';
 const ANON_COOKIE_MAX_AGE = 15 * 60; // 15 minutes — same as magic link expiry
-
-/**
- * Signs the anonymous ID to prevent tampering.
- * Uses HMAC-SHA256 with SESSION_SECRET.
- */
-function signAnonId(anonymousId: string): string {
-  const secret = process.env.SESSION_SECRET || 'vantage-dev-secret';
-  const hmac = crypto.createHmac('sha256', secret);
-  hmac.update(anonymousId);
-  return `${anonymousId}.${hmac.digest('hex')}`;
-}
-
-/**
- * Verifies a signed anonymous ID.
- * Returns the original ID if valid, null if tampered.
- */
-export function verifyAnonId(signed: string): string | null {
-  const dotIndex = signed.lastIndexOf('.');
-  if (dotIndex === -1) return null;
-
-  const id = signed.slice(0, dotIndex);
-  const expected = signAnonId(id);
-  return expected === signed ? id : null;
-}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
