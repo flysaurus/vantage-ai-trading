@@ -48,6 +48,7 @@ export default function OnboardingPage() {
   const [screen, setScreen] = useState<Screen>('boot');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
+  const [navDirection, setNavDirection] = useState<'forward' | 'backward'>('forward');
   const [userName, setUserName] = useState('');
   const [result, setResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
 
@@ -89,6 +90,7 @@ export default function OnboardingPage() {
   const handleAnswer = useCallback((key: string) => {
     const newAnswers = [...answers, key];
     setAnswers(newAnswers);
+    setNavDirection('forward');
 
     if (newAnswers.length < QUIZ_QUESTIONS.length) {
       setTimeout(() => {
@@ -102,6 +104,14 @@ export default function OnboardingPage() {
       }, 400);
     }
   }, [answers]);
+
+  // ── Back navigation ────────────────────────────────────────
+
+  const handleBack = useCallback(() => {
+    setNavDirection('backward');
+    setAnswers((prev) => prev.slice(0, -1));
+    setQuestionIndex((prev) => prev - 1);
+  }, []);
 
   // ── Name captured ──────────────────────────────────────────
 
@@ -182,43 +192,15 @@ export default function OnboardingPage() {
 
   if (screen === 'quiz' && questionIndex < QUIZ_QUESTIONS.length) {
     return (
-      <div style={quizBackground}>
-        {questionIndex > 0 && (
-          <button
-            onClick={() => {
-              setAnswers(prev => prev.slice(0, -1));
-              setQuestionIndex(prev => prev - 1);
-            }}
-            style={{
-              position: 'absolute',
-              top: 'max(16px, env(safe-area-inset-top, 16px))',
-              left: '16px',
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              fontSize: '14px',
-              cursor: 'pointer',
-              padding: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              zIndex: 10,
-            }}
-          >
-            ← Back
-          </button>
-        )}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-          <QuizQuestion
-            key={QUIZ_QUESTIONS[questionIndex].id}
-            question={QUIZ_QUESTIONS[questionIndex]}
-            questionNumber={questionIndex + 1}
-            totalQuestions={QUIZ_QUESTIONS.length}
-            onAnswer={handleAnswer}
-            direction="forward"
-          />
-        </div>
-      </div>
+      <QuizQuestion
+        key={QUIZ_QUESTIONS[questionIndex].id}
+        question={QUIZ_QUESTIONS[questionIndex]}
+        questionNumber={questionIndex + 1}
+        totalQuestions={QUIZ_QUESTIONS.length}
+        onAnswer={handleAnswer}
+        onBack={questionIndex > 0 ? handleBack : undefined}
+        direction={navDirection}
+      />
     );
   }
 

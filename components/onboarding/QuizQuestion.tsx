@@ -6,8 +6,8 @@
 //   TOP zone: progress bar + question label + question text
 //     (static, not flex-centered — anchored near top)
 //   MIDDLE zone: flex:1, centered — AnswerCarousel scroll area
-//   BOTTOM zone: swipe hint (Q1 only) + carousel dots,
-//     anchored near bottom (28px padding)
+//   BOTTOM zone: swipe hint (Q1 only) → dots → back button
+//     anchored near bottom (24px padding)
 //
 // Slide transition between questions: 320ms ease-in-out
 
@@ -23,6 +23,7 @@ interface QuizQuestionProps {
   questionNumber: number;
   totalQuestions: number;
   onAnswer: (key: string) => void;
+  onBack?: () => void;
   direction: 'forward' | 'backward';
 }
 
@@ -31,12 +32,13 @@ export function QuizQuestion({
   questionNumber,
   totalQuestions,
   onAnswer,
+  onBack,
   direction,
 }: QuizQuestionProps) {
   const [visible, setVisible] = useState(false);
   const [carouselActiveIndex, setCarouselActiveIndex] = useState(0);
 
-  // ── Swipe hint logic (duplicated from AnswerCarousel when hideFooter is used)
+  // ── Swipe hint logic ──────────────────────────────────────
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const [hintFading, setHintFading] = useState(false);
 
@@ -71,6 +73,7 @@ export function QuizQuestion({
   }, [question.id]);
 
   const progress = (questionNumber / totalQuestions) * 100;
+  const isFirstQuestion = questionNumber === 1;
 
   return (
     <div
@@ -79,7 +82,7 @@ export function QuizQuestion({
         height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        padding: '24px 24px 28px 24px',
+        padding: '24px 24px 24px 24px',
         transform: visible
           ? 'translateX(0)'
           : direction === 'forward'
@@ -89,7 +92,7 @@ export function QuizQuestion({
         transition: 'transform 320ms ease-in-out, opacity 320ms ease-in-out',
       }}
     >
-      {/* ── TOP zone: progress + question ──────────────────── */}
+      {/* ── TOP zone: progress + label + question ──────────── */}
       <div
         style={{
           flexShrink: 0,
@@ -118,7 +121,7 @@ export function QuizQuestion({
           />
         </div>
 
-        {/* Question label */}
+        {/* Question label + counter */}
         <p
           style={{
             fontSize: '11px',
@@ -129,7 +132,7 @@ export function QuizQuestion({
             letterSpacing: '0.12em',
           }}
         >
-          {question.label}
+          {question.label} · {questionNumber} OF {totalQuestions}
         </p>
 
         {/* Question text */}
@@ -162,13 +165,13 @@ export function QuizQuestion({
           key={question.id}
           answers={question.options}
           onSelect={onAnswer}
-          isFirstQuestion={questionNumber === 1}
+          isFirstQuestion={isFirstQuestion}
           hideFooter
           onActiveIndexChange={setCarouselActiveIndex}
         />
       </div>
 
-      {/* ── BOTTOM zone: swipe hint + dots ─────────────────── */}
+      {/* ── BOTTOM zone: swipe hint → dots → back ──────────── */}
       <div
         style={{
           flexShrink: 0,
@@ -179,6 +182,7 @@ export function QuizQuestion({
           paddingBottom: 'max(0px, env(safe-area-inset-bottom, 0px))',
         }}
       >
+        {/* Swipe hint (Q1 only) */}
         {showSwipeHint && (
           <p
             style={{
@@ -194,10 +198,48 @@ export function QuizQuestion({
           </p>
         )}
 
+        {/* Dots */}
         <CarouselDots
           total={question.options.length}
           activeIndex={carouselActiveIndex}
         />
+
+        {/* Back button (Q2-Q5 only, left-aligned within bottom zone) */}
+        <div
+          style={{
+            width: '100%',
+            display: 'flex',
+            marginTop: '8px',
+          }}
+        >
+          {!isFirstQuestion && onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255,255,255,0.7)',
+                fontSize: '15px',
+                cursor: 'pointer',
+                padding: '8px 12px',
+                minHeight: '44px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                WebkitTapHighlightColor: 'transparent',
+                transition: 'opacity 150ms ease',
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.opacity = '0.6';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.opacity = '1';
+              }}
+            >
+              ← Back
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
