@@ -1,0 +1,23 @@
+/* ─── Onboarding Type Scale ────────────────────────────────
+   Scoped to onboarding screens only (Boot/Feature/Arrival/
+   Quiz/Result). Main app screens unaffected.
+
+   Imported in globals.css alongside tokens.css.
+   ────────────────────────────────────────────────────────── */
+
+:root {
+  --onb-headline-size: 30px;
+  --onb-headline-weight: 700;
+  --onb-headline-color: #ffffff;
+
+  --onb-body-size: 18px;
+  --onb-body-weight: 400;
+  --onb-body-color: rgba(255,255,255,0.82);
+  --onb-body-line-height: 1.5;
+
+  --onb-label-size: 12px;
+  --onb-label-color: rgba(34,211,238,0.85);
+
+  --onb-answer-size: 22px;
+  --onb-answer-line-height: 1.45;
+}

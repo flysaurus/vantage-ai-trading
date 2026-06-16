@@ -98,9 +98,9 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
           {/* Typewriter reveal text */}
           <h1
             style={{
-              fontSize: '28px',
-              fontWeight: 600,
-              color: '#ffffff',
+              fontSize: 'var(--onb-headline-size)',
+              fontWeight: 'var(--onb-headline-weight)',
+              color: 'var(--onb-headline-color)',
               textAlign: 'center',
               marginBottom: '12px',
               lineHeight: 1.3,
@@ -116,10 +116,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
           {/* Style description — fades in after typewriter */}
           <p
             style={{
-              fontSize: '16px',
-              color: '#94a3b8',
+              fontSize: 'var(--onb-body-size)',
+              color: 'var(--onb-body-color)',
               textAlign: 'center',
-              lineHeight: 1.6,
+              lineHeight: 'var(--onb-body-line-height)',
               maxWidth: '300px',
               marginBottom: '24px',
               opacity: typewriterDone ? 1 : 0,

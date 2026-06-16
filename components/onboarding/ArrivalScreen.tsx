@@ -1,14 +1,20 @@
 // ─── ArrivalScreen ──────────────────────────────────────────
 // Full-screen immersive intro shown after Feature Splash.
 //
-// NOTE: The compass mark is already positioned at top-center
-// (56px, idle-rotating) from the Feature Splash → Arrival
-// transition. This screen starts directly at the typewriter
-// phase — no compass burst, no repositioning.
+// Compass arrives already positioned at top-center (100px,
+// idle-rotating). No compass burst — that's handled by
+// Boot Splash / Feature Splash transition.
 //
-// Sequence:
-//   1. Typewriter lines play immediately
-//   2. CTA fades in after all lines complete
+// Structure:
+//   1. Fixed headline: "Every investor has a style." — fades in,
+//      stays on screen the entire sequence
+//   2. Support lines cycle beneath headline, one at a time,
+//      with tight 150ms gaps between lines:
+//      "Buffett waits decades." → "Livermore reads the tape."
+//      → "Soros bets against the world."
+//   3. Closing line: "Let's find yours." — lands at headline
+//      weight/size (confident close, not smaller)
+//   4. CTA: "Find my style →" + subtitle
 
 'use client';
 
@@ -20,61 +26,104 @@ interface ArrivalScreenProps {
   onFindStyle: () => void;
 }
 
-const LINE_1 = 'Every investor has a style.';
-const LINE_2 = 'Buffett waits decades.';
-const LINE_3 = 'Livermore reads the tape.';
-const LINE_4 = 'Soros bets against the world.';
-const LINE_5 = "Let's find yours.";
+const HEADLINE = 'Every investor has a style.';
+const SUPPORT_LINES = [
+  'Buffett waits decades.',
+  'Livermore reads the tape.',
+  'Soros bets against the world.',
+];
+const CLOSING_LINE = "Let's find yours.";
 
 export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
-  const [animationPhase, setAnimationPhase] = useState<'typewriter' | 'cta' | 'done'>('typewriter');
-  const [currentTypeLine, setCurrentTypeLine] = useState(0);
+  const [phase, setPhase] = useState<'headline' | 'support' | 'closing' | 'cta' | 'done'>(
+    'headline'
+  );
+  const [supportIndex, setSupportIndex] = useState(-1); // -1 = none showing yet
+  const headlineDone = useRef(false);
 
-  // Typewriter line sequencing — starts immediately
+  const { displayText: headlineText, isDone: headlineTyped } = useTypewriter(
+    HEADLINE,
+    35,
+    0,
+  );
+
+  // ── Headline typed → show first support line ──────────────
   useEffect(() => {
-    const nextLine = (index: number) => {
-      if (index > 4) {
-        // All lines done, show CTA
-        const ctaTimer = setTimeout(() => setAnimationPhase('cta'), 600);
-        return () => clearTimeout(ctaTimer);
-      }
+    if (headlineTyped && !headlineDone.current) {
+      headlineDone.current = true;
+      setTimeout(() => {
+        setPhase('support');
+        setSupportIndex(0);
+      }, 400);
+    }
+  }, [headlineTyped]);
 
-      const speeds = [35, 30, 30, 30, 40];
-      const pauses = [700, 200, 200, 900, 0];
-      const chars = [LINE_1, LINE_2, LINE_3, LINE_4, LINE_5][index];
-      const typeTime = chars.length * speeds[index];
+  // ── Support line sequencing ───────────────────────────────
+  const supportIndexRef = useRef(0);
+  useEffect(() => {
+    if (phase !== 'support') return;
+    supportIndexRef.current = supportIndex;
+  }, [phase, supportIndex]);
 
-      const timer = setTimeout(() => {
-        setCurrentTypeLine(index + 1);
-        const pauseTimer = setTimeout(() => {
-          nextLine(index + 1);
-        }, pauses[index]);
-        return () => clearTimeout(pauseTimer);
-      }, typeTime);
+  useEffect(() => {
+    if (phase !== 'support' || supportIndex < 0) return;
 
-      return () => clearTimeout(timer);
-    };
+    const line = SUPPORT_LINES[supportIndex];
+    const typeTime = line.length * 30;
+    const holdTime = 600;
+    const fadeTime = 200;
 
-    nextLine(0);
-  }, []);
+    if (supportIndex === SUPPORT_LINES.length - 1) {
+      // Last support line → close → closing line after 300ms pause
+      const t = setTimeout(() => {
+        setPhase('closing');
+      }, typeTime + holdTime + fadeTime + 300);
+      return () => clearTimeout(t);
+    } else {
+      // Next support line after 150ms gap
+      const t = setTimeout(() => {
+        setSupportIndex((prev) => prev + 1);
+      }, typeTime + holdTime + fadeTime + 150);
+      return () => clearTimeout(t);
+    }
+  }, [phase, supportIndex]);
 
-  const { displayText: line1Text } = useTypewriter(
-    LINE_1, 35, 0,
+  // ── Closing line typed → show CTA ────────────────────────
+  const { displayText: closingText, isDone: closingDone } = useTypewriter(
+    phase === 'closing' ? CLOSING_LINE : '',
+    35,
+    0,
   );
-  const { displayText: line2Text } = useTypewriter(
-    currentTypeLine >= 1 ? LINE_2 : '', 30, currentTypeLine >= 1 ? 700 : 999999,
+
+  useEffect(() => {
+    if (closingDone && phase === 'closing') {
+      const t = setTimeout(() => setPhase('cta'), 500);
+      return () => clearTimeout(t);
+    }
+  }, [closingDone, phase]);
+
+  // ── Typewriter hook per support line ──────────────────────
+  const { displayText: s0Text } = useTypewriter(
+    supportIndex === 0 ? SUPPORT_LINES[0] : '',
+    30,
+    0,
   );
-  const { displayText: line3Text } = useTypewriter(
-    currentTypeLine >= 2 ? LINE_3 : '', 30, currentTypeLine >= 2 ? 200 : 999999,
+  const { displayText: s1Text } = useTypewriter(
+    supportIndex === 1 ? SUPPORT_LINES[1] : '',
+    30,
+    0,
   );
-  const { displayText: line4Text } = useTypewriter(
-    currentTypeLine >= 3 ? LINE_4 : '', 30, currentTypeLine >= 3 ? 200 : 999999,
-  );
-  const { displayText: line5Text } = useTypewriter(
-    currentTypeLine >= 4 ? LINE_5 : '', 40, currentTypeLine >= 4 ? 900 : 999999,
+  const { displayText: s2Text } = useTypewriter(
+    supportIndex === 2 ? SUPPORT_LINES[2] : '',
+    30,
+    0,
   );
 
-  const showCta = animationPhase === 'cta' || animationPhase === 'done';
+  const currentSupportText =
+    supportIndex === 0 ? s0Text : supportIndex === 1 ? s1Text : supportIndex === 2 ? s2Text : '';
+
+  const showCta = phase === 'cta' || phase === 'done';
+  const showClosing = phase === 'closing' || phase === 'cta' || phase === 'done';
 
   return (
     <div
@@ -89,76 +138,88 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
         overflow: 'hidden',
       }}
     >
-      {/* Compass mark — already in position from Feature Splash transition */}
+      {/* Compass — 100px, idle-rotating, already positioned from Feature Splash */}
       <div
         style={{
-          marginTop: 'max(80px, env(safe-area-inset-top, 20px) + 40px)',
+          marginTop: 'max(64px, env(safe-area-inset-top, 20px) + 32px)',
           display: 'flex',
           justifyContent: 'center',
         }}
       >
-        <CompassMark size={56} showBurst={false} glow idleRotate />
+        <CompassMark size={100} showBurst={false} glow idleRotate />
       </div>
 
-      {/* Typewriter text area */}
+      {/* Fixed headline — fades in once, stays fixed */}
+      <h1
+        style={{
+          fontSize: 'var(--onb-headline-size)',
+          fontWeight: 'var(--onb-headline-weight)',
+          color: 'var(--onb-headline-color)',
+          textAlign: 'center',
+          marginTop: '28px',
+          marginBottom: '36px',
+          maxWidth: '320px',
+          padding: '0 24px',
+          opacity: 1,
+          transition: 'opacity 400ms ease',
+        }}
+      >
+        {headlineText}
+        {!headlineTyped && (
+          <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+        )}
+      </h1>
+
+      {/* Support lines container — fixed height, no layout jumps */}
       <div
         style={{
           width: '100%',
-          padding: '0 32px',
+          maxWidth: '340px',
+          padding: '0 24px',
+          minHeight: '60px', // reserve space for 2 lines
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
           textAlign: 'center',
-          marginTop: '24px',
         }}
       >
-        {/* Line 1 */}
-        <div
-          style={{
-            fontSize: '22px',
-            fontWeight: 600,
-            color: '#ffffff',
-            minHeight: '32px',
-            marginBottom: '20px',
-          }}
-        >
-          {line1Text}
-          {currentTypeLine === 0 && (
+        {/* Support phase */}
+        {phase === 'support' && (
+          <p
+            key={supportIndex} // remounts per line for fresh fade-in
+            style={{
+              fontSize: 'var(--onb-body-size)',
+              fontWeight: 'var(--onb-body-weight)',
+              color: 'var(--onb-body-color)',
+              lineHeight: 'var(--onb-body-line-height)',
+              margin: 0,
+              animation: 'supportFadeIn 200ms ease',
+            }}
+          >
+            {currentSupportText}
             <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-          )}
-        </div>
+          </p>
+        )}
 
-        {/* Lines 2-4 */}
-        <div style={{ marginBottom: '16px' }}>
-          {[line2Text, line3Text, line4Text].map((text, i) => (
-            <div
-              key={i}
-              style={{
-                fontSize: '16px',
-                color: '#64748b',
-                minHeight: '24px',
-                marginBottom: '4px',
-              }}
-            >
-              {text}
-              {currentTypeLine === i + 1 && (
-                <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Line 5 */}
-        <div
-          style={{
-            fontSize: '22px',
-            fontWeight: 600,
-            color: '#ffffff',
-            minHeight: '32px',
-          }}
-        >
-          {line5Text}
-          {currentTypeLine === 4 && (
-            <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-          )}
-        </div>
+        {/* Closing line — same weight/size as headline */}
+        {showClosing && (
+          <p
+            style={{
+              fontSize: 'var(--onb-headline-size)',
+              fontWeight: 'var(--onb-headline-weight)',
+              color: 'var(--onb-headline-color)',
+              lineHeight: 'var(--onb-body-line-height)',
+              margin: 0,
+              animation: phase === 'closing' ? 'supportFadeIn 200ms ease' : undefined,
+            }}
+          >
+            {closingText}
+            {!closingDone && (
+              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
+            )}
+          </p>
+        )}
       </div>
 
       {/* CTA */}
@@ -172,7 +233,6 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
             padding: '0 24px',
             opacity: 0,
             animation: 'fadeIn 400ms ease forwards',
-            animationDelay: '0ms',
           }}
         >
           <button
@@ -219,6 +279,10 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+        @keyframes supportFadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .cursor-blink {
           animation: blink 0.8s ease-in-out infinite;

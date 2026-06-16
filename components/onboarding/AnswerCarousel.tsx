@@ -6,6 +6,9 @@
 // Two-step tap logic:
 //   Tap non-centered card → scroll it to center (no selection)
 //   Tap centered card → selection with pulse animation → advance
+//
+// Token sizing: var(--onb-answer-size) 22px for answers,
+// var(--onb-body-color) for text contrast.
 
 'use client';
 
@@ -36,6 +39,12 @@ export function AnswerCarousel({
   const [scrolledOnce, setScrolledOnce] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const swipeHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [entranceKey, setEntranceKey] = useState(0);
+
+  // Bump entrance key when answers change (new question) → fresh keyframe name
+  useEffect(() => {
+    setEntranceKey((k) => k + 1);
+  }, [answers]);
 
   // Swipe hint visibility
   useEffect(() => {
@@ -53,7 +62,6 @@ export function AnswerCarousel({
     if (!showSwipeHint || scrolledOnce) return;
     if (activeIndex !== 0) {
       setScrolledOnce(true);
-      // Fade out
       if (swipeHintTimer.current) clearTimeout(swipeHintTimer.current);
       swipeHintTimer.current = setTimeout(() => {
         setShowSwipeHint(false);
@@ -64,29 +72,21 @@ export function AnswerCarousel({
     }
   }, [activeIndex, showSwipeHint, scrolledOnce]);
 
-  // Cleanup timer
   useEffect(() => {
     return () => {
       if (swipeHintTimer.current) clearTimeout(swipeHintTimer.current);
     };
   }, []);
 
-  // Handle tap on a card
   const handleTap = useCallback(
     (index: number) => {
-      if (selecting) return; // mid-animation, ignore
-
+      if (selecting) return;
       if (index !== activeIndex) {
-        // Tap non-centered card: scroll it to center, don't select
         scrollToIndex(index);
         return;
       }
-
-      // Tap centered card: select it
       const answer = answers[index];
       setSelecting(answer.key);
-
-      // Delay to let pulse animation play, then advance
       setTimeout(() => {
         onSelect(answer.key);
         setSelecting(null);
@@ -130,9 +130,9 @@ export function AnswerCarousel({
           gap: '12px',
         }}
       >
-
         {answers.map((answer, i) => {
           const isSelected = selecting === answer.key;
+          const isFirstCard = i === 0;
           return (
             <button
               key={answer.key}
@@ -149,8 +149,8 @@ export function AnswerCarousel({
                   : '#1a2235',
                 border: '1px solid transparent',
                 borderRadius: '18px',
-                padding: '24px 20px',
-                minHeight: '220px',
+                padding: '28px 22px',
+                minHeight: '190px',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
@@ -165,7 +165,12 @@ export function AnswerCarousel({
                   boxShadow: '0 0 24px rgba(34,211,238,0.25)',
                   textAlign: 'left' as const,
                 }),
+                // First card entrance pop (scale 0.92 → 1.02 → 1.0) on question mount
+                ...(isFirstCard && !isSelected && {
+                  animation: `cardEnterPop-${entranceKey} 280ms ease-out`,
+                }),
               }}
+              aria-disabled={!!selecting}
             >
               {/* Letter badge (small, de-emphasized) */}
               <span
@@ -182,19 +187,19 @@ export function AnswerCarousel({
                   color: isSelected ? '#0a0f1e' : '#64748b',
                   fontSize: '11px',
                   fontWeight: 600,
-                  marginBottom: '16px',
+                  marginBottom: '14px',
                   transition: 'all 150ms ease',
                 }}
               >
                 {letters[i]}
               </span>
 
-              {/* Answer text */}
+              {/* Answer text — token-sized */}
               <span
                 style={{
-                  fontSize: '18px',
-                  color: isSelected ? '#ffffff' : '#94a3b8',
-                  lineHeight: 1.5,
+                  fontSize: 'var(--onb-answer-size)',
+                  color: isSelected ? '#ffffff' : 'var(--onb-body-color)',
+                  lineHeight: 'var(--onb-answer-line-height)',
                   fontWeight: isSelected ? 500 : 400,
                   transition: 'color 150ms ease',
                 }}
@@ -209,9 +214,14 @@ export function AnswerCarousel({
       {/* Dot indicator */}
       <CarouselDots total={answers.length} activeIndex={activeIndex} />
 
-      {/* Hide scrollbar globally for this component */}
+      {/* Hide scrollbar + card pop keyframes */}
       <style>{`
         .answer-carousel-scroll::-webkit-scrollbar { display: none; }
+        @keyframes cardEnterPop-${entranceKey} {
+          0%   { transform: scale(0.92); opacity: 0.4; }
+          60%  { transform: scale(1.02); opacity: 0.85; }
+          100% { transform: scale(1.0); opacity: 1.0; }
+        }
       `}</style>
     </div>
   );
