@@ -97,7 +97,7 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
 
   useEffect(() => {
     if (closingDone && phase === 'closing') {
-      const t = setTimeout(() => setPhase('cta'), 500);
+      const t = setTimeout(() => setPhase('cta'), 300);
       return () => clearTimeout(t);
     }
   }, [closingDone, phase]);
@@ -176,7 +176,7 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
           width: '100%',
           maxWidth: '340px',
           padding: '0 24px',
-          minHeight: '60px', // reserve space for 2 lines
+          minHeight: '48px', // reserve space for the longest line
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -262,7 +262,7 @@ export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
           <p
             style={{
               fontSize: '13px',
-              color: '#475569',
+              color: 'var(--onb-body-color)',
               textAlign: 'center',
               marginTop: '16px',
               opacity: 0,

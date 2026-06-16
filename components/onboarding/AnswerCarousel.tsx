@@ -149,8 +149,8 @@ export function AnswerCarousel({
                   : '#1a2235',
                 border: '1px solid transparent',
                 borderRadius: '18px',
-                padding: '28px 22px',
-                minHeight: '190px',
+                padding: '20px 22px',
+                minHeight: '160px',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
@@ -187,7 +187,7 @@ export function AnswerCarousel({
                   color: isSelected ? '#0a0f1e' : '#64748b',
                   fontSize: '11px',
                   fontWeight: 600,
-                  marginBottom: '14px',
+                  marginBottom: '12px',
                   transition: 'all 150ms ease',
                 }}
               >
