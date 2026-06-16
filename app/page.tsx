@@ -178,10 +178,10 @@ function AppShell() {
     }
   }, [user, isDataLoaded, showOnboarding, isInitialized, isConnected]);
 
-  // 🔒 HARD GATE: Don't render ANY dashboard content until DB profile is confirmed.
-  if (!isDataLoaded || !user) {
-    return null;
-  }
+  // 🔒 Only show dashboard for authenticated users.
+  // Unauthenticated users → quiz check redirects in useEffect (above).
+  // Don't render anything while auth is loading or user is null.
+  if (!isDataLoaded || !user) return null;
 
   // Wait for broker status check before rendering anything.
   // Prevents dashboard flicker when broker gate needs to appear.

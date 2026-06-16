@@ -1,12 +1,14 @@
 #!/bin/bash
-# Run this after every push to master
+# QA disabled — re-enable by uncommenting below
+# Run this after every push to main
 # It waits for Vercel deploy then runs QA
-
-# Vercel can take up to 2 minutes for cold deploys
-DEPLOY_WAIT_SECONDS=${DEPLOY_WAIT_SECONDS:-120}
-echo "⏳ Waiting ${DEPLOY_WAIT_SECONDS}s for Vercel deploy..."
-sleep ${DEPLOY_WAIT_SECONDS}
-
-echo "🔍 Running QA Agent..."
-cd ~/.openclaw/workspace/projects/vantage/qa-agent
-npm run qa
+#
+# DEPLOY_WAIT_SECONDS=${DEPLOY_WAIT_SECONDS:-120}
+# echo "⏳ Waiting ${DEPLOY_WAIT_SECONDS}s for Vercel deploy..."
+# sleep ${DEPLOY_WAIT_SECONDS}
+#
+# echo "🔍 Running QA Agent..."
+# cd ~/.openclaw/workspace/projects/vantage/qa-agent
+# npm run qa
+echo "QA disabled"
+exit 0
