@@ -39,6 +39,10 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       const callbackBase = `${window.location.origin}/auth/callback?pending_action=${encodeURIComponent(JSON.stringify(pendingAction))}`;
       let callbackUrl = callbackBase;
       try {
+        // Pass anonymous ID so the callback can link to anonymous_profiles
+        const anonId = localStorage.getItem('vantage_anonymous_id');
+        if (anonId) callbackUrl += `&anon_id=${encodeURIComponent(anonId)}`;
+        // Pass quiz completion state from localStorage
         const quizComplete = localStorage.getItem('vantage_quiz_complete') === 'true';
         const quizStyle = localStorage.getItem('vantage:investorStyle');
         if (quizComplete) callbackUrl += `&quiz_complete=1`;
@@ -68,13 +72,17 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       if (!stored) return;
       const { email: storedEmail } = JSON.parse(stored);
       
-      // Include quiz state in resend too
+      // Include quiz state and anon_id in resend too
       let resendUrl = `${window.location.origin}/auth/callback`;
       try {
+        const anonId = localStorage.getItem('vantage_anonymous_id');
         const qc = localStorage.getItem('vantage_quiz_complete') === 'true';
         const qs = localStorage.getItem('vantage:investorStyle');
-        if (qc) resendUrl += `?quiz_complete=1`;
-        if (qs) resendUrl += `${qc ? '&' : '?'}investor_style=${encodeURIComponent(qs)}`;
+        const params: string[] = [];
+        if (anonId) params.push(`anon_id=${encodeURIComponent(anonId)}`);
+        if (qc) params.push('quiz_complete=1');
+        if (qs) params.push(`investor_style=${encodeURIComponent(qs)}`);
+        if (params.length) resendUrl += '?' + params.join('&');
       } catch {}
 
       const supabase = createClient();

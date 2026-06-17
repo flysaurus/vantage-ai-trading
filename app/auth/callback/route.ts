@@ -34,6 +34,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const pendingAction = requestUrl.searchParams.get('pending_action');
     const quizComplete = requestUrl.searchParams.get('quiz_complete') === '1';
     const quizStyle = requestUrl.searchParams.get('investor_style');
+    const anonIdFromUrl = requestUrl.searchParams.get('anon_id') || '';
     const next = pendingAction
       ? `/?pending_action=${encodeURIComponent(pendingAction)}`
       : (requestUrl.searchParams.get('next') || '/');
@@ -58,11 +59,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const authUser = sessionData.user;
     console.log('[callback] ✅ Session established for:', authUser.email);
 
-    // ── 2. Read anonymousId from cookie ───────────────────────
+    // ── 2. Read anonymousId from cookie (fallback: URL param) ─
     const signedAnonId = req.cookies.get(ANON_COOKIE)?.value;
-    let anonymousId = '';
+    let anonymousId = anonIdFromUrl; // URL param is primary source
 
-    if (signedAnonId) {
+    if (!anonymousId && signedAnonId) {
       const verified = verifyAnonId(signedAnonId);
       if (verified) {
         anonymousId = verified;
@@ -70,6 +71,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       } else {
         console.warn('[callback] Anonymous ID cookie tampered — ignoring');
       }
+    }
+
+    if (anonymousId) {
+      console.log('[callback] Anonymous ID:', anonymousId.slice(0, 8) + '...');
+    } else {
+      console.log('[callback] No anonymous ID available');
     }
 
     // ── 3. Get or create profile ──────────────────────────────
