@@ -4,18 +4,11 @@
 // Trait-first structure: headline shows trait (e.g. "The Patient Builder"),
 // investor name is a secondary tag below.
 //
-// Sequence:
-// 1. Compass burst (0-600ms)
-// 2. Compass fades to style emoji (80px)
-// 3. Typewriter: "You're [TRAIT]."
-// 4. Secondary tag fades in (e.g. "Buffett-style")
-// 5. Style description fades in
-// 6. Stats fade in staggered: risk badge, investor score
-// 7. Override pills + "Enter Vantage →" CTA
+// ⚠️ DIAGNOSTIC LOGGING ACTIVE — [RESULT_SCREEN] prefix.
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { InvestorStyle } from '@/types';
 import { getStyleContent, getStyleTrait, getStyleTag, RISK_COLORS, RISK_LABELS, ALL_STYLES, PILL_TRAITS } from '@/lib/onboarding/quiz-logic';
 import { CompassBurst } from '@/lib/animations/compass-burst';
@@ -30,7 +23,29 @@ interface ResultScreenProps {
   onEnter: (style: InvestorStyle, riskTolerance: string) => void;
 }
 
+// ── DIAGNOSTIC: module-level render counter ─────────────────
+let globalRenderCount = 0;
+
 export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
+  // ── DIAGNOSTIC LOGGING REFS ───────────────────────────────
+  const mountTime = useRef(Date.now());
+  const renderCount = useRef(0);
+  const mountedRef = useRef(false);
+
+  renderCount.current += 1;
+  globalRenderCount += 1;
+  const rn = renderCount.current;
+  const gn = globalRenderCount;
+
+  if (!mountedRef.current) {
+    mountedRef.current = true;
+    console.log(`[RESULT_SCREEN] 🟢 MOUNT at ${new Date().toISOString()}`, {
+      style: result.style,
+      riskTolerance: result.riskTolerance,
+      userName,
+    });
+  }
+
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle>(result.style);
   const [phase, setPhase] = useState<'burst' | 'reveal' | 'stats' | 'done'>('burst');
   const [showShareModal, setShowShareModal] = useState(false);
@@ -45,23 +60,97 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
     phase === 'reveal' ? 0 : 999999,
   );
 
+  // ── DIAGNOSTIC: log every render ──────────────────────────
+  const elapsed = Date.now() - mountTime.current;
+  console.log(`[RESULT_SCREEN] 🔄 RENDER #${rn} (global #${gn}) at +${elapsed}ms | phase="${phase}" style="${selectedStyle}" shareModal=${showShareModal} typewriterDone=${typewriterDone} typewriterText="${typewriterText}"`);
+
+  // ── DIAGNOSTIC: state change interceptor (first 2s only) ──
+  const wrappedSetSelectedStyle = useRef((v: InvestorStyle) => {
+    console.log(`[RESULT_SCREEN] 🏷️  setSelectedStyle("${v}") at +${Date.now() - mountTime.current}ms`);
+    setSelectedStyle(v);
+  });
+
+  // ── DIAGNOSTIC: intercept phase changes ───────────────────
+  useEffect(() => {
+    if (mountedRef.current) {
+      console.log(`[RESULT_SCREEN] 🏷️  PHASE CHANGED → "${phase}" at +${Date.now() - mountTime.current}ms`);
+    }
+  }, [phase]);
+
   // Phase sequencing
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('reveal'), 600);
-    return () => clearTimeout(t1);
+    console.log(`[RESULT_SCREEN] ⏱️  Phase seq useEffect #1 FIRED at +${Date.now() - mountTime.current}ms — scheduling setPhase('reveal') in 600ms`);
+    const t1 = setTimeout(() => {
+      console.log(`[RESULT_SCREEN] ⏱️  Phase seq #1 CALLBACK → setPhase('reveal') at +${Date.now() - mountTime.current}ms`);
+      setPhase('reveal');
+    }, 600);
+    return () => {
+      console.log(`[RESULT_SCREEN] ⏱️  Phase seq useEffect #1 CLEANUP at +${Date.now() - mountTime.current}ms`);
+      clearTimeout(t1);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!typewriterDone || phase !== 'reveal') return;
-    const t = setTimeout(() => setPhase('stats'), 500);
+    const e = Date.now() - mountTime.current;
+    console.log(`[RESULT_SCREEN] ⏱️  Phase seq useEffect #2 FIRED at +${e}ms — typewriterDone=${typewriterDone} phase="${phase}"`);
+    if (!typewriterDone || phase !== 'reveal') {
+      console.log(`[RESULT_SCREEN] ⏱️  Phase seq #2 SKIPPED (typewriterDone=${typewriterDone}, phase="${phase}")`);
+      return;
+    }
+    console.log(`[RESULT_SCREEN] ⏱️  Phase seq #2 → scheduling setPhase('stats') in 500ms`);
+    const t = setTimeout(() => {
+      console.log(`[RESULT_SCREEN] ⏱️  Phase seq #2 CALLBACK → setPhase('stats') at +${Date.now() - mountTime.current}ms`);
+      setPhase('stats');
+    }, 500);
     return () => clearTimeout(t);
   }, [typewriterDone, phase]);
 
   useEffect(() => {
-    if (phase !== 'stats') return;
-    const t = setTimeout(() => setPhase('done'), 600);
+    const e = Date.now() - mountTime.current;
+    console.log(`[RESULT_SCREEN] ⏱️  Phase seq useEffect #3 FIRED at +${e}ms — phase="${phase}"`);
+    if (phase !== 'stats') {
+      console.log(`[RESULT_SCREEN] ⏱️  Phase seq #3 SKIPPED (phase="${phase}")`);
+      return;
+    }
+    console.log(`[RESULT_SCREEN] ⏱️  Phase seq #3 → scheduling setPhase('done') in 600ms`);
+    const t = setTimeout(() => {
+      console.log(`[RESULT_SCREEN] ⏱️  Phase seq #3 CALLBACK → setPhase('done') at +${Date.now() - mountTime.current}ms`);
+      setPhase('done');
+    }, 600);
     return () => clearTimeout(t);
   }, [phase]);
+
+  // ── DIAGNOSTIC: typewriter start/complete logging ─────────
+  useEffect(() => {
+    const e = Date.now() - mountTime.current;
+    if (phase === 'reveal' && !typewriterDone && typewriterText.length === 0) {
+      console.log(`[RESULT_SCREEN] ⌨️  TYPEWRITER STARTING at +${e}ms — text="${revealText}" speed=30ms`);
+    }
+    console.log(`[RESULT_SCREEN] ⌨️  typewriter progress — "${typewriterText}" (${typewriterText.length}/${revealText.length}) done=${typewriterDone}`);
+  }, [typewriterText, typewriterDone, phase, revealText]);
+
+  // ── DIAGNOSTIC: CSS var check ─────────────────────────────
+  if (typeof window !== 'undefined' && renderCount.current === 1) {
+    try {
+      const style = getComputedStyle(document.documentElement);
+      const headlineSize = style.getPropertyValue('--onb-headline-size').trim();
+      const headlineWeight = style.getPropertyValue('--onb-headline-weight').trim();
+      const headlineColor = style.getPropertyValue('--onb-headline-color').trim();
+      const bodySize = style.getPropertyValue('--onb-body-size').trim();
+      const bodyColor = style.getPropertyValue('--onb-body-color').trim();
+      console.log(`[RESULT_SCREEN] 🎨 CSS VARS → headlineSize="${headlineSize}" headlineWeight="${headlineWeight}" headlineColor="${headlineColor}" bodySize="${bodySize}" bodyColor="${bodyColor}"`);
+      if (!headlineSize) console.warn(`[RESULT_SCREEN] ⚠️  --onb-headline-size is EMPTY — headline may render at 0px!`);
+      if (!headlineColor || headlineColor === '') console.warn(`[RESULT_SCREEN] ⚠️  --onb-headline-color is EMPTY — headline may be transparent!`);
+    } catch (e) {
+      console.error('[RESULT_SCREEN] Failed to read CSS vars:', e);
+    }
+  }
+
+  // ── DIAGNOSTIC: log the revealText and trait ──────────────
+  if (renderCount.current === 1) {
+    console.log(`[RESULT_SCREEN] 📝 CONTENT → trait="${trait}" tag="${tag}" revealText="${revealText}" style=${selectedStyle}`);
+  }
 
   const riskColor = RISK_COLORS[
     result.riskTolerance === 'Conservative' ? 'conservative' :
@@ -245,7 +334,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
                   return (
                     <button
                       key={s.id}
-                      onClick={() => setSelectedStyle(s.id)}
+                      onClick={() => {
+                        console.log(`[RESULT_SCREEN] 🖱️  Override pill clicked: "${s.id}" at +${Date.now() - mountTime.current}ms`);
+                        setSelectedStyle(s.id);
+                      }}
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -295,7 +387,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
           {phase === 'done' && (
             <>
               <button
-                onClick={() => onEnter(selectedStyle, result.riskTolerance)}
+                onClick={() => {
+                  console.log(`[RESULT_SCREEN] 🚀 "Enter Vantage →" CLICKED at +${Date.now() - mountTime.current}ms — style="${selectedStyle}" risk="${result.riskTolerance}"`);
+                  onEnter(selectedStyle, result.riskTolerance);
+                }}
                 style={{
                   width: '100%',
                   maxWidth: '320px',
@@ -321,7 +416,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               </button>
 
               <button
-                onClick={() => setShowShareModal(true)}
+                onClick={() => {
+                  console.log(`[RESULT_SCREEN] 📤 "Share your style" CLICKED at +${Date.now() - mountTime.current}ms`);
+                  setShowShareModal(true);
+                }}
                 style={{
                   background: 'none',
                   border: 'none',

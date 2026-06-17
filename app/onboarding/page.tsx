@@ -39,17 +39,36 @@ type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'result';
 export default function OnboardingPage() {
   const router = useRouter();
 
+  // ── DIAGNOSTIC: routing decisions ─────────────────────────
+  console.log(`[ONBOARDING_FLOW] 🟢 OnboardingPage MOUNT at ${new Date().toISOString()}`);
+
   // If already complete, redirect to main app immediately (async cross-device check)
   useEffect(() => {
-    checkQuizComplete().then(({ complete }) => {
+    console.log(`[ONBOARDING_FLOW] 🔍 checkQuizComplete() running at ${new Date().toISOString()}`);
+    const start = Date.now();
+    checkQuizComplete().then(({ complete, style, risk, name }) => {
+      const dur = Date.now() - start;
+      console.log(`[ONBOARDING_FLOW] 🔍 checkQuizComplete() DONE in ${dur}ms → complete=${complete} style="${style || 'none'}" risk="${risk || 'none'}" name="${name || 'none'}"`);
       if (complete) {
+        console.log(`[ONBOARDING_FLOW] 🚦 DECISION: redirect to / (quiz already complete)`);
         router.replace('/');
+      } else {
+        console.log(`[ONBOARDING_FLOW] 🚦 DECISION: stay on onboarding (quiz not complete)`);
       }
+    }).catch((err) => {
+      console.error(`[ONBOARDING_FLOW] ❌ checkQuizComplete() FAILED:`, err);
     });
   }, [router]);
 
   // Determine initial screen: always BootSplash first
-  const [screen, setScreen] = useState<Screen>('boot');
+  const [screen, setScreenRaw] = useState<Screen>('boot');
+  
+  // ── DIAGNOSTIC: intercept screen transitions ──────────────
+  const setScreen = (v: Screen | ((prev: Screen) => Screen)) => {
+    const val = typeof v === 'function' ? v(screen) : v;
+    console.log(`[ONBOARDING_FLOW] 🖥️  SCREEN TRANSITION: "${screen}" → "${val}" at ${new Date().toISOString()}`);
+    setScreenRaw(v);
+  };
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [navDirection, setNavDirection] = useState<'forward' | 'backward'>('forward');
@@ -59,6 +78,7 @@ export default function OnboardingPage() {
   // ── Boot Splash complete ──────────────────────────────────
 
   const handleBootComplete = useCallback((route: 'main' | 'feature-splash' | 'quiz') => {
+    console.log(`[ONBOARDING_FLOW] 🚦 BootSplash DECISION → "${route}" at ${new Date().toISOString()}`);
     if (route === 'main') {
       router.replace('/');
       return;
@@ -76,6 +96,7 @@ export default function OnboardingPage() {
   // ── Feature Splash complete ───────────────────────────────
 
   const handleFeatureComplete = useCallback((route: 'arrival' | 'quiz') => {
+    console.log(`[ONBOARDING_FLOW] 🚦 FeatureSplash DECISION → "${route}" at ${new Date().toISOString()}`);
     if (route === 'arrival') {
       setScreen('arrival');
     } else {
@@ -135,6 +156,8 @@ export default function OnboardingPage() {
   // ── Enter Vantage ──────────────────────────────────────────
 
   const handleEnter = useCallback(async (style: InvestorStyle, riskTolerance: string) => {
+    console.log(`[ONBOARDING_FLOW] 🚀 handleEnter CALLED at ${new Date().toISOString()} — style="${style}" risk="${riskTolerance}" userName="${userName}"`);
+    
     try {
       localStorage.setItem('vantage:investorStyle', style);
       localStorage.setItem('vantage:riskTolerance', riskTolerance);
@@ -142,23 +165,37 @@ export default function OnboardingPage() {
       if (userName) {
         localStorage.setItem('vantage_user_name', userName);
       }
-    } catch {}
+      console.log(`[ONBOARDING_FLOW] 💾 localStorage WRITTEN`);
+    } catch (err) {
+      console.error(`[ONBOARDING_FLOW] ❌ localStorage write FAILED:`, err);
+    }
 
     try {
       const anonymousId = getOrCreateAnonymousId();
-      await fetch('/api/onboarding/sync', {
+      console.log(`[ONBOARDING_FLOW] 🔄 Syncing to Supabase with anonymousId="${anonymousId}"`);
+      const syncStart = Date.now();
+      const res = await fetch('/api/onboarding/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anonymousId, investorStyle: style, riskTolerance, firstName: userName || undefined }),
       });
+      const dur = Date.now() - syncStart;
+      console.log(`[ONBOARDING_FLOW] 🔄 Sync response: ${res.status} ${res.statusText} (${dur}ms)`);
+      if (!res.ok) {
+        const text = await res.text();
+        console.error(`[ONBOARDING_FLOW] ❌ Sync FAILED: ${res.status} — ${text}`);
+      }
     } catch (err) {
-      console.warn('[onboarding] Supabase sync failed (non-blocking):', err);
+      console.error(`[ONBOARDING_FLOW] ❌ Sync EXCEPTION:`, err);
     }
 
     markQuizComplete();
+    console.log(`[ONBOARDING_FLOW] ✅ markQuizComplete() done, localStorage key="vantage_quiz_complete"=${localStorage.getItem('vantage_quiz_complete')}`);
+    
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } }));
     }
+    console.log(`[ONBOARDING_FLOW] 🚦 Pushing router to /`);
     router.push('/');
   }, [userName, router]);
 
@@ -177,24 +214,28 @@ export default function OnboardingPage() {
   // ── Boot Splash ────────────────────────────────────────────
 
   if (screen === 'boot') {
+    console.log(`[ONBOARDING_FLOW] 🎬 RENDERING BootSplash`);
     return <BootSplash onComplete={handleBootComplete} />;
   }
 
   // ── Feature Splash ─────────────────────────────────────────
 
   if (screen === 'feature') {
+    console.log(`[ONBOARDING_FLOW] 🎬 RENDERING FeatureSplash`);
     return <FeatureSplash onComplete={handleFeatureComplete} />;
   }
 
   // ── Arrival screen ─────────────────────────────────────────
 
   if (screen === 'arrival') {
+    console.log(`[ONBOARDING_FLOW] 🎬 RENDERING ArrivalScreen`);
     return <ArrivalScreen onFindStyle={handleFindStyle} />;
   }
 
   // ── Quiz screens ───────────────────────────────────────────
 
   if (screen === 'quiz' && questionIndex < QUIZ_QUESTIONS.length) {
+    console.log(`[ONBOARDING_FLOW] 🎬 RENDERING QuizQuestion Q${questionIndex + 1}/${QUIZ_QUESTIONS.length}`);
     return (
       <QuizQuestion
         key={QUIZ_QUESTIONS[questionIndex].id}
@@ -211,6 +252,7 @@ export default function OnboardingPage() {
   // ── Name capture screen ────────────────────────────────────
 
   if (screen === 'name') {
+    console.log(`[ONBOARDING_FLOW] 🎬 RENDERING NameCapture`);
     return (
       <div style={{ ...quizBackground, alignItems: 'unset' }}>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
@@ -223,6 +265,7 @@ export default function OnboardingPage() {
   // ── Result screen ──────────────────────────────────────────
 
   if (screen === 'result' && result) {
+    console.log(`[ONBOARDING_FLOW] 🎬 RENDERING ResultScreen — style="${result.style}" risk="${result.riskTolerance}" userName="${userName}"`);
     return (
       <div
         style={{
@@ -240,5 +283,6 @@ export default function OnboardingPage() {
     );
   }
 
+  {const r = screen === 'result' ? (result ? 'has result' : 'NO RESULT') : 'not result'; console.warn(`[ONBOARDING_FLOW] ⚠️  FALLTHROUGH to null — screen="${screen}" result=${r}`);}
   return null;
 }

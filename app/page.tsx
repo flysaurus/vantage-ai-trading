@@ -233,6 +233,7 @@ function AppShell() {
   // 🔒 Block rendering until auth check completes AND we have a user.
   // effectiveUser covers authenticated users AND anonymous users who
   // completed the quiz (synthetic user from localStorage).
+  console.warn(`[ROUTING] ⚠️  AppShell GATE BLOCKED — isDataLoaded=${isDataLoaded} effectiveUser=${effectiveUser ? 'yes' : 'no'}`);
   if (!isDataLoaded || !effectiveUser) return null;
 
   // Wait for broker status check before rendering.
@@ -244,17 +245,23 @@ function AppShell() {
   // ── Resume pending action after magic-link authentication ──
   useEffect(() => {
     if (showBootSplash) return;
+    console.log(`[ROUTING] 🔍 Checking for pending_action query param at ${new Date().toISOString()}`);
     const params = new URLSearchParams(window.location.search);
     const pendingActionRaw = params.get('pending_action');
     if (pendingActionRaw) {
       try {
         const action = JSON.parse(decodeURIComponent(pendingActionRaw));
+        console.log(`[ROUTING] 🎯 Pending action FOUND: type="${action.type}"`);
         sessionStorage.setItem('vantage_pending_action', JSON.stringify(action));
         window.history.replaceState({}, '', '/');
         if (action.type === 'trade') setTab('invest');
         else if (action.type === 'basket') setTab('portfolio');
         else if (action.type === 'chat') setTab('ai');
-      } catch {}
+      } catch (err) {
+        console.error(`[ROUTING] ❌ Failed to parse pending_action:`, err);
+      }
+    } else {
+      console.log(`[ROUTING] 🔍 No pending_action in URL`);
     }
   }, [showBootSplash, setTab]);
 
