@@ -292,7 +292,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<AccountSummary | null>(() => {
     if (isConnected) return null;
     if (initialPersistedState) return accountFromDemoState(initialPersistedState);
-    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
+    const localStyle = typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null;
+    const style = (user?.investorStyle || localStyle || 'buffett') as InvestorStyle;
     return getDemoAccount(style, {});
   });
   const [loading, setLoading] = useState(false);

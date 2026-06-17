@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -23,6 +23,8 @@ import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
 import { isQuizComplete } from '@/lib/onboarding/quiz-logic';
+import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+import type { User } from '@/types';
 
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
@@ -38,7 +40,7 @@ const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
 
 function AppShell() {
   const { activeTab, setTab } = useTabStore();
-  const { user, isDataLoaded } = useAuth();
+  const { user, isDataLoaded, isAuthenticated } = useAuth();
   const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showBrokerGate, setShowBrokerGate] = useState(false);
@@ -53,6 +55,34 @@ function AppShell() {
   const [showBootSplash, setShowBootSplash] = useState(true);
 
   const router = useRouter();
+
+  // ── Anonymous user fallback ──────────────────────────────
+  // When quiz is complete but no auth session exists (demo mode),
+  // synthesize a user from localStorage so the dashboard renders.
+  const quizComplete = typeof window !== 'undefined' ? isQuizComplete() : false;
+  const effectiveUser = useMemo<User | null>(() => {
+    if (user) return user;
+    if (!quizComplete) return null;
+    try {
+      const style = (localStorage.getItem('vantage:investorStyle') || 'buffett') as User['investorStyle'];
+      const nameValue = localStorage.getItem('vantage_user_name') || 'Trader';
+      const risk = (localStorage.getItem('vantage:riskTolerance') || 'Moderate') as User['riskTolerance'];
+      return {
+        id: getOrCreateAnonymousId(),
+        email: '',
+        displayName: nameValue,
+        avatarUrl: undefined,
+        investorStyle: style,
+        investorStyleSetAt: undefined,
+        investorStyleOnboarded: true,
+        riskTolerance: risk,
+        name: nameValue,
+        createdAt: new Date().toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }, [user, quizComplete]);
 
   // ── Boot splash handler ───────────────────────────────────
   const handleBootComplete = useCallback((route: 'main' | 'feature-splash' | 'quiz') => {
@@ -73,8 +103,10 @@ function AppShell() {
 
   // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
   useEffect(() => {
-    if (!user || !isDataLoaded) return;
+    if (!effectiveUser || !isDataLoaded) return;
     if (showOnboarding || showBrokerGate) return;
+    // Anonymous users don't get greeting modals
+    if (!isAuthenticated) return;
 
     const fromLogin = sessionStorage.getItem('show_greeting');
     if (fromLogin === 'true') {
@@ -86,13 +118,15 @@ function AppShell() {
       // Short delay to let the main app render fully behind the modal
       setTimeout(() => setShowGreeting(true), 300);
     }
-  }, [user, isDataLoaded, showOnboarding, showBrokerGate]);
+  }, [effectiveUser, isDataLoaded, showOnboarding, showBrokerGate]);
 
   // ── Welcome greeting banner (suppressed if modal shown) ──
   useEffect(() => {
-    if (!user || !isDataLoaded) return;
+    if (!effectiveUser || !isDataLoaded) return;
     if (greetingShown.current) return; // modal handles greeting
-    const name = user.displayName || user.email?.split('@')[0] || '';
+    // Skip banner for anonymous users
+    if (!isAuthenticated) return;
+    const name = effectiveUser.displayName || effectiveUser.email?.split('@')[0] || '';
     const initial = name.charAt(0).toUpperCase();
     const hour = new Date().getHours();
     const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -105,7 +139,7 @@ function AppShell() {
     setGreeting(phrases[Math.floor(Math.random() * phrases.length)]);
     const timer = setTimeout(() => setGreeting(''), 4000);
     return () => clearTimeout(timer);
-  }, [user, isDataLoaded]);
+  }, [effectiveUser, isDataLoaded]);
 
   // ── Listen for cross-component navigation events ──
   useEffect(() => {
@@ -190,13 +224,13 @@ function AppShell() {
     }
   }, [user, isDataLoaded, showOnboarding, isInitialized, isConnected]);
 
-  // 🔒 Only show dashboard for authenticated users.
-  // Unauthenticated users → quiz check redirects in useEffect (above).
-  // Don't render anything while auth is loading or user is null.
-  if (!isDataLoaded || !user) return null;
+  // 🔒 Block rendering until auth check completes AND we have a user.
+  // effectiveUser covers authenticated users AND anonymous users who
+  // completed the quiz (synthetic user from localStorage).
+  if (!isDataLoaded || !effectiveUser) return null;
 
-  // Wait for broker status check before rendering anything.
-  // Prevents dashboard flicker when broker gate needs to appear.
+  // Wait for broker status check before rendering.
+  // Skip broker gate for anonymous (demo) users — they use DemoBroker.
   if (!isInitialized) {
     return null;
   }
@@ -211,9 +245,9 @@ function AppShell() {
     return <InvestorStyleOnboarding />;
   }
 
-  // Broker gate — shown every login until broker is connected.
-  // Dismissed for session via module-level variable.
-  if (showBrokerGate) {
+  // Broker gate — only for authenticated users without a broker.
+  // Anonymous/demo users never see the broker gate.
+  if (showBrokerGate && isAuthenticated) {
     return (
       <BrokerGate
         onDismiss={() => {
@@ -267,7 +301,7 @@ function AppShell() {
       {/* Welcome-back toast — slides in from top on fresh login */}
       {showWelcomeToast && (() => {
         const localName = typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null;
-        const initial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
+        const initial = ((effectiveUser?.name || effectiveUser?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
         return (
           <div style={{
             position: 'fixed',
