@@ -7,6 +7,7 @@ import { StockRecommendationCard } from '@/components/advisor/StockRecommendatio
 import ConflictAlert from '@/components/advisor/ConflictAlert';
 import { detectConflict, type ConflictAnalysis } from '@/lib/advisor/conflict-detection';
 import { useTabStore } from '@/store';
+import { INVESTOR_STYLES } from '@/lib/content/investor-styles';
 import type { InvestorStyle } from '@/types';
 
 interface Position {
@@ -30,22 +31,6 @@ interface Props {
   totalGain: number;
   totalReturn: number;
 }
-
-const STYLE_NAMES: Record<string, string> = {
-  buffett: 'Warren Buffett',
-  lynch: 'Peter Lynch',
-  livermore: 'Jesse Livermore',
-  soros: 'George Soros',
-  munger: 'Charlie Munger',
-};
-
-const STYLE_EMOJIS: Record<string, string> = {
-  buffett: '💎',
-  lynch: '📈',
-  livermore: '⚡️',
-  soros: '🌍',
-  munger: '💰',
-};
 
 // ─── Position Row ─────────────────────────────────────────────
 
@@ -157,7 +142,7 @@ function PositionRow({
           gain={position.totalPnl}
           gainPercent={position.totalPnlPercent}
           selectedStyle={selectedStyle}
-          selectedStyleName={STYLE_NAMES[selectedStyle]}
+          selectedStyleName={INVESTOR_STYLES[selectedStyle]?.shortLabel || 'Patient Builder'}
           allRecommendations={recommendations}
         />
       )}
@@ -324,11 +309,11 @@ export default function PortfolioDashboard({
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 24 }}>{STYLE_EMOJIS[selectedStyle]}</span>
+          <span style={{ fontSize: 24 }}>{INVESTOR_STYLES[selectedStyle]?.emoji}</span>
           <div>
             <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>Advisor</p>
             <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-              {STYLE_NAMES[selectedStyle]}
+              {INVESTOR_STYLES[selectedStyle]?.shortLabel}
             </p>
           </div>
         </div>

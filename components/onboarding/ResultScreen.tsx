@@ -8,7 +8,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { InvestorStyle } from '@/types';
-import { getStyleContent, getStyleTrait, getStyleTag, RISK_COLORS, RISK_LABELS, ALL_STYLES, PILL_TRAITS } from '@/lib/onboarding/quiz-logic';
+import { getStyleContent, getStyleTrait, getStyleTag, ALL_STYLES, PILL_TRAITS } from '@/lib/content/investor-styles';
+import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import { CompassBurst } from '@/lib/animations/compass-burst';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import { ShareCardModal } from '@/components/sharing/ShareCardModal';
@@ -345,7 +346,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
       <ShareCardModal
         open={showShareModal}
         onClose={() => setShowShareModal(false)}
-        styleId={result.style as ShareStyleId}
+        styleId={selectedStyle as ShareStyleId}
         score={0}
         level="Apprentice"
         riskTolerance={result.riskTolerance}

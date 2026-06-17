@@ -9,6 +9,20 @@
 import { createClient } from '@/lib/supabase';
 import type { InvestorStyle } from '@/types';
 
+// Re-export style content from shared source
+export {
+  INVESTOR_STYLES,
+  getStyleContent,
+  getStyleTrait,
+  getStyleTag,
+  getStyleEmoji,
+  getStyleDescription,
+  PILL_TRAITS,
+  ALL_STYLES,
+  ALL_STYLE_KEYS,
+  type InvestorStyleKey,
+} from '@/lib/content/investor-styles';
+
 // ─── Types ────────────────────────────────────────────────────
 
 export interface QuizResult {
@@ -122,64 +136,11 @@ export function scoreQuiz(answers: string[]): QuizResult {
   };
 }
 
-// ─── Style Content ───────────────────────────────────────────
-
-const STYLE_CONTENT: Record<InvestorStyle, { emoji: string; name: string; trait: string; description: string }> = {
-  buffett: {
-    emoji: '\uD83C\uDFDB\uFE0F', // 🏛️
-    name: 'Buffett',
-    trait: 'The Patient Builder',
-    description: "You play the long game. You'd rather own something great for ten years than chase something hot for ten days.",
-  },
-  lynch: {
-    emoji: '\uD83D\uDD0D', // 🔍
-    name: 'Lynch',
-    trait: 'The Growth Spotter',
-    description: "You catch things early. You're drawn to businesses that are quietly getting bigger before anyone else notices.",
-  },
-  livermore: {
-    emoji: '\uD83D\uDCC8', // 📈
-    name: 'Livermore',
-    trait: 'The Momentum Reader',
-    description: "You trust what's actually happening right now. Price and timing tell you more than a good story does.",
-  },
-  munger: {
-    emoji: '\uD83E\uDDE0', // 🧠
-    name: 'Munger',
-    trait: 'The Rational Thinker',
-    description: "You think before you act. Good business, good people, good incentives — if it doesn't add up, you walk away.",
-  },
-  soros: {
-    emoji: '\uD83C\uDF10', // 🌐
-    name: 'Soros',
-    trait: 'The Contrarian',
-    description: "You look where others aren't looking. The crowd being wrong is often exactly where the opportunity is.",
-  },
-};
-
-export function getStyleContent(style: InvestorStyle) {
-  return STYLE_CONTENT[style] || STYLE_CONTENT.buffett;
-}
-
-export function getStyleDescription(style: InvestorStyle): string {
-  return STYLE_CONTENT[style]?.description || STYLE_CONTENT.buffett.description;
-}
-
-export function getStyleTrait(style: InvestorStyle): string {
-  return STYLE_CONTENT[style]?.trait || 'The Patient Builder';
-}
-
-export function getStyleTag(style: InvestorStyle): string {
-  const name = STYLE_CONTENT[style]?.name || 'Buffett';
-  return `${name}-style`;
-}
-
+// getStyleDisplayName kept for backward compatibility
 export function getStyleDisplayName(style: InvestorStyle): string {
-  return STYLE_CONTENT[style]?.name || 'Buffett';
-}
-
-export function getStyleEmoji(style: InvestorStyle): string {
-  return STYLE_CONTENT[style]?.emoji || '\uD83C\uDFDB\uFE0F';
+  // Capitalize first letter of style id as display name
+  const name = style.charAt(0).toUpperCase() + style.slice(1);
+  return name;
 }
 
 // risk color tokens
@@ -263,24 +224,6 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
       { key: 'C', text: 'I barely flinch. Volatility is just opportunity in disguise.' },
     ],
   },
-];
-
-// ─── All style pills for override ────────────────────────────
-
-export const PILL_TRAITS: Record<InvestorStyle, string> = {
-  buffett: 'Patient',
-  lynch: 'Growth',
-  livermore: 'Momentum',
-  munger: 'Rational',
-  soros: 'Contrarian',
-};
-
-export const ALL_STYLES: { id: InvestorStyle; emoji: string; name: string; trait: string }[] = [
-  { id: 'buffett', emoji: '\uD83C\uDFDB\uFE0F', name: 'Buffett', trait: PILL_TRAITS.buffett },
-  { id: 'livermore', emoji: '\uD83D\uDCC8', name: 'Livermore', trait: PILL_TRAITS.livermore },
-  { id: 'lynch', emoji: '\uD83D\uDD0D', name: 'Lynch', trait: PILL_TRAITS.lynch },
-  { id: 'munger', emoji: '\uD83E\uDDE0', name: 'Munger', trait: PILL_TRAITS.munger },
-  { id: 'soros', emoji: '\uD83C\uDF10', name: 'Soros', trait: PILL_TRAITS.soros },
 ];
 
 // ─── LocalStorage ─────────────────────────────────────────────

@@ -18,24 +18,7 @@ import { useAnonymousSession } from '@/hooks/useAnonymousSession';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getLevelColor } from '@/lib/theme/utils';
 import { ScoreDetailSheet } from './ScoreDetailSheet';
-
-// ─── Investor Style Definitions (inline, matching SettingsTab) ─
-
-const INVESTOR_STYLES = [
-  { id: 'lynch', name: 'Peter Lynch', subtitle: 'Growth', emoji: '📈' },
-  { id: 'buffett', name: 'Warren Buffett', subtitle: 'Value', emoji: '🏰' },
-  { id: 'livermore', name: 'Jesse Livermore', subtitle: 'Momentum', emoji: '⚡' },
-  { id: 'munger', name: 'Charlie Munger', subtitle: 'Quality', emoji: '🎯' },
-  { id: 'soros', name: 'George Soros', subtitle: 'Macro', emoji: '🌍' },
-];
-
-const STYLE_LABELS: Record<string, string> = {
-  lynch: 'Lynch · Growth',
-  buffett: 'Buffett · Value',
-  livermore: 'Livermore · Momentum',
-  munger: 'Munger · Quality',
-  soros: 'Soros · Macro',
-};
+import { ALL_STYLES, getStyleContent } from '@/lib/content/investor-styles';
 
 // ─── Component ───────────────────────────────────────────────
 
@@ -51,10 +34,9 @@ export function PlayerStatusBar() {
   const prevScoreRef = useRef(0);
   const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Derive investor style ──
-  const styleId = user?.investorStyle || 'buffett';
-  const styleLabel = STYLE_LABELS[styleId] || 'Buffett · Value';
-  const styleName = INVESTOR_STYLES.find(s => s.id === styleId)?.name || 'Warren Buffett';
+  // ── Derive investor style (with localStorage fallback for anonymous users) ──
+  const styleId = user?.investorStyle || (typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null) || 'buffett';
+  const styleData = getStyleContent(styleId);
 
   // ── Level color ──
   const levelColor = getLevelColor(level);
@@ -105,21 +87,22 @@ export function PlayerStatusBar() {
 
   // ── Style save ───────────────────────────────────────
   const selectStyle = useCallback(async (newStyle: string) => {
-    if (!user?.id) return;
-    try {
-      const res = await fetch('/api/db/users/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, investorStyle: newStyle }),
-      });
-      if (res.ok) {
-        localStorage.setItem('vantage_investor_style', newStyle);
-        // Clear cached greeting so next greeting reflects new style
-        sessionStorage.removeItem('vantage_greeting');
-        window.location.reload();
-      }
-    } catch {}
+    // Always persist to localStorage (works for both anonymous and auth users)
+    localStorage.setItem('vantage:investorStyle', newStyle);
+    sessionStorage.removeItem('vantage_greeting');
+
+    if (user?.id) {
+      try {
+        await fetch('/api/db/users/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, investorStyle: newStyle }),
+        });
+      } catch {}
+    }
+
     setShowStylePicker(false);
+    window.location.reload();
   }, [user?.id]);
 
   // ── Render ───────────────────────────────────────────
@@ -213,13 +196,13 @@ export function PlayerStatusBar() {
             fontWeight: 500,
             color: 'var(--text-secondary)',
           }}>
-            {styleLabel}
+            {styleData.shortLabel}
           </span>
           <span style={{
             fontSize: '9px',
             color: 'var(--text-muted)',
           }}>
-            {INVESTOR_STYLES.find(s => s.id === styleId)?.emoji} {styleName}
+            {styleData.emoji} {styleData.tag}
           </span>
         </div>
 
@@ -351,7 +334,7 @@ export function PlayerStatusBar() {
               Choose your investing style. Your AI advisor tailors its responses to match.
             </p>
 
-            {INVESTOR_STYLES.map((s) => {
+            {ALL_STYLES.map((s) => {
               const isSelected = s.id === styleId;
               return (
                 <button
@@ -381,13 +364,13 @@ export function PlayerStatusBar() {
                       fontWeight: 600,
                       color: 'var(--text-primary)',
                     }}>
-                      {s.name}
+                      {s.shortLabel}
                     </div>
                     <div style={{
                       fontSize: '11px',
                       color: 'var(--text-muted)',
                     }}>
-                      {s.subtitle} Focus
+                      {s.tag}
                     </div>
                   </div>
                   {isSelected && (
