@@ -26,6 +26,7 @@ import { checkQuizComplete } from '@/lib/onboarding/quiz-logic';
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import type { User } from '@/types';
 import { useEmailGate } from '@/hooks/useEmailGate';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { EmailGateModal } from '@/components/auth/EmailGateModal';
 
 // Module-level: survives in-app navigation but resets on full page load (login)
@@ -376,10 +377,12 @@ function AppShell() {
 
 export default function Home() {
   return (
-    <BrokerProvider>
-      <PortfolioProvider>
-        <AppShell />
-      </PortfolioProvider>
-    </BrokerProvider>
+    <AppErrorBoundary>
+      <BrokerProvider>
+        <PortfolioProvider>
+          <AppShell />
+        </PortfolioProvider>
+      </BrokerProvider>
+    </AppErrorBoundary>
   );
 }
