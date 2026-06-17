@@ -190,6 +190,24 @@ export default function PortfolioDashboard({
     return () => clearTimeout(t);
   }, []);
 
+  const selectedStyle = (user?.investorStyle || 'buffett') as InvestorStyle;
+  const isPositive = totalReturn >= 0;
+
+  // ── Conflict detection (must run before any conditional return) ──
+  const conflictAnalysis = useMemo<ConflictAnalysis>(() => {
+    if (!user || Object.keys(stockDataMap.current).length === 0) {
+      return { hasConflict: false, severity: 'low', conflictMessage: '', metrics: {}, suggestions: [] };
+    }
+    return detectConflict(selectedStyle, positions, stockDataMap.current as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictVersion, selectedStyle, user]);
+
+  // Reset dismissal when conflict severity changes
+  useEffect(() => {
+    if (user) setDismissedConflict(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictAnalysis.severity]);
+
   if (!user) {
     return (
       <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--text-dim)' }}>
@@ -197,23 +215,6 @@ export default function PortfolioDashboard({
       </div>
     );
   }
-
-  const selectedStyle = (user.investorStyle || 'buffett') as InvestorStyle;
-  const isPositive = totalReturn >= 0;
-
-  // ── Conflict detection ─────────────────────────────────────
-  const conflictAnalysis = useMemo<ConflictAnalysis>(() => {
-    if (Object.keys(stockDataMap.current).length === 0) {
-      return { hasConflict: false, severity: 'low', conflictMessage: '', metrics: {}, suggestions: [] };
-    }
-    return detectConflict(selectedStyle, positions, stockDataMap.current as any);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conflictVersion, selectedStyle]);
-
-  // Reset dismissal when conflict severity changes
-  useEffect(() => {
-    setDismissedConflict(false);
-  }, [conflictAnalysis.severity]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

@@ -230,17 +230,6 @@ function AppShell() {
     }
   }, [user, isDataLoaded, showOnboarding, isInitialized, isConnected]);
 
-  // 🔒 Block rendering until auth check completes AND we have a user.
-  // effectiveUser covers authenticated users AND anonymous users who
-  // completed the quiz (synthetic user from localStorage).
-  if (!isDataLoaded || !effectiveUser) return null;
-
-  // Wait for broker status check before rendering.
-  // Skip broker gate for anonymous (demo) users — they use DemoBroker.
-  if (!isInitialized) {
-    return null;
-  }
-
   // ── Resume pending action after magic-link authentication ──
   useEffect(() => {
     if (showBootSplash) return;
@@ -257,6 +246,17 @@ function AppShell() {
       } catch {}
     }
   }, [showBootSplash, setTab]);
+
+  // 🔒 Block rendering until auth check completes AND we have a user.
+  // effectiveUser covers authenticated users AND anonymous users who
+  // completed the quiz (synthetic user from localStorage).
+  if (!isDataLoaded || !effectiveUser) return null;
+
+  // Wait for broker status check before rendering.
+  // Skip broker gate for anonymous (demo) users — they use DemoBroker.
+  if (!isInitialized) {
+    return null;
+  }
 
   // Boot splash — shows once per app open for quiz-complete users
   if (showBootSplash) {
