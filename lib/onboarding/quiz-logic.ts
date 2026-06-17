@@ -6,6 +6,7 @@
 //
 // Tiebreak: last question's answer wins among tied styles.
 
+import { createClient } from '@/lib/supabase';
 import type { InvestorStyle } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -123,31 +124,36 @@ export function scoreQuiz(answers: string[]): QuizResult {
 
 // ─── Style Content ───────────────────────────────────────────
 
-const STYLE_CONTENT: Record<InvestorStyle, { emoji: string; name: string; description: string }> = {
+const STYLE_CONTENT: Record<InvestorStyle, { emoji: string; name: string; trait: string; description: string }> = {
   buffett: {
     emoji: '\uD83C\uDFDB\uFE0F', // 🏛️
     name: 'Buffett',
-    description: 'You invest in businesses, not tickers. Patience and conviction are your edge.',
+    trait: 'The Patient Builder',
+    description: "You play the long game. You'd rather own something great for ten years than chase something hot for ten days.",
   },
   lynch: {
     emoji: '\uD83D\uDD0D', // 🔍
     name: 'Lynch',
-    description: "You find growth before it's obvious. You're always watching for what others miss.",
+    trait: 'The Growth Spotter',
+    description: "You catch things early. You're drawn to businesses that are quietly getting bigger before anyone else notices.",
   },
   livermore: {
     emoji: '\uD83D\uDCC8', // 📈
     name: 'Livermore',
-    description: 'You read momentum and act decisively. Timing and discipline define your edge.',
+    trait: 'The Momentum Reader',
+    description: "You trust what's actually happening right now. Price and timing tell you more than a good story does.",
   },
   munger: {
     emoji: '\uD83E\uDDE0', // 🧠
     name: 'Munger',
-    description: 'You think in mental models. Rational analysis and avoiding mistakes beats chasing wins.',
+    trait: 'The Rational Thinker',
+    description: "You think before you act. Good business, good people, good incentives — if it doesn't add up, you walk away.",
   },
   soros: {
     emoji: '\uD83C\uDF10', // 🌐
     name: 'Soros',
-    description: "You spot what markets are getting wrong. Macro vision and reflexivity are your weapons.",
+    trait: 'The Contrarian',
+    description: "You look where others aren't looking. The crowd being wrong is often exactly where the opportunity is.",
   },
 };
 
@@ -157,6 +163,15 @@ export function getStyleContent(style: InvestorStyle) {
 
 export function getStyleDescription(style: InvestorStyle): string {
   return STYLE_CONTENT[style]?.description || STYLE_CONTENT.buffett.description;
+}
+
+export function getStyleTrait(style: InvestorStyle): string {
+  return STYLE_CONTENT[style]?.trait || 'The Patient Builder';
+}
+
+export function getStyleTag(style: InvestorStyle): string {
+  const name = STYLE_CONTENT[style]?.name || 'Buffett';
+  return `${name}-style`;
 }
 
 export function getStyleDisplayName(style: InvestorStyle): string {
@@ -252,12 +267,20 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
 
 // ─── All style pills for override ────────────────────────────
 
-export const ALL_STYLES: { id: InvestorStyle; emoji: string; name: string }[] = [
-  { id: 'buffett', emoji: '\uD83C\uDFDB\uFE0F', name: 'Buffett' },
-  { id: 'livermore', emoji: '\uD83D\uDCC8', name: 'Livermore' },
-  { id: 'lynch', emoji: '\uD83D\uDD0D', name: 'Lynch' },
-  { id: 'munger', emoji: '\uD83E\uDDE0', name: 'Munger' },
-  { id: 'soros', emoji: '\uD83C\uDF10', name: 'Soros' },
+export const PILL_TRAITS: Record<InvestorStyle, string> = {
+  buffett: 'Patient',
+  lynch: 'Growth',
+  livermore: 'Momentum',
+  munger: 'Rational',
+  soros: 'Contrarian',
+};
+
+export const ALL_STYLES: { id: InvestorStyle; emoji: string; name: string; trait: string }[] = [
+  { id: 'buffett', emoji: '\uD83C\uDFDB\uFE0F', name: 'Buffett', trait: PILL_TRAITS.buffett },
+  { id: 'livermore', emoji: '\uD83D\uDCC8', name: 'Livermore', trait: PILL_TRAITS.livermore },
+  { id: 'lynch', emoji: '\uD83D\uDD0D', name: 'Lynch', trait: PILL_TRAITS.lynch },
+  { id: 'munger', emoji: '\uD83E\uDDE0', name: 'Munger', trait: PILL_TRAITS.munger },
+  { id: 'soros', emoji: '\uD83C\uDF10', name: 'Soros', trait: PILL_TRAITS.soros },
 ];
 
 // ─── LocalStorage ─────────────────────────────────────────────
@@ -279,5 +302,60 @@ export function markQuizComplete(): void {
     localStorage.setItem(QUIZ_COMPLETE_KEY, 'true');
   } catch {
     // Ignore storage errors
+  }
+}
+
+// ─── Async cross-device quiz check ───────────────────────────
+// Checks Supabase for authenticated users, falls back to localStorage
+// for anonymous users. Hydrates localStorage on success for consistency.
+
+export async function checkQuizComplete(): Promise<{
+  complete: boolean;
+  style?: string;
+  risk?: string;
+  name?: string;
+}> {
+  if (typeof window === 'undefined') return { complete: false };
+
+  try {
+    const { createClient } = await import('@/lib/supabase');
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (session) {
+      // Authenticated — check Supabase profile via /api/auth/me
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.user?.investorStyleOnboarded) {
+          // Hydrate localStorage for cross-device consistency
+          localStorage.setItem('vantage_quiz_complete', 'true');
+          localStorage.setItem('vantage:investorStyle', data.user.investorStyle);
+          localStorage.setItem('vantage:riskTolerance', data.user.riskTolerance || 'Moderate');
+          localStorage.setItem('vantage_user_name', data.user.displayName || '');
+          return {
+            complete: true,
+            style: data.user.investorStyle,
+            risk: data.user.riskTolerance,
+            name: data.user.displayName,
+          };
+        }
+      }
+      return { complete: false };
+    }
+
+    // Anonymous — check localStorage
+    const complete = localStorage.getItem('vantage_quiz_complete') === 'true';
+    if (complete) {
+      return {
+        complete: true,
+        style: localStorage.getItem('vantage:investorStyle') || undefined,
+        risk: localStorage.getItem('vantage:riskTolerance') || undefined,
+        name: localStorage.getItem('vantage_user_name') || undefined,
+      };
+    }
+    return { complete: false };
+  } catch {
+    return { complete: false };
   }
 }

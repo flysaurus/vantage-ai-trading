@@ -31,7 +31,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     // ── 1. Exchange code for session ──────────────────────────
     const code = requestUrl.searchParams.get('code');
-    const next = requestUrl.searchParams.get('next') || '/';
+    const pendingAction = requestUrl.searchParams.get('pending_action');
+    const next = pendingAction
+      ? `/?pending_action=${encodeURIComponent(pendingAction)}`
+      : (requestUrl.searchParams.get('next') || '/');
 
     if (!code) {
       console.error('[callback] No code in callback URL');

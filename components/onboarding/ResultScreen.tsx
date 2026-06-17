@@ -1,19 +1,23 @@
 // ─── ResultScreen ──────────────────────────────────────────
 // Final screen of the onboarding quiz.
 //
+// Trait-first structure: headline shows trait (e.g. "The Patient Builder"),
+// investor name is a secondary tag below.
+//
 // Sequence:
 // 1. Compass burst (0-600ms)
 // 2. Compass fades to style emoji (80px)
-// 3. Typewriter: "You're a [STYLE] investor."
-// 4. Style description fades in
-// 5. Stats fade in staggered: risk badge, investor score
-// 6. Override pills + "Enter Vantage →" CTA
+// 3. Typewriter: "You're [TRAIT]."
+// 4. Secondary tag fades in (e.g. "Buffett-style")
+// 5. Style description fades in
+// 6. Stats fade in staggered: risk badge, investor score
+// 7. Override pills + "Enter Vantage →" CTA
 
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import type { InvestorStyle } from '@/types';
-import { getStyleContent, getStyleDisplayName, RISK_COLORS, RISK_LABELS, ALL_STYLES } from '@/lib/onboarding/quiz-logic';
+import { getStyleContent, getStyleTrait, getStyleTag, RISK_COLORS, RISK_LABELS, ALL_STYLES, PILL_TRAITS } from '@/lib/onboarding/quiz-logic';
 import { CompassBurst } from '@/lib/animations/compass-burst';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import { ShareCardModal } from '@/components/sharing/ShareCardModal';
@@ -32,7 +36,9 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   const [showShareModal, setShowShareModal] = useState(false);
 
   const styleData = getStyleContent(selectedStyle);
-  const revealText = `You're a ${getStyleDisplayName(selectedStyle)} investor.`;
+  const trait = getStyleTrait(selectedStyle);
+  const tag = getStyleTag(selectedStyle);
+  const revealText = `You're ${trait}.`;
   const { displayText: typewriterText, isDone: typewriterDone } = useTypewriter(
     revealText,
     30,
@@ -41,15 +47,13 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
 
   // Phase sequencing
   useEffect(() => {
-    // Burst → reveal after 600ms
     const t1 = setTimeout(() => setPhase('reveal'), 600);
     return () => clearTimeout(t1);
   }, []);
 
   useEffect(() => {
     if (!typewriterDone || phase !== 'reveal') return;
-    // Wait 400ms after typewriter, then show stats
-    const t = setTimeout(() => setPhase('stats'), 400);
+    const t = setTimeout(() => setPhase('stats'), 500);
     return () => clearTimeout(t);
   }, [typewriterDone, phase]);
 
@@ -95,23 +99,44 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
             {styleData.emoji}
           </div>
 
-          {/* Typewriter reveal text */}
+          {/* Typewriter reveal: "You're [TRAIT]." — trait in cyan */}
           <h1
             style={{
               fontSize: 'var(--onb-headline-size)',
               fontWeight: 'var(--onb-headline-weight)',
               color: 'var(--onb-headline-color)',
               textAlign: 'center',
-              marginBottom: '12px',
+              marginBottom: '10px',
               lineHeight: 1.3,
-              maxWidth: '320px',
+              maxWidth: '340px',
             }}
           >
-            {typewriterText}
+            {typewriterText.slice(0, 7)}
+            <span style={{ color: '#22d3ee' }}>{typewriterText.slice(7)}</span>
             {!typewriterDone && (
               <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
             )}
           </h1>
+
+          {/* Secondary tag — fades in after typewriter */}
+          <div
+            style={{
+              display: 'inline-flex',
+              padding: '4px 10px',
+              background: 'rgba(34,211,238,0.1)',
+              border: '1px solid rgba(34,211,238,0.3)',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              color: '#94a3b8',
+              fontWeight: 500,
+              marginBottom: '16px',
+              opacity: typewriterDone ? 1 : 0,
+              transition: 'opacity 400ms ease',
+              transitionDelay: '200ms',
+            }}
+          >
+            {tag}
+          </div>
 
           {/* Style description — fades in after typewriter */}
           <p
@@ -124,6 +149,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               marginBottom: '24px',
               opacity: typewriterDone ? 1 : 0,
               transition: 'opacity 400ms ease',
+              transitionDelay: '400ms',
             }}
           >
             {styleData.description}
@@ -134,7 +160,6 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
             style={{
               opacity: phase === 'stats' || phase === 'done' ? 1 : 0,
               transition: 'opacity 400ms ease',
-              transitionDelay: phase === 'stats' ? '0ms' : '0ms',
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
@@ -149,16 +174,13 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '8px 16px',
+                padding: '6px 14px',
                 background: `${riskColor}15`,
                 border: `1px solid ${riskColor}40`,
-                borderRadius: '12px',
+                borderRadius: '10px',
                 fontSize: '13px',
                 fontWeight: 500,
                 color: riskColor,
-                opacity: phase === 'stats' || phase === 'done' ? 1 : 0,
-                transition: 'opacity 400ms ease',
-                transitionDelay: '0ms',
               }}
             >
               <span style={{ fontSize: '11px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
@@ -171,14 +193,11 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               style={{
                 width: '100%',
                 maxWidth: '320px',
-                padding: '16px',
+                padding: '14px',
                 background: '#1a2235',
                 border: '1px solid rgba(255,255,255,0.06)',
                 borderRadius: '14px',
                 textAlign: 'center',
-                opacity: phase === 'stats' || phase === 'done' ? 1 : 0,
-                transition: 'opacity 400ms ease',
-                transitionDelay: '200ms',
               }}
             >
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
@@ -191,14 +210,12 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
             </div>
           </div>
 
-          {/* Not quite right + override pills */}
+          {/* Not quite right + override pills (two-line) */}
           {(phase === 'stats' || phase === 'done') && (
             <div
               style={{
                 width: '100%',
                 marginBottom: '20px',
-                opacity: phase === 'done' ? 1 : (phase === 'stats' ? 1 : 0),
-                transition: 'opacity 400ms ease',
               }}
             >
               <p
@@ -224,6 +241,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               >
                 {ALL_STYLES.map((s) => {
                   const isActive = selectedStyle === s.id;
+                  const sTag = getStyleTag(s.id);
                   return (
                     <button
                       key={s.id}
@@ -232,26 +250,39 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: '4px',
-                        padding: '10px 14px',
+                        justifyContent: 'center',
+                        gap: '2px',
+                        padding: '8px 14px',
+                        minHeight: '56px',
                         background: isActive ? 'rgba(34, 211, 238, 0.12)' : '#1a2235',
                         border: isActive ? '1px solid #22d3ee' : '1px solid rgba(255,255,255,0.06)',
                         borderRadius: '12px',
                         cursor: 'pointer',
                         transition: 'all 150ms ease',
                         flexShrink: 0,
-                        minWidth: '60px',
+                        minWidth: '72px',
                       }}
                     >
-                      <span style={{ fontSize: '20px' }}>{s.emoji}</span>
+                      <span style={{ fontSize: '16px', lineHeight: 1 }}>{s.emoji}</span>
                       <span
                         style={{
-                          fontSize: '11px',
+                          fontSize: '12px',
                           fontWeight: 600,
-                          color: isActive ? '#22d3ee' : '#64748b',
+                          color: isActive ? '#22d3ee' : '#e2e8f0',
+                          lineHeight: 1.2,
                         }}
                       >
-                        {s.name}
+                        {PILL_TRAITS[s.id]}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 400,
+                          color: isActive ? '#67e8f9' : '#64748b',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {sTag}
                       </span>
                     </button>
                   );

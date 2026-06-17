@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { CompassMark } from '@/components/brand/CompassMark';
-import { isQuizComplete } from '@/lib/onboarding/quiz-logic';
+import { checkQuizComplete } from '@/lib/onboarding/quiz-logic';
 import { isIntroSeen } from '@/lib/onboarding/flow-state';
 
 const BOOT_DURATION = 1100;
@@ -37,8 +37,8 @@ export function BootSplash({ onComplete }: BootSplashProps) {
     const textTimer = setTimeout(() => setPhase('text'), 400);
 
     // Phase: route decision at BOOT_DURATION
-    const exitTimer = setTimeout(() => {
-      const quizDone = isQuizComplete();
+    const exitTimer = setTimeout(async () => {
+      const { complete: quizDone } = await checkQuizComplete();
       const introSeen = isIntroSeen();
 
       if (quizDone) {

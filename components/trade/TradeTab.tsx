@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore } from '@/store';
+import { useEmailGate } from '@/hooks/useEmailGate';
 import BuildBasketModal from '@/components/BuildBasketModal';
 import { onBasketCreated } from '@/lib/gamification/events';
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
@@ -96,6 +97,7 @@ export function TradeTab() {
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast } = useLivePortfolio();
+  const { gate } = useEmailGate();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -761,6 +763,8 @@ export function TradeTab() {
         <button
           onClick={async () => {
             if (!selectedSymbol) return;
+            // Email gate: block anonymous users from trading
+            if (!gate({ type: 'trade', payload: { symbol: selectedSymbol, side, shares: qtyType === 'shares' ? parseInt(qty || '0') : undefined, price: symbolQuote?.price } })) return;
             const price = orderType === 'limit' && limitPrice
               ? parseFloat(limitPrice)
               : symbolQuote?.price;

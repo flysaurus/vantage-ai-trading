@@ -6,6 +6,7 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { onAISessionStarted } from '@/lib/gamification/events';
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useEmailGate } from '@/hooks/useEmailGate';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
 import { useChatStorage } from '@/hooks/useChatStorage';
@@ -67,8 +68,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
+  const { gate } = useEmailGate();
   const userId = user?.id || null;
   const investorStyle = user?.investorStyle || 'Lynch';
+  const chatGateCheckedRef = useRef(false);
   
   // ── Supabase chat storage (previous sessions + message count) ──
   const {
@@ -504,6 +507,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
+
+    // Email gate: gate anonymous users on first message
+    if (!chatGateCheckedRef.current) {
+      chatGateCheckedRef.current = true;
+      if (!gate({ type: 'chat', payload: { content, mode } })) return;
+    }
 
     // Message limit check (soft — 25/day)
     const remaining = getRemainingMessages();

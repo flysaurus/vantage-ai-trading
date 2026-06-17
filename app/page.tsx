@@ -22,9 +22,11 @@ import { BootSplash } from '@/components/onboarding/BootSplash';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
-import { isQuizComplete } from '@/lib/onboarding/quiz-logic';
+import { checkQuizComplete } from '@/lib/onboarding/quiz-logic';
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import type { User } from '@/types';
+import { useEmailGate } from '@/hooks/useEmailGate';
+import { EmailGateModal } from '@/components/auth/EmailGateModal';
 
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
@@ -55,11 +57,13 @@ function AppShell() {
   const [showBootSplash, setShowBootSplash] = useState(true);
 
   const router = useRouter();
+  const { gate, showEmailGate, pendingAction, close } = useEmailGate();
 
-  // ── Anonymous user fallback ──────────────────────────────
-  // When quiz is complete but no auth session exists (demo mode),
-  // synthesize a user from localStorage so the dashboard renders.
-  const quizComplete = typeof window !== 'undefined' ? isQuizComplete() : false;
+  // ── Async quiz state (cross-device aware) ─────────────────
+  const [quizComplete, setQuizComplete] = useState(false);
+  useEffect(() => {
+    checkQuizComplete().then(({ complete }) => setQuizComplete(complete));
+  }, []);
   const effectiveUser = useMemo<User | null>(() => {
     if (user) return user;
     if (!quizComplete) return null;
@@ -94,11 +98,13 @@ function AppShell() {
     // 'feature-splash' shouldn't happen here (quiz already done)
   }, [router]);
 
-  // ── Quiz onboarding redirect (first-open only) ──
+  // ── Quiz onboarding redirect (first-open only, cross-device aware) ──
   useEffect(() => {
-    if (!isQuizComplete()) {
-      router.replace('/onboarding');
-    }
+    checkQuizComplete().then(({ complete }) => {
+      if (!complete) {
+        router.replace('/onboarding');
+      }
+    });
   }, [router]);
 
   // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
@@ -235,6 +241,23 @@ function AppShell() {
     return null;
   }
 
+  // ── Resume pending action after magic-link authentication ──
+  useEffect(() => {
+    if (showBootSplash) return;
+    const params = new URLSearchParams(window.location.search);
+    const pendingActionRaw = params.get('pending_action');
+    if (pendingActionRaw) {
+      try {
+        const action = JSON.parse(decodeURIComponent(pendingActionRaw));
+        sessionStorage.setItem('vantage_pending_action', JSON.stringify(action));
+        window.history.replaceState({}, '', '/');
+        if (action.type === 'trade') setTab('invest');
+        else if (action.type === 'basket') setTab('portfolio');
+        else if (action.type === 'chat') setTab('ai');
+      } catch {}
+    }
+  }, [showBootSplash, setTab]);
+
   // Boot splash — shows once per app open for quiz-complete users
   if (showBootSplash) {
     return <BootSplash onComplete={handleBootComplete} />;
@@ -340,6 +363,13 @@ function AppShell() {
           onComplete={() => setShowGreeting(false)}
         />
       )}
+
+      {/* Email gate modal — gated actions (trade, basket, chat) */}
+      <EmailGateModal
+        open={showEmailGate}
+        onClose={close}
+        pendingAction={pendingAction || { type: 'trade' }}
+      />
     </div>
   );
 }

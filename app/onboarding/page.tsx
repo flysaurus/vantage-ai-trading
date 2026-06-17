@@ -16,7 +16,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { BootSplash } from '@/components/onboarding/BootSplash';
 import { FeatureSplash } from '@/components/onboarding/FeatureSplash';
@@ -28,6 +28,7 @@ import {
   QUIZ_QUESTIONS,
   scoreQuiz,
   isQuizComplete,
+  checkQuizComplete,
   markQuizComplete,
 } from '@/lib/onboarding/quiz-logic';
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
@@ -38,11 +39,14 @@ type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'result';
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // If already complete, redirect to main app immediately
-  if (typeof window !== 'undefined' && isQuizComplete()) {
-    router.replace('/');
-    return null;
-  }
+  // If already complete, redirect to main app immediately (async cross-device check)
+  useEffect(() => {
+    checkQuizComplete().then(({ complete }) => {
+      if (complete) {
+        router.replace('/');
+      }
+    });
+  }, [router]);
 
   // Determine initial screen: always BootSplash first
   const [screen, setScreen] = useState<Screen>('boot');
