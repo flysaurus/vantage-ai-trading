@@ -78,6 +78,8 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
         flexDirection: 'column',
         alignItems: 'center',
         paddingTop: 'max(40px, env(safe-area-inset-top, 20px) + 20px)',
+        overflowY: 'auto',
+        minHeight: '100dvh',
       }}
     >
       {/* Phase 1: Compass burst */}
@@ -190,26 +192,6 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               </span>
             </div>
 
-            {/* Investor score */}
-            <div
-              style={{
-                width: '100%',
-                maxWidth: '320px',
-                padding: '14px',
-                background: '#1a2235',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '14px',
-                textAlign: 'center',
-              }}
-            >
-              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
-                Your starting score
-              </p>
-              <p style={{ fontSize: '36px', fontWeight: 700, color: '#22d3ee' }}>0</p>
-              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-                Check back in 7 days
-              </p>
-            </div>
           </div>
 
           {/* Not quite right + override pills (two-line) */}

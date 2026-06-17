@@ -125,17 +125,41 @@ export async function getOrCreateProfile(
     };
   }
 
-  // Create new profile
+  // Create new profile — first check anonymous_profiles for quiz data
   console.log('[session] Creating new profile for user:', userId);
+
+  // Attempt to hydrate from anonymous_profiles (quiz completed before signup)
+  let quizStyle: string | null = null;
+  let quizRiskTolerance: string | null = null;
+  let quizName: string | null = null;
+  let quizOnboarded = false;
+
+  if (anonymousId) {
+    const anonSupabase = createServerClient();
+    const { data: anonProfile } = await (anonSupabase as any)
+      .from('anonymous_profiles')
+      .select('first_name, investor_style, risk_tolerance')
+      .eq('anonymous_id', anonymousId)
+      .maybeSingle();
+
+    if (anonProfile) {
+      quizStyle = anonProfile.investor_style || null;
+      quizRiskTolerance = anonProfile.risk_tolerance || null;
+      quizName = anonProfile.first_name || null;
+      // If anonymous profile has investor_style set, they completed the quiz
+      quizOnboarded = !!quizStyle;
+      console.log('[session] Found anonymous profile with style:', quizStyle);
+    }
+  }
 
   const { data, error } = await (supabase as any)
     .from('users')
     .insert({
       id: userId,
       email: email || null,
-      display_name: email?.split('@')[0] || null,
-      investor_style: 'buffett',
-      investor_style_onboarded: false,
+      display_name: quizName || email?.split('@')[0] || null,
+      investor_style: quizStyle || 'buffett',
+      investor_style_onboarded: quizOnboarded,
       anonymous_id: anonymousId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

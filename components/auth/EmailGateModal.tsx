@@ -132,9 +132,15 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
             </h2>
             <p style={{
               fontSize: '14px', color: '#94a3b8', lineHeight: 1.5,
-              marginBottom: '24px',
+              marginBottom: '8px',
             }}>
               Tap the link to continue — we sent it to {email || 'your email'}.
+            </p>
+            <p style={{
+              fontSize: '13px', color: 'var(--text-muted, #64748b)', textAlign: 'center',
+              marginBottom: '24px',
+            }}>
+              Don't see it? Check your spam or junk folder.
             </p>
             <button onClick={handleResend} style={{
               background: 'none', border: 'none', color: '#22d3ee',
@@ -154,9 +160,15 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
             </h2>
             <p style={{
               fontSize: '14px', color: '#94a3b8', lineHeight: 1.5,
-              marginBottom: '24px',
+              marginBottom: '8px',
             }}>
               Check your inbox to finish setting up.
+            </p>
+            <p style={{
+              fontSize: '13px', color: 'var(--text-muted, #64748b)', textAlign: 'center',
+              marginBottom: '24px',
+            }}>
+              Don't see it? Check your spam or junk folder.
             </p>
             <button onClick={handleResend} style={{
               background: 'none', border: 'none', color: '#22d3ee',
