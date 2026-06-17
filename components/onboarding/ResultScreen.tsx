@@ -332,6 +332,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
         score={0}
         level="Apprentice"
         riskTolerance={result.riskTolerance}
+        userName={userName}
       />
 
       <style>{`
