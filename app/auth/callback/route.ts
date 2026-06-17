@@ -32,6 +32,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // ── 1. Exchange code for session ──────────────────────────
     const code = requestUrl.searchParams.get('code');
     const pendingAction = requestUrl.searchParams.get('pending_action');
+    const quizComplete = requestUrl.searchParams.get('quiz_complete') === '1';
+    const quizStyle = requestUrl.searchParams.get('investor_style');
     const next = pendingAction
       ? `/?pending_action=${encodeURIComponent(pendingAction)}`
       : (requestUrl.searchParams.get('next') || '/');
@@ -76,6 +78,29 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       anonymousId,
       authUser.email
     );
+
+    // ── Preserve quiz completion from anonymous session ──────
+    // When the user completed the quiz as anonymous, the magic link
+    // includes quiz_complete=1 and investor_style params. Update the
+    // profile so the user doesn't get redirected back to onboarding.
+    if (quizComplete || quizStyle) {
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (quizComplete) updates.investor_style_onboarded = true;
+      if (quizStyle) updates.investor_style = quizStyle;
+
+      const adminClient = createServerClient();
+      const { error: updateErr } = await (adminClient as any)
+        .from('users')
+        .update(updates)
+        .eq('id', authUser.id);
+
+      if (updateErr) {
+        console.warn('[callback] Profile update failed (non-blocking):', updateErr.message);
+      } else {
+        console.log('[callback] ✅ Quiz state preserved:', { quizComplete, quizStyle });
+      }
+    }
+
     console.log('[callback] Profile ready:', profile.email, '| style:', profile.investorStyle);
 
     // ── 4. Run anonymous data migration ───────────────────────

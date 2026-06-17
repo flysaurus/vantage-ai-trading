@@ -103,10 +103,21 @@ function AppShell() {
   useEffect(() => {
     checkQuizComplete().then(({ complete }) => {
       if (!complete) {
+        // Safety net: if user has localStorage quiz flags (e.g. completed as
+        // anonymous before authenticating), don't redirect — the server profile
+        // may not have updated yet.
+        if (user) {
+          const hasLocalQuiz = typeof window !== 'undefined'
+            && localStorage.getItem('vantage_quiz_complete') === 'true';
+          if (hasLocalQuiz) {
+            setQuizComplete(true);
+            return;
+          }
+        }
         router.replace('/onboarding');
       }
     });
-  }, [router]);
+  }, [router, user]);
 
   // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
   useEffect(() => {

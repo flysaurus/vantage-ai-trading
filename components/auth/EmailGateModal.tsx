@@ -35,11 +35,21 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
         timestamp: Date.now(),
       }));
 
+      // Build callback URL with quiz state so new profile preserves onboarding status
+      const callbackBase = `${window.location.origin}/auth/callback?pending_action=${encodeURIComponent(JSON.stringify(pendingAction))}`;
+      let callbackUrl = callbackBase;
+      try {
+        const quizComplete = localStorage.getItem('vantage_quiz_complete') === 'true';
+        const quizStyle = localStorage.getItem('vantage:investorStyle');
+        if (quizComplete) callbackUrl += `&quiz_complete=1`;
+        if (quizStyle) callbackUrl += `&investor_style=${encodeURIComponent(quizStyle)}`;
+      } catch { /* localStorage unavailable */ }
+
       const supabase = createClient();
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?pending_action=${encodeURIComponent(JSON.stringify(pendingAction))}`,
+          emailRedirectTo: callbackUrl,
         },
       });
 
@@ -57,11 +67,21 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       const stored = localStorage.getItem('vantage_magic_link_sent');
       if (!stored) return;
       const { email: storedEmail } = JSON.parse(stored);
+      
+      // Include quiz state in resend too
+      let resendUrl = `${window.location.origin}/auth/callback`;
+      try {
+        const qc = localStorage.getItem('vantage_quiz_complete') === 'true';
+        const qs = localStorage.getItem('vantage:investorStyle');
+        if (qc) resendUrl += `?quiz_complete=1`;
+        if (qs) resendUrl += `${qc ? '&' : '?'}investor_style=${encodeURIComponent(qs)}`;
+      } catch {}
+
       const supabase = createClient();
       await supabase.auth.signInWithOtp({
         email: storedEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: resendUrl,
         },
       });
       setSubmitted(true);
