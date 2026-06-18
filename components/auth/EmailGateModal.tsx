@@ -62,20 +62,6 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
 
       if (otpError) throw otpError;
 
-      // Sync PKCE code verifier to cookie so the server-side callback
-      // can read it for the token exchange. The browser Supabase client
-      // stores PKCE state in sessionStorage, but the server can only
-      // access cookies.
-      try {
-        const verifier = sessionStorage.getItem('vantage-auth-token-code-verifier');
-        if (verifier) {
-          document.cookie = `vantage-pkce-verifier=${encodeURIComponent(verifier)}; path=/; max-age=600; SameSite=Lax`;
-          console.log('[EmailGate] ✅ PKCE verifier synced to cookie');
-        } else {
-          console.warn('[EmailGate] ⚠️ No PKCE verifier found in sessionStorage');
-        }
-      } catch { /* cookie write failed — non-blocking */ }
-
       setSubmitted(true);
     } catch (err: any) {
       setError(err.message || 'Failed to send link');

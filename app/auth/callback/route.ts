@@ -17,12 +17,11 @@
 // to a password-based login — this app is magic-link-only).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseServerClient } from '@/lib/auth/supabase-server';
 import { createServerClient } from '@/lib/supabase';
 import { getOrCreateProfile } from '@/lib/auth/session';
 import { verifyAnonId } from '@/lib/auth/magic-link';
 import { generateSessionToken, hashSessionToken } from '@/lib/crypto';
-import type { Database } from '@/types/supabase';
 
 const ANON_COOKIE = 'vantage-anon-id';
 const SESSION_COOKIE = 'session';
@@ -155,52 +154,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     console.log('[callback] Exchanging code for session...');
-    // Read PKCE verifier from cookie (synced by EmailGateModal after signInWithOtp).
-    // We do a manual token exchange because the verifier was stored in sessionStorage
-    // by the browser client, not in the @supabase/ssr cookie format.
-    const codeVerifierCookie = req.cookies.get('vantage-pkce-verifier')?.value;
+    const supabase = await getSupabaseServerClient();
 
-    let sessionData: any = null;
-    let tokenError: any = null;
-
-    if (codeVerifierCookie) {
-      // Manual PKCE token exchange with verifier from cookie
-      try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-        const tokenRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=pkce`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-          },
-          body: JSON.stringify({
-            auth_code: code,
-            code_verifier: decodeURIComponent(codeVerifierCookie),
-          }),
-        });
-        const tokenData = await tokenRes.json();
-        if (tokenRes.ok && tokenData.user) {
-          sessionData = tokenData;
-          console.log('[callback] ✅ Manual PKCE exchange succeeded');
-        } else {
-          tokenError = { message: tokenData.error_description || tokenData.msg || 'Token exchange failed' };
-          console.error('[callback] Manual PKCE exchange failed:', tokenError.message);
-        }
-      } catch (e: any) {
-        tokenError = { message: e.message || 'Token exchange network error' };
-      }
-    } else {
-      // Fallback: try plain exchangeCodeForSession (for cases where verifier wasn't stored)
-      console.log('[callback] No PKCE verifier cookie — trying plain exchange');
-      const exchangeClient = createSupabaseClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      const result = await exchangeClient.auth.exchangeCodeForSession(code);
-      sessionData = result.data;
-      tokenError = result.error;
-    }
+    const { data: sessionData, error: tokenError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (tokenError || !sessionData?.user) {
       console.error('[callback] Token exchange failed:', tokenError?.message);
