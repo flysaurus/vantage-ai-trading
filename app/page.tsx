@@ -234,13 +234,15 @@ function AppShell() {
   // Step 2: Broker gate — if onboarded but no broker, show gate every login.
   // Gate stays dismissed for the rest of the session (survives in-app navigation).
   useEffect(() => {
-    if (!user || !isDataLoaded || showOnboarding) return;
+    // Only show broker gate for AUTHENTICATED users, not anonymous ones.
+    // Anonymous users should see the email gate first via AI chat interaction.
+    if (!user || !isDataLoaded || showOnboarding || !isAuthenticated) return;
     if (!isInitialized) return; // still checking /api/broker/status
 
     if (!isConnected && !brokerGateDismissedThisSession) {
       setShowBrokerGate(true);
     }
-  }, [user, isDataLoaded, showOnboarding, isInitialized, isConnected]);
+  }, [user, isDataLoaded, showOnboarding, isAuthenticated, isInitialized, isConnected]);
 
   // ── Resume pending action after magic-link authentication ──
   useEffect(() => {
