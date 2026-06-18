@@ -5,8 +5,7 @@ import { EmailGateProvider } from '@/hooks/useEmailGate';
 import { InactivityWarning } from '@/components/providers/InactivityWarning';
 import { MilestoneToastProvider } from '@/context/MilestoneContext';
 import { MilestoneToastRenderer } from '@/components/gamification/MilestoneToastRenderer';
-// DebugOverlayWrapper temporarily disabled — investigating React #310
-// import { DebugOverlayWrapper } from '@/components/debug/DebugOverlayWrapper';
+import { DebugOverlayWrapper } from '@/components/debug/DebugOverlayWrapper';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -67,8 +66,7 @@ export default function RootLayout({
               </AuthGuard>
               <InactivityWarning />
               <MilestoneToastRenderer />
-              {/* DebugOverlay temporarily disabled — investigating React #310 */}
-              {/* <DebugOverlayWrapper /> */}
+              <DebugOverlayWrapper />
             </MilestoneToastProvider>
           </EmailGateProvider>
         </AuthProvider>

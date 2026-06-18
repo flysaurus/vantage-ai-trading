@@ -10,6 +10,7 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  componentStack: string | null;
 }
 
 /**
@@ -20,15 +21,30 @@ interface State {
 export class AppErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, componentStack: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[AppErrorBoundary] Caught error:', error.message, info.componentStack);
+    const stack = info.componentStack || null;
+    console.error('[AppErrorBoundary] Caught error:', error.message, stack);
+    // Persist to sessionStorage so debug overlay can read it
+    try {
+      const existing = sessionStorage.getItem('vantage_error_log') || '[]';
+      const log = JSON.parse(existing);
+      log.push({
+        message: error.message,
+        stack: error.stack || null,
+        componentStack: stack,
+        time: Date.now(),
+        url: window.location.href,
+      });
+      sessionStorage.setItem('vantage_error_log', JSON.stringify(log.slice(-20)));
+    } catch {}
+    this.setState({ componentStack: stack });
   }
 
   render() {
@@ -86,9 +102,28 @@ export class AppErrorBoundary extends React.Component<Props, State> {
           {this.state.error && (
             <details style={{ marginTop: '24px', fontSize: '11px', color: '#64748b', maxWidth: '400px', textAlign: 'left' }}>
               <summary style={{ cursor: 'pointer' }}>Error details</summary>
-              <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {this.state.error.message}
-              </pre>
+              <div style={{ marginTop: '8px' }}>
+                <strong>Message:</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '4px 0 8px' }}>
+                  {this.state.error.message}
+                </pre>
+                {this.state.componentStack && (
+                  <>
+                    <strong>Component Stack:</strong>
+                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '4px 0 8px', fontSize: '10px' }}>
+                      {this.state.componentStack}
+                    </pre>
+                  </>
+                )}
+                {this.state.error.stack && (
+                  <>
+                    <strong>JS Stack:</strong>
+                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '4px 0 8px', fontSize: '10px' }}>
+                      {this.state.error.stack}
+                    </pre>
+                  </>
+                )}
+              </div>
             </details>
           )}
         </div>

@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   turbopack: {},
+  productionBrowserSourceMaps: true,
 
   // Security headers for production
   async headers() {
