@@ -159,24 +159,75 @@ export async function getOrCreateProfile(
     }
   }
 
-  // Upsert on email. Do NOT set created_at — the DB DEFAULT NOW() handles
-  // it on INSERT, and we don't want to overwrite it on UPDATE (conflict).
+  // Try insert. If email already exists (duplicate key 23505), fetch the
+  // existing row and update only metadata — do NOT change users.id because
+  // foreign keys (chat_history, user_sessions, etc.) reference it.
+  console.log('[session/getOrCreateProfile] 📝 Attempting INSERT for userId:', userId, '| email:', email);
   const { data, error } = await (supabase as any)
     .from('users')
-    .upsert({
+    .insert({
       id: userId,
       email: email || null,
       display_name: quizName || email?.split('@')[0] || null,
       investor_style: quizStyle || 'buffett',
       investor_style_onboarded: quizOnboarded,
       anonymous_id: anonymousId,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'email' })
+    })
     .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, anonymous_id, created_at, updated_at')
     .single();
 
   if (error) {
-    console.error('[session] Failed to upsert profile:', error.message, error.code, error.details);
+    // 23505 = duplicate key (unique constraint violation)
+    if (error.code === '23505' && email) {
+      console.log('[session/getOrCreateProfile] 🔄 Email already exists — fetching existing row and updating metadata');
+      // Fetch the existing row by email (keep its original id)
+      const { data: existingRow, error: fetchErr } = await (supabase as any)
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (fetchErr || !existingRow) {
+        console.error('[session] Failed to fetch existing user by email:', fetchErr?.message);
+        throw new Error(`Failed to create user profile: ${error.message}`);
+      }
+
+      console.log('[session/getOrCreateProfile] 📋 Found existing by email — id:', existingRow.id, '| style:', existingRow.investor_style);
+
+      // Update metadata ONLY (not id — FK constraints would break)
+      const updateData: any = { updated_at: new Date().toISOString() };
+      if (!existingRow.investor_style_onboarded && quizOnboarded) {
+        updateData.investor_style = quizStyle;
+        updateData.investor_style_onboarded = true;
+      }
+      if (!existingRow.anonymous_id && anonymousId) {
+        updateData.anonymous_id = anonymousId;
+      }
+      if (!existingRow.display_name && (quizName || email)) {
+        updateData.display_name = quizName || email?.split('@')[0] || null;
+      }
+
+      await (supabase as any)
+        .from('users')
+        .update(updateData)
+        .eq('email', email);
+
+      // Return the existing profile with updated metadata
+      return {
+        id: existingRow.id,
+        email: existingRow.email,
+        displayName: updateData.display_name || existingRow.display_name,
+        avatarUrl: existingRow.avatar_url,
+        investorStyle: quizOnboarded ? (quizStyle || 'buffett') : (existingRow.investor_style || 'buffett'),
+        investorStyleOnboarded: existingRow.investor_style_onboarded || quizOnboarded,
+        anonymousId: anonymousId || existingRow.anonymous_id || null,
+        createdAt: existingRow.created_at,
+        updatedAt: existingRow.updated_at,
+      };
+    }
+
+    // Not a duplicate email — real error
+    console.error('[session] Failed to insert profile:', error.message, error.code, error.details);
     throw new Error(`Failed to create user profile: ${error.message}`);
   }
 

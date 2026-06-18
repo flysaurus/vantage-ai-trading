@@ -229,7 +229,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       anonymousId,
       authUser.email
     );
-    console.log('[callback] 📋 Profile result — investor_style:', profile.investorStyle, '| onboarded:', profile.investorStyleOnboarded);
+    console.log('[callback] 📋 Profile result — id:', profile.id, '| investor_style:', profile.investorStyle, '| onboarded:', profile.investorStyleOnboarded);
+
+    // IMPORTANT: profile.id may differ from authUser.id if the email already
+    // existed in the users table (from a previous auth session). All subsequent
+    // DB operations MUST use profile.id, not authUser.id.
 
     // ── Preserve quiz completion from anonymous session ──────
     if (quizComplete || quizStyle) {
@@ -242,7 +246,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const { error: updateErr } = await (adminClient as any)
         .from('users')
         .update(updates)
-        .eq('id', authUser.id);
+        .eq('id', profile.id);
 
       if (updateErr) {
         console.warn('[callback] Profile update failed (non-blocking):', updateErr.message);
@@ -260,20 +264,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const { error: migrationError } = await (adminClient as any)
           .rpc('migrate_anonymous_data', {
             p_anonymous_id: anonymousId,
-            p_user_id: authUser.id,
+            p_user_id: profile.id,
           });
 
         if (migrationError) {
           console.warn('[callback] Migration RPC not available:', migrationError.message);
           console.log('[callback] Running inline migration fallback...');
-          await migrateInline(adminClient, anonymousId, authUser.id);
+          await migrateInline(adminClient, anonymousId, profile.id);
         } else {
           console.log('[callback] ✅ Anonymous data migrated via RPC');
         }
       } catch (migrationErr: any) {
         console.warn('[callback] Migration failed (non-blocking):', migrationErr.message);
         try {
-          await migrateInline(adminClient, anonymousId, authUser.id);
+          await migrateInline(adminClient, anonymousId, profile.id);
         } catch (inlineErr: any) {
           console.error('[callback] Inline migration also failed:', inlineErr.message);
         }
@@ -285,11 +289,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const sessionHash = hashSessionToken(sessionToken);
     const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString();
 
-    const adminClient = createServerClient();
-    await (adminClient as any)
+    const adminClientSession = createServerClient();
+    await (adminClientSession as any)
       .from('user_sessions')
       .insert({
-        user_id: authUser.id,
+        user_id: profile.id,
         session_token_hash: sessionHash,
         expires_at: expiresAt,
         last_activity_at: new Date().toISOString(),
