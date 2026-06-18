@@ -29,6 +29,10 @@ import { useEmailGate } from '@/hooks/useEmailGate';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { EmailGateModal } from '@/components/auth/EmailGateModal';
 
+// Disable static optimization to prevent hydration hook-order mismatches
+// that cause React error #310 on the callback → page redirect path.
+export const dynamic = 'force-dynamic';
+
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
 
