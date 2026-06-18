@@ -107,9 +107,33 @@ export async function getOrCreateProfile(
 ): Promise<UserProfile> {
   const supabase = createServerClient();
 
-  // Check if profile already exists
+  // Check if profile already exists (by Supabase auth user ID)
   console.log('[session/getOrCreateProfile] 🔍 Checking for existing profile — userId:', userId, '| anonId:', anonymousId?.slice(0, 12) + '...');
-  const existing = await getUserProfile(userId);
+  let existing = await getUserProfile(userId);
+
+  // If not found by ID, check by email — handles case where user signed in
+  // before but got a different Supabase auth ID (e.g., different OAuth provider,
+  // previous test session, or email-only signup). Without this, the INSERT below
+  // hits "duplicate key value violates unique constraint users_email_key".
+  if (!existing && email) {
+    console.log('[session/getOrCreateProfile] 🔍 Not found by userId, checking by email:', email);
+    const { data: byEmail } = await (supabase as any)
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
+    if (byEmail) {
+      console.log('[session/getOrCreateProfile] 📋 Found existing profile by email — updating userId from', byEmail.id, '→', userId);
+      // Re-link this email to the current auth user ID
+      await (supabase as any)
+        .from('users')
+        .update({ id: userId, updated_at: new Date().toISOString() })
+        .eq('email', email);
+      // Re-fetch with the new ID
+      existing = await getUserProfile(userId);
+    }
+  }
+
   if (existing) {
     console.log('[session/getOrCreateProfile] 📋 Existing profile FOUND — investor_style:', existing.investorStyle, '| onboarded:', existing.investorStyleOnboarded, '| anonId:', existing.anonymousId?.slice(0, 12) + '...');
     // Update anonymous_id if not already set
