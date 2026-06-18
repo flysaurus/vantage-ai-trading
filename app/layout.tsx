@@ -66,7 +66,7 @@ export default function RootLayout({
               </AuthGuard>
               <InactivityWarning />
               <MilestoneToastRenderer />
-              <DebugOverlayWrapper />
+              {/* <DebugOverlayWrapper /> */}
             </MilestoneToastProvider>
           </EmailGateProvider>
         </AuthProvider>

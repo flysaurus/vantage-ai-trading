@@ -73,14 +73,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const userId = user?.id || null;
   const investorStyle = user?.investorStyle || 'Lynch';
   const chatGateCheckedRef = useRef(false);
-
-  // Reset gate check when auth data finishes loading so the first message
-  // after post-magic-link redirect gets a proper auth check.
-  useEffect(() => {
-    if (isDataLoaded && !chatGateCheckedRef.current) {
-      // Gate hasn't been checked yet — ready for first message
-    }
-  }, [isDataLoaded]);
   
   // ── Supabase chat storage (previous sessions + message count) ──
   const {
