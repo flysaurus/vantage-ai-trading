@@ -246,8 +246,7 @@ export default function DebugOverlay() {
                   </div>
                 ))
               )
-            ) : (
-              entries.length === 0 ? (
+            ) : entries.length === 0 ? (
               <div
                 style={{
                   color: '#64748b',
