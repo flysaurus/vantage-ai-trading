@@ -48,11 +48,12 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-                });
-              }
+              // SW disabled — diagnosing React #310 (stale cache serving old JS chunks)
+              // if ('serviceWorker' in navigator) {
+              //   window.addEventListener('load', () => {
+              //     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+              //   });
+              // }
             `,
           }}
         />

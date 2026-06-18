@@ -58,28 +58,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests: cache-first with offline fallback
+  // Navigation requests: network-first — never serve stale HTML
+  // Cache-first caused React #310: cached HTML references old/removed JS chunks
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) {
-          // Stale-while-revalidate: return cache, update in background
-          fetch(request).then((res) => {
-            if (res.ok) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, res));
-            }
-          }).catch(() => {});
-          return cached;
-        }
-        return fetch(request).then((res) => {
-          if (!res.ok) throw new Error('network error');
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return res;
-        }).catch(() => {
-          // Offline — return cached root as fallback
-          return caches.match('/') || new Response('Offline', { status: 503 });
-        });
+      fetch(request).then((res) => {
+        // Cache fresh response for offline fallback
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        return res;
+      }).catch(() => {
+        // Offline fallback
+        return caches.match(request).then((cached) =>
+          cached || caches.match('/') || new Response('Offline', { status: 503 })
+        );
       })
     );
     return;
