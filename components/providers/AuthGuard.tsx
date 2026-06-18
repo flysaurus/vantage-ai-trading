@@ -1,8 +1,8 @@
 // ─── Auth Guard ───────────────────────────────────────────────
-// Wraps protected pages. Redirects to /login if no valid session.
+// Wraps protected pages. Redirects to / if no valid session.
 // Shows loading screen while isLoading (covers auth check + DB sync).
-// Skips public paths (login, login-test) to avoid redirect loops.
-// Redirects to onboarding if investorStyleOnboarded is false.
+// Skips public paths (/, /onboarding, /share) to avoid redirect loops.
+// Vantage is magic-link-only — no password-based login page exists.
 
 'use client';
 
@@ -10,9 +10,8 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 
-// Root ('/') and onboarding are completely public — no auth required.
-// Quiz check + demo mode gate in app/page.tsx (client-side only).
-const PUBLIC_PATHS = ['/', '/onboarding', '/login', '/login-test', '/signup', '/verify-email', '/forgot-password', '/reset-password'];
+// Root, onboarding, and share are completely public — no auth required.
+const PUBLIC_PATHS = ['/', '/onboarding', '/share'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
@@ -26,17 +25,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const isPublic = PUBLIC_PATHS.includes(pathname);
+  const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/share');
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isPublic) {
-      router.replace('/login');
+      router.replace('/');
     }
   }, [isLoading, isAuthenticated, isPublic, router]);
-
-  // Onboarding — handled by in-app modal overlay on the main page
-  // Do NOT redirect to /investor-style for first-time users
-  // The onboarding modal in AppShell manages the first-time flow
 
   // Public pages render immediately
   if (isPublic) return <>{children}</>;
@@ -70,7 +65,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         <button
           onClick={() => {
             import('@/lib/supabase').then(m => m.createClient().auth.signOut());
-            window.location.href = '/login';
+            window.location.href = '/';
           }}
           style={{
             padding: '10px 24px', borderRadius: 8,
@@ -78,7 +73,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             color: '#e2e8f0', cursor: 'pointer', fontSize: 14,
           }}
         >
-          Go to Login
+          Back to Vantage
         </button>
       </div>
     );

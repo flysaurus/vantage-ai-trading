@@ -12,6 +12,9 @@
 //    (which checks /api/auth/me) recognizes the user
 // 6. Set the session cookie used by the custom auth middleware
 // 7. Redirect to /
+//
+// Error handling: returns an in-app error page (never redirects
+// to a password-based login — this app is magic-link-only).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/auth/supabase-server';
@@ -24,6 +27,105 @@ const ANON_COOKIE = 'vantage-anon-id';
 const SESSION_COOKIE = 'session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+
+// ─── HTML error page (in-app, no redirects to password pages) ─
+
+function errorPage(title: string, message: string, email?: string): NextResponse {
+  const resendUrl = email
+    ? `${APP_URL}/api/auth/send-magic-link`
+    : null;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"/>
+<title>${title} · Vantage</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #1e293b; border: 1px solid #334155; border-radius: 16px;
+    padding: 40px 32px; max-width: 400px; width: 100%; text-align: center;
+  }
+  .icon { font-size: 48px; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: #f1f5f9; }
+  p { font-size: 14px; color: #94a3b8; line-height: 1.6; margin-bottom: 24px; }
+  .btn {
+    display: inline-block; padding: 12px 24px; border-radius: 8px;
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    cursor: pointer; transition: all .2s; border: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #06b6d4, #0d9488);
+    color: #fff; margin: 0 6px 12px;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-secondary {
+    background: #334155; color: #e2e8f0; margin: 0 6px 12px;
+    border: 1px solid #475569;
+  }
+  .btn-secondary:hover { border-color: #06b6d4; }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .resend-status { font-size: 13px; margin-top: 12px; min-height: 20px; color: #22c55e; }
+  .resend-status.error { color: #f87171; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">${title.includes('Expired') ? '⏰' : title.includes('Missing') ? '🔗' : '⚠️'}</div>
+  <h1>${title}</h1>
+  <p>${message}</p>
+  <div class="actions">
+    <a href="/" class="btn btn-primary">Go to Vantage</a>
+    <a href="${APP_URL}" class="btn btn-secondary">Request New Link</a>
+  </div>
+  ${email ? `<div id="resend-status" class="resend-status"></div>
+  <script>
+    (function() {
+      const statusEl = document.getElementById('resend-status');
+      const btns = document.querySelectorAll('.btn-secondary');
+      btns.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          statusEl.textContent = 'Resending...';
+          statusEl.className = 'resend-status';
+          fetch('${resendUrl}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: '${email}' })
+          }).then(function(r) {
+            if (r.ok) {
+              statusEl.textContent = '✅ Magic link sent! Check your inbox.';
+              statusEl.className = 'resend-status';
+            } else {
+              statusEl.textContent = '❌ Failed to resend. Please try from the app.';
+              statusEl.className = 'resend-status error';
+            }
+          }).catch(function() {
+            statusEl.textContent = '❌ Unable to resend. Open Vantage to request a new link.';
+            statusEl.className = 'resend-status error';
+          });
+        });
+      });
+    })();
+  </script>` : ''}
+</div>
+</body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const requestUrl = new URL(req.url);
   console.log('[callback] Magic link callback received');
@@ -35,13 +137,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const quizComplete = requestUrl.searchParams.get('quiz_complete') === '1';
     const quizStyle = requestUrl.searchParams.get('investor_style');
     const anonIdFromUrl = requestUrl.searchParams.get('anon_id') || '';
+    const emailFromUrl = requestUrl.searchParams.get('email') || '';
     const next = pendingAction
       ? `/?pending_action=${encodeURIComponent(pendingAction)}`
       : (requestUrl.searchParams.get('next') || '/');
 
     if (!code) {
       console.error('[callback] No code in callback URL');
-      return NextResponse.redirect(new URL('/login?error=no_code', req.url));
+      return errorPage(
+        'Missing Magic Link',
+        'This link is incomplete — no verification code was found. Please request a new magic link from the Vantage app.',
+        emailFromUrl
+      );
     }
 
     console.log('[callback] Exchanging code for session...');
@@ -51,8 +158,28 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     if (tokenError || !sessionData?.user) {
       console.error('[callback] Token exchange failed:', tokenError?.message);
-      return NextResponse.redirect(
-        new URL(`/login?error=${encodeURIComponent(tokenError?.message || 'auth_failed')}`, req.url)
+      const errMsg = tokenError?.message || 'auth_failed';
+      const isExpired = errMsg.toLowerCase().includes('expired');
+      const isUsed = errMsg.toLowerCase().includes('already been used') || errMsg.toLowerCase().includes('already used');
+
+      if (isExpired) {
+        return errorPage(
+          'Link Expired',
+          'This magic link has expired. For security, magic links are only valid for a short time.',
+          emailFromUrl
+        );
+      }
+      if (isUsed) {
+        return errorPage(
+          'Link Already Used',
+          'This magic link has already been used. If you\'re already signed in on another device, you\'re all set — head to Vantage.',
+          emailFromUrl
+        );
+      }
+      return errorPage(
+        'Authentication Failed',
+        'We couldn\'t verify your magic link. It may have expired, been revoked, or already been used.',
+        emailFromUrl
       );
     }
 
@@ -87,9 +214,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
 
     // ── Preserve quiz completion from anonymous session ──────
-    // When the user completed the quiz as anonymous, the magic link
-    // includes quiz_complete=1 and investor_style params. Update the
-    // profile so the user doesn't get redirected back to onboarding.
     if (quizComplete || quizStyle) {
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       if (quizComplete) updates.investor_style_onboarded = true;
@@ -121,11 +245,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           });
 
         if (migrationError) {
-          // RPC might not exist yet — log but don't block login
           console.warn('[callback] Migration RPC not available:', migrationError.message);
           console.log('[callback] Running inline migration fallback...');
-
-          // Fallback: migrate known tables inline
           await migrateInline(adminClient, anonymousId, authUser.id);
         } else {
           console.log('[callback] ✅ Anonymous data migrated via RPC');
@@ -170,7 +291,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       maxAge: 0,
     });
 
-    // Set the session cookie (compatible with existing /api/auth/me)
+    // Set the session cookie
     redirectResponse.cookies.set(SESSION_COOKIE, sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -183,15 +304,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return redirectResponse;
   } catch (err: any) {
     console.error('[callback] Unexpected error:', err.message);
-    return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`, req.url)
+    return errorPage(
+      'Something Went Wrong',
+      'An unexpected error occurred during authentication. Please try requesting a new magic link from the Vantage app.'
     );
   }
 }
 
 // ─── Inline Migration Fallback ────────────────────────────────
 // Runs when the migrate_anonymous_data() RPC doesn't exist yet.
-// Migrates data table-by-table using the service_role client.
 
 async function migrateInline(
   adminClient: any,
@@ -248,7 +369,6 @@ async function migrateInline(
 
   console.log(`[callback] Inline migration complete — ${migrated} tables migrated, ${skipped} skipped`);
 
-  // Clear the anonymous ID from users table after successful migration
   try {
     await (adminClient)
       .from('users')

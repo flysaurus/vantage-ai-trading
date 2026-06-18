@@ -36,7 +36,10 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       }));
 
       // Build callback URL with quiz state so new profile preserves onboarding status
-      const callbackBase = `${window.location.origin}/auth/callback?pending_action=${encodeURIComponent(JSON.stringify(pendingAction))}`;
+      // Use canonical APP_URL (not window.location.origin) so the redirect is always
+      // to the production domain regardless of which Vercel alias served the page.
+      const appOrigin = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+      const callbackBase = `${appOrigin}/auth/callback?pending_action=${encodeURIComponent(JSON.stringify(pendingAction))}`;
       let callbackUrl = callbackBase;
       try {
         // Pass anonymous ID so the callback can link to anonymous_profiles
@@ -73,7 +76,8 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       const { email: storedEmail } = JSON.parse(stored);
       
       // Include quiz state and anon_id in resend too
-      let resendUrl = `${window.location.origin}/auth/callback`;
+      const appOriginResend = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+      let resendUrl = `${appOriginResend}/auth/callback`;
       try {
         const anonId = localStorage.getItem('vantage_anonymous_id');
         const qc = localStorage.getItem('vantage_quiz_complete') === 'true';

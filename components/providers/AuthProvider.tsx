@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Redirect to login — cookie cleared server-side on next API call
       clearUser();
       clearSession();
-      if (typeof window !== 'undefined') window.location.href = '/login';
+      if (typeof window !== 'undefined') window.location.href = '/';
     }, INACTIVITY_TIMEOUT);
   }, []);
 
