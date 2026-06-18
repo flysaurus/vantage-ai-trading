@@ -24,19 +24,12 @@ const EmailGateContext = createContext<EmailGateContextValue>({
 });
 
 export function EmailGateProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isDataLoaded } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [showEmailGate, setShowEmailGate] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const gate = useCallback((action: PendingAction): boolean => {
-    debugLog('EmailGate evaluated', `isAuthenticated: ${isAuthenticated}, isDataLoaded: ${isDataLoaded}, action: ${action.type}`);
-    // If auth data hasn't loaded yet, block silently (don't show modal).
-    // This prevents false triggers during the post-redirect loading window.
-    // The caller should retry after isDataLoaded becomes true.
-    if (!isDataLoaded) {
-      debugLog('EmailGate DEFER', 'Auth data not loaded yet — blocking silently');
-      return false;
-    }
+    debugLog('EmailGate evaluated', `isAuthenticated: ${isAuthenticated}, action: ${action.type}`);
     if (isAuthenticated) {
       debugLog('EmailGate PASS', `Allowing action: ${action.type}`);
       return true;
@@ -45,7 +38,7 @@ export function EmailGateProvider({ children }: { children: React.ReactNode }) {
     setPendingAction(action);
     setShowEmailGate(true);
     return false;
-  }, [isAuthenticated, isDataLoaded]);
+  }, [isAuthenticated]);
 
   const close = useCallback(() => {
     setShowEmailGate(false);

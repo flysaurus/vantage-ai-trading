@@ -68,7 +68,7 @@ interface AITabProps {
 export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
-  const { user, isDataLoaded } = useAuth();
+  const { user } = useAuth();
   const { gate } = useEmailGate();
   const userId = user?.id || null;
   const investorStyle = user?.investorStyle || 'Lynch';
@@ -509,13 +509,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
-    // Email gate: gate anonymous users on first message.
-    // Don't gate while auth data is still loading — block silently
-    // and let the user retry once isDataLoaded becomes true.
-    if (!isDataLoaded) {
-      debugLog('AITab chat gate SKIP', 'Auth data not loaded — blocking silently until ready');
-      return;
-    }
+    // Email gate: gate anonymous users on first message
     if (!chatGateCheckedRef.current) {
       chatGateCheckedRef.current = true;
       debugLog('AITab chat gate check', `user.authenticated: ${!!user?.id}, userId: ${user?.id || 'none'}`);

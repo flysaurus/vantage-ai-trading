@@ -25,7 +25,7 @@ import { ALL_STYLES, getStyleContent } from '@/lib/content/investor-styles';
 export function PlayerStatusBar() {
   const { score, level, progress, loading: scoreLoading } = useInvestorScore();
   const { daysRemaining, streak } = useAnonymousSession();
-  const { user, isDataLoaded } = useAuth();
+  const { user } = useAuth();
 
   const [showStylePicker, setShowStylePicker] = useState(false);
   const [showScoreSheet, setShowScoreSheet] = useState(false);
@@ -34,15 +34,8 @@ export function PlayerStatusBar() {
   const prevScoreRef = useRef(0);
   const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Derive investor style ────────────────────────────────
-  // Priority: authenticated user profile > localStorage (quiz/anonymous) > null (show nothing until loaded)
-  // Never default to 'buffett' — that's only for brand-new users with no data at all.
-  const localStyle = typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null;
-  const styleId =
-    user?.investorStyle ||                                      // authenticated DB value
-    (isDataLoaded ? null : localStyle) ||                       // during load: use localStorage, after load: don't fallback
-    (isDataLoaded && !user ? localStyle || null : null) ||      // anon user after load: localStorage only   
-    'buffett';                                                  // absolute last resort
+  // ── Derive investor style (with localStorage fallback for anonymous users) ──
+  const styleId = user?.investorStyle || (typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null) || 'buffett';
   const styleData = getStyleContent(styleId);
 
   // ── Level color ──
