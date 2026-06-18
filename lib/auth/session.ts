@@ -109,30 +109,7 @@ export async function getOrCreateProfile(
 
   // Check if profile already exists (by Supabase auth user ID)
   console.log('[session/getOrCreateProfile] 🔍 Checking for existing profile — userId:', userId, '| anonId:', anonymousId?.slice(0, 12) + '...');
-  let existing = await getUserProfile(userId);
-
-  // If not found by ID, check by email — handles case where user signed in
-  // before but got a different Supabase auth ID (e.g., different OAuth provider,
-  // previous test session, or email-only signup). Without this, the INSERT below
-  // hits "duplicate key value violates unique constraint users_email_key".
-  if (!existing && email) {
-    console.log('[session/getOrCreateProfile] 🔍 Not found by userId, checking by email:', email);
-    const { data: byEmail } = await (supabase as any)
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .maybeSingle();
-    if (byEmail) {
-      console.log('[session/getOrCreateProfile] 📋 Found existing profile by email — updating userId from', byEmail.id, '→', userId);
-      // Re-link this email to the current auth user ID
-      await (supabase as any)
-        .from('users')
-        .update({ id: userId, updated_at: new Date().toISOString() })
-        .eq('email', email);
-      // Re-fetch with the new ID
-      existing = await getUserProfile(userId);
-    }
-  }
+  const existing = await getUserProfile(userId);
 
   if (existing) {
     console.log('[session/getOrCreateProfile] 📋 Existing profile FOUND — investor_style:', existing.investorStyle, '| onboarded:', existing.investorStyleOnboarded, '| anonId:', existing.anonymousId?.slice(0, 12) + '...');
@@ -184,7 +161,7 @@ export async function getOrCreateProfile(
 
   const { data, error } = await (supabase as any)
     .from('users')
-    .insert({
+    .upsert({
       id: userId,
       email: email || null,
       display_name: quizName || email?.split('@')[0] || null,
@@ -193,7 +170,7 @@ export async function getOrCreateProfile(
       anonymous_id: anonymousId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    })
+    }, { onConflict: 'email' })
     .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, anonymous_id, created_at, updated_at')
     .single();
 
