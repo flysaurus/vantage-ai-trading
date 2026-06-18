@@ -32,6 +32,7 @@ import {
   markQuizComplete,
 } from '@/lib/onboarding/quiz-logic';
 import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+import { debugLog } from '@/lib/debug-log';
 import type { InvestorStyle } from '@/types';
 
 type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'result';
@@ -133,6 +134,7 @@ export default function OnboardingPage() {
   // ── Enter Vantage ──────────────────────────────────────────
 
   const handleEnter = useCallback(async (style: InvestorStyle, riskTolerance: string) => {
+    debugLog('handleEnter', `Saving style: ${style}, risk: ${riskTolerance}`);
     try {
       localStorage.setItem('vantage:investorStyle', style);
       localStorage.setItem('vantage:riskTolerance', riskTolerance);
@@ -140,17 +142,21 @@ export default function OnboardingPage() {
       if (userName) {
         localStorage.setItem('vantage_user_name', userName);
       }
+      debugLog('handleEnter localStorage', `style set: ${style}`);
     } catch {}
 
     try {
       const anonymousId = getOrCreateAnonymousId();
-      await fetch('/api/onboarding/sync', {
+      debugLog('handleEnter sync', `anonId: ${anonymousId}, style: ${style}`);
+      const syncRes = await fetch('/api/onboarding/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anonymousId, investorStyle: style, riskTolerance, firstName: userName || undefined }),
       });
-    } catch (err) {
-      console.warn('[onboarding] Supabase sync failed (non-blocking):', err);
+      const syncData = await syncRes.json().catch(() => null);
+      debugLog('handleEnter sync response', `status: ${syncRes.status}, body: ${JSON.stringify(syncData)}`);
+    } catch (err: any) {
+      debugLog('handleEnter sync FAILED', err?.message || String(err));
     }
 
     markQuizComplete();

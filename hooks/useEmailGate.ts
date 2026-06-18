@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { debugLog } from '@/lib/debug-log';
 
 interface PendingAction {
   type: 'basket' | 'trade' | 'chat';
@@ -23,16 +24,28 @@ const EmailGateContext = createContext<EmailGateContextValue>({
 });
 
 export function EmailGateProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isDataLoaded } = useAuth();
   const [showEmailGate, setShowEmailGate] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const gate = useCallback((action: PendingAction): boolean => {
-    if (isAuthenticated) return true;
+    debugLog('EmailGate evaluated', `isAuthenticated: ${isAuthenticated}, isDataLoaded: ${isDataLoaded}, action: ${action.type}`);
+    // If auth data hasn't loaded yet, block silently (don't show modal).
+    // This prevents false triggers during the post-redirect loading window.
+    // The caller should retry after isDataLoaded becomes true.
+    if (!isDataLoaded) {
+      debugLog('EmailGate DEFER', 'Auth data not loaded yet — blocking silently');
+      return false;
+    }
+    if (isAuthenticated) {
+      debugLog('EmailGate PASS', `Allowing action: ${action.type}`);
+      return true;
+    }
+    debugLog('EmailGate BLOCKED', `Showing modal for action: ${action.type}`);
     setPendingAction(action);
     setShowEmailGate(true);
     return false;
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isDataLoaded]);
 
   const close = useCallback(() => {
     setShowEmailGate(false);

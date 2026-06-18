@@ -61,6 +61,21 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       });
 
       if (otpError) throw otpError;
+
+      // Sync PKCE code verifier to cookie so the server-side callback
+      // can read it for the token exchange. The browser Supabase client
+      // stores PKCE state in sessionStorage, but the server can only
+      // access cookies.
+      try {
+        const verifier = sessionStorage.getItem('vantage-auth-token-code-verifier');
+        if (verifier) {
+          document.cookie = `vantage-pkce-verifier=${encodeURIComponent(verifier)}; path=/; max-age=600; SameSite=Lax`;
+          console.log('[EmailGate] ✅ PKCE verifier synced to cookie');
+        } else {
+          console.warn('[EmailGate] ⚠️ No PKCE verifier found in sessionStorage');
+        }
+      } catch { /* cookie write failed — non-blocking */ }
+
       setSubmitted(true);
     } catch (err: any) {
       setError(err.message || 'Failed to send link');
@@ -122,10 +137,15 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: '420px',
+        maxHeight: 'calc(100dvh - 20px)',
         background: '#0f172a',
         borderTopLeftRadius: '20px', borderTopRightRadius: '20px',
         padding: '28px 24px 40px',
         animation: 'slideUp 300ms ease-out',
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
       }} onClick={e => e.stopPropagation()}>
         {/* Handle bar */}
         <div style={{
@@ -202,13 +222,13 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
               fontSize: '20px', fontWeight: 700, color: '#e2e8f0',
               marginBottom: '6px',
             }}>
-              Save your progress
+              Unlock the full Vantage experience
             </h2>
             <p style={{
               fontSize: '14px', color: '#94a3b8', lineHeight: 1.5,
               marginBottom: '20px',
             }}>
-              Create your account so this never gets lost — even if you switch devices or clear your browser.
+              Ask your AI advisor anything, test investment strategies, simulate real trades, and keep your portfolio exactly where you left it — even if you switch devices.
             </p>
 
             <input
@@ -254,9 +274,10 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
             </button>
 
             <p style={{
-              fontSize: '12px', color: '#64748b', textAlign: 'center',
+              fontSize: '13px', color: 'var(--text-muted, #64748b)', textAlign: 'center',
+              lineHeight: 1.5,
             }}>
-              We'll email you a link — no password needed.
+              No password, ever. Just a secure magic link. When you're ready to connect a real brokerage account, we'll add two-factor authentication for extra security.
             </p>
           </>
         )}

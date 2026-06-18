@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { InvestorStyle } from '@/types';
+import { debugLog } from '@/lib/debug-log';
 import { getStyleContent, getStyleTrait, getStyleTag, ALL_STYLES, PILL_TRAITS } from '@/lib/content/investor-styles';
 import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import { CompassBurst } from '@/lib/animations/compass-burst';
@@ -26,6 +27,12 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle>(result.style);
   const [phase, setPhase] = useState<'burst' | 'reveal' | 'stats' | 'done'>('burst');
   const [showShareModal, setShowShareModal] = useState(false);
+
+  // ── DIAGNOSTIC: Log mount ────────────────────────────────
+  useEffect(() => {
+    debugLog('ResultScreen Mount', `quiz-calculated style: ${result.style}, initial selectedStyle: ${result.style}`);
+    debugLog('ResultScreen Mount', 'Checking if any Supabase sync fires here (none expected on mount)');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const styleData = getStyleContent(selectedStyle);
   const trait = getStyleTrait(selectedStyle);
@@ -229,7 +236,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
                   return (
                     <button
                       key={s.id}
-                      onClick={() => setSelectedStyle(s.id)}
+                      onClick={() => {
+                        debugLog('Override selected', `${s.id} (was: ${selectedStyle})`);
+                        setSelectedStyle(s.id);
+                      }}
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -279,7 +289,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
           {phase === 'done' && (
             <>
               <button
-                onClick={() => onEnter(selectedStyle, result.riskTolerance)}
+                onClick={() => {
+                  debugLog('Enter Vantage tapped', `saving style: ${selectedStyle}, risk: ${result.riskTolerance}, original quiz style: ${result.style}, overridden: ${selectedStyle !== result.style}`);
+                  onEnter(selectedStyle, result.riskTolerance);
+                }}
                 style={{
                   width: '100%',
                   maxWidth: '320px',

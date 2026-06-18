@@ -17,11 +17,12 @@
 // to a password-based login — this app is magic-link-only).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/auth/supabase-server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createServerClient } from '@/lib/supabase';
 import { getOrCreateProfile } from '@/lib/auth/session';
 import { verifyAnonId } from '@/lib/auth/magic-link';
 import { generateSessionToken, hashSessionToken } from '@/lib/crypto';
+import type { Database } from '@/types/supabase';
 
 const ANON_COOKIE = 'vantage-anon-id';
 const SESSION_COOKIE = 'session';
@@ -31,7 +32,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.v
 
 // ─── HTML error page (in-app, no redirects to password pages) ─
 
-function errorPage(title: string, message: string, email?: string): NextResponse {
+function errorPage(title: string, message: string, email?: string, detail?: string): NextResponse {
   const resendUrl = email
     ? `${APP_URL}/api/auth/send-magic-link`
     : null;
@@ -82,6 +83,7 @@ function errorPage(title: string, message: string, email?: string): NextResponse
   <div class="icon">${title.includes('Expired') ? '⏰' : title.includes('Missing') ? '🔗' : '⚠️'}</div>
   <h1>${title}</h1>
   <p>${message}</p>
+  ${detail ? `<p style="font-size:12px;color:#64748b;margin-top:-16px;margin-bottom:20px;font-family:monospace;word-break:break-all;">${detail}</p>` : ''}
   <div class="actions">
     <a href="/" class="btn btn-primary">Go to Vantage</a>
     <a href="${APP_URL}" class="btn btn-secondary">Request New Link</a>
@@ -147,14 +149,58 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return errorPage(
         'Missing Magic Link',
         'This link is incomplete — no verification code was found. Please request a new magic link from the Vantage app.',
-        emailFromUrl
+        emailFromUrl,
+        'No code parameter in URL'
       );
     }
 
     console.log('[callback] Exchanging code for session...');
-    const supabase = await getSupabaseServerClient();
+    // Read PKCE verifier from cookie (synced by EmailGateModal after signInWithOtp).
+    // We do a manual token exchange because the verifier was stored in sessionStorage
+    // by the browser client, not in the @supabase/ssr cookie format.
+    const codeVerifierCookie = req.cookies.get('vantage-pkce-verifier')?.value;
 
-    const { data: sessionData, error: tokenError } = await supabase.auth.exchangeCodeForSession(code);
+    let sessionData: any = null;
+    let tokenError: any = null;
+
+    if (codeVerifierCookie) {
+      // Manual PKCE token exchange with verifier from cookie
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+        const tokenRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=pkce`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+          },
+          body: JSON.stringify({
+            auth_code: code,
+            code_verifier: decodeURIComponent(codeVerifierCookie),
+          }),
+        });
+        const tokenData = await tokenRes.json();
+        if (tokenRes.ok && tokenData.user) {
+          sessionData = tokenData;
+          console.log('[callback] ✅ Manual PKCE exchange succeeded');
+        } else {
+          tokenError = { message: tokenData.error_description || tokenData.msg || 'Token exchange failed' };
+          console.error('[callback] Manual PKCE exchange failed:', tokenError.message);
+        }
+      } catch (e: any) {
+        tokenError = { message: e.message || 'Token exchange network error' };
+      }
+    } else {
+      // Fallback: try plain exchangeCodeForSession (for cases where verifier wasn't stored)
+      console.log('[callback] No PKCE verifier cookie — trying plain exchange');
+      const exchangeClient = createSupabaseClient<Database>(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const result = await exchangeClient.auth.exchangeCodeForSession(code);
+      sessionData = result.data;
+      tokenError = result.error;
+    }
 
     if (tokenError || !sessionData?.user) {
       console.error('[callback] Token exchange failed:', tokenError?.message);
@@ -166,20 +212,23 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         return errorPage(
           'Link Expired',
           'This magic link has expired. For security, magic links are only valid for a short time.',
-          emailFromUrl
+          emailFromUrl,
+          errMsg
         );
       }
       if (isUsed) {
         return errorPage(
           'Link Already Used',
           'This magic link has already been used. If you\'re already signed in on another device, you\'re all set — head to Vantage.',
-          emailFromUrl
+          emailFromUrl,
+          errMsg
         );
       }
       return errorPage(
         'Authentication Failed',
         'We couldn\'t verify your magic link. It may have expired, been revoked, or already been used.',
-        emailFromUrl
+        emailFromUrl,
+        errMsg
       );
     }
 
@@ -207,14 +256,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     // ── 3. Get or create profile ──────────────────────────────
+    console.log('[callback] 🔍 Looking up profile — anonId:', anonymousId ? anonymousId.slice(0, 12) + '...' : 'NONE', '| userId:', authUser.id);
     const profile = await getOrCreateProfile(
       authUser.id,
       anonymousId,
       authUser.email
     );
+    console.log('[callback] 📋 Profile result — investor_style:', profile.investorStyle, '| onboarded:', profile.investorStyleOnboarded);
 
     // ── Preserve quiz completion from anonymous session ──────
     if (quizComplete || quizStyle) {
+      console.log('[callback] 🎯 Preserving quiz state — quizComplete:', quizComplete, '| quizStyle:', quizStyle, '| current profile style:', profile.investorStyle);
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       if (quizComplete) updates.investor_style_onboarded = true;
       if (quizStyle) updates.investor_style = quizStyle;
@@ -228,11 +280,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       if (updateErr) {
         console.warn('[callback] Profile update failed (non-blocking):', updateErr.message);
       } else {
-        console.log('[callback] ✅ Quiz state preserved:', { quizComplete, quizStyle });
+        console.log('[callback] ✅ Quiz state preserved — final investor_style in DB is now:', quizStyle || profile.investorStyle);
       }
     }
 
-    console.log('[callback] Profile ready:', profile.email, '| style:', profile.investorStyle);
+    console.log('[callback] ✅ Profile ready:', profile.email, '| style:', profile.investorStyle, '| onboarded:', profile.investorStyleOnboarded);
 
     // ── 4. Run anonymous data migration ───────────────────────
     if (anonymousId) {
@@ -306,7 +358,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     console.error('[callback] Unexpected error:', err.message);
     return errorPage(
       'Something Went Wrong',
-      'An unexpected error occurred during authentication. Please try requesting a new magic link from the Vantage app.'
+      'An unexpected error occurred during authentication. Please try requesting a new magic link from the Vantage app.',
+      undefined,
+      err.message || String(err)
     );
   }
 }

@@ -108,8 +108,10 @@ export async function getOrCreateProfile(
   const supabase = createServerClient();
 
   // Check if profile already exists
+  console.log('[session/getOrCreateProfile] 🔍 Checking for existing profile — userId:', userId, '| anonId:', anonymousId?.slice(0, 12) + '...');
   const existing = await getUserProfile(userId);
   if (existing) {
+    console.log('[session/getOrCreateProfile] 📋 Existing profile FOUND — investor_style:', existing.investorStyle, '| onboarded:', existing.investorStyleOnboarded, '| anonId:', existing.anonymousId?.slice(0, 12) + '...');
     // Update anonymous_id if not already set
     if (!existing.anonymousId && anonymousId) {
       console.log('[session] Linking existing profile to anonymous ID:', anonymousId);
@@ -124,6 +126,7 @@ export async function getOrCreateProfile(
       anonymousId: existing.anonymousId || anonymousId,
     };
   }
+  console.log('[session/getOrCreateProfile] 📋 No existing profile — will CREATE new one');
 
   // Create new profile — first check anonymous_profiles for quiz data
   console.log('[session] Creating new profile for user:', userId);
@@ -135,6 +138,7 @@ export async function getOrCreateProfile(
   let quizOnboarded = false;
 
   if (anonymousId) {
+    console.log('[session/getOrCreateProfile] 🔍 Looking up anonymous_profiles for anonId:', anonymousId);
     const anonSupabase = createServerClient();
     const { data: anonProfile } = await (anonSupabase as any)
       .from('anonymous_profiles')
@@ -148,7 +152,9 @@ export async function getOrCreateProfile(
       quizName = anonProfile.first_name || null;
       // If anonymous profile has investor_style set, they completed the quiz
       quizOnboarded = !!quizStyle;
-      console.log('[session] Found anonymous profile with style:', quizStyle);
+      console.log('[session/getOrCreateProfile] 📋 anonymous_profiles FOUND — investor_style:', quizStyle, '| risk:', quizRiskTolerance);
+    } else {
+      console.log('[session/getOrCreateProfile] ⚠️ No anonymous_profiles row found for anonId:', anonymousId);
     }
   }
 
