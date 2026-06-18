@@ -261,33 +261,31 @@ export async function checkQuizComplete(): Promise<{
   if (typeof window === 'undefined') return { complete: false };
 
   try {
-    const { createClient } = await import('@/lib/supabase');
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (session) {
-      // Authenticated — check Supabase profile via /api/auth/me
-      const res = await fetch('/api/auth/me');
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.user?.investorStyleOnboarded) {
-          // Hydrate localStorage for cross-device consistency
-          localStorage.setItem('vantage_quiz_complete', 'true');
-          localStorage.setItem('vantage:investorStyle', data.user.investorStyle);
-          localStorage.setItem('vantage:riskTolerance', data.user.riskTolerance || 'Moderate');
-          localStorage.setItem('vantage_user_name', data.user.displayName || '');
-          return {
-            complete: true,
-            style: data.user.investorStyle,
-            risk: data.user.riskTolerance,
-            name: data.user.displayName,
-          };
-        }
+    // Try Vantage API first — works via session cookie regardless of
+    // whether @supabase/ssr cookies were successfully set by the callback.
+    const apiRes = await fetch('/api/auth/me');
+    if (apiRes.ok) {
+      const data = await apiRes.json();
+      if (data?.user?.investorStyleOnboarded) {
+        // Hydrate localStorage for cross-device consistency
+        localStorage.setItem('vantage_quiz_complete', 'true');
+        localStorage.setItem('vantage:investorStyle', data.user.investorStyle);
+        localStorage.setItem('vantage:riskTolerance', data.user.riskTolerance || 'Moderate');
+        localStorage.setItem('vantage_user_name', data.user.displayName || '');
+        return {
+          complete: true,
+          style: data.user.investorStyle,
+          risk: data.user.riskTolerance,
+          name: data.user.displayName,
+        };
       }
-      return { complete: false };
+      // DB says not onboarded — don't trust it entirely;
+      // fall through to localStorage in case the callback's DB update
+      // hasn't replicated yet or failed silently.
     }
+    // API call failed (not authenticated) — fall through to localStorage
 
-    // Anonymous — check localStorage
+    // Fallback: localStorage (covers anonymous users + post-callback window)
     const complete = localStorage.getItem('vantage_quiz_complete') === 'true';
     if (complete) {
       return {

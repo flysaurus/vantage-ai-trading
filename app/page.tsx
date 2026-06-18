@@ -101,6 +101,12 @@ function AppShell() {
 
   // ── Quiz onboarding redirect (first-open only, cross-device aware) ──
   useEffect(() => {
+    // Guard: don't check quiz until auth data is loaded.
+    // Without this, the effect fires immediately with user=null,
+    // /api/auth/me may 401 before the session cookie propagates,
+    // and the user gets redirected to onboarding before auth ever completes.
+    if (!isDataLoaded) return;
+
     checkQuizComplete().then(({ complete }) => {
       if (!complete) {
         // Safety net: if user has localStorage quiz flags (e.g. completed as
@@ -117,7 +123,7 @@ function AppShell() {
         router.replace('/onboarding');
       }
     });
-  }, [router, user]);
+  }, [router, user, isDataLoaded]);
 
   // ── Greeting modal after login (detects fresh login via sessionStorage flag) ──
   useEffect(() => {
