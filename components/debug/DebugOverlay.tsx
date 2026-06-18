@@ -247,8 +247,7 @@ export default function DebugOverlay() {
                 ))
               )
             ) : (
-              /* ── Log tab ── */
-            {entries.length === 0 ? (
+              entries.length === 0 ? (
               <div
                 style={{
                   color: '#64748b',
