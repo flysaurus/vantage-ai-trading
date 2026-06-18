@@ -132,8 +132,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   console.log('[callback] Magic link callback received');
 
   try {
-    // ── 1. Exchange code for session ──────────────────────────
+    // ── 1. Exchange code for session (or use existing session) ─
     const code = requestUrl.searchParams.get('code');
+    const errorParam = requestUrl.searchParams.get('error');
     const pendingAction = requestUrl.searchParams.get('pending_action');
     const quizComplete = requestUrl.searchParams.get('quiz_complete') === '1';
     const quizStyle = requestUrl.searchParams.get('investor_style');
@@ -143,52 +144,62 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       ? `/?pending_action=${encodeURIComponent(pendingAction)}`
       : (requestUrl.searchParams.get('next') || '/');
 
-    if (!code) {
-      console.error('[callback] No code in callback URL');
-      return errorPage(
-        'Missing Magic Link',
-        'This link is incomplete — no verification code was found. Please request a new magic link from the Vantage app.',
-        emailFromUrl,
-        'No code parameter in URL'
-      );
-    }
-
-    console.log('[callback] Exchanging code for session...');
-    const supabase = await getSupabaseServerClient();
-
-    const { data: sessionData, error: tokenError } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (tokenError || !sessionData?.user) {
-      console.error('[callback] Token exchange failed:', tokenError?.message);
-      const errMsg = tokenError?.message || 'auth_failed';
-      const isExpired = errMsg.toLowerCase().includes('expired');
-      const isUsed = errMsg.toLowerCase().includes('already been used') || errMsg.toLowerCase().includes('already used');
+    // Handle error forwarded from /auth/confirm
+    if (errorParam && !code) {
+      console.error('[callback] Error forwarded from /auth/confirm:', errorParam);
+      const isExpired = errorParam.toLowerCase().includes('expired');
+      const isUsed = errorParam.toLowerCase().includes('already') || errorParam.toLowerCase().includes('used');
 
       if (isExpired) {
-        return errorPage(
-          'Link Expired',
-          'This magic link has expired. For security, magic links are only valid for a short time.',
-          emailFromUrl,
-          errMsg
-        );
+        return errorPage('Link Expired', 'This magic link has expired. For security, magic links are only valid for a short time.', emailFromUrl, errorParam);
       }
       if (isUsed) {
-        return errorPage(
-          'Link Already Used',
-          'This magic link has already been used. If you\'re already signed in on another device, you\'re all set — head to Vantage.',
-          emailFromUrl,
-          errMsg
-        );
+        return errorPage('Link Already Used', 'This magic link has already been used.', emailFromUrl, errorParam);
       }
-      return errorPage(
-        'Authentication Failed',
-        'We couldn\'t verify your magic link. It may have expired, been revoked, or already been used.',
-        emailFromUrl,
-        errMsg
-      );
+      return errorPage('Authentication Failed', 'We couldn\'t verify your magic link.', emailFromUrl, errorParam);
     }
 
-    const authUser = sessionData.user;
+    const supabase = await getSupabaseServerClient();
+    let authUser;
+
+    if (code) {
+      // ── Case A: code param present → exchange for session ──
+      console.log('[callback] Exchanging code for session...');
+      const { data: sessionData, error: tokenError } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (tokenError || !sessionData?.user) {
+        console.error('[callback] Token exchange failed:', tokenError?.message);
+        const errMsg = tokenError?.message || 'auth_failed';
+        const isExpired = errMsg.toLowerCase().includes('expired');
+        const isUsed = errMsg.toLowerCase().includes('already been used') || errMsg.toLowerCase().includes('already used');
+
+        if (isExpired) {
+          return errorPage('Link Expired', 'This magic link has expired. For security, magic links are only valid for a short time.', emailFromUrl, errMsg);
+        }
+        if (isUsed) {
+          return errorPage('Link Already Used', 'This magic link has already been used. If you\'re already signed in on another device, you\'re all set — head to Vantage.', emailFromUrl, errMsg);
+        }
+        return errorPage('Authentication Failed', 'We couldn\'t verify your magic link. It may have expired, been revoked, or already been used.', emailFromUrl, errMsg);
+      }
+      authUser = sessionData.user;
+    } else {
+      // ── Case B: No code → session should already exist (from /auth/confirm) ──
+      console.log('[callback] No code param — checking existing session...');
+      const { data: { user: existingUser }, error: sessionErr } = await supabase.auth.getUser();
+
+      if (sessionErr || !existingUser) {
+        console.error('[callback] No existing session found:', sessionErr?.message);
+        return errorPage(
+          'Authentication Failed',
+          'Your session has expired or the magic link was incomplete. Please request a new magic link from the Vantage app.',
+          emailFromUrl,
+          'No code and no existing session'
+        );
+      }
+      authUser = existingUser;
+      console.log('[callback] ✅ Existing session found for:', authUser.email);
+    }
+
     console.log('[callback] ✅ Session established for:', authUser.email);
 
     // ── 2. Read anonymousId from cookie (fallback: URL param) ─
