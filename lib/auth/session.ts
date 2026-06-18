@@ -159,6 +159,8 @@ export async function getOrCreateProfile(
     }
   }
 
+  // Upsert on email. Do NOT set created_at — the DB DEFAULT NOW() handles
+  // it on INSERT, and we don't want to overwrite it on UPDATE (conflict).
   const { data, error } = await (supabase as any)
     .from('users')
     .upsert({
@@ -168,14 +170,13 @@ export async function getOrCreateProfile(
       investor_style: quizStyle || 'buffett',
       investor_style_onboarded: quizOnboarded,
       anonymous_id: anonymousId,
-      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'email' })
     .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, anonymous_id, created_at, updated_at')
     .single();
 
   if (error) {
-    console.error('[session] Failed to create profile:', error.message);
+    console.error('[session] Failed to upsert profile:', error.message, error.code, error.details);
     throw new Error(`Failed to create user profile: ${error.message}`);
   }
 
