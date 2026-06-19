@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -396,6 +396,14 @@ function AppShell() {
 }
 
 export default function Home() {
+  return (
+    <Suspense fallback={<BootSplash onComplete={() => {}} />}>
+      <HomeInner />
+    </Suspense>
+  );
+}
+
+function HomeInner() {
   // Minimal auth context — faster hydration after magic link
   const { loading: authLoading } = useGateAuth();
   const searchParams = useSearchParams();
