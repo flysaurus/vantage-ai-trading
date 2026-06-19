@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
@@ -16,6 +16,7 @@ import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useAuth as useGateAuth } from '@/context/AuthContext';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { BootSplash } from '@/components/onboarding/BootSplash';
@@ -395,8 +396,52 @@ function AppShell() {
 }
 
 export default function Home() {
+  // Minimal auth context — faster hydration after magic link
+  const { loading: authLoading } = useGateAuth();
+  const searchParams = useSearchParams();
+  const [bootState, setBootState] = useState<'loading' | 'onboarding' | 'app'>('loading');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Handle auth errors from callback
+  useEffect(() => {
+    const error = searchParams.get('auth_error');
+    if (error) {
+      setAuthError(error);
+      window.history.replaceState({}, '', '/');
+    }
+  }, [searchParams]);
+
+  // Determine boot state once auth is ready
+  useEffect(() => {
+    if (authLoading) return;
+    const quizComplete = localStorage.getItem('vantage_quiz_complete');
+    if (!quizComplete) {
+      setBootState('onboarding');
+    } else {
+      setBootState('app');
+    }
+  }, [authLoading]);
+
+  if (bootState === 'loading') {
+    return <BootSplash onComplete={() => {}} />;
+  }
+
+  if (bootState === 'onboarding') {
+    return <InvestorStyleOnboarding />;
+  }
+
   return (
     <AppErrorBoundary>
+      {authError === 'expired' && (
+        <div style={{
+          position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 99999, background: '#1a1a2e', border: '1px solid #ef4444',
+          borderRadius: '12px', padding: '12px 20px', color: '#fca5a5',
+          fontSize: '14px', boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+        }}>
+          That link has expired — request a new one from the app.
+        </div>
+      )}
       <BrokerProvider>
         <PortfolioProvider>
           <AppShell />

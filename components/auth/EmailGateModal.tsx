@@ -15,12 +15,21 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [lastSendTime, setLastSendTime] = useState(0);
+  const COOLDOWN_MS = 60_000; // 60-second cooldown
 
   if (!open) return null;
 
   const handleSubmit = async () => {
     if (!email.trim() || !email.includes('@')) {
       setError('Enter a valid email address');
+      return;
+    }
+    // Cooldown check
+    const now = Date.now();
+    if (now - lastSendTime < COOLDOWN_MS) {
+      const remaining = Math.ceil((COOLDOWN_MS - (now - lastSendTime)) / 1000);
+      setError(`Please wait ${remaining}s before requesting another link`);
       return;
     }
     setSending(true);
@@ -32,25 +41,24 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
       // Remember we sent a link (for resend/reminder logic)
       localStorage.setItem('vantage_magic_link_sent', JSON.stringify({
         email: email.trim(),
-        timestamp: Date.now(),
+        timestamp: now,
       }));
+      setLastSendTime(now);
 
-      // Build callback URL with quiz state so new profile preserves onboarding status
-      // Use canonical APP_URL (not window.location.origin) so the redirect is always
-      // to the production domain regardless of which Vercel alias served the page.
+      // Build callback URL — pass anonymous_id so the callback can link profiles
+      // Use canonical APP_URL for production domain regardless of Vercel alias
       const appOrigin = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
-      const callbackBase = `${appOrigin}/auth/callback?pending_action=${encodeURIComponent(JSON.stringify(pendingAction))}`;
-      let callbackUrl = callbackBase;
+      const callbackBase = `${appOrigin}/auth/callback`;
+      const params: string[] = [];
       try {
-        // Pass anonymous ID so the callback can link to anonymous_profiles
-        const anonId = localStorage.getItem('vantage_anonymous_id');
-        if (anonId) callbackUrl += `&anon_id=${encodeURIComponent(anonId)}`;
-        // Pass quiz completion state from localStorage
+        const anonymousId = localStorage.getItem('vantage_anonymous_id');
+        if (anonymousId) params.push(`anonymous_id=${encodeURIComponent(anonymousId)}`);
         const quizComplete = localStorage.getItem('vantage_quiz_complete') === 'true';
         const quizStyle = localStorage.getItem('vantage:investorStyle');
-        if (quizComplete) callbackUrl += `&quiz_complete=1`;
-        if (quizStyle) callbackUrl += `&investor_style=${encodeURIComponent(quizStyle)}`;
+        if (quizComplete) params.push('quiz_complete=1');
+        if (quizStyle) params.push(`investor_style=${encodeURIComponent(quizStyle)}`);
       } catch { /* localStorage unavailable */ }
+      const callbackUrl = params.length ? `${callbackBase}?${params.join('&')}` : callbackBase;
 
       const supabase = createClient();
       const { error: otpError } = await supabase.auth.signInWithOtp({
@@ -71,20 +79,27 @@ export function EmailGateModal({ open, onClose, pendingAction }: EmailGateModalP
   };
 
   const handleResend = async () => {
+    const now = Date.now();
+    if (now - lastSendTime < COOLDOWN_MS) {
+      const remaining = Math.ceil((COOLDOWN_MS - (now - lastSendTime)) / 1000);
+      setError(`Please wait ${remaining}s before requesting another link`);
+      return;
+    }
     try {
       const stored = localStorage.getItem('vantage_magic_link_sent');
       if (!stored) return;
       const { email: storedEmail } = JSON.parse(stored);
+      setLastSendTime(now);
       
-      // Include quiz state and anon_id in resend too
+      // Include quiz state and anonymous_id in resend too
       const appOriginResend = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
       let resendUrl = `${appOriginResend}/auth/callback`;
       try {
-        const anonId = localStorage.getItem('vantage_anonymous_id');
+        const anonymousId = localStorage.getItem('vantage_anonymous_id');
         const qc = localStorage.getItem('vantage_quiz_complete') === 'true';
         const qs = localStorage.getItem('vantage:investorStyle');
         const params: string[] = [];
-        if (anonId) params.push(`anon_id=${encodeURIComponent(anonId)}`);
+        if (anonymousId) params.push(`anonymous_id=${encodeURIComponent(anonymousId)}`);
         if (qc) params.push('quiz_complete=1');
         if (qs) params.push(`investor_style=${encodeURIComponent(qs)}`);
         if (params.length) resendUrl += '?' + params.join('&');
