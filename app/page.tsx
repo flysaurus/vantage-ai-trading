@@ -20,6 +20,7 @@ import { useAuth as useGateAuth } from '@/context/AuthContext';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { BootSplash } from '@/components/onboarding/BootSplash';
+import { CompassMark } from '@/components/brand/CompassMark';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
@@ -431,7 +432,19 @@ function HomeInner() {
   }, [authLoading]);
 
   if (bootState === 'loading') {
-    return <BootSplash onComplete={() => {}} />;
+    // Don't use BootSplash's animated lifecycle — just show a persistent
+    // loading screen until auth resolves. BootSplash would hide itself
+    // after 1.1s and return null, leaving a blank screen if auth hangs.
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'var(--bg-primary, #0a0f1e)',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <CompassMark size={140} showBurst glow idleRotate={false} />
+      </div>
+    );
   }
 
   if (bootState === 'onboarding') {

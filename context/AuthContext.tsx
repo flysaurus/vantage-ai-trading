@@ -31,23 +31,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = getSupabaseBrowserClient();
 
   useEffect(() => {
+    let resolved = false;
+
+    // Safety timeout: if nothing resolves within 5s, bail out
+    const safetyTimer = setTimeout(() => {
+      if (!resolved) {
+        console.warn('[AuthContext] Session check timed out — proceeding as unauthenticated');
+        setLoading(false);
+        resolved = true;
+      }
+    }, 5000);
+
     // Get initial session immediately
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        if (!resolved) {
+          setSession(data.session);
+          setUser(data.session?.user ?? null);
+          setLoading(false);
+          resolved = true;
+        }
+      })
+      .catch((err) => {
+        console.error('[AuthContext] getSession failed:', err.message);
+        if (!resolved) {
+          setLoading(false);
+          resolved = true;
+        }
+      });
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      if (!resolved) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+        resolved = true;
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, [supabase]);
 
   return (

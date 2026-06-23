@@ -263,8 +263,18 @@ export async function checkQuizComplete(): Promise<{
   try {
     // Try Vantage API first — works via session cookie regardless of
     // whether @supabase/ssr cookies were successfully set by the callback.
-    const apiRes = await fetch('/api/auth/me');
-    if (apiRes.ok) {
+    // Timeout after 3s — don't block the app on a hung API call.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    let apiRes: Response;
+    try {
+      apiRes = await fetch('/api/auth/me', { signal: controller.signal });
+    } catch {
+      // fetch failed or timed out — fall through to localStorage
+      apiRes = null as unknown as Response;
+    }
+    clearTimeout(timeoutId);
+    if (apiRes?.ok) {
       const data = await apiRes.json();
       if (data?.user?.investorStyleOnboarded) {
         // Hydrate localStorage for cross-device consistency
