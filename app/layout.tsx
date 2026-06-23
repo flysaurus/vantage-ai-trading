@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { AuthProvider as GateAuthProvider } from '@/context/AuthContext';
 import { AuthGuard } from '@/components/providers/AuthGuard';
 import { EmailGateProvider } from '@/hooks/useEmailGate';
 import { InactivityWarning } from '@/components/providers/InactivityWarning';
@@ -59,6 +60,7 @@ export default function RootLayout({
         />
       </head>
       <body>
+        <GateAuthProvider>
         <AuthProvider>
           <EmailGateProvider>
             <MilestoneToastProvider>
@@ -71,6 +73,7 @@ export default function RootLayout({
             </MilestoneToastProvider>
           </EmailGateProvider>
         </AuthProvider>
+        </GateAuthProvider>
       </body>
     </html>
   );
