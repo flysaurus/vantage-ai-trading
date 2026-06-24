@@ -2,17 +2,16 @@
 // Full-screen onboarding quiz flow with splash sequence.
 //
 // Screen order:
-//  0. Boot Splash (every open, ~1100ms, compass burst + wordmark)
+//  0. Boot Splash (every open, 1.5s, compass burst + wordmark)
 //  1. Feature Splash (first-time only, 3 auto-advancing lines)
 //  2. Arrival (typewriter text, "Find my style →")
-//  3-7. Q1 → Q2 → Q3 → Q4 → Q5 (slide transitions, carousel)
-//  8. Name capture (slide-up)
-//  9. Result screen (style reveal)
+//  3-7. Q1 → Q2 → Q3 → Q4 → Q5 (carousel answers)
+//  8. Name capture (first + last name, required)
+//  9. Style reveal (burst, typewriter, override pills)
+// 10. Account creation (handled by parent or next prompt)
 //
-// Routing:
-//  - BootSplash decides: main / feature-splash / quiz
-//  - FeatureSplash decides: arrival / quiz (skip)
-//  - Result: saves to localStorage + Supabase, navigates to /
+// State: all quiz data held in React state only — no
+// localStorage, no Supabase writes until account creation.
 
 'use client';
 
@@ -23,85 +22,64 @@ import { FeatureSplash } from '@/components/onboarding/FeatureSplash';
 import { ArrivalScreen } from '@/components/onboarding/ArrivalScreen';
 import { QuizQuestion } from '@/components/onboarding/QuizQuestion';
 import { NameCapture } from '@/components/onboarding/NameCapture';
-import { ResultScreen } from '@/components/onboarding/ResultScreen';
-import {
-  QUIZ_QUESTIONS,
-  scoreQuiz,
-  isQuizComplete,
-  checkQuizComplete,
-  markQuizComplete,
-} from '@/lib/onboarding/quiz-logic';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
-import { debugLog } from '@/lib/debug-log';
-import type { InvestorStyle } from '@/types';
+import { StyleReveal } from '@/components/onboarding/StyleReveal';
+import { QUIZ_QUESTIONS, scoreQuiz, checkQuizComplete } from '@/lib/onboarding/quiz-logic';
+import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
-type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'result';
+type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'reveal';
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // If already complete, redirect to main app immediately (async cross-device check)
+  // If already complete, redirect to main app
   useEffect(() => {
     checkQuizComplete().then(({ complete }) => {
       if (complete) router.replace('/');
     });
   }, [router]);
 
-  // Determine initial screen: always BootSplash first
   const [screen, setScreen] = useState<Screen>('boot');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [navDirection, setNavDirection] = useState<'forward' | 'backward'>('forward');
-  const [userName, setUserName] = useState('');
-  const [result, setResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [quizResult, setQuizResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
 
   // ── Boot Splash complete ──────────────────────────────────
 
-  const handleBootComplete = useCallback((route: 'main' | 'feature-splash' | 'quiz') => {
-    if (route === 'main') {
-      router.replace('/');
-      return;
-    }
-    if (route === 'feature-splash') {
-      setScreen('feature');
-      return;
-    }
-    if (route === 'quiz') {
-      setScreen('quiz');
-      return;
-    }
-  }, [router]);
+  const handleBootComplete = useCallback(() => {
+    setScreen('feature');
+  }, []);
 
   // ── Feature Splash complete ───────────────────────────────
 
-  const handleFeatureComplete = useCallback((route: 'arrival' | 'quiz') => {
-    if (route === 'arrival') {
-      setScreen('arrival');
-    } else {
-      setScreen('quiz');
-    }
+  const handleFeatureComplete = useCallback(() => {
+    setScreen('arrival');
   }, []);
 
-  // ── Arrival done → quiz ────────────────────────────────────
+  // ── Arrival: find style → quiz, sign in → /login ──────────
 
   const handleFindStyle = useCallback(() => {
     setScreen('quiz');
   }, []);
+
+  const handleSignIn = useCallback(() => {
+    router.push('/login');
+  }, [router]);
 
   // ── Answer a quiz question ─────────────────────────────────
 
   const handleAnswer = useCallback((key: string) => {
     const newAnswers = [...answers, key];
     setAnswers(newAnswers);
-    setNavDirection('forward');
 
     if (newAnswers.length < QUIZ_QUESTIONS.length) {
       setTimeout(() => {
         setQuestionIndex(newAnswers.length);
       }, 100);
     } else {
-      const quizResult = scoreQuiz(newAnswers);
-      setResult(quizResult);
+      const result = scoreQuiz(newAnswers);
+      setQuizResult(result);
       setTimeout(() => {
         setScreen('name');
       }, 400);
@@ -111,138 +89,110 @@ export default function OnboardingPage() {
   // ── Back navigation ────────────────────────────────────────
 
   const handleBack = useCallback(() => {
-    setNavDirection('backward');
     setAnswers((prev) => prev.slice(0, -1));
     setQuestionIndex((prev) => prev - 1);
   }, []);
 
   // ── Name captured ──────────────────────────────────────────
 
-  const handleNameSubmit = useCallback((name: string) => {
-    setUserName(name);
-    if (name) {
-      try { localStorage.setItem('vantage_user_name', name); } catch {}
-    }
-    setTimeout(() => setScreen('result'), 300);
+  const handleNameSubmit = useCallback((first: string, last: string) => {
+    setFirstName(first);
+    setLastName(last);
+    setTimeout(() => setScreen('reveal'), 300);
   }, []);
 
-  const handleNameSkip = useCallback(() => {
-    setUserName('');
-    setTimeout(() => setScreen('result'), 300);
-  }, []);
+  // ── Create account (passes all state to CreateAccount screen) ─
 
-  // ── Enter Vantage ──────────────────────────────────────────
+  const handleCreateAccount = useCallback(
+    (data: { style: InvestorStyleKey; risk: RiskTolerance; firstName: string; lastName: string }) => {
+      // Store in sessionStorage temporarily for CreateAccount to pick up
+      // (CreateAccount screen will be built in a later prompt)
+      try {
+        sessionStorage.setItem('vantage_onboarding_data', JSON.stringify(data));
+      } catch {}
+      router.push('/create-account');
+    },
+    [router],
+  );
 
-  const handleEnter = useCallback(async (style: InvestorStyle, riskTolerance: string) => {
-    debugLog('handleEnter', `Saving style: ${style}, risk: ${riskTolerance}`);
-    try {
-      localStorage.setItem('vantage:investorStyle', style);
-      localStorage.setItem('vantage:riskTolerance', riskTolerance);
-      localStorage.setItem('vantage:onboarded', 'true');
-      if (userName) {
-        localStorage.setItem('vantage_user_name', userName);
+  // ── Render current screen ──────────────────────────────────
+
+  switch (screen) {
+    case 'boot':
+      return <BootSplash onComplete={handleBootComplete} />;
+
+    case 'feature':
+      return <FeatureSplash onComplete={handleFeatureComplete} />;
+
+    case 'arrival':
+      return <ArrivalScreen onFindStyle={handleFindStyle} onSignIn={handleSignIn} />;
+
+    case 'quiz':
+      if (questionIndex < QUIZ_QUESTIONS.length) {
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 100,
+              background: 'var(--bg-primary)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <QuizQuestion
+              key={QUIZ_QUESTIONS[questionIndex].id}
+              question={QUIZ_QUESTIONS[questionIndex]}
+              questionNumber={questionIndex + 1}
+              totalQuestions={QUIZ_QUESTIONS.length}
+              onAnswer={handleAnswer}
+              onBack={questionIndex > 0 ? handleBack : undefined}
+            />
+          </div>
+        );
       }
-      debugLog('handleEnter localStorage', `style set: ${style}`);
-    } catch {}
+      return null;
 
-    try {
-      const anonymousId = getOrCreateAnonymousId();
-      debugLog('handleEnter sync', `anonId: ${anonymousId}, style: ${style}`);
-      const syncRes = await fetch('/api/onboarding/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anonymousId, investorStyle: style, riskTolerance, firstName: userName || undefined }),
-      });
-      const syncData = await syncRes.json().catch(() => null);
-      debugLog('handleEnter sync response', `status: ${syncRes.status}, body: ${JSON.stringify(syncData)}`);
-    } catch (err: any) {
-      debugLog('handleEnter sync FAILED', err?.message || String(err));
-    }
-
-    markQuizComplete();
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } }));
-    }
-    router.push('/');
-  }, [userName, router]);
-
-  const quizBackground: React.CSSProperties = {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 100,
-    background: '#0a0f1e',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    paddingTop: 'env(safe-area-inset-top)',
-    overflow: 'hidden',
-  };
-
-  // ── Boot Splash ────────────────────────────────────────────
-
-  if (screen === 'boot') {
-    return <BootSplash onComplete={handleBootComplete} />;
-  }
-
-  // ── Feature Splash ─────────────────────────────────────────
-
-  if (screen === 'feature') {
-    return <FeatureSplash onComplete={handleFeatureComplete} />;
-  }
-
-  // ── Arrival screen ─────────────────────────────────────────
-
-  if (screen === 'arrival') {
-    return <ArrivalScreen onFindStyle={handleFindStyle} />;
-  }
-
-  // ── Quiz screens ───────────────────────────────────────────
-
-  if (screen === 'quiz' && questionIndex < QUIZ_QUESTIONS.length) {
-    return (
-      <QuizQuestion
-        key={QUIZ_QUESTIONS[questionIndex].id}
-        question={QUIZ_QUESTIONS[questionIndex]}
-        questionNumber={questionIndex + 1}
-        totalQuestions={QUIZ_QUESTIONS.length}
-        onAnswer={handleAnswer}
-        onBack={questionIndex > 0 ? handleBack : undefined}
-        direction={navDirection}
-      />
-    );
-  }
-
-  // ── Name capture screen ────────────────────────────────────
-
-  if (screen === 'name') {
-    return (
-      <div style={{ ...quizBackground, alignItems: 'unset' }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-          <NameCapture onSubmit={handleNameSubmit} onSkip={handleNameSkip} />
+    case 'name':
+      return (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'var(--bg-primary)',
+          }}
+        >
+          <NameCapture onSubmit={handleNameSubmit} />
         </div>
-      </div>
-    );
+      );
+
+    case 'reveal':
+      if (quizResult) {
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 100,
+              background: 'var(--bg-primary)',
+              overflowY: 'auto',
+            }}
+          >
+            <StyleReveal
+              style={quizResult.style}
+              risk={quizResult.risk}
+              firstName={firstName}
+              lastName={lastName}
+              onCreateAccount={handleCreateAccount}
+            />
+          </div>
+        );
+      }
+      return null;
+
+    default:
+      return null;
   }
-
-  // ── Result screen ──────────────────────────────────────────
-
-  if (screen === 'result' && result) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 100,
-          background: '#0a0f1e',
-          overflowY: 'auto',
-          paddingTop: 'env(safe-area-inset-top)',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-        }}
-      >
-        <ResultScreen result={result} userName={userName} onEnter={handleEnter} />
-      </div>
-    );
-  }
-
-  return null;
 }

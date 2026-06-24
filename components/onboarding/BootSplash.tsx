@@ -1,79 +1,45 @@
 // ─── BootSplash ─────────────────────────────────────────────
-// Full-screen splash shown on every app open (~1100ms).
+// Full-screen splash shown on EVERY app open for 1.5 seconds.
+// Never skippable. Transitions automatically.
 //
-// Background: var(--bg-primary) — NOT pure black, fixing the
-// flash-to-navy bug from the current build.
-//
-// Sequence:
-//   0ms: CompassMark burst-in (140px, glow, no idle rotate)
-//   400ms: "VANTAGE" wordmark + tagline + version fade in
-//   1100ms: route decision (see flow below)
-//
-// Routing:
-//   Quiz done → fade out to main app (300ms)
-//   Intro not seen → compass shrinks 140→56px and moves to
-//     top-center (400ms), wordmark/tagline fade out → FeatureSplash
-//   Quiz incomplete + intro seen → skip to Quiz Q1
+// Compass burst-in, wordmark fades, 1500ms → onComplete().
+// Parent (app layout / onboarding orchestrator) decides next
+// screen based on auth state.
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { CompassMark } from '@/components/brand/CompassMark';
-import { checkQuizComplete } from '@/lib/onboarding/quiz-logic';
-import { isIntroSeen } from '@/lib/onboarding/flow-state';
 
-const BOOT_DURATION = 1100;
+const DURATION = 1500;
+const WORDMARK_DELAY = 600;
+const TAGLINE_DELAY = 800;
 
 interface BootSplashProps {
-  onComplete: (route: 'main' | 'feature-splash' | 'quiz') => void;
+  onComplete: () => void;
 }
 
 export function BootSplash({ onComplete }: BootSplashProps) {
-  const [phase, setPhase] = useState<'burst' | 'text' | 'exit' | 'shrink'>('burst');
-  const [isVisible, setIsVisible] = useState(true);
+  const [showWordmark, setShowWordmark] = useState(false);
+  const [showTagline, setShowTagline] = useState(false);
+  const doneRef = useRef(false);
 
   useEffect(() => {
-    // Phase: show text at 400ms
-    const textTimer = setTimeout(() => setPhase('text'), 400);
-
-    // Phase: route decision at BOOT_DURATION
-    const exitTimer = setTimeout(async () => {
-      const { complete: quizDone } = await checkQuizComplete();
-      const introSeen = isIntroSeen();
-
-      if (quizDone) {
-        // Fade out to main app
-        setPhase('exit');
-        setTimeout(() => {
-          setIsVisible(false);
-          onComplete('main');
-        }, 300);
-      } else if (!introSeen) {
-        // Shrink compass to top-center → Feature Splash
-        setPhase('shrink');
-        setTimeout(() => {
-          setIsVisible(false);
-          onComplete('feature-splash');
-        }, 400);
-      } else {
-        // Quiz incomplete but intro seen → skip to quiz
-        setPhase('exit');
-        setTimeout(() => {
-          setIsVisible(false);
-          onComplete('quiz');
-        }, 200);
+    const wm = setTimeout(() => setShowWordmark(true), WORDMARK_DELAY);
+    const tl = setTimeout(() => setShowTagline(true), TAGLINE_DELAY);
+    const exit = setTimeout(() => {
+      if (!doneRef.current) {
+        doneRef.current = true;
+        onComplete();
       }
-    }, BOOT_DURATION);
+    }, DURATION);
 
     return () => {
-      clearTimeout(textTimer);
-      clearTimeout(exitTimer);
+      clearTimeout(wm);
+      clearTimeout(tl);
+      clearTimeout(exit);
     };
   }, [onComplete]);
-
-  if (!isVisible) return null;
-
-  const isShrink = phase === 'shrink';
 
   return (
     <div
@@ -81,82 +47,57 @@ export function BootSplash({ onComplete }: BootSplashProps) {
         position: 'fixed',
         inset: 0,
         zIndex: 200,
-        background: 'var(--bg-primary, #0a0f1e)',
+        background: 'var(--bg-primary)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        opacity: phase === 'exit' ? 0 : 1,
-        transition: 'opacity 300ms ease',
+        gap: 'var(--space-6)',
       }}
     >
-      {/* Compass mark — shrinks + repositions when going to Feature Splash */}
-      <div
-        style={{
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transform: isShrink
-            ? 'scale(0.4) translateY(calc(-50vh + 108px))'
-            : 'scale(1) translateY(0)',
-          transition: 'transform 400ms ease-in-out',
-        }}
-      >
-        <CompassMark
-          size={140}
-          showBurst
-          glow
-          idleRotate={false}
-        />
-      </div>
+      {/* Compass */}
+      <CompassMark size={120} showBurst glow idleRotate={false} />
 
-      {/* Wordmark + tagline + version */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          marginTop: '24px',
-          opacity: phase === 'burst' ? 0 : isShrink ? 0 : 1,
-          transition: 'opacity 300ms ease',
-        }}
-      >
+      {/* Wordmark */}
+      <div style={{ textAlign: 'center', opacity: showWordmark ? 1 : 0, transition: 'opacity 300ms var(--ease-out)' }}>
         <span
           style={{
+            display: 'block',
             fontSize: '28px',
-            fontWeight: 600,
-            color: '#ffffff',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
             letterSpacing: '0.15em',
           }}
         >
           VANTAGE
         </span>
 
+        {/* Tagline */}
         <p
           style={{
+            marginTop: 'var(--space-2)',
             fontSize: '14px',
-            color: '#64748b',
-            maxWidth: '280px',
-            textAlign: 'center',
-            marginTop: '8px',
-            lineHeight: 1.5,
-          }}
-        >
-          Institutional-quality AI portfolio analysis. Built for everyone.
-        </p>
-
-        <span
-          style={{
-            fontSize: '12px',
-            color: '#475569',
-            marginTop: '24px',
+            color: 'var(--text-muted)',
             letterSpacing: '0.05em',
+            opacity: showTagline ? 1 : 0,
+            transition: 'opacity 300ms var(--ease-out)',
           }}
         >
-          v0.1.0
-        </span>
+          Institutional-quality AI portfolio analysis.
+        </p>
       </div>
+
+      {/* Version */}
+      <span
+        style={{
+          position: 'absolute',
+          bottom: '32px',
+          fontSize: '12px',
+          color: 'var(--text-muted)',
+        }}
+      >
+        v0.1.0
+      </span>
     </div>
   );
 }

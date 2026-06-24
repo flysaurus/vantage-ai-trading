@@ -92,13 +92,15 @@ function AppShell() {
   }, [user, quizComplete]);
 
   // ── Boot splash handler ───────────────────────────────────
-  const handleBootComplete = useCallback((route: 'main' | 'feature-splash' | 'quiz') => {
-    if (route === 'main') {
-      setShowBootSplash(false);
-    } else if (route === 'quiz') {
-      router.replace('/onboarding');
-    }
-    // 'feature-splash' shouldn't happen here (quiz already done)
+  const handleBootComplete = useCallback(() => {
+    // Boot splash done — check if quiz is complete to decide next step
+    checkQuizComplete().then(({ complete }) => {
+      if (!complete) {
+        router.replace('/onboarding');
+      } else {
+        setShowBootSplash(false);
+      }
+    });
   }, [router]);
 
   // ── Quiz onboarding redirect (first-open only, cross-device aware) ──
@@ -215,11 +217,12 @@ function AppShell() {
     };
   }, [executePendingOrders]);
 
-  // Detect desktop width
+  // ── Detect desktop width
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024);
     check();
     window.addEventListener('resize', check);
+    console.log('[AppShell] ✅ RENDERING MAIN APP — activeTab:', activeTab, 'isDesktop:', window.innerWidth >= 1024);
     return () => window.removeEventListener('resize', check);
   }, []);
 
@@ -272,16 +275,21 @@ function AppShell() {
   // 🔒 Block rendering until auth check completes AND we have a user.
   // effectiveUser covers authenticated users AND anonymous users who
   // completed the quiz (synthetic user from localStorage).
-  if (!isDataLoaded || !effectiveUser) return null;
+  if (!isDataLoaded || !effectiveUser) {
+    console.log('[AppShell] BLOCKED — isDataLoaded:', isDataLoaded, 'effectiveUser:', !!effectiveUser, 'quizComplete:', quizComplete, 'user:', !!user);
+    return null;
+  }
 
   // Wait for broker status check before rendering.
   // Skip broker gate for anonymous (demo) users — they use DemoBroker.
   if (!isInitialized) {
+    console.log('[AppShell] BLOCKED — isInitialized:', isInitialized);
     return null;
   }
 
   // Boot splash — shows once per app open for quiz-complete users
   if (showBootSplash) {
+    console.log('[AppShell] → BootSplash');
     return <BootSplash onComplete={handleBootComplete} />;
   }
 
@@ -422,11 +430,15 @@ function HomeInner() {
 
   // Determine boot state once auth is ready
   useEffect(() => {
+    console.log('[HomeInner] authLoading:', authLoading);
     if (authLoading) return;
     const quizComplete = localStorage.getItem('vantage_quiz_complete');
+    console.log('[HomeInner] quiz in localStorage:', !!quizComplete);
     if (!quizComplete) {
+      console.log('[HomeInner] → onboarding');
       setBootState('onboarding');
     } else {
+      console.log('[HomeInner] → app');
       setBootState('app');
     }
   }, [authLoading]);

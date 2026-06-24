@@ -1,22 +1,13 @@
 // ─── FeatureSplash ──────────────────────────────────────────
-// First-time-only feature intro shown after Boot Splash.
+// First-time-only feature intro shown after BootSplash.
 // Three auto-advancing taglines with progress dots.
-//
-// Layout (three-zone flex, full viewport):
-//   TOP zone: CompassMark 56px, idle-rotating
-//   Skip: absolute top-right
-//   MIDDLE zone: flex:1, centered — 3 auto-advancing lines
-//   BOTTOM zone: progress dots, anchored near bottom
-//
-// Adds subtle ambient background particles — soft-glow cyan
-// circles drifting upward with slight horizontal sway.
-// Barely noticeable, never distracts from text.
+// No localStorage — only new users in the onboarding flow see this.
 
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X } from 'lucide-react';
 import { CompassMark } from '@/components/brand/CompassMark';
-import { markIntroSeen } from '@/lib/onboarding/flow-state';
 
 const LINES = [
   ['Beyond buy buttons.', 'Actual insight.'],
@@ -25,10 +16,9 @@ const LINES = [
 ];
 
 const IN_DURATION = 300;
-const HOLD_DURATIONS = [1200, 1200, 1300];
 const OUT_DURATION = 250;
+const HOLD_DURATIONS = [1200, 1200, 1400];
 
-// Ambient particles: 5 drifting cyan glow dots
 const PARTICLES = [
   { size: 5, x: 12, duration: 9, delay: 0, drift: 18 },
   { size: 4, x: 35, duration: 11, delay: 2, drift: -14 },
@@ -38,163 +28,152 @@ const PARTICLES = [
 ];
 
 interface FeatureSplashProps {
-  onComplete: (route: 'arrival' | 'quiz') => void;
+  onComplete: () => void;
 }
 
 export function FeatureSplash({ onComplete }: FeatureSplashProps) {
   const [activeLine, setActiveLine] = useState(0);
   const [lineState, setLineState] = useState<'in' | 'hold' | 'out'>('in');
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finished = useRef(false);
 
   const advance = useCallback((currentLine: number) => {
     if (finished.current) return;
 
     if (currentLine >= LINES.length - 1) {
-      finished.current = true;
-      markIntroSeen();
-      setLineState('out');
-      timerRef.current = setTimeout(() => {
-        onComplete('arrival');
-      }, OUT_DURATION);
+      // Last line: hold longer, then finish
+      setTimeout(() => {
+        if (!finished.current) {
+          finished.current = true;
+          onComplete();
+        }
+      }, HOLD_DURATIONS[currentLine] + OUT_DURATION);
       return;
     }
 
-    setLineState('out');
-    timerRef.current = setTimeout(() => {
-      setActiveLine(currentLine + 1);
-      setLineState('in');
-    }, OUT_DURATION);
+    // Transition to next line
+    const holdTime = HOLD_DURATIONS[currentLine];
+    const holdTimer = setTimeout(() => {
+      setLineState('out');
+      const outTimer = setTimeout(() => {
+        setActiveLine((prev) => prev + 1);
+        setLineState('in');
+      }, OUT_DURATION);
+      return () => clearTimeout(outTimer);
+    }, holdTime);
+
+    return () => clearTimeout(holdTimer);
   }, [onComplete]);
 
   useEffect(() => {
-    const currentLine = activeLine;
-
-    const holdTimer = setTimeout(() => {
-      setLineState('hold');
-
-      timerRef.current = setTimeout(() => {
-        advance(currentLine);
-      }, HOLD_DURATIONS[currentLine]);
-    }, IN_DURATION);
-
-    return () => {
-      clearTimeout(holdTimer);
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+    advance(activeLine);
   }, [activeLine, advance]);
-
-  const handleSkip = useCallback(() => {
-    if (finished.current) return;
-    finished.current = true;
-    markIntroSeen();
-    if (timerRef.current) clearTimeout(timerRef.current);
-    onComplete('quiz');
-  }, [onComplete]);
-
-  const currentCopy = LINES[activeLine];
-  const isVisible = lineState !== 'out';
 
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 190,
-        background: 'var(--bg-primary, #0a0f1e)',
+        zIndex: 200,
+        background: 'var(--bg-primary)',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        height: '100dvh',
-        padding: '24px',
-        justifyContent: 'space-between',
         overflow: 'hidden',
       }}
     >
-      {/* ── Ambient background particles ──────────────────── */}
+      {/* Ambient particles */}
       {PARTICLES.map((p, i) => (
         <div
           key={i}
           style={{
             position: 'absolute',
+            left: `${p.x}%`,
+            bottom: '-10px',
             width: `${p.size}px`,
             height: `${p.size}px`,
             borderRadius: '50%',
             background: 'rgba(34,211,238,0.4)',
             filter: 'blur(2px)',
-            left: `${p.x}%`,
-            bottom: '-10px',
-            zIndex: 0,
-            animation: `particleFloat-${i} ${p.duration}s ${p.delay}s infinite linear`,
+            animation: `feature-particle ${p.duration}s ${p.delay}s linear infinite`,
           }}
         />
       ))}
 
-      {/* ── TOP zone: Compass ─────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          width: '100%',
-          paddingTop: 'max(32px, env(safe-area-inset-top, 16px))',
-        }}
-      >
+      {/* Top: CompassMark */}
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '60px' }}>
         <CompassMark size={56} showBurst={false} glow idleRotate />
       </div>
 
-      {/* Skip button — absolute, top-right */}
+      {/* Skip button */}
       <button
-        onClick={handleSkip}
+        onClick={() => {
+          if (!finished.current) {
+            finished.current = true;
+            onComplete();
+          }
+        }}
         style={{
           position: 'absolute',
-          top: 'max(24px, env(safe-area-inset-top, 16px))',
-          right: '24px',
+          top: 'max(20px, env(safe-area-inset-top, 0px))',
+          right: '20px',
           background: 'none',
           border: 'none',
-          color: '#64748b',
+          color: 'var(--text-muted)',
           fontSize: '13px',
           cursor: 'pointer',
-          padding: '8px 12px',
-          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-1)',
+          fontFamily: 'inherit',
+          padding: 'var(--space-2) var(--space-3)',
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
+        <X size={16} />
         Skip
       </button>
 
-      {/* ── MIDDLE zone: centered lines ───────────────────── */}
+      {/* Center: auto-advancing lines */}
       <div
         style={{
           flex: 1,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          maxWidth: '320px',
-          width: '100%',
+          paddingBottom: '80px',
         }}
       >
         <div
           style={{
-            fontSize: '26px',
-            fontWeight: 600,
-            color: '#ffffff',
+            opacity: lineState === 'in' ? 1 : lineState === 'out' ? 0 : 0,
+            transition: `opacity ${lineState === 'in' ? IN_DURATION : OUT_DURATION}ms var(--ease-out)`,
             textAlign: 'center',
-            lineHeight: 1.35,
-            opacity: isVisible ? 1 : 0,
-            transition: `opacity ${IN_DURATION}ms ease`,
           }}
         >
-          {currentCopy[0]}
-          <br />
-          {currentCopy[1]}
+          {LINES[activeLine].map((text, i) => (
+            <p
+              key={i}
+              style={{
+                fontSize: '30px',
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                lineHeight: 1.4,
+                margin: 0,
+              }}
+            >
+              {text}
+            </p>
+          ))}
         </div>
       </div>
 
-      {/* ── BOTTOM zone: progress dots ────────────────────── */}
+      {/* Bottom: progress dots */}
       <div
         style={{
           display: 'flex',
-          gap: '8px',
-          paddingBottom: 'max(4px, env(safe-area-inset-bottom, 0px))',
+          justifyContent: 'center',
+          gap: 'var(--space-2)',
+          paddingBottom: '40px',
         }}
       >
         {LINES.map((_, i) => (
@@ -204,22 +183,20 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
               width: '6px',
               height: '6px',
               borderRadius: '50%',
-              background: i === activeLine ? '#22d3ee' : 'rgba(255,255,255,0.2)',
-              transition: 'background 200ms ease',
+              background: i === activeLine ? 'var(--accent)' : 'var(--text-muted)',
+              transition: 'background 300ms var(--ease-out)',
             }}
           />
         ))}
       </div>
 
       <style>{`
-        ${PARTICLES.map((p, i) => `
-          @keyframes particleFloat-${i} {
-            0%   { transform: translateY(0) translateX(0); opacity: 0; }
-            10%  { opacity: 0.5; }
-            85%  { opacity: 0.5; }
-            100% { transform: translateY(-100dvh) translateX(${p.drift}px); opacity: 0; }
-          }
-        `).join('\n')}
+        @keyframes feature-particle {
+          0%   { transform: translateY(0) translateX(0); opacity: 0; }
+          10%  { opacity: 0.6; }
+          90%  { opacity: 0.6; }
+          100% { transform: translateY(-110vh) translateX(${PARTICLES[0].drift}px); opacity: 0; }
+        }
       `}</style>
     </div>
   );

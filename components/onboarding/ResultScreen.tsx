@@ -73,8 +73,8 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   }, [phase]);
 
   const riskColor = RISK_COLORS[
-    result.riskTolerance === 'Conservative' ? 'conservative' :
-    result.riskTolerance === 'Aggressive' ? 'aggressive' : 'moderate'
+    result.risk === 'conservative' ? 'conservative' :
+    result.risk === 'aggressive' ? 'aggressive' : 'moderate'
   ];
 
   return (
@@ -195,7 +195,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               }}
             >
               <span style={{ fontSize: '11px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                {RISK_LABELS[result.riskTolerance] || result.riskTolerance.toUpperCase()} RISK
+                {RISK_LABELS[result.risk] || result.risk.toUpperCase()} RISK
               </span>
             </div>
 
@@ -290,8 +290,8 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
             <>
               <button
                 onClick={() => {
-                  debugLog('Enter Vantage tapped', `saving style: ${selectedStyle}, risk: ${result.riskTolerance}, original quiz style: ${result.style}, overridden: ${selectedStyle !== result.style}`);
-                  onEnter(selectedStyle, result.riskTolerance);
+                  debugLog('Enter Vantage tapped', `saving style: ${selectedStyle}, risk: ${result.risk}, original quiz style: ${result.style}, overridden: ${selectedStyle !== result.style}`);
+                  onEnter(selectedStyle, result.risk);
                 }}
                 style={{
                   width: '100%',
@@ -344,7 +344,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
         styleId={selectedStyle as ShareStyleId}
         score={0}
         level="Apprentice"
-        riskTolerance={result.riskTolerance}
+        riskTolerance={result.risk}
         userName={userName}
       />
 

@@ -1,22 +1,20 @@
 // ─── QuizQuestion ──────────────────────────────────────────
 // Renders a single quiz question with horizontal swipeable
-// answer carousel (Tinder/App Store style).
+// answer carousel. Uses ScreenTransition for slide animations.
 //
 // Three-zone flex layout (full viewport):
-//   TOP zone: progress bar + question label + question text
-//     (static, not flex-centered — anchored near top)
-//   MIDDLE zone: flex:1, centered — AnswerCarousel scroll area
-//   BOTTOM zone: swipe hint (Q1 only) → dots → back button
-//     anchored near bottom (24px padding)
-//
-// Slide transition between questions: 320ms ease-in-out
+//   TOP: progress bar + question label + question text
+//   MIDDLE: AnswerCarousel (existing, keep)
+//   BOTTOM: swipe hint → CarouselDots → back button
 
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { ChevronLeft } from 'lucide-react';
 import type { QuizQuestion as QuizQuestionType } from '@/lib/onboarding/quiz-logic';
 import { AnswerCarousel } from './AnswerCarousel';
 import { CarouselDots } from './CarouselDots';
+import ScreenTransition from '@/components/layout/ScreenTransition';
 
 interface QuizQuestionProps {
   question: QuizQuestionType;
@@ -24,7 +22,6 @@ interface QuizQuestionProps {
   totalQuestions: number;
   onAnswer: (key: string) => void;
   onBack?: () => void;
-  direction: 'forward' | 'backward';
 }
 
 export function QuizQuestion({
@@ -33,214 +30,172 @@ export function QuizQuestion({
   totalQuestions,
   onAnswer,
   onBack,
-  direction,
 }: QuizQuestionProps) {
-  const [visible, setVisible] = useState(false);
   const [carouselActiveIndex, setCarouselActiveIndex] = useState(0);
-
-  // ── Swipe hint logic ──────────────────────────────────────
-  const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const [showSwipeHint, setShowSwipeHint] = useState(questionNumber === 1);
   const [hintFading, setHintFading] = useState(false);
 
-  useEffect(() => {
-    if (questionNumber !== 1) return;
-    const alreadyShown =
-      typeof window !== 'undefined' &&
-      sessionStorage.getItem('vantage_swipe_hint_shown') === 'true';
-    if (!alreadyShown) {
-      setShowSwipeHint(true);
-    }
-  }, [questionNumber]);
-
+  // Swipe hint — fades when user first scrolls
   useEffect(() => {
     if (!showSwipeHint || hintFading) return;
     if (carouselActiveIndex !== 0) {
       setHintFading(true);
-      const t = setTimeout(() => {
-        setShowSwipeHint(false);
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('vantage_swipe_hint_shown', 'true');
-        }
-      }, 400);
-      return () => clearTimeout(t);
     }
   }, [carouselActiveIndex, showSwipeHint, hintFading]);
 
-  // ── Slide-in trigger ──────────────────────────────────────
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 16);
-    return () => clearTimeout(t);
-  }, [question.id]);
-
   const progress = (questionNumber / totalQuestions) * 100;
-  const isFirstQuestion = questionNumber === 1;
+  const isFirst = questionNumber === 1;
 
   return (
-    <div
-      style={{
-        width: '100%',
-        height: '100dvh',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '24px 24px 24px 24px',
-        transform: visible
-          ? 'translateX(0)'
-          : direction === 'forward'
-            ? 'translateX(100%)'
-            : 'translateX(-100%)',
-        opacity: visible ? 1 : 0,
-        transition: 'transform 320ms ease-in-out, opacity 320ms ease-in-out',
-      }}
+    <ScreenTransition
+      direction={questionNumber > 1 ? 'forward' : 'fade'}
+      transitionKey={question.id}
     >
-      {/* ── TOP zone: progress + label + question ──────────── */}
       <div
         style={{
-          flexShrink: 0,
-          paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
+          width: '100%',
+          height: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '24px',
         }}
       >
-        {/* Progress bar */}
+        {/* TOP: progress + label + question */}
         <div
           style={{
-            width: '100%',
-            height: '3px',
-            background: 'rgba(255,255,255,0.08)',
-            borderRadius: '2px',
-            overflow: 'hidden',
-            marginBottom: '20px',
+            flexShrink: 0,
+            paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
           }}
         >
+          {/* Progress bar */}
           <div
             style={{
-              height: '100%',
-              width: `${progress}%`,
-              background: '#22d3ee',
+              width: '100%',
+              height: '3px',
+              background: 'var(--border-subtle)',
               borderRadius: '2px',
-              transition: 'width 400ms ease',
+              overflow: 'hidden',
+              marginBottom: 'var(--space-3)',
             }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${progress}%`,
+                background: 'var(--accent)',
+                borderRadius: '2px',
+                transition: 'width 400ms var(--ease-out)',
+              }}
+            />
+          </div>
+
+          {/* Label */}
+          <p
+            style={{
+              fontSize: '12px',
+              color: 'rgba(34,211,238,0.7)',
+              fontWeight: 500,
+              marginBottom: 'var(--space-3)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+            }}
+          >
+            {question.label} · {questionNumber} OF {totalQuestions}
+          </p>
+
+          {/* Question text */}
+          <h2
+            style={{
+              fontSize: 'var(--onb-headline, 30px)',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              lineHeight: 1.35,
+              marginBottom: 'var(--space-6)',
+            }}
+          >
+            {question.question}
+          </h2>
+        </div>
+
+        {/* MIDDLE: carousel */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'visible',
+            width: '100%',
+            minWidth: 0,
+          }}
+        >
+          <AnswerCarousel
+            key={question.id}
+            answers={question.options}
+            onSelect={onAnswer}
+            isFirstQuestion={isFirst}
+            hideFooter
+            onActiveIndexChange={setCarouselActiveIndex}
           />
         </div>
 
-        {/* Question label + counter */}
-        <p
-          style={{
-            fontSize: '11px',
-            color: 'rgba(34,211,238,0.7)',
-            fontWeight: 500,
-            marginBottom: '12px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.12em',
-          }}
-        >
-          {question.label} · {questionNumber} OF {totalQuestions}
-        </p>
-
-        {/* Question text */}
-        <h2
-          style={{
-            fontSize: '24px',
-            fontWeight: 600,
-            color: '#ffffff',
-            lineHeight: 1.35,
-            marginBottom: '24px',
-          }}
-        >
-          {question.question}
-        </h2>
-      </div>
-
-      {/* ── MIDDLE zone: carousel, centered ────────────────── */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'visible',
-          width: '100%',
-          minWidth: 0,
-        }}
-      >
-        <AnswerCarousel
-          key={question.id}
-          answers={question.options}
-          onSelect={onAnswer}
-          isFirstQuestion={isFirstQuestion}
-          hideFooter
-          onActiveIndexChange={setCarouselActiveIndex}
-        />
-      </div>
-
-      {/* ── BOTTOM zone: swipe hint → dots → back ──────────── */}
-      <div
-        style={{
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '8px',
-          paddingBottom: 'max(0px, env(safe-area-inset-bottom, 0px))',
-        }}
-      >
-        {/* Swipe hint (Q1 only) */}
-        {showSwipeHint && (
-          <p
-            style={{
-              fontSize: '13px',
-              color: '#64748b',
-              textAlign: 'center',
-              margin: 0,
-              opacity: hintFading ? 0 : 1,
-              transition: 'opacity 400ms ease',
-            }}
-          >
-            ← swipe to browse →
-          </p>
-        )}
-
-        {/* Dots */}
-        <CarouselDots
-          total={question.options.length}
-          activeIndex={carouselActiveIndex}
-        />
-
-        {/* Back button (Q2-Q5 only, left-aligned within bottom zone) */}
+        {/* BOTTOM: swipe hint → dots → back */}
         <div
           style={{
-            width: '100%',
+            flexShrink: 0,
             display: 'flex',
-            marginTop: '8px',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))',
           }}
         >
-          {!isFirstQuestion && onBack && (
-            <button
-              onClick={onBack}
+          {/* Swipe hint (Q1 only, fades on first scroll) */}
+          {showSwipeHint && (
+            <p
               style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255,255,255,0.7)',
-                fontSize: '15px',
-                cursor: 'pointer',
-                padding: '8px 12px',
-                minHeight: '44px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                WebkitTapHighlightColor: 'transparent',
-                transition: 'opacity 150ms ease',
-              }}
-              onMouseDown={(e) => {
-                e.currentTarget.style.opacity = '0.6';
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.opacity = '1';
+                fontSize: '13px',
+                color: 'var(--text-muted)',
+                textAlign: 'center',
+                margin: 0,
+                opacity: hintFading ? 0 : 1,
+                transition: 'opacity 400ms var(--ease-out)',
               }}
             >
-              ← Back
-            </button>
+              ← swipe to browse →
+            </p>
           )}
+
+          {/* Dots */}
+          <CarouselDots total={question.options.length} activeIndex={carouselActiveIndex} />
+
+          {/* Back button (Q2-Q5 only) */}
+          <div style={{ width: '100%', display: 'flex', marginTop: 'var(--space-2)' }}>
+            {!isFirst && onBack && (
+              <button
+                onClick={onBack}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                  padding: '8px 12px',
+                  minHeight: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontFamily: 'inherit',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                <ChevronLeft size={16} />
+                Back
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </ScreenTransition>
   );
 }
