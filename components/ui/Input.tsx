@@ -14,6 +14,7 @@ interface InputProps {
   showToggle?: boolean;
   autoFocus?: boolean;
   disabled?: boolean;
+  onBlur?: () => void;
 }
 
 export default function Input({
@@ -27,6 +28,7 @@ export default function Input({
   showToggle = false,
   autoFocus = false,
   disabled = false,
+  onBlur,
 }: InputProps) {
   const [visible, setVisible] = useState(false);
   const inputType = showToggle && !visible ? 'password' : type === 'password' && !showToggle ? 'password' : type;
@@ -93,6 +95,7 @@ export default function Input({
               e.target.style.borderColor = 'var(--border-input)';
               e.target.style.boxShadow = 'none';
             }
+            onBlur?.();
           }}
         />
 

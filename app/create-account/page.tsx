@@ -1,82 +1,720 @@
+// ─── Create Account Screen ──────────────────────────────────
+// Full signup form. Receives firstName, lastName, investorStyle,
+// and riskTolerance from OnboardingFlow via sessionStorage.
+//
+// Layout:
+//   Top bar (back arrow + VantageOrb)
+//   Headline (two-line, quieter than reveal)
+//   Profile summary card (emoji + style + risk + Change)
+//   Error banner (conditional, on API error)
+//   Form fields (first, last, email, password, confirm)
+//   CTA section (Create account + Google)
+//   Legal text
+//   Already have account?
+
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  ChevronLeft,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from 'lucide-react';
+import { VantageOrb } from '@/components/brand/VantageOrb';
+import Input from '@/components/ui/Input';
+import PasswordStrength from '@/components/ui/PasswordStrength';
+import { createAccount } from '@/app/actions/auth';
+import { signInWithGoogle } from '@/lib/auth/oauth';
+import {
+  getStyleContent,
+  getStyleEmoji,
+  ALL_STYLES,
+} from '@/lib/content/investor-styles';
+import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
+import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
-// Minimal placeholder — will be replaced by Prompt 6 auth screens.
-// Reads onboarding data from sessionStorage bridge.
+// ── Helpers ──────────────────────────────────────────────────
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// ── Props (from sessionStorage) ──────────────────────────────
+
+interface OnboardingData {
+  style: InvestorStyleKey;
+  risk: RiskTolerance;
+  firstName: string;
+  lastName: string;
+}
+
+function readOnboardingData(): OnboardingData | null {
+  try {
+    const raw = sessionStorage.getItem('vantage_onboarding_data');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+// ── Component ────────────────────────────────────────────────
 
 export default function CreateAccountPage() {
   const router = useRouter();
 
-  const data =
-    typeof window !== 'undefined'
-      ? (() => {
-          try {
-            const raw = sessionStorage.getItem('vantage_onboarding_data');
-            return raw ? JSON.parse(raw) : null;
-          } catch {
-            return null;
-          }
-        })()
-      : null;
+  // ── Onboarding data ──────────────────────────────────────
+  const [onboardingData] = useState<OnboardingData | null>(() => readOnboardingData());
+
+  // ── Form state ───────────────────────────────────────────
+  const [firstName, setFirstName] = useState(onboardingData?.firstName ?? '');
+  const [lastName, setLastName] = useState(onboardingData?.lastName ?? '');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // ── Validation state ─────────────────────────────────────
+  const [emailError, setEmailError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
+
+  // ── API state ────────────────────────────────────────────
+  const [submitting, setSubmitting] = useState(false);
+  const [apiError, setApiError] = useState('');
+
+  // ── Computed ─────────────────────────────────────────────
+  const style = onboardingData?.style ?? 'buffett';
+  const risk = onboardingData?.risk ?? 'moderate';
+  const styleContent = getStyleContent(style);
+  const styleEmoji = getStyleEmoji(style);
+  const shortLabel = styleContent.shortLabel;
+  const riskColor = RISK_COLORS[risk];
+  const riskLabel = RISK_LABELS[risk];
+
+  const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword;
+  const showMatchIndicator = confirmTouched && confirmPassword.length > 0;
+
+  // Password strength requirements
+  const passwordMet = [
+    password.length >= 8,
+    /[A-Z]/.test(password),
+    /[a-z]/.test(password),
+    /[0-9]/.test(password),
+    /[!@#$%^&*]/.test(password),
+  ];
+  const allPasswordReqsMet = passwordMet.every(Boolean);
+
+  // Form validity
+  const canSubmit =
+    !!firstName.trim() &&
+    !!lastName.trim() &&
+    isValidEmail(email) &&
+    emailError === '' &&
+    allPasswordReqsMet &&
+    password === confirmPassword &&
+    confirmPassword.length > 0 &&
+    !submitting;
+
+  // ── Redirect if no onboarding data ──────────────────────
+  useEffect(() => {
+    if (!onboardingData) {
+      router.replace('/onboarding');
+    }
+  }, [onboardingData, router]);
+
+  if (!onboardingData) {
+    return (
+      <div
+        style={{
+          minHeight: '100dvh',
+          background: '#0a0f1e',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Loader2
+          size={24}
+          color="var(--accent)"
+          style={{ animation: 'spin 0.7s linear infinite' }}
+        />
+      </div>
+    );
+  }
+
+  // ── Handlers ─────────────────────────────────────────────
+
+  const handleBack = () => {
+    try {
+      sessionStorage.setItem('vantage_onboarding_retake', 'reveal');
+    } catch {}
+    router.push('/onboarding');
+  };
+
+  const handleChange = () => {
+    try {
+      sessionStorage.setItem('vantage_onboarding_retake', 'reveal');
+    } catch {}
+    router.push('/onboarding');
+  };
+
+  const handleEmailBlur = () => {
+    setEmailTouched(true);
+    if (email.length > 0 && !isValidEmail(email)) {
+      setEmailError('Enter a valid email address');
+    } else {
+      setEmailError('');
+    }
+  };
+
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    if (emailTouched && value.length > 0 && !isValidEmail(value)) {
+      setEmailError('Enter a valid email address');
+    } else {
+      setEmailError('');
+    }
+  };
+
+  const handleSubmit = useCallback(async () => {
+    if (!canSubmit) return;
+
+    setSubmitting(true);
+    setApiError('');
+
+    const result = await createAccount({
+      email: email.trim(),
+      password,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      investorStyle: style,
+      riskTolerance: risk,
+    });
+
+    if (result.success) {
+      // Sign in the user client-side so session is established
+      const { createClient } = await import('@/lib/supabase');
+      const supabase = createClient();
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (signInError) {
+        console.error('[CreateAccount] Sign-in after create failed:', signInError.message);
+        setApiError('Account created but sign-in failed. Please try signing in.');
+        setSubmitting(false);
+        return;
+      }
+
+      // Clear onboarding sessionStorage
+      try {
+        sessionStorage.removeItem('vantage_onboarding_data');
+      } catch {}
+
+      router.replace('/');
+    } else {
+      setApiError(result.error ?? 'Something went wrong. Please try again.');
+      setSubmitting(false);
+    }
+  }, [canSubmit, email, password, firstName, lastName, style, risk, router]);
+
+  const handleGoogleSignUp = useCallback(async () => {
+    setSubmitting(true);
+    setApiError('');
+
+    try {
+      await signInWithGoogle({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        investorStyle: style,
+        riskTolerance: risk,
+      });
+      // Page will redirect — no need to reset state
+    } catch (err: any) {
+      console.error('[CreateAccount] Google sign-up failed:', err);
+      setApiError('Google sign-up failed. Please try again.');
+      setSubmitting(false);
+    }
+  }, [firstName, lastName, style, risk]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && canSubmit) {
+      handleSubmit();
+    }
+  };
+
+  // ── Render error banner ──────────────────────────────────
+
+  const errorBanner = apiError ? (
+    <div
+      style={{
+        background: 'var(--loss-10)',
+        border: '1px solid var(--loss)',
+        borderRadius: '12px',
+        padding: '12px 16px',
+        display: 'flex',
+        gap: '10px',
+        marginBottom: '16px',
+      }}
+    >
+      <AlertCircle size={16} color="var(--loss)" style={{ flexShrink: 0, marginTop: '1px' }} />
+      <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0, lineHeight: 1.5 }}>
+        {apiError.includes('Sign in instead') ? (
+          <>
+            An account with this email already exists.{' '}
+            <span
+              onClick={() => router.push('/login')}
+              style={{
+                color: 'var(--accent)',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+              }}
+            >
+              Sign in instead.
+            </span>
+          </>
+        ) : (
+          apiError
+        )}
+      </p>
+    </div>
+  ) : null;
+
+  // ── Render ────────────────────────────────────────────────
 
   return (
     <div
+      className="bg-onboarding-reveal"
+      onKeyDown={handleKeyDown}
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 300,
-        background: 'var(--bg-primary)',
+        height: '100dvh',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '0 24px',
-        gap: 'var(--space-6)',
+        padding: '0 24px 40px',
       }}
     >
-      <h1
+      {/* ═══ TOP BAR ═══ */}
+      <div
         style={{
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 700,
-          color: 'var(--text-primary)',
-          textAlign: 'center',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          height: '60px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'transparent',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
         }}
       >
-        Create Your Account
+        <button
+          onClick={handleBack}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px 0',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <ChevronLeft size={20} />
+          <span style={{ fontSize: '15px', fontFamily: 'var(--font-sans)' }}>Back</span>
+        </button>
+
+        <VantageOrb size={36} animate={false} showEntrance={false} />
+      </div>
+
+      {/* ═══ HEADLINE ═══ */}
+      <h1 style={{ marginTop: '24px', marginBottom: '6px', textAlign: 'center' }}>
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-sans)',
+            fontSize: '32px',
+            fontWeight: 800,
+            color: '#ffffff',
+            lineHeight: 1.1,
+          }}
+        >
+          Lock in your
+        </span>
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-serif)',
+            fontSize: '32px',
+            fontWeight: 400,
+            fontStyle: 'italic',
+            color: '#ffffff',
+            lineHeight: 1.1,
+          }}
+        >
+          investor identity.
+        </span>
       </h1>
 
-      {data ? (
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-            {data.firstName} {data.lastName}
-          </p>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-            Style: {data.style} · Risk: {data.risk}
-          </p>
-        </div>
-      ) : (
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', textAlign: 'center' }}>
-          No onboarding data found. Please complete the quiz first.
-        </p>
-      )}
-
-      <button
-        onClick={() => router.push('/onboarding')}
+      {/* ═══ PROFILE SUMMARY CARD ═══ */}
+      <div
         style={{
-          padding: '10px 24px',
-          borderRadius: 'var(--radius-button)',
-          border: '1px solid var(--border-subtle)',
-          background: 'var(--bg-secondary)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          fontSize: 'var(--text-sm)',
-          fontFamily: 'inherit',
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '16px',
+          padding: '14px 16px',
+          marginBottom: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
         }}
       >
-        ← Back to Onboarding
-      </button>
+        {/* Emoji + style name */}
+        <span style={{ fontSize: '28px', lineHeight: 1 }}>{styleEmoji}</span>
+        <span
+          style={{
+            fontSize: '15px',
+            fontWeight: 600,
+            color: '#ffffff',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          {shortLabel}
+        </span>
+
+        {/* Separator */}
+        <span style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '0 2px' }}>
+          ·
+        </span>
+
+        {/* Risk badge */}
+        <span
+          style={{
+            background: 'transparent',
+            border: `1px solid ${riskColor}`,
+            borderRadius: '999px',
+            padding: '3px 10px',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: riskColor,
+            fontFamily: 'var(--font-sans)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {riskLabel} Risk
+        </span>
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Change */}
+        <button
+          onClick={handleChange}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--accent)',
+            fontSize: '12px',
+            fontFamily: 'var(--font-sans)',
+            cursor: 'pointer',
+            padding: 0,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Change ›
+        </button>
+      </div>
+
+      {/* ═══ ERROR BANNER ═══ */}
+      {errorBanner}
+
+      {/* ═══ FORM FIELDS ═══ */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* First Name */}
+        <Input
+          label="FIRST NAME"
+          placeholder="First name"
+          value={firstName}
+          onChange={(v) => setFirstName(v)}
+          disabled={submitting}
+        />
+
+        {/* Last Name */}
+        <Input
+          label="LAST NAME"
+          placeholder="Last name"
+          value={lastName}
+          onChange={(v) => setLastName(v)}
+          disabled={submitting}
+        />
+
+        {/* Email */}
+        <Input
+          label="EMAIL"
+          placeholder="your@email.com"
+          type="email"
+          value={email}
+          onChange={handleEmailChange}
+          onBlur={handleEmailBlur}
+          error={emailError}
+          disabled={submitting}
+        />
+
+        {/* Password */}
+        <div style={{ width: '100%' }}>
+          <Input
+            label="PASSWORD"
+            placeholder="Create a password"
+            type="password"
+            value={password}
+            onChange={(v) => setPassword(v)}
+            showToggle
+            disabled={submitting}
+          />
+
+          {/* Password strength meter */}
+          <div style={{ marginTop: '4px' }}>
+            <PasswordStrength password={password} />
+          </div>
+        </div>
+
+        {/* Confirm Password */}
+        <div style={{ width: '100%' }}>
+          <Input
+            label="CONFIRM PASSWORD"
+            placeholder="Confirm your password"
+            type="password"
+            value={confirmPassword}
+            onChange={(v) => {
+              setConfirmPassword(v);
+              if (!confirmTouched) setConfirmTouched(true);
+            }}
+            showToggle
+            disabled={submitting}
+          />
+
+          {/* Match indicator */}
+          {showMatchIndicator && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                marginTop: '6px',
+                color: passwordsMatch ? 'var(--gain)' : 'var(--loss)',
+                fontSize: '13px',
+                fontFamily: 'var(--font-sans)',
+                transition: 'color 150ms var(--ease-out)',
+              }}
+            >
+              {passwordsMatch ? (
+                <>
+                  <CheckCircle size={14} />
+                  <span>Passwords match</span>
+                </>
+              ) : (
+                <>
+                  <XCircle size={14} />
+                  <span>Passwords don&apos;t match</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ CTA SECTION ═══ */}
+      <div
+        style={{
+          marginTop: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}
+      >
+        {/* Create account button */}
+        <button
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
+          style={{
+            width: '100%',
+            height: '56px',
+            borderRadius: '999px',
+            border: 'none',
+            background: canSubmit && !submitting ? '#ffffff' : 'rgba(255,255,255,0.20)',
+            color: canSubmit && !submitting ? '#000000' : 'rgba(0,0,0,0.40)',
+            fontSize: '17px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-sans)',
+            cursor: canSubmit && !submitting ? 'pointer' : 'default',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'background 200ms var(--ease-out)',
+          }}
+        >
+          {submitting ? (
+            <>
+              <Loader2 size={20} style={{ animation: 'spin 0.7s linear infinite' }} />
+              Creating account…
+            </>
+          ) : (
+            'Create account'
+          )}
+        </button>
+
+        {/* Divider: or */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            gap: '12px',
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: '1px',
+              background: 'rgba(255,255,255,0.08)',
+            }}
+          />
+          <span
+            style={{
+              flexShrink: 0,
+              fontSize: '13px',
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            or
+          </span>
+          <div
+            style={{
+              flex: 1,
+              height: '1px',
+              background: 'rgba(255,255,255,0.08)',
+            }}
+          />
+        </div>
+
+        {/* Google button */}
+        <button
+          onClick={handleGoogleSignUp}
+          disabled={submitting}
+          style={{
+            width: '100%',
+            height: '56px',
+            borderRadius: '999px',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'transparent',
+            color: '#ffffff',
+            fontSize: '17px',
+            fontWeight: 600,
+            fontFamily: 'var(--font-sans)',
+            cursor: submitting ? 'default' : 'pointer',
+            opacity: submitting ? 0.4 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            transition: 'opacity 200ms var(--ease-out)',
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
+          </svg>
+          Continue with Google
+        </button>
+      </div>
+
+      {/* ═══ LEGAL TEXT ═══ */}
+      <p
+        style={{
+          marginTop: '16px',
+          fontSize: '12px',
+          color: 'rgba(255,255,255,0.35)',
+          textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
+          lineHeight: 1.5,
+        }}
+      >
+        By creating an account you agree to our{' '}
+        <span
+          onClick={() => router.push('/terms')}
+          style={{
+            textDecoration: 'underline',
+            cursor: 'pointer',
+          }}
+        >
+          Terms of Service
+        </span>{' '}
+        and{' '}
+        <span
+          onClick={() => router.push('/privacy')}
+          style={{
+            textDecoration: 'underline',
+            cursor: 'pointer',
+          }}
+        >
+          Privacy Policy
+        </span>
+        .
+      </p>
+
+      {/* ═══ ALREADY HAVE ACCOUNT ═══ */}
+      <p
+        style={{
+          marginTop: '12px',
+          fontSize: '13px',
+          color: 'var(--text-secondary)',
+          textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
+          paddingBottom: '20px',
+        }}
+      >
+        Already have an account?{' '}
+        <span
+          onClick={() => router.push('/login')}
+          style={{
+            color: 'var(--accent)',
+            cursor: 'pointer',
+          }}
+        >
+          Sign in
+        </span>
+      </p>
+
+      {/* Spin keyframes for loader */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
