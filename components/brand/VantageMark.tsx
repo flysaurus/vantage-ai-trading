@@ -139,7 +139,7 @@ export function VantageMark({
               x1={from.x} y1={from.y}
               x2={to.x} y2={to.y}
               stroke={LINE_COLOR}
-              strokeWidth={0.8}
+              strokeWidth={1.0}
               strokeLinecap="round"
               strokeDasharray={len}
               strokeDashoffset={linePhase ? undefined : 0}
@@ -170,7 +170,7 @@ export function VantageMark({
               {/* Outer halo */}
               <circle
                 cx={pos.x} cy={pos.y}
-                r={isActive ? 12 : 6}
+                r={isActive ? 14 : 8}
                 fill={HALO_COLOR}
                 style={
                   nodePhase
@@ -190,7 +190,7 @@ export function VantageMark({
               {/* Core node */}
               <circle
                 cx={pos.x} cy={pos.y}
-                r={isActive ? 5 : 3}
+                r={isActive ? 6 : 4}
                 fill={isActive ? ACCENT : NODE_COLOR}
                 filter={isActive ? 'url(#vantage-node-glow)' : undefined}
                 style={
@@ -268,8 +268,8 @@ export function VantageMark({
 
         /* Active node micro-pulse: radius breathes 5→7→5 */
         @keyframes vantage-node-active-pulse {
-          0%, 100% { r: 5; }
-          50%      { r: 7; }
+          0%, 100% { r: 6; }
+          50%      { r: 8; }
         }
 
         /* Active halo pulse: opacity breathes 0.1→0.3→0.1 */
