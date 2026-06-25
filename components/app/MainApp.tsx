@@ -29,12 +29,9 @@ import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
-import { checkQuizComplete } from '@/lib/onboarding/quiz-logic';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+
 import type { User } from '@/types';
-import { useEmailGate } from '@/hooks/useEmailGate';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
-import { EmailGateModal } from '@/components/auth/EmailGateModal';
 
 // Module-level: survives in-app navigation but resets on full page load (login)
 let brokerGateDismissedThisSession = false;
@@ -64,37 +61,11 @@ function AppShell() {
   >([]);
 
   const router = useRouter();
-  const { gate, showEmailGate, pendingAction, close } = useEmailGate();
-
-  // ── Async quiz state (cross-device aware) ─────────────────
-  const [quizComplete, setQuizComplete] = useState(false);
-  useEffect(() => {
-    checkQuizComplete().then(({ complete }) => setQuizComplete(complete));
-  }, []);
 
   const effectiveUser = useMemo<User | null>(() => {
     if (user) return user;
-    if (!quizComplete) return null;
-    try {
-      const style = (localStorage.getItem('vantage:investorStyle') || 'buffett') as User['investorStyle'];
-      const nameValue = localStorage.getItem('vantage_user_name') || 'Trader';
-      const risk = (localStorage.getItem('vantage:riskTolerance') || 'Moderate') as User['riskTolerance'];
-      return {
-        id: getOrCreateAnonymousId(),
-        email: '',
-        displayName: nameValue,
-        avatarUrl: undefined,
-        investorStyle: style,
-        investorStyleSetAt: undefined,
-        investorStyleOnboarded: true,
-        riskTolerance: risk,
-        name: nameValue,
-        createdAt: new Date().toISOString(),
-      };
-    } catch {
-      return null;
-    }
-  }, [user, quizComplete]);
+    return null;
+  }, [user]);
 
   // ── Greeting modal after login ──
   useEffect(() => {
@@ -189,9 +160,6 @@ function AppShell() {
       setShowOnboarding(false);
       return;
     }
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('vantage:onboarded');
-    }
     setShowOnboarding(true);
   }, [user, isDataLoaded]);
 
@@ -275,8 +243,7 @@ function AppShell() {
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
 
       {showWelcomeToast && (() => {
-        const localName = typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null;
-        const initial = ((effectiveUser?.name || effectiveUser?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
+        const initial = ((effectiveUser?.name || effectiveUser?.email || 'M')[0]?.toUpperCase() || 'M') + '.';
         return (
           <div style={{
             position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 99997,
@@ -301,7 +268,6 @@ function AppShell() {
       `}</style>
 
       {showGreeting && <GreetingModal onComplete={() => setShowGreeting(false)} />}
-      <EmailGateModal open={showEmailGate} onClose={close} pendingAction={pendingAction || { type: 'trade' }} />
     </div>
   );
 }

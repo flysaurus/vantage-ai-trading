@@ -14,7 +14,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useInvestorScore } from '@/hooks/useInvestorScore';
-import { useAnonymousSession } from '@/hooks/useAnonymousSession';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getLevelColor } from '@/lib/theme/utils';
 import { ScoreDetailSheet } from './ScoreDetailSheet';
@@ -24,7 +23,6 @@ import { ALL_STYLES, getStyleContent } from '@/lib/content/investor-styles';
 
 export function PlayerStatusBar() {
   const { score, level, progress, loading: scoreLoading } = useInvestorScore();
-  const { daysRemaining, streak } = useAnonymousSession();
   const { user } = useAuth();
 
   const [showStylePicker, setShowStylePicker] = useState(false);
@@ -34,16 +32,16 @@ export function PlayerStatusBar() {
   const prevScoreRef = useRef(0);
   const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Derive investor style (with localStorage fallback for anonymous users) ──
-  const styleId = user?.investorStyle || (typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null) || 'buffett';
+  // ── Derive investor style ──
+  const styleId = user?.investorStyle || 'buffett';
   const styleData = getStyleContent(styleId);
 
   // ── Level color ──
   const levelColor = getLevelColor(level);
 
-  // ── Streak value ──
-  const streakDays = streak?.current_streak || 0;
-  const showWarning = daysRemaining <= 3;
+  // ── Streak (authenticated users only, no anonymous fallback) ──
+  const streakDays = 0;
+  const showWarning = false;
 
   // ── Score count-up animation ──────────────────────────
   useEffect(() => {
@@ -87,8 +85,6 @@ export function PlayerStatusBar() {
 
   // ── Style save ───────────────────────────────────────
   const selectStyle = useCallback(async (newStyle: string) => {
-    // Always persist to localStorage (works for both anonymous and auth users)
-    localStorage.setItem('vantage:investorStyle', newStyle);
     sessionStorage.removeItem('vantage_greeting');
 
     if (user?.id) {

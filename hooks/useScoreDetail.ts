@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { MILESTONE_DEFINITIONS } from '@/lib/gamification/milestones';
 import type { ScoreSnapshot } from '@/lib/investor-score/snapshot';
 
@@ -67,6 +67,7 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!open) {
@@ -84,8 +85,8 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
       setError(null);
 
       try {
-        const anonId = getOrCreateAnonymousId();
-        if (!anonId) {
+        const userId = user?.id || '';
+        if (!userId) {
           if (!cancelled) setData(EMPTY_DATA);
           return;
         }
@@ -95,10 +96,10 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
           fetch('/api/investor-score', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ anonymousId: anonId }),
+            body: JSON.stringify({ anonymousId: userId }),
           }),
           fetch(
-            `/api/gamification/milestones?anonymousId=${encodeURIComponent(anonId)}`
+            `/api/gamification/milestones?anonymousId=${encodeURIComponent(userId)}`
           ),
         ]);
 

@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompassIcon from '@/components/CompassIcon';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
-import { useEmailGate } from '@/hooks/useEmailGate';
 import { getMarketStatus } from '@/lib/market-hours';
 
 // ── 5-step flow: curated → custom_theme → budget → generating → review ──
@@ -70,7 +69,6 @@ interface Props {
 export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }: Props) {
   const { user } = useAuth();
   const { account, executeBasketTrade } = useLivePortfolio();
-  const { gate } = useEmailGate();
 
   // ── Helper: derive fractional shares from dollar amount and price (4 decimal places) ──
   const calcShares = (dollarAmount: number, price: number) => {
@@ -1344,18 +1342,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // ── Confirm and execute basket order ──
   async function handleConfirmOrder() {
     if (!selectedCurated || reviewStocks.length === 0) return;
-    // Email gate: block anonymous users from basket trading
-    if (!gate({
-      type: 'basket',
-      payload: {
-        basketId: selectedCurated!.id,
-        basketName: selectedCurated!.name,
-        basketEmoji: selectedCurated!.emoji,
-        displayName: basketDisplayName || selectedCurated!.name,
-        stocks: reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
-        budget: parseInt(budget) || 0,
-      }
-    })) return;
     setExecuting(true);
     setExecutionResult(null);
     const bNum = parseInt(budget) || 0;

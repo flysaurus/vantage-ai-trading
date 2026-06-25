@@ -5,10 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { onAISessionStarted } from '@/lib/gamification/events';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useEmailGate } from '@/hooks/useEmailGate';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
 import { useChatStorage } from '@/hooks/useChatStorage';
@@ -70,7 +68,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
-  const { gate } = useEmailGate();
   const userId = user?.id || null;
   const investorStyle = user?.investorStyle || 'Lynch';
   const chatGateCheckedRef = useRef(false);
@@ -92,7 +89,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
   const [greetingHook, setGreetingHook] = useState<string | null>(null);
   const [greetingLoaded, setGreetingLoaded] = useState(false);
-  const localName = typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null;
+  const localName = typeof window !== 'undefined' ? user?.name || '' : null;
   const userInitial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
   const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
@@ -510,16 +507,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
-    // Email gate: gate anonymous users on first message
-    if (!chatGateCheckedRef.current) {
-      chatGateCheckedRef.current = true;
-      debugLog('AITab chat gate check', `user.authenticated: ${!!user?.id}, userId: ${user?.id || 'none'}`);
-      if (!gate({ type: 'chat', payload: { content, mode } })) {
-        debugLog('AITab chat gate', 'Gate returned FALSE — EmailGateModal should now show');
-        return;
-      }
-      debugLog('AITab chat gate', 'Gate returned TRUE — proceeding with message');
-    }
+    // (email gate removed — auth-only app)
 
     // Message limit check (soft — 25/day)
     const remaining = getRemainingMessages();
@@ -545,7 +533,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
     // Fire gamification on first AI message
     if (messages.length === 0) {
-      const anonId = getOrCreateAnonymousId();
+      const anonId = user?.id || 'unknown';
       onAISessionStarted(anonId).catch(() => {});
     }
 
@@ -565,7 +553,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           mode,
           investorStyle: investorStyle,
           riskTolerance: user?.riskTolerance || 'Moderate',
-          name: user?.name || (typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null) || 'M',
+          name: user?.name || (typeof window !== 'undefined' ? user?.name || '' : null) || 'M',
         })
       });
 

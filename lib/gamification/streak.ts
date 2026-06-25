@@ -1,22 +1,23 @@
 // ─── Gamification: Streak ────────────────────────────────────
 // Client-callable wrappers around the /api/session/streak endpoint.
-//
-// All DB writes happen server-side (API routes / server actions).
-// These functions are safe to call from client components.
+// (Streak tracking via authenticated user ID — anonymous sessions removed.)
 
-import type { StreakData } from '@/lib/session/sync';
+export interface StreakData {
+  current_streak: number;
+  longest_streak: number;
+  last_open_date: string;
+  total_days_active: number;
+}
 
 /**
  * Record a daily login and return the updated streak.
- *
- * Calls POST /api/session/streak with the anonymous_id.
- * Idempotent — if already synced today, no-op.
+ * Uses user_id now (was anonymous_id pre-cleanup).
  */
-export async function recordDailyOpen(anonymousId: string): Promise<StreakData> {
+export async function recordDailyOpen(userId: string): Promise<StreakData> {
   const res = await fetch('/api/session/streak', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ anonymousId }),
+    body: JSON.stringify({ userId }),
   });
 
   if (!res.ok) {
@@ -29,12 +30,9 @@ export async function recordDailyOpen(anonymousId: string): Promise<StreakData> 
 
 /**
  * Fetch streak data from Supabase (read-only).
- *
- * Uses GET /api/session/streak?anonymousId=xxx
- * Returns null if no streak record exists yet.
  */
-export async function getStreakData(anonymousId: string): Promise<StreakData | null> {
-  const res = await fetch(`/api/session/streak?anonymousId=${encodeURIComponent(anonymousId)}`);
+export async function getStreakData(userId: string): Promise<StreakData | null> {
+  const res = await fetch(`/api/session/streak?userId=${encodeURIComponent(userId)}`);
 
   if (!res.ok) {
     if (res.status === 404) return null;

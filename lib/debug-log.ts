@@ -110,5 +110,5 @@ export function allDebugEntries(): string {
 
 export function isDebugEnabled(): boolean {
   if (typeof window === 'undefined') return false;
-  return process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+  return false; // DEBUG_MODE removed
 }
