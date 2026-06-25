@@ -139,7 +139,7 @@ export function VantageMark({
               x1={from.x} y1={from.y}
               x2={to.x} y2={to.y}
               stroke={LINE_COLOR}
-              strokeWidth={0.5}
+              strokeWidth={0.8}
               strokeLinecap="round"
               strokeDasharray={len}
               strokeDashoffset={linePhase ? undefined : 0}
@@ -218,7 +218,7 @@ export function VantageMark({
         {assemblyPhase === 'center' ? (
           <g>
             <polygon
-              points="50,47 53,50 50,53 47,50"
+              points="50,46 54,50 50,54 46,50"
               fill={ACCENT}
               style={{
                 animation: 'vantage-center-pop 200ms var(--ease-spring) forwards',
@@ -227,7 +227,7 @@ export function VantageMark({
           </g>
         ) : assemblyPhase === 'done' || !showBurst ? (
           <polygon
-            points="50,47 53,50 50,53 47,50"
+            points="50,46 54,50 50,54 46,50"
             fill={ACCENT}
             opacity={0.9}
           />

@@ -1,16 +1,16 @@
 // ─── FeatureSplash ──────────────────────────────────────────
-// Full redesign: bg-onboarding-0 gradient, two-line headlines
-// per slide, progress bar (3 segments), VantageMark glow orb.
+// bg-onboarding-0 gradient, two-line headlines
+// per slide, progress bar (3 segments), VantageOrb 100px pulsing.
 //
 // Layout:
 //   TOP RIGHT:  "Skip" button
-//   CENTER:     VantageMark glow orb + two-line headlines
+//   CENTER:     VantageOrb (100px, pulsing) + two-line headlines
 //   BOTTOM:     progress bar (3 segments) + white pill Continue
 
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { VantageMark } from '@/components/brand/VantageMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 const SLIDES = [
   ['Beyond buy buttons.', 'Actual insight.'],
@@ -123,9 +123,9 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
           padding: '0 24px',
         }}
       >
-        {/* VantageMark glow orb */}
+        {/* VantageOrb — pulsing at small size */}
         <div style={{ marginBottom: '48px' }}>
-          <VantageMark size={100} animate />
+          <VantageOrb size={100} animate showEntrance={false} />
         </div>
 
         {/* Two-line headline per slide */}

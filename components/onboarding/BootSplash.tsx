@@ -1,17 +1,17 @@
-// ─── BootSplash ─────────────────────────────────────────────
-// Full redesign: bg-onboarding-0 gradient, VantageMark burst,
-// two-line wordmark, version tag. 1800ms duration.
+// ─── BootSplash — Orb Hero ──────────────────────────────────
+// VantageOrb command center. Large glowing sphere with
+// architectural wordmark below. The "wow" first impression.
 //
-// Layout (centered):
-//   VantageMark burst (130px)
-//   "VANTAGE" wordmark (sans 800, 28px)
-//   "Your AI investing advisor." tagline (serif italic, 16px)
-//   "v0.1.0" version (absolute bottom)
+// Layout (centered, flex column):
+//   VantageOrb (260px, entrance + pulse)
+//   "VANTAGE" (sans 800, 38px, 0.22em spacing)
+//   "Your AI investing advisor." (serif italic, 18px)
+//   v0.1.0 (absolute bottom, subtle)
 
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { VantageMark } from '@/components/brand/VantageMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 const DURATION = 1800;
 const WORDMARK_DELAY = 700;
@@ -45,7 +45,6 @@ export function BootSplash({ onComplete }: BootSplashProps) {
 
   return (
     <div
-      className="bg-onboarding-0"
       style={{
         width: '100%',
         height: '100dvh',
@@ -53,11 +52,18 @@ export function BootSplash({ onComplete }: BootSplashProps) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '24px',
+        gap: 0,
+        background: `
+          radial-gradient(ellipse 180% 80% at 50% -30%, rgba(34,211,238,0.50) 0%, rgba(14,116,144,0.30) 35%, rgba(6,78,100,0.12) 60%, transparent 75%),
+          radial-gradient(ellipse 100% 60% at 80% 110%, rgba(99,102,241,0.22) 0%, transparent 70%),
+          #0a0f1e
+        `,
       }}
     >
-      {/* VantageMark burst */}
-      <VantageMark size={130} showBurst />
+      {/* VantageOrb — the hero */}
+      <div style={{ marginBottom: '40px' }}>
+        <VantageOrb size={260} animate showEntrance />
+      </div>
 
       {/* Wordmark + Tagline */}
       <div
@@ -71,10 +77,11 @@ export function BootSplash({ onComplete }: BootSplashProps) {
           style={{
             display: 'block',
             fontFamily: 'var(--font-sans)',
-            fontSize: '28px',
+            fontSize: '38px',
             fontWeight: 800,
-            color: 'var(--text-primary)',
-            letterSpacing: '0.18em',
+            color: '#ffffff',
+            letterSpacing: '0.22em',
+            marginBottom: '10px',
           }}
         >
           VANTAGE
@@ -83,12 +90,12 @@ export function BootSplash({ onComplete }: BootSplashProps) {
         <span
           style={{
             display: 'block',
-            marginTop: '8px',
             fontFamily: 'var(--font-serif)',
-            fontSize: '16px',
+            fontSize: '18px',
             fontWeight: 400,
             fontStyle: 'italic',
-            color: 'rgba(255,255,255,0.60)',
+            color: 'rgba(255,255,255,0.55)',
+            textAlign: 'center',
             opacity: showTagline ? 1 : 0,
             transition: 'opacity 400ms var(--ease-out)',
           }}
@@ -101,9 +108,9 @@ export function BootSplash({ onComplete }: BootSplashProps) {
       <span
         style={{
           position: 'absolute',
-          bottom: '40px',
-          fontSize: '11px',
-          color: 'rgba(255,255,255,0.25)',
+          bottom: '48px',
+          fontSize: '12px',
+          color: 'rgba(255,255,255,0.20)',
           fontFamily: 'var(--font-sans)',
         }}
       >

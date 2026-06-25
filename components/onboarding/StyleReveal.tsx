@@ -1,11 +1,11 @@
 // ─── StyleReveal ───────────────────────────────────────────
-// Full redesign: bg-onboarding-reveal gradient, emoji hero
-// with colored glow, two-line typewriter headline, staggered
-// tag/description/risk, override pills, white pill CTA.
+// No orb, no constellation. The emoji IS the mark.
+// 200px emoji hero with per-style colored glow (radial + box-shadow),
+// breathe animation, spring entrance. Override pills change both
+// emoji and glow simultaneously.
 //
 // Layout:
-//   TOP:       VantageMark 36px, static (no burst/glow/rotate)
-//   EMOJI:     96px hero emoji with radial glow behind
+//   EMOJI:     200px hero emoji with colored glow halo
 //   HEADLINE:  two-line typewriter (sans 800 + serif italic 400)
 //   TAG:       pill badge
 //   DESC:      description text
@@ -17,7 +17,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { VantageMark } from '@/components/brand/VantageMark';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import {
   getStyleContent,
@@ -30,13 +29,28 @@ import {
 import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
-// Per-style glow colors (for the emoji radial glow)
-const GLOW_COLORS: Record<InvestorStyleKey, string> = {
-  buffett: 'rgba(34,211,238,0.25)',
-  lynch: 'rgba(34,211,238,0.25)',
-  livermore: 'rgba(16,185,129,0.25)',
-  munger: 'rgba(168,85,247,0.25)',
-  soros: 'rgba(245,158,11,0.25)',
+// Per-style glow — radial background + box-shadow
+const STYLE_GLOW: Record<InvestorStyleKey, { bg: string; shadow: string }> = {
+  buffett: {
+    bg: 'radial-gradient(circle, rgba(34,211,238,0.35) 0%, transparent 70%)',
+    shadow: '0 0 60px rgba(34,211,238,0.30), 0 0 120px rgba(34,211,238,0.15)',
+  },
+  lynch: {
+    bg: 'radial-gradient(circle, rgba(34,211,238,0.35) 0%, transparent 70%)',
+    shadow: '0 0 60px rgba(34,211,238,0.30), 0 0 120px rgba(34,211,238,0.15)',
+  },
+  livermore: {
+    bg: 'radial-gradient(circle, rgba(16,185,129,0.35) 0%, transparent 70%)',
+    shadow: '0 0 60px rgba(16,185,129,0.30), 0 0 120px rgba(16,185,129,0.15)',
+  },
+  munger: {
+    bg: 'radial-gradient(circle, rgba(168,85,247,0.35) 0%, transparent 70%)',
+    shadow: '0 0 60px rgba(168,85,247,0.30), 0 0 120px rgba(168,85,247,0.15)',
+  },
+  soros: {
+    bg: 'radial-gradient(circle, rgba(245,158,11,0.35) 0%, transparent 70%)',
+    shadow: '0 0 60px rgba(245,158,11,0.30), 0 0 120px rgba(245,158,11,0.15)',
+  },
 };
 
 interface StyleRevealProps {
@@ -65,18 +79,20 @@ export function StyleReveal({
   const [showRisk, setShowRisk] = useState(false);
   const [showCta, setShowCta] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
+  const [emojiPhase, setEmojiPhase] = useState<'entering' | 'visible'>('entering');
+  const [emojiOpacity, setEmojiOpacity] = useState(1);
 
   const trait = getStyleTrait(selectedStyle);
   const tag = getStyleTag(selectedStyle);
   const emoji = getStyleEmoji(selectedStyle);
   const description = getStyleDescription(selectedStyle);
-  const glowColor = GLOW_COLORS[selectedStyle];
+  const { bg: glowBg, shadow: glowShadow } = STYLE_GLOW[selectedStyle];
   const shortLabel = getStyleContent(selectedStyle).shortLabel;
 
   const riskColor = RISK_COLORS[initialRisk];
   const riskLabel = RISK_LABELS[initialRisk];
 
-  // Two-line typewriter: line 1 starts immediately, line 2 after
+  // Two-line typewriter
   const [line1Done, setLine1Done] = useState(false);
   const { displayText: line1Text, isDone: l1Done } = useTypewriter("You're The", 35, 400);
   const { displayText: line2Text, isDone: l2Done } = useTypewriter(
@@ -85,10 +101,15 @@ export function StyleReveal({
     0,
   );
 
-  // Track line 1 done
   useEffect(() => {
     if (l1Done) setLine1Done(true);
   }, [l1Done]);
+
+  // Emoji spring entrance
+  useEffect(() => {
+    const t = setTimeout(() => setEmojiPhase('visible'), 100);
+    return () => clearTimeout(t);
+  }, []);
 
   // Line 2 done → stagger reveals
   useEffect(() => {
@@ -101,20 +122,22 @@ export function StyleReveal({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5); };
   }, [l2Done]);
 
-  // Handle style override — reset reveals
+  // Override: emoji fades out/in, glow transitions
   const handleOverride = (style: InvestorStyleKey) => {
     if (style === selectedStyle) return;
-    setSelectedStyle(style);
-    // Reset reveals briefly for cross-fade
+    setEmojiOpacity(0);
     setShowTag(false);
     setShowDescription(false);
     setShowRisk(false);
-    // glow changes naturally via selectedStyle
     setTimeout(() => {
-      setShowTag(true);
-      setTimeout(() => setShowDescription(true), 300);
-      setTimeout(() => setShowRisk(true), 200);
-    }, 200);
+      setSelectedStyle(style);
+      setEmojiOpacity(1);
+      setTimeout(() => {
+        setShowTag(true);
+        setTimeout(() => setShowDescription(true), 300);
+        setTimeout(() => setShowRisk(true), 200);
+      }, 150);
+    }, 150);
   };
 
   return (
@@ -131,46 +154,44 @@ export function StyleReveal({
         paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
       }}
     >
-      {/* ── TOP: VantageMark (simple, no burst/glow/rotate) ── */}
-      <div style={{ marginBottom: '32px' }}>
-        <VantageMark size={36} />
-      </div>
-
       {/* ── EMOJI HERO ── */}
       <div
         style={{
+          width: '200px',
+          height: '200px',
           position: 'relative',
-          width: '160px',
-          height: '160px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: '24px',
+          margin: '40px auto 24px',
         }}
       >
-        {/* Radial glow behind emoji */}
+        {/* Glow halo — absolute centered */}
         <div
           style={{
             position: 'absolute',
-            width: '160px',
-            height: '160px',
+            inset: 0,
             borderRadius: '50%',
-            background: glowColor,
-            filter: 'blur(20px)',
+            background: glowBg,
+            boxShadow: glowShadow,
+            filter: 'blur(30px)',
             zIndex: 0,
-            animation: 'reveal-glow-pulse 3s ease-in-out infinite',
-            transition: 'background 400ms var(--ease-out)',
+            animation: 'reveal-glow-breathe 3s ease-in-out infinite',
+            transition: 'background 300ms var(--ease-out), box-shadow 300ms var(--ease-out)',
           }}
         />
 
+        {/* Emoji on top */}
         <span
           style={{
             fontSize: '96px',
-            lineHeight: 1,
             position: 'relative',
             zIndex: 1,
-            animation: 'reveal-emoji-bounce 400ms var(--ease-spring) both',
-            transition: 'all 200ms var(--ease-out)',
+            display: 'block',
+            textAlign: 'center',
+            lineHeight: '200px',
+            transform: emojiPhase === 'entering'
+              ? 'scale(0)'
+              : 'scale(1)',
+            transition: 'transform 500ms cubic-bezier(0.34,1.56,0.64,1)',
+            opacity: emojiOpacity,
           }}
         >
           {emoji}
@@ -225,7 +246,7 @@ export function StyleReveal({
           marginBottom: '16px',
           opacity: showTag ? 1 : 0,
           transform: showTag ? 'translateY(0)' : 'translateY(8px)',
-          transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out), all 200ms var(--ease-out)',
+          transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
         }}
       >
         {tag}
@@ -386,14 +407,9 @@ export function StyleReveal({
 
       {/* ── KEYFRAMES ── */}
       <style>{`
-        @keyframes reveal-glow-pulse {
-          0%, 100% { opacity: 0.8; }
-          50%      { opacity: 0.4; }
-        }
-        @keyframes reveal-emoji-bounce {
-          0%   { transform: scale(0); }
-          70%  { transform: scale(1.08); }
-          100% { transform: scale(1); }
+        @keyframes reveal-glow-breathe {
+          0%, 100% { opacity: 0.8; transform: scale(1); }
+          50%      { opacity: 1; transform: scale(1.05); }
         }
       `}</style>
     </div>

@@ -4,7 +4,7 @@
 //
 // Layout:
 //   TOP RIGHT:  "I have an account ›" → /login
-//   CENTER:     VantageMark glow orb + headline + cycling lines
+//   CENTER:     VantageMark constellation (40px) + headline + cycling lines
 //   BOTTOM:     white pill "Find my style" + subtext
 
 'use client';
@@ -113,9 +113,9 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
           marginTop: '-40px',
         }}
       >
-        {/* VantageMark glow orb */}
+        {/* VantageMark constellation */}
         <div style={{ marginBottom: '40px' }}>
-          <VantageMark size={110} animate />
+          <VantageMark size={40} />
         </div>
 
         {/* Two-line headline (centered) */}
