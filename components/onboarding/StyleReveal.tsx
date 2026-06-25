@@ -1,26 +1,27 @@
 // ─── StyleReveal ───────────────────────────────────────────
 // No orb, no constellation. The emoji IS the mark.
-// 200px emoji hero with per-style colored glow (radial + box-shadow),
-// breathe animation, spring entrance. Override pills change both
-// emoji and glow simultaneously.
+// 200px emoji hero wrapper (80px emoji inside) with per-style
+// colored glow. Override pills change emoji+glow+headline
+// simultaneously. Word-highlight description animation.
 //
-// Layout:
-//   EMOJI:     200px hero emoji with colored glow halo
-//   HEADLINE:  two-line typewriter (sans 800 + serif italic 400)
+// Layout (scrollable, fits iPhone 14):
+//   EMOJI:     emoji hero with colored glow halo
+//   HEADLINE:  two-line typewriter (sans 800 + serif italic)
 //   TAG:       pill badge
-//   DESC:      description text
+//   DESC:      word-by-word highlight animation
 //   RISK:      colored risk badge
-//   NARRATOR:  Vantage AI context line
-//   OVERRIDE:  5 text-only pills to switch styles
+//   NARRATOR:  context line
+//   OVERRIDE:  5 text-only pills, horizontal scroll
+//   TOAST:     confirmation after override
 //   CONTINUE:  white pill "Create your account"
 
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTypewriter } from '@/lib/animations/typewriter';
+import { useWordHighlight } from '@/hooks/useWordHighlight';
 import {
   getStyleContent,
-  getStyleTrait,
   getStyleTag,
   getStyleEmoji,
   getStyleDescription,
@@ -75,19 +76,18 @@ export function StyleReveal({
 }: StyleRevealProps) {
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyleKey>(initialStyle);
   const [showTag, setShowTag] = useState(false);
-  const [showDescription, setShowDescription] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
   const [showCta, setShowCta] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
   const [emojiPhase, setEmojiPhase] = useState<'entering' | 'visible'>('entering');
   const [emojiOpacity, setEmojiOpacity] = useState(1);
+  const [descVisible, setDescVisible] = useState(false);
 
   // Override confirmation toast
   const [toastText, setToastText] = useState<string | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const trait = getStyleTrait(selectedStyle);
   const tag = getStyleTag(selectedStyle);
   const emoji = getStyleEmoji(selectedStyle);
   const description = getStyleDescription(selectedStyle);
@@ -97,11 +97,26 @@ export function StyleReveal({
   const riskColor = RISK_COLORS[initialRisk];
   const riskLabel = RISK_LABELS[initialRisk];
 
-  // Two-line typewriter
+  // ── Word highlight callback (fires risk badge etc. on completion) ──
+  const handleWordHighlightComplete = () => {
+    setShowRisk(true);
+    setTimeout(() => setShowOverride(true), 300);
+  };
+
+  // ── Word highlight hook ──────────────────────────────────
+  const {
+    words,
+    activeIndex: activeWordIndex,
+    completedIndices,
+    isComplete: wordsComplete,
+    skip: skipWords,
+  } = useWordHighlight(description, 400, handleWordHighlightComplete);
+
+  // ── Typewriter headlines ─────────────────────────────────
   const [line1Done, setLine1Done] = useState(false);
   const { displayText: line1Text, isDone: l1Done } = useTypewriter("You're The", 35, 400);
   const { displayText: line2Text, isDone: l2Done } = useTypewriter(
-    line1Done ? `${trait}.` : '',
+    line1Done ? `${shortLabel}.` : '',
     30,
     0,
   );
@@ -110,30 +125,35 @@ export function StyleReveal({
     if (l1Done) setLine1Done(true);
   }, [l1Done]);
 
-  // Emoji spring entrance
+  // ── Emoji spring entrance ────────────────────────────────
   useEffect(() => {
     const t = setTimeout(() => setEmojiPhase('visible'), 100);
     return () => clearTimeout(t);
   }, []);
 
-  // Line 2 done → stagger reveals
+  // ── Line 2 done → stagger reveals ──────────────────────
   useEffect(() => {
     if (!l2Done) return;
     const t1 = setTimeout(() => setShowTag(true), 200);
-    const t2 = setTimeout(() => setShowDescription(true), 500);
-    const t3 = setTimeout(() => setShowRisk(true), 700);
-    const t4 = setTimeout(() => setShowOverride(true), 900);
-    const t5 = setTimeout(() => setShowCta(true), 1100);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5); };
+    const t2 = setTimeout(() => setDescVisible(true), 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [l2Done]);
 
-  // Override: emoji fades out/in, glow transitions, shows toast
+  // ── Words complete → show CTA after delay ───────────────
+  useEffect(() => {
+    if (!wordsComplete) return;
+    const t = setTimeout(() => setShowCta(true), 400);
+    return () => clearTimeout(t);
+  }, [wordsComplete]);
+
+  // ── Override: emoji cross-fade, rerun animation ─────────
   const handleOverride = (style: InvestorStyleKey) => {
     if (style === selectedStyle) return;
     setEmojiOpacity(0);
     setShowTag(false);
-    setShowDescription(false);
+    setDescVisible(false);
     setShowRisk(false);
+    setShowOverride(false);
     const label = getStyleContent(style).shortLabel;
     setTimeout(() => {
       setSelectedStyle(style);
@@ -148,38 +168,46 @@ export function StyleReveal({
         setTimeout(() => setToastText(null), 200);
       }, 1500);
 
+      // Re-stagger (word highlight hook resets automatically on text change)
       setTimeout(() => {
         setShowTag(true);
-        setTimeout(() => setShowDescription(true), 300);
-        setTimeout(() => setShowRisk(true), 200);
+        setTimeout(() => setDescVisible(true), 300);
       }, 150);
     }, 150);
+  };
+
+  // ── Tap-to-skip word highlight ──────────────────────────
+  const handleScreenTap = () => {
+    if (!wordsComplete) skipWords();
   };
 
   return (
     <div
       className="bg-onboarding-reveal"
+      onClick={handleScreenTap}
       style={{
         width: '100%',
-        minHeight: '100dvh',
+        height: '100dvh',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '24px',
-        paddingTop: 'max(24px, env(safe-area-inset-top, 0px))',
-        paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
+        padding: '48px 24px 40px',
+        gap: 0,
       }}
     >
       {/* ── EMOJI HERO ── */}
       <div
         style={{
-          width: '200px',
-          height: '200px',
+          width: '160px',
+          height: '160px',
           position: 'relative',
-          margin: '40px auto 24px',
+          marginBottom: '20px',
+          flexShrink: 0,
         }}
       >
-        {/* Glow halo — absolute centered */}
+        {/* Glow halo */}
         <div
           style={{
             position: 'absolute',
@@ -194,15 +222,15 @@ export function StyleReveal({
           }}
         />
 
-        {/* Emoji on top */}
+        {/* Emoji */}
         <span
           style={{
-            fontSize: '96px',
+            fontSize: '80px',
             position: 'relative',
             zIndex: 1,
             display: 'block',
             textAlign: 'center',
-            lineHeight: '200px',
+            lineHeight: '160px',
             transform: emojiPhase === 'entering'
               ? 'scale(0)'
               : 'scale(1)',
@@ -218,8 +246,9 @@ export function StyleReveal({
       <h1
         style={{
           textAlign: 'center',
-          marginBottom: '16px',
+          marginBottom: '12px',
           minHeight: '84px',
+          flexShrink: 0,
         }}
       >
         <span
@@ -263,27 +292,71 @@ export function StyleReveal({
           opacity: showTag ? 1 : 0,
           transform: showTag ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
+          flexShrink: 0,
         }}
       >
         {tag}
       </div>
 
-      {/* ── DESCRIPTION ── */}
+      {/* ── DESCRIPTION: Word highlight animation ── */}
       <p
         style={{
-          fontSize: '18px',
-          color: 'rgba(255,255,255,0.75)',
+          fontSize: '17px',
           fontWeight: 400,
           textAlign: 'center',
           maxWidth: '300px',
-          lineHeight: 1.65,
+          lineHeight: 1.7,
           marginBottom: '16px',
-          opacity: showDescription ? 1 : 0,
-          transform: showDescription ? 'translateY(0)' : 'translateY(8px)',
+          minHeight: '58px',
+          opacity: descVisible ? 1 : 0,
+          transform: descVisible ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
         }}
       >
-        {description}
+        {words.map((word, i) => {
+          const isActive = activeWordIndex === i;
+          const isCompleted = completedIndices.has(i);
+          const isPending = !isActive && !isCompleted && !wordsComplete;
+
+          return (
+            <span
+              key={`${i}-${word}`}
+              style={{
+                color: isActive
+                  ? 'rgba(34,211,238,1.0)'
+                  : isCompleted
+                    ? 'rgba(255,255,255,0.85)'
+                    : 'rgba(255,255,255,0.25)',
+                textShadow: isActive
+                  ? '0 0 20px rgba(34,211,238,0.6), 0 0 40px rgba(34,211,238,0.3)'
+                  : 'none',
+                transition: isActive
+                  ? 'color 60ms ease-out, text-shadow 60ms ease-out'
+                  : 'color 120ms ease-out, text-shadow 120ms ease-out',
+                display: 'inline',
+              }}
+            >
+              {word}
+              {i < words.length - 1 ? ' ' : ''}
+            </span>
+          );
+        })}
+
+        {/* Tap-to-skip hint */}
+        {descVisible && !wordsComplete && (
+          <span
+            style={{
+              display: 'block',
+              fontSize: '11px',
+              color: 'rgba(255,255,255,0.20)',
+              marginTop: '6px',
+              textAlign: 'center',
+              transition: 'opacity 200ms',
+            }}
+          >
+            tap to skip
+          </span>
+        )}
       </p>
 
       {/* ── RISK BADGE ── */}
@@ -296,10 +369,11 @@ export function StyleReveal({
           fontSize: '12px',
           fontWeight: 600,
           color: riskColor,
-          marginBottom: '24px',
+          marginBottom: '20px',
           opacity: showRisk ? 1 : 0,
           transform: showRisk ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
+          flexShrink: 0,
         }}
       >
         {riskLabel} RISK
@@ -310,13 +384,14 @@ export function StyleReveal({
         style={{
           opacity: showOverride ? 1 : 0,
           transition: 'opacity 300ms var(--ease-out)',
-          maxWidth: '280px',
+          maxWidth: '260px',
           marginBottom: '20px',
+          flexShrink: 0,
         }}
       >
         <p
           style={{
-            fontSize: '14px',
+            fontSize: '13px',
             color: 'var(--text-secondary)',
             textAlign: 'center',
             lineHeight: 1.5,
@@ -332,9 +407,10 @@ export function StyleReveal({
         style={{
           opacity: showOverride ? 1 : 0,
           transition: 'opacity 300ms var(--ease-out)',
-          marginBottom: '24px',
+          marginBottom: '20px',
           width: '100%',
           maxWidth: '360px',
+          flexShrink: 0,
         }}
       >
         <p
@@ -352,9 +428,11 @@ export function StyleReveal({
           className="hide-scrollbar"
           style={{
             display: 'flex',
-            gap: '8px',
+            gap: '10px',
             overflowX: 'auto',
-            paddingBottom: '4px',
+            scrollbarWidth: 'none' as const,
+            WebkitOverflowScrolling: 'touch',
+            padding: '4px 0',
           }}
         >
           {ALL_STYLES.map((s) => {
@@ -362,21 +440,25 @@ export function StyleReveal({
             return (
               <button
                 key={s.id}
-                onClick={() => handleOverride(s.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOverride(s.id);
+                }}
                 style={{
                   flexShrink: 0,
                   padding: '8px 16px',
-                  borderRadius: 'var(--radius-pill)',
+                  borderRadius: '999px',
                   border: isActive
                     ? '1px solid var(--accent)'
                     : '1px solid rgba(255,255,255,0.15)',
                   background: isActive
                     ? 'rgba(34,211,238,0.10)'
                     : 'transparent',
-                  color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                  color: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.45)',
                   fontSize: '13px',
                   fontWeight: 600,
                   fontFamily: 'var(--font-sans)',
+                  whiteSpace: 'nowrap' as const,
                   cursor: 'pointer',
                   transition: 'all 200ms var(--ease-out)',
                   WebkitTapHighlightColor: 'transparent',
@@ -400,10 +482,10 @@ export function StyleReveal({
             fontSize: '13px',
             color: 'var(--accent)',
             textAlign: 'center' as const,
-            marginTop: '8px',
-            marginBottom: '8px',
+            marginBottom: '16px',
             opacity: toastVisible ? 1 : 0,
             transition: 'opacity 200ms var(--ease-out)',
+            flexShrink: 0,
           }}
         >
           {toastText}
@@ -411,7 +493,7 @@ export function StyleReveal({
       )}
 
       {/* ── CONTINUE BUTTON ── */}
-      <div style={{ width: '100%', maxWidth: '360px', marginTop: 'auto' }}>
+      <div style={{ width: '100%', maxWidth: '360px', flexShrink: 0 }}>
         <button
           onClick={() =>
             onCreateAccount({
@@ -425,7 +507,7 @@ export function StyleReveal({
           style={{
             width: '100%',
             height: '56px',
-            borderRadius: 'var(--radius-pill)',
+            borderRadius: '999px',
             border: 'none',
             background: showCta ? '#ffffff' : 'rgba(255,255,255,0.20)',
             color: showCta ? '#000000' : 'rgba(0,0,0,0.40)',
@@ -434,6 +516,7 @@ export function StyleReveal({
             fontFamily: 'var(--font-sans)',
             cursor: showCta ? 'pointer' : 'default',
             pointerEvents: showCta ? 'auto' : 'none',
+            marginTop: '16px',
             transition: 'opacity 400ms var(--ease-out), background 200ms var(--ease-out)',
             opacity: showCta ? 1 : 0,
           }}
