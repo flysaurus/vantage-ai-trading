@@ -1,14 +1,13 @@
 // ─── QuizQuestion ───────────────────────────────────────────
-// Full redesign: stacked answer cards, white pill Continue,
-// two-line headline system, gradient backgrounds, slide
-// transitions. No carousel — cards are a vertical stack.
+// Full redesign: stacked answer cards (A/B/C/D), white pill
+// Continue, two-line headline system, gradient backgrounds.
+// No carousel — cards are a vertical stack. No narrator.
 //
 // Layout (full-height flex column):
 //   TOP BAR:    56px — Back (left) + VantageMark (center)
 //   PROGRESS:   5-segment bar, 3px tall
 //   QUESTION:   label + two-line headline (sans+serif)
 //   CARDS:      full-width vertical stack, single-select
-//   NARRATOR:   Vantage brand line + context text
 //   CONTINUE:   white pill, disabled until selection
 
 'use client';
@@ -28,13 +27,9 @@ const QUESTION_LINES: Record<string, [string, string]> = {
   q5: ['Are you usually a', 'risk-taker with money?'],
 };
 
-const NARRATOR_LINES: Record<string, string> = {
-  q1: "This tells us how you spot opportunity — before the crowd does.",
-  q2: "How you handle being wrong separates great investors from the rest.",
-  q3: "Allocation reveals conviction. Where you put the most says everything.",
-  q4: "The information you trust most defines your edge.",
-  q5: "Risk tolerance shapes every decision you'll ever make.",
-};
+// ── Answer option labels ─────────────────────────────────
+
+const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
 interface QuizQuestionProps {
   question: QuizQuestionType;
@@ -59,21 +54,18 @@ export function QuizQuestion({
   // Entrance animation
   useEffect(() => {
     if (mountRef.current) {
-      // Slide-in from right
       setEntering(false);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setEntering(true));
       });
     } else {
       mountRef.current = true;
-      // First mount: no slide
       requestAnimationFrame(() => setEntering(true));
     }
   }, []);
 
   const gradientClass = `bg-onboarding-${questionNumber}`;
   const [line1, line2] = QUESTION_LINES[question.id] || [question.question, ''];
-  const narrator = NARRATOR_LINES[question.id] || '';
   const isFirst = questionNumber === 1;
 
   const handleTap = useCallback((key: string) => {
@@ -249,9 +241,10 @@ export function QuizQuestion({
         className="hide-scrollbar"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {question.options.map((opt) => {
+          {question.options.map((opt, idx) => {
             const isSelected = selectedKey === opt.key;
             const hasSelection = selectedKey !== null;
+            const label = OPTION_LABELS[idx] || '';
 
             return (
               <button
@@ -285,7 +278,9 @@ export function QuizQuestion({
                   transition: 'all 150ms var(--ease-out)',
                   opacity: hasSelection && !isSelected ? 0.6 : 1,
                   WebkitTapHighlightColor: 'transparent',
-                  transform: 'scale(1)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
                 }}
                 onTouchStart={(e) => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(0.98)';
@@ -294,50 +289,38 @@ export function QuizQuestion({
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
                 }}
               >
-                {opt.text}
+                {/* Option label badge */}
+                <span
+                  style={{
+                    flexShrink: 0,
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    fontFamily: 'var(--font-sans)',
+                    background: isSelected
+                      ? 'var(--accent)'
+                      : 'rgba(255,255,255,0.12)',
+                    color: isSelected ? '#000000' : 'rgba(255,255,255,0.60)',
+                    transition: 'background 150ms var(--ease-out), color 150ms var(--ease-out)',
+                    marginTop: '1px',
+                  }}
+                >
+                  {label}
+                </span>
+                <span style={{ flex: 1 }}>{opt.text}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* ── NARRATOR + CONTINUE ── */}
+      {/* ── CONTINUE BUTTON ── */}
       <div style={{ flexShrink: 0, padding: '0 24px' }}>
-        {/* Narrator line */}
-        {narrator && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '8px',
-              marginBottom: '4px',
-              paddingTop: '16px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, paddingTop: '1px' }}>
-              <VantageMark size={16} />
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                Vantage AI
-              </span>
-            </div>
-          </div>
-        )}
-        {narrator && (
-          <p
-            style={{
-              fontSize: '14px',
-              color: 'var(--text-secondary)',
-              fontWeight: 400,
-              lineHeight: 1.5,
-              margin: '4px 0 0',
-              paddingLeft: '24px',
-            }}
-          >
-            {narrator}
-          </p>
-        )}
-
-        {/* Continue button */}
         <button
           onClick={handleContinue}
           disabled={!selectedKey}
@@ -354,15 +337,8 @@ export function QuizQuestion({
             cursor: selectedKey ? 'pointer' : 'default',
             pointerEvents: selectedKey ? 'auto' : 'none',
             marginTop: '16px',
-            marginBottom: '32px',
+            marginBottom: 'max(32px, env(safe-area-inset-bottom, 0px))',
             transition: 'background 200ms var(--ease-out), color 200ms var(--ease-out)',
-          }}
-          onTouchStart={(e) => {
-            if (!selectedKey) return;
-            (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)';
-          }}
-          onTouchEnd={(e) => {
-            (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
           }}
         >
           Continue
