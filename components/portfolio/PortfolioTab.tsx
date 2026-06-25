@@ -5,7 +5,6 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
-import DemoBanner from '@/components/shared/DemoBanner';
 import type { Position, AccountSummary } from '@/types';
 import type { Basket } from '@/context/PortfolioContext';
 import SellModal from './SellModal';
@@ -24,8 +23,6 @@ const fmt = (n: number) =>
 
 const pctStr = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
-const gain = (v: number) => (v >= 0 ? 'text-emerald-400' : 'text-red-400');
-
 const formatCurrency = (n: number) => {
   const abs = Math.abs(n);
   const sign = n < 0 ? '-' : '';
@@ -33,79 +30,51 @@ const formatCurrency = (n: number) => {
   return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-// ─── Account Card ─────────────────────────────────────────
+function splitCents(value: number): { dollars: string; cents: string } {
+  const str = value.toLocaleString('en-US', DOLLAR_FMT);
+  const parts = str.split('.');
+  return { dollars: parts[0] || '0', cents: parts[1] || '00' };
+}
 
-function AccountCard({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
+// ─── Account Hero Card ────────────────────────────────────
+
+function AccountHero({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
+  const { dollars, cents } = splitCents(account.equity);
   return (
-    <div data-testid="account-card" style={{ margin: '16px 16px 0 16px' }}>
-      <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-        Account Value
+    <div className="hero-container" style={{ position: 'relative' }}>
+      {/* DEMO MODE badge */}
+      {!isConnected && (
+        <span className="hero-demo-badge">DEMO MODE</span>
+      )}
+
+      {/* Label */}
+      <div className="hero-label">Account Value</div>
+
+      {/* Hero number */}
+      <div>
+        <span className="hero-value">${dollars}</span>
+        <span className="hero-cents">.{cents}</span>
       </div>
-      <div style={{ background: '#1a2235', borderRadius: '10px', border: '1px solid #2a3448', padding: '20px' }}>
-        {/* Row 1: Account Value + Demo Mode badge */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: '28px', fontWeight: '700', color: '#ffffff' }}>
-            ${account.equity.toLocaleString('en-US', DOLLAR_FMT)}
-          </span>
-          {!isConnected && (
-            <span style={{
-              fontSize: '10px',
-              color: '#22d3ee',
-              background: 'rgba(34,211,238,0.1)',
-              border: '1px solid rgba(34,211,238,0.2)',
-              borderRadius: '4px',
-              padding: '2px 8px',
-              whiteSpace: 'nowrap',
-            }}>
-              Demo Mode
-            </span>
-          )}
-        </div>
 
-        {/* Row 2: TODAY P&L · TOTAL P&L on one line */}
-        <p style={{ fontSize: '13px', marginTop: '6px', lineHeight: '1.5' }}>
-          <span style={{ color: '#6b7280' }}>TODAY</span>{' '}
-          <span style={{ color: account.dayPnl > 0 ? '#10b981' : account.dayPnl < 0 ? '#ef4444' : '#6b7280' }}>
+      {/* P&L row */}
+      <div className="hero-pnl-row">
+        <div>
+          <div className="hero-pnl-item-label">Today</div>
+          <div
+            className="hero-pnl-item-value"
+            style={{ color: account.dayPnl >= 0 ? 'var(--gain)' : 'var(--loss)' }}
+          >
             {fmt(account.dayPnl)} ({pctStr(account.dayPnlPercent)})
-          </span>
-          {' · '}
-          <span style={{ color: '#6b7280' }}>TOTAL</span>{' '}
-          <span style={{ color: account.totalPnl > 0 ? '#10b981' : account.totalPnl < 0 ? '#ef4444' : '#6b7280' }}>
-            {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
-          </span>
-        </p>
-
-        {/* Divider */}
-        <div style={{ borderTop: '1px solid #2a3448', margin: '16px 0' }} />
-
-        {/* Portfolio value chart */}
-        <PortfolioChart
-          positions={(account.positions || []).map((p) => ({
-            symbol: p.symbol,
-            shares: p.qty,
-            buyDate: p.buyDate,
-            avgCost: p.avgCost,
-            totalCost: p.totalCost,
-          }))}
-          cashBalance={account.cash ?? 0}
-        />
-
-        {/* Divider */}
-        <div style={{ borderTop: '1px solid #2a3448', margin: '16px 0' }} />
-
-        {/* 2-col stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 0' }}>
-          <div>
-            <p style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Buying Power</p>
-            <p style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>
-              ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
-            </p>
           </div>
-          <div>
-            <p style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Cash</p>
-            <p style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>
-              ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
-            </p>
+        </div>
+        <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>·</span>
+        <div>
+          <div className="hero-pnl-item-label">Total</div>
+          <div
+            className="hero-pnl-item-value"
+            style={{ color: account.totalPnl >= 0 ? 'var(--gain)' : 'var(--loss)' }}
+          >
+            {fmt(account.totalPnl)} ({pctStr(account.totalPnlPercent)})
           </div>
         </div>
       </div>
@@ -113,7 +82,7 @@ function AccountCard({ account, isConnected }: { account: AccountSummary; isConn
   );
 }
 
-// ─── Position Card (checkbox + expandable card) ───────────
+// ─── Position Card ────────────────────────────────────────
 
 function getExchange(symbol: string): string {
   const nyse = ['JPM', 'UNH', 'ADBE', 'COST', 'LLY'];
@@ -159,1148 +128,709 @@ function PositionCard({
       ? Math.min(98, Math.max(2, ((pos.currentPrice - pos.weekLow52) / (pos.weekHigh52 - pos.weekLow52)) * 100))
       : 50;
 
+  const upToday = todayPnL >= 0;
+  const upTotal = totalPnL >= 0;
+
   return (
-    <div style={{ marginLeft: '16px', marginRight: '16px', marginBottom: '6px' }}>
+    <div className="card-frost" style={{ margin: '0 16px 10px', padding: '16px 18px', overflow: 'visible' }}>
+      {/* ROW 1: Symbol + Price */}
       <div
-        data-testid={`position-${pos.symbol}`}
+        onClick={onToggleExpand}
         style={{
-          background: '#1a2235',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          borderLeft: `3px solid ${totalPnL >= 0 ? '#10b981' : '#ef4444'}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          cursor: 'pointer',
         }}
       >
-        {/* Top row — ticker + market value */}
-        <div
-          onClick={onToggleExpand}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            padding: '12px 14px 8px',
-            cursor: 'pointer',
-          }}
-        >
-          {/* Left — ticker + shares */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-              {showCheckbox && (
-                <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ marginRight: '4px' }}>
-                  <div style={{
-                    width: '16px', height: '16px', borderRadius: '2px', border: `2px solid ${isSelected ? '#22d3ee' : '#475569'}`,
-                    background: isSelected ? '#22d3ee' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {isSelected && <span style={{ color: '#fff', fontSize: '10px', lineHeight: 1 }}>&#10003;</span>}
-                  </div>
-                </div>
-              )}
-              <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>{pos.symbol}</span>
-              {pos.type === 'ETF' && (
-                <span style={{
-                  fontSize: '9px', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.4)',
-                  borderRadius: '3px', padding: '1px 5px', fontWeight: '600',
-                }}>ETF</span>
-              )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {showCheckbox && (
+            <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ marginRight: 4 }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: 9,
+                border: `2px solid ${isSelected ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
+                background: isSelected ? '#22d3ee' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {isSelected && <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>}
+              </div>
             </div>
-            <span style={{ color: '#6b7280', fontSize: '12px' }}>
-              {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
+          )}
+          <span style={{
+            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
+          }}>
+            {pos.symbol}
+          </span>
+          {pos.type === 'ETF' && (
+            <span style={{
+              fontSize: 10, color: 'var(--accent)',
+              background: 'rgba(34,211,238,0.10)', border: '1px solid rgba(34,211,238,0.30)',
+              borderRadius: 999, padding: '2px 8px', fontWeight: 600,
+            }}>
+              ETF
             </span>
-            {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
-              <span key={b.id} style={{ fontSize: '10px', color: '#22d3ee', opacity: 0.7, display: 'block' }}>
-                Also in: {b.emoji} {b.name}
-              </span>
-            ))}
+          )}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{
+            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
+          }}>
+            ${livePrice.toFixed(2)}
           </div>
-
-          {/* Right — market value */}
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>
-              {formatCurrency(marketValue)}
-            </div>
+          <div style={{
+            fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+            color: pos.dayChangePercent >= 0 ? 'var(--gain)' : 'var(--loss)',
+            marginTop: 2,
+          }}>
+            {pos.dayChangePercent >= 0 ? '+' : ''}{pos.dayChangePercent.toFixed(2)}%
           </div>
         </div>
+      </div>
 
-        {/* Divider */}
-        <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', marginLeft: '14px', marginRight: '14px' }} />
+      {/* Company name */}
+      <div style={{
+        fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
+        color: 'var(--text-muted)', marginTop: 2,
+      }}>
+        {pos.name || pos.symbol}
+      </div>
 
-        {/* Bottom row — TODAY + TOTAL 2x2 */}
-        <div onClick={onToggleExpand} style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr',
-          padding: '8px 14px 12px', gap: '4px', cursor: 'pointer',
+      {/* ROW 2: Shares + P&L Pills */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginTop: 10,
+      }}>
+        <span style={{
+          fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
+          color: 'var(--text-muted)',
         }}>
-          <div style={{ color: '#4b5563', fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>TODAY</div>
-          <div style={{ color: '#4b5563', fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>TOTAL</div>
-          <div style={{ color: todayPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px', fontWeight: '500' }}>
-            {todayPnL >= 0 ? '+' : ''}{formatCurrency(todayPnL)} ({todayPnL >= 0 ? '+' : ''}{todayPnLPct.toFixed(1)}%)
-          </div>
-          <div style={{ color: totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px', fontWeight: '500', textAlign: 'right' }}>
-            {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%)
-          </div>
-        </div>
+          {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
+        </span>
 
-        {/* Expanded section */}
-        {isExpanded && (
-          <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '20px', paddingTop: '4px' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* TODAY pill */}
+          <span className="pill" style={{
+            padding: '4px 10px',
+            background: upToday ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
+            border: `1px solid ${upToday ? 'rgba(16,185,129,0.30)' : 'rgba(239,68,68,0.30)'}`,
+            color: upToday ? 'var(--gain)' : 'var(--loss)',
+            fontFamily: 'var(--font-sans)',
+            fontWeight: 600,
+            fontSize: 12,
+          }}>
+            TODAY {todayPnL >= 0 ? '+' : ''}{formatCurrency(todayPnL)} ({todayPnL >= 0 ? '+' : ''}{todayPnLPct.toFixed(1)}%)
+          </span>
+          {/* TOTAL pill */}
+          <span className="pill" style={{
+            padding: '4px 10px',
+            background: upTotal ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
+            border: `1px solid ${upTotal ? 'rgba(16,185,129,0.30)' : 'rgba(239,68,68,0.30)'}`,
+            color: upTotal ? 'var(--gain)' : 'var(--loss)',
+            fontFamily: 'var(--font-sans)',
+            fontWeight: 600,
+            fontSize: 12,
+          }}>
+            TOTAL {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%)
+          </span>
+        </div>
+      </div>
+
+      {/* 52-week range bar */}
+      {pos.weekLow52 != null && pos.weekHigh52 != null && (
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+            ${pos.weekLow52.toFixed(2)}
+          </span>
+          <div style={{
+            flex: 1, height: 3, borderRadius: 999,
+            background: 'rgba(255,255,255,0.06)', position: 'relative',
+          }}>
             <div style={{
-              borderTop: '1px solid #2a3448',
-              marginTop: '16px',
-              marginBottom: '20px'
+              position: 'absolute', left: `${weekPos}%`, top: -3,
+              width: 8, height: 8, borderRadius: 9,
+              background: '#ffffff', transform: 'translateX(-50%)',
             }} />
+          </div>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+            ${pos.weekHigh52.toFixed(2)}
+          </span>
+        </div>
+      )}
 
-            {/* Metadata labels */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', marginBottom: '20px' }}>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Symbol</p>
-                <p className="text-sm font-semibold text-white">{pos.symbol}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Name</p>
-                <p className="text-sm font-semibold text-white">{pos.name || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Sector</p>
-                <p className="text-sm font-semibold text-white">{pos.sector || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Asset Type</p>
-                <p className="text-sm font-semibold text-white">{pos.type || 'Stock'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Exchange</p>
-                <p className="text-sm font-semibold text-white">{getExchange(pos.symbol)}</p>
+      {/* Basket references */}
+      {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
+        <span key={b.id} style={{
+          fontSize: 10, color: 'var(--accent)', opacity: 0.7, display: 'block', marginTop: 4,
+        }}>
+          Also in: {b.emoji} {b.name}
+        </span>
+      ))}
+
+      {/* PENDING BASKET badge */}
+      {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'pending')).length > 0 && (
+        <span className="pill" style={{
+          display: 'inline-block', marginTop: 6,
+          padding: '3px 8px',
+          background: 'rgba(245,158,11,0.12)',
+          border: '1px solid rgba(245,158,11,0.25)',
+          color: 'var(--warning)',
+          fontFamily: 'var(--font-sans)',
+          fontWeight: 600,
+          fontSize: 11,
+        }}>
+          PENDING
+        </span>
+      )}
+
+      {/* Expanded section */}
+      {isExpanded && (
+        <div style={{ paddingTop: 16, marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {/* Metadata */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', marginBottom: 16 }}>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Symbol</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                {pos.symbol}
               </div>
             </div>
-
-            {/* Divider before financials */}
-            <div style={{ borderTop: '1px solid #2a3448', marginBottom: '20px' }} />
-
-            {/* Financial grid */}
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Daily G/L
-                </p>
-                <p className={`text-base font-semibold ${gain(pos.dayChange)}`}>
-                  {fmt(pos.dayChange)} (
-                  {pctStr(pos.dayChangePercent)})
-                </p>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                {pos.name || '—'}
               </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Total G/L
-                </p>
-                <p className={`text-base font-semibold ${gain(pos.totalPnl)}`}>
-                  {fmt(pos.totalPnl)} ({pctStr(pos.totalPnlPercent)})
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Current Bid
-                </p>
-                <p className="text-base font-semibold text-white">
-                  ${pos.currentPrice.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Avg Cost
-                </p>
-                <p className="text-base font-semibold text-white">
-                  ${pos.avgCost.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Portfolio %
-                </p>
-                <p className="text-base font-semibold text-white">
-                  {pos.portfolioPercent.toFixed(1)}%
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Total Cost
-                </p>
-                <p className="text-base font-semibold text-white">
-                  ${(pos.avgCost * pos.qty).toLocaleString('en-US', DOLLAR_FMT)}
-                </p>
-              </div>
-              {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).length > 0 && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
-                    <span key={b.id} style={{ fontSize: '11px', color: '#22d3ee', opacity: 0.8 }}>
-                      {b.emoji} Also in: {b.name}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
-
-            {/* 52-Week Range */}
-            {pos.weekHigh52 != null && pos.weekLow52 != null && (
-              <div style={{ marginTop: '24px' }}>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
-                  52-Week Range
-                </p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 flex-shrink-0">
-                    ${pos.weekLow52.toFixed(0)}
-                  </span>
-                  <div className="relative flex-1 h-1.5 bg-slate-700 rounded-full">
-                    <div
-                      className="absolute w-2.5 h-2.5 bg-white rounded-full"
-                      style={{
-                        top: '-3px',
-                        left: `${weekPos}%`,
-                        transform: 'translateX(-50%)',
-                      }}
-                    />
-                  </div>
-                  <span className="text-xs text-slate-400 flex-shrink-0">
-                    ${pos.weekHigh52.toFixed(0)}
-                  </span>
-                </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                {pos.sector || '—'}
               </div>
-            )}
-
-            {/* Buy More / Sell buttons */}
-            <div className="flex gap-3" style={{ marginTop: '24px', marginBottom: '20px' }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onBuy?.();
-                }}
-                className="flex-1 border border-cyan-500/40 text-cyan-400 rounded-lg py-3 text-sm font-medium min-h-[48px]"
-              >
-                Buy More
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSelect();
-                }}
-                className="flex-1 border border-red-500/40 text-red-400 rounded-lg py-3 text-sm font-medium min-h-[48px]"
-              >
-                Sell
-              </button>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                {pos.type || 'Stock'}
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Exchange</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                {getExchange(pos.symbol)}
+              </div>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Financial grid */}
+          <div style={{
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+            paddingTop: 16,
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px',
+          }}>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Avg Cost</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                ${pos.avgCost.toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Current Price</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                ${(pos.currentPrice || pos.avgCost).toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Total P&L</div>
+              <div style={{
+                fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                color: totalPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
+              }}>
+                {formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%)
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Daily G/L</div>
+              <div style={{
+                fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                color: todayPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
+              }}>
+                {todayPnL >= 0 ? '+' : ''}{formatCurrency(todayPnL)} ({todayPnL >= 0 ? '+' : ''}{todayPnLPct.toFixed(1)}%)
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Quantity</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)}
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Cost Basis</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                ${(pos.totalCost || pos.qty * pos.avgCost).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{
+            display: 'flex', gap: 10, marginTop: 16,
+          }}>
+            <button
+              onClick={onBuy}
+              style={{
+                flex: 1, minHeight: 44,
+                background: 'transparent',
+                border: '1px solid rgba(34,211,238,0.35)',
+                borderRadius: 12, color: 'var(--accent)',
+                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              Buy More
+            </button>
+            <button
+              style={{
+                flex: 1, minHeight: 44,
+                background: 'transparent',
+                border: '1px solid rgba(239,68,68,0.35)',
+                borderRadius: 12, color: 'var(--loss)',
+                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              Sell
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Buy Modal ───────────────────────────────────────────
+// ─── Buying Power Card ──────────────────────────────────
 
-function BuyModal({
-  position,
-  buyingPower,
-  onClose,
-  onExecute,
-}: {
-  position: Position;
-  buyingPower: number;
-  onClose: () => void;
-  onExecute: (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number) => Promise<{ success: boolean; error?: string }>;
-}) {
-  const [shares, setShares] = useState(1);
-  const [orderType, setOrderType] = useState<'Market' | 'Limit' | 'Stop'>('Market');
-  const [tif, setTif] = useState<'Day' | 'GTC'>('Day');
-  const [limitPrice, setLimitPrice] = useState('');
-
-  const estCost = shares * position.currentPrice;
-
+function BuyingPowerCard({ account }: { account: AccountSummary }) {
   return (
-    <div
-      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#1a2235] rounded-xl p-6 w-full max-w-sm border border-[#2a3448]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start">
-          <h3 className="text-lg font-bold text-white">
-            Buy {position.symbol}
-          </h3>
-          <button onClick={onClose} className="text-slate-400 text-xl leading-none">
-            &#10005;
-          </button>
-        </div>
-        <p className="text-sm text-slate-400 mt-1 mb-4">
-          Current price: ${position.currentPrice.toFixed(2)}/share
-        </p>
-
-        {/* Quantity */}
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Quantity</p>
-        <div className="flex items-center gap-2 mb-4">
-          <input
-            type="number"
-            min={1}
-            value={shares}
-            onChange={(e) => setShares(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-24 bg-[#0f1829] border border-[#2a3448] rounded-md px-3 py-2 text-white text-sm outline-none"
-          />
-          <span className="text-slate-400 text-sm">shares</span>
-        </div>
-        <p className="text-sm text-cyan-400 mb-4">
-          Est. cost: ${estCost.toLocaleString('en-US', DOLLAR_FMT)}
-        </p>
-
-        {/* Order Type */}
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Order Type</p>
-        <div className="flex gap-2 mb-3">
-          {(['Market', 'Limit', 'Stop'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setOrderType(t)}
-              className={
-                orderType === t
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
-                  : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
-              }
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Time in Force */}
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Time in Force</p>
-        <div className="flex gap-2 mb-3">
-          {(['Day', 'GTC'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTif(t)}
-              className={
-                tif === t
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-md px-3 py-1.5 text-xs font-medium'
-                  : 'text-slate-400 border border-slate-700 rounded-md px-3 py-1.5 text-xs font-medium'
-              }
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Limit Price */}
-        {orderType === 'Limit' && (
-          <div className="mb-3">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Limit Price</p>
-            <input
-              type="number"
-              step="0.01"
-              value={limitPrice}
-              onChange={(e) => setLimitPrice(e.target.value)}
-              placeholder="$0.00"
-              className="bg-[#0f1829] border border-[#2a3448] rounded-md p-2 w-full text-white outline-none placeholder-slate-600 text-sm"
-            />
+    <div style={{ padding: '0 20px 16px' }}>
+      <div className="card-frost" style={{ padding: '16px 18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 0' }}>
+          <div>
+            <div className="section-label" style={{ marginBottom: 4 }}>Buying Power</div>
+            <div style={{
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
+            }}>
+              ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
+            </div>
           </div>
-        )}
-
-        {/* Buying Power */}
-        <p className="text-xs text-slate-500 mt-3">
-          Buying Power: ${buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
-        </p>
-
-        {/* Buttons */}
-        <div className="flex gap-3 mt-4">
-          <button onClick={onClose} className="flex-1 border border-slate-700 text-slate-400 rounded-lg py-3 text-sm">
-            Cancel
-          </button>
-          <button
-            onClick={async () => {
-              const price = orderType === 'Limit' && limitPrice ? parseFloat(limitPrice) : position.currentPrice;
-              if (!price || isNaN(price) || price <= 0) return;
-              const result = await onExecute(position.symbol, 'BUY', shares, price);
-              if (result.success) onClose();
-            }}
-            disabled={estCost > buyingPower}
-            className={`flex-1 rounded-lg py-3 text-sm font-semibold ${
-              estCost > buyingPower
-                ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                : 'bg-cyan-500 text-white'
-            }`}
-          >
-            {estCost > buyingPower ? 'Insufficient Funds' : 'Confirm Buy'}
-          </button>
+          <div>
+            <div className="section-label" style={{ marginBottom: 4 }}>Cash</div>
+            <div style={{
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
+            }}>
+              ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Build Demo Account ───────────────────────────────────
+// ─── Portfolio Summary Sticky Footer ──────────────────────
 
-// ─── Main Tab ─────────────────────────────────────────────
+function PortfolioFooter({
+  totalMarketValue,
+  totalTodayPnL,
+  totalTotalPnL,
+  totalTotalPnLPct,
+}: {
+  totalMarketValue: number;
+  totalTodayPnL: number;
+  totalTotalPnL: number;
+  totalTotalPnLPct: number;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+      background: 'rgba(10,15,30,0.95)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+      padding: '12px 20px',
+      paddingBottom: 'calc(12px + env(safe-area-inset-bottom) + 64px)',
+      display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+    }}>
+      {/* Market Value */}
+      <div style={{ textAlign: 'center' }}>
+        <div className="section-label" style={{ fontSize: 10, letterSpacing: '0.08em', marginBottom: 2 }}>
+          Market Value
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: '#ffffff',
+        }}>
+          {totalMarketValue >= 10000
+            ? `$${(totalMarketValue / 1000).toFixed(1)}K`
+            : `$${totalMarketValue.toFixed(0)}`}
+        </div>
+      </div>
+
+      {/* Today P&L */}
+      <div style={{ textAlign: 'center' }}>
+        <div className="section-label" style={{ fontSize: 10, letterSpacing: '0.08em', marginBottom: 2 }}>
+          Today
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,
+          color: totalTodayPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
+        }}>
+          {totalTodayPnL >= 0 ? '+' : ''}
+          {Math.abs(totalTodayPnL) >= 10000
+            ? `$${(Math.abs(totalTodayPnL) / 1000).toFixed(1)}K`
+            : `$${Math.abs(totalTodayPnL).toFixed(0)}`}
+        </div>
+      </div>
+
+      {/* Total P&L */}
+      <div style={{ textAlign: 'center' }}>
+        <div className="section-label" style={{ fontSize: 10, letterSpacing: '0.08em', marginBottom: 2 }}>
+          Total
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,
+          color: totalTotalPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
+        }}>
+          {totalTotalPnL >= 0 ? '+' : ''}
+          {Math.abs(totalTotalPnL) >= 10000
+            ? `$${(Math.abs(totalTotalPnL) / 1000).toFixed(1)}K`
+            : `$${Math.abs(totalTotalPnL).toFixed(0)}`}
+          {' '}
+          <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.7 }}>
+            ({totalTotalPnLPct >= 0 ? '+' : ''}{totalTotalPnLPct.toFixed(1)}%)
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending Basket Card ─────────────────────────────────
+
+function PendingBasketCard({ basket }: { basket: Basket }) {
+  const positionCount = basket.activeCount || basket.positionCount || 0;
+  const reserved = basket.positions
+    ?.filter((p) => p.status === 'pending')
+    .reduce((acc: number, p) => acc + (p.reservedAmount || p.totalCost || 0), 0) || 0;
+  return (
+    <div className="card-frost" style={{ margin: '0 16px 10px', padding: '14px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{
+          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15, color: '#ffffff',
+        }}>
+          {basket.emoji} {basket.name || 'Basket'}
+        </span>
+        <span className="pill" style={{
+          padding: '3px 8px',
+          background: 'rgba(245,158,11,0.15)',
+          color: '#f59e0b',
+          fontFamily: 'var(--font-sans)',
+          fontWeight: 700,
+          fontSize: 10,
+        }}>
+          PENDING
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 4 }}>
+        ⏳ {basket.nextOpenLabel || 'awaiting market open'}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        {positionCount} positions · ${reserved.toFixed(2)} reserved
+      </div>
+    </div>
+  );
+}
+
+// ─── Main PortfolioTab ───────────────────────────────────
 
 export function PortfolioTab() {
-  const { account, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, executeTrade, baskets, sellBasketPositions, pendingBaskets } = useLivePortfolio();
+  const [filter, setFilter] = useState('all');
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
+  const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+
+  const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
+  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
-  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
-  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
-  const [sellModalPositions, setSellModalPositions] =
-    useState<{symbol:string, qty:number, currentPrice:number}[] | null>(null);
-  const [selectMode, setSelectMode] = useState(false);
-  const [showBuySymbol, setShowBuySymbol] = useState<Position | null>(null);
-
-  // ── Basket state ──
-  const [expandedBasket, setExpandedBasket] = useState<string | null>(null);
-  const [basketSellMode, setBasketSellMode] = useState<Record<string, boolean>>({});
-  const [basketSelected, setBasketSelected] = useState<Record<string, boolean>>({});
-
-  // ── account data: broker if connected, shared context otherwise ──
-  const displayAccount: AccountSummary | null = isConnected
-    ? account || null
-    : liveAccount || null;
+  const displayAccount = isConnected
+    ? (brokerAccount as AccountSummary | null)
+    : (liveAccount as AccountSummary | null);
   const loading = isConnected ? brokerLoading : liveLoading;
+  const positions: Position[] = displayAccount?.positions || [];
 
-  // Loading
-  if (loading) {
-    return (
-      <div className="px-4 pt-4 space-y-3 pb-24">
-        <div className="h-10 bg-slate-800 rounded-lg animate-pulse" />
-        <div className="h-56 bg-slate-800 rounded-lg animate-pulse" />
-        <div className="h-8 bg-slate-800 rounded-md animate-pulse w-32" />
-        <div className="h-16 bg-slate-800 rounded-lg animate-pulse" />
-        <div className="h-16 bg-slate-800 rounded-lg animate-pulse" />
-        <div className="h-16 bg-slate-800 rounded-lg animate-pulse" />
-      </div>
-    );
-  }
-
-  if (!displayAccount) {
-    return <div className="p-8 text-center text-slate-400">Loading portfolio…</div>;
-  }
-
-  const positions = displayAccount.positions || [];
-
-  // ── Basket grouping ──
-  const individualPositions = positions.filter(p => !p.basketId);
-  const basketPositions = positions.filter(p => !!p.basketId);
-  interface BasketGroup {
-    displayName: string;
-    emoji: string;
-    positions: Position[];
-    totalCost: number;
-    marketValue: number;
-    totalPnL: number;
-    totalPnLPct: number;
-  }
-  const basketGroups = basketPositions.reduce<Record<string, BasketGroup>>((groups, pos) => {
-    const key = pos.basketDisplayName || pos.basketName || 'Basket';
-    if (!groups[key]) {
-      groups[key] = {
-        displayName: key,
-        emoji: pos.basketEmoji || '🧺',
-        positions: [],
-        totalCost: 0,
-        marketValue: 0,
-        totalPnL: 0,
-        totalPnLPct: 0,
-      };
-    }
-    groups[key].positions.push(pos);
-    groups[key].totalCost += pos.totalCost || (pos.avgCost * pos.qty);
-    groups[key].marketValue += pos.marketValue;
-    groups[key].totalPnL += pos.marketValue - (pos.totalCost || (pos.avgCost * pos.qty));
-    return groups;
-  }, {});
-  // Compute PnL % after accumulating
-  for (const g of Object.values(basketGroups)) {
-    g.totalPnLPct = g.totalCost > 0 ? (g.totalPnL / g.totalCost) * 100 : 0;
-  }
-  const toggleGroup = (name: string) => {
-    setExpandedBasket(prev => prev === name ? null : name);
+  const toggleExpand = (symbol: string) => {
+    setExpandedSymbols(prev => {
+      const next = new Set(prev);
+      if (next.has(symbol)) next.delete(symbol);
+      else next.add(symbol);
+      return next;
+    });
   };
 
-  const toggleSelect = (sym: string) => {
-    setSelectedSymbols((prev) =>
-      prev.includes(sym) ? prev.filter((s) => s !== sym) : [...prev, sym],
-    );
+  const toggleSelect = (symbol: string) => {
+    setSelectedSymbols(prev => {
+      const next = new Set(prev);
+      if (next.has(symbol)) next.delete(symbol);
+      else next.add(symbol);
+      return next;
+    });
   };
 
-  const toggleExpand = (sym: string) => {
-    setExpandedSymbol((prev) => (prev === sym ? null : sym));
+  const cancelSelect = () => {
+    setSelectMode(false);
+    setSelectedSymbols(new Set());
   };
 
-  const allSelected =
-    positions.length > 0 && selectedSymbols.length === positions.length;
-  const someSelected = selectedSymbols.length > 0 && !allSelected;
+  // ── Derived values ──
+  const totalMarketValue = positions.reduce((acc: number, p: Position) => acc + p.qty * (p.currentPrice || p.avgCost), 0);
+  const totalTodayPnL = positions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
+  const totalTotalPnL = positions.reduce((acc: number, p: Position) => {
+    const mv = p.qty * (p.currentPrice || p.avgCost);
+    return acc + (mv - (p.totalCost || 0));
+  }, 0);
+  const totalCostBasis = positions.reduce((acc: number, p: Position) => acc + (p.totalCost || p.qty * p.avgCost), 0);
+  const totalTotalPnLPct = totalCostBasis > 0 ? (totalTotalPnL / totalCostBasis) * 100 : 0;
 
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedSymbols([]);
-    } else {
-      setSelectedSymbols(positions.map((p) => p.symbol));
-    }
+  const filteredPositions =
+    filter === 'all'
+      ? positions
+      : filter === 'gainers'
+        ? positions.filter((p: Position) => (p.dayChange || 0) >= 0)
+        : positions.filter((p: Position) => (p.dayChange || 0) < 0);
+
+  const accountData: AccountSummary = displayAccount || {
+    equity: totalMarketValue,
+    cash: 50000,
+    buyingPower: 200000,
+    dayPnl: totalTodayPnL,
+    dayPnlPercent: totalCostBasis > 0 ? (totalTodayPnL / totalCostBasis) * 100 : 0,
+    totalPnl: totalTotalPnL,
+    totalPnlPercent: totalTotalPnLPct,
+    positions,
   };
-
-  // ── Summary calculations for sticky footer ──
-  const cashBalance = liveAccount?.cash || 0;
-  const totalMarketValue = positions.reduce((sum, p) => sum + p.marketValue, 0) + cashBalance;
-  const totalTodayPnL = positions.reduce((sum, p) => sum + (p.dayChange || 0), 0);
-  const prevMarketValue = totalMarketValue - totalTodayPnL;
-  const totalTodayPct = prevMarketValue > 0 ? (totalTodayPnL / prevMarketValue) * 100 : 0;
-  const totalInvested = positions.reduce((sum, p) => sum + (p.totalCost || 0), 0);
-  const totalPnL = positions.reduce((sum, p) => sum + p.marketValue - (p.totalCost || 0), 0);
-  const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
 
   return (
-    <div className="min-h-0 bg-[#060a14]" style={{ paddingBottom: 'calc(100px + env(safe-area-inset-bottom))' }}>
-      {/* 1. Demo banner */}
-      {!isConnected && <DemoBanner />}
+    <div style={{ paddingBottom: 120 }}>
+      {/* ── Account Hero ── */}
+      <AccountHero account={accountData} isConnected={isConnected} />
 
-      {/* ─── Market Overview ─── */}
+      {/* ── Portfolio Chart ── */}
+      <div style={{ padding: '0 20px 16px' }}>
+        <PortfolioChart
+          positions={positions.map((p) => ({
+            symbol: p.symbol,
+            shares: p.qty,
+            buyDate: p.buyDate,
+            avgCost: p.avgCost,
+            totalCost: p.totalCost || p.qty * p.avgCost,
+          }))}
+          cashBalance={displayAccount?.cash ?? 0}
+        />
+      </div>
+
+      {/* ── Buying Power Card ── */}
+      <BuyingPowerCard account={accountData} />
+
+      {/* ── Market Overview ── */}
       <MarketOverview />
 
-      {/* 2. Account Card */}
-      <AccountCard account={displayAccount} isConnected={isConnected} />
-
-      {/* 2.5: Basket Section */}
-      {baskets.length > 0 && (
-        <div data-testid="baskets-section" style={{ marginTop: '20px', paddingLeft: '16px', paddingRight: '16px' }} id="baskets-section">
-          <span className="text-xs text-slate-500 uppercase tracking-wider" style={{ marginBottom: '8px', display: 'block' }}>
-            Baskets
-          </span>
-          {baskets.map(basket => {
-            const isExpanded = expandedBasket === basket.id;
-            const isSellMode = basketSellMode[basket.id];
-            const isPending = basket.status === 'pending';
-            const selCount = Object.values(basketSelected).filter(Boolean).length;
-            const allSel = basket.positions.filter(p => p.status === 'active' || p.status === 'pending').every(p => basketSelected[p.symbol]);
-
-            return (
-              <div key={basket.id} style={{
-                background: '#1a2235', border: isPending ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(34,211,238,0.15)',
-                borderRadius: '12px', marginBottom: '8px', overflow: 'hidden',
-                borderLeft: isPending ? '3px solid #f59e0b' : undefined,
-                opacity: isPending ? 0.85 : 1,
-              }}>
-                {/* Header row */}
-                <div onClick={() => { setExpandedBasket(isExpanded ? null : basket.id); if (isExpanded) { setBasketSellMode(prev => ({ ...prev, [basket.id]: false })); setBasketSelected({}); } }} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '14px 16px', cursor: 'pointer',
-                }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '18px' }}>{basket.emoji}</span>
-                      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>{basket.name}</span>
-                      {isPending && (
-                        <span style={{ fontSize: '10px', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '1px 6px' }}>PENDING</span>
-                      )}
-                      {basket.status === 'partial' && (
-                        <span style={{ fontSize: '10px', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', padding: '1px 6px' }}>PARTIAL</span>
-                      )}
-                    </div>
-                    <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '2px' }}>
-                      {isPending
-                        ? <span style={{ color: '#f59e0b' }}>⏳ {basket.nextOpenLabel || 'awaiting market open'}</span>
-                        : `${basket.activeCount} of ${basket.positionCount} positions`
-                      }
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '16px' }}>
-                      ${isPending ? basket.totalCost.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : basket.marketValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </div>
-                    {!isPending && (
-                      <div style={{ color: basket.totalPnL >= 0 ? '#10b981' : '#ef4444', fontSize: '12px' }}>
-                        {basket.totalPnL >= 0 ? '+' : ''}${basket.totalPnL.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                        {' '}({basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%)
-                      </div>
-                    )}
-                    {isPending && (
-                      <div style={{ color: '#f59e0b', fontSize: '11px' }}>reserved</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expanded view */}
-                {isExpanded && (
-                  <>
-                    {/* Sell mode toggle — hidden for pending baskets */}
-                    {!isPending && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                        <span style={{ color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{basket.activeCount} positions</span>
-                        <button onClick={(e) => { e.stopPropagation(); setBasketSellMode(prev => ({ ...prev, [basket.id]: !isSellMode })); setBasketSelected({}); }} style={{
-                          color: '#ef4444', background: 'none', border: '1px solid rgba(239,68,68,0.3)',
-                          borderRadius: '6px', padding: '3px 10px', fontSize: '12px', cursor: 'pointer',
-                        }}>{isSellMode ? 'Cancel' : 'Sell Positions'}</button>
-                      </div>
-                    )}
-
-                    {/* Position rows */}
-                    {basket.positions.filter(p => p.status === 'active' || p.status === 'pending').map(pos => {
-                      const isPosPending = pos.status === 'pending';
-                      return (
-                      <div key={pos.symbol} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid rgba(255,255,255,0.04)', gap: '10px' }}>
-                        {isSellMode && !isPosPending && (
-                          <input type="checkbox"
-                            checked={basketSelected[pos.symbol] || false}
-                            onChange={() => { setBasketSelected(prev => ({ ...prev, [pos.symbol]: !prev[pos.symbol] })); }}
-                            style={{ accentColor: '#22d3ee', width: '18px', height: '18px', flexShrink: 0 }}
-                          />
-                        )}
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>{pos.symbol}</span>
-                            <span style={{ color: isPosPending ? '#f59e0b' : '#ffffff', fontWeight: '500' }}>
-                              ${isPosPending ? (pos.reservedAmount || pos.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : (pos.marketValue || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                            <span style={{ color: '#6b7280', fontSize: '11px' }}>
-                              {isPosPending ? '⏳ pending' : `${pos.shares.toFixed(4)}sh · ${pos.allocationPct}%`}
-                            </span>
-                            {!isPosPending && (
-                              <span style={{ color: (pos.totalPnL || 0) >= 0 ? '#10b981' : '#ef4444', fontSize: '11px' }}>
-                                {(pos.totalPnL || 0) >= 0 ? '+' : ''}${(pos.totalPnL || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                {' '}({(pos.totalPnLPct || 0).toFixed(1)}%)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )})}
-
-                    {/* Sell mode footer */}
-                    {isSellMode && (
-                      <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9ca3af', fontSize: '12px', cursor: 'pointer' }}>
-                          <input type="checkbox"
-                            checked={allSel}
-                            onChange={() => {
-                              const toggle: Record<string, boolean> = {};
-                              const activeSymbols = basket.positions.filter(p => p.status === 'active').map(p => p.symbol);
-                              activeSymbols.forEach(s => { toggle[s] = !allSel; });
-                              setBasketSelected(prev => ({ ...prev, ...toggle }));
-                            }}
-                            style={{ accentColor: '#22d3ee' }}
-                          />
-                          Select all
-                        </label>
-                        <button onClick={async () => {
-                          const toSell = Object.entries(basketSelected).filter(([, v]) => v).map(([k]) => k);
-                          if (!toSell.length) return;
-                          const result = await sellBasketPositions(basket.id, toSell);
-                          if (result.success) {
-                            setBasketSellMode(prev => ({ ...prev, [basket.id]: false }));
-                            setBasketSelected({});
-                          }
-                        }} disabled={selCount === 0} style={{
-                          flex: 1, padding: '10px',
-                          background: selCount > 0 ? '#ef4444' : 'rgba(239,68,68,0.2)',
-                          color: '#ffffff', border: 'none', borderRadius: '8px',
-                          fontSize: '14px', fontWeight: '600',
-                          cursor: selCount > 0 ? 'pointer' : 'not-allowed',
-                        }}>Sell {selCount > 0 ? `${selCount} position${selCount > 1 ? 's' : ''}` : 'Selected'}</button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
+      {/* ── Pending Baskets ── */}
+      {pendingBaskets.length > 0 && (
+        <div style={{ paddingBottom: 4 }}>
+          <h2 className="section-header">Ready to Execute</h2>
+          {pendingBaskets.map((pb) => (
+            <PendingBasketCard key={pb.id || pb.basketId} basket={pb} />
+          ))}
         </div>
       )}
 
-      {/* 3. Column header */}
-      {positions.length > 0 && (
-        <div data-testid="holdings-section" id="holdings-section" className="flex items-center" style={{ marginLeft: '16px', marginRight: '16px', padding: '0 14px', marginTop: '20px', marginBottom: '10px' }}>
-          {selectMode && (
-            <button onClick={toggleSelectAll} aria-label="Select all" style={{ marginRight: '4px' }}>
-              <div
-                className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all duration-150 ${
-                  allSelected
-                    ? 'bg-cyan-500 border-cyan-500'
-                    : someSelected
-                      ? 'bg-cyan-500/40 border-cyan-500'
-                      : 'border-slate-600 bg-transparent'
-                }`}
-              >
-                {(allSelected || someSelected) && (
-                  <span className="text-white text-[10px] leading-none">
-                    {allSelected ? '\u2713' : '\u2013'}
-                  </span>
-                )}
-              </div>
-            </button>
-          )}
-          <span className="flex-1" style={{ color: '#ffffff', fontSize: '16px', fontWeight: '700', letterSpacing: '-0.01em', textTransform: 'uppercase' }}>
-            HOLDINGS
-          </span>
-          {selectMode ? (
-            selectedSymbols.length === 0 ? (
-              <button
-                onClick={() => { setSelectMode(false); setSelectedSymbols([]); }}
-                style={{
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  color: '#94a3b8',
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  padding: '5px 10px',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                Cancel
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  const sp = positions.filter((p) => selectedSymbols.includes(p.symbol));
-                  setSellModalPositions(sp.map(s => ({
-                    symbol: s.symbol,
-                    qty: s.qty,
-                    currentPrice: s.currentPrice
-                  })));
-                }}
-                style={{
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  color: '#ffffff',
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '5px 12px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {selectedSymbols.length === positions.length && positions.length > 1
-                  ? 'Sell Portfolio'
-                  : `Sell Selected (${selectedSymbols.length})`}
-              </button>
-            )
-          ) : (
+      {/* ── Positions Header ── */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '20px 20px 12px',
+      }}>
+        <h2 className="section-header" style={{ padding: 0 }}>
+          Positions
+        </h2>
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* Filter */}
+          <div style={{ position: 'relative' }}>
             <button
-              onClick={() => setSelectMode(true)}
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
               style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                color: '#22d3ee',
-                border: '1px solid rgba(34,211,238,0.4)',
-                borderRadius: '8px',
-                padding: '5px 10px',
-                background: 'transparent',
+                padding: '6px 12px', borderRadius: 999,
+                background: filter !== 'all' ? 'rgba(34,211,238,0.10)' : 'transparent',
+                border: filter !== 'all' ? '1px solid rgba(34,211,238,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                color: filter !== 'all' ? 'var(--accent)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
                 cursor: 'pointer',
-                whiteSpace: 'nowrap'
               }}
             >
-              Sell Positions
+              {filter === 'all' ? 'All' : filter === 'gainers' ? 'Gainers' : 'Losers'}
             </button>
-          )}
-        </div>
-      )}
-
-      {/* 4. Individual Positions (non-basket) */}
-      {individualPositions.map((pos) => (
-        <PositionCard
-          key={pos.symbol}
-          pos={pos}
-          isSelected={selectedSymbols.includes(pos.symbol)}
-          isExpanded={expandedSymbol === pos.symbol}
-          onToggleSelect={() => toggleSelect(pos.symbol)}
-          onToggleExpand={() => toggleExpand(pos.symbol)}
-          onBuy={() => setShowBuySymbol(pos)}
-          showCheckbox={selectMode}
-          baskets={baskets}
-        />
-      ))}
-
-      {/* 5. Basket Groups */}
-      {Object.entries(basketGroups).map(([name, group]) => {
-        const isExpanded = expandedBasket === name;
-        const pnl = group.totalPnL;
-        const pnlPct = group.totalPnLPct;
-        const isPos = pnl >= 0;
-        return (
-          <div
-            key={name}
-            style={{
-              marginLeft: '16px',
-              marginRight: '16px',
-              marginBottom: '8px',
-              background: '#1a2235',
-              border: '1px solid rgba(34,211,238,0.1)',
-              borderLeft: `3px solid ${isPos ? '#10b981' : '#ef4444'}`,
-              borderRadius: '12px',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Collapsed header */}
-            <div
-              onClick={() => toggleGroup(name)}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '14px 16px',
-                cursor: 'pointer',
-              }}
-            >
-              <div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '3px',
-                }}>
-                  <span style={{ fontSize: '16px' }}>{group.emoji}</span>
-                  <span style={{
-                    color: '#ffffff',
-                    fontWeight: '600',
-                    fontSize: '15px',
-                  }}>
-                    {group.displayName}
-                  </span>
-                </div>
-                <span style={{ color: '#6b7280', fontSize: '11px' }}>
-                  {group.positions.length} position{group.positions.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>
-                  {formatCurrency(group.marketValue)}
-                </div>
-                <div style={{
-                  color: isPos ? '#10b981' : '#ef4444',
-                  fontSize: '12px',
-                }}>
-                  {isPos ? '+' : ''}{formatCurrency(pnl)}{' '}
-                  ({isPos ? '+' : ''}{pnlPct.toFixed(1)}%)
-                </div>
-              </div>
-            </div>
-
-            {/* Expanded positions list */}
-            {isExpanded && (
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                {group.positions.map((pos) => (
-                  <div
-                    key={pos.symbol}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '10px 16px 10px 28px',
-                      borderBottom: '1px solid rgba(255,255,255,0.04)',
-                    }}
-                  >
-                    <div>
-                      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
-                        {pos.symbol}
-                      </span>
-                      <span style={{ color: '#6b7280', fontSize: '11px', marginLeft: '8px' }}>
-                        {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
-                      </span>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ color: '#ffffff', fontWeight: '500', fontSize: '13px' }}>
-                        {formatCurrency(pos.marketValue)}
-                      </div>
-                      <div style={{
-                        color: (pos.marketValue - (pos.totalCost || 0)) >= 0 ? '#10b981' : '#ef4444',
-                        fontSize: '11px',
-                      }}>
-                        {((pos.marketValue - (pos.totalCost || 0)) >= 0 ? '+' : '')}
-                        {formatCurrency(pos.marketValue - (pos.totalCost || 0))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Sell Basket button */}
-                <div style={{ padding: '12px 16px' }}>
+            {showFilterDropdown && (
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, marginTop: 4,
+                background: '#131929', border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 12, padding: 4, zIndex: 50,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)', minWidth: 120,
+              }}>
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'gainers', label: 'Gainers' },
+                  { key: 'losers', label: 'Losers' },
+                ].map(({ key, label }) => (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const sp = group.positions.map(p => ({
-                        symbol: p.symbol,
-                        qty: p.qty,
-                        currentPrice: p.currentPrice,
-                      }));
-                      setSellModalPositions(sp);
-                    }}
+                    key={key}
+                    onClick={() => { setFilter(key); setShowFilterDropdown(false); }}
                     style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: '#ef4444',
-                      border: 'none',
-                      borderRadius: '10px',
-                      color: '#ffffff',
-                      fontSize: '14px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '8px 12px', borderRadius: 8,
+                      background: filter === key ? 'rgba(34,211,238,0.10)' : 'transparent',
+                      color: filter === key ? 'var(--accent)' : '#ffffff',
+                      fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 13,
+                      cursor: 'pointer', border: 'none',
                     }}
                   >
-                    Sell Basket
+                    {label}
                   </button>
-                </div>
+                ))}
               </div>
             )}
           </div>
-        );
-      })}
 
-      {/* 6. Pending Basket Orders */}
-      {pendingBaskets && pendingBaskets.length > 0 && (
-        <>
-          {pendingBaskets.map((pb: any) => (
-            <div
-              key={pb.id}
-              style={{
-                marginLeft: '16px',
-                marginRight: '16px',
-                marginBottom: '8px',
-                background: '#1a2235',
-                border: '1px solid rgba(245,158,11,0.2)',
-                borderLeft: '3px solid #f59e0b',
-                borderRadius: '12px',
-                padding: '14px 16px',
-                opacity: 0.85,
-              }}
-            >
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: '6px',
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}>
-                  <span style={{ fontSize: '16px' }}>
-                    {pb.basketEmoji || '🧺'}
-                  </span>
-                  <span style={{
-                    color: '#ffffff',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                  }}>
-                    {pb.basketDisplayName || pb.basketName || 'Basket'}
-                  </span>
-                </div>
-                <span style={{
-                  background: 'rgba(245,158,11,0.15)',
-                  color: '#f59e0b',
-                  fontSize: '10px',
-                  fontWeight: '700',
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                }}>
-                  PENDING
-                </span>
-              </div>
-              <div style={{
-                color: '#f59e0b',
-                fontSize: '12px',
-                marginBottom: '4px',
-              }}>
-                ⏳ {pb.nextOpenLabel || 'awaiting market open'}
-              </div>
-              <div style={{
-                color: '#6b7280',
-                fontSize: '11px',
-              }}>
-                {pb.orders?.length || 0} positions ·
-                ${(pb.totalReserved || 0).toFixed(2)} reserved
-              </div>
-            </div>
-          ))}
-        </>
-      )}
-
-      <div style={{ height: '40px' }} />
-
-      {/* Sticky Portfolio Summary Footer */}
-      <div data-testid="portfolio-footer" style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        background: 'linear-gradient(' +
-          'to top,' +
-          '#0a0f1e 65%,' +
-          'transparent 100%' +
-        ')',
-        paddingTop: '24px',
-        paddingBottom: 'calc(8px + env(safe-area-inset-bottom) + 64px)',
-        paddingLeft: '16px',
-        paddingRight: '16px',
-      }}>
-        {/* Label above pill */}
-        <div style={{
-          textAlign: 'center',
-          marginBottom: '6px',
-        }}>
-          <span style={{
-            color: 'rgba(255,255,255,0.3)',
-            fontSize: '9px',
-            fontWeight: '600',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-          }}>
-            Portfolio Summary
-          </span>
-        </div>
-
-        {/* Three-column pill */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          background: 'rgba(26,34,53,0.98)',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: '16px',
-          padding: '12px 0',
-          boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
-        }}>
-
-          {/* Market Value */}
-          <div style={{
-            textAlign: 'center',
-            borderRight: '1px solid rgba(255,255,255,0.08)',
-            padding: '0 8px',
-          }}>
-            <div style={{
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: '700',
-              letterSpacing: '-0.01em',
-            }}>
-              {totalMarketValue >= 10000
-                ? `$${(totalMarketValue/1000).toFixed(1)}K`
-                : `$${totalMarketValue.toFixed(0)}`
-              }
-            </div>
-            <div style={{
-              color: 'rgba(255,255,255,0.45)',
-              fontSize: '9px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginTop: '3px',
-              fontWeight: '500',
-            }}>
-              Market Value
-            </div>
-          </div>
-
-          {/* Today P&L */}
-          <div style={{
-            textAlign: 'center',
-            borderRight: '1px solid rgba(255,255,255,0.08)',
-            padding: '0 8px',
-          }}>
-            <div style={{
-              color: totalTodayPnL >= 0
-                ? '#34d399'
-                : '#f87171',
-              fontSize: '14px',
-              fontWeight: '700',
-            }}>
-              {totalTodayPnL >= 0 ? '+' : ''}
-              {Math.abs(totalTodayPnL) >= 10000
-                ? `$${(Math.abs(totalTodayPnL)/1000).toFixed(1)}K`
-                : `$${Math.abs(totalTodayPnL).toFixed(0)}`
-              }
-            </div>
-            <div style={{
-              color: totalTodayPnL >= 0
-                ? 'rgba(52,211,153,0.7)'
-                : 'rgba(248,113,113,0.7)',
-              fontSize: '9px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginTop: '3px',
-              fontWeight: '500',
-            }}>
-              Today {totalTodayPnL >= 0 ? '+' : ''}
-              {totalTodayPct.toFixed(1)}%
-            </div>
-          </div>
-
-          {/* Total P&L */}
-          <div style={{
-            textAlign: 'center',
-            padding: '0 8px',
-          }}>
-            <div style={{
-              color: totalPnL >= 0
-                ? '#34d399'
-                : '#f87171',
-              fontSize: '14px',
-              fontWeight: '700',
-            }}>
-              {totalPnL >= 0 ? '+' : ''}
-              {Math.abs(totalPnL) >= 10000
-                ? `$${(Math.abs(totalPnL)/1000).toFixed(1)}K`
-                : `$${Math.abs(totalPnL).toFixed(0)}`
-              }
-            </div>
-            <div style={{
-              color: totalPnL >= 0
-                ? 'rgba(52,211,153,0.7)'
-                : 'rgba(248,113,113,0.7)',
-              fontSize: '9px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginTop: '3px',
-              fontWeight: '500',
-            }}>
-              Total {totalPnL >= 0 ? '+' : ''}
-              {totalPnLPct.toFixed(1)}%
-            </div>
-          </div>
+          {/* Select */}
+          <button
+            onClick={() => {
+              if (selectMode) cancelSelect();
+              else setSelectMode(true);
+            }}
+            style={{
+              padding: '6px 12px', borderRadius: 999,
+              background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: selectMode ? 'var(--accent)' : 'var(--text-muted)',
+              fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {selectMode ? 'Done' : 'Select'}
+          </button>
         </div>
       </div>
 
-      {/* 5. Buy Modal */}
-      {showBuySymbol && (
-        <BuyModal
-          position={showBuySymbol}
-          buyingPower={displayAccount?.buyingPower ?? 0}
-          onClose={() => setShowBuySymbol(null)}
-          onExecute={async (symbol, side, shares, price) => {
-            const result = await executeTrade(symbol, side, shares, price);
-            return result;
-          }}
-        />
+      {/* ── Position Cards ── */}
+      {filteredPositions.length === 0 ? (
+        <div style={{
+          textAlign: 'center', padding: '40px 20px',
+          color: 'var(--text-muted)', fontSize: 14,
+        }}>
+          {filter !== 'all' ? 'No positions match this filter' : 'No positions yet'}
+        </div>
+      ) : (
+        filteredPositions.map((pos) => (
+          <PositionCard
+            key={pos.symbol}
+            pos={pos}
+            isSelected={selectedSymbols.has(pos.symbol)}
+            isExpanded={expandedSymbols.has(pos.symbol)}
+            onToggleSelect={() => toggleSelect(pos.symbol)}
+            onToggleExpand={() => toggleExpand(pos.symbol)}
+            onBuy={() => {}}
+            showCheckbox={selectMode}
+            baskets={pendingBaskets as Basket[]}
+          />
+        ))
       )}
 
-      {sellModalPositions && (
+      {/* ── Sell Selected Bar ── */}
+      {selectMode && selectedSymbols.size > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 140, left: 16, right: 16, zIndex: 101,
+          background: 'rgba(19,25,41,0.98)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 16, padding: '14px 16px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
+        }}>
+          <div>
+            <div style={{
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15, color: '#ffffff',
+            }}>
+              {selectedSymbols.size} selected
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              ~$
+              {filteredPositions
+                .filter(p => selectedSymbols.has(p.symbol))
+                .reduce((acc, p) => acc + p.qty * (p.currentPrice || p.avgCost), 0)
+                .toLocaleString('en-US', DOLLAR_FMT)}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={cancelSelect}
+              style={{
+                padding: '8px 16px', borderRadius: 999,
+                background: 'transparent', border: '1px solid rgba(255,255,255,0.10)',
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => setSellModalOpen(true)}
+              style={{
+                padding: '8px 16px', borderRadius: 999,
+                background: '#ef4444', border: 'none',
+                color: '#ffffff',
+                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Sell {selectedSymbols.size === 1 ? filteredPositions.find((p: Position) => selectedSymbols.has(p.symbol))?.symbol : `Selected (${selectedSymbols.size})`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sell Modal ── */}
+      {sellModalOpen && (
         <SellModal
-          positions={sellModalPositions}
-          onClose={() => setSellModalPositions(null)}
-          onConfirm={async () => {
-            // Execute sell for each selected position
-            if (sellModalPositions) {
-              for (const pos of sellModalPositions) {
-                await executeTrade(pos.symbol, 'SELL', pos.qty, pos.currentPrice);
-              }
-            }
-            setSellModalPositions(null);
-            setSelectedSymbols([]);
-            setSelectMode(false);
-          }}
+          positions={
+            filteredPositions
+              .filter((p: Position) => selectedSymbols.has(p.symbol))
+              .map((p: Position) => ({
+                symbol: p.symbol,
+                qty: p.qty,
+                currentPrice: p.currentPrice || p.avgCost,
+              }))
+          }
+          onClose={() => setSellModalOpen(false)}
         />
       )}
 
-      <style jsx global>{`
-        @keyframes slide-up {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-        .animate-slide-up { animation: slide-up 0.2s ease-out; }
-      `}</style>
+      {/* ── Sticky Portfolio Footer ── */}
+      <PortfolioFooter
+        totalMarketValue={totalMarketValue}
+        totalTodayPnL={totalTodayPnL}
+        totalTotalPnL={totalTotalPnL}
+        totalTotalPnLPct={totalTotalPnLPct}
+      />
     </div>
   );
 }

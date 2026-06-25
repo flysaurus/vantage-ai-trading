@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 interface IndexData {
   symbol: string;
   label: string;
+  name: string;
   value: number;
   change: number;
   changePct: number;
@@ -13,7 +14,7 @@ interface IndexData {
 // ── module-level cache survives tab-switch unmounts ──
 let cachedIndices: IndexData[] | null = null;
 let cacheTime = 0;
-const CACHE_TTL = 60_000; // 60s
+const CACHE_TTL = 60_000;
 
 export default function MarketOverview() {
   const [indices, setIndices] = useState<IndexData[]>(
@@ -24,13 +25,13 @@ export default function MarketOverview() {
   const fetchIndices = async () => {
     try {
       const symbols = [
-        { symbol: 'SPY', label: 'S&P 500 ETF (SPY)' },
-        { symbol: 'QQQ', label: 'Nasdaq ETF (QQQ)' },
-        { symbol: 'DIA', label: 'Dow ETF (DIA)' },
-        { symbol: 'IWM', label: 'Russell 2000 (IWM)' }
+        { symbol: 'SPY', label: 'S&P 500', name: 'SPY' },
+        { symbol: 'QQQ', label: 'Nasdaq', name: 'QQQ' },
+        { symbol: 'DIA', label: 'Dow Jones', name: 'DIA' },
+        { symbol: 'IWM', label: 'Russell 2000', name: 'IWM' }
       ];
       const results = await Promise.all(
-        symbols.map(async ({ symbol, label }) => {
+        symbols.map(async ({ symbol, label, name }) => {
           const res = await fetch(
             `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
           );
@@ -38,6 +39,7 @@ export default function MarketOverview() {
           return {
             symbol,
             label,
+            name,
             value: data.c || data.pc || 0,
             change: data.c ? (data.d ?? 0) : 0,
             changePct: data.c ? (data.dp ?? 0) : 0,
@@ -56,7 +58,6 @@ export default function MarketOverview() {
   };
 
   useEffect(() => {
-    // if cache is fresh, just use it — but still start interval for next refresh
     if (!cachedIndices || Date.now() - cacheTime >= CACHE_TTL) {
       fetchIndices();
     }
@@ -64,72 +65,56 @@ export default function MarketOverview() {
     return () => clearInterval(interval);
   }, []);
 
-  const gridStyle: React.CSSProperties = {
-    margin: '12px 0 0 0',
-    background: '#1a2235',
-    border: '1px solid #2a3448',
-    borderRadius: '10px',
-    padding: '14px 16px',
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '12px'
-  };
-
-  if (loading) {
-    return (
-      <div style={{ margin: '16px 16px 0 16px' }}>
-        <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-          Market Overview
-        </div>
-        <div style={gridStyle}>
-        {['S&P 500 ETF (SPY)', 'Nasdaq ETF (QQQ)', 'Dow ETF (DIA)', 'Russell 2000 (IWM)'].map((label) => (
-          <div key={label} style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#334155', marginBottom: '4px' }}>{label}</div>
-            <div style={{ fontSize: '16px', color: '#334155' }}>—</div>
-          </div>
-        ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ margin: '16px 16px 0 16px' }}>
-      <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+    <div style={{ padding: '0 20px 20px' }}>
+      {/* Section Header */}
+      <h2 className="section-header" style={{ padding: '20px 0 12px' }}>
         Market Overview
+      </h2>
+
+      {/* 2×2 Grid of Frosted Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 10,
+      }}>
+        {loading
+          ? [1, 2, 3, 4].map((i) => (
+              <div key={i} className="card-frost-sm" style={{ padding: '14px 16px', textAlign: 'center' }}>
+                <div className="section-label" style={{ marginBottom: 4 }}>—</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#334155' }}>—</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>—</div>
+              </div>
+            ))
+          : indices.map((idx) => (
+              <div key={idx.symbol} className="card-frost-sm" style={{ padding: '14px 16px', textAlign: 'center' }}>
+                <div className="section-label" style={{ marginBottom: 4 }}>
+                  {idx.label}
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontWeight: 700,
+                  fontSize: 20,
+                  color: '#ffffff',
+                  marginBottom: 2,
+                }}>
+                  ${idx.value.toFixed(2)}
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: idx.isLive
+                    ? (idx.change >= 0 ? 'var(--gain)' : 'var(--loss)')
+                    : 'var(--text-muted)',
+                }}>
+                  {idx.isLive
+                    ? `${idx.change >= 0 ? '+' : ''}$${Math.abs(idx.change).toFixed(2)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
+                    : 'Closed'}
+                </div>
+              </div>
+            ))}
       </div>
-      <div style={gridStyle}>
-      {indices.map((idx) => (
-        <div key={idx.symbol} style={{ textAlign: 'center' }}>
-          <div style={{
-            fontSize: '11px',
-            color: '#64748b',
-            marginBottom: '4px'
-          }}>
-            {idx.label}
-          </div>
-          <div style={{
-            fontSize: '16px',
-            fontWeight: '700',
-            color: '#ffffff',
-            marginBottom: '2px'
-          }}>
-            ${idx.value.toFixed(2)}
-          </div>
-          <div style={{
-            fontSize: '11px',
-            fontWeight: '500',
-            color: idx.isLive
-              ? (idx.change >= 0 ? '#10b981' : '#ef4444')
-              : '#64748b'
-          }}>
-            {idx.isLive
-              ? `${idx.change >= 0 ? '+' : ''}$${Math.abs(idx.change).toFixed(2)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
-              : 'Closed'}
-          </div>
-        </div>
-      ))}
-    </div>
     </div>
   );
 }

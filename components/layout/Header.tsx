@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, Settings, X } from 'lucide-react';
-import CompassIcon from '../CompassIcon';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import { useTabStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 
@@ -25,6 +25,12 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function getStatusPillClass(label: string): string {
+  if (label === 'OPEN') return 'header-pill header-pill-open';
+  if (label === 'CLOSED') return 'header-pill header-pill-closed';
+  return 'header-pill header-pill-ah';
 }
 
 export function Header() {
@@ -68,10 +74,8 @@ export function Header() {
     } catch { /* ignore */ }
   };
 
-  // Market status state
   const [marketStatus, setMarketStatus] = useState(getMarketStatus());
 
-  // Poll unread count and market status every 60s
   useEffect(() => {
     fetchUnread();
     const interval = setInterval(() => {
@@ -99,21 +103,32 @@ export function Header() {
   };
 
   return (
-    <div className="app-header" ref={dropdownRef} style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CompassIcon size={18} color="#22d3ee" /> <span style={{ fontSize: 24, fontWeight: 700 }}>Vantage</span></div>
-        <span className={`text-base font-medium px-2 py-1 rounded-full ${marketStatus.color}`}>
-          ● {marketStatus.label}
-        </span>
+    <div className="app-header-v2" ref={dropdownRef} style={{ position: 'relative' }}>
+      {/* ── Left: Orb + Wordmark ── */}
+      <div className="header-left">
+        <div style={{ width: 32, height: 32, flexShrink: 0 }}>
+          <VantageOrb size={32} animate showEntrance={false} />
+        </div>
+        <span className="header-wordmark">VANTAGE</span>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="icon-btn"><Search size={24} /></button>
+
+      {/* ── Center: Market Status Pill ── */}
+      <span className={getStatusPillClass(marketStatus.label)}>
+        ● {marketStatus.label}
+      </span>
+
+      {/* ── Right: Icons ── */}
+      <div className="header-icons">
+        <button className="header-icon-btn" aria-label="Search">
+          <Search size={22} />
+        </button>
         <button
-          className="icon-btn"
+          className="header-icon-btn"
           onClick={handleBellClick}
           style={{ position: 'relative' }}
+          aria-label="Notifications"
         >
-          <Bell size={24} />
+          <Bell size={22} />
           {unreadCount > 0 && (
             <span style={{
               position: 'absolute', top: -2, right: -2,
@@ -121,32 +136,36 @@ export function Header() {
               background: '#ef4444', borderRadius: 10,
               fontSize: 10, fontWeight: 700, color: 'white',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: '2px solid #0f172a',
+              border: '2px solid #0a0f1e',
             }}>
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
         </button>
-        <button className="icon-btn" onClick={() => setTab('settings')}>
-          <Settings size={24} />
+        <button
+          className="header-icon-btn"
+          onClick={() => setTab('settings')}
+          aria-label="Settings"
+        >
+          <Settings size={22} />
         </button>
       </div>
 
-      {/* Notification Dropdown */}
+      {/* ── Notification Dropdown ── */}
       {showDropdown && (
         <div style={{
           position: 'absolute', top: '100%', right: 0, marginTop: 8,
           width: 320, maxHeight: 400, overflowY: 'auto',
-          background: '#1e293b', border: '1px solid #334155',
-          borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-          zIndex: 1000,
+          background: '#131929', border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          zIndex: 1000, backdropFilter: 'blur(16px)',
         }}>
           {/* Header */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 14px', borderBottom: '1px solid #334155',
-            position: 'sticky', top: 0, background: '#1e293b',
-            borderTopLeftRadius: 12, borderTopRightRadius: 12,
+            padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+            position: 'sticky', top: 0, background: '#131929',
+            borderTopLeftRadius: 16, borderTopRightRadius: 16,
           }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Notifications</span>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -155,7 +174,7 @@ export function Header() {
                   onClick={markAllRead}
                   style={{
                     padding: '4px 10px', fontSize: 10, fontWeight: 600,
-                    background: 'none', border: '1px solid #334155',
+                    background: 'none', border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
                     fontFamily: 'inherit',
                   }}
@@ -187,8 +206,8 @@ export function Header() {
                 key={n.id}
                 style={{
                   padding: '10px 14px',
-                  borderBottom: '1px solid #1e293b',
-                  borderLeft: n.is_read ? '3px solid transparent' : '3px solid #06b6d4',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  borderLeft: n.is_read ? '3px solid transparent' : '3px solid #22d3ee',
                   cursor: n.action_url ? 'pointer' : 'default',
                 }}
                 onClick={() => {
@@ -211,7 +230,7 @@ export function Header() {
                     {timeAgo(n.created_at)}
                   </span>
                   {n.action_url && (
-                    <span style={{ fontSize: 10, color: '#06b6d4', fontWeight: 600 }}>
+                    <span style={{ fontSize: 10, color: '#22d3ee', fontWeight: 600 }}>
                       Take Action →
                     </span>
                   )}
@@ -221,16 +240,6 @@ export function Header() {
           )}
         </div>
       )}
-
-      <style jsx>{`
-        .icon-btn {
-          width: 32px; height: 32px;
-          background: #1e293b; border: none;
-          border-radius: 8px; color: #cbd5e1;
-          cursor: pointer; display: flex;
-          align-items: center; justify-content: center;
-        }
-      `}</style>
     </div>
   );
 }

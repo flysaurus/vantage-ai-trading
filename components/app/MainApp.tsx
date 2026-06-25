@@ -238,7 +238,7 @@ function AppShell() {
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell bg-app">
       {isDesktop && <DesktopSidebar />}
       {isDesktop ? <div className="main-panel">{mainContent}</div> : mainContent}
 
