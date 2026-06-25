@@ -499,7 +499,11 @@ input::placeholder, textarea::placeholder {
   .app-header { padding: 12px 32px; }
 }
 
-.watchlist-bar { padding: 10px 48px; }
+/* Wide Desktop (1400px+) */
+@media (min-width: 1400px) {
+  .content-area { padding: 24px 48px; }
+  .indexes-bar { padding: 10px 48px; }
+  .watchlist-bar { padding: 10px 48px; }
   .app-header { padding: 12px 48px; }
 }
 
