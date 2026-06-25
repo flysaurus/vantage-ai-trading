@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
 import PasswordStrength from '@/components/ui/PasswordStrength';
@@ -18,18 +18,22 @@ import { createClient } from '@/lib/supabase';
 
 const GRADIENT = `radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,0.40) 0%, rgba(14,116,144,0.22) 35%, transparent 65%), radial-gradient(ellipse 70% 45% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%), #0a0f1e`;
 
-// ── Shared page shell ──────────────────────────────────────
+// ── Auto-redirect helper ───────────────────────────────────
 
-function PageShell({
-  children,
-  onKeyDown,
-}: {
-  children: React.ReactNode;
-  onKeyDown?: (e: React.KeyboardEvent) => void;
-}) {
+function AutoRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    const timeout = setTimeout(() => router.replace('/'), 2000);
+    return () => clearTimeout(timeout);
+  }, [router]);
+  return null;
+}
+
+// ── Shared shell ───────────────────────────────────────────
+
+function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      onKeyDown={onKeyDown}
       style={{
         height: '100dvh',
         background: GRADIENT,
@@ -139,7 +143,7 @@ export default function ResetPasswordPage() {
       <PageShell>
         {/* Top Bar */}
         <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <VantageOrb size={44} animate showEntrance={false} />
+          <VantageOrb size={44} animate={false} showEntrance={false} />
         </div>
 
         <div style={{
@@ -150,36 +154,72 @@ export default function ResetPasswordPage() {
           justifyContent: 'center',
           padding: '0 24px 48px',
         }}>
+          {/* AlertCircle icon */}
           <div style={{ marginBottom: '24px' }}>
-            <AlertTriangle size={64} color="var(--warning)" />
+            <AlertCircle size={64} color="var(--warning)" />
           </div>
 
-          <h1 style={{ textAlign: 'center', margin: '0 0 12px' }}>
-            <span style={{ display: 'block', fontFamily: 'var(--font-sans)', fontSize: '38px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
-              Reset link
-            </span>
-            <span style={{ display: 'block', fontFamily: 'var(--font-serif)', fontSize: '38px', fontWeight: 400, fontStyle: 'italic', color: '#ffffff', lineHeight: 1.2 }}>
-              expired.
-            </span>
+          {/* Headline — single line */}
+          <h1 style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '32px',
+            fontWeight: 800,
+            color: '#ffffff',
+            textAlign: 'center',
+            margin: '0 0 12px',
+            lineHeight: 1.2,
+          }}>
+            Link expired
           </h1>
 
+          {/* Body */}
           <p style={{
-            fontSize: '16px', color: 'var(--text-secondary)', textAlign: 'center',
-            maxWidth: '280px', lineHeight: 1.5, fontFamily: 'var(--font-sans)', marginBottom: '32px',
+            fontSize: '16px',
+            color: 'var(--text-secondary)',
+            textAlign: 'center',
+            maxWidth: '280px',
+            lineHeight: 1.5,
+            fontFamily: 'var(--font-sans)',
+            margin: '0 auto 32px',
           }}>
-            This reset link has expired or has already been used. Reset links are valid for 60 minutes.
+            Password reset links expire after 60 minutes and can only be used once.
           </p>
 
+          {/* Request new link */}
           <button
             onClick={() => router.push('/auth/forgot-password')}
             style={{
-              width: '100%', maxWidth: '400px', height: '56px', borderRadius: '999px',
-              border: '1px solid rgba(255,255,255,0.12)', background: 'transparent',
-              color: '#ffffff', fontSize: '17px', fontWeight: 600,
-              fontFamily: 'var(--font-sans)', cursor: 'pointer',
+              width: '100%',
+              maxWidth: '400px',
+              height: '56px',
+              borderRadius: '999px',
+              border: 'none',
+              background: '#ffffff',
+              color: '#000000',
+              fontSize: '17px',
+              fontWeight: 700,
+              fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
             }}
           >
-            Request a new one
+            Request new link
+          </button>
+
+          {/* Back to sign in */}
+          <button
+            onClick={() => router.push('/login')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              fontSize: '13px',
+              fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
+              marginTop: '24px',
+              textAlign: 'center',
+            }}
+          >
+            ← Back to sign in
           </button>
         </div>
       </PageShell>
@@ -194,7 +234,7 @@ export default function ResetPasswordPage() {
     return (
       <PageShell>
         <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <VantageOrb size={44} animate showEntrance={false} />
+          <VantageOrb size={44} animate={false} showEntrance={false} />
         </div>
 
         <div style={{
@@ -205,6 +245,7 @@ export default function ResetPasswordPage() {
           justifyContent: 'center',
           padding: '0 24px 48px',
         }}>
+          {/* CheckCircle — spring pop */}
           <div style={{
             marginBottom: '24px',
             animation: 'check-pop 400ms cubic-bezier(0.34,1.56,0.64,1) forwards',
@@ -212,38 +253,50 @@ export default function ResetPasswordPage() {
             <CheckCircle size={64} color="var(--gain)" />
           </div>
 
+          {/* Headline */}
           <h1 style={{ textAlign: 'center', margin: '0 0 12px' }}>
-            <span style={{ display: 'block', fontFamily: 'var(--font-sans)', fontSize: '38px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+            <span style={{
+              display: 'block',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '36px',
+              fontWeight: 800,
+              color: '#ffffff',
+              lineHeight: 1.2,
+            }}>
               Password
             </span>
-            <span style={{ display: 'block', fontFamily: 'var(--font-serif)', fontSize: '38px', fontWeight: 400, fontStyle: 'italic', color: '#ffffff', lineHeight: 1.2 }}>
+            <span style={{
+              display: 'block',
+              fontFamily: 'var(--font-serif)',
+              fontSize: '36px',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              color: '#ffffff',
+              lineHeight: 1.2,
+            }}>
               updated.
             </span>
           </h1>
 
+          {/* Body */}
           <p style={{
-            fontSize: '16px', color: 'var(--text-secondary)', textAlign: 'center',
-            fontFamily: 'var(--font-sans)', lineHeight: 1.5, marginBottom: '32px',
+            fontSize: '16px',
+            color: 'var(--text-secondary)',
+            textAlign: 'center',
+            fontFamily: 'var(--font-sans)',
+            lineHeight: 1.5,
           }}>
-            You can now sign in with your new password.
+            You&apos;re all set. Signing you in now…
           </p>
-
-          <button
-            onClick={() => router.push('/login')}
-            style={{
-              width: '100%', maxWidth: '400px', height: '56px', borderRadius: '999px',
-              border: 'none', background: '#ffffff', color: '#000000',
-              fontSize: '17px', fontWeight: 700, fontFamily: 'var(--font-sans)', cursor: 'pointer',
-            }}
-          >
-            Sign in
-          </button>
         </div>
+
+        {/* Auto-navigate after 2s — session is already live from reset token */}
+        <AutoRedirect />
 
         <style>{`
           @keyframes check-pop {
             0%   { transform: scale(0); }
-            50%  { transform: scale(1.2); }
+            50%  { transform: scale(1.1); }
             100% { transform: scale(1); }
           }
         `}</style>
@@ -256,123 +309,167 @@ export default function ResetPasswordPage() {
   // ══════════════════════════════════════════════════════════
 
   return (
-    <PageShell onKeyDown={handleKeyDown}>
-      {/* Top Bar */}
-      <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <VantageOrb size={44} animate showEntrance={false} />
-      </div>
+    <PageShell>
+      <div onKeyDown={handleKeyDown} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Top Bar */}
+        <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <VantageOrb size={44} animate={false} showEntrance={false} />
+        </div>
 
-      {/* Scrollable content */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: '0 24px 48px',
-        justifyContent: 'center',
-      }}>
-
-        {/* Headline */}
-        <h1 style={{ textAlign: 'center', margin: '0 0 32px' }}>
-          <span style={{ display: 'block', fontFamily: 'var(--font-sans)', fontSize: '38px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
-            Choose a new
-          </span>
-          <span style={{ display: 'block', fontFamily: 'var(--font-serif)', fontSize: '38px', fontWeight: 400, fontStyle: 'italic', color: '#ffffff', lineHeight: 1.2 }}>
-            password.
-          </span>
-        </h1>
-
-        {/* Error banner */}
-        {error && (
-          <div style={{
-            background: 'var(--loss-10)', border: '1px solid var(--loss)',
-            borderRadius: '12px', padding: '12px 16px', display: 'flex',
-            gap: '10px', marginBottom: '16px', width: '100%', maxWidth: '400px',
-          }}>
-            <AlertCircle size={16} color="var(--loss)" style={{ flexShrink: 0, marginTop: '1px' }} />
-            <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', lineHeight: 1.5 }}>
-              {error}
+        {/* Scrollable content */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: '0 24px 48px',
+          justifyContent: 'center',
+        }}>
+          {/* Headline — 36px per spec */}
+          <h1 style={{ textAlign: 'center', margin: '0 0 32px' }}>
+            <span style={{
+              display: 'block',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '36px',
+              fontWeight: 800,
+              color: '#ffffff',
+              lineHeight: 1.2,
+            }}>
+              Choose a new
             </span>
-          </div>
-        )}
+            <span style={{
+              display: 'block',
+              fontFamily: 'var(--font-serif)',
+              fontSize: '36px',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              color: '#ffffff',
+              lineHeight: 1.2,
+            }}>
+              password.
+            </span>
+          </h1>
 
-        {/* Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '400px' }}>
-          {/* New password */}
-          <div>
-            <Input
-              label="NEW PASSWORD"
-              type="password"
-              placeholder="Create a new password"
-              value={newPassword}
-              onChange={(v) => setNewPassword(v)}
-              showToggle
-              disabled={submitting}
-            />
-            <div style={{ marginTop: '4px' }}>
-              <PasswordStrength password={newPassword} />
+          {/* Error banner */}
+          {error && (
+            <div style={{
+              background: 'var(--loss-10)',
+              border: '1px solid var(--loss)',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              display: 'flex',
+              gap: '10px',
+              marginBottom: '16px',
+              width: '100%',
+              maxWidth: '400px',
+            }}>
+              <AlertCircle size={16} color="var(--loss)" style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span style={{
+                fontSize: '14px',
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--font-sans)',
+                lineHeight: 1.5,
+              }}>
+                {error}
+              </span>
+            </div>
+          )}
+
+          {/* Form */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            width: '100%',
+            maxWidth: '400px',
+          }}>
+            {/* New password */}
+            <div>
+              <Input
+                label="NEW PASSWORD"
+                type="password"
+                placeholder="Create a new password"
+                value={newPassword}
+                onChange={(v) => setNewPassword(v)}
+                showToggle
+                disabled={submitting}
+              />
+              <div style={{ marginTop: '4px' }}>
+                <PasswordStrength password={newPassword} />
+              </div>
+            </div>
+
+            {/* Confirm password */}
+            <div>
+              <Input
+                label="CONFIRM PASSWORD"
+                type="password"
+                placeholder="Confirm your new password"
+                value={confirmPassword}
+                onChange={(v) => {
+                  setConfirmPassword(v);
+                  if (!confirmTouched) setConfirmTouched(true);
+                }}
+                showToggle
+                disabled={submitting}
+              />
+              {showMatch && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginTop: '6px',
+                  color: passwordsMatch ? 'var(--gain)' : 'var(--loss)',
+                  fontSize: '13px',
+                  fontFamily: 'var(--font-sans)',
+                  transition: 'color 150ms var(--ease-out)',
+                }}>
+                  {passwordsMatch ? (
+                    <><CheckCircle size={14} /><span>Passwords match</span></>
+                  ) : (
+                    <><span style={{ fontSize: '14px' }}>✕</span><span>Passwords don&apos;t match</span></>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Confirm password */}
-          <div>
-            <Input
-              label="CONFIRM PASSWORD"
-              type="password"
-              placeholder="Confirm your new password"
-              value={confirmPassword}
-              onChange={(v) => {
-                setConfirmPassword(v);
-                if (!confirmTouched) setConfirmTouched(true);
-              }}
-              showToggle
-              disabled={submitting}
-            />
-            {showMatch && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                marginTop: '6px',
-                color: passwordsMatch ? 'var(--gain)' : 'var(--loss)',
-                fontSize: '13px', fontFamily: 'var(--font-sans)',
-                transition: 'color 150ms var(--ease-out)',
-              }}>
-                {passwordsMatch ? (
-                  <><CheckCircle size={14} /><span>Passwords match</span></>
-                ) : (
-                  <><span style={{ fontSize: '14px' }}>✕</span><span>Passwords don&apos;t match</span></>
-                )}
-              </div>
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              height: '56px',
+              borderRadius: '999px',
+              border: 'none',
+              background: canSubmit ? '#ffffff' : 'rgba(255,255,255,0.20)',
+              color: canSubmit ? '#000000' : 'rgba(0,0,0,0.40)',
+              fontSize: '17px',
+              fontWeight: 700,
+              fontFamily: 'var(--font-sans)',
+              cursor: canSubmit ? 'pointer' : 'default',
+              marginTop: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'background 200ms var(--ease-out)',
+            }}
+          >
+            {submitting ? (
+              <><Loader2 size={20} style={{ animation: 'spin-submit 0.7s linear infinite' }} />Updating…</>
+            ) : (
+              'Update password'
             )}
-          </div>
+          </button>
         </div>
 
-        {/* Submit */}
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          style={{
-            width: '100%', maxWidth: '400px', height: '56px', borderRadius: '999px',
-            border: 'none',
-            background: canSubmit ? '#ffffff' : 'rgba(255,255,255,0.20)',
-            color: canSubmit ? '#000000' : 'rgba(0,0,0,0.40)',
-            fontSize: '17px', fontWeight: 700, fontFamily: 'var(--font-sans)',
-            cursor: canSubmit ? 'pointer' : 'default',
-            marginTop: '24px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            transition: 'background 200ms var(--ease-out)',
-          }}
-        >
-          {submitting ? (
-            <><Loader2 size={20} style={{ animation: 'spin-submit 0.7s linear infinite' }} />Updating…</>
-          ) : (
-            'Update password'
-          )}
-        </button>
+        <style>{`@keyframes spin-submit { to { transform: rotate(360deg); } }`}</style>
       </div>
-
-      <style>{`@keyframes spin-submit { to { transform: rotate(360deg); } }`}</style>
     </PageShell>
   );
 }

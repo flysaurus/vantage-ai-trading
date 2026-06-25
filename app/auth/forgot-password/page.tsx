@@ -179,7 +179,7 @@ export default function ForgotPasswordPage() {
           {/* ── Subtext ── */}
           <p
             style={{
-              fontSize: '15px',
+              fontSize: '16px',
               color: 'var(--text-secondary)',
               textAlign: 'center',
               maxWidth: '280px',
