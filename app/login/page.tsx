@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
@@ -26,7 +26,6 @@ const GRADIENT = `radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,
 
 export default function LoginPage() {
   const router = useRouter();
-  const params = useSearchParams();
   const supabase = useMemo(() => {
     if (typeof window === 'undefined') return null;
     return createClient();
@@ -53,9 +52,11 @@ export default function LoginPage() {
     });
   }, [supabase, router]);
 
-  // ── Handle URL error params ─────────────────────────────
+  // ── Handle URL error params (browser-only, avoids useSearchParams SSR crash) ─
   useEffect(() => {
-    const err = params?.get('error');
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('error');
     if (err === 'expired') {
       setBannerError({
         text: 'That link has expired. Request a new magic link.',
@@ -70,7 +71,7 @@ export default function LoginPage() {
     if (err) {
       window.history.replaceState({}, '', '/login');
     }
-  }, [params]);
+  }, []);
 
   // ── Sign in handler ─────────────────────────────────────
   const handleLogin = useCallback(async () => {
