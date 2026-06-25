@@ -3,14 +3,14 @@
 // typewriter support lines + closing line + CTA.
 //
 // Three-zone flex layout (full viewport):
-//   TOP: CompassMark 100px, glow, idleRotate
+//   TOP: VantageMark 100px, idle animate
 //   MIDDLE: centered headline + typewriter lines
 //   BOTTOM: CTA + subtext + sign-in link
 
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 import { useTypewriter } from '@/lib/animations/typewriter';
 
 interface ArrivalScreenProps {
@@ -98,9 +98,9 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
         paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
       }}
     >
-      {/* TOP: CompassMark */}
+      {/* TOP: VantageMark */}
       <div style={{ marginTop: '60px' }}>
-        <CompassMark size={100} showBurst={false} glow idleRotate />
+        <VantageMark size={100} animate />
       </div>
 
       {/* MIDDLE: Headline + typewriter */}

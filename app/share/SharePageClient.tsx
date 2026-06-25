@@ -4,7 +4,7 @@
 
 'use client';
 
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 import { INVESTOR_STYLES, type InvestorStyleKey } from '@/lib/content/investor-styles';
 
 // ─── Props ────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ export function SharePageClient({ styleKey, name }: SharePageClientProps) {
     <div style={sharedStyle}>
       {/* Compass mark — small, idle rotating */}
       <div style={{ marginBottom: '4px' }}>
-        <CompassMark size={48} idleRotate glow />
+        <VantageMark size={48} animate />
       </div>
 
       {/* Headline */}

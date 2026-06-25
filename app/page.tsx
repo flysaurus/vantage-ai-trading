@@ -20,7 +20,7 @@ import { useAuth as useGateAuth } from '@/context/AuthContext';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { BootSplash } from '@/components/onboarding/BootSplash';
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
@@ -454,7 +454,7 @@ function HomeInner() {
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
       }}>
-        <CompassMark size={140} showBurst glow idleRotate={false} />
+        <VantageMark size={140} showBurst animate />
       </div>
     );
   }

@@ -20,14 +20,14 @@ export function useCarouselScroll({
   snapTolerance = 20,
 }: UseCarouselScrollOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const cardRefs = useRef<(HTMLElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const rafRef = useRef<number | null>(null);
   const activeIndexRef = useRef(0);
 
   // Register a card ref
   const registerCard = useCallback(
-    (index: number) => (el: HTMLButtonElement | null) => {
+    (index: number) => (el: HTMLElement | null) => {
       cardRefs.current[index] = el;
     },
     [],

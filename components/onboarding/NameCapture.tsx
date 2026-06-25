@@ -3,14 +3,14 @@
 // NO SKIP — this is a required step.
 //
 // Three-zone flex layout (full viewport):
-//   TOP: CompassMark 48px, subtle idleRotate
+//   TOP: VantageMark 48px, static
 //   MIDDLE: "One last thing" + two Input fields
 //   BOTTOM: CTA button (disabled until both fields filled)
 
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 import Input from '@/components/ui/Input';
 import ScreenTransition from '@/components/layout/ScreenTransition';
 
@@ -44,9 +44,9 @@ export function NameCapture({ onSubmit }: NameCaptureProps) {
           paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        {/* TOP: CompassMark */}
+        {/* TOP: VantageMark */}
         <div style={{ marginBottom: 'var(--space-8)' }}>
-          <CompassMark size={48} showBurst={false} glow={false} idleRotate />
+          <VantageMark size={48} />
         </div>
 
         {/* MIDDLE: content */}

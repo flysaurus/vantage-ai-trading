@@ -6,14 +6,14 @@
 // no localStorage, no Supabase writes yet.
 //
 // Three-zone flex layout (full viewport):
-//   TOP: CompassMark 60px, burst + glow + idleRotate
+//   TOP: VantageMark 80px, burst + animate + activeStyle
 //   MIDDLE: emoji + headline + tag + description + risk badge
 //   BOTTOM: override pills + CTA
 
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import {
   getStyleContent,
@@ -119,13 +119,13 @@ export function StyleReveal({
           overflow: 'auto',
         }}
       >
-        {/* TOP: CompassMark with burst */}
+        {/* TOP: VantageMark with burst */}
         <div style={{ marginBottom: 'var(--space-6)' }}>
-          <CompassMark
-            size={60}
+          <VantageMark
+            size={80}
             showBurst
-            glow
-            idleRotate
+            animate
+            activeStyle={selectedStyle}
             onBurstComplete={handleBurstComplete}
           />
         </div>

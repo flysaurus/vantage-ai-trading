@@ -1,14 +1,16 @@
 // ─── AnswerCarousel ────────────────────────────────────────
 // Horizontal swipeable carousel of answer cards.
 // One card centered at a time with partial peeks at neighbors.
-// Like Tinder/App Store browsing, not a form.
 //
-// Two-step tap logic:
-//   Tap non-centered card → scroll it to center (no selection)
-//   Tap centered card → selection with pulse animation → advance
+// Selection animation (FIX 2):
+//   Tap centered card → DOM-level CSS animation (no React state)
+//   → after 280ms → call onSelect → parent advances question
 //
-// Token sizing: var(--onb-answer-size) 22px for answers,
-// var(--onb-body-color) for text contrast.
+// Card design (FIX 3 — Alinea-style):
+//   Large, round, frosted-glass feel, left-aligned text, generous
+//   padding. Active card: glow border + subtle highlight bg.
+//   Inactive: dimmed, scaled down, clearly de-focused.
+//   No letter badges — dots + position communicate which is which.
 
 'use client';
 
@@ -39,34 +41,35 @@ export function AnswerCarousel({
   const { containerRef, registerCard, activeIndex, scrollToIndex } =
     useCarouselScroll({ cardCount: answers.length });
 
-  const [selecting, setSelecting] = useState<string | null>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const selectingRef = useRef(false);
+
+  const [entranceKey, setEntranceKey] = useState(0);
   const [scrolledOnce, setScrolledOnce] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const swipeHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [entranceKey, setEntranceKey] = useState(0);
 
-  // Bump entrance key when answers change (new question) → fresh keyframe name
+  // Bump entrance key when answers change (new question) → fresh keyframe
   useEffect(() => {
     setEntranceKey((k) => k + 1);
+    // Reset card refs array when question changes
+    cardRefs.current = [];
   }, [answers]);
 
-  // Notify parent of active index changes (for external dots rendering)
+  // Notify parent of active index changes
   useEffect(() => {
     onActiveIndexChange?.(activeIndex);
   }, [activeIndex, onActiveIndexChange]);
 
-  // Swipe hint visibility
+  // Swipe hint — show on first question only
   useEffect(() => {
     if (!isFirstQuestion || hideFooter) return;
     const alreadyShown =
       typeof window !== 'undefined' &&
       sessionStorage.getItem('vantage_swipe_hint_shown') === 'true';
-    if (!alreadyShown) {
-      setShowSwipeHint(true);
-    }
+    if (!alreadyShown) setShowSwipeHint(true);
   }, [isFirstQuestion, hideFooter]);
 
-  // On first scroll, hide the swipe hint permanently
   useEffect(() => {
     if (!showSwipeHint || scrolledOnce) return;
     if (activeIndex !== 0) {
@@ -87,33 +90,56 @@ export function AnswerCarousel({
     };
   }, []);
 
-  const handleTap = useCallback(
-    (index: number) => {
-      if (selecting) return;
+  // ── Card tap: DOM animation first, state update last ──────
+
+  const handleCardTap = useCallback(
+    (index: number, answerKey: string) => {
+      if (selectingRef.current) return;
+
+      const card = cardRefs.current[index];
+      if (!card) return;
+
+      // Not the centered card — scroll it into center
       if (index !== activeIndex) {
         scrollToIndex(index);
         return;
       }
-      const answer = answers[index];
-      setSelecting(answer.key);
+
+      // IS centered — animate selection entirely in DOM layer
+      selectingRef.current = true;
+
+      // Phase 1: scale up + glow border (150ms)
+      card.style.transform = 'scale(1.04)';
+      card.style.borderColor = 'var(--accent)';
+      card.style.boxShadow = '0 0 24px var(--accent-20)';
+      card.style.transition = 'all 150ms var(--ease-spring)';
+      card.style.background = 'rgba(34,211,238,0.08)';
+
+      // Phase 2: scale back to normal (150ms, starting at 150ms)
       setTimeout(() => {
-        onSelect(answer.key);
-        setSelecting(null);
+        card.style.transform = 'scale(1.0)';
+        card.style.transition = 'all 150ms var(--ease-out)';
+      }, 150);
+
+      // Phase 3: after full animation — advance (at 280ms)
+      setTimeout(() => {
+        onSelect(answerKey);
+        selectingRef.current = false;
       }, 280);
     },
-    [activeIndex, selecting, answers, scrollToIndex, onSelect],
+    [activeIndex, scrollToIndex, onSelect],
   );
 
-  const letters = ['A', 'B', 'C', 'D', 'E'];
+  // ── Render ────────────────────────────────────────────────
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Swipe hint (only when not hidden by parent) */}
+      {/* Swipe hint */}
       {!hideFooter && showSwipeHint && (
         <p
           style={{
             fontSize: '13px',
-            color: '#64748b',
+            color: 'var(--text-muted)',
             textAlign: 'center',
             marginBottom: '12px',
             opacity: scrolledOnce ? 0 : 1,
@@ -135,93 +161,79 @@ export function AnswerCarousel({
           touchAction: 'pan-x',
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-          paddingLeft: '11vw',
-          paddingRight: '11vw',
-          gap: '12px',
+          paddingLeft: '9vw',
+          paddingRight: '9vw',
+          gap: '14px',
         }}
       >
         {answers.map((answer, i) => {
-          const isSelected = selecting === answer.key;
+          const isCentered = i === activeIndex;
           const isFirstCard = i === 0;
+
           return (
-            <button
+            <div
               key={answer.key}
-              ref={registerCard(i)}
+              ref={(el) => {
+                cardRefs.current[i] = el;
+                registerCard(i)(el);
+              }}
               className="answer-carousel-card"
-              onClick={() => handleTap(i)}
+              onClick={() => handleCardTap(i, answer.key)}
               style={{
-                minWidth: '78vw',
-                maxWidth: '78vw',
+                minWidth: '82vw',
+                maxWidth: '82vw',
                 scrollSnapAlign: 'center',
                 flexShrink: 0,
-                background: isSelected
-                  ? 'rgba(34, 211, 238, 0.08)'
-                  : '#1a2235',
-                border: '1px solid transparent',
-                borderRadius: '18px',
-                padding: '20px 22px',
-                minHeight: '160px',
+                borderRadius: '20px',
+                padding: '28px 24px',
+                cursor: 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
-                cursor: 'pointer',
-                transform: 'scale(0.9)',
-                opacity: 0.4,
-                transition: 'transform 200ms ease-out, opacity 200ms ease-out, border-color 200ms ease-out',
-                // Selection pulse
-                ...(isSelected && {
-                  transform: 'scale(1.04)',
-                  borderColor: '#22d3ee',
-                  boxShadow: '0 0 24px rgba(34,211,238,0.25)',
-                  textAlign: 'left' as const,
+                // Default (inactive) state
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                transform: 'scale(0.88)',
+                opacity: 0.35,
+                // Centered (active) state
+                ...(isCentered && {
+                  transform: 'scale(1.0)',
+                  opacity: 1,
+                  background: 'rgba(34,211,238,0.05)',
+                  border: '1px solid rgba(34,211,238,0.40)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(34,211,238,0.2)',
                 }),
-                // First card entrance pop (scale 0.92 → 1.02 → 1.0) on question mount
-                ...(isFirstCard && !isSelected && {
+                // First card entrance pop
+                ...(isFirstCard && !isCentered && {
                   animation: `cardEnterPop-${entranceKey} 280ms ease-out`,
                 }),
+                // Smooth transition for all properties
+                transition: 'transform 250ms var(--ease-out), opacity 250ms var(--ease-out), border-color 250ms var(--ease-out), background 250ms var(--ease-out), box-shadow 250ms var(--ease-out)',
+                WebkitTapHighlightColor: 'transparent',
+                userSelect: 'none',
               }}
-              aria-disabled={!!selecting}
             >
-              {/* Letter badge (small, de-emphasized) */}
+              {/* Answer text — left-aligned, Alinea-style */}
               <span
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  background: isSelected
-                    ? '#22d3ee'
-                    : 'rgba(34, 211, 238, 0.12)',
-                  color: isSelected ? '#0a0f1e' : '#64748b',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  marginBottom: '12px',
-                  transition: 'all 150ms ease',
-                }}
-              >
-                {letters[i]}
-              </span>
-
-              {/* Answer text — token-sized */}
-              <span
-                style={{
-                  fontSize: 'var(--onb-answer-size)',
-                  color: isSelected ? '#ffffff' : 'var(--onb-body-color)',
-                  lineHeight: 'var(--onb-answer-line-height)',
-                  fontWeight: isSelected ? 500 : 400,
-                  transition: 'color 150ms ease',
+                  fontSize: '20px',
+                  lineHeight: 1.55,
+                  color: isCentered
+                    ? 'var(--text-primary)'
+                    : 'var(--text-secondary)',
+                  fontWeight: 400,
+                  textAlign: 'left' as const,
+                  transition: 'color 250ms var(--ease-out)',
                 }}
               >
                 {answer.text}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>
 
-      {/* Dot indicator (only when not hidden by parent) */}
+      {/* Dot indicator */}
       {!hideFooter && (
         <CarouselDots total={answers.length} activeIndex={activeIndex} />
       )}
@@ -230,7 +242,7 @@ export function AnswerCarousel({
       <style>{`
         .answer-carousel-scroll::-webkit-scrollbar { display: none; }
         @keyframes cardEnterPop-${entranceKey} {
-          0%   { transform: scale(0.92); opacity: 0.4; }
+          0%   { transform: scale(0.92); opacity: 0.3; }
           60%  { transform: scale(1.02); opacity: 0.85; }
           100% { transform: scale(1.0); opacity: 1.0; }
         }

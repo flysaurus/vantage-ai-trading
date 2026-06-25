@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 
 const DURATION = 1500;
 const WORDMARK_DELAY = 600;
@@ -56,7 +56,7 @@ export function BootSplash({ onComplete }: BootSplashProps) {
       }}
     >
       {/* Compass */}
-      <CompassMark size={120} showBurst glow idleRotate={false} />
+      <VantageMark size={140} showBurst animate />
 
       {/* Wordmark */}
       <div style={{ textAlign: 'center', opacity: showWordmark ? 1 : 0, transition: 'opacity 300ms var(--ease-out)' }}>

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
-import { CompassMark } from '@/components/brand/CompassMark';
+import { VantageMark } from '@/components/brand/VantageMark';
 
 const LINES = [
   ['Beyond buy buttons.', 'Actual insight.'],
@@ -98,9 +98,9 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
         />
       ))}
 
-      {/* Top: CompassMark */}
+      {/* Top: VantageMark */}
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '60px' }}>
-        <CompassMark size={56} showBurst={false} glow idleRotate />
+        <VantageMark size={56} animate />
       </div>
 
       {/* Skip button */}
