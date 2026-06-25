@@ -11,7 +11,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 
 // Root, onboarding, and share are completely public — no auth required.
-const PUBLIC_PATHS = ['/', '/onboarding', '/share', '/login', '/create-account'];
+const PUBLIC_PATHS = ['/', '/onboarding', '/share', '/login', '/create-account', '/auth/forgot-password', '/auth/reset', '/auth/complete'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
