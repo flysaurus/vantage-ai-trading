@@ -31,7 +31,7 @@ export default function Input({
   onBlur,
 }: InputProps) {
   const [visible, setVisible] = useState(false);
-  const inputType = showToggle && !visible ? 'password' : type === 'password' && !showToggle ? 'password' : type;
+  const inputType = showToggle ? (visible ? 'text' : 'password') : type;
 
   return (
     <div style={{ width: '100%' }}>
