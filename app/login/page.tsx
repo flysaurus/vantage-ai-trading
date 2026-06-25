@@ -6,7 +6,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
@@ -23,7 +23,10 @@ function isValidEmail(email: string): boolean {
 
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return createClient();
+  }, []);
 
   // ── Screen state ───────────────────────────────────────
   const [screen, setScreen] = useState<'login' | 'forgot' | 'sent'>('login');
@@ -56,7 +59,7 @@ export default function LoginPage() {
 
   // ── Login handler ──────────────────────────────────────
   const handleLogin = useCallback(async () => {
-    if (!canLogin) return;
+    if (!canLogin || !supabase) return;
     setSubmitting(true);
     setError('');
 
@@ -80,6 +83,7 @@ export default function LoginPage() {
 
   // ── Google OAuth ───────────────────────────────────────
   const handleGoogleLogin = useCallback(async () => {
+    if (!supabase) return;
     setSubmitting(true);
     setError('');
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -96,7 +100,7 @@ export default function LoginPage() {
 
   // ── Forgot password handler ─────────────────────────────
   const handleForgotSubmit = useCallback(async () => {
-    if (!isValidEmail(forgotEmail) || forgotSubmitting) return;
+    if (!isValidEmail(forgotEmail) || forgotSubmitting || !supabase) return;
     setForgotSubmitting(true);
     setError('');
 
@@ -112,7 +116,7 @@ export default function LoginPage() {
 
   // ── Resend handler ─────────────────────────────────────
   const handleResend = useCallback(async () => {
-    if (resendCooldown > 0) return;
+    if (resendCooldown > 0 || !supabase) return;
     setForgotSubmitting(true);
 
     await supabase.auth.resetPasswordForEmail(forgotSentTo, {

@@ -6,7 +6,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
@@ -18,7 +18,10 @@ import { createClient } from '@/lib/supabase';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return createClient();
+  }, []);
 
   // ── State ───────────────────────────────────────────────
   const [screen, setScreen] = useState<'loading' | 'form' | 'success' | 'expired'>('loading');
@@ -46,6 +49,7 @@ export default function ResetPasswordPage() {
   // ── Check session on mount ──────────────────────────────
   useEffect(() => {
     async function check() {
+      if (!supabase) return;
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         setScreen('form');
@@ -65,7 +69,7 @@ export default function ResetPasswordPage() {
 
   // ── Submit handler ──────────────────────────────────────
   const handleSubmit = useCallback(async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !supabase) return;
     setSubmitting(true);
     setError('');
 
