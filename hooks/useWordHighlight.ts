@@ -5,7 +5,10 @@
 //
 // Usage:
 //   const { words, activeIndex, completedIndices, isComplete, skip } =
-//     useWordHighlight(description, 400, paused, onComplete);
+//     useWordHighlight(description, 400, restartToken, onComplete);
+//
+// restartToken: increment to force a fresh animation (e.g.
+//   when the description becomes visible or text changes).
 
 'use client';
 
@@ -30,7 +33,7 @@ interface UseWordHighlightResult {
 export function useWordHighlight(
   text: string,
   startDelay: number = 0,
-  paused: boolean = false,
+  restartToken: number = 0,
   onComplete?: () => void,
 ): UseWordHighlightResult {
   const words = text.split(' ');
@@ -43,6 +46,7 @@ export function useWordHighlight(
 
   const skip = useCallback(() => {
     if (isComplete) return;
+    console.log('[useWordHighlight] skip() called');
     skippedRef.current = true;
     const all = new Set<number>();
     for (let i = 0; i < words.length; i++) all.add(i);
@@ -53,22 +57,35 @@ export function useWordHighlight(
   }, [words.length, isComplete]);
 
   useEffect(() => {
-    // Reset state whenever text or paused changes
+    let cancelled = false;
+    skippedRef.current = false;
+
+    // Always reset state on restart
     setActiveIndex(-1);
     setCompletedIndices(new Set());
     setIsComplete(false);
 
-    // Don't run while paused
-    if (paused) return;
-
-    let cancelled = false;
-    skippedRef.current = false;
+    console.log(
+      '[useWordHighlight] start token=%d words=%d text="%s..." delay=%d',
+      restartToken,
+      words.length,
+      text.slice(0, 30),
+      startDelay,
+    );
 
     async function run() {
       await sleep(startDelay);
 
       for (let i = 0; i < words.length; i++) {
-        if (cancelled || skippedRef.current) return;
+        if (cancelled || skippedRef.current) {
+          console.log('[useWordHighlight] cancelled at word %d', i);
+          return;
+        }
+
+        const visible = document.visibilityState !== 'hidden';
+        if (visible) {
+          console.log('[useWordHighlight] highlight word %d: "%s"', i, words[i]);
+        }
 
         setActiveIndex(i);
         await sleep(WORD_MS);
@@ -85,6 +102,7 @@ export function useWordHighlight(
 
       if (!cancelled && !skippedRef.current) {
         await sleep(SETTLE_MS);
+        console.log('[useWordHighlight] complete — all %d words highlighted', words.length);
         setIsComplete(true);
         onCompleteRef.current?.();
       }
@@ -95,7 +113,7 @@ export function useWordHighlight(
     return () => {
       cancelled = true;
     };
-  }, [text, startDelay, paused]);
+  }, [text, startDelay, restartToken]);
 
   return { words, activeIndex, completedIndices, isComplete, skip };
 }

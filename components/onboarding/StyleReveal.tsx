@@ -99,18 +99,31 @@ export function StyleReveal({
 
   // ── Word highlight callback (fires on completion) ──────
   const handleWordHighlightComplete = () => {
+    console.log('[StyleReveal] onComplete — showing risk badge');
     setShowRisk(true);
     setTimeout(() => setShowOverride(true), 300);
   };
 
-  // ── Word highlight hook (paused until descVisible) ─────
+  // ── Word highlight restart token (only bumps when visible) ──
+  const [highlightToken, setHighlightToken] = useState(0);
+  const descVisibleRef = useRef(descVisible);
+  descVisibleRef.current = descVisible;
+
+  useEffect(() => {
+    if (descVisible) {
+      console.log('[StyleReveal] descVisible=true, bumping highlightToken');
+      setHighlightToken((t) => t + 1);
+    }
+  }, [descVisible, description]);
+
+  // ── Word highlight hook ────────────────────────────────
   const {
     words,
     activeIndex: activeWordIndex,
     completedIndices,
     isComplete: wordsComplete,
     skip: skipWords,
-  } = useWordHighlight(description, 200, !descVisible, handleWordHighlightComplete);
+  } = useWordHighlight(description, 200, highlightToken, handleWordHighlightComplete);
 
   // ── Typewriter headlines ─────────────────────────────────
   const [line1Done, setLine1Done] = useState(false);
@@ -134,8 +147,9 @@ export function StyleReveal({
   // ── Line 2 done → stagger reveals ──────────────────────
   useEffect(() => {
     if (!l2Done) return;
+    console.log('[StyleReveal] typewriter done — staggering reveals');
     const t1 = setTimeout(() => setShowTag(true), 200);
-    const t2 = setTimeout(() => setDescVisible(true), 500);
+    const t2 = setTimeout(() => { console.log('[StyleReveal] setting descVisible=true'); setDescVisible(true); }, 500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [l2Done]);
 
@@ -149,6 +163,7 @@ export function StyleReveal({
   // ── Override: emoji cross-fade, rerun animation ─────────
   const handleOverride = (style: InvestorStyleKey) => {
     if (style === selectedStyle) return;
+    console.log('[StyleReveal] override:', style);
     setEmojiOpacity(0);
     setShowTag(false);
     setDescVisible(false);
@@ -178,7 +193,10 @@ export function StyleReveal({
 
   // ── Tap-to-skip word highlight ──────────────────────────
   const handleScreenTap = () => {
-    if (descVisible && !wordsComplete) skipWords();
+    if (descVisible && !wordsComplete) {
+      console.log('[StyleReveal] screen tap — skipping word highlight');
+      skipWords();
+    }
   };
 
   return (
