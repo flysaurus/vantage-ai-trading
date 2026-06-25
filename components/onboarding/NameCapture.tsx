@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import { VantageMark } from '@/components/brand/VantageMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 interface NameCaptureProps {
   onSubmit: (firstName: string, lastName: string) => void;
@@ -91,7 +91,7 @@ export function NameCapture({ onSubmit, onBack }: NameCaptureProps) {
             paddingTop: 'env(safe-area-inset-top, 0px)',
           }}
         >
-          <VantageMark size={36} />
+          <VantageOrb size={44} animate showEntrance={false} />
         </div>
       </div>
 
@@ -138,19 +138,6 @@ export function NameCapture({ onSubmit, onBack }: NameCaptureProps) {
         </h2>
 
         {/* Narrator line */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            marginBottom: '4px',
-          }}
-        >
-          <VantageMark size={16} />
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Vantage AI
-          </span>
-        </div>
         <p
           style={{
             fontSize: '14px',
@@ -158,7 +145,6 @@ export function NameCapture({ onSubmit, onBack }: NameCaptureProps) {
             fontWeight: 400,
             lineHeight: 1.5,
             margin: '0 0 24px',
-            paddingLeft: '22px',
           }}
         >
           We'll use your name to personalize everything — your greeting, your AI advisor, your reports.

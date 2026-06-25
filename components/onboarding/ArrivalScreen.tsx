@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { VantageMark } from '@/components/brand/VantageMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 const LINES = [
   'Buffett waits decades.',
@@ -124,7 +124,7 @@ export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
         }}
       >
         {/* Constellation mark */}
-        <VantageMark size={36} />
+        <VantageOrb size={44} animate showEntrance={false} />
 
         {/* Sign-in link */}
         <button

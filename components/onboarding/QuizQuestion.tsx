@@ -1,10 +1,10 @@
 // ─── QuizQuestion ───────────────────────────────────────────
-// Full redesign: stacked answer cards (A/B/C/D), white pill
-// Continue, two-line headline system, gradient backgrounds.
-// No carousel — cards are a vertical stack. No narrator.
+// Stacked answer cards with A/B/C/D letter labels, white pill
+// Continue, two-line headline system. No narrator. VantageOrb
+// in top bar instead of constellation.
 //
 // Layout (full-height flex column):
-//   TOP BAR:    56px — Back (left) + VantageMark (center)
+//   TOP BAR:    56px — Back (left) + VantageOrb 44px (center)
 //   PROGRESS:   5-segment bar, 3px tall
 //   QUESTION:   label + two-line headline (sans+serif)
 //   CARDS:      full-width vertical stack, single-select
@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import { VantageMark } from '@/components/brand/VantageMark';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { QuizQuestion as QuizQuestionType } from '@/lib/onboarding/quiz-logic';
 
 // ── Two-line question splits ──────────────────────────────
@@ -27,9 +27,7 @@ const QUESTION_LINES: Record<string, [string, string]> = {
   q5: ['Are you usually a', 'risk-taker with money?'],
 };
 
-// ── Answer option labels ─────────────────────────────────
-
-const OPTION_LABELS = ['A', 'B', 'C', 'D'];
+const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'];
 
 interface QuizQuestionProps {
   question: QuizQuestionType;
@@ -138,7 +136,7 @@ export function QuizQuestion({
           </button>
         )}
 
-        {/* Center: VantageMark */}
+        {/* Center: VantageOrb (small pulsing sphere) */}
         <div
           style={{
             position: 'absolute',
@@ -148,7 +146,7 @@ export function QuizQuestion({
             paddingTop: 'env(safe-area-inset-top, 0px)',
           }}
         >
-          <VantageMark size={36} />
+          <VantageOrb size={44} animate showEntrance={false} />
         </div>
       </div>
 
@@ -252,35 +250,26 @@ export function QuizQuestion({
                 onClick={() => handleTap(opt.key)}
                 style={{
                   width: '100%',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 0,
                   padding: '18px 20px',
                   background: isSelected
-                    ? 'rgba(34,211,238,0.10)'
+                    ? 'rgba(34,211,238,0.08)'
                     : hasSelection
                       ? 'rgba(255,255,255,0.03)'
-                      : 'rgba(255,255,255,0.06)',
+                      : 'rgba(255,255,255,0.05)',
                   border: isSelected
                     ? '1px solid var(--accent)'
                     : hasSelection
                       ? '1px solid rgba(255,255,255,0.05)'
                       : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '18px',
-                  textAlign: 'left' as const,
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: '17px',
-                  fontWeight: 500,
-                  color: isSelected
-                    ? 'var(--text-primary)'
-                    : hasSelection
-                      ? 'var(--text-secondary)'
-                      : 'var(--text-primary)',
-                  lineHeight: 1.4,
                   cursor: 'pointer',
                   transition: 'all 150ms var(--ease-out)',
                   opacity: hasSelection && !isSelected ? 0.6 : 1,
                   WebkitTapHighlightColor: 'transparent',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px',
                 }}
                 onTouchStart={(e) => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(0.98)';
@@ -289,30 +278,53 @@ export function QuizQuestion({
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
                 }}
               >
-                {/* Option label badge */}
+                {/* Letter label badge */}
                 <span
                   style={{
                     flexShrink: 0,
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: 700,
                     fontFamily: 'var(--font-sans)',
-                    background: isSelected
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: isSelected
                       ? 'var(--accent)'
-                      : 'rgba(255,255,255,0.12)',
-                    color: isSelected ? '#000000' : 'rgba(255,255,255,0.60)',
-                    transition: 'background 150ms var(--ease-out), color 150ms var(--ease-out)',
-                    marginTop: '1px',
+                      : 'rgba(255,255,255,0.35)',
+                    background: isSelected
+                      ? 'rgba(34,211,238,0.15)'
+                      : 'rgba(255,255,255,0.06)',
+                    border: isSelected
+                      ? '1px solid rgba(34,211,238,0.40)'
+                      : '1px solid transparent',
+                    transition: 'all 150ms var(--ease-out)',
                   }}
                 >
                   {label}
                 </span>
-                <span style={{ flex: 1 }}>{opt.text}</span>
+
+                {/* Answer text */}
+                <span
+                  style={{
+                    flex: 1,
+                    paddingLeft: '14px',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '17px',
+                    fontWeight: 500,
+                    lineHeight: 1.4,
+                    color: isSelected
+                      ? 'var(--text-primary)'
+                      : hasSelection
+                        ? 'var(--text-secondary)'
+                        : 'var(--text-primary)',
+                    textAlign: 'left' as const,
+                  }}
+                >
+                  {opt.text}
+                </span>
               </button>
             );
           })}

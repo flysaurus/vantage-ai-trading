@@ -16,7 +16,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import {
   getStyleContent,
@@ -82,6 +82,11 @@ export function StyleReveal({
   const [emojiPhase, setEmojiPhase] = useState<'entering' | 'visible'>('entering');
   const [emojiOpacity, setEmojiOpacity] = useState(1);
 
+  // Override confirmation toast
+  const [toastText, setToastText] = useState<string | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const trait = getStyleTrait(selectedStyle);
   const tag = getStyleTag(selectedStyle);
   const emoji = getStyleEmoji(selectedStyle);
@@ -122,16 +127,27 @@ export function StyleReveal({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5); };
   }, [l2Done]);
 
-  // Override: emoji fades out/in, glow transitions
+  // Override: emoji fades out/in, glow transitions, shows toast
   const handleOverride = (style: InvestorStyleKey) => {
     if (style === selectedStyle) return;
     setEmojiOpacity(0);
     setShowTag(false);
     setShowDescription(false);
     setShowRisk(false);
+    const label = getStyleContent(style).shortLabel;
     setTimeout(() => {
       setSelectedStyle(style);
       setEmojiOpacity(1);
+
+      // Show confirmation toast
+      setToastText(`Updated to ${label}`);
+      setToastVisible(true);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => {
+        setToastVisible(false);
+        setTimeout(() => setToastText(null), 200);
+      }, 1500);
+
       setTimeout(() => {
         setShowTag(true);
         setTimeout(() => setShowDescription(true), 300);
@@ -372,6 +388,27 @@ export function StyleReveal({
           })}
         </div>
       </div>
+
+      {/* ── OVERRIDE CONFIRMATION TOAST ── */}
+      {toastText && (
+        <div
+          style={{
+            background: 'rgba(34,211,238,0.12)',
+            border: '1px solid rgba(34,211,238,0.30)',
+            borderRadius: '999px',
+            padding: '6px 14px',
+            fontSize: '13px',
+            color: 'var(--accent)',
+            textAlign: 'center' as const,
+            marginTop: '8px',
+            marginBottom: '8px',
+            opacity: toastVisible ? 1 : 0,
+            transition: 'opacity 200ms var(--ease-out)',
+          }}
+        >
+          {toastText}
+        </div>
+      )}
 
       {/* ── CONTINUE BUTTON ── */}
       <div style={{ width: '100%', maxWidth: '360px', marginTop: 'auto' }}>

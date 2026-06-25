@@ -38,7 +38,21 @@ export default function OnboardingPage() {
     });
   }, [router]);
 
-  const [screen, setScreen] = useState<Screen>('boot');
+  const [screen, setScreen] = useState<Screen>(() => {
+    // Check for retake flag (set from Settings → Retake quiz / Change style)
+    if (typeof window !== 'undefined') {
+      const retake = sessionStorage.getItem('vantage_onboarding_retake');
+      if (retake === 'quiz') {
+        sessionStorage.removeItem('vantage_onboarding_retake');
+        return 'quiz';
+      }
+      if (retake === 'reveal') {
+        sessionStorage.removeItem('vantage_onboarding_retake');
+        return 'reveal';
+      }
+    }
+    return 'boot';
+  });
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [firstName, setFirstName] = useState('');

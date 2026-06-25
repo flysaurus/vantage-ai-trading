@@ -120,17 +120,17 @@ export function VantageOrb({
         }}
       />
 
-      {/* Layer 4 — Specular highlight */}
+      {/* Layer 4 — Specular highlight (min 16px for small sizes) */}
       <div
         style={{
           position: 'absolute',
-          width: s(60),
-          height: s(60),
+          width: Math.max(s(60), 16),
+          height: Math.max(s(60), 16),
           borderRadius: '50%',
-          top: s(32),
-          left: s(38),
+          top: s(32) * (Math.max(s(60), 16) / s(60)),
+          left: s(38) * (Math.max(s(60), 16) / s(60)),
           background: `radial-gradient(circle, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.40) 40%, transparent 70%)`,
-          filter: `blur(${4 * scale}px)`,
+          filter: `blur(${Math.max(4 * scale, 1.5)}px)`,
           ...layerBaseStyle(400),
         }}
       />

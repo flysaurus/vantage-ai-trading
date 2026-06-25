@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings2, Bell, Shield, Eye, X, ChevronRight } from 'lucide-react';
+import { Settings2, Bell, Shield, Eye, X, ChevronRight, RefreshCw, User } from 'lucide-react';
 
 // ─── localStorage keys ───────────────────────────────────────
 const PREFS_KEY = 'vantage:preferences';
+const STYLE_KEY = 'vantage:investor_style';
 
 interface PrefsData {
   emailAlerts: boolean;
@@ -24,10 +25,19 @@ function savePrefs(prefs: PrefsData) {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 }
 
+function loadStyle(): { style: string; trait: string } | null {
+  try {
+    const raw = localStorage.getItem(STYLE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
 // ─── Page ────────────────────────────────────────────────────
 export default function PreferencesPage() {
   const router = useRouter();
   const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
+  const [investorStyle, setInvestorStyle] = useState(loadStyle);
 
   useEffect(() => {
     savePrefs(prefs);
@@ -164,6 +174,69 @@ export default function PreferencesPage() {
               <ChevronRight size={14} style={{ color: '#475569' }} />
             </div>
           </div>
+
+          {/* Investor Profile */}
+          {investorStyle && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                Investor Profile
+              </div>
+              <div style={{
+                padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <User size={15} style={{ color: '#06b6d4' }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{investorStyle.style}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>{investorStyle.trait}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem(STYLE_KEY);
+                      sessionStorage.setItem('vantage_onboarding_retake', 'quiz');
+                      router.push('/onboarding');
+                    }}
+                    style={{
+                      flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: '1px solid #334155', background: 'transparent', color: '#94a3b8',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <RefreshCw size={12} />
+                    Retake quiz
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No style set yet */}
+          {!investorStyle && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                Investor Profile
+              </div>
+              <div
+                onClick={() => router.push('/onboarding')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <User size={15} style={{ color: '#475569' }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Set your investor style</div>
+                    <div style={{ fontSize: 11, color: '#475569' }}>Discover your approach in 2 minutes</div>
+                  </div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#475569' }} />
+              </div>
+            </div>
+          )}
 
           <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', marginTop: 8 }}>
             Preferences are saved locally on this device.
