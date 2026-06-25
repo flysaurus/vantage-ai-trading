@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import { useWordHighlight } from '@/hooks/useWordHighlight';
+import { ChevronLeft } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import {
   getStyleContent,
@@ -53,6 +54,7 @@ interface StyleRevealProps {
   risk: RiskTolerance;
   firstName: string;
   lastName: string;
+  onBack?: () => void;
   onCreateAccount: (data: {
     style: InvestorStyleKey;
     risk: RiskTolerance;
@@ -66,6 +68,7 @@ export function StyleReveal({
   risk: initialRisk,
   firstName,
   lastName,
+  onBack,
   onCreateAccount,
 }: StyleRevealProps) {
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyleKey>(initialStyle);
@@ -194,6 +197,28 @@ export function StyleReveal({
     >
       {/* ═══ TOP BAR ═══ */}
       <div className="style-reveal-topbar">
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={{
+              position: 'absolute',
+              left: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px 0',
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '15px',
+            }}
+          >
+            <ChevronLeft size={20} />
+            Back
+          </button>
+        )}
         <VantageOrb size={36} animate={false} showEntrance={false} />
       </div>
 

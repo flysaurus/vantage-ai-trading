@@ -1,92 +1,23 @@
-// ─── Auth Context (Minimal Supabase) ─────────────────────────
-// Minimal Supabase auth context used by the page router.
-// getSession() called immediately on mount to fix session
-// hydration after magic link redirect.
-// onAuthStateChange as backup for live updates.
-// No profile fetching — that stays in the full AuthProvider.
+// ─── Auth Context (Minimal) ─────────────────────────────────
+// Thin wrapper around useAppState — makes auth state available
+// via hook to any component without prop-drilling.
+// useAppState is the single source of truth.
 
 'use client';
-import { createContext, useContext, useEffect, useState } from 'react';
-import type { User, Session } from '@supabase/supabase-js';
-import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import { createContext, useContext } from 'react';
+import { useAppState, type AppStateResult } from '@/lib/app-state';
 
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  tier: 'demo' | 'silver' | 'gold';
-}
-
-const AuthContext = createContext<AuthContextType>({
+const AuthContext = createContext<AppStateResult>({
+  state: 'loading',
   user: null,
-  session: null,
-  loading: true,
-  tier: 'demo',
+  profile: null,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const supabase = getSupabaseBrowserClient();
-
-  useEffect(() => {
-    let resolved = false;
-
-    // Safety timeout: if nothing resolves within 5s, bail out
-    const safetyTimer = setTimeout(() => {
-      if (!resolved) {
-        console.warn('[AuthContext] Session check timed out — proceeding as unauthenticated');
-        setLoading(false);
-        resolved = true;
-      }
-    }, 5000);
-
-    // Get initial session immediately
-    supabase.auth.getSession()
-      .then(({ data }) => {
-        if (!resolved) {
-          setSession(data.session);
-          setUser(data.session?.user ?? null);
-          setLoading(false);
-          resolved = true;
-        }
-      })
-      .catch((err) => {
-        console.error('[AuthContext] getSession failed:', err.message);
-        if (!resolved) {
-          setLoading(false);
-          resolved = true;
-        }
-      });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!resolved) {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-        resolved = true;
-      }
-    });
-
-    return () => {
-      clearTimeout(safetyTimer);
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
+  const appState = useAppState();
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        loading,
-        tier: 'demo',
-      }}
-    >
+    <AuthContext.Provider value={appState}>
       {children}
     </AuthContext.Provider>
   );
