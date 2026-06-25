@@ -1,138 +1,118 @@
 // ─── FeatureSplash ──────────────────────────────────────────
-// First-time-only feature intro shown after BootSplash.
-// Three auto-advancing taglines with progress dots.
-// No localStorage — only new users in the onboarding flow see this.
+// Full redesign: bg-onboarding-0 gradient, two-line headlines
+// per slide, progress bar (3 segments), VantageMark glow orb.
+//
+// Layout:
+//   TOP RIGHT:  "Skip" button
+//   CENTER:     VantageMark glow orb + two-line headlines
+//   BOTTOM:     progress bar (3 segments) + white pill Continue
 
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X } from 'lucide-react';
 import { VantageMark } from '@/components/brand/VantageMark';
 
-const LINES = [
+const SLIDES = [
   ['Beyond buy buttons.', 'Actual insight.'],
   ['Five styles.', "One that's actually yours."],
-  ['The AI-powered portfolio advisor', 'that fits in your pocket.'],
+  ['The AI-powered advisor', 'that fits in your pocket.'],
 ];
 
-const IN_DURATION = 300;
-const OUT_DURATION = 250;
-const HOLD_DURATIONS = [1200, 1200, 1400];
-
-const PARTICLES = [
-  { size: 5, x: 12, duration: 9, delay: 0, drift: 18 },
-  { size: 4, x: 35, duration: 11, delay: 2, drift: -14 },
-  { size: 6, x: 58, duration: 10, delay: 4, drift: 20 },
-  { size: 4, x: 78, duration: 12, delay: 6, drift: -16 },
-  { size: 5, x: 22, duration: 8, delay: 8, drift: 12 },
-];
+const AUTO_ADVANCE_MS = 2000;
 
 interface FeatureSplashProps {
   onComplete: () => void;
 }
 
 export function FeatureSplash({ onComplete }: FeatureSplashProps) {
-  const [activeLine, setActiveLine] = useState(0);
-  const [lineState, setLineState] = useState<'in' | 'hold' | 'out'>('in');
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [slideState, setSlideState] = useState<'in' | 'visible'>('in');
   const finished = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const advance = useCallback((currentLine: number) => {
+  // Auto-advance
+  useEffect(() => {
     if (finished.current) return;
 
-    if (currentLine >= LINES.length - 1) {
-      // Last line: hold longer, then finish
-      setTimeout(() => {
-        if (!finished.current) {
-          finished.current = true;
-          onComplete();
-        }
-      }, HOLD_DURATIONS[currentLine] + OUT_DURATION);
-      return;
+    // Small delay for "in" animation, then auto-advance
+    const t = setTimeout(() => {
+      setSlideState('visible');
+    }, 400);
+
+    const auto = setTimeout(() => {
+      if (finished.current) return;
+      if (activeSlide < SLIDES.length - 1) {
+        setSlideState('in');
+        setActiveSlide((prev) => prev + 1);
+      } else {
+        finished.current = true;
+        onComplete();
+      }
+    }, AUTO_ADVANCE_MS);
+
+    timerRef.current = auto;
+    return () => {
+      clearTimeout(t);
+      clearTimeout(auto);
+    };
+  }, [activeSlide, onComplete]);
+
+  const handleContinue = useCallback(() => {
+    if (finished.current) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    if (activeSlide < SLIDES.length - 1) {
+      setSlideState('in');
+      setActiveSlide((prev) => prev + 1);
+    } else {
+      finished.current = true;
+      onComplete();
     }
+  }, [activeSlide, onComplete]);
 
-    // Transition to next line
-    const holdTime = HOLD_DURATIONS[currentLine];
-    const holdTimer = setTimeout(() => {
-      setLineState('out');
-      const outTimer = setTimeout(() => {
-        setActiveLine((prev) => prev + 1);
-        setLineState('in');
-      }, OUT_DURATION);
-      return () => clearTimeout(outTimer);
-    }, holdTime);
-
-    return () => clearTimeout(holdTimer);
+  const handleSkip = useCallback(() => {
+    if (finished.current) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    finished.current = true;
+    onComplete();
   }, [onComplete]);
 
-  useEffect(() => {
-    advance(activeLine);
-  }, [activeLine, advance]);
+  const [line1, line2] = SLIDES[activeSlide];
 
   return (
     <div
+      className="bg-onboarding-0"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 200,
-        background: 'var(--bg-primary)',
+        width: '100%',
+        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
+        alignItems: 'center',
+        paddingTop: 'max(24px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
       }}
     >
-      {/* Ambient particles */}
-      {PARTICLES.map((p, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            left: `${p.x}%`,
-            bottom: '-10px',
-            width: `${p.size}px`,
-            height: `${p.size}px`,
-            borderRadius: '50%',
-            background: 'rgba(34,211,238,0.4)',
-            filter: 'blur(2px)',
-            animation: `feature-particle ${p.duration}s ${p.delay}s linear infinite`,
-          }}
-        />
-      ))}
-
-      {/* Top: VantageMark */}
-      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '60px' }}>
-        <VantageMark size={56} animate />
-      </div>
-
-      {/* Skip button */}
+      {/* ── TOP RIGHT: Skip ── */}
       <button
-        onClick={() => {
-          if (!finished.current) {
-            finished.current = true;
-            onComplete();
-          }
-        }}
+        onClick={handleSkip}
         style={{
           position: 'absolute',
-          top: 'max(20px, env(safe-area-inset-top, 0px))',
-          right: '20px',
+          top: 'max(56px, env(safe-area-inset-top, 56px))',
+          right: '24px',
           background: 'none',
           border: 'none',
-          color: 'var(--text-muted)',
+          color: 'rgba(255,255,255,0.40)',
           fontSize: '13px',
           cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-1)',
-          fontFamily: 'inherit',
-          padding: 'var(--space-2) var(--space-3)',
+          fontFamily: 'var(--font-sans)',
+          padding: '8px',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        <X size={16} />
         Skip
       </button>
 
-      {/* Center: auto-advancing lines */}
+      {/* ── CENTER ── */}
       <div
         style={{
           flex: 1,
@@ -140,64 +120,99 @@ export function FeatureSplash({ onComplete }: FeatureSplashProps) {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingBottom: '80px',
+          padding: '0 24px',
         }}
       >
+        {/* VantageMark glow orb */}
+        <div style={{ marginBottom: '48px' }}>
+          <VantageMark size={100} animate />
+        </div>
+
+        {/* Two-line headline per slide */}
         <div
           style={{
-            opacity: lineState === 'in' ? 1 : lineState === 'out' ? 0 : 0,
-            transition: `opacity ${lineState === 'in' ? IN_DURATION : OUT_DURATION}ms var(--ease-out)`,
             textAlign: 'center',
+            opacity: slideState === 'visible' ? 1 : 0,
+            transform: slideState === 'visible' ? 'translateY(0)' : 'translateY(12px)',
+            transition: 'opacity 600ms var(--ease-out), transform 600ms var(--ease-out)',
           }}
         >
-          {LINES[activeLine].map((text, i) => (
-            <p
-              key={i}
-              style={{
-                fontSize: '30px',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                lineHeight: 1.4,
-                margin: 0,
-              }}
-            >
-              {text}
-            </p>
-          ))}
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '36px',
+              fontWeight: 800,
+              color: 'var(--text-primary)',
+              lineHeight: 1.15,
+              marginBottom: '4px',
+            }}
+          >
+            {line1}
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-serif)',
+              fontSize: '36px',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              color: 'var(--text-primary)',
+              lineHeight: 1.15,
+            }}
+          >
+            {line2}
+          </span>
         </div>
       </div>
 
-      {/* Bottom: progress dots */}
+      {/* ── BOTTOM: Progress + Continue ── */}
       <div
         style={{
+          width: '100%',
+          padding: '0 24px',
           display: 'flex',
-          justifyContent: 'center',
-          gap: 'var(--space-2)',
-          paddingBottom: '40px',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '24px',
         }}
       >
-        {LINES.map((_, i) => (
-          <div
-            key={i}
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: i === activeLine ? 'var(--accent)' : 'var(--text-muted)',
-              transition: 'background 300ms var(--ease-out)',
-            }}
-          />
-        ))}
-      </div>
+        {/* Progress bar (3 segments) */}
+        <div style={{ display: 'flex', gap: '2px', width: '100%', maxWidth: '200px' }}>
+          {SLIDES.map((_, i) => (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                height: '3px',
+                borderRadius: '1px',
+                background: i <= activeSlide ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                transition: 'background 300ms ease-out',
+              }}
+            />
+          ))}
+        </div>
 
-      <style>{`
-        @keyframes feature-particle {
-          0%   { transform: translateY(0) translateX(0); opacity: 0; }
-          10%  { opacity: 0.6; }
-          90%  { opacity: 0.6; }
-          100% { transform: translateY(-110vh) translateX(${PARTICLES[0].drift}px); opacity: 0; }
-        }
-      `}</style>
+        {/* Continue button */}
+        <button
+          onClick={handleContinue}
+          style={{
+            width: '100%',
+            maxWidth: '360px',
+            height: '56px',
+            borderRadius: 'var(--radius-pill)',
+            border: 'none',
+            background: '#ffffff',
+            color: '#000000',
+            fontSize: '17px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-sans)',
+            cursor: 'pointer',
+          }}
+        >
+          Continue
+        </button>
+      </div>
     </div>
   );
 }

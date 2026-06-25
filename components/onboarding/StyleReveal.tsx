@@ -1,18 +1,22 @@
 // ─── StyleReveal ───────────────────────────────────────────
-// Final onboarding reveal: burst-in compass, typewriter headline,
-// style tag, description, risk badge, override pills, CTA.
+// Full redesign: bg-onboarding-reveal gradient, emoji hero
+// with colored glow, two-line typewriter headline, staggered
+// tag/description/risk, override pills, white pill CTA.
 //
-// Data stays in React state until account creation —
-// no localStorage, no Supabase writes yet.
-//
-// Three-zone flex layout (full viewport):
-//   TOP: VantageMark 80px, burst + animate + activeStyle
-//   MIDDLE: emoji + headline + tag + description + risk badge
-//   BOTTOM: override pills + CTA
+// Layout:
+//   TOP:       VantageMark 36px, static (no burst/glow/rotate)
+//   EMOJI:     96px hero emoji with radial glow behind
+//   HEADLINE:  two-line typewriter (sans 800 + serif italic 400)
+//   TAG:       pill badge
+//   DESC:      description text
+//   RISK:      colored risk badge
+//   NARRATOR:  Vantage AI context line
+//   OVERRIDE:  5 text-only pills to switch styles
+//   CONTINUE:  white pill "Create your account"
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VantageMark } from '@/components/brand/VantageMark';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import {
@@ -25,7 +29,15 @@ import {
 } from '@/lib/content/investor-styles';
 import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
-import ScreenTransition from '@/components/layout/ScreenTransition';
+
+// Per-style glow colors (for the emoji radial glow)
+const GLOW_COLORS: Record<InvestorStyleKey, string> = {
+  buffett: 'rgba(34,211,238,0.25)',
+  lynch: 'rgba(34,211,238,0.25)',
+  livermore: 'rgba(16,185,129,0.25)',
+  munger: 'rgba(168,85,247,0.25)',
+  soros: 'rgba(245,158,11,0.25)',
+};
 
 interface StyleRevealProps {
   style: InvestorStyleKey;
@@ -52,264 +64,338 @@ export function StyleReveal({
   const [showDescription, setShowDescription] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
   const [showCta, setShowCta] = useState(false);
+  const [showOverride, setShowOverride] = useState(false);
 
-  const styleData = getStyleContent(selectedStyle);
   const trait = getStyleTrait(selectedStyle);
   const tag = getStyleTag(selectedStyle);
   const emoji = getStyleEmoji(selectedStyle);
   const description = getStyleDescription(selectedStyle);
-  const headline = `You're ${trait}.`;
-
-  // Typewriter — starts after burst
-  const [startTypewriter, setStartTypewriter] = useState(false);
-  const { displayText: headlineText, isDone: headlineTyped } = useTypewriter(
-    startTypewriter ? headline : '',
-    30,
-    0,
-  );
+  const glowColor = GLOW_COLORS[selectedStyle];
+  const shortLabel = getStyleContent(selectedStyle).shortLabel;
 
   const riskColor = RISK_COLORS[initialRisk];
   const riskLabel = RISK_LABELS[initialRisk];
 
-  // Sequence after burst completes
-  const handleBurstComplete = () => {
-    setTimeout(() => setStartTypewriter(true), 200);
+  // Two-line typewriter: line 1 starts immediately, line 2 after
+  const [line1Done, setLine1Done] = useState(false);
+  const { displayText: line1Text, isDone: l1Done } = useTypewriter("You're The", 35, 400);
+  const { displayText: line2Text, isDone: l2Done } = useTypewriter(
+    line1Done ? `${trait}.` : '',
+    30,
+    0,
+  );
+
+  // Track line 1 done
+  useEffect(() => {
+    if (l1Done) setLine1Done(true);
+  }, [l1Done]);
+
+  // Line 2 done → stagger reveals
+  useEffect(() => {
+    if (!l2Done) return;
+    const t1 = setTimeout(() => setShowTag(true), 200);
+    const t2 = setTimeout(() => setShowDescription(true), 500);
+    const t3 = setTimeout(() => setShowRisk(true), 700);
+    const t4 = setTimeout(() => setShowOverride(true), 900);
+    const t5 = setTimeout(() => setShowCta(true), 1100);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5); };
+  }, [l2Done]);
+
+  // Handle style override — reset reveals
+  const handleOverride = (style: InvestorStyleKey) => {
+    if (style === selectedStyle) return;
+    setSelectedStyle(style);
+    // Reset reveals briefly for cross-fade
+    setShowTag(false);
+    setShowDescription(false);
+    setShowRisk(false);
+    // glow changes naturally via selectedStyle
+    setTimeout(() => {
+      setShowTag(true);
+      setTimeout(() => setShowDescription(true), 300);
+      setTimeout(() => setShowRisk(true), 200);
+    }, 200);
   };
 
-  // Headline typed → show tag
-  useEffect(() => {
-    if (!headlineTyped) return;
-    const t = setTimeout(() => setShowTag(true), 300);
-    return () => clearTimeout(t);
-  }, [headlineTyped]);
-
-  // Tag shown → show description
-  useEffect(() => {
-    if (!showTag) return;
-    const t = setTimeout(() => setShowDescription(true), 300);
-    return () => clearTimeout(t);
-  }, [showTag]);
-
-  // Description shown → show risk badge
-  useEffect(() => {
-    if (!showDescription) return;
-    const t = setTimeout(() => setShowRisk(true), 200);
-    return () => clearTimeout(t);
-  }, [showDescription]);
-
-  // Risk badge shown → show CTA
-  useEffect(() => {
-    if (!showRisk) return;
-    const t = setTimeout(() => setShowCta(true), 500);
-    return () => clearTimeout(t);
-  }, [showRisk]);
-
   return (
-    <ScreenTransition direction="up" transitionKey="style-reveal">
+    <div
+      className="bg-onboarding-reveal"
+      style={{
+        width: '100%',
+        minHeight: '100dvh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '24px',
+        paddingTop: 'max(24px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
+      }}
+    >
+      {/* ── TOP: VantageMark (simple, no burst/glow/rotate) ── */}
+      <div style={{ marginBottom: '32px' }}>
+        <VantageMark size={36} />
+      </div>
+
+      {/* ── EMOJI HERO ── */}
       <div
         style={{
-          width: '100%',
-          height: '100dvh',
+          position: 'relative',
+          width: '160px',
+          height: '160px',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
-          padding: '24px',
-          paddingTop: 'max(24px, env(safe-area-inset-top, 0px))',
-          paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
-          overflow: 'auto',
+          justifyContent: 'center',
+          marginBottom: '24px',
         }}
       >
-        {/* TOP: VantageMark with burst */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <VantageMark
-            size={80}
-            showBurst
-            animate
-            activeStyle={selectedStyle}
-            onBurstComplete={handleBurstComplete}
-          />
-        </div>
-
-        {/* MIDDLE: content */}
+        {/* Radial glow behind emoji */}
         <div
           style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-            maxWidth: '360px',
+            position: 'absolute',
+            width: '160px',
+            height: '160px',
+            borderRadius: '50%',
+            background: glowColor,
+            filter: 'blur(20px)',
+            zIndex: 0,
+            animation: 'reveal-glow-pulse 3s ease-in-out infinite',
+            transition: 'background 400ms var(--ease-out)',
+          }}
+        />
+
+        <span
+          style={{
+            fontSize: '96px',
+            lineHeight: 1,
+            position: 'relative',
+            zIndex: 1,
+            animation: 'reveal-emoji-bounce 400ms var(--ease-spring) both',
+            transition: 'all 200ms var(--ease-out)',
           }}
         >
-          {/* Emoji */}
-          <span
-            style={{
-              fontSize: '80px',
-              lineHeight: 1,
-              marginBottom: 'var(--space-4)',
-              opacity: startTypewriter ? 1 : 0,
-              transition: 'opacity 300ms var(--ease-out)',
-            }}
-          >
-            {emoji}
-          </span>
+          {emoji}
+        </span>
+      </div>
 
-          {/* Headline typewriter */}
-          <h1
-            style={{
-              fontSize: 'var(--text-3xl)',
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              textAlign: 'center',
-              marginBottom: 'var(--space-3)',
-              minHeight: '40px',
-            }}
-          >
-            {headlineText}
-          </h1>
+      {/* ── HEADLINE: Two-line typewriter ── */}
+      <h1
+        style={{
+          textAlign: 'center',
+          marginBottom: '16px',
+          minHeight: '84px',
+        }}
+      >
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-sans)',
+            fontSize: '38px',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            lineHeight: 1.1,
+          }}
+        >
+          {line1Text}
+        </span>
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-serif)',
+            fontSize: '38px',
+            fontWeight: 400,
+            fontStyle: 'italic',
+            color: 'var(--accent)',
+            lineHeight: 1.1,
+            transition: 'all 200ms var(--ease-out)',
+          }}
+        >
+          {line2Text}
+        </span>
+      </h1>
 
-          {/* Style tag pill */}
-          <div
-            style={{
-              background: 'var(--accent-10)',
-              border: '1px solid var(--accent-30)',
-              borderRadius: 'var(--radius-pill)',
-              padding: '4px 12px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-              marginBottom: 'var(--space-4)',
-              opacity: showTag ? 1 : 0,
-              transition: 'opacity 300ms var(--ease-out)',
-            }}
-          >
-            {tag}
-          </div>
+      {/* ── TAG PILL ── */}
+      <div
+        style={{
+          background: 'rgba(34,211,238,0.10)',
+          border: '1px solid rgba(34,211,238,0.30)',
+          borderRadius: 'var(--radius-pill)',
+          padding: '6px 14px',
+          fontSize: '12px',
+          color: 'var(--text-secondary)',
+          marginBottom: '16px',
+          opacity: showTag ? 1 : 0,
+          transform: showTag ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out), all 200ms var(--ease-out)',
+        }}
+      >
+        {tag}
+      </div>
 
-          {/* Description */}
-          <p
-            style={{
-              fontSize: 'var(--text-lg)',
-              color: 'var(--onb-body-color, rgba(255,255,255,0.82))',
-              textAlign: 'center',
-              maxWidth: '300px',
-              lineHeight: 1.6,
-              marginBottom: 'var(--space-4)',
-              opacity: showDescription ? 1 : 0,
-              transition: 'opacity 300ms var(--ease-out)',
-            }}
-          >
-            {description}
-          </p>
+      {/* ── DESCRIPTION ── */}
+      <p
+        style={{
+          fontSize: '18px',
+          color: 'rgba(255,255,255,0.75)',
+          fontWeight: 400,
+          textAlign: 'center',
+          maxWidth: '300px',
+          lineHeight: 1.65,
+          marginBottom: '16px',
+          opacity: showDescription ? 1 : 0,
+          transform: showDescription ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
+        }}
+      >
+        {description}
+      </p>
 
-          {/* Risk badge */}
-          <div
-            style={{
-              background: 'transparent',
-              border: `1px solid ${riskColor}`,
-              borderRadius: 'var(--radius-pill)',
-              padding: '4px 12px',
-              fontSize: '11px',
-              fontWeight: 600,
-              color: riskColor,
-              letterSpacing: '0.08em',
-              opacity: showRisk ? 1 : 0,
-              transition: 'opacity 200ms var(--ease-out)',
-            }}
-          >
-            {riskLabel} RISK
-          </div>
-        </div>
+      {/* ── RISK BADGE ── */}
+      <div
+        style={{
+          background: 'transparent',
+          border: `1px solid ${riskColor}`,
+          borderRadius: 'var(--radius-pill)',
+          padding: '6px 14px',
+          fontSize: '12px',
+          fontWeight: 600,
+          color: riskColor,
+          marginBottom: '24px',
+          opacity: showRisk ? 1 : 0,
+          transform: showRisk ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
+        }}
+      >
+        {riskLabel} RISK
+      </div>
 
-        {/* BOTTOM: Override pills + CTA */}
-        <div style={{ width: '100%', maxWidth: '360px' }}>
-          {/* Override section */}
-          <p
-            style={{
-              fontSize: '13px',
-              color: 'var(--text-muted)',
-              textAlign: 'center',
-              marginBottom: 'var(--space-3)',
-              opacity: showCta ? 1 : 0,
-              transition: 'opacity 300ms var(--ease-out)',
-            }}
-          >
-            Not quite right?
-          </p>
+      {/* ── NARRATOR LINE ── */}
+      <div
+        style={{
+          opacity: showOverride ? 1 : 0,
+          transition: 'opacity 300ms var(--ease-out)',
+          maxWidth: '280px',
+          marginBottom: '20px',
+        }}
+      >
+        <p
+          style={{
+            fontSize: '14px',
+            color: 'var(--text-secondary)',
+            textAlign: 'center',
+            lineHeight: 1.5,
+            margin: 0,
+          }}
+        >
+          Your investing style shapes everything in Vantage — your AI advisor, your strategy ideas, your risk settings.
+        </p>
+      </div>
 
-          {/* Style override pills — horizontal scroll */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 'var(--space-2)',
-              overflowX: 'auto',
-              scrollbarWidth: 'none',
-              paddingBottom: 'var(--space-4)',
-              opacity: showCta ? 1 : 0,
-              transition: 'opacity 300ms var(--ease-out)',
-            }}
-          >
-            {ALL_STYLES.map((s) => {
-              const isActive = s.id === selectedStyle;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedStyle(s.id)}
-                  style={{
-                    flexShrink: 0,
-                    width: '72px',
-                    height: '52px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '2px',
-                    background: isActive ? 'var(--accent-10)' : 'transparent',
-                    border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border-subtle)'}`,
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    transition: 'all 200ms var(--ease-out)',
-                    WebkitTapHighlightColor: 'transparent',
-                  }}
-                >
-                  <span style={{ fontSize: '18px', lineHeight: 1 }}>{s.emoji}</span>
-                  <span style={{ fontSize: '9px', color: 'var(--text-secondary)', lineHeight: 1 }}>{s.shortLabel}</span>
-                </button>
-              );
-            })}
-          </div>
+      {/* ── OVERRIDE PILLS ── */}
+      <div
+        style={{
+          opacity: showOverride ? 1 : 0,
+          transition: 'opacity 300ms var(--ease-out)',
+          marginBottom: '24px',
+          width: '100%',
+          maxWidth: '360px',
+        }}
+      >
+        <p
+          style={{
+            fontSize: '12px',
+            color: 'rgba(255,255,255,0.40)',
+            textAlign: 'center',
+            marginBottom: '12px',
+          }}
+        >
+          Not quite right?
+        </p>
 
-          {/* CTA */}
-          <button
-            onClick={() =>
-              onCreateAccount({
-                style: selectedStyle,
-                risk: initialRisk,
-                firstName,
-                lastName,
-              })
-            }
-            disabled={!showCta}
-            style={{
-              width: '100%',
-              height: 'var(--height-button)',
-              background: showCta ? 'var(--accent)' : 'transparent',
-              border: showCta ? 'none' : '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-button)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 600,
-              color: showCta ? '#000' : 'var(--text-muted)',
-              cursor: showCta ? 'pointer' : 'default',
-              fontFamily: 'inherit',
-              pointerEvents: showCta ? 'auto' : 'none',
-              transition: 'opacity 400ms var(--ease-out), background 300ms var(--ease-out), color 300ms var(--ease-out)',
-            }}
-          >
-            Create your account →
-          </button>
+        <div
+          className="hide-scrollbar"
+          style={{
+            display: 'flex',
+            gap: '8px',
+            overflowX: 'auto',
+            paddingBottom: '4px',
+          }}
+        >
+          {ALL_STYLES.map((s) => {
+            const isActive = s.id === selectedStyle;
+            return (
+              <button
+                key={s.id}
+                onClick={() => handleOverride(s.id)}
+                style={{
+                  flexShrink: 0,
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: isActive
+                    ? '1px solid var(--accent)'
+                    : '1px solid rgba(255,255,255,0.15)',
+                  background: isActive
+                    ? 'rgba(34,211,238,0.10)'
+                    : 'transparent',
+                  color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
+                  transition: 'all 200ms var(--ease-out)',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                {s.shortLabel}
+              </button>
+            );
+          })}
         </div>
       </div>
-    </ScreenTransition>
+
+      {/* ── CONTINUE BUTTON ── */}
+      <div style={{ width: '100%', maxWidth: '360px', marginTop: 'auto' }}>
+        <button
+          onClick={() =>
+            onCreateAccount({
+              style: selectedStyle,
+              risk: initialRisk,
+              firstName,
+              lastName,
+            })
+          }
+          disabled={!showCta}
+          style={{
+            width: '100%',
+            height: '56px',
+            borderRadius: 'var(--radius-pill)',
+            border: 'none',
+            background: showCta ? '#ffffff' : 'rgba(255,255,255,0.20)',
+            color: showCta ? '#000000' : 'rgba(0,0,0,0.40)',
+            fontSize: '17px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-sans)',
+            cursor: showCta ? 'pointer' : 'default',
+            pointerEvents: showCta ? 'auto' : 'none',
+            transition: 'opacity 400ms var(--ease-out), background 200ms var(--ease-out)',
+            opacity: showCta ? 1 : 0,
+          }}
+        >
+          Create your account
+        </button>
+      </div>
+
+      {/* ── KEYFRAMES ── */}
+      <style>{`
+        @keyframes reveal-glow-pulse {
+          0%, 100% { opacity: 0.8; }
+          50%      { opacity: 0.4; }
+        }
+        @keyframes reveal-emoji-bounce {
+          0%   { transform: scale(0); }
+          70%  { transform: scale(1.08); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+    </div>
   );
 }

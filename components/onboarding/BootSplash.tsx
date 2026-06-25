@@ -1,19 +1,21 @@
 // ─── BootSplash ─────────────────────────────────────────────
-// Full-screen splash shown on EVERY app open for 1.5 seconds.
-// Never skippable. Transitions automatically.
+// Full redesign: bg-onboarding-0 gradient, VantageMark burst,
+// two-line wordmark, version tag. 1800ms duration.
 //
-// Compass burst-in, wordmark fades, 1500ms → onComplete().
-// Parent (app layout / onboarding orchestrator) decides next
-// screen based on auth state.
+// Layout (centered):
+//   VantageMark burst (130px)
+//   "VANTAGE" wordmark (sans 800, 28px)
+//   "Your AI investing advisor." tagline (serif italic, 16px)
+//   "v0.1.0" version (absolute bottom)
 
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
 import { VantageMark } from '@/components/brand/VantageMark';
 
-const DURATION = 1500;
-const WORDMARK_DELAY = 600;
-const TAGLINE_DELAY = 800;
+const DURATION = 1800;
+const WORDMARK_DELAY = 700;
+const TAGLINE_DELAY = 950;
 
 interface BootSplashProps {
   onComplete: () => void;
@@ -43,57 +45,66 @@ export function BootSplash({ onComplete }: BootSplashProps) {
 
   return (
     <div
+      className="bg-onboarding-0"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 200,
-        background: 'var(--bg-primary)',
+        width: '100%',
+        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 'var(--space-6)',
+        gap: '24px',
       }}
     >
-      {/* Compass */}
-      <VantageMark size={140} showBurst animate />
+      {/* VantageMark burst */}
+      <VantageMark size={130} showBurst />
 
-      {/* Wordmark */}
-      <div style={{ textAlign: 'center', opacity: showWordmark ? 1 : 0, transition: 'opacity 300ms var(--ease-out)' }}>
+      {/* Wordmark + Tagline */}
+      <div
+        style={{
+          textAlign: 'center',
+          opacity: showWordmark ? 1 : 0,
+          transition: 'opacity 400ms var(--ease-out)',
+        }}
+      >
         <span
           style={{
             display: 'block',
+            fontFamily: 'var(--font-sans)',
             fontSize: '28px',
-            fontWeight: 700,
+            fontWeight: 800,
             color: 'var(--text-primary)',
-            letterSpacing: '0.15em',
+            letterSpacing: '0.18em',
           }}
         >
           VANTAGE
         </span>
 
-        {/* Tagline */}
-        <p
+        <span
           style={{
-            marginTop: 'var(--space-2)',
-            fontSize: '14px',
-            color: 'var(--text-muted)',
-            letterSpacing: '0.05em',
+            display: 'block',
+            marginTop: '8px',
+            fontFamily: 'var(--font-serif)',
+            fontSize: '16px',
+            fontWeight: 400,
+            fontStyle: 'italic',
+            color: 'rgba(255,255,255,0.60)',
             opacity: showTagline ? 1 : 0,
-            transition: 'opacity 300ms var(--ease-out)',
+            transition: 'opacity 400ms var(--ease-out)',
           }}
         >
-          Institutional-quality AI portfolio analysis.
-        </p>
+          Your AI investing advisor.
+        </span>
       </div>
 
       {/* Version */}
       <span
         style={{
           position: 'absolute',
-          bottom: '32px',
-          fontSize: '12px',
-          color: 'var(--text-muted)',
+          bottom: '40px',
+          fontSize: '11px',
+          color: 'rgba(255,255,255,0.25)',
+          fontFamily: 'var(--font-sans)',
         }}
       >
         v0.1.0

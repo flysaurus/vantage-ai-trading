@@ -5,7 +5,7 @@
 //  0. Boot Splash (every open, 1.5s, compass burst + wordmark)
 //  1. Feature Splash (first-time only, 3 auto-advancing lines)
 //  2. Arrival (typewriter text, "Find my style →")
-//  3-7. Q1 → Q2 → Q3 → Q4 → Q5 (carousel answers)
+//  3-7. Q1 → Q2 → Q3 → Q4 → Q5 (stacked answer cards)
 //  8. Name capture (first + last name, required)
 //  9. Style reveal (burst, typewriter, override pills)
 // 10. Account creation (handled by parent or next prompt)
@@ -93,6 +93,13 @@ export default function OnboardingPage() {
     setQuestionIndex((prev) => prev - 1);
   }, []);
 
+  const handleNameBack = useCallback(() => {
+    // Go back to Q5
+    setQuestionIndex(4);
+    setAnswers((prev) => prev.slice(0, 4));
+    setScreen('quiz');
+  }, []);
+
   // ── Name captured ──────────────────────────────────────────
 
   const handleNameSubmit = useCallback((first: string, last: string) => {
@@ -130,64 +137,33 @@ export default function OnboardingPage() {
     case 'quiz':
       if (questionIndex < QUIZ_QUESTIONS.length) {
         return (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 100,
-              background: 'var(--bg-primary)',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}
-          >
-            <QuizQuestion
-              key={QUIZ_QUESTIONS[questionIndex].id}
-              question={QUIZ_QUESTIONS[questionIndex]}
-              questionNumber={questionIndex + 1}
-              totalQuestions={QUIZ_QUESTIONS.length}
-              onAnswer={handleAnswer}
-              onBack={questionIndex > 0 ? handleBack : undefined}
-            />
-          </div>
+          <QuizQuestion
+            key={QUIZ_QUESTIONS[questionIndex].id}
+            question={QUIZ_QUESTIONS[questionIndex]}
+            questionNumber={questionIndex + 1}
+            totalQuestions={QUIZ_QUESTIONS.length}
+            onAnswer={handleAnswer}
+            onBack={questionIndex > 0 ? handleBack : undefined}
+          />
         );
       }
       return null;
 
     case 'name':
       return (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100,
-            background: 'var(--bg-primary)',
-          }}
-        >
-          <NameCapture onSubmit={handleNameSubmit} />
-        </div>
+        <NameCapture onSubmit={handleNameSubmit} onBack={handleNameBack} />
       );
 
     case 'reveal':
       if (quizResult) {
         return (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 100,
-              background: 'var(--bg-primary)',
-              overflowY: 'auto',
-            }}
-          >
-            <StyleReveal
-              style={quizResult.style}
-              risk={quizResult.risk}
-              firstName={firstName}
-              lastName={lastName}
-              onCreateAccount={handleCreateAccount}
-            />
-          </div>
+          <StyleReveal
+            style={quizResult.style}
+            risk={quizResult.risk}
+            firstName={firstName}
+            lastName={lastName}
+            onCreateAccount={handleCreateAccount}
+          />
         );
       }
       return null;
