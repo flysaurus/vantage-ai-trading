@@ -1,15 +1,15 @@
 // ─── StyleReveal ───────────────────────────────────────────
 // No orb, no constellation. The emoji IS the mark.
-// 200px emoji hero wrapper (80px emoji inside) with per-style
+// 140px emoji hero wrapper (72px emoji inside) with per-style
 // colored glow. Override pills change emoji+glow+headline
 // simultaneously. Word-highlight description animation.
 //
-// Layout (scrollable, fits iPhone 14):
+// Layout (fits iPhone 14 without scroll):
 //   EMOJI:     emoji hero with colored glow halo
 //   HEADLINE:  two-line typewriter (sans 800 + serif italic)
 //   TAG:       pill badge
 //   DESC:      word-by-word highlight animation
-//   RISK:      colored risk badge
+//   RISK:      colored risk badge (normal flow)
 //   NARRATOR:  context line
 //   OVERRIDE:  5 text-only pills, horizontal scroll
 //   TOAST:     confirmation after override
@@ -97,20 +97,20 @@ export function StyleReveal({
   const riskColor = RISK_COLORS[initialRisk];
   const riskLabel = RISK_LABELS[initialRisk];
 
-  // ── Word highlight callback (fires risk badge etc. on completion) ──
+  // ── Word highlight callback (fires on completion) ──────
   const handleWordHighlightComplete = () => {
     setShowRisk(true);
     setTimeout(() => setShowOverride(true), 300);
   };
 
-  // ── Word highlight hook ──────────────────────────────────
+  // ── Word highlight hook (paused until descVisible) ─────
   const {
     words,
     activeIndex: activeWordIndex,
     completedIndices,
     isComplete: wordsComplete,
     skip: skipWords,
-  } = useWordHighlight(description, 400, handleWordHighlightComplete);
+  } = useWordHighlight(description, 200, !descVisible, handleWordHighlightComplete);
 
   // ── Typewriter headlines ─────────────────────────────────
   const [line1Done, setLine1Done] = useState(false);
@@ -168,7 +168,7 @@ export function StyleReveal({
         setTimeout(() => setToastText(null), 200);
       }, 1500);
 
-      // Re-stagger (word highlight hook resets automatically on text change)
+      // Re-stagger
       setTimeout(() => {
         setShowTag(true);
         setTimeout(() => setDescVisible(true), 300);
@@ -178,7 +178,7 @@ export function StyleReveal({
 
   // ── Tap-to-skip word highlight ──────────────────────────
   const handleScreenTap = () => {
-    if (!wordsComplete) skipWords();
+    if (descVisible && !wordsComplete) skipWords();
   };
 
   return (
@@ -193,17 +193,17 @@ export function StyleReveal({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '36px 24px 28px',
+        padding: '36px 24px 32px',
         gap: 0,
       }}
     >
       {/* ── EMOJI HERO ── */}
       <div
         style={{
-          width: '160px',
-          height: '160px',
+          width: '140px',
+          height: '140px',
           position: 'relative',
-          marginBottom: '14px',
+          marginBottom: '16px',
           flexShrink: 0,
         }}
       >
@@ -225,12 +225,12 @@ export function StyleReveal({
         {/* Emoji */}
         <span
           style={{
-            fontSize: '80px',
+            fontSize: '72px',
             position: 'relative',
             zIndex: 1,
             display: 'block',
             textAlign: 'center',
-            lineHeight: '160px',
+            lineHeight: '140px',
             transform: emojiPhase === 'entering'
               ? 'scale(0)'
               : 'scale(1)',
@@ -246,7 +246,7 @@ export function StyleReveal({
       <h1
         style={{
           textAlign: 'center',
-          marginBottom: '8px',
+          marginBottom: '10px',
           flexShrink: 0,
         }}
       >
@@ -287,7 +287,7 @@ export function StyleReveal({
           padding: '6px 14px',
           fontSize: '12px',
           color: 'var(--text-secondary)',
-          marginBottom: '10px',
+          marginBottom: '12px',
           opacity: showTag ? 1 : 0,
           transform: showTag ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
@@ -305,7 +305,7 @@ export function StyleReveal({
           textAlign: 'center',
           maxWidth: '300px',
           lineHeight: 1.55,
-          marginBottom: '10px',
+          marginBottom: '14px',
           minHeight: '48px',
           opacity: descVisible ? 1 : 0,
           transform: descVisible ? 'translateY(0)' : 'translateY(8px)',
@@ -315,7 +315,6 @@ export function StyleReveal({
         {words.map((word, i) => {
           const isActive = activeWordIndex === i;
           const isCompleted = completedIndices.has(i);
-          const isPending = !isActive && !isCompleted && !wordsComplete;
 
           return (
             <span
@@ -342,7 +341,7 @@ export function StyleReveal({
         })}
       </p>
 
-      {/* ── RISK BADGE ── */}
+      {/* ── RISK BADGE (normal flow, below description) ── */}
       <div
         style={{
           background: 'transparent',
@@ -352,7 +351,7 @@ export function StyleReveal({
           fontSize: '12px',
           fontWeight: 600,
           color: riskColor,
-          marginBottom: '14px',
+          marginBottom: '16px',
           opacity: showRisk ? 1 : 0,
           transform: showRisk ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
@@ -368,7 +367,7 @@ export function StyleReveal({
           opacity: showOverride ? 1 : 0,
           transition: 'opacity 300ms var(--ease-out)',
           maxWidth: '280px',
-          marginBottom: '12px',
+          marginBottom: '16px',
           flexShrink: 0,
         }}
       >
@@ -390,7 +389,7 @@ export function StyleReveal({
         style={{
           opacity: showOverride ? 1 : 0,
           transition: 'opacity 300ms var(--ease-out)',
-          marginBottom: '14px',
+          marginBottom: '16px',
           width: '100%',
           maxWidth: '360px',
           flexShrink: 0,
@@ -401,7 +400,7 @@ export function StyleReveal({
             fontSize: '11px',
             color: 'rgba(255,255,255,0.35)',
             textAlign: 'center',
-            marginBottom: '8px',
+            marginBottom: '6px',
           }}
         >
           Not quite right?

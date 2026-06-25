@@ -5,7 +5,7 @@
 //
 // Usage:
 //   const { words, activeIndex, completedIndices, isComplete, skip } =
-//     useWordHighlight(description, 400, onComplete);
+//     useWordHighlight(description, 400, paused, onComplete);
 
 'use client';
 
@@ -30,6 +30,7 @@ interface UseWordHighlightResult {
 export function useWordHighlight(
   text: string,
   startDelay: number = 0,
+  paused: boolean = false,
   onComplete?: () => void,
 ): UseWordHighlightResult {
   const words = text.split(' ');
@@ -41,7 +42,7 @@ export function useWordHighlight(
   onCompleteRef.current = onComplete;
 
   const skip = useCallback(() => {
-    if (skippedRef.current) return;
+    if (isComplete) return;
     skippedRef.current = true;
     const all = new Set<number>();
     for (let i = 0; i < words.length; i++) all.add(i);
@@ -49,16 +50,19 @@ export function useWordHighlight(
     setActiveIndex(-1);
     setIsComplete(true);
     onCompleteRef.current?.();
-  }, [words.length]);
+  }, [words.length, isComplete]);
 
   useEffect(() => {
-    let cancelled = false;
-    skippedRef.current = false;
-
-    // Reset state for new text
+    // Reset state whenever text or paused changes
     setActiveIndex(-1);
     setCompletedIndices(new Set());
     setIsComplete(false);
+
+    // Don't run while paused
+    if (paused) return;
+
+    let cancelled = false;
+    skippedRef.current = false;
 
     async function run() {
       await sleep(startDelay);
@@ -91,7 +95,7 @@ export function useWordHighlight(
     return () => {
       cancelled = true;
     };
-  }, [text, startDelay]);
+  }, [text, startDelay, paused]);
 
   return { words, activeIndex, completedIndices, isComplete, skip };
 }
