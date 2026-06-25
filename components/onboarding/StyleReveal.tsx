@@ -193,7 +193,7 @@ export function StyleReveal({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '48px 24px 40px',
+        padding: '36px 24px 28px',
         gap: 0,
       }}
     >
@@ -203,7 +203,7 @@ export function StyleReveal({
           width: '160px',
           height: '160px',
           position: 'relative',
-          marginBottom: '20px',
+          marginBottom: '14px',
           flexShrink: 0,
         }}
       >
@@ -246,8 +246,7 @@ export function StyleReveal({
       <h1
         style={{
           textAlign: 'center',
-          marginBottom: '12px',
-          minHeight: '84px',
+          marginBottom: '8px',
           flexShrink: 0,
         }}
       >
@@ -288,7 +287,7 @@ export function StyleReveal({
           padding: '6px 14px',
           fontSize: '12px',
           color: 'var(--text-secondary)',
-          marginBottom: '16px',
+          marginBottom: '10px',
           opacity: showTag ? 1 : 0,
           transform: showTag ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
@@ -305,9 +304,9 @@ export function StyleReveal({
           fontWeight: 400,
           textAlign: 'center',
           maxWidth: '300px',
-          lineHeight: 1.7,
-          marginBottom: '16px',
-          minHeight: '58px',
+          lineHeight: 1.55,
+          marginBottom: '10px',
+          minHeight: '48px',
           opacity: descVisible ? 1 : 0,
           transform: descVisible ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
@@ -341,22 +340,6 @@ export function StyleReveal({
             </span>
           );
         })}
-
-        {/* Tap-to-skip hint */}
-        {descVisible && !wordsComplete && (
-          <span
-            style={{
-              display: 'block',
-              fontSize: '11px',
-              color: 'rgba(255,255,255,0.20)',
-              marginTop: '6px',
-              textAlign: 'center',
-              transition: 'opacity 200ms',
-            }}
-          >
-            tap to skip
-          </span>
-        )}
       </p>
 
       {/* ── RISK BADGE ── */}
@@ -369,7 +352,7 @@ export function StyleReveal({
           fontSize: '12px',
           fontWeight: 600,
           color: riskColor,
-          marginBottom: '20px',
+          marginBottom: '14px',
           opacity: showRisk ? 1 : 0,
           transform: showRisk ? 'translateY(0)' : 'translateY(8px)',
           transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
@@ -384,14 +367,14 @@ export function StyleReveal({
         style={{
           opacity: showOverride ? 1 : 0,
           transition: 'opacity 300ms var(--ease-out)',
-          maxWidth: '260px',
-          marginBottom: '20px',
+          maxWidth: '280px',
+          marginBottom: '12px',
           flexShrink: 0,
         }}
       >
         <p
           style={{
-            fontSize: '13px',
+            fontSize: '12px',
             color: 'var(--text-secondary)',
             textAlign: 'center',
             lineHeight: 1.5,
@@ -407,7 +390,7 @@ export function StyleReveal({
         style={{
           opacity: showOverride ? 1 : 0,
           transition: 'opacity 300ms var(--ease-out)',
-          marginBottom: '20px',
+          marginBottom: '14px',
           width: '100%',
           maxWidth: '360px',
           flexShrink: 0,
@@ -415,10 +398,10 @@ export function StyleReveal({
       >
         <p
           style={{
-            fontSize: '12px',
-            color: 'rgba(255,255,255,0.40)',
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.35)',
             textAlign: 'center',
-            marginBottom: '12px',
+            marginBottom: '8px',
           }}
         >
           Not quite right?
@@ -482,7 +465,7 @@ export function StyleReveal({
             fontSize: '13px',
             color: 'var(--accent)',
             textAlign: 'center' as const,
-            marginBottom: '16px',
+            marginBottom: '12px',
             opacity: toastVisible ? 1 : 0,
             transition: 'opacity 200ms var(--ease-out)',
             flexShrink: 0,
@@ -516,7 +499,7 @@ export function StyleReveal({
             fontFamily: 'var(--font-sans)',
             cursor: showCta ? 'pointer' : 'default',
             pointerEvents: showCta ? 'auto' : 'none',
-            marginTop: '16px',
+            marginTop: '8px',
             transition: 'opacity 400ms var(--ease-out), background 200ms var(--ease-out)',
             opacity: showCta ? 1 : 0,
           }}
