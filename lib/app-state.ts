@@ -81,6 +81,7 @@ export function useAppState(): AppStateResult {
       console.log('[useAppState] Session found for:', session.user.email);
 
       try {
+        // Step 1: Try user_profiles (new auth system, post-Prompt 5)
         const { data: profileData, error } = await (supabase
           .from('user_profiles') as any)
           .select('*')
@@ -89,89 +90,100 @@ export function useAppState(): AppStateResult {
 
         if (!mounted) return;
 
-        // ── DIAGNOSTIC ─────────────────────────────────────
-        console.log('[useAppState] profileData:', profileData);
-        console.log('[useAppState] error:', error);
-        // ───────────────────────────────────────────────────
+        console.log('[useAppState] user_profiles:', profileData, 'error:', error);
 
-        // ── FIX A: No user_profiles row ────────────────────
-        // User signed up via old auth system (before Prompt 5)
-        // and has an auth.users row but no user_profiles row.
-        // Try to reconstruct from user_metadata.
-        if (!profileData || error) {
-          if (error?.code === 'PGRST116' || !profileData) {
-            console.log(
-              '[useAppState] No profile row (cause A), trying metadata fallback',
-            );
-
-            const meta = session.user.user_metadata as
-              | Record<string, string>
-              | undefined;
-
-            if (meta?.investor_style) {
-              console.log('[useAppState] Found style in metadata, creating profile row');
-
-              await (supabase.from('user_profiles') as any).insert({
-                id: session.user.id,
-                first_name: meta.first_name || '',
-                last_name: meta.last_name || '',
-                investor_style: meta.investor_style,
-                risk_tolerance: meta.risk_tolerance || 'moderate',
-                tier: 'demo',
-                first_open: new Date().toISOString(),
-                demo_expires_at: new Date(
-                  Date.now() + 30 * 24 * 60 * 60 * 1000,
-                ).toISOString(),
-              });
-
-              // Fetch the newly created row
-              const { data: newProfile } = await (supabase
-                .from('user_profiles') as any)
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
-
-              if (newProfile) {
-                console.log(
-                  '[useAppState] Created profile from metadata → authenticated',
-                );
-                setProfile(newProfile as UserProfile);
-                setState('authenticated');
-                return;
-              }
-            }
-
-            // Truly no profile — needs full onboarding
-            console.log(
-              '[useAppState] No metadata style, setting state to: needs-profile',
-            );
-            setState('needs-profile');
-            return;
-          }
-
-          // ── FIX B: RLS/other error ──────────────────────
-          console.log(
-            '[useAppState] Profile fetch error (cause B?):',
-            error?.code,
-            error?.message,
-          );
-          setState('needs-profile');
+        // Step 2: If user_profiles has full data → authenticated
+        if (profileData?.investor_style) {
+          console.log('[useAppState] Full profile in user_profiles → authenticated');
+          setProfile(profileData as UserProfile);
+          setState('authenticated');
           return;
         }
 
-        // ── FIX C: Profile exists but no investor_style ────
-        if (!profileData.investor_style) {
+        // Step 3: Check OLD users table (pre-Prompt 5 accounts)
+        // These accounts have data in 'users' but not 'user_profiles'
+        console.log('[useAppState] Checking legacy users table...');
+        const { data: legacyUser } = await (supabase
+          .from('users') as any)
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        console.log('[useAppState] legacy users table:', legacyUser);
+
+        if (legacyUser?.investor_style) {
           console.log(
-            '[useAppState] Profile exists but no investor_style → needs-quiz',
+            '[useAppState] Found style in legacy users table:',
+            legacyUser.investor_style,
           );
+
+          // Backfill user_profiles from legacy data
+          const profileToUpsert = {
+            id: session.user.id,
+            first_name: legacyUser.display_name?.split(' ')[0] || '',
+            last_name: legacyUser.display_name?.split(' ').slice(1).join(' ') || '',
+            investor_style: legacyUser.investor_style,
+            risk_tolerance: legacyUser.investor_style
+              ? 'moderate'
+              : null,
+            email: legacyUser.email || session.user.email,
+            tier: 'demo',
+            first_open: legacyUser.created_at || new Date().toISOString(),
+            demo_expires_at: new Date(
+              Date.now() + 30 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
+          };
+
+          await (supabase.from('user_profiles') as any).upsert(
+            profileToUpsert,
+            { onConflict: 'id' },
+          );
+
+          console.log('[useAppState] Backfilled user_profiles from legacy → authenticated');
+          setProfile(profileToUpsert as UserProfile);
+          setState('authenticated');
+          return;
+        }
+
+        // Step 4: No style anywhere — try auth metadata fallback
+        const meta = session.user.user_metadata as
+          | Record<string, string>
+          | undefined;
+
+        if (meta?.investor_style) {
+          console.log('[useAppState] Found style in auth metadata, creating profile');
+
+          await (supabase.from('user_profiles') as any).upsert(
+            {
+              id: session.user.id,
+              first_name: meta.first_name || meta.given_name || '',
+              last_name: meta.last_name || meta.family_name || '',
+              investor_style: meta.investor_style,
+              risk_tolerance: meta.risk_tolerance || 'moderate',
+              email: session.user.email,
+              tier: 'demo',
+              first_open: new Date().toISOString(),
+              demo_expires_at: new Date(
+                Date.now() + 30 * 24 * 60 * 60 * 1000,
+              ).toISOString(),
+            },
+            { onConflict: 'id' },
+          );
+
+          setState('authenticated');
+          return;
+        }
+
+        // Step 5: user_profiles exists but no investor_style → needs quiz
+        if (profileData) {
+          console.log('[useAppState] Profile exists, no style → needs-quiz');
           setState('needs-quiz');
           return;
         }
 
-        // ── Happy path ────────────────────────────────────
-        console.log('[useAppState] Full profile → authenticated');
-        setProfile(profileData as UserProfile);
-        setState('authenticated');
+        // Step 6: Truly no profile at all → needs full onboarding
+        console.log('[useAppState] No profile anywhere → needs-profile');
+        setState('needs-profile');
       } catch (err) {
         if (!mounted) return;
         console.error('[useAppState] Profile fetch error:', err);
