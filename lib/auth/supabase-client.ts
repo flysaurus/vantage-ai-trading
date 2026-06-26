@@ -1,12 +1,15 @@
 // ─── Supabase Browser Client ──────────────────────────────────
 // SessionStorage-based client matching createClient() from lib/supabase.ts.
-// Both use the same 'vantage-auth-token' key → sessions set by login/signup
-// are visible to useAppState on the main page.
 //
-// Uses @supabase/ssr's createBrowserClient for SSR cookie handling,
-// but overrides auth storage to use sessionStorage (matching login page).
+// CRITICAL: Uses @supabase/supabase-js createClient() directly, NOT
+// createBrowserClient from @supabase/ssr. The SSR library OVERRIDES
+// auth.storage with cookie-based storage, which means sessions set
+// during login (via sessionStorage) are invisible on the main page.
+//
+// Both clients now use identical setup: same library, same storageKey,
+// same sessionStorage adapter → sessions are shared across all pages.
 
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
@@ -44,16 +47,34 @@ function sessionStorageAdapter(): Storage {
 /**
  * Singleton Supabase browser client.
  *
- * Uses @supabase/ssr's createBrowserClient for automatic
- * cookie handling, but overrides auth storage to use
- * sessionStorage (key: 'vantage-auth-token') — the same
- * storage used by createClient() in lib/supabase.ts.
+ * Uses @supabase/supabase-js createClient() directly (same as
+ * lib/supabase.ts) with sessionStorage adapter.
  *
- * This ensures sessions created during login/signup
- * are visible to useAppState on the main page.
+ * This ensures sessions created during login/signup are visible
+ * to useAppState on the main page. Both clients write to the
+ * same sessionStorage key: 'vantage-auth-token'.
  */
 export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (_browserClient) return _browserClient;
+
+  // SSR guard — useAppState is client-only, but Next.js may call
+  // during SSR for static generation. Return a dummy client that
+  // will be replaced on hydration. Never actually called because
+  // useAppState is wrapped in useEffect (client-only).
+  if (typeof window === 'undefined') {
+    return createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder',
+      {
+        auth: {
+          storageKey: 'vantage-auth-token',
+          storage: sessionStorageAdapter(),
+          autoRefreshToken: true,
+          persistSession: true,
+        },
+      },
+    ) as SupabaseClient<Database>;
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -61,11 +82,11 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (!url || !key) {
     throw new Error(
       'Missing Supabase environment variables. ' +
-      'Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.'
+      'Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.',
     );
   }
 
-  _browserClient = createBrowserClient<Database>(url, key, {
+  _browserClient = createClient<Database>(url, key, {
     auth: {
       storageKey: 'vantage-auth-token',
       storage: sessionStorageAdapter(),

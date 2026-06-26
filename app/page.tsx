@@ -1,10 +1,6 @@
 // ─── Root Page — Routing Layer ──────────────────────────────
 // Single routing decision. useAppState is the ONLY place
 // session is checked. Zero competing logic elsewhere.
-//
-// ALL hooks called unconditionally at top.
-// ALL conditional returns AFTER all hooks.
-// This eliminates React #310 (hook order violations) forever.
 
 'use client';
 
@@ -16,7 +12,6 @@ import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 
 export default function Page() {
-  // ALL hooks unconditionally at top — never after returns
   const { state } = useAppState();
   const router = useRouter();
 
@@ -27,17 +22,26 @@ export default function Page() {
     }
   }, [state, router]);
 
-  // ALL conditional returns AFTER all hooks
+  // needs-quiz: full profile except quiz — send straight to quiz
+
+  // loading: show boot splash
   if (state === 'loading') {
     return <BootSplash onComplete={() => {}} />;
   }
 
+  // onboarding: brand new user — full onboarding flow
   if (state === 'onboarding') {
     return <OnboardingFlow />;
   }
 
+  // needs-profile: redirect to auth/complete
   if (state === 'needs-profile') {
     return <BootSplash onComplete={() => {}} />;
+  }
+
+  // needs-quiz: has account + profile, just needs style quiz
+  if (state === 'needs-quiz') {
+    return <OnboardingFlow initialScreen="quiz" />;
   }
 
   return <MainApp />;

@@ -44,11 +44,15 @@ interface OnboardingState {
 
 // ── Component ──────────────────────────────────────────────
 
-export default function OnboardingFlow() {
+interface OnboardingFlowProps {
+  initialScreen?: OnboardingScreen;
+}
+
+export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
   const router = useRouter();
 
   const [state, setState] = useState<OnboardingState>({
-    screen: 'boot',
+    screen: initialScreen || 'boot',
     firstName: '',
     lastName: '',
     quizAnswers: [],
