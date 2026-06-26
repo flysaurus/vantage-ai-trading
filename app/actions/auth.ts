@@ -31,11 +31,9 @@ interface CreateAccountResult {
  * Create a new user account with admin API.
  *
  * Server action — runs on the server with service_role.
- * Creates the auth user, writes user_profiles row, seeds demo portfolio.
- * All-or-nothing: if profile insert fails, the auth user is cleaned up.
- *
- * Returns { success: true, userId } on success.
- * Returns { success: false, error: "message" } on failure.
+ * Creates auth user → inserts into public.users → inserts into
+ * public.user_profiles (FK'd to users) → seeds demo portfolio.
+ * All-or-nothing: failures trigger cleanup of partially-created rows.
  */
 export async function createAccount(
   data: CreateAccountInput,
@@ -47,7 +45,7 @@ export async function createAccount(
     await supabase.auth.admin.createUser({
       email: data.email,
       password: data.password,
-      email_confirm: true, // auto-confirm — no email verification needed
+      email_confirm: true,
       user_metadata: {
         first_name: data.firstName,
         last_name: data.lastName,
@@ -81,34 +79,22 @@ export async function createAccount(
   }
 
   const userId = authData.user.id;
+  const now = new Date().toISOString();
+  const demoExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // ── Step 2: Write user_profiles ────────────────────────────
-  const { error: profileError } = await (supabase
-    .from('user_profiles') as any)
+  // ── Step 2: Insert into public.users (parent table) ───────
+  const { error: userError } = await (supabase
+    .from('users') as any)
     .insert({
       id: userId,
-      user_id: userId,
       email: data.email,
       first_name: data.firstName,
       last_name: data.lastName,
-      investor_style: data.investorStyle,
-      risk_tolerance: data.riskTolerance,
-      tier: 'demo',
-      first_open: new Date().toISOString(),
-      demo_expires_at: new Date(
-        Date.now() + 30 * 24 * 60 * 60 * 1000,
-      ).toISOString(),
     });
 
-  if (profileError) {
-    console.error('[createAccount] user_profiles insert failed:', profileError.message);
-
-    // Cleanup: delete the auth user we just created
-    try {
-      await supabase.auth.admin.deleteUser(userId);
-    } catch (cleanupErr) {
-      console.error('[createAccount] cleanup failed:', cleanupErr);
-    }
+  if (userError) {
+    console.error('[createAccount] users insert failed:', userError.message);
+    try { await supabase.auth.admin.deleteUser(userId); } catch (_) {}
 
     return {
       success: false,
@@ -116,11 +102,37 @@ export async function createAccount(
     };
   }
 
-  // ── Step 3: Seed demo portfolio ────────────────────────────
+  // ── Step 3: Insert into user_profiles (extended profile) ──
+  const { error: profileError } = await (supabase
+    .from('user_profiles') as any)
+    .insert({
+      id: userId,
+      first_name: data.firstName,
+      last_name: data.lastName,
+      investor_style: data.investorStyle,
+      risk_tolerance: data.riskTolerance,
+      tier: 'demo',
+      first_open: now,
+      demo_expires_at: demoExpiry,
+    });
+
+  if (profileError) {
+    console.error('[createAccount] user_profiles insert failed:', profileError.message);
+
+    // Cleanup: delete auth user + users row
+    try { await supabase.auth.admin.deleteUser(userId); } catch (_) {}
+    try { await (supabase.from('users') as any).delete().eq('id', userId); } catch (_) {}
+
+    return {
+      success: false,
+      error: 'Account setup failed. Please try again.',
+    };
+  }
+
+  // ── Step 4: Seed demo portfolio ───────────────────────────
   try {
     await seedDemoPortfolio(userId, data.investorStyle);
   } catch (seedErr) {
-    // Non-fatal — log and continue
     console.error('[createAccount] seedDemoPortfolio failed:', seedErr);
   }
 
