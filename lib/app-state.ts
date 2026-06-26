@@ -48,40 +48,49 @@ export function useAppState(): AppStateResult {
     let cancelled = false;
 
     async function initialize() {
-      // ── Get session ─────────────────────────────────
-      const { data: { session } } = await supabase.auth.getSession();
+      try {
+        // ── Get session ─────────────────────────────────
+        const { data: { session } } = await supabase.auth.getSession();
 
-      if (!session) {
+        if (cancelled) return;
+
+        if (!session) {
+          setState('onboarding');
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
+        setUser(session.user);
+
+        // ── Get profile ─────────────────────────────────
+        const { data: rawProfile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (cancelled) return;
+
+        const profileData = rawProfile as UserProfile | null;
+
+        if (!profileData?.investor_style) {
+          setState('needs-profile');
+          setProfile(profileData);
+          return;
+        }
+
+        setProfile(profileData);
+        setState('authenticated');
+      } catch (err) {
+        // Auth check failed — most likely network error or Supabase unavailable.
+        // Redirect to onboarding so the user isn't stuck on the splash forever.
+        console.error('[useAppState] Auth check failed:', err);
         if (!cancelled) {
           setState('onboarding');
           setUser(null);
           setProfile(null);
         }
-        return;
-      }
-
-      if (!cancelled) setUser(session.user);
-
-      // ── Get profile ─────────────────────────────────
-      const { data: rawProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-
-      const profileData = rawProfile as UserProfile | null;
-
-      if (!profileData?.investor_style) {
-        if (!cancelled) {
-          setState('needs-profile');
-          setProfile(profileData);
-        }
-        return;
-      }
-
-      if (!cancelled) {
-        setProfile(profileData);
-        setState('authenticated');
       }
     }
 
