@@ -1,69 +1,29 @@
-// ─── OAuth Completion Callback ───────────────────────────────
-// Landing page after Google OAuth redirect.
-// Reads pending profile from 3 sources in order:
-//   1. sessionStorage 'vantage_pending_profile' (same-tab OAuth)
-//   2. URL search params ?fn=&ln=&style=&risk= (new-tab fallback)
-//   3. Supabase user metadata (Google-provided name)
-// Writes user_profiles, seeds demo portfolio, redirects to app.
+// ─── /auth/complete ──────────────────────────────────────────
+// Post-OAuth signup completion page. Writes the user's profile
+// (users + user_profiles) after Google sign-in supplies the email.
+//
+// Data is split across two tables:
+//   public.users         → parent (id, email, name)
+//   public.user_profiles → extended profile (FK → users.id)
+// user_profiles has NO user_id or email columns — uses id as PK.
 
 'use client';
-
-import React, { Suspense, useEffect, useState, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { VantageOrb } from '@/components/brand/VantageOrb';
+import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
-// ── Same gradient as login page ──────────────────────────────
-
-const GRADIENT = `
-  radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,0.40) 0%, rgba(14,116,144,0.22) 35%, transparent 65%),
-  radial-gradient(ellipse 70% 45% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%),
-  #0a0f1e
-`;
-
-// ── Wrapper with Suspense boundary ───────────────────────────
+const GRADIENT =
+  'linear-gradient(180deg, #0a0a12 0%, #111827 40%, #1a2332 75%, #0f172a 100%)';
 
 export default function AuthCompletePage() {
-  return (
-    <Suspense
-      fallback={
-        <div
-          style={{
-            height: '100dvh',
-            background: GRADIENT,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '24px',
-          }}
-        >
-          <VantageOrb size={80} animate />
-        </div>
-      }
-    >
-      <AuthCompleteContent />
-    </Suspense>
-  );
-}
-
-// ── Inner client component ───────────────────────────────────
-
-function AuthCompleteContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [status, setStatus] = useState<'processing' | 'error' | 'done'>('processing');
   const [errorMsg, setErrorMsg] = useState('');
-  const hasRun = useRef(false);
 
   useEffect(() => {
-    if (hasRun.current) return;
-    hasRun.current = true;
-
     async function completeAuth() {
       try {
         const supabase = getSupabaseBrowserClient();
-
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
@@ -72,107 +32,111 @@ function AuthCompleteContent() {
           return;
         }
 
-        // Check if profile already exists with investor style
-        const { data: existing } = await (supabase
+        // Check if users row exists
+        const { data: existingUser } = await (supabase
+          .from('users') as any)
+          .select('id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        const { data: existingProfile } = await (supabase
           .from('user_profiles') as any)
-          .select('id, investor_style')
-          .eq('user_id', session.user.id)
-          .single();
+          .select('id')
+          .eq('id', session.user.id)
+          .maybeSingle();
 
-        if (existing?.investor_style) {
-          // Profile complete — go straight to app
-          router.push('/');
-          return;
-        }
+        if (!existingUser && !existingProfile) {
+          // ── Reconstruct profile from sessionStorage ──────────
+          let profile: {
+            firstName: string;
+            lastName: string;
+            investorStyle: string | null;
+            riskTolerance: string | null;
+          } | null = null;
 
-        // ── Try to get profile data from 3 sources ──────────
-
-        interface ProfileData {
-          firstName: string;
-          lastName: string;
-          investorStyle: string | null;
-          riskTolerance: string | null;
-        }
-
-        let profile: ProfileData | null = null;
-
-        // Source 1: sessionStorage (works when OAuth stays in same tab)
-        const stored = sessionStorage.getItem('vantage_pending_profile');
-        if (stored) {
+          // Source 1: Pending profile stored by pre-signup flow
           try {
-            profile = JSON.parse(stored);
+            const raw = sessionStorage.getItem('vantage_pending_profile');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.firstName) profile = parsed;
+            }
           } catch {}
-        }
 
-        // Source 2: URL params (fallback — survives new-tab OAuth flows)
-        if (!profile) {
-          const fn = searchParams.get('fn');
-          const ln = searchParams.get('ln');
-          const style = searchParams.get('style');
-          const risk = searchParams.get('risk');
+          // Source 2: Onboarding result
+          try {
+            const raw = sessionStorage.getItem('vantage_onboarding_result');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.investorStyle) {
+                profile = {
+                  firstName: parsed.firstName || profile?.firstName || '',
+                  lastName: parsed.lastName || profile?.lastName || '',
+                  investorStyle: parsed.investorStyle,
+                  riskTolerance: parsed.riskTolerance || 'Moderate',
+                };
+              }
+            }
+          } catch {}
 
-          if (fn && ln && style && risk) {
+          // Source 3: Google user metadata
+          if (!profile) {
+            const meta = session.user.user_metadata as Record<string, string> | undefined;
             profile = {
-              firstName: fn,
-              lastName: ln,
-              investorStyle: style,
-              riskTolerance: risk,
+              firstName: meta?.given_name || meta?.name?.split(' ')[0] || '',
+              lastName: meta?.family_name || meta?.name?.split(' ').slice(1).join(' ') || '',
+              investorStyle: null,
+              riskTolerance: null,
             };
           }
-        }
 
-        // Source 3: Partial profile from Google user metadata
-        if (!profile) {
-          const meta = session.user.user_metadata as Record<string, string> | undefined;
-          profile = {
-            firstName: meta?.given_name || meta?.name?.split(' ')[0] || '',
-            lastName: meta?.family_name || meta?.name?.split(' ').slice(1).join(' ') || '',
-            investorStyle: null,
-            riskTolerance: null,
-          };
-        }
+          if (profile) {
+            const now = new Date().toISOString();
+            const demoExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-        if (profile) {
-          // Write profile
-          const { error } = await (supabase.from('user_profiles') as any).upsert(
-            {
-              id: session.user.id,
-              user_id: session.user.id,
-              email: session.user.email,
-              first_name: profile.firstName,
-              last_name: profile.lastName,
-              investor_style: profile.investorStyle,
-              risk_tolerance: profile.riskTolerance,
-              tier: 'demo',
-              first_open: new Date().toISOString(),
-              demo_expires_at: new Date(
-                Date.now() + 30 * 24 * 60 * 60 * 1000,
-              ).toISOString(),
-            },
-            { onConflict: 'user_id' },
-          );
+            // Create parent users row
+            const { error: userError } = await (supabase
+              .from('users') as any)
+              .insert({
+                id: session.user.id,
+                email: session.user.email,
+                first_name: profile.firstName,
+                last_name: profile.lastName,
+              });
 
-          if (error) throw error;
+            if (userError) throw userError;
 
-          // Seed demo portfolio (via server action if available)
-          try {
-            await seedDemoData(session.user.id);
-          } catch (e) {
-            console.error('[auth/complete] Demo seed failed:', e);
-            // Don't fail signup for this
+            // Create user_profiles row (no user_id or email columns)
+            const { error: profileError } = await (supabase
+              .from('user_profiles') as any)
+              .insert({
+                id: session.user.id,
+                first_name: profile.firstName,
+                last_name: profile.lastName,
+                investor_style: profile.investorStyle,
+                risk_tolerance: profile.riskTolerance,
+                tier: 'demo',
+                first_open: now,
+                demo_expires_at: demoExpiry,
+              });
+
+            if (profileError) throw profileError;
+
+            // Demo portfolio seed will happen server-side on first portfolio access
+
+            sessionStorage.removeItem('vantage_pending_profile');
+            setStatus('done');
+
+            if (!profile.investorStyle) {
+              router.push('/onboarding');
+            } else {
+              router.push('/');
+            }
           }
-
-          // Clear sessionStorage
-          sessionStorage.removeItem('vantage_pending_profile');
-
+        } else {
+          // Profile already exists — skip
           setStatus('done');
-
-          // If no investor style (Source 3 fallback) — send to onboarding quiz
-          if (!profile.investorStyle) {
-            router.push('/onboarding');
-          } else {
-            router.push('/');
-          }
+          router.push('/');
         }
       } catch (err: any) {
         console.error('[auth/complete] Error:', err);
@@ -197,21 +161,24 @@ function AuthCompleteContent() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '24px',
+          fontFamily: "'Playfair Display', Georgia, serif",
+          color: '#e2e8f0',
+          gap: 24,
         }}
       >
-        <VantageOrb size={80} animate />
-        <p
+        <div
           style={{
-            fontFamily: 'var(--font-serif)',
-            fontWeight: 400,
-            fontStyle: 'italic',
-            fontSize: '20px',
-            color: '#ffffff',
+            width: 48,
+            height: 48,
+            border: '4px solid rgba(100,180,255,0.2)',
+            borderTopColor: '#60a5fa',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
           }}
-        >
+        />
+        <span style={{ fontSize: 18, letterSpacing: '0.5px' }}>
           Setting up your account…
-        </p>
+        </span>
       </div>
     );
   }
@@ -227,34 +194,56 @@ function AuthCompleteContent() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '24px',
-          padding: '24px',
+          fontFamily: "'Playfair Display', Georgia, serif",
+          color: '#e2e8f0',
+          gap: 24,
+          padding: 32,
         }}
       >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            border: '2px solid #ef4444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 28,
+          }}
+        >
+          ✕
+        </div>
+        <h2 style={{ fontSize: 22, margin: 0, fontWeight: 600 }}>
+          Setup Failed
+        </h2>
         <p
           style={{
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 500,
-            fontSize: '16px',
-            color: 'var(--text-secondary)',
             textAlign: 'center',
-            maxWidth: '280px',
+            color: '#94a3b8',
+            lineHeight: 1.6,
+            maxWidth: 340,
           }}
         >
           {errorMsg}
         </p>
         <button
-          onClick={() => router.push('/')}
+          onClick={() => {
+            setStatus('processing');
+            setErrorMsg('');
+            router.push('/login');
+          }}
           style={{
+            marginTop: 8,
             padding: '12px 32px',
-            borderRadius: '999px',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
             border: 'none',
-            background: '#ffffff',
-            color: '#000000',
-            fontSize: '16px',
+            borderRadius: 12,
+            color: '#fff',
+            fontSize: 16,
             fontWeight: 600,
-            fontFamily: 'var(--font-sans)',
             cursor: 'pointer',
+            letterSpacing: '0.3px',
           }}
         >
           Back to Vantage
@@ -263,22 +252,38 @@ function AuthCompleteContent() {
     );
   }
 
-  // Done — redirect handled above
-  return null;
-}
-
-// ── Demo data seeding ─────────────────────────────────────────
-// Imported dynamically to avoid bundling server-only code
-
-async function seedDemoData(userId: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    await fetch('/api/auth/complete-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    });
-  } catch {
-    // Silently fail — seed is best-effort
-  }
+  // ── Done state (renders briefly before redirect) ─────────────
+  return (
+    <div
+      style={{
+        height: '100dvh',
+        background: GRADIENT,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: "'Playfair Display', Georgia, serif",
+        color: '#e2e8f0',
+        gap: 24,
+      }}
+    >
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 28,
+        }}
+      >
+        ✓
+      </div>
+      <span style={{ fontSize: 18, letterSpacing: '0.5px' }}>
+        Account ready
+      </span>
+    </div>
+  );
 }
