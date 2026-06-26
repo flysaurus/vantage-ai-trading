@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await (supabase
       .from('user_profiles') as any)
       .select('id')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (!existing) {
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
         .from('user_profiles') as any)
         .insert({
           id: userId,
+          user_id: userId,
           first_name: firstName,
           last_name: lastName,
           investor_style: investorStyle,

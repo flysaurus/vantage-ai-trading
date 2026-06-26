@@ -76,7 +76,7 @@ function AuthCompleteContent() {
         const { data: existing } = await (supabase
           .from('user_profiles') as any)
           .select('id, investor_style')
-          .eq('id', session.user.id)
+          .eq('user_id', session.user.id)
           .single();
 
         if (existing?.investor_style) {
@@ -137,6 +137,8 @@ function AuthCompleteContent() {
           const { error } = await (supabase.from('user_profiles') as any).upsert(
             {
               id: session.user.id,
+              user_id: session.user.id,
+              email: session.user.email,
               first_name: profile.firstName,
               last_name: profile.lastName,
               investor_style: profile.investorStyle,
@@ -147,7 +149,7 @@ function AuthCompleteContent() {
                 Date.now() + 30 * 24 * 60 * 60 * 1000,
               ).toISOString(),
             },
-            { onConflict: 'id' },
+            { onConflict: 'user_id' },
           );
 
           if (error) throw error;

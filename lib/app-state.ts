@@ -85,7 +85,7 @@ export function useAppState(): AppStateResult {
         const { data: profileData, error } = await (supabase
           .from('user_profiles') as any)
           .select('*')
-          .eq('id', session.user.id)
+          .eq('user_id', session.user.id)
           .single();
 
         if (!mounted) return;
@@ -120,6 +120,7 @@ export function useAppState(): AppStateResult {
           // Backfill user_profiles from legacy data
           const profileToUpsert = {
             id: session.user.id,
+            user_id: session.user.id,
             first_name: legacyUser.display_name?.split(' ')[0] || '',
             last_name: legacyUser.display_name?.split(' ').slice(1).join(' ') || '',
             investor_style: legacyUser.investor_style,
@@ -136,7 +137,7 @@ export function useAppState(): AppStateResult {
 
           await (supabase.from('user_profiles') as any).upsert(
             profileToUpsert,
-            { onConflict: 'id' },
+            { onConflict: 'user_id' },
           );
 
           console.log('[useAppState] Backfilled user_profiles from legacy → authenticated');
@@ -156,6 +157,7 @@ export function useAppState(): AppStateResult {
           await (supabase.from('user_profiles') as any).upsert(
             {
               id: session.user.id,
+              user_id: session.user.id,
               first_name: meta.first_name || meta.given_name || '',
               last_name: meta.last_name || meta.family_name || '',
               investor_style: meta.investor_style,
@@ -167,7 +169,7 @@ export function useAppState(): AppStateResult {
                 Date.now() + 30 * 24 * 60 * 60 * 1000,
               ).toISOString(),
             },
-            { onConflict: 'id' },
+            { onConflict: 'user_id' },
           );
 
           setState('authenticated');

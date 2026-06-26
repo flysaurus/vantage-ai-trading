@@ -87,6 +87,8 @@ export async function createAccount(
     .from('user_profiles') as any)
     .insert({
       id: userId,
+      user_id: userId,
+      email: data.email,
       first_name: data.firstName,
       last_name: data.lastName,
       investor_style: data.investorStyle,
