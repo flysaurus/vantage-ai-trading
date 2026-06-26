@@ -81,11 +81,11 @@ export function useAppState(): AppStateResult {
       console.log('[useAppState] Session found for:', session.user.email);
 
       try {
-        // Step 1: Try user_profiles (new auth system, post-Prompt 5)
+        // Step 1: Try user_profiles (look up by id — the PK, not user_id)
         const { data: profileData, error } = await (supabase
           .from('user_profiles') as any)
           .select('*')
-          .eq('user_id', session.user.id)
+          .eq('id', session.user.id)
           .single();
 
         if (!mounted) return;
