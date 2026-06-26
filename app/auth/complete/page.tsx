@@ -8,7 +8,7 @@
 
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
@@ -21,9 +21,35 @@ const GRADIENT = `
   #0a0f1e
 `;
 
-// ── Component ────────────────────────────────────────────────
+// ── Wrapper with Suspense boundary ───────────────────────────
 
 export default function AuthCompletePage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          style={{
+            height: '100dvh',
+            background: GRADIENT,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '24px',
+          }}
+        >
+          <VantageOrb size={80} animate />
+        </div>
+      }
+    >
+      <AuthCompleteContent />
+    </Suspense>
+  );
+}
+
+// ── Inner client component ───────────────────────────────────
+
+function AuthCompleteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'processing' | 'error' | 'done'>('processing');
