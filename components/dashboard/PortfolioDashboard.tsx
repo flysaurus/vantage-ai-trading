@@ -7,6 +7,7 @@ import { StockRecommendationCard } from '@/components/advisor/StockRecommendatio
 import ConflictAlert from '@/components/advisor/ConflictAlert';
 import { detectConflict, type ConflictAnalysis } from '@/lib/advisor/conflict-detection';
 import { useTabStore } from '@/store';
+import { INVESTOR_STYLES } from '@/lib/content/investor-styles';
 import type { InvestorStyle } from '@/types';
 
 interface Position {
@@ -30,22 +31,6 @@ interface Props {
   totalGain: number;
   totalReturn: number;
 }
-
-const STYLE_NAMES: Record<string, string> = {
-  buffett: 'Warren Buffett',
-  lynch: 'Peter Lynch',
-  livermore: 'Jesse Livermore',
-  soros: 'George Soros',
-  munger: 'Charlie Munger',
-};
-
-const STYLE_EMOJIS: Record<string, string> = {
-  buffett: '💎',
-  lynch: '📈',
-  livermore: '⚡️',
-  soros: '🌍',
-  munger: '💰',
-};
 
 // ─── Position Row ─────────────────────────────────────────────
 
@@ -157,7 +142,7 @@ function PositionRow({
           gain={position.totalPnl}
           gainPercent={position.totalPnlPercent}
           selectedStyle={selectedStyle}
-          selectedStyleName={STYLE_NAMES[selectedStyle]}
+          selectedStyleName={INVESTOR_STYLES[selectedStyle]?.shortLabel || 'Patient Builder'}
           allRecommendations={recommendations}
         />
       )}
@@ -205,6 +190,24 @@ export default function PortfolioDashboard({
     return () => clearTimeout(t);
   }, []);
 
+  const selectedStyle = (user?.investorStyle || 'buffett') as InvestorStyle;
+  const isPositive = totalReturn >= 0;
+
+  // ── Conflict detection (must run before any conditional return) ──
+  const conflictAnalysis = useMemo<ConflictAnalysis>(() => {
+    if (!user || Object.keys(stockDataMap.current).length === 0) {
+      return { hasConflict: false, severity: 'low', conflictMessage: '', metrics: {}, suggestions: [] };
+    }
+    return detectConflict(selectedStyle, positions, stockDataMap.current as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictVersion, selectedStyle, user]);
+
+  // Reset dismissal when conflict severity changes
+  useEffect(() => {
+    if (user) setDismissedConflict(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictAnalysis.severity]);
+
   if (!user) {
     return (
       <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--text-dim)' }}>
@@ -212,23 +215,6 @@ export default function PortfolioDashboard({
       </div>
     );
   }
-
-  const selectedStyle = (user.investorStyle || 'buffett') as InvestorStyle;
-  const isPositive = totalReturn >= 0;
-
-  // ── Conflict detection ─────────────────────────────────────
-  const conflictAnalysis = useMemo<ConflictAnalysis>(() => {
-    if (Object.keys(stockDataMap.current).length === 0) {
-      return { hasConflict: false, severity: 'low', conflictMessage: '', metrics: {}, suggestions: [] };
-    }
-    return detectConflict(selectedStyle, positions, stockDataMap.current as any);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conflictVersion, selectedStyle]);
-
-  // Reset dismissal when conflict severity changes
-  useEffect(() => {
-    setDismissedConflict(false);
-  }, [conflictAnalysis.severity]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -324,11 +310,11 @@ export default function PortfolioDashboard({
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 24 }}>{STYLE_EMOJIS[selectedStyle]}</span>
+          <span style={{ fontSize: 24 }}>{INVESTOR_STYLES[selectedStyle]?.emoji}</span>
           <div>
             <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>Advisor</p>
             <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-              {STYLE_NAMES[selectedStyle]}
+              {INVESTOR_STYLES[selectedStyle]?.shortLabel}
             </p>
           </div>
         </div>

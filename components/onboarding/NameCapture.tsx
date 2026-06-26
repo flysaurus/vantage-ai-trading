@@ -1,184 +1,247 @@
 // ─── NameCapture ───────────────────────────────────────────
-// Appears after Q5 with slide-up transition.
+// Full redesign: stacked inputs, white pill Continue,
+// two-line headline, bg-onboarding-name gradient.
 //
 // Layout:
-// - Small compass icon (40px, slowly rotating)
-// - "One last thing." (18px, muted, centered)
-// - "What should we call you?" (26px, white, semibold)
-// - Text input (full width, 52px, #1a2235 bg)
-// - "Let's go →" CTA (full width, cyan, disabled if empty)
-// - "Skip for now" link (13px, muted, centered)
+//   TOP BAR:    Back (left) + VantageMark (center)
+//   HEADLINE:   two-line sans+serif system
+//   NARRATOR:   Vantage AI brand line
+//   FIELDS:     stacked first + last name inputs
+//   CONTINUE:   white pill, disabled until both filled
 
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { ChevronLeft } from 'lucide-react';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 
 interface NameCaptureProps {
-  onSubmit: (name: string) => void;
-  onSkip: () => void;
+  onSubmit: (firstName: string, lastName: string) => void;
+  onBack: () => void;
 }
 
-export function NameCapture({ onSubmit, onSkip }: NameCaptureProps) {
-  const [name, setName] = useState('');
-  const [visible, setVisible] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+export function NameCapture({ onSubmit, onBack }: NameCaptureProps) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [entering, setEntering] = useState(false);
+  const firstNameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 16);
-    setTimeout(() => inputRef.current?.focus(), 400);
-    return () => clearTimeout(t);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setEntering(true));
+      // Autofocus first name input
+      setTimeout(() => firstNameRef.current?.focus(), 350);
+    });
   }, []);
 
-  const handleSubmit = () => {
-    const trimmed = name.trim();
-    onSubmit(trimmed || '');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSubmit();
-  };
+  const isValid = firstName.trim().length > 0 && lastName.trim().length > 0;
 
   return (
     <div
+      className="bg-onboarding-name"
       style={{
         width: '100%',
-        padding: '0 20px',
+        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        transform: visible ? 'translateY(0)' : 'translateY(40px)',
-        opacity: visible ? 1 : 0,
-        transition: 'transform 320ms ease-in-out, opacity 320ms ease-in-out',
-        paddingTop: '40px',
+        transition: 'opacity 300ms var(--ease-out), transform 300ms var(--ease-out)',
+        opacity: entering ? 1 : 0,
+        transform: entering ? 'translateX(0)' : 'translateX(100%)',
       }}
     >
-      {/* Small rotating compass */}
+      {/* ── TOP BAR ── */}
       <div
-        className="name-compass-rotate"
         style={{
-          width: '40px',
-          height: '40px',
-          marginBottom: '24px',
-          animation: 'slowSpin 8s linear infinite',
+          height: '56px',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 20px',
+          position: 'relative',
+          flexShrink: 0,
+          paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
-        <svg width="40" height="40" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r="28" fill="none" stroke="#22d3ee" strokeWidth="1.2" opacity="0.3" />
-          <line x1="32" y1="4" x2="32" y2="60" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
-          <line x1="4" y1="32" x2="60" y2="32" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
-          <line x1="12" y1="12" x2="52" y2="52" stroke="#22d3ee" strokeWidth="0.8" opacity="0.25" />
-          <line x1="52" y1="12" x2="12" y2="52" stroke="#22d3ee" strokeWidth="0.8" opacity="0.25" />
-          <polygon points="32,10 28,18 36,18" fill="#22d3ee" opacity="0.9" />
-          <polygon points="32,54 28,46 36,46" fill="#22d3ee" opacity="0.3" />
-          <circle cx="32" cy="32" r="2.5" fill="#22d3ee" />
-        </svg>
+        <button
+          onClick={onBack}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            fontSize: '15px',
+            cursor: 'pointer',
+            padding: '8px 12px',
+            minHeight: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            fontFamily: 'inherit',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          <ChevronLeft size={20} />
+          Back
+        </button>
+
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+          }}
+        >
+          <VantageOrb size={44} animate showEntrance={false} />
+        </div>
       </div>
 
-      {/* One last thing */}
-      <p
+      {/* ── CONTENT ── */}
+      <div
         style={{
-          fontSize: '18px',
-          color: '#64748b',
-          marginBottom: '8px',
-          textAlign: 'center',
-        }}
-      >
-        One last thing.
-      </p>
-
-      {/* What should we call you */}
-      <h2
-        style={{
-          fontSize: '26px',
-          fontWeight: 600,
-          color: '#ffffff',
-          marginBottom: '28px',
-          textAlign: 'center',
-        }}
-      >
-        What should we call you?
-      </h2>
-
-      {/* Input */}
-      <input
-        ref={inputRef}
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="First name"
-        autoComplete="given-name"
-        maxLength={30}
-        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          padding: '0 24px',
+          maxWidth: '400px',
+          margin: '0 auto',
           width: '100%',
-          height: '52px',
-          padding: '0 16px',
-          background: '#1a2235',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '14px',
-          fontSize: '16px',
-          color: '#ffffff',
-          outline: 'none',
-          transition: 'border-color 200ms ease',
-        }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = '#22d3ee';
-        }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-        }}
-      />
-
-      {/* Let's go CTA */}
-      <button
-        onClick={handleSubmit}
-        disabled={!name.trim()}
-        style={{
-          width: '100%',
-          marginTop: '16px',
-          padding: '15px 0',
-          background: name.trim() ? '#22d3ee' : '#1e293b',
-          border: 'none',
-          borderRadius: '14px',
-          fontSize: '16px',
-          fontWeight: 600,
-          color: name.trim() ? '#0a0f1e' : '#64748b',
-          cursor: name.trim() ? 'pointer' : 'default',
-          transition: 'all 200ms ease',
         }}
       >
-        Let&apos;s go →
-      </button>
+        {/* Two-line headline */}
+        <h2 style={{ marginBottom: '24px', textAlign: 'center' }}>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '38px',
+              fontWeight: 800,
+              color: 'var(--text-primary)',
+              lineHeight: 1.1,
+            }}
+          >
+            What should we
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-serif)',
+              fontSize: '38px',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              color: 'var(--text-primary)',
+              lineHeight: 1.1,
+            }}
+          >
+            call you?
+          </span>
+        </h2>
 
-      {/* Skip for now */}
-      <button
-        onClick={onSkip}
-        style={{
-          background: 'none',
-          border: 'none',
-          marginTop: '12px',
-          fontSize: '13px',
-          color: '#64748b',
-          cursor: 'pointer',
-          padding: '8px',
-          transition: 'color 150ms ease',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = '#94a3b8';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = '#64748b';
-        }}
-      >
-        Skip for now
-      </button>
+        {/* Narrator line */}
+        <p
+          style={{
+            fontSize: '14px',
+            color: 'var(--text-secondary)',
+            fontWeight: 400,
+            lineHeight: 1.5,
+            margin: '0 0 24px',
+          }}
+        >
+          We'll use your name to personalize everything — your greeting, your AI advisor, your reports.
+        </p>
 
-      <style>{`
-        @keyframes slowSpin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+        {/* Stacked inputs */}
+        <input
+          ref={firstNameRef}
+          type="text"
+          placeholder="First name"
+          value={firstName}
+          onChange={(e) => setFirstName(e.target.value)}
+          autoFocus
+          style={{
+            width: '100%',
+            height: '56px',
+            padding: '0 18px',
+            marginBottom: '12px',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.10)',
+            borderRadius: '14px',
+            fontSize: '17px',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+            fontFamily: 'var(--font-sans)',
+            outline: 'none',
+            transition: 'border-color 200ms var(--ease-out), background 200ms var(--ease-out)',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.border = '1px solid var(--accent)';
+            e.currentTarget.style.background = 'rgba(34,211,238,0.05)';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.border = '1px solid rgba(255,255,255,0.10)';
+            e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+          }}
+        />
+
+        <input
+          type="text"
+          placeholder="Last name"
+          value={lastName}
+          onChange={(e) => setLastName(e.target.value)}
+          style={{
+            width: '100%',
+            height: '56px',
+            padding: '0 18px',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.10)',
+            borderRadius: '14px',
+            fontSize: '17px',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+            fontFamily: 'var(--font-sans)',
+            outline: 'none',
+            transition: 'border-color 200ms var(--ease-out), background 200ms var(--ease-out)',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.border = '1px solid var(--accent)';
+            e.currentTarget.style.background = 'rgba(34,211,238,0.05)';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.border = '1px solid rgba(255,255,255,0.10)';
+            e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+          }}
+        />
+
+        {/* Continue button */}
+        <button
+          onClick={() => isValid && onSubmit(firstName.trim(), lastName.trim())}
+          disabled={!isValid}
+          style={{
+            width: '100%',
+            height: '56px',
+            borderRadius: 'var(--radius-pill)',
+            border: 'none',
+            background: isValid ? '#ffffff' : 'rgba(255,255,255,0.20)',
+            color: isValid ? '#000000' : 'rgba(0,0,0,0.40)',
+            fontSize: '17px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-sans)',
+            cursor: isValid ? 'pointer' : 'default',
+            pointerEvents: isValid ? 'auto' : 'none',
+            marginTop: '24px',
+            transition: 'background 200ms var(--ease-out), color 200ms var(--ease-out)',
+          }}
+          onTouchStart={(e) => {
+            if (!isValid) return;
+            (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)';
+          }}
+          onTouchEnd={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+          }}
+        >
+          See my results
+        </button>
+      </div>
     </div>
   );
 }

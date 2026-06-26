@@ -13,6 +13,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { StyleShareCard } from './StyleShareCard';
 import type { ShareStyleId } from './StyleShareCard';
 import type { Level } from '@/lib/theme/tokens';
+import { getStyleTrait } from '@/lib/content/investor-styles';
 
 // ─── Props ────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface ShareCardModalProps {
   score: number;
   level: Level;
   riskTolerance: string;
+  userName?: string;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -34,6 +36,7 @@ export function ShareCardModal({
   score,
   level,
   riskTolerance,
+  userName,
 }: ShareCardModalProps) {
   const [capturing, setCapturing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -78,10 +81,12 @@ export function ShareCardModal({
     }
   }
 
+  // ── Build share URL ─────────────────────────────────
+  const shareUrl = `https://vantage-ai-trading.vercel.app/share?style=${styleId}${userName ? `&name=${encodeURIComponent(userName)}` : ''}`;
+
   // ── Copy Link ─────────────────────────────────────────
   function handleCopyLink() {
-    const url = 'https://vantage-ai-trading.vercel.app';
-    navigator.clipboard.writeText(url).then(() => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
       setToast('📋 Link copied!');
       setTimeout(() => setToast(null), 2000);
     }).catch(() => {
@@ -92,10 +97,11 @@ export function ShareCardModal({
 
   // ── Native Share ──────────────────────────────────────
   async function handleNativeShare() {
+    const fullHeadline = getStyleTrait(styleId);
     const shareData: ShareData = {
-      title: 'My Investor Style — Vantage',
-      text: `I'm a ${styleId.charAt(0).toUpperCase() + styleId.slice(1)} investor. What's your style?`,
-      url: 'https://vantage-ai-trading.vercel.app',
+      title: `I'm ${fullHeadline} on Vantage`,
+      text: 'Take the quiz and find out yours →',
+      url: shareUrl,
     };
 
     if (navigator.share && navigator.canShare?.(shareData)) {
@@ -114,8 +120,8 @@ export function ShareCardModal({
           type: 'image/png',
         });
         const fileShareData: ShareData = {
-          title: 'My Investor Style — Vantage',
-          text: `I'm a ${styleId} investor. What's your style?`,
+          title: `I'm ${fullHeadline} on Vantage`,
+          text: 'Take the quiz and find out yours →',
           files: [file],
         };
         if (navigator.canShare?.(fileShareData)) {

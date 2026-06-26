@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+import { useAuth } from '@/components/providers/AuthProvider';
 import type { ScoreResult } from '@/lib/investor-score/calculate';
 
 const EMPTY_RESULT: ScoreResult = {
@@ -43,21 +43,22 @@ export function useInvestorScore(): UseInvestorScoreReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
+  const { user } = useAuth();
 
   const fetchScore = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const anonId = getOrCreateAnonymousId();
-      if (!anonId) {
+      const userId = user?.id || '';
+      if (!userId) {
         setResult(EMPTY_RESULT);
         return;
       }
 
       const res = await fetch('/api/investor-score', {
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anonymousId: anonId }),
+        body: JSON.stringify({ anonymousId: userId }),
         method: 'POST',
       });
 

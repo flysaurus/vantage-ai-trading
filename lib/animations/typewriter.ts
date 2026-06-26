@@ -1,60 +1,69 @@
-// ─── useTypewriter Hook ──────────────────────────────────────
-// Types text character by character at given ms per char speed.
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 
-interface TypewriterResult {
-  displayText: string;
-  isDone: boolean;
-}
-
+/**
+ * Custom hook for typewriter text reveal.
+ * Types one character at a time with configurable speed and delay.
+ *
+ * @param text      The full string to reveal character-by-character.
+ * @param speed     Milliseconds between each character (default 30).
+ * @param startDelay Milliseconds to wait before typing begins (default 0).
+ * @returns         `{ displayText, isDone }` — current revealed substring and completion flag.
+ */
 export function useTypewriter(
   text: string,
-  speedMs: number,
+  speed: number = 30,
   startDelay: number = 0,
-): TypewriterResult {
+): { displayText: string; isDone: boolean } {
   const [displayText, setDisplayText] = useState('');
   const [isDone, setIsDone] = useState(false);
-  const charIndexRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const indexRef = useRef(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    charIndexRef.current = 0;
+    // Reset on text change
     setDisplayText('');
     setIsDone(false);
+    indexRef.current = 0;
 
-    const start = () => {
-      timerRef.current = setInterval(() => {
-        charIndexRef.current += 1;
-        if (charIndexRef.current >= text.length) {
+    // Clear any previous timers
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (startTimerRef.current) clearTimeout(startTimerRef.current);
+
+    if (!text) {
+      setIsDone(true);
+      return;
+    }
+
+    const begin = () => {
+      intervalRef.current = setInterval(() => {
+        indexRef.current += 1;
+        if (indexRef.current >= text.length) {
           setDisplayText(text);
           setIsDone(true);
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
           }
         } else {
-          setDisplayText(text.slice(0, charIndexRef.current + 1));
+          setDisplayText(text.slice(0, indexRef.current + 1));
         }
-      }, speedMs);
+      }, speed);
     };
 
     if (startDelay > 0) {
-      const delayTimer = setTimeout(start, startDelay);
-      return () => {
-        clearTimeout(delayTimer);
-        if (timerRef.current) clearInterval(timerRef.current);
-      };
+      startTimerRef.current = setTimeout(begin, startDelay);
     } else {
-      start();
+      begin();
     }
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (startTimerRef.current) clearTimeout(startTimerRef.current);
     };
-  }, [text, speedMs, startDelay]);
+  }, [text, speed, startDelay]);
 
   return { displayText, isDone };
 }

@@ -3,7 +3,23 @@
 import React from 'react';
 import type { InvestorStyle } from '@/types';
 
-// ─── Style Definitions ────────────────────────────────────────
+// Re-export core style content from shared source
+export {
+  getStyleContent,
+  getStyleTrait,
+  getStyleTag,
+  getStyleEmoji,
+  getStyleDescription,
+  PILL_TRAITS,
+  ALL_STYLES,
+  ALL_STYLE_KEYS,
+  type InvestorStyleKey,
+} from '@/lib/content/investor-styles';
+
+// Share the shared INVESTOR_STYLES under a distinct name to avoid conflict
+export { INVESTOR_STYLES as INVESTOR_STYLES_CORE } from '@/lib/content/investor-styles';
+
+// ─── Extended Style Definitions (for investor-style page) ───
 
 export interface StyleDef {
   id: InvestorStyle;

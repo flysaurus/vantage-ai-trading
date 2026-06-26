@@ -69,7 +69,7 @@ export function createClient(): SupabaseClient<Database> {
         storage: sessionStorageAdapter(),
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        // detectSessionInUrl defaults to true — required for OAuth callbacks
       },
     }
   );

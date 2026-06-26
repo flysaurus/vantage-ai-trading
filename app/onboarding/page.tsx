@@ -1,55 +1,85 @@
 // ─── /onboarding ───────────────────────────────────────────
-// Full-screen onboarding quiz flow.
-// Renders if no quiz completion flag in localStorage.
+// Full-screen onboarding quiz flow with splash sequence.
 //
 // Screen order:
-//  0. Arrival (compass burst + typewriter, "Find my style →")
-//  1-5. Q1 → Q2 → Q3 → Q4 → Q5 (slide transitions)
-//  6. Name capture (slide-up)
-//  7. Result screen (compass burst + style reveal)
+//  0. Boot Splash (every open, 1.5s, compass burst + wordmark)
+//  1. Feature Splash (first-time only, 3 auto-advancing lines)
+//  2. Arrival (typewriter text, "Find my style →")
+//  3-7. Q1 → Q2 → Q3 → Q4 → Q5 (stacked answer cards)
+//  8. Name capture (first + last name, required)
+//  9. Style reveal (burst, typewriter, override pills)
+// 10. Account creation (handled by parent or next prompt)
 //
-// On completion: saves style, name, risk to localStorage;
-// syncs to Supabase; navigates to /
+// State: all quiz data held in React state only — no
+// localStorage, no Supabase writes until account creation.
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { BootSplash } from '@/components/onboarding/BootSplash';
+import { FeatureSplash } from '@/components/onboarding/FeatureSplash';
 import { ArrivalScreen } from '@/components/onboarding/ArrivalScreen';
 import { QuizQuestion } from '@/components/onboarding/QuizQuestion';
 import { NameCapture } from '@/components/onboarding/NameCapture';
-import { ResultScreen } from '@/components/onboarding/ResultScreen';
-import {
-  QUIZ_QUESTIONS,
-  scoreQuiz,
-  isQuizComplete,
-  markQuizComplete,
-} from '@/lib/onboarding/quiz-logic';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
-import type { InvestorStyle } from '@/types';
+import { StyleReveal } from '@/components/onboarding/StyleReveal';
+import { QUIZ_QUESTIONS, scoreQuiz, checkQuizComplete } from '@/lib/onboarding/quiz-logic';
+import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
-type Screen = 'arrival' | 'quiz' | 'name' | 'result';
+type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'reveal';
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // If already complete, redirect to main app immediately
-  if (typeof window !== 'undefined' && isQuizComplete()) {
-    router.replace('/');
-    return null;
-  }
+  // If already complete, redirect to main app
+  useEffect(() => {
+    checkQuizComplete().then(({ complete }) => {
+      if (complete) router.replace('/');
+    });
+  }, [router]);
 
-  const [screen, setScreen] = useState<Screen>('arrival');
+  const [screen, setScreen] = useState<Screen>(() => {
+    // Check for retake flag (set from Settings → Retake quiz / Change style)
+    if (typeof window !== 'undefined') {
+      const retake = sessionStorage.getItem('vantage_onboarding_retake');
+      if (retake === 'quiz') {
+        sessionStorage.removeItem('vantage_onboarding_retake');
+        return 'quiz';
+      }
+      if (retake === 'reveal') {
+        sessionStorage.removeItem('vantage_onboarding_retake');
+        return 'reveal';
+      }
+    }
+    return 'boot';
+  });
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [userName, setUserName] = useState('');
-  const [result, setResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [quizResult, setQuizResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
 
-  // ── Arrival done → quiz ────────────────────────────────────
+  // ── Boot Splash complete ──────────────────────────────────
+
+  const handleBootComplete = useCallback(() => {
+    setScreen('feature');
+  }, []);
+
+  // ── Feature Splash complete ───────────────────────────────
+
+  const handleFeatureComplete = useCallback(() => {
+    setScreen('arrival');
+  }, []);
+
+  // ── Arrival: find style → quiz, sign in → /login ──────────
 
   const handleFindStyle = useCallback(() => {
     setScreen('quiz');
   }, []);
+
+  const handleSignIn = useCallback(() => {
+    router.push('/login');
+  }, [router]);
 
   // ── Answer a quiz question ─────────────────────────────────
 
@@ -58,188 +88,101 @@ export default function OnboardingPage() {
     setAnswers(newAnswers);
 
     if (newAnswers.length < QUIZ_QUESTIONS.length) {
-      // Next question
       setTimeout(() => {
         setQuestionIndex(newAnswers.length);
       }, 100);
     } else {
-      // All questions answered — score and go to name capture
-      const quizResult = scoreQuiz(newAnswers);
-      setResult(quizResult);
+      const result = scoreQuiz(newAnswers);
+      setQuizResult(result);
       setTimeout(() => {
         setScreen('name');
       }, 400);
     }
   }, [answers]);
 
+  // ── Back navigation ────────────────────────────────────────
+
+  const handleBack = useCallback(() => {
+    setAnswers((prev) => prev.slice(0, -1));
+    setQuestionIndex((prev) => prev - 1);
+  }, []);
+
+  const handleNameBack = useCallback(() => {
+    // Go back to Q5
+    setQuestionIndex(4);
+    setAnswers((prev) => prev.slice(0, 4));
+    setScreen('quiz');
+  }, []);
+
   // ── Name captured ──────────────────────────────────────────
 
-  const handleNameSubmit = useCallback((name: string) => {
-    setUserName(name);
-    if (name) {
+  const handleNameSubmit = useCallback((first: string, last: string) => {
+    setFirstName(first);
+    setLastName(last);
+    setTimeout(() => setScreen('reveal'), 300);
+  }, []);
+
+  // ── Create account (passes all state to CreateAccount screen) ─
+
+  const handleCreateAccount = useCallback(
+    (data: { style: InvestorStyleKey; risk: RiskTolerance; firstName: string; lastName: string }) => {
+      // Store in sessionStorage temporarily for CreateAccount to pick up
+      // (CreateAccount screen will be built in a later prompt)
       try {
-        localStorage.setItem('vantage_user_name', name);
+        sessionStorage.setItem('vantage_onboarding_data', JSON.stringify(data));
       } catch {}
-    }
-    setTimeout(() => setScreen('result'), 300);
-  }, []);
+      router.push('/create-account');
+    },
+    [router],
+  );
 
-  const handleNameSkip = useCallback(() => {
-    setUserName('');
-    setTimeout(() => setScreen('result'), 300);
-  }, []);
+  // ── Render current screen ──────────────────────────────────
 
-  // ── Enter Vantage ──────────────────────────────────────────
+  switch (screen) {
+    case 'boot':
+      return <BootSplash onComplete={handleBootComplete} />;
 
-  const handleEnter = useCallback(async (style: InvestorStyle, riskTolerance: string) => {
-    try {
-      localStorage.setItem('vantage:investorStyle', style);
-      localStorage.setItem('vantage:riskTolerance', riskTolerance);
-      localStorage.setItem('vantage:onboarded', 'true');
-      if (userName) {
-        localStorage.setItem('vantage_user_name', userName);
-      }
-    } catch {}
+    case 'feature':
+      return <FeatureSplash onComplete={handleFeatureComplete} />;
 
-    // Sync to Supabase anonymously
-    try {
-      const anonymousId = getOrCreateAnonymousId();
-      await fetch('/api/onboarding/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          anonymousId,
-          investorStyle: style,
-          riskTolerance,
-          firstName: userName || undefined,
-        }),
-      });
-    } catch (err) {
-      console.warn('[onboarding] Supabase sync failed (non-blocking):', err);
-    }
+    case 'arrival':
+      return <ArrivalScreen onFindStyle={handleFindStyle} onSignIn={handleSignIn} />;
 
-    markQuizComplete();
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
-      );
-    }
-
-    router.push('/');
-  }, [userName, router]);
-
-  const quizBackground: React.CSSProperties = {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 100,
-    background: '#0a0f1e',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    paddingTop: 'env(safe-area-inset-top)',
-    overflow: 'hidden',
-  };
-
-  // ── Arrival screen ─────────────────────────────────────────
-
-  if (screen === 'arrival') {
-    return <ArrivalScreen onFindStyle={handleFindStyle} />;
-  }
-
-  // ── Quiz screen ────────────────────────────────────────────
-
-  if (screen === 'quiz' && questionIndex < QUIZ_QUESTIONS.length) {
-    return (
-      <div style={quizBackground}>
-        {/* Back button (after Q1) */}
-        {questionIndex > 0 && (
-          <button
-            onClick={() => {
-              setAnswers(prev => prev.slice(0, -1));
-              setQuestionIndex(prev => prev - 1);
-            }}
-            style={{
-              position: 'absolute',
-              top: 'max(16px, env(safe-area-inset-top, 16px))',
-              left: '16px',
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              fontSize: '14px',
-              cursor: 'pointer',
-              padding: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              zIndex: 10,
-            }}
-          >
-            ← Back
-          </button>
-        )}
-
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+    case 'quiz':
+      if (questionIndex < QUIZ_QUESTIONS.length) {
+        return (
           <QuizQuestion
             key={QUIZ_QUESTIONS[questionIndex].id}
             question={QUIZ_QUESTIONS[questionIndex]}
             questionNumber={questionIndex + 1}
             totalQuestions={QUIZ_QUESTIONS.length}
             onAnswer={handleAnswer}
-            direction="forward"
+            onBack={questionIndex > 0 ? handleBack : undefined}
           />
-        </div>
-      </div>
-    );
+        );
+      }
+      return null;
+
+    case 'name':
+      return (
+        <NameCapture onSubmit={handleNameSubmit} onBack={handleNameBack} />
+      );
+
+    case 'reveal':
+      if (quizResult) {
+        return (
+          <StyleReveal
+            style={quizResult.style}
+            risk={quizResult.risk}
+            firstName={firstName}
+            lastName={lastName}
+            onCreateAccount={handleCreateAccount}
+          />
+        );
+      }
+      return null;
+
+    default:
+      return null;
   }
-
-  // ── Name capture screen ────────────────────────────────────
-
-  if (screen === 'name') {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 100,
-          background: '#0a0f1e',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-start',
-          paddingTop: 'env(safe-area-inset-top)',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-          <NameCapture onSubmit={handleNameSubmit} onSkip={handleNameSkip} />
-        </div>
-      </div>
-    );
-  }
-
-  // ── Result screen ──────────────────────────────────────────
-
-  if (screen === 'result' && result) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 100,
-          background: '#0a0f1e',
-          overflowY: 'auto',
-          paddingTop: 'env(safe-area-inset-top)',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-        }}
-      >
-        <ResultScreen
-          result={result}
-          userName={userName}
-          onEnter={handleEnter}
-        />
-      </div>
-    );
-  }
-
-  return null;
 }

@@ -20,7 +20,6 @@ import React, {
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { onTradeExecuted } from '@/lib/gamification/events';
-import { useAnonymousSession } from '@/hooks/useAnonymousSession';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
@@ -187,14 +186,6 @@ interface PortfolioContextValue {
   basketOrders: any[];
   /** Pending basket orders (OPEN status, awaiting market open) */
   pendingBaskets: any[];
-  /** Anonymous session ID (UUID) for demo users */
-  anonymousId: string;
-  /** Days remaining in demo period */
-  daysRemaining: number;
-  /** Whether demo is about to expire (≤ 3 days) */
-  showWarning: boolean;
-  /** Current login streak */
-  streak: import('@/lib/session/sync').StreakData | null;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -215,10 +206,6 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   executePendingOrders: async () => {},
   basketOrders: [],
   pendingBaskets: [],
-  anonymousId: '',
-  daysRemaining: 0,
-  showWarning: false,
-  streak: null,
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -226,7 +213,6 @@ const PortfolioContext = createContext<PortfolioContextValue>({
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected } = useBroker();
   const { user } = useAuth();
-  const { anonymousId, daysRemaining, showWarning, isAuthenticated: isAnonAuth, streak } = useAnonymousSession();
 
   // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
   function loadPersistedDemoState(): DemoState | null {
@@ -292,7 +278,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<AccountSummary | null>(() => {
     if (isConnected) return null;
     if (initialPersistedState) return accountFromDemoState(initialPersistedState);
-    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
+    const localStyle = typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null;
+    const style = (user?.investorStyle || localStyle || 'buffett') as InvestorStyle;
     return getDemoAccount(style, {});
   });
   const [loading, setLoading] = useState(false);
@@ -529,7 +516,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => setToast(null), result.status === 'FILLED' ? 3000 : 4000);
 
       // Fire gamification: trade executed
-      if (anonymousId && result.status !== 'OPEN') {
+      if (user?.id && result.status !== 'OPEN') {
         const b = brokerRef.current;
         if (b) {
           const [account, positions] = await Promise.all([
@@ -539,9 +526,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           const positionsCost = positions.reduce((s, p) => s + (p.totalCost || 0), 0);
           const pv = (account?.totalValue || 0);
           const pc = positionsCost + (account?.cashBalance || 0);
-          onTradeExecuted(anonymousId, user?.investorStyle, user?.investorStyle, pv, pc).catch(() => {});
+          onTradeExecuted(user.id, user?.investorStyle, user?.investorStyle, pv, pc).catch(() => {});
         } else {
-          onTradeExecuted(anonymousId, user?.investorStyle, user?.investorStyle).catch(() => {});
+          onTradeExecuted(user.id, user?.investorStyle, user?.investorStyle).catch(() => {});
         }
       }
 
@@ -911,10 +898,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         executePendingOrders,
         basketOrders,
         pendingBaskets,
-        anonymousId,
-        daysRemaining,
-        showWarning,
-        streak,
       }}
     >
       {children}

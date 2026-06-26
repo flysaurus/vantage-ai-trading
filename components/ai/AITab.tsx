@@ -1,10 +1,11 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { onAISessionStarted } from '@/lib/gamification/events';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
@@ -69,6 +70,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const { user } = useAuth();
   const userId = user?.id || null;
   const investorStyle = user?.investorStyle || 'Lynch';
+  const chatGateCheckedRef = useRef(false);
   
   // ── Supabase chat storage (previous sessions + message count) ──
   const {
@@ -87,7 +89,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
   const [greetingHook, setGreetingHook] = useState<string | null>(null);
   const [greetingLoaded, setGreetingLoaded] = useState(false);
-  const localName = typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null;
+  const localName = typeof window !== 'undefined' ? user?.name || '' : null;
   const userInitial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
   const RATE_LIMIT_MS = 5000;
   const [earnings, setEarnings] = useState<{
@@ -505,6 +507,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
+    // (email gate removed — auth-only app)
+
     // Message limit check (soft — 25/day)
     const remaining = getRemainingMessages();
     if (remaining <= 0) {
@@ -529,7 +533,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
     // Fire gamification on first AI message
     if (messages.length === 0) {
-      const anonId = getOrCreateAnonymousId();
+      const anonId = user?.id || 'unknown';
       onAISessionStarted(anonId).catch(() => {});
     }
 
@@ -549,7 +553,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           mode,
           investorStyle: investorStyle,
           riskTolerance: user?.riskTolerance || 'Moderate',
-          name: user?.name || (typeof window !== 'undefined' ? localStorage.getItem('vantage_user_name') : null) || 'M',
+          name: user?.name || (typeof window !== 'undefined' ? user?.name || '' : null) || 'M',
         })
       });
 
@@ -2077,15 +2081,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               flexShrink: 0,
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <Trash2 size={16} />
           </div>
         </div>
 

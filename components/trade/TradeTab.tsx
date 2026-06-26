@@ -4,8 +4,8 @@ import { createPortal } from 'react-dom';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore } from '@/store';
 import BuildBasketModal from '@/components/BuildBasketModal';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { onBasketCreated } from '@/lib/gamification/events';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
 import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
@@ -53,6 +53,7 @@ function formatQuoteDate(ts: number) {
 }
 
 export function TradeTab() {
+  const { user } = useAuth();
   const { setTab: setActiveTab } = useTabStore();
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>('market');
@@ -1447,7 +1448,7 @@ export function TradeTab() {
             setShowBuildBasket(false);
             if (result?.success) {
               // Fire gamification
-              const anonId = getOrCreateAnonymousId();
+              const anonId = user?.id || 'unknown';
               onBasketCreated(anonId).catch(() => {});
               // Navigate to Portfolio tab → baskets section
               window.dispatchEvent(new CustomEvent('vantage-navigate', {

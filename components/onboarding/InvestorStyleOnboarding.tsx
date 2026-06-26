@@ -53,8 +53,6 @@ export function InvestorStyleOnboarding() {
       }
 
       if (typeof window !== 'undefined') {
-        localStorage.setItem('vantage:onboarded', 'true');
-        localStorage.setItem('vantage:investorStyle', style);
       }
 
       setSelectedStyle(style);

@@ -357,6 +357,46 @@ export interface Database {
           updated_at?: string | null;
         };
       };
+      user_profiles: {
+        Row: {
+          id: string;
+          email: string | null;
+          first_name: string | null;
+          last_name: string | null;
+          investor_style: string | null;
+          risk_tolerance: string | null;
+          tier: string;
+          first_open: string | null;
+          demo_expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          email?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+          investor_style?: string | null;
+          risk_tolerance?: string | null;
+          tier?: string;
+          first_open?: string | null;
+          demo_expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+          investor_style?: string | null;
+          risk_tolerance?: string | null;
+          tier?: string;
+          first_open?: string | null;
+          demo_expires_at?: string | null;
+          updated_at?: string;
+        };
+      };
       market_cache: {
         Row: {
           symbol: string;

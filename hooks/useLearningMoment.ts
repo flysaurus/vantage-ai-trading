@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { detectLearningMoment } from '@/lib/learning/detector';
 import type { LearningCard } from '@/lib/learning/triggers';
-import { getOrCreateAnonymousId } from '@/lib/session/anonymous';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ export function useLearningMoment(
   const [learningCard, setLearningCard] = useState<LearningCard | null>(null);
   const shownThisConversation = useRef<Set<string>>(new Set());
   const lastConversationId = useRef<string | null>(null);
+  const { user } = useAuth();
 
   // Reset shown-concepts when conversation changes
   useEffect(() => {
@@ -59,14 +60,14 @@ export function useLearningMoment(
   // ── Award XP + dismiss ─────────────────────────────────
   async function dismissLearning(gotIt: boolean) {
     if (gotIt && learningCard) {
-      const anonymousId = getOrCreateAnonymousId();
-      if (anonymousId) {
+      const userId = user?.id || '';
+      if (userId) {
         try {
           const res = await fetch('/api/gamification/increment-learning', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              anonymousId,
+              userId,
               xpAmount: learningCard.xp,
             }),
           });

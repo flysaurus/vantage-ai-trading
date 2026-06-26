@@ -6,7 +6,7 @@
 // Returns: { streak: StreakData }
 
 import { NextRequest, NextResponse } from 'next/server';
-import { syncStreak } from '@/lib/session/sync';
+// syncStreak removed - anonymous sessions deleted
 import { createServerClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -53,7 +53,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const streak = await syncStreak(anonymousId);
+    // Streak syncing removed (anonymous sessions deleted).
+    // Return a stub so callers don't crash.
+    const streak = {
+      current_streak: 0,
+      longest_streak: 0,
+      last_open_date: new Date().toISOString().split('T')[0],
+      total_days_active: 0,
+    };
 
     return NextResponse.json({ success: true, streak }, { status: 200 });
   } catch (err: any) {

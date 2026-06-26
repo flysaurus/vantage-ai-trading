@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { AuthProvider as GateAuthProvider } from '@/context/AuthContext';
 import { AuthGuard } from '@/components/providers/AuthGuard';
 import { InactivityWarning } from '@/components/providers/InactivityWarning';
-import { SplashGuard } from '@/components/SplashGuard';
 import { MilestoneToastProvider } from '@/context/MilestoneContext';
 import { MilestoneToastRenderer } from '@/components/gamification/MilestoneToastRenderer';
 import './globals.css';
@@ -47,18 +47,19 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-                });
-              }
+              // SW disabled — diagnosing React #310 (stale cache serving old JS chunks)
+              // if ('serviceWorker' in navigator) {
+              //   window.addEventListener('load', () => {
+              //     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+              //   });
+              // }
             `,
           }}
         />
       </head>
       <body>
-        <SplashGuard>
-          <AuthProvider>
+        <GateAuthProvider>
+        <AuthProvider>
             <MilestoneToastProvider>
               <AuthGuard>
                 {children}
@@ -66,8 +67,8 @@ export default function RootLayout({
               <InactivityWarning />
               <MilestoneToastRenderer />
             </MilestoneToastProvider>
-          </AuthProvider>
-        </SplashGuard>
+        </AuthProvider>
+        </GateAuthProvider>
       </body>
     </html>
   );

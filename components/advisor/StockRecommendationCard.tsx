@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import type { InvestorStyle } from '@/types';
+import { INVESTOR_STYLES } from '@/lib/content/investor-styles';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -34,22 +35,6 @@ const STYLE_COLORS: Record<InvestorStyle, { bg: string; border: string; text: st
   livermore: { bg: '#713f12', border: '#ca8a04', text: '#fde047' },
   soros: { bg: '#7f1d1d', border: '#dc2626', text: '#fca5a5' },
   munger: { bg: '#1e3a5f', border: '#2563eb', text: '#93c5fd' },
-};
-
-const STYLE_EMOJIS: Record<InvestorStyle, string> = {
-  buffett: '💎',
-  lynch: '📈',
-  livermore: '⚡️',
-  soros: '🌍',
-  munger: '💰',
-};
-
-const STYLE_NAMES: Record<InvestorStyle, string> = {
-  buffett: 'Warren Buffett',
-  lynch: 'Peter Lynch',
-  livermore: 'Jesse Livermore',
-  soros: 'George Soros',
-  munger: 'Charlie Munger',
 };
 
 const REC_CSS: Record<string, { bg: string; color: string }> = {
@@ -122,13 +107,13 @@ export function StockRecommendationCard({
       <div style={{ padding: 16, background: colors.bg }}>
         {/* Style label */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 22 }}>{STYLE_EMOJIS[selectedStyle]}</span>
+          <span style={{ fontSize: 22 }}>{INVESTOR_STYLES[selectedStyle]?.emoji}</span>
           <div>
             <p style={{ fontSize: 10, color: colors.text, margin: 0, opacity: 0.7 }}>
               Your Selected Style
             </p>
             <p style={{ fontSize: 13, fontWeight: 600, color: colors.text, margin: 0 }}>
-              {STYLE_NAMES[selectedStyle]}
+              {INVESTOR_STYLES[selectedStyle]?.shortLabel}
             </p>
           </div>
         </div>
@@ -247,7 +232,7 @@ export function StockRecommendationCard({
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>{STYLE_EMOJIS[style]}</span>
+                      <span style={{ fontSize: 16 }}>{INVESTOR_STYLES[style]?.emoji}</span>
                       <div>
                         {isCurrent && (
                           <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block' }}>
@@ -255,7 +240,7 @@ export function StockRecommendationCard({
                           </span>
                         )}
                         <span style={{ fontSize: 12, fontWeight: 600 }}>
-                          {STYLE_NAMES[style]}
+                          {INVESTOR_STYLES[style]?.shortLabel}
                         </span>
                       </div>
                     </div>

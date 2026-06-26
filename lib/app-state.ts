@@ -1,84 +1,234 @@
-// ─── App State Resolver ───────────────────────────────────────
-// Determines the user's app state after Supabase Auth session is confirmed.
-// Checks public.users for profile, quiz results, and onboarding status.
-// Used by AuthProvider to decide: needs-profile | needs-quiz | authenticated.
+// ─── App State Machine ──────────────────────────────────────
+// Single source of truth for auth-driven routing.
+//
+// States:
+//   loading         → checking session (show loading UI)
+//   onboarding      → no session (show onboarding flow)
+//   authenticated   → has session + full profile (show MainApp)
+//   needs-profile   → has session, no profile yet (Google OAuth edge case)
+//   needs-quiz      → has account + profile row, but no investor_style yet
+//
+// All routing decisions flow from this one hook.
+// No other component checks auth directly.
 
-// ─── Profile Type ────────────────────────────────────────────
+'use client';
 
-export interface AppUserProfile {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  investor_style: string | null;
-  risk_tolerance: string | null;
-  tier: string;
-  demo_expires_at: string | null;
-  first_open: string | null;
-  investor_style_onboarded: boolean;
-  investor_style_set_at: string | null;
-  created_at: string | null;
-  last_login: string | null;
-}
+import { useState, useEffect } from 'react';
+import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
-// ─── Resolved State ──────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────
 
 export type AppState =
   | 'loading'
-  | 'unauthenticated'
-  | 'needs-profile'   // Has Supabase Auth but no public.users row yet
-  | 'needs-quiz'      // Has users row but investor_style is null
-  | 'authenticated';  // Full profile loaded
+  | 'onboarding'
+  | 'authenticated'
+  | 'needs-profile'
+  | 'needs-quiz';
 
-export interface ResolvedState {
-  state: AppState;
-  profile: AppUserProfile | null;
+export interface UserProfile {
+  id: string;
+  investor_style: string | null;
+  risk_tolerance: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 }
 
-// ─── Resolve ──────────────────────────────────────────────────
+export interface AppStateResult {
+  state: AppState;
+  user: SupabaseUser | null;
+  profile: UserProfile | null;
+}
 
-/**
- * Called after Supabase Auth session is confirmed.
- * Fetches the public.users row and determines the app state.
- *
- * @param supabase - A Supabase client (can be anon or service_role)
- * @param email - The user's email from Supabase Auth
- * @returns The resolved state and profile (if found)
- */
-export async function resolveState(
-  supabase: { from: (table: string) => any },
-  email: string,
-): Promise<ResolvedState> {
-  const { data: userData, error } = await supabase
-    .from('users')
-    .select(`
-      id,
-      email,
-      first_name,
-      last_name,
-      investor_style,
-      risk_tolerance,
-      tier,
-      demo_expires_at,
-      first_open,
-      investor_style_onboarded,
-      investor_style_set_at,
-      created_at,
-      last_login
-    `)
-    .eq('email', email)
-    .single();
+// ── Meaningful auth events ─────────────────────────────────
+const MEANINGFUL_EVENTS = new Set([
+  'SIGNED_IN',
+  'SIGNED_OUT',
+  'TOKEN_REFRESHED',
+  'USER_UPDATED',
+]);
 
-  if (error || !userData) {
-    // Has Supabase Auth session but no public.users row yet
-    // Could happen if users insert failed during signup
-    return { state: 'needs-profile', profile: null };
-  }
+// ── Hook ───────────────────────────────────────────────────
 
-  if (!userData.investor_style) {
-    // Has account but no quiz result
-    return { state: 'needs-quiz', profile: userData as AppUserProfile };
-  }
+export function useAppState(): AppStateResult {
+  const supabase = getSupabaseBrowserClient();
+  const [state, setState] = useState<AppState>('loading');
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
-  return { state: 'authenticated', profile: userData as AppUserProfile };
+  useEffect(() => {
+    let mounted = true;
+
+    async function resolveState(session: Session | null) {
+      if (!mounted) return;
+
+      // ── DIAGNOSTIC LOGGING (remove after fix confirmed) ──
+      console.log(
+        '[useAppState] resolveState called, session:',
+        session?.user?.email || '(null)',
+      );
+
+      if (!session) {
+        console.log('[useAppState] No session → setting state to: onboarding');
+        setState('onboarding');
+        setUser(null);
+        setProfile(null);
+        return;
+      }
+
+      setUser(session.user);
+      console.log('[useAppState] Session found for:', session.user.email);
+
+      try {
+        // Step 1: Try user_profiles (new auth system, post-Prompt 5)
+        const { data: profileData, error } = await (supabase
+          .from('user_profiles') as any)
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (!mounted) return;
+
+        console.log('[useAppState] user_profiles:', profileData, 'error:', error);
+
+        // Step 2: If user_profiles has full data → authenticated
+        if (profileData?.investor_style) {
+          console.log('[useAppState] Full profile in user_profiles → authenticated');
+          setProfile(profileData as UserProfile);
+          setState('authenticated');
+          return;
+        }
+
+        // Step 3: Check OLD users table (pre-Prompt 5 accounts)
+        // These accounts have data in 'users' but not 'user_profiles'
+        console.log('[useAppState] Checking legacy users table...');
+        const { data: legacyUser } = await (supabase
+          .from('users') as any)
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        console.log('[useAppState] legacy users table:', legacyUser);
+
+        if (legacyUser?.investor_style) {
+          console.log(
+            '[useAppState] Found style in legacy users table:',
+            legacyUser.investor_style,
+          );
+
+          // Backfill user_profiles from legacy data
+          const profileToUpsert = {
+            id: session.user.id,
+            user_id: session.user.id,
+            first_name: legacyUser.display_name?.split(' ')[0] || '',
+            last_name: legacyUser.display_name?.split(' ').slice(1).join(' ') || '',
+            investor_style: legacyUser.investor_style,
+            risk_tolerance: legacyUser.investor_style
+              ? 'moderate'
+              : null,
+            email: legacyUser.email || session.user.email,
+            tier: 'demo',
+            first_open: legacyUser.created_at || new Date().toISOString(),
+            demo_expires_at: new Date(
+              Date.now() + 30 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
+          };
+
+          await (supabase.from('user_profiles') as any).upsert(
+            profileToUpsert,
+            { onConflict: 'user_id' },
+          );
+
+          console.log('[useAppState] Backfilled user_profiles from legacy → authenticated');
+          setProfile(profileToUpsert as UserProfile);
+          setState('authenticated');
+          return;
+        }
+
+        // Step 4: No style anywhere — try auth metadata fallback
+        const meta = session.user.user_metadata as
+          | Record<string, string>
+          | undefined;
+
+        if (meta?.investor_style) {
+          console.log('[useAppState] Found style in auth metadata, creating profile');
+
+          await (supabase.from('user_profiles') as any).upsert(
+            {
+              id: session.user.id,
+              user_id: session.user.id,
+              first_name: meta.first_name || meta.given_name || '',
+              last_name: meta.last_name || meta.family_name || '',
+              investor_style: meta.investor_style,
+              risk_tolerance: meta.risk_tolerance || 'moderate',
+              email: session.user.email,
+              tier: 'demo',
+              first_open: new Date().toISOString(),
+              demo_expires_at: new Date(
+                Date.now() + 30 * 24 * 60 * 60 * 1000,
+              ).toISOString(),
+            },
+            { onConflict: 'user_id' },
+          );
+
+          setState('authenticated');
+          return;
+        }
+
+        // Step 5: user_profiles exists but no investor_style → needs quiz
+        if (profileData) {
+          console.log('[useAppState] Profile exists, no style → needs-quiz');
+          setState('needs-quiz');
+          return;
+        }
+
+        // Step 6: Truly no profile at all → needs full onboarding
+        console.log('[useAppState] No profile anywhere → needs-profile');
+        setState('needs-profile');
+      } catch (err) {
+        if (!mounted) return;
+        console.error('[useAppState] Profile fetch error:', err);
+        setState('onboarding');
+      }
+    }
+
+    // Step 1: Check existing session
+    console.log('[useAppState] Checking existing session...');
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        console.log(
+          '[useAppState] getSession returned session:',
+          session?.user?.email || '(null)',
+        );
+        resolveState(session);
+      })
+      .catch((err) => {
+        console.error('[useAppState] getSession error:', err);
+        if (mounted) setState('onboarding');
+      });
+
+    // Step 2: Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (MEANINGFUL_EVENTS.has(event)) {
+        console.log(
+          '[useAppState] Auth event:',
+          event,
+          'session:',
+          session?.user?.email || '(null)',
+        );
+        resolveState(session);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { state, user, profile };
 }

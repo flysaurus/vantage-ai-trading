@@ -8,6 +8,7 @@
 //   totalPnLPct, cashBalance, cashPct, totalInvested,
 //   positions: [{ symbol, totalPnLPct, totalPnL, marketValue }],
 //   upcomingEarnings: [...],
+//   includeStyleAck: boolean (first session with style assigned),
 // }
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -46,6 +47,16 @@ function getMarketStatus(): {
   if (timeInMin >= 960 && timeInMin < 1200) return { isOpen: false, period: 'afterhours', opener: 'After hours' };
   return { isOpen: false, period: 'closed', opener: 'Evening' };
 }
+
+// ─── Style descriptions for first-session greeting ────────────
+
+const STYLE_GREETINGS: Record<string, string> = {
+  buffett: "I'll focus your analysis on long-term value and business fundamentals.",
+  lynch: "I'll surface growth opportunities before they become obvious to the market.",
+  livermore: "I'll keep your momentum signals sharp and your timing precise.",
+  munger: "I'll frame every decision in clear mental models and rational analysis.",
+  soros: "I'll flag macro shifts and contrarian opportunities others are missing.",
+};
 
 // ─── Greeting system prompt ────────────────────────────────────
 
@@ -114,6 +125,7 @@ export async function POST(req: NextRequest) {
       cashPct = 0,
       positions = [],
       upcomingEarnings = [],
+      includeStyleAck = false,
     } = body;
 
     const market = getMarketStatus();
@@ -130,6 +142,12 @@ export async function POST(req: NextRequest) {
       (b.marketValue || 0) - (a.marketValue || 0)
     );
     const largestPosition = sortedByValue[0];
+
+    // ── Style acknowledgment for first session ──
+    const styleKey = (investorStyle as string).toLowerCase();
+    const styleAck = includeStyleAck && STYLE_GREETINGS[styleKey]
+      ? `You identified as a ${investorStyle} — ${STYLE_GREETINGS[styleKey]}\n\n`
+      : '';
 
     // ── Build dynamic context (durable data only — NO intraday) ──
     const dynamicContext = `
@@ -167,7 +185,7 @@ Opener to use: "${market.opener}"
 
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 150,
+      max_tokens: 200,
       system: [
         {
           type: 'text' as const,
@@ -181,7 +199,9 @@ Opener to use: "${market.opener}"
       ],
       messages: [{
         role: 'user' as const,
-        content: 'Generate my greeting now.',
+        content: styleAck
+          ? `${styleAck}Now generate my regular greeting.`
+          : 'Generate my greeting now.',
       }],
     });
 
@@ -203,6 +223,7 @@ Opener to use: "${market.opener}"
       opener,
       hook,
       hookType: detectHookType(hook || ''),
+      styleAcknowledged: includeStyleAck && !!STYLE_GREETINGS[styleKey],
     });
   } catch (error: any) {
     console.error('[Greeting] Error:', error.message);

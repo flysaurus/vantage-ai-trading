@@ -54,9 +54,9 @@ export async function getSupabaseServerClient(): Promise<SupabaseClient<Database
           cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options);
           });
-        } catch {
-          // The `setAll` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing sessions.
+        } catch (err: any) {
+          // Log instead of silently swallowing — this is critical for auth flow
+          console.error('[supabase-server] setAll failed:', err.message);
         }
       },
     },

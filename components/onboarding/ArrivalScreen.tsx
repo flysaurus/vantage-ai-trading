@@ -1,259 +1,286 @@
 // ─── ArrivalScreen ──────────────────────────────────────────
-// Full-screen immersive intro shown before the quiz.
+// Full rebuild: async cycling sequence, new full-height layout,
+// constellation top bar, big headline, white pill CTA bottom.
 //
-// Sequence:
-// 1. Compass burst animation (0-1200ms)
-// 2. Compass moves to top, typewriter text plays (1200ms+)
-// 3. CTA button fades in
+// Layout:
+//   TOP BAR:    VantageMark 36px (left) + "I have an account ›" (right)
+//   CONTENT:    flex column, space-between
+//     TOP:      "Every investor has / a style." (52px, fades in)
+//     MIDDLE:   cycling lines (22px, 64px fixed height)
+//     BOTTOM:   white pill "Find my style" + subtext
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { CompassBurst } from '@/lib/animations/compass-burst';
-import { useTypewriter } from '@/lib/animations/typewriter';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ChevronRight } from 'lucide-react';
+import { VantageOrb } from '@/components/brand/VantageOrb';
+
+const LINES = [
+  'Buffett waits decades.',
+  'Livermore reads the tape.',
+  'Soros bets against the world.',
+];
+const CLOSING_LINE = "Let's find yours.";
+const CHAR_MS = 28;
+const HOLD_MS = 600;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 interface ArrivalScreenProps {
   onFindStyle: () => void;
+  onSignIn: () => void;
 }
 
-const LINE_1 = 'Every investor has a style.';
-const LINE_2 = 'Buffett waits decades.';
-const LINE_3 = 'Livermore reads the tape.';
-const LINE_4 = 'Soros bets against the world.';
-const LINE_5 = "Let's find yours.";
+export function ArrivalScreen({ onFindStyle, onSignIn }: ArrivalScreenProps) {
+  const [headlineVisible, setHeadlineVisible] = useState(false);
+  const [currentLine, setCurrentLine] = useState('');
+  const [fading, setFading] = useState(false);
+  const [showClosing, setShowClosing] = useState(false);
+  const [showCta, setShowCta] = useState(false);
+  const runningRef = useRef(false);
 
-export function ArrivalScreen({ onFindStyle }: ArrivalScreenProps) {
-  const [animationPhase, setAnimationPhase] = useState<'compassBurst' | 'compassRest' | 'typewriter' | 'cta' | 'done'>('compassBurst');
-  const [currentTypeLine, setCurrentTypeLine] = useState(0);
-
+  // Headline fades in on mount
   useEffect(() => {
-    // Phase: compass burst completes → move to typewriter
-    const t1 = setTimeout(() => setAnimationPhase('typewriter'), 1600);
-    return () => clearTimeout(t1);
+    const t = setTimeout(() => setHeadlineVisible(true), 200);
+    return () => clearTimeout(t);
   }, []);
 
-  // Typewriter line sequencing
+  // Async cycling sequence — runs once on mount
   useEffect(() => {
-    if (animationPhase !== 'typewriter') return;
+    if (runningRef.current) return;
+    runningRef.current = true;
 
-    // Line 1 types (35ms/char, ~24 chars ≈ 840ms)
-    const nextLine = (index: number) => {
-      if (index > 4) {
-        // All lines done, show CTA
-        const ctaTimer = setTimeout(() => setAnimationPhase('cta'), 600);
-        return () => clearTimeout(ctaTimer);
+    let cancelled = false;
+
+    async function runSequence() {
+      // Small delay after headline fades in
+      await sleep(800);
+
+      // Type each support line
+      for (const line of LINES) {
+        if (cancelled) return;
+
+        // Type character by character
+        for (let i = 0; i <= line.length; i++) {
+          if (cancelled) return;
+          setCurrentLine(line.slice(0, i));
+          await sleep(CHAR_MS);
+        }
+
+        // Hold the full line
+        await sleep(HOLD_MS);
+
+        // Fade out
+        if (cancelled) return;
+        setFading(true);
+        await sleep(200);
+        setCurrentLine('');
+        setFading(false);
+        await sleep(100);
       }
 
-      const speeds = [35, 30, 30, 30, 40];
-      const pauses = [700, 200, 200, 900, 0];
+      // Show closing line
+      if (!cancelled) {
+        setShowClosing(true);
+        await sleep(400);
+        setShowCta(true);
+      }
+    }
 
-      const chars = [LINE_1, LINE_2, LINE_3, LINE_4, LINE_5][index];
-      const typeTime = chars.length * speeds[index];
+    runSequence();
 
-      const timer = setTimeout(() => {
-        setCurrentTypeLine(index + 1);
-        const pauseTimer = setTimeout(() => {
-          nextLine(index + 1);
-        }, pauses[index]);
-        return () => clearTimeout(pauseTimer);
-      }, typeTime);
-
-      return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
     };
+  }, []);
 
-    nextLine(0);
-  }, [animationPhase]);
-
-  // Current display text for the active typewriter line
-  const { displayText: line1Text } = useTypewriter(
-    animationPhase === 'typewriter' ? LINE_1 : '',
-    35,
-    animationPhase === 'typewriter' ? 0 : 999999,
-  );
-  const { displayText: line2Text, isDone: line2Done } = useTypewriter(
-    currentTypeLine >= 1 ? LINE_2 : '',
-    30,
-    currentTypeLine >= 1 ? 700 : 999999,
-  );
-  const { displayText: line3Text, isDone: line3Done } = useTypewriter(
-    currentTypeLine >= 2 ? LINE_3 : '',
-    30,
-    currentTypeLine >= 2 ? 200 : 999999,
-  );
-  const { displayText: line4Text, isDone: line4Done } = useTypewriter(
-    currentTypeLine >= 3 ? LINE_4 : '',
-    30,
-    currentTypeLine >= 3 ? 200 : 999999,
-  );
-  const { displayText: line5Text } = useTypewriter(
-    currentTypeLine >= 4 ? LINE_5 : '',
-    40,
-    currentTypeLine >= 4 ? 900 : 999999,
-  );
-
-  const showCta = animationPhase === 'cta' || animationPhase === 'done';
-  const compassSmall = animationPhase !== 'compassBurst';
+  const handleFindStyle = useCallback(() => {
+    if (!showCta) return;
+    onFindStyle();
+  }, [showCta, onFindStyle]);
 
   return (
     <div
+      className="bg-onboarding-0"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 100,
-        background: '#0a0f1e',
+        width: '100%',
+        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: compassSmall ? 'flex-start' : 'center',
-        paddingTop: compassSmall ? 'max(80px, env(safe-area-inset-top, 20px) + 40px)' : 0,
-        overflow: 'hidden',
       }}
     >
-      {/* Main compass / burst */}
+      {/* ── TOP BAR: 60px ── */}
       <div
         style={{
-          transform: compassSmall ? 'scale(0.5) translateY(-20px)' : 'scale(1)',
-          transition: 'transform 400ms ease-in-out',
-          marginBottom: compassSmall ? '12px' : '0',
+          height: '60px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 20px',
+          flexShrink: 0,
+          paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
-        <CompassBurst
-          size={compassSmall ? 80 : 120}
-          particleLength={compassSmall ? 40 : 60}
-          onComplete={() => {}}
-        />
+        {/* Constellation mark */}
+        <VantageOrb size={44} animate showEntrance={false} />
+
+        {/* Sign-in link */}
+        <button
+          onClick={onSignIn}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'rgba(255,255,255,0.55)',
+            fontSize: '13px',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-sans)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+            padding: '8px 0 8px 8px',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          I have an account
+          <ChevronRight size={13} />
+        </button>
       </div>
 
-      {/* Typewriter text area */}
-      {(animationPhase === 'typewriter' || animationPhase === 'cta' || animationPhase === 'done') && (
+      {/* ── CONTENT: flex column, space-between ── */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: '0 28px',
+          paddingBottom: 'max(48px, env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        {/* ── TOP: Headline ── */}
+        <h1
+          style={{
+            marginTop: '32px',
+            opacity: headlineVisible ? 1 : 0,
+            transform: headlineVisible ? 'translateY(0)' : 'translateY(8px)',
+            transition: 'opacity 400ms ease-out, transform 400ms ease-out',
+          }}
+        >
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '52px',
+              fontWeight: 800,
+              color: '#ffffff',
+              lineHeight: 1.05,
+            }}
+          >
+            Every investor has
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-serif)',
+              fontSize: '52px',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              color: '#ffffff',
+              lineHeight: 1.05,
+            }}
+          >
+            a style.
+          </span>
+        </h1>
+
+        {/* ── MIDDLE: Cycling lines (64px fixed height) ── */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          {!showClosing ? (
+            <div style={{ height: '64px', display: 'flex', alignItems: 'center' }}>
+              <span
+                style={{
+                  fontSize: '22px',
+                  fontWeight: 500,
+                  color: 'rgba(255,255,255,0.72)',
+                  fontFamily: 'var(--font-sans)',
+                  opacity: fading ? 0 : 1,
+                  transition: 'opacity 200ms ease',
+                }}
+              >
+                {currentLine}
+              </span>
+            </div>
+          ) : (
+            <div style={{ height: '64px', display: 'flex', alignItems: 'center' }}>
+              <span
+                style={{
+                  fontSize: '28px',
+                  fontWeight: 800,
+                  fontFamily: 'var(--font-sans)',
+                  color: '#ffffff',
+                  opacity: showClosing ? 1 : 0,
+                  transition: 'opacity 300ms ease-out',
+                }}
+              >
+                {CLOSING_LINE}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* ── BOTTOM: CTA + subtext ── */}
         <div
           style={{
             width: '100%',
-            padding: '0 32px',
-            textAlign: 'center',
-            marginTop: '16px',
-          }}
-        >
-          {/* Line 1 */}
-          <div
-            style={{
-              fontSize: '22px',
-              fontWeight: 600,
-              color: '#ffffff',
-              minHeight: '32px',
-              marginBottom: '20px',
-            }}
-          >
-            {line1Text}
-            {animationPhase === 'typewriter' && currentTypeLine === 0 && (
-              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-            )}
-          </div>
-
-          {/* Lines 2-4 */}
-          <div style={{ marginBottom: '16px' }}>
-            {[line2Text, line3Text, line4Text].map((text, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: '16px',
-                  color: '#64748b',
-                  minHeight: '24px',
-                  marginBottom: '4px',
-                }}
-              >
-                {text}
-                {currentTypeLine === i + 1 && animationPhase === 'typewriter' && (
-                  <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Line 5 */}
-          <div
-            style={{
-              fontSize: '22px',
-              fontWeight: 600,
-              color: '#ffffff',
-              minHeight: '32px',
-            }}
-          >
-            {line5Text}
-            {currentTypeLine === 4 && animationPhase === 'typewriter' && (
-              <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* CTA */}
-      {showCta && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 'max(60px, env(safe-area-inset-bottom, 20px) + 32px)',
-            left: 0,
-            right: 0,
-            padding: '0 24px',
-            opacity: 0,
-            animation: 'fadeIn 400ms ease forwards',
-            animationDelay: '0ms',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
           }}
         >
           <button
-            onClick={onFindStyle}
+            onClick={handleFindStyle}
             style={{
               width: '100%',
-              padding: '16px 0',
-              background: '#22d3ee',
+              height: '58px',
+              borderRadius: '999px',
               border: 'none',
-              borderRadius: '14px',
-              fontSize: '16px',
-              fontWeight: 600,
-              color: '#0a0f1e',
-              cursor: 'pointer',
-              transition: 'transform 0.15s ease',
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.transform = 'scale(0.97)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
+              background: '#ffffff',
+              color: '#000000',
+              fontSize: '17px',
+              fontWeight: 700,
+              fontFamily: 'var(--font-sans)',
+              cursor: showCta ? 'pointer' : 'default',
+              opacity: showCta ? 1 : 0,
+              transform: showCta ? 'translateY(0)' : 'translateY(12px)',
+              pointerEvents: showCta ? 'auto' : 'none',
+              transition: 'opacity 400ms ease-out, transform 400ms ease-out',
             }}
           >
-            Find my style →
+            Find my style
           </button>
 
           <p
             style={{
+              marginTop: '12px',
               fontSize: '13px',
-              color: '#475569',
+              color: 'rgba(255,255,255,0.35)',
               textAlign: 'center',
-              marginTop: '16px',
-              opacity: 0,
-              animation: 'fadeIn 400ms ease forwards',
-              animationDelay: '200ms',
+              opacity: showCta ? 1 : 0,
+              transition: 'opacity 400ms ease-out',
             }}
           >
-            Takes 2 minutes. No account needed.
+            Takes 2 minutes. No account needed to take the quiz.
           </p>
         </div>
-      )}
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .cursor-blink {
-          animation: blink 0.8s ease-in-out infinite;
-        }
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-      `}</style>
+      </div>
     </div>
   );
 }

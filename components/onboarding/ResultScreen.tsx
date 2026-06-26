@@ -1,19 +1,16 @@
 // ─── ResultScreen ──────────────────────────────────────────
 // Final screen of the onboarding quiz.
 //
-// Sequence:
-// 1. Compass burst (0-600ms)
-// 2. Compass fades to style emoji (80px)
-// 3. Typewriter: "You're a [STYLE] investor."
-// 4. Style description fades in
-// 5. Stats fade in staggered: risk badge, investor score
-// 6. Override pills + "Enter Vantage →" CTA
+// Trait-first structure: headline shows trait (e.g. "The Patient Builder"),
+// investor name is a secondary tag below.
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { InvestorStyle } from '@/types';
-import { getStyleContent, getStyleDisplayName, RISK_COLORS, RISK_LABELS, ALL_STYLES } from '@/lib/onboarding/quiz-logic';
+import { debugLog } from '@/lib/debug-log';
+import { getStyleContent, getStyleTrait, getStyleTag, ALL_STYLES, PILL_TRAITS } from '@/lib/content/investor-styles';
+import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import { CompassBurst } from '@/lib/animations/compass-burst';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import { ShareCardModal } from '@/components/sharing/ShareCardModal';
@@ -31,25 +28,41 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   const [phase, setPhase] = useState<'burst' | 'reveal' | 'stats' | 'done'>('burst');
   const [showShareModal, setShowShareModal] = useState(false);
 
+  // ── DIAGNOSTIC: Log mount ────────────────────────────────
+  useEffect(() => {
+    debugLog('ResultScreen Mount', `quiz-calculated style: ${result.style}, initial selectedStyle: ${result.style}`);
+    debugLog('ResultScreen Mount', 'Checking if any Supabase sync fires here (none expected on mount)');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const styleData = getStyleContent(selectedStyle);
-  const revealText = `You're a ${getStyleDisplayName(selectedStyle)} investor.`;
+  const trait = getStyleTrait(selectedStyle);
+  const tag = getStyleTag(selectedStyle);
+  const revealText = `You're ${trait}.`;
+
+  // ── Fix: freeze startDelay at 0 once reveal phase ever begins ──
+  // This prevents useTypewriter from re-initializing (and wiping completed text)
+  // when the phase later transitions to "stats" or "done".
+  const revealEverStartedRef = useRef(false);
+  if (phase === 'reveal' && !revealEverStartedRef.current) {
+    revealEverStartedRef.current = true;
+  }
+  const startDelay = revealEverStartedRef.current ? 0 : (phase === 'reveal' ? 0 : 999999_999);
+
   const { displayText: typewriterText, isDone: typewriterDone } = useTypewriter(
     revealText,
     30,
-    phase === 'reveal' ? 0 : 999999,
+    startDelay,
   );
 
   // Phase sequencing
   useEffect(() => {
-    // Burst → reveal after 600ms
     const t1 = setTimeout(() => setPhase('reveal'), 600);
     return () => clearTimeout(t1);
   }, []);
 
   useEffect(() => {
     if (!typewriterDone || phase !== 'reveal') return;
-    // Wait 400ms after typewriter, then show stats
-    const t = setTimeout(() => setPhase('stats'), 400);
+    const t = setTimeout(() => setPhase('stats'), 500);
     return () => clearTimeout(t);
   }, [typewriterDone, phase]);
 
@@ -60,8 +73,8 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   }, [phase]);
 
   const riskColor = RISK_COLORS[
-    result.riskTolerance === 'Conservative' ? 'conservative' :
-    result.riskTolerance === 'Aggressive' ? 'aggressive' : 'moderate'
+    result.risk === 'conservative' ? 'conservative' :
+    result.risk === 'aggressive' ? 'aggressive' : 'moderate'
   ];
 
   return (
@@ -72,6 +85,8 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
         flexDirection: 'column',
         alignItems: 'center',
         paddingTop: 'max(40px, env(safe-area-inset-top, 20px) + 20px)',
+        overflowY: 'auto',
+        minHeight: '100dvh',
       }}
     >
       {/* Phase 1: Compass burst */}
@@ -95,35 +110,57 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
             {styleData.emoji}
           </div>
 
-          {/* Typewriter reveal text */}
+          {/* Typewriter reveal: "You're [TRAIT]." — trait in cyan */}
           <h1
             style={{
-              fontSize: '28px',
-              fontWeight: 600,
-              color: '#ffffff',
+              fontSize: 'var(--onb-headline-size)',
+              fontWeight: 'var(--onb-headline-weight)',
+              color: 'var(--onb-headline-color)',
               textAlign: 'center',
-              marginBottom: '12px',
+              marginBottom: '10px',
               lineHeight: 1.3,
-              maxWidth: '320px',
+              maxWidth: '340px',
             }}
           >
-            {typewriterText}
+            {typewriterText.slice(0, 7)}
+            <span style={{ color: '#22d3ee' }}>{typewriterText.slice(7)}</span>
             {!typewriterDone && (
               <span className="cursor-blink" style={{ color: '#22d3ee' }}>|</span>
             )}
           </h1>
 
+          {/* Secondary tag — fades in after typewriter */}
+          <div
+            style={{
+              display: 'inline-flex',
+              padding: '4px 10px',
+              background: 'rgba(34,211,238,0.1)',
+              border: '1px solid rgba(34,211,238,0.3)',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              color: '#94a3b8',
+              fontWeight: 500,
+              marginBottom: '16px',
+              opacity: typewriterDone ? 1 : 0,
+              transition: 'opacity 400ms ease',
+              transitionDelay: '200ms',
+            }}
+          >
+            {tag}
+          </div>
+
           {/* Style description — fades in after typewriter */}
           <p
             style={{
-              fontSize: '16px',
-              color: '#94a3b8',
+              fontSize: 'var(--onb-body-size)',
+              color: 'var(--onb-body-color)',
               textAlign: 'center',
-              lineHeight: 1.6,
+              lineHeight: 'var(--onb-body-line-height)',
               maxWidth: '300px',
               marginBottom: '24px',
               opacity: typewriterDone ? 1 : 0,
               transition: 'opacity 400ms ease',
+              transitionDelay: '400ms',
             }}
           >
             {styleData.description}
@@ -134,7 +171,6 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
             style={{
               opacity: phase === 'stats' || phase === 'done' ? 1 : 0,
               transition: 'opacity 400ms ease',
-              transitionDelay: phase === 'stats' ? '0ms' : '0ms',
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
@@ -149,56 +185,28 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '8px 16px',
+                padding: '6px 14px',
                 background: `${riskColor}15`,
                 border: `1px solid ${riskColor}40`,
-                borderRadius: '12px',
+                borderRadius: '10px',
                 fontSize: '13px',
                 fontWeight: 500,
                 color: riskColor,
-                opacity: phase === 'stats' || phase === 'done' ? 1 : 0,
-                transition: 'opacity 400ms ease',
-                transitionDelay: '0ms',
               }}
             >
               <span style={{ fontSize: '11px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                {RISK_LABELS[result.riskTolerance] || result.riskTolerance.toUpperCase()} RISK
+                {RISK_LABELS[result.risk] || result.risk.toUpperCase()} RISK
               </span>
             </div>
 
-            {/* Investor score */}
-            <div
-              style={{
-                width: '100%',
-                maxWidth: '320px',
-                padding: '16px',
-                background: '#1a2235',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '14px',
-                textAlign: 'center',
-                opacity: phase === 'stats' || phase === 'done' ? 1 : 0,
-                transition: 'opacity 400ms ease',
-                transitionDelay: '200ms',
-              }}
-            >
-              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
-                Your starting score
-              </p>
-              <p style={{ fontSize: '36px', fontWeight: 700, color: '#22d3ee' }}>0</p>
-              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-                Check back in 7 days
-              </p>
-            </div>
           </div>
 
-          {/* Not quite right + override pills */}
+          {/* Not quite right + override pills (two-line) */}
           {(phase === 'stats' || phase === 'done') && (
             <div
               style={{
                 width: '100%',
                 marginBottom: '20px',
-                opacity: phase === 'done' ? 1 : (phase === 'stats' ? 1 : 0),
-                transition: 'opacity 400ms ease',
               }}
             >
               <p
@@ -224,34 +232,51 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               >
                 {ALL_STYLES.map((s) => {
                   const isActive = selectedStyle === s.id;
+                  const sTag = getStyleTag(s.id);
                   return (
                     <button
                       key={s.id}
-                      onClick={() => setSelectedStyle(s.id)}
+                      onClick={() => {
+                        debugLog('Override selected', `${s.id} (was: ${selectedStyle})`);
+                        setSelectedStyle(s.id);
+                      }}
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: '4px',
-                        padding: '10px 14px',
+                        justifyContent: 'center',
+                        gap: '2px',
+                        padding: '8px 14px',
+                        minHeight: '56px',
                         background: isActive ? 'rgba(34, 211, 238, 0.12)' : '#1a2235',
                         border: isActive ? '1px solid #22d3ee' : '1px solid rgba(255,255,255,0.06)',
                         borderRadius: '12px',
                         cursor: 'pointer',
                         transition: 'all 150ms ease',
                         flexShrink: 0,
-                        minWidth: '60px',
+                        minWidth: '72px',
                       }}
                     >
-                      <span style={{ fontSize: '20px' }}>{s.emoji}</span>
+                      <span style={{ fontSize: '16px', lineHeight: 1 }}>{s.emoji}</span>
                       <span
                         style={{
-                          fontSize: '11px',
+                          fontSize: '12px',
                           fontWeight: 600,
-                          color: isActive ? '#22d3ee' : '#64748b',
+                          color: isActive ? '#22d3ee' : '#e2e8f0',
+                          lineHeight: 1.2,
                         }}
                       >
-                        {s.name}
+                        {PILL_TRAITS[s.id]}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 400,
+                          color: isActive ? '#67e8f9' : '#64748b',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {sTag}
                       </span>
                     </button>
                   );
@@ -264,7 +289,10 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
           {phase === 'done' && (
             <>
               <button
-                onClick={() => onEnter(selectedStyle, result.riskTolerance)}
+                onClick={() => {
+                  debugLog('Enter Vantage tapped', `saving style: ${selectedStyle}, risk: ${result.risk}, original quiz style: ${result.style}, overridden: ${selectedStyle !== result.style}`);
+                  onEnter(selectedStyle, result.risk);
+                }}
                 style={{
                   width: '100%',
                   maxWidth: '320px',
@@ -313,10 +341,11 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
       <ShareCardModal
         open={showShareModal}
         onClose={() => setShowShareModal(false)}
-        styleId={result.style as ShareStyleId}
+        styleId={selectedStyle as ShareStyleId}
         score={0}
         level="Apprentice"
-        riskTolerance={result.riskTolerance}
+        riskTolerance={result.risk}
+        userName={userName}
       />
 
       <style>{`
