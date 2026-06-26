@@ -1,17 +1,32 @@
 // ─── OAuth Completion Callback ───────────────────────────────
 // Landing page after Google OAuth redirect.
-// Reads pending profile from sessionStorage, writes user_profiles
-// via server action, seeds demo portfolio, then redirects to main app.
+// Reads pending profile from 3 sources in order:
+//   1. sessionStorage 'vantage_pending_profile' (same-tab OAuth)
+//   2. URL search params ?fn=&ln=&style=&risk= (new-tab fallback)
+//   3. Supabase user metadata (Google-provided name)
+// Writes user_profiles, seeds demo portfolio, redirects to app.
 
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { VantageOrb } from '@/components/brand/VantageOrb';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+
+// ── Same gradient as login page ──────────────────────────────
+
+const GRADIENT = `
+  radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,0.40) 0%, rgba(14,116,144,0.22) 35%, transparent 65%),
+  radial-gradient(ellipse 70% 45% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%),
+  #0a0f1e
+`;
+
+// ── Component ────────────────────────────────────────────────
 
 export default function AuthCompletePage() {
   const router = useRouter();
-  const [status, setStatus] = useState<'loading' | 'complete' | 'error'>('loading');
+  const searchParams = useSearchParams();
+  const [status, setStatus] = useState<'processing' | 'error' | 'done'>('processing');
   const [errorMsg, setErrorMsg] = useState('');
   const hasRun = useRef(false);
 
@@ -19,155 +34,223 @@ export default function AuthCompletePage() {
     if (hasRun.current) return;
     hasRun.current = true;
 
-    async function complete() {
-      const supabase = createClient();
-
+    async function completeAuth() {
       try {
-        // Wait for OAuth session to be established
-        const { data: sessionData, error: sessionError } =
-          await supabase.auth.getSession();
+        const supabase = getSupabaseBrowserClient();
 
-        if (sessionError || !sessionData.session?.user) {
-          console.error('[auth/complete] No session found:', sessionError?.message);
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+          setErrorMsg('Session not found. Please try signing in again.');
           setStatus('error');
-          setErrorMsg('Could not verify your account. Please try signing up again.');
           return;
         }
 
-        const user = sessionData.session.user;
+        // Check if profile already exists with investor style
+        const { data: existing } = await (supabase
+          .from('user_profiles') as any)
+          .select('id, investor_style')
+          .eq('id', session.user.id)
+          .single();
 
-        // Read pending profile from sessionStorage
-        let pendingProfile: {
+        if (existing?.investor_style) {
+          // Profile complete — go straight to app
+          router.push('/');
+          return;
+        }
+
+        // ── Try to get profile data from 3 sources ──────────
+
+        interface ProfileData {
           firstName: string;
           lastName: string;
-          investorStyle: string;
-          riskTolerance: string;
-        } | null = null;
-
-        try {
-          const raw = sessionStorage.getItem('vantage_pending_profile');
-          if (raw) {
-            pendingProfile = JSON.parse(raw);
-            sessionStorage.removeItem('vantage_pending_profile');
-          }
-        } catch (err) {
-          console.error('[auth/complete] Failed to read pending profile:', err);
+          investorStyle: string | null;
+          riskTolerance: string | null;
         }
 
-        if (pendingProfile) {
-          // New user — write user_profiles via server action
-          const profileRes = await fetch('/api/auth/complete-profile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.id,
-              firstName: pendingProfile.firstName,
-              lastName: pendingProfile.lastName,
-              investorStyle: pendingProfile.investorStyle,
-              riskTolerance: pendingProfile.riskTolerance,
-            }),
-          });
+        let profile: ProfileData | null = null;
 
-          if (!profileRes.ok) {
-            console.error('[auth/complete] Profile creation failed:', await profileRes.text());
-            // Continue anyway — user is authenticated, profile can be created later
-          }
-        } else {
-          // Returning user or no pending profile — check if profile exists
-          const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('id')
-            .eq('id', user.id)
-            .maybeSingle();
+        // Source 1: sessionStorage (works when OAuth stays in same tab)
+        const stored = sessionStorage.getItem('vantage_pending_profile');
+        if (stored) {
+          try {
+            profile = JSON.parse(stored);
+          } catch {}
+        }
 
-          if (!profile) {
-            // No profile and no pending data — redirect to onboarding
-            console.log('[auth/complete] No profile found, redirecting to onboarding');
-            router.replace('/onboarding');
-            return;
+        // Source 2: URL params (fallback — survives new-tab OAuth flows)
+        if (!profile) {
+          const fn = searchParams.get('fn');
+          const ln = searchParams.get('ln');
+          const style = searchParams.get('style');
+          const risk = searchParams.get('risk');
+
+          if (fn && ln && style && risk) {
+            profile = {
+              firstName: fn,
+              lastName: ln,
+              investorStyle: style,
+              riskTolerance: risk,
+            };
           }
         }
 
-        setTimeout(() => {
-          router.replace('/');
-        }, 500);
+        // Source 3: Partial profile from Google user metadata
+        if (!profile) {
+          const meta = session.user.user_metadata as Record<string, string> | undefined;
+          profile = {
+            firstName: meta?.given_name || meta?.name?.split(' ')[0] || '',
+            lastName: meta?.family_name || meta?.name?.split(' ').slice(1).join(' ') || '',
+            investorStyle: null,
+            riskTolerance: null,
+          };
+        }
+
+        if (profile) {
+          // Write profile
+          const { error } = await (supabase.from('user_profiles') as any).upsert(
+            {
+              id: session.user.id,
+              first_name: profile.firstName,
+              last_name: profile.lastName,
+              investor_style: profile.investorStyle,
+              risk_tolerance: profile.riskTolerance,
+              tier: 'demo',
+              first_open: new Date().toISOString(),
+              demo_expires_at: new Date(
+                Date.now() + 30 * 24 * 60 * 60 * 1000,
+              ).toISOString(),
+            },
+            { onConflict: 'id' },
+          );
+
+          if (error) throw error;
+
+          // Seed demo portfolio (via server action if available)
+          try {
+            await seedDemoData(session.user.id);
+          } catch (e) {
+            console.error('[auth/complete] Demo seed failed:', e);
+            // Don't fail signup for this
+          }
+
+          // Clear sessionStorage
+          sessionStorage.removeItem('vantage_pending_profile');
+
+          setStatus('done');
+
+          // If no investor style (Source 3 fallback) — send to onboarding quiz
+          if (!profile.investorStyle) {
+            router.push('/onboarding');
+          } else {
+            router.push('/');
+          }
+        }
       } catch (err: any) {
         console.error('[auth/complete] Error:', err);
+        setErrorMsg(
+          "Something went wrong setting up your account. Please try again.",
+        );
         setStatus('error');
-        setErrorMsg('Something went wrong. Please try again.');
       }
     }
 
-    complete();
-  }, [router]);
+    completeAuth();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (status === 'error') {
+  // ── Processing state ─────────────────────────────────────────
+  if (status === 'processing') {
     return (
       <div
         style={{
-          minHeight: '100dvh',
-          background: 'var(--bg-primary)',
+          height: '100dvh',
+          background: GRADIENT,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '24px',
-          gap: '16px',
+          gap: '24px',
         }}
       >
-        <p style={{ color: 'var(--loss)', fontSize: '14px', textAlign: 'center' }}>
+        <VantageOrb size={80} animate />
+        <p
+          style={{
+            fontFamily: 'var(--font-serif)',
+            fontWeight: 400,
+            fontStyle: 'italic',
+            fontSize: '20px',
+            color: '#ffffff',
+          }}
+        >
+          Setting up your account…
+        </p>
+      </div>
+    );
+  }
+
+  // ── Error state ──────────────────────────────────────────────
+  if (status === 'error') {
+    return (
+      <div
+        style={{
+          height: '100dvh',
+          background: GRADIENT,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '24px',
+          padding: '24px',
+        }}
+      >
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontWeight: 500,
+            fontSize: '16px',
+            color: 'var(--text-secondary)',
+            textAlign: 'center',
+            maxWidth: '280px',
+          }}
+        >
           {errorMsg}
         </p>
         <button
-          onClick={() => router.push('/onboarding')}
+          onClick={() => router.push('/')}
           style={{
-            padding: '10px 24px',
+            padding: '12px 32px',
             borderRadius: '999px',
-            border: '1px solid var(--border-subtle)',
-            background: 'transparent',
-            color: 'var(--text-primary)',
+            border: 'none',
+            background: '#ffffff',
+            color: '#000000',
+            fontSize: '16px',
+            fontWeight: 600,
             fontFamily: 'var(--font-sans)',
-            fontSize: '14px',
             cursor: 'pointer',
           }}
         >
-          Back to Onboarding
+          Back to Vantage
         </button>
       </div>
     );
   }
 
-  return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        background: 'var(--bg-primary)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        gap: '16px',
-      }}
-    >
-      <div
-        style={{
-          width: '32px',
-          height: '32px',
-          border: '3px solid var(--border-subtle)',
-          borderTopColor: 'var(--accent)',
-          borderRadius: '50%',
-          animation: 'spin 0.7s linear infinite',
-        }}
-      />
-      <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-        Setting up your account…
-      </p>
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
+  // Done — redirect handled above
+  return null;
+}
+
+// ── Demo data seeding ─────────────────────────────────────────
+// Imported dynamically to avoid bundling server-only code
+
+async function seedDemoData(userId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    await fetch('/api/auth/complete-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+  } catch {
+    // Silently fail — seed is best-effort
+  }
 }

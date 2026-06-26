@@ -1,8 +1,9 @@
 // ─── Google OAuth Flow ───────────────────────────────────────
-// Client-side only. Stores onboarding profile data in
-// sessionStorage before redirecting to Google OAuth.
-// The callback page (/auth/complete) reads this data and
-// writes user_profiles after successful OAuth login.
+// Client-side only. Stores onboarding profile data in both
+// sessionStorage (primary) AND URL params (fallback) before
+// redirecting to Google OAuth. The callback page reads from
+// both sources so profile data survives even when OAuth opens
+// a new browser window where sessionStorage doesn't carry over.
 
 'use client';
 
@@ -17,25 +18,36 @@ interface PendingProfile {
 
 /**
  * Initiate Google OAuth sign-up.
- * Stores onboarding data in sessionStorage so the callback
- * page can write user_profiles after the user returns.
+ * Stores onboarding data in sessionStorage AND URL params
+ * so the callback page can write user_profiles reliably.
  */
 export async function signInWithGoogle(profile: PendingProfile): Promise<void> {
+  // Primary: sessionStorage (works when OAuth stays in same tab)
   try {
-    sessionStorage.setItem(
-      'vantage_pending_profile',
-      JSON.stringify(profile),
-    );
+    sessionStorage.setItem('vantage_pending_profile', JSON.stringify(profile));
   } catch (err) {
     console.error('[signInWithGoogle] Failed to store pending profile:', err);
   }
+
+  // Backup: pass via redirectTo URL params (survives new-tab OAuth flows)
+  const redirectUrl = new URL(
+    `${window.location.origin}/auth/complete`,
+  );
+  redirectUrl.searchParams.set('fn', profile.firstName);
+  redirectUrl.searchParams.set('ln', profile.lastName);
+  redirectUrl.searchParams.set('style', profile.investorStyle);
+  redirectUrl.searchParams.set('risk', profile.riskTolerance);
 
   const supabase = createClient();
 
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${window.location.origin}/auth/complete`,
+      redirectTo: redirectUrl.toString(),
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
     },
   });
 

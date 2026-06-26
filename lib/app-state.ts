@@ -14,8 +14,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase';
+import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -36,90 +36,93 @@ export interface AppStateResult {
   profile: UserProfile | null;
 }
 
+// ── Meaningful auth events ─────────────────────────────────
+const MEANINGFUL_EVENTS = new Set([
+  'SIGNED_IN',
+  'SIGNED_OUT',
+  'TOKEN_REFRESHED',
+  'USER_UPDATED',
+]);
+
 // ── Hook ───────────────────────────────────────────────────
 
 export function useAppState(): AppStateResult {
+  const supabase = getSupabaseBrowserClient();
   const [state, setState] = useState<AppState>('loading');
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    // createClient() must be called in-browser only (throws during SSR).
-    // This is safe inside useEffect which only runs client-side.
-    const supabase = createClient();
+    let mounted = true;
 
-    async function initialize() {
+    async function resolveState(session: Session | null) {
+      if (!mounted) return;
+
+      if (!session) {
+        setState('onboarding');
+        setUser(null);
+        setProfile(null);
+        return;
+      }
+
+      setUser(session.user);
+
       try {
-        // ── Get session ─────────────────────────────────
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (cancelled) return;
-
-        if (!session) {
-          setState('onboarding');
-          setUser(null);
-          setProfile(null);
-          return;
-        }
-
-        setUser(session.user);
-
-        // ── Get profile ─────────────────────────────────
-        const { data: rawProfile } = await supabase
-          .from('user_profiles')
+        const { data: profileData, error } = await (supabase
+          .from('user_profiles') as any)
           .select('*')
           .eq('id', session.user.id)
           .single();
 
-        if (cancelled) return;
+        if (!mounted) return;
 
-        const profileData = rawProfile as UserProfile | null;
-
-        if (!profileData?.investor_style) {
+        if (error || !profileData) {
+          // Has session but no profile
           setState('needs-profile');
-          setProfile(profileData);
           return;
         }
 
-        setProfile(profileData);
+        if (!profileData.investor_style) {
+          // Profile exists but no style (Google OAuth without onboarding)
+          setState('needs-profile');
+          return;
+        }
+
+        setProfile(profileData as UserProfile);
         setState('authenticated');
       } catch (err) {
-        // Auth check failed — most likely network error or Supabase unavailable.
-        // Redirect to onboarding so the user isn't stuck on the splash forever.
-        console.error('[useAppState] Auth check failed:', err);
-        if (!cancelled) {
-          setState('onboarding');
-          setUser(null);
-          setProfile(null);
-        }
+        if (!mounted) return;
+        console.error('[useAppState] Profile fetch error:', err);
+        // Fail safe — show onboarding rather than staying stuck
+        setState('onboarding');
       }
     }
 
-    initialize();
+    // Step 1: Check existing session
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        resolveState(session);
+      })
+      .catch((err) => {
+        console.error('[useAppState] getSession error:', err);
+        if (mounted) setState('onboarding');
+      });
 
-    // ── Listen for auth changes ───────────────────────
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!session) {
-          if (!cancelled) {
-            setState('onboarding');
-            setUser(null);
-            setProfile(null);
-          }
-          return;
-        }
-
-        // Re-run full check on auth change
-        await initialize();
+    // Step 2: Listen for auth changes — only on meaningful events
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (MEANINGFUL_EVENTS.has(event)) {
+        resolveState(session);
       }
-    );
+    });
 
     return () => {
-      cancelled = true;
+      mounted = false;
       subscription.unsubscribe();
     };
-  }, []); // Run once on mount (createClient creates fresh instance, no stable ref needed)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { state, user, profile };
 }

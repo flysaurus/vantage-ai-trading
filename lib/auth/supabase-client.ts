@@ -1,11 +1,10 @@
 // ─── Supabase Browser Client ──────────────────────────────────
-// Magic link auth browser client using @supabase/ssr.
-// Handles cookie-based session persistence for Supabase Auth SDK.
+// SessionStorage-based client matching createClient() from lib/supabase.ts.
+// Both use the same 'vantage-auth-token' key → sessions set by login/signup
+// are visible to useAppState on the main page.
 //
-// The existing custom auth system (lib/supabase.ts, lib/auth.ts)
-// continues to handle email/password login, session cookies,
-// and inactivity timers. This file adds Supabase-native auth
-// (magic link) alongside it.
+// Uses @supabase/ssr's createBrowserClient for SSR cookie handling,
+// but overrides auth storage to use sessionStorage (matching login page).
 
 import { createBrowserClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -13,14 +12,45 @@ import type { Database } from '@/types/supabase';
 
 let _browserClient: SupabaseClient<Database> | null = null;
 
+/** SessionStorage adapter matching createClient() in lib/supabase.ts */
+function sessionStorageAdapter(): Storage {
+  if (typeof window === 'undefined') {
+    return {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+      get length() { return 0; },
+      key: () => null,
+    };
+  }
+  return {
+    getItem: (key: string) => sessionStorage.getItem(key),
+    setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
+    removeItem: (key: string) => sessionStorage.removeItem(key),
+    clear: () => {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k?.startsWith('vantage')) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    },
+    get length() { return sessionStorage.length; },
+    key: (index: number) => sessionStorage.key(index),
+  };
+}
+
 /**
- * Singleton Supabase browser client for client components.
+ * Singleton Supabase browser client.
  *
  * Uses @supabase/ssr's createBrowserClient for automatic
- * cookie handling — the Supabase session is stored in a cookie
- * managed by the SSR helpers.
+ * cookie handling, but overrides auth storage to use
+ * sessionStorage (key: 'vantage-auth-token') — the same
+ * storage used by createClient() in lib/supabase.ts.
  *
- * Returns the same instance on subsequent calls.
+ * This ensures sessions created during login/signup
+ * are visible to useAppState on the main page.
  */
 export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (_browserClient) return _browserClient;
@@ -35,14 +65,20 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
     );
   }
 
-  _browserClient = createBrowserClient<Database>(url, key);
+  _browserClient = createBrowserClient<Database>(url, key, {
+    auth: {
+      storageKey: 'vantage-auth-token',
+      storage: sessionStorageAdapter(),
+      autoRefreshToken: true,
+      persistSession: true,
+    },
+  });
 
   return _browserClient;
 }
 
 /**
  * Resets the cached client instance.
- * Used in tests or when environment variables change at runtime.
  */
 export function resetBrowserClient(): void {
   _browserClient = null;
