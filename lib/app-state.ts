@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import { createClient } from '@/lib/supabase';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -39,13 +39,15 @@ export interface AppStateResult {
 // ── Hook ───────────────────────────────────────────────────
 
 export function useAppState(): AppStateResult {
-  const supabase = getSupabaseBrowserClient();
   const [state, setState] = useState<AppState>('loading');
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    // createClient() must be called in-browser only (throws during SSR).
+    // This is safe inside useEffect which only runs client-side.
+    const supabase = createClient();
 
     async function initialize() {
       try {
@@ -117,7 +119,7 @@ export function useAppState(): AppStateResult {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, []); // Run once on mount (createClient creates fresh instance, no stable ref needed)
 
   return { state, user, profile };
 }
