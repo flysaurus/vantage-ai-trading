@@ -64,6 +64,28 @@ export function clearUser(): void {
   } catch { /* ignore */ }
 }
 
+// ─── Legacy Session Helpers (shims for components still importing them) ──
+// These were for the old custom user_sessions table. Now they just wrap
+// sessionStorage for the Supabase JWT. Safe to keep — AuthProvider calls them.
+
+const SESSION_KEY = 'vantage-auth-token';
+
+export function storeSession(session: any): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (session?.access_token) {
+      sessionStorage.setItem(SESSION_KEY, session.access_token);
+    }
+  } catch { /* ignore */ }
+}
+
+export function clearSession(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch { /* ignore */ }
+}
+
 // ─── API Route Middleware ─────────────────────────────────────
 
 export class AuthError extends Error {
