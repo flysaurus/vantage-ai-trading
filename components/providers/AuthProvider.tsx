@@ -1,13 +1,7 @@
-// ─── Auth Context Provider ────────────────────────────────────
-// Custom auth system — replaces Supabase Auth SDK entirely.
-// Session: HTTP-only cookie (set by /api/auth/login) + /api/auth/me for validation.
-// Frontend state: sessionStorage + in-memory React context.
-// 15-minute inactivity timeout with 2-minute warning before logout.
-//
-// LOADING GUARANTEE:
-//   isLoading stays true until /api/auth/me confirms the session and
-//   the DB user profile is confirmed (investorStyleOnboarded etc).
-//   Pages gate on isDataLoaded to prevent flash / race conditions.
+// ─── Auth Context Provider (Supabase Auth) ───────────────────
+// Uses Supabase Auth SDK natively — no custom argon2/password hashing.
+// Session managed by Supabase SDK (sessionStorage for browser, cookies for SSR).
+// All API calls send Supabase JWT as Bearer token → verified by requireAuth() Path A.
 
 'use client';
 
@@ -19,34 +13,30 @@ import React, {
   useState,
   useRef,
 } from 'react';
-import type { User, VantageSession, InvestorStyle } from '@/types';
-import { storeSession, clearSession, getUser, storeUser, clearUser } from '@/lib/auth';
+import { supabase } from '@/lib/supabase/client';
+import { createAccount } from '@/app/actions/auth';
+import type { User, InvestorStyle } from '@/types';
 
-const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
-const WARNING_BEFORE = 2 * 60 * 1000;       // warn 2 minutes before logout
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000;
+const WARNING_BEFORE = 2 * 60 * 1000;
 
 // ─── Context Type ─────────────────────────────────────────────
 
 interface AuthContextValue {
   user: User | null;
-  session: VantageSession | null;
+  session: null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  /** True ONLY when DB user profile is confirmed — gates onboarding check. */
   isDataLoaded: boolean;
-  /** True when the user's DB profile row doesn't exist — account invalid. */
   profileNotFound: boolean;
-  /** Authentication or verification error message. */
   error: string | null;
   inactivityWarning: boolean;
   inactivityCountdown: number;
-  /** Manually trigger an activity reset (e.g. after API call) */
   resetActivity: () => void;
-  /** Show welcome-back toast on fresh login */
   showWelcomeBack: boolean;
   dismissWelcomeBack: () => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ needsConfirmation: boolean } | void>;
+  signUp: (data: { email: string; password: string; firstName: string; lastName: string; investorStyle: string; riskTolerance: string }) => Promise<{ needsConfirmation: boolean } | void>;
   signOut: () => Promise<void>;
   resendConfirmation: (email: string) => Promise<{ success: boolean; message: string }>;
 }
@@ -91,23 +81,38 @@ function getLocalOnboarding(): { onboarded: boolean; style: InvestorStyle; riskT
   }
 }
 
+function buildUser(profile: any, local: ReturnType<typeof getLocalOnboarding>): User {
+  const style = (profile?.investorStyle || local.style || 'buffett') as InvestorStyle;
+  const risk = (profile?.riskTolerance || local.riskTolerance || 'Moderate') as User['riskTolerance'];
+  return {
+    id: profile?.id || '',
+    email: profile?.email || '',
+    displayName: profile?.firstName || profile?.email?.split('@')[0] || 'M',
+    avatarUrl: profile?.avatarUrl,
+    investorStyle: style,
+    investorStyleSetAt: profile?.investorStyleSetAt,
+    investorStyleOnboarded: profile?.investorStyleOnboarded === true,
+    riskTolerance: risk,
+    name: profile?.firstName || profile?.email?.split('@')[0] || 'M',
+    createdAt: profile?.createdAt || '',
+  };
+}
+
 // ─── Provider Component ──────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<VantageSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const [profileNotFound, setProfileNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inactivityWarning, setInactivityWarning] = useState(false);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
   const inactivityRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
-  const mountedRef = useRef(true);
-  const [countdown, setCountdown] = useState(0);
   const countdownInterval = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
 
   // ─── Reset inactivity timer ──────────────────────────────
 
@@ -135,64 +140,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }, 1000);
     }, INACTIVITY_TIMEOUT - WARNING_BEFORE);
 
-    inactivityRef.current = setTimeout(() => {
+    inactivityRef.current = setTimeout(async () => {
       if (!mountedRef.current) return;
       if (countdownInterval.current) clearInterval(countdownInterval.current);
-      // Redirect to login — cookie cleared server-side on next API call
-      clearUser();
-      clearSession();
+      await supabase.auth.signOut();
       if (typeof window !== 'undefined') window.location.href = '/login';
     }, INACTIVITY_TIMEOUT);
   }, []);
 
-  // ─── Initial session check via /api/auth/me ──────────────
+  // ─── Initial session restore ─────────────────────────────
 
   useEffect(() => {
     mountedRef.current = true;
-    console.log('[AuthProvider] 🔍 Checking session via /api/auth/me...');
 
-    fetch('/api/auth/me')
-      .then(async (res) => {
+    const init = async () => {
+      try {
+        // Try restoring from Supabase session
+        const { data: sessionData } = await supabase.auth.getSession();
         if (!mountedRef.current) return;
 
-        if (!res.ok) {
-          console.log('[AuthProvider] No valid session');
+        if (!sessionData.session) {
+          console.log('[AuthProvider] No Supabase session');
           setIsDataLoaded(true);
           setIsLoading(false);
           return;
         }
 
-        const data = await res.json();
-        if (!data?.user) {
-          console.log('[AuthProvider] No user in /me response');
+        // We have a session — fetch user profile
+        const accessToken = sessionData.session.access_token;
+        const userId = sessionData.session.user.id;
+
+        // Store token for API calls
+        if (accessToken) {
+          sessionStorage.setItem('vantage-auth-token', accessToken);
+        }
+
+        // Fetch profile from our users table
+        const profileRes = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (!profileRes.ok) {
+          // Profile lookup failed — still auth'd but no profile yet
+          const local = getLocalOnboarding();
+          const u: User = {
+            id: userId,
+            email: sessionData.session.user.email || '',
+            displayName: sessionData.session.user.email?.split('@')[0] || 'M',
+            investorStyle: local.style,
+            riskTolerance: local.riskTolerance as User['riskTolerance'],
+            investorStyleOnboarded: false,
+            name: sessionData.session.user.email?.split('@')[0] || 'M',
+            createdAt: '',
+          };
+          setUser(u);
           setIsDataLoaded(true);
           setIsLoading(false);
           return;
         }
 
-        console.log('[AuthProvider] ✅ Session valid — user:', data.user.email);
-
+        const profileData = await profileRes.json();
         const local = getLocalOnboarding();
-        const cached = getUser();
+        const u = buildUser(profileData.user, local);
 
-        const style = (data.user.investorStyle || cached?.investorStyle || local.style || 'buffett') as InvestorStyle;
-        const riskDerived = local.riskTolerance || 'Moderate';
+        setUser(u);
 
-        const u: User = {
-          id: data.user.id,
-          email: data.user.email,
-          displayName: data.user.displayName || data.user.email.split('@')[0],
-          avatarUrl: data.user.avatarUrl,
-          investorStyle: style,
-          investorStyleSetAt: data.user.investorStyleSetAt || undefined,
-          investorStyleOnboarded: data.user.investorStyleOnboarded === true,
-          riskTolerance: (data.user.riskTolerance || riskDerived) as User['riskTolerance'],
-          name: data.user.displayName || data.user.email?.split('@')[0] || 'M',
-          createdAt: data.user.createdAt || '',
-        };
-
-        // Sync localStorage with authoritative API state.
-        // If API says NOT onboarded, clear any stale flag from prior sessions.
+        // Sync localStorage
         if (u.investorStyleOnboarded) {
           localStorage.setItem('vantage:onboarded', 'true');
         } else {
@@ -200,42 +213,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
 
-        const vs: VantageSession = {
-          token: '', // HTTP-only cookie — token not exposed to JS
-          expiresAt: Math.floor(Date.now() / 1000) + 86400,
-          userId: data.user.id,
-        };
-
-        setUser(u);
-        setSession(vs);
-        storeUser(u);
-        storeSession(vs);
-        setProfileNotFound(false);
         setError(null);
-
-        if (u.investorStyleOnboarded) localStorage.setItem('vantage:onboarded', 'true');
-        if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
-
         setIsDataLoaded(true);
         setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error('[AuthProvider] Session check failed:', err.message);
+      } catch (err: any) {
+        console.error('[AuthProvider] Init failed:', err.message);
         if (mountedRef.current) {
           setIsDataLoaded(true);
           setIsLoading(false);
         }
-      });
+      }
+    };
+
+    init();
+
+    // Listen for auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mountedRef.current) return;
+
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setError(null);
+        setIsDataLoaded(false);
+        sessionStorage.removeItem('vantage-auth-token');
+        return;
+      }
+
+      if (event === 'SIGNED_IN' && session) {
+        // Re-initialize with new session
+        init();
+      }
+    });
 
     return () => {
       mountedRef.current = false;
+      listener?.subscription?.unsubscribe();
     };
   }, []);
 
-  // ─── Inactivity tracking (only when authenticated) ───────
+  // ─── Inactivity tracking ────────────────────────────────
 
   useEffect(() => {
-    if (!session) {
+    if (!user) {
       if (inactivityRef.current) clearTimeout(inactivityRef.current);
       if (warningRef.current) clearTimeout(warningRef.current);
       setInactivityWarning(false);
@@ -254,75 +273,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (inactivityRef.current) clearTimeout(inactivityRef.current);
       if (warningRef.current) clearTimeout(warningRef.current);
     };
-  }, [session, resetInactivity]);
+  }, [user, resetInactivity]);
 
   // ─── Auth methods ────────────────────────────────────────
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    let res: Response;
-    try {
-      res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-    } catch (err: any) {
-      throw new Error(err.message || 'Network error. Please try again.');
+  const signInFn = useCallback(async (email: string, password: string) => {
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) {
+      throw new Error(signInError.message.includes('Invalid login') 
+        ? 'Invalid email or password.' 
+        : signInError.message);
     }
 
-    const data = await res.json();
-
-    if (res.status === 202 && data.requires2FA) {
-      // 2FA is needed — caller handles the 2FA flow (login page)
-      const error: any = new Error('2FA verification required');
-      error.requires2FA = true;
-      error.userId = data.userId;
-      throw error;
+    if (!data.session) {
+      throw new Error('Unable to create session. Please try again.');
     }
 
-    if (!res.ok) {
-      throw new Error(data.error || 'Invalid email or password');
-    }
+    // Store token
+    sessionStorage.setItem('vantage-auth-token', data.session.access_token);
 
-    // Fetch user profile via /me to populate context
-    const meRes = await fetch('/api/auth/me');
-    const meData = await meRes.json();
+    // Fetch profile
+    const profileRes = await fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${data.session.access_token}` },
+    });
 
-    if (!meRes.ok || !meData?.user) {
-      throw new Error('Login succeeded but session could not be established. Please try again.');
-    }
-
+    const profile: any = profileRes.ok ? await profileRes.json() : {};
     const local = getLocalOnboarding();
-    const cached = getUser();
-
-    const style = (meData.user.investorStyle || cached?.investorStyle || local.style || 'buffett') as InvestorStyle;
-    const riskDerived = local.riskTolerance || 'Moderate';
 
     const u: User = {
-      id: meData.user.id,
-      email: meData.user.email,
-      displayName: meData.user.displayName || meData.user.email.split('@')[0],
-      avatarUrl: meData.user.avatarUrl,
-      investorStyle: style,
-      investorStyleSetAt: meData.user.investorStyleSetAt || undefined,
-      investorStyleOnboarded: meData.user.investorStyleOnboarded === true,
-      riskTolerance: (meData.user.riskTolerance || riskDerived) as User['riskTolerance'],
-      name: meData.user.displayName || meData.user.email?.split('@')[0] || 'M',
-      createdAt: meData.user.createdAt || '',
-    };
-
-    const vs: VantageSession = {
-      token: '',
-      expiresAt: Math.floor(Date.now() / 1000) + 86400,
-      userId: meData.user.id,
+      id: data.session.user.id,
+      email: data.session.user.email || email,
+      displayName: data.session.user.email?.split('@')[0] || 'M',
+      investorStyle: (profile.user?.investorStyle || local.style || 'buffett') as InvestorStyle,
+      riskTolerance: (profile.user?.riskTolerance || local.riskTolerance || 'Moderate') as User['riskTolerance'],
+      investorStyleOnboarded: profile.user?.investorStyleOnboarded ?? false,
+      investorStyleSetAt: profile.user?.investorStyleSetAt,
+      name: data.session.user.email?.split('@')[0] || 'M',
+      createdAt: profile.user?.createdAt || '',
     };
 
     setUser(u);
-    setSession(vs);
-    storeUser(u);
-    storeSession(vs);
-    setProfileNotFound(false);
-    setError(null);
 
     if (u.investorStyleOnboarded) {
       localStorage.setItem('vantage:onboarded', 'true');
@@ -331,54 +325,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (u.investorStyle) localStorage.setItem('vantage:investorStyle', u.investorStyle);
 
+    setError(null);
     setIsDataLoaded(true);
     setIsLoading(false);
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
-    const res = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, displayName: displayName?.trim() }),
-    });
+  const signUpFn = useCallback(async (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    investorStyle: string;
+    riskTolerance: string;
+  }) => {
+    // Call the server action — handles auth signup + users table insert + demo seed
+    const result = await createAccount(data);
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || 'Signup failed');
+    if (!result.success) {
+      throw new Error(result.error || 'Account creation failed.');
     }
 
-    // Custom auth always requires email verification — no session is returned
-    return { needsConfirmation: true };
+    return { needsConfirmation: result.needsVerification ?? false };
   }, []);
 
-  const signOut = useCallback(async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch {
-      // Clear locally even if server call fails
-    }
+  const signOutFn = useCallback(async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    setSession(null);
-    clearUser();
-    clearSession();
+    setError(null);
     setInactivityWarning(false);
     setShowWelcomeBack(false);
     setIsDataLoaded(false);
-    setProfileNotFound(false);
-    setError(null);
+    sessionStorage.removeItem('vantage-auth-token');
   }, []);
 
   const resendConfirmation = useCallback(async (email: string) => {
     try {
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, resend: true }),
+      const { error: resendErr } = await supabase.auth.resend({ 
+        type: 'signup', 
+        email 
       });
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, message: data.error || 'Unable to resend' };
+      if (resendErr) {
+        return { success: false, message: resendErr.message };
       }
       return { success: true, message: 'Verification email resent. Check your inbox!' };
     } catch {
@@ -386,33 +373,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // ─── Context value ───────────────────────────────────────
-
   const dismissWelcomeBack = useCallback(() => setShowWelcomeBack(false), []);
 
   const value: AuthContextValue = {
     user,
-    session,
+    session: null,
     isLoading,
-    isAuthenticated: !!user && !!session,
+    isAuthenticated: !!user,
     isDataLoaded,
-    profileNotFound,
+    profileNotFound: false,
     error,
     inactivityWarning,
     inactivityCountdown: countdown,
     resetActivity: resetInactivity,
     showWelcomeBack,
     dismissWelcomeBack,
-    signIn,
-    signUp,
-    signOut,
+    signIn: signInFn,
+    signUp: signUpFn,
+    signOut: signOutFn,
     resendConfirmation,
   };
 
   return React.createElement(AuthContext.Provider, { value }, children);
 }
-
-// ─── Hook ─────────────────────────────────────────────────────
 
 export function useAuth(): AuthContextValue {
   return useContext(AuthContext);

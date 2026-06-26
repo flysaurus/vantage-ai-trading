@@ -8,7 +8,31 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail } from '@/lib/email';
+// Inline Resend email sender (replaces deleted lib/email.ts)
+async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn('[alerts/check] No RESEND_API_KEY set — skipping email');
+    return;
+  }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'Vantage Alerts <alerts@vantage-ai.app>',
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    }),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    console.error('[alerts/check] Email send failed:', res.status, errBody.slice(0, 200));
+  }
+}
 import { getBatchQuotes } from '@/lib/market-data';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

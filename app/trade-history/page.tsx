@@ -144,12 +144,12 @@ function TradeHistoryPageInner() {
     setIsDemo(false);
     try {
       // 1. Sync filled orders from Alpaca to trade_history
-      const session = (await import('@/lib/auth')).getSession();
+      const token = (await import("@/lib/auth")).getAccessToken();
       const syncRes = await fetch('/api/db/trade-history/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ userId: user.id, limit: 100 }),
       });

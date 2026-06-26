@@ -5,36 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-
-async function getUserIdFromSession(req: NextRequest): Promise<string> {
-  const sessionCookie = req.cookies.get('session')?.value || '';
-  if (sessionCookie) {
-    const hashBuffer = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(sessionCookie),
-    );
-    const sessionHash = Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-    try {
-      const supabase = createServerClient();
-      const { data } = await (supabase as any)
-        .from('user_sessions')
-        .select('user_id')
-        .eq('session_token_hash', sessionHash)
-        .maybeSingle();
-      if (data?.user_id) return data.user_id;
-    } catch {
-      /* fall through */
-    }
-  }
-  return 'anonymous';
-}
+import { getOptionalUserId } from '@/lib/auth';
 
 /** GET: Load last 20 messages, ordered ASC by created_at */
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getUserIdFromSession(req);
+    const userId = await getOptionalUserId(req);
     if (userId === 'anonymous') {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -66,7 +42,7 @@ export async function GET(req: NextRequest) {
 /** DELETE: Clear all chat history for current user */
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = await getUserIdFromSession(req);
+    const userId = await getOptionalUserId(req);
     if (userId === 'anonymous') {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { getAccessToken } from '@/lib/auth';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { OnboardingStyleSelection } from './OnboardingStyleSelection';
 import { BrokerSelection } from './BrokerSelection';
@@ -11,7 +12,8 @@ import type { BrokerId } from '@/types/broker';
 type OnboardingStep = 'style' | 'broker' | 'credentials';
 
 export function InvestorStyleOnboarding() {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
+  const token = getAccessToken();
   const [step, setStep] = useState<OnboardingStep>('style');
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);
   const [selectedBrokerId, setSelectedBrokerId] = useState<BrokerId | null>(null);
@@ -32,8 +34,8 @@ export function InvestorStyleOnboarding() {
       // Use the API route (server-side service role) — NOT the browser
       // Supabase client (anon key, no JWT, blocked by RLS).
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.token) {
-        headers['Authorization'] = `Bearer ${session.token}`;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
       const res = await fetch('/api/db/users/update', {
         method: 'POST',
@@ -83,8 +85,8 @@ export function InvestorStyleOnboarding() {
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.token) {
-        headers['Authorization'] = `Bearer ${session.token}`;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
       const res = await fetch('/api/broker/connect', {
         method: 'POST',

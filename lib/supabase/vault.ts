@@ -1,11 +1,11 @@
 // ─── Vault Operations (encrypted secrets) ────────────────────
-import { getSession } from '@/lib/auth';
+import { getAccessToken } from '@/lib/auth';
 const API_BASE = '/api/db/vault';
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const session = getSession();
+  const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) };
-  if (session?.token) headers['Authorization'] = `Bearer ${session.token}`;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   return fetch(path, { ...init, headers });
 }
 

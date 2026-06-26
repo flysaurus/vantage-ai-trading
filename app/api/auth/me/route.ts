@@ -1,80 +1,100 @@
-// ─── GET /api/auth/me ───────────────────────────────────────────
-// Returns the current user's profile if the session cookie is valid.
-// Used by the frontend to restore auth state on page load.
+// ─── GET /api/auth/me ────────────────────────────────────────
+// Returns the current authenticated user's full profile.
+// Validates the Supabase JWT from the Authorization header.
+// Fetches all onboarding + profile data from the users table.
 
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { hashSessionToken } from '@/lib/crypto';
+import { NextResponse } from 'next/server';
+import { createAuthClient, createServerClient } from '@/lib/supabase';
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
-  const sessionToken = req.cookies.get('session')?.value;
-
-  console.log('👉 [API] Get current user');
-
-  if (!sessionToken) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
+export async function GET(request: Request) {
   try {
-    const supabase = createServerClient();
-    const sessionTokenHash = hashSessionToken(sessionToken);
+    const authHeader = request.headers.get('Authorization');
 
-    // Find session
-    const { data: session, error: sessionError } = await (supabase as any)
-      .from('user_sessions')
-      .select('user_id, expires_at')
-      .eq('session_token_hash', sessionTokenHash)
-      .single();
-
-    if (sessionError || !session) {
-      console.error('❌ Session not found');
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Check if expired
-    if (new Date(session.expires_at) < new Date()) {
-      console.error('❌ Session expired');
-      return NextResponse.json({ error: 'Session expired' }, { status: 401 });
+    const token = authHeader.slice(7);
+
+    // Verify the Supabase JWT
+    const authClient = createAuthClient();
+    const { data: authData, error: authError } = await authClient.auth.getUser(token);
+
+    if (authError || !authData.user) {
+      return NextResponse.json({ error: 'Invalid or expired session' }, { status: 401 });
     }
 
-    // Get user data
-    const { data: user, error: userError } = await (supabase as any)
+    const userId = authData.user.id;
+    const email = authData.user.email;
+
+    // Fetch full profile from users table (all onboarding + auth fields)
+    const serviceDb = createServerClient() as any;
+    const { data: profile } = await serviceDb
       .from('users')
-      .select('id, email, display_name, avatar_url, investor_style, investor_style_onboarded, status, two_factor_enabled')
-      .eq('id', session.user_id)
+      .select(`
+        id,
+        email,
+        first_name,
+        last_name,
+        display_name,
+        avatar_url,
+        investor_style,
+        risk_tolerance,
+        investor_style_onboarded,
+        investor_style_set_at,
+        tier,
+        demo_expires_at,
+        first_open,
+        created_at,
+        last_login
+      `)
+      .eq('id', userId)
       .single();
 
-    if (userError || !user) {
-      console.error('❌ User not found');
-      return NextResponse.json({ error: 'User not found' }, { status: 401 });
+    if (!profile) {
+      // User exists in Supabase Auth but not in our users table yet
+      // Return minimal profile so the UI can trigger profile creation
+      return NextResponse.json({
+        user: {
+          id: userId,
+          email: email || '',
+          displayName: email?.split('@')[0] || '',
+          firstName: '',
+          lastName: '',
+          investorStyle: 'buffett',
+          investorStyleSetAt: null,
+          investorStyleOnboarded: false,
+          riskTolerance: 'Moderate',
+          tier: 'demo',
+          demoExpiresAt: null,
+          firstOpen: null,
+          createdAt: '',
+          lastLogin: null,
+        },
+      });
     }
-
-    // Update last activity
-    await (supabase as any)
-      .from('user_sessions')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('user_id', session.user_id);
-
-    console.log('✅ User found:', user.email);
 
     return NextResponse.json({
-      success: true,
       user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.display_name,
-        avatarUrl: user.avatar_url,
-        investorStyle: user.investor_style,
-        investorStyleOnboarded: user.investor_style_onboarded,
-        status: user.status,
-        twoFactorEnabled: user.two_factor_enabled,
+        id: profile.id,
+        email: profile.email,
+        displayName: profile.first_name || profile.display_name || profile.email?.split('@')[0] || '',
+        firstName: profile.first_name || '',
+        lastName: profile.last_name || '',
+        avatarUrl: profile.avatar_url || undefined,
+        investorStyle: profile.investor_style || 'buffett',
+        investorStyleSetAt: profile.investor_style_set_at || undefined,
+        investorStyleOnboarded: profile.investor_style_onboarded ?? false,
+        riskTolerance: profile.risk_tolerance || 'Moderate',
+        tier: profile.tier || 'demo',
+        demoExpiresAt: profile.demo_expires_at || null,
+        firstOpen: profile.first_open || null,
+        createdAt: profile.created_at || '',
+        lastLogin: profile.last_login || null,
       },
-    }, { status: 200 });
+    });
   } catch (err: any) {
-    console.error('❌ Get user error:', err.message);
-    return NextResponse.json(
-      { error: err.message || 'Failed to get user' },
-      { status: 500 }
-    );
+    console.error('[auth/me] Error:', err?.message);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,123 +1,67 @@
-// ─── Auth Utilities ───────────────────────────────────────────
-// Session lifecycle managed by Supabase SDK (autoRefreshToken, persistSession).
-// This file provides: sync token accessors, user profile cache, and API middleware.
-//
-// getSession() reads a parallel sessionStorage copy synced by AuthProvider.
-// Supabase SDK handles actual login/refresh/logout via onAuthStateChange.
+// ─── Auth Utilities (Supabase Auth) ────────────────────────────
+// Session managed by Supabase SDK (autoRefreshToken, persistSession).
+// This file provides: session helpers, API middleware, and profile cache.
 
 import { createAuthClient, createServerClient } from './supabase';
-import type { VantageSession, User, InvestorStyle } from '@/types';
 
-const SESSION_KEY = 'vantage-session';
-const USER_KEY = 'vantage-user';
+// ─── Optional JWT Extraction (anonymous-friendly) ─────────────
 
-// ─── Session Accessors (sync, for API callers) ────────────────
+/**
+ * Extracts userId from the Authorization Bearer JWT if present.
+ * Returns 'anonymous' if no valid token is found.
+ * For routes that serve both authenticated and anonymous users.
+ */
+export async function getOptionalUserId(request: Request): Promise<string> {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return 'anonymous';
+  try {
+    const supabase = createAuthClient();
+    const { data } = await supabase.auth.getUser(authHeader.slice(7));
+    return data.user?.id || 'anonymous';
+  } catch {
+    return 'anonymous';
+  }
+}
 
-export function getSession(): VantageSession | null {
+// ─── Session Helpers (browser-side, for API callers) ──────────
+
+/** Get the Supabase access token from sessionStorage for API Bearer auth. */
+export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const session: VantageSession = JSON.parse(raw);
-    if (session.expiresAt && session.expiresAt < Math.floor(Date.now() / 1000)) {
-      clearSession();
-      return null;
-    }
-    return session;
+    const raw = sessionStorage.getItem('vantage-auth-token');
+    return raw || null;
   } catch {
-    clearSession();
     return null;
-  }
-}
-
-export function storeSession(session: VantageSession): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  } catch {
-    // Storage full or disabled — non-critical
-  }
-}
-
-export function clearSession(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-  } catch {
-    // Ignore
   }
 }
 
 // ─── User Profile Cache (sessionStorage — session-scoped) ────
 
-export function getUser(): User | null {
+const USER_KEY = 'vantage-user';
+
+export function getUser(): any | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = sessionStorage.getItem(USER_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as User;
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export function storeUser(user: User): void {
+export function storeUser(user: any): void {
   if (typeof window === 'undefined') return;
   try {
     sessionStorage.setItem(USER_KEY, JSON.stringify(user));
-  } catch {
-    // Ignore
-  }
+  } catch { /* ignore */ }
 }
 
 export function clearUser(): void {
   if (typeof window === 'undefined') return;
   try {
     sessionStorage.removeItem(USER_KEY);
-  } catch {
-    // Ignore
-  }
-}
-
-// ─── Auth Initialization (Hard Block) ─────────────────────────
-// Users MUST exist in the users table or they cannot proceed.
-// Called by AuthProvider on every auth state change.
-// The server endpoint checks email confirmation before creating DB rows.
-
-interface VerifyUserResult {
-  success: boolean;
-  action: 'created' | 'verified';
-  user: {
-    id: string;
-    email: string;
-    investorStyleOnboarded: boolean;
-  };
-}
-
-export async function initializeAuth(): Promise<VerifyUserResult> {
-  const session = getSession();
-  if (!session?.token) {
-    throw new Error('No active session');
-  }
-
-  const res = await fetch('/api/auth/verify-user', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.token}`,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const message = body?.error || body?.details || `Verification failed (${res.status})`;
-    console.error('[initializeAuth] ❌ Verify-user failed:', res.status, message);
-    throw new Error(message);
-  }
-
-  const data: VerifyUserResult = await res.json();
-  console.log('[initializeAuth] ✅ User', data.action, '| onboarded:', data.user.investorStyleOnboarded);
-  return data;
+  } catch { /* ignore */ }
 }
 
 // ─── API Route Middleware ─────────────────────────────────────
@@ -132,68 +76,57 @@ export class AuthError extends Error {
 }
 
 /**
- * Validates a session token from an Authorization header (Bearer) OR
- * the HTTP-only session cookie. Both paths are supported so browser-side
- * fetch() calls work without JavaScript-visible tokens.
+ * Validates a Supabase JWT from the Authorization header.
+ * Uses the anon key to verify the token (auth.getUser).
  */
 export async function requireAuth(
   request: Request
 ): Promise<{ userId: string; token: string }> {
   const authHeader = request.headers.get('Authorization');
 
-  // ── Path A: Bearer token (Supabase JWT) ──
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    try {
-      const supabase = createAuthClient();
-      const { data, error } = await supabase.auth.getUser(token);
-      if (error || !data.user) {
-        throw new AuthError('Invalid or expired token', 401);
-      }
-      return { userId: data.user.id, token };
-    } catch (err) {
-      if (err instanceof AuthError) throw err;
-      throw new AuthError('Authentication failed', 401);
-    }
-  }
-
-  // ── Path B: HTTP-only session cookie (custom auth) ──
-  const sessionToken = request.headers.get('cookie')
-    ?.split(';')
-    .map(c => c.trim())
-    .find(c => c.startsWith('session='))
-    ?.slice('session='.length);
-
-  if (!sessionToken) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     throw new AuthError('Missing or invalid Authorization header', 401);
   }
 
+  const token = authHeader.slice(7);
+
   try {
-    // Hash the session token for DB lookup (Web Crypto API)
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(sessionToken));
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const sessionHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const supabase = createAuthClient();
+    const { data, error } = await supabase.auth.getUser(token);
 
-    const supabase = createServerClient();
-
-    const { data: session, error: sessionError } = await (supabase as any)
-      .from('user_sessions')
-      .select('user_id, expires_at')
-      .eq('session_token_hash', sessionHash)
-      .single();
-
-    if (sessionError || !session) {
-      throw new AuthError('Invalid session', 401);
+    if (error || !data.user) {
+      throw new AuthError('Invalid or expired session', 401);
     }
 
-    if (new Date(session.expires_at) < new Date()) {
-      throw new AuthError('Session expired', 401);
-    }
-
-    return { userId: session.user_id, token: sessionToken };
+    return { userId: data.user.id, token };
   } catch (err) {
     if (err instanceof AuthError) throw err;
     throw new AuthError('Authentication failed', 401);
   }
+}
+
+/**
+ * Get user profile from users table (server-side, uses service role).
+ */
+export async function getUserProfile(userId: string) {
+  const supabase = createServerClient() as any;
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    email: data.email,
+    firstName: data.first_name,
+    lastName: data.last_name,
+    investorStyle: data.investor_style,
+    investorStyleOnboarded: data.investor_style_onboarded ?? false,
+    riskTolerance: data.risk_tolerance,
+    createdAt: data.created_at,
+    tier: data.tier,
+  };
 }

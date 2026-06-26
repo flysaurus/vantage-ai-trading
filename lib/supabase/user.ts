@@ -1,37 +1,30 @@
 // ─── User Profile Operations ─────────────────────────────────
 // Uses REST API endpoints for DB operations.
 // API routes use service_role key (bypasses RLS) and enforce
-// user-scoping manually. This avoids RLS failures when the
-// browser client has no persisted session.
+// user-scoping manually.
 
-import { getSession } from '@/lib/auth';
+import { getAccessToken } from '@/lib/auth';
 import type { InvestorStyle, User } from '@/types';
 
 const API_BASE = '/api/db/users';
 
-/** Shared helper: fetch with auth token */
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const session = getSession();
+  const token = getAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string>),
   };
-  if (session?.token) {
-    headers['Authorization'] = `Bearer ${session.token}`;
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return fetch(path, { ...init, headers });
 }
 
-/**
- * Fetches the user profile from the API.
- */
 export async function getUserProfile(userId: string): Promise<User | null> {
   try {
     const res = await apiFetch(`${API_BASE}/get?id=${encodeURIComponent(userId)}`);
-    console.log('[getUserProfile] API status:', res.status, 'for', userId);
     if (!res.ok) {
       if (res.status === 404) return null;
-      // Read error body for diagnostics
       let detail = '';
       try { const body = await res.json(); detail = body?.detail || body?.error || ''; } catch {}
       console.warn('[users] getUserProfile failed:', res.status, detail);
@@ -55,20 +48,11 @@ export async function getUserProfile(userId: string): Promise<User | null> {
   }
 }
 
-/**
- * Updates the user's investor style via the API.
- */
-export async function updateInvestorStyle(
-  userId: string,
-  style: InvestorStyle,
-): Promise<void> {
+export async function updateInvestorStyle(userId: string, style: InvestorStyle): Promise<void> {
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
-      body: JSON.stringify({
-        userId,
-        investorStyle: style,
-      }),
+      body: JSON.stringify({ userId, investorStyle: style }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -79,19 +63,11 @@ export async function updateInvestorStyle(
   }
 }
 
-/**
- * Marks the user as having completed investor style onboarding via the API.
- * Also sets investor_style_set_at to now if not already set.
- */
 export async function completeOnboarding(userId: string): Promise<void> {
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
-      body: JSON.stringify({
-        userId,
-        investorStyleOnboarded: true,
-        investorStyleSetAt: new Date().toISOString(),
-      }),
+      body: JSON.stringify({ userId, investorStyleOnboarded: true, investorStyleSetAt: new Date().toISOString() }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -102,31 +78,20 @@ export async function completeOnboarding(userId: string): Promise<void> {
   }
 }
 
-/**
- * Creates a new user record via the API.
- */
 export async function createUser(params: {
   email: string;
   displayName?: string;
   avatarUrl?: string;
-  token?: string; // optional override — pass in-memory token to avoid sessionStorage dependency
+  token?: string;
 }): Promise<{ id: string } | null> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (params.token) {
-      headers['Authorization'] = `Bearer ${params.token}`;
-    } else {
-      const session = getSession();
-      if (session?.token) headers['Authorization'] = `Bearer ${session.token}`;
-    }
+    const token = params.token || getAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${API_BASE}/create`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        email: params.email,
-        displayName: params.displayName,
-        avatarUrl: params.avatarUrl,
-      }),
+      body: JSON.stringify({ email: params.email, displayName: params.displayName, avatarUrl: params.avatarUrl }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -140,19 +105,13 @@ export async function createUser(params: {
   }
 }
 
-/**
- * Updates any user fields via the API.
- */
-export async function updateUser(
-  userId: string,
-  fields: {
-    email?: string;
-    displayName?: string;
-    avatarUrl?: string;
-    investorStyle?: InvestorStyle;
-    investorStyleOnboarded?: boolean;
-  },
-): Promise<boolean> {
+export async function updateUser(userId: string, fields: {
+  email?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  investorStyle?: InvestorStyle;
+  investorStyleOnboarded?: boolean;
+}): Promise<boolean> {
   try {
     const res = await apiFetch(`${API_BASE}/update`, {
       method: 'POST',
@@ -165,9 +124,6 @@ export async function updateUser(
   }
 }
 
-/**
- * Soft-deletes a user via the API.
- */
 export async function deleteUser(userId: string): Promise<boolean> {
   try {
     const res = await apiFetch(`${API_BASE}/delete`, {

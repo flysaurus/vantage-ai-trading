@@ -1,23 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+// ─── PATCH/GET /api/user/preferences ──────────────────────
+// Update/read user preferences (risk_tolerance, investor_style).
+// Uses Supabase JWT Bearer auth.
 
-async function getUserIdFromSession(req: NextRequest): Promise<string> {
-  const sessionCookie = req.cookies.get('session')?.value || '';
-  if (!sessionCookie) return 'anonymous';
-  try {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sessionCookie));
-    const sessionHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-    const supabase = createServerClient();
-    const { data } = await (supabase as any).from('user_sessions').select('user_id').eq('session_token_hash', sessionHash).maybeSingle();
-    return data?.user_id || 'anonymous';
-  } catch { return 'anonymous'; }
-}
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
+import { createServerClient } from '@/lib/supabase';
 
 const VALID_RISK_VALUES = ['conservative', 'moderate', 'aggressive'];
 
 export async function PATCH(req: NextRequest) {
-  const userId = await getUserIdFromSession(req);
-  if (userId === 'anonymous') return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  let userId: string;
+  try {
+    ({ userId } = await requireAuth(req));
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || 'Not authenticated' }, { status: 401 });
+  }
 
   const body = await req.json();
   const updates: Record<string, any> = {};
@@ -47,8 +44,12 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const userId = await getUserIdFromSession(req);
-  if (userId === 'anonymous') return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  let userId: string;
+  try {
+    ({ userId } = await requireAuth(req));
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || 'Not authenticated' }, { status: 401 });
+  }
 
   const supabase = createServerClient() as any;
   const { data } = await supabase.from('users').select('risk_tolerance, investor_style').eq('id', userId).single();

@@ -14,6 +14,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
+import { getOptionalUserId } from '@/lib/auth';
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
@@ -84,38 +85,12 @@ async function fetchMarketNews(
 }
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
-
-async function getUserIdFromSession(req: NextRequest): Promise<string | null> {
-  const sessionCookie = req.cookies.get('session')?.value || '';
-  if (!sessionCookie) return null;
-
-  const hashBuffer = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(sessionCookie),
-  );
-  const sessionHash = Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  try {
-    const supabase = createServerClient();
-    const { data } = await (supabase as any)
-      .from('user_sessions')
-      .select('user_id')
-      .eq('session_token_hash', sessionHash)
-      .maybeSingle();
-    return data?.user_id || null;
-  } catch {
-    return null;
-  }
-}
-
 // ─── GET handler ───────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   try {
     // 1. Auth
-    const userId = await getUserIdFromSession(req);
+    const userId = await getOptionalUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

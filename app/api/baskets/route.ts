@@ -7,31 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-
-async function getUserIdFromSession(req: NextRequest): Promise<string> {
-  const sessionCookie = req.cookies.get('session')?.value || '';
-  if (sessionCookie) {
-    const hashBuffer = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(sessionCookie),
-    );
-    const sessionHash = Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-    try {
-      const supabase = createServerClient();
-      const { data } = await (supabase as any)
-        .from('user_sessions')
-        .select('user_id')
-        .eq('session_token_hash', sessionHash)
-        .maybeSingle();
-      if (data?.user_id) return data.user_id;
-    } catch {
-      /* fall through */
-    }
-  }
-  return 'anonymous';
-}
+import { getOptionalUserId } from '@/lib/auth';
 
 function getNextRefreshDate(from: Date): Date {
   // Bi-weekly on Mondays — find next Monday in an even week
@@ -55,7 +31,7 @@ function getNextRefreshDate(from: Date): Date {
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getUserIdFromSession(req);
+    const userId = await getOptionalUserId(req);
     const supabase = createServerClient();
 
     // Fetch system-generated active baskets (stocks stored as JSONB)

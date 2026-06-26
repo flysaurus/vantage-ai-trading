@@ -8,6 +8,7 @@
 
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { getAccessToken } from '@/lib/auth';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { BrokerSelection } from './BrokerSelection';
 import { BrokerCredentials } from './BrokerCredentials';
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export function BrokerGate({ onDismiss }: Props) {
-  const { session } = useAuth();
+  const token = getAccessToken();
   const [step, setStep] = useState<'select' | 'credentials'>('select');
   const [selectedBrokerId, setSelectedBrokerId] = useState<BrokerId | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -42,8 +43,8 @@ export function BrokerGate({ onDismiss }: Props) {
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.token) {
-        headers['Authorization'] = `Bearer ${session.token}`;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
       const res = await fetch('/api/broker/connect', {
         method: 'POST',

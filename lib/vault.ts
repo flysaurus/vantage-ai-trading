@@ -13,8 +13,37 @@
 // Client → API route → server-side vault → broker.
 
 import { createServerClient } from './supabase';
-import { deriveUserKey, encryptData, decryptData } from './crypto';
 import crypto from 'crypto';
+
+// ─── Inline crypto (was lib/crypto.ts — now deleted) ─────────
+
+const IV_LENGTH = 12;
+const AUTH_TAG_LENGTH = 16;
+const ALGORITHM = 'aes-256-gcm';
+
+function deriveUserKey(userId: string): Buffer {
+  const secret = process.env.VAULT_ENCRYPTION_KEY || 'dev-encryption-key-change-me';
+  return crypto.createHash('sha256').update(userId + secret).digest();
+}
+
+function encryptData(plaintext: string, key: Buffer): string {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return JSON.stringify({
+    encrypted: encrypted.toString('base64'),
+    iv: iv.toString('base64'),
+    authTag: authTag.toString('base64'),
+  });
+}
+
+function decryptData(payload: string, key: Buffer): string {
+  const { encrypted, iv, authTag } = JSON.parse(payload);
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(iv, 'base64'), { authTagLength: AUTH_TAG_LENGTH });
+  decipher.setAuthTag(Buffer.from(authTag, 'base64'));
+  return decipher.update(encrypted, 'base64', 'utf8') + decipher.final('utf8');
+}
 
 // ─── Store Credentials ────────────────────────────────────────
 

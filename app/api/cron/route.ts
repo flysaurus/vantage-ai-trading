@@ -13,6 +13,18 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const CRON_SECRET = process.env.CRON_SECRET || '';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
 
+// ─── Inline email (replaces deleted lib/email.ts) ───────────
+async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) { console.warn('[cron] No RESEND_API_KEY — skipping email'); return; }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'Vantage <noreply@vantage-ai.app>', to: opts.to, subject: opts.subject, html: opts.html }),
+  });
+  if (!res.ok) { console.error('[cron] Email send failed:', res.status); }
+}
+
 export const maxDuration = 55;
 
 // ─── Run DCA execution ──────────────────────────────────────
@@ -76,7 +88,6 @@ async function runAlertChecks(supabase: any): Promise<{ checked: number; trigger
         if (!email) continue;
 
         // Send email notification
-        const { sendEmail } = await import('@/lib/email');
         const alertTypeLabels: Record<string, string> = {
           price_above: 'Price Above',
           price_below: 'Price Below',
@@ -206,7 +217,6 @@ async function runDriftChecks(supabase: any): Promise<{ processed: number; alert
           .map(p => `<tr><td style="padding:6px 12px">${p.symbol}</td><td style="padding:6px 12px;text-align:right">${p.currentPercent}%</td><td style="padding:6px 12px;text-align:right">${p.targetPercent}%</td><td style="padding:6px 12px;text-align:right;color:#f87171">${p.drift > 0 ? '+' : ''}${p.drift}%</td></tr>`)
           .join('');
 
-        const { sendEmail } = await import('@/lib/email');
         await sendEmail({
           to: email,
           subject: '⚠️ Portfolio Drift Alert — Vantage',

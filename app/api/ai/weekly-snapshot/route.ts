@@ -12,6 +12,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
+import { getOptionalUserId } from '@/lib/auth';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -70,32 +71,6 @@ Override any other scoring if these conditions are met.`,
 };
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
-
-async function getUserIdFromSession(req: NextRequest): Promise<string | null> {
-  const sessionCookie = req.cookies.get('session')?.value || '';
-  if (!sessionCookie) return null;
-
-  const hashBuffer = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(sessionCookie),
-  );
-  const sessionHash = Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  try {
-    const supabase = createServerClient();
-    const { data } = await (supabase as any)
-      .from('user_sessions')
-      .select('user_id')
-      .eq('session_token_hash', sessionHash)
-      .maybeSingle();
-    return data?.user_id || null;
-  } catch {
-    return null;
-  }
-}
-
 /** Get Monday of current week as YYYY-MM-DD */
 function getWeekStart(): string {
   const now = new Date();
@@ -111,7 +86,7 @@ function getWeekStart(): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getUserIdFromSession(req);
+    const userId = await getOptionalUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -328,7 +303,7 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = await getUserIdFromSession(req);
+    const userId = await getOptionalUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
