@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTypewriter } from '@/lib/animations/typewriter';
 import { useWordHighlight } from '@/hooks/useWordHighlight';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import {
   getStyleContent,
@@ -55,6 +55,7 @@ interface StyleRevealProps {
   firstName: string;
   lastName: string;
   onBack?: () => void;
+  onSignIn?: () => void;
   onCreateAccount: (data: {
     style: InvestorStyleKey;
     risk: RiskTolerance;
@@ -69,6 +70,7 @@ export function StyleReveal({
   firstName,
   lastName,
   onBack,
+  onSignIn,
   onCreateAccount,
 }: StyleRevealProps) {
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyleKey>(initialStyle);
@@ -220,6 +222,32 @@ export function StyleReveal({
           </button>
         )}
         <VantageOrb size={36} animate={false} showEntrance={false} />
+
+        {/* Right: I have an account */}
+        {onSignIn && (
+          <button
+            onClick={onSignIn}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: '13px',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2px',
+              padding: '8px 0 8px 8px',
+              marginLeft: 'auto',
+              position: 'absolute',
+              right: '20px',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            I have an account
+            <ChevronRight size={13} />
+          </button>
+        )}
       </div>
 
       {/* ═══ SCROLLABLE CONTENT ═══ */}

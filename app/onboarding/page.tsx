@@ -158,6 +158,7 @@ export default function OnboardingPage() {
             totalQuestions={QUIZ_QUESTIONS.length}
             onAnswer={handleAnswer}
             onBack={questionIndex > 0 ? handleBack : undefined}
+            onSignIn={handleSignIn}
           />
         );
       }
@@ -165,7 +166,7 @@ export default function OnboardingPage() {
 
     case 'name':
       return (
-        <NameCapture onSubmit={handleNameSubmit} onBack={handleNameBack} />
+        <NameCapture onSubmit={handleNameSubmit} onBack={handleNameBack} onSignIn={handleSignIn} />
       );
 
     case 'reveal':
@@ -177,6 +178,7 @@ export default function OnboardingPage() {
             firstName={firstName}
             lastName={lastName}
             onCreateAccount={handleCreateAccount}
+            onSignIn={handleSignIn}
           />
         );
       }

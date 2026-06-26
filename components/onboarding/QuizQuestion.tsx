@@ -13,7 +13,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { QuizQuestion as QuizQuestionType } from '@/lib/onboarding/quiz-logic';
 
@@ -35,6 +35,7 @@ interface QuizQuestionProps {
   totalQuestions: number;
   onAnswer: (key: string) => void;
   onBack?: () => void;
+  onSignIn?: () => void;
 }
 
 export function QuizQuestion({
@@ -43,6 +44,7 @@ export function QuizQuestion({
   totalQuestions,
   onAnswer,
   onBack,
+  onSignIn,
 }: QuizQuestionProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
@@ -148,6 +150,30 @@ export function QuizQuestion({
         >
           <VantageOrb size={44} animate showEntrance={false} />
         </div>
+
+        {/* Right: I have an account */}
+        {onSignIn && (
+          <button
+            onClick={onSignIn}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: '13px',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2px',
+              padding: '8px 0 8px 8px',
+              marginLeft: 'auto',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            I have an account
+            <ChevronRight size={13} />
+          </button>
+        )}
       </div>
 
       {/* ── PROGRESS BAR ── */}

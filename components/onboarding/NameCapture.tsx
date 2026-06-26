@@ -12,15 +12,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 
 interface NameCaptureProps {
   onSubmit: (firstName: string, lastName: string) => void;
   onBack: () => void;
+  onSignIn?: () => void;
 }
 
-export function NameCapture({ onSubmit, onBack }: NameCaptureProps) {
+export function NameCapture({ onSubmit, onBack, onSignIn }: NameCaptureProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [entering, setEntering] = useState(false);
@@ -93,6 +94,30 @@ export function NameCapture({ onSubmit, onBack }: NameCaptureProps) {
         >
           <VantageOrb size={44} animate showEntrance={false} />
         </div>
+
+        {/* Right: I have an account */}
+        {onSignIn && (
+          <button
+            onClick={onSignIn}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: '13px',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2px',
+              padding: '8px 0 8px 8px',
+              marginLeft: 'auto',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            I have an account
+            <ChevronRight size={13} />
+          </button>
+        )}
       </div>
 
       {/* ── CONTENT ── */}
