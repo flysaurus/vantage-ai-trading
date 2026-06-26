@@ -132,16 +132,29 @@ export async function requireAuth(
  */
 export async function getUserProfile(userId: string) {
   const supabase = createServerClient() as any;
-  const { data, error } = await supabase
-    .from('users')
+
+  // Try user_profiles first (where createAccount writes)
+  let { data, error } = await supabase
+    .from('user_profiles')
     .select('*')
-    .eq('id', userId)
+    .eq('user_id', userId)
     .single();
+
+  // Fall back to users table (legacy accounts)
+  if (error || !data) {
+    const result = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    data = result.data;
+    error = result.error;
+  }
 
   if (error || !data) return null;
 
   return {
-    id: data.id,
+    id: data.id || data.user_id || userId,
     email: data.email,
     firstName: data.first_name,
     lastName: data.last_name,

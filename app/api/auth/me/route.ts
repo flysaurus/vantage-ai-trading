@@ -1,7 +1,8 @@
 // ─── GET /api/auth/me ────────────────────────────────────────
 // Returns the current authenticated user's full profile.
 // Validates the Supabase JWT from the Authorization header.
-// Fetches all onboarding + profile data from the users table.
+// Reads from user_profiles (where createAccount writes), falls back
+// to users table for legacy accounts.
 
 import { NextResponse } from 'next/server';
 import { createAuthClient, createServerClient } from '@/lib/supabase';
@@ -16,7 +17,6 @@ export async function GET(request: Request) {
 
     const token = authHeader.slice(7);
 
-    // Verify the Supabase JWT
     const authClient = createAuthClient();
     const { data: authData, error: authError } = await authClient.auth.getUser(token);
 
@@ -26,34 +26,29 @@ export async function GET(request: Request) {
 
     const userId = authData.user.id;
     const email = authData.user.email;
-
-    // Fetch full profile from users table (all onboarding + auth fields)
     const serviceDb = createServerClient() as any;
-    const { data: profile } = await serviceDb
-      .from('users')
-      .select(`
-        id,
-        email,
-        first_name,
-        last_name,
-        display_name,
-        avatar_url,
-        investor_style,
-        risk_tolerance,
-        investor_style_onboarded,
-        investor_style_set_at,
-        tier,
-        demo_expires_at,
-        first_open,
-        created_at,
-        last_login
-      `)
-      .eq('id', userId)
+
+    // Try user_profiles first (where createAccount/complete-profile write)
+    let profile = null;
+    const { data: upData } = await serviceDb
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', userId)
       .single();
 
+    if (upData) {
+      profile = upData;
+    } else {
+      // Fall back to users table (legacy accounts)
+      const { data: uData } = await serviceDb
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      profile = uData;
+    }
+
     if (!profile) {
-      // User exists in Supabase Auth but not in our users table yet
-      // Return minimal profile so the UI can trigger profile creation
       return NextResponse.json({
         user: {
           id: userId,
@@ -76,9 +71,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       user: {
-        id: profile.id,
-        email: profile.email,
-        displayName: profile.first_name || profile.display_name || profile.email?.split('@')[0] || '',
+        id: profile.id || profile.user_id || userId,
+        email: profile.email || email || '',
+        displayName: profile.first_name || profile.display_name || email?.split('@')[0] || '',
         firstName: profile.first_name || '',
         lastName: profile.last_name || '',
         avatarUrl: profile.avatar_url || undefined,
