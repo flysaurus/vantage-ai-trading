@@ -1,12 +1,12 @@
 // ─── GET /auth/callback ──────────────────────────────────────
-// Minimal magic link callback. User lands here after clicking
-// the magic link in their email.
+// Magic link / passwordless email callback.
+// User lands here after clicking the link in their email.
 //
 // Flow:
-// 1. Exchange `code` query param for a Supabase session
-// 2. Read anonymous_id from query params or cookie
-// 3. Simple upsert on user_profiles
-// 4. Migrate data tables if anonymous_id present
+// 1. Exchange `code` for Supabase session
+// 2. Ensure users row exists (parent of user_profiles FK)
+// 3. Ensure user_profiles row exists
+// 4. Migrate anonymous data if anonymous_id present
 // 5. Redirect to app
 
 import { createServerClient } from "@supabase/ssr";
@@ -50,24 +50,51 @@ export async function GET(request: NextRequest) {
     }
 
     if (data.user) {
+      const userId = data.user.id;
+      const email = data.user.email;
+      const meta = data.user.user_metadata as Record<string, string> | undefined;
+      const firstName = meta?.first_name || meta?.given_name || '';
+      const lastName = meta?.last_name || meta?.family_name || '';
+      const now = new Date().toISOString();
       const anonymousId =
         requestUrl.searchParams.get("anonymous_id") ||
         cookieStore.get("vantage_anon_id")?.value;
 
-      await supabase.from("user_profiles").upsert(
-        {
-          user_id: data.user.id,
-          anonymous_id: anonymousId || null,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "user_id",
-          ignoreDuplicates: false,
-        }
-      );
+      // Ensure users row exists (parent table, required for FK)
+      const { data: existingUser } = await (supabase
+        .from("users") as any)
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle();
 
-      // If we have an anonymous_id, migrate data tables
-      // Simple updates only — no deletes, no touching auth tables
+      if (!existingUser) {
+        await (supabase.from("users") as any).insert({
+          id: userId,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+        });
+      }
+
+      // Ensure user_profiles row exists (extended profile)
+      const { data: existingProfile } = await (supabase
+        .from("user_profiles") as any)
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        await (supabase.from("user_profiles") as any).insert({
+          id: userId,
+          first_name: firstName,
+          last_name: lastName,
+          tier: 'demo',
+          first_open: now,
+          demo_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+      }
+
+      // Migrate anonymous data tables
       if (anonymousId) {
         const tables = [
           "demo_portfolio_state",
@@ -81,7 +108,7 @@ export async function GET(request: NextRequest) {
         for (const table of tables) {
           await supabase
             .from(table)
-            .update({ user_id: data.user.id })
+            .update({ user_id: userId })
             .eq("anonymous_id", anonymousId)
             .is("user_id", null);
         }
