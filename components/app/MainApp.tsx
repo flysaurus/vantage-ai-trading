@@ -23,7 +23,7 @@ import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
-import { useAuth } from '@/components/providers/AuthProvider';
+import { useAuth } from '@/context/AuthContext';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
@@ -47,7 +47,7 @@ const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
 
 function AppShell() {
   const { activeTab, setTab } = useTabStore();
-  const { user, isDataLoaded, isAuthenticated } = useAuth();
+  const { state, user: supabaseUser, profile } = useAuth();
   const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showBrokerGate, setShowBrokerGate] = useState(false);
@@ -62,10 +62,31 @@ function AppShell() {
 
   const router = useRouter();
 
+  // Derive auth state from Supabase (new auth system)
+  const isDataLoaded = state !== 'loading';
+  const isAuthenticated = state === 'authenticated';
+
+  // Map Supabase user + profile to the User shape AppShell expects
   const effectiveUser = useMemo<User | null>(() => {
-    if (user) return user;
-    return null;
-  }, [user]);
+    if (!supabaseUser) return null;
+    const displayName =
+      profile?.first_name ||
+      supabaseUser.user_metadata?.full_name ||
+      supabaseUser.user_metadata?.name ||
+      supabaseUser.email?.split('@')[0] ||
+      '';
+    const name = profile?.first_name || displayName;
+    return {
+      id: supabaseUser.id,
+      email: supabaseUser.email || '',
+      displayName,
+      name,
+      investorStyle: (profile?.investor_style as User['investorStyle']) || 'buffett',
+      investorStyleOnboarded: !!profile?.investor_style,
+      riskTolerance: (profile?.risk_tolerance as User['riskTolerance']) || 'Moderate',
+      createdAt: supabaseUser.created_at || '',
+    };
+  }, [supabaseUser, profile]);
 
   // ── Greeting modal after login ──
   useEffect(() => {
@@ -155,22 +176,22 @@ function AppShell() {
 
   // ── Style onboarding check ──
   useEffect(() => {
-    if (!user || !isDataLoaded) return;
-    if (user.investorStyleOnboarded) {
+    if (!effectiveUser || !isDataLoaded) return;
+    if (effectiveUser.investorStyleOnboarded) {
       setShowOnboarding(false);
       return;
     }
     setShowOnboarding(true);
-  }, [user, isDataLoaded]);
+  }, [effectiveUser, isDataLoaded]);
 
   // ── Broker gate ──
   useEffect(() => {
-    if (!user || !isDataLoaded || showOnboarding || !isAuthenticated) return;
+    if (!effectiveUser || !isDataLoaded || showOnboarding || !isAuthenticated) return;
     if (!isInitialized) return;
     if (!isConnected && !brokerGateDismissedThisSession) {
       setShowBrokerGate(true);
     }
-  }, [user, isDataLoaded, showOnboarding, isAuthenticated, isInitialized, isConnected]);
+  }, [effectiveUser, isDataLoaded, showOnboarding, isAuthenticated, isInitialized, isConnected]);
 
   // ── Pending actions ──
   useEffect(() => {
