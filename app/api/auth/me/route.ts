@@ -21,7 +21,7 @@ export async function GET() {
 
     // Fetch from both tables in parallel
     const [userResult, profileResult] = await Promise.all([
-      serviceDb.from('users').select('id, email').eq('id', userId).single(),
+      serviceDb.from('users').select('id, email, demo_start_at, portfolio_mode').eq('id', userId).single(),
       serviceDb.from('user_profiles').select(`
         id,
         first_name,
@@ -56,7 +56,9 @@ export async function GET() {
           investorStyleOnboarded: false,
           riskTolerance: 'Moderate',
           tier: 'demo',
+          demoStartAt: null,
           demoExpiresAt: null,
+          portfolioMode: 'demo',
           firstOpen: null,
           createdAt: '',
           lastLogin: null,
@@ -77,7 +79,9 @@ export async function GET() {
         investorStyleOnboarded: profile?.investor_style_onboarded ?? false,
         riskTolerance: profile?.risk_tolerance || 'Moderate',
         tier: profile?.tier || 'demo',
+        demoStartAt: userRow?.demo_start_at || null,
         demoExpiresAt: profile?.demo_expires_at || null,
+        portfolioMode: userRow?.portfolio_mode || 'demo',
         firstOpen: profile?.first_open || null,
         createdAt: profile?.created_at || '',
         lastLogin: profile?.last_login || null,

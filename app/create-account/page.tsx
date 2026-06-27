@@ -24,10 +24,13 @@ import {
   Loader2,
 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
+import { LoadingSplash } from '@/components/app/LoadingSplash';
+import type { SplashMode } from '@/components/app/LoadingSplash';
 import Input from '@/components/ui/Input';
 import PasswordStrength from '@/components/ui/PasswordStrength';
 import { createAccount } from '@/app/actions/auth';
 import { signInWithGoogle } from '@/lib/auth/oauth';
+import { getDemoStatus } from '@/lib/demo-utils';
 import {
   getStyleContent,
   getStyleEmoji,
@@ -84,6 +87,9 @@ export default function CreateAccountPage() {
   // ── API state ────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [splashMode, setSplashMode] = useState<SplashMode | null>(null);
+  const [splashDays, setSplashDays] = useState(0);
+  const [splashPendingPush, setSplashPendingPush] = useState(false);
 
   // ── Computed ─────────────────────────────────────────────
   const style = onboardingData?.style ?? 'buffett';
@@ -216,6 +222,23 @@ export default function CreateAccountPage() {
         sessionStorage.removeItem('vantage_onboarding_data');
       } catch {}
 
+      // Fetch profile to determine splash mode
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (res.ok) {
+          const { user } = await res.json();
+          if (user.demoStartAt) {
+            const status = getDemoStatus(user.demoStartAt, user.demoExpiresAt);
+            setSplashMode('demo');
+            setSplashDays(status.daysRemaining);
+            setSubmitting(false);
+            return;
+          }
+          // No demo — new user, skip splash, go to app (broker-selection)
+        }
+      } catch {}
+
+      // No demo: skip splash, go directly to app
       router.push('/');
       router.refresh();
     } else {
@@ -223,6 +246,12 @@ export default function CreateAccountPage() {
       setSubmitting(false);
     }
   }, [canSubmit, email, password, firstName, lastName, style, risk, router]);
+
+  // ── Splash complete → navigate to app ────────────────────
+  const handleSplashComplete = useCallback(() => {
+    router.push('/');
+    router.refresh();
+  }, [router]);
 
   const handleGoogleSignUp = useCallback(async () => {
     setSubmitting(true);
@@ -285,6 +314,19 @@ export default function CreateAccountPage() {
       </p>
     </div>
   ) : null;
+
+  // ── Splash (after successful sign-in) ────────────────────
+  if (splashMode) {
+    return (
+      <div style={{ position: 'relative', height: '100dvh', background: '#0a0f1e', overflow: 'hidden' }}>
+        <LoadingSplash
+          mode={splashMode}
+          daysRemaining={splashMode === 'demo' ? splashDays : undefined}
+          onComplete={handleSplashComplete}
+        />
+      </div>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────
 

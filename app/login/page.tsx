@@ -10,6 +10,9 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
+import { LoadingSplash } from '@/components/app/LoadingSplash';
+import type { SplashMode } from '@/components/app/LoadingSplash';
+import { getDemoStatus } from '@/lib/demo-utils';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 // ── Helpers ────────────────────────────────────────────────
@@ -37,6 +40,8 @@ export default function LoginPage() {
   const [inlineError, setInlineError] = useState('');
   const [bannerError, setBannerError] = useState<{ text: string; tone: 'warning' | 'error' } | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [splashMode, setSplashMode] = useState<SplashMode | null>(null);
+  const [splashDays, setSplashDays] = useState(0);
 
   const canSubmit = isValidEmail(email) && password.length > 0 && !submitting;
 
@@ -91,9 +96,25 @@ export default function LoginPage() {
       return;
     }
 
-    // Session cookie is now set in browser by @supabase/ssr createBrowserClient.
-    // router.refresh() forces Next.js to re-run server components
-    // with the new session cookie available.
+    // Fetch user profile to determine splash mode
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      if (res.ok) {
+        const { user } = await res.json();
+        if (user.demoStartAt) {
+          const status = getDemoStatus(user.demoStartAt, user.demoExpiresAt);
+          setSplashMode('demo');
+          setSplashDays(status.daysRemaining);
+          setSubmitting(false);
+          return;
+        }
+        // No demo started — skip splash, go directly to app
+      }
+    } catch {
+      // Fall through
+    }
+
+    // No demo: skip splash, go directly to app
     router.push('/');
     router.refresh();
   }, [canSubmit, email, password, supabase, router]);
@@ -121,6 +142,12 @@ export default function LoginPage() {
     if (e.key === 'Enter' && canSubmit) handleLogin();
   };
 
+  // ── Splash complete → navigate to app ────────────────────
+  const handleSplashComplete = useCallback(() => {
+    router.push('/');
+    router.refresh();
+  }, [router]);
+
   // ── Spinner while checking session ─────────────────────
   if (checkingSession) {
     return (
@@ -135,6 +162,19 @@ export default function LoginPage() {
       >
         <Loader2 size={32} color="var(--accent)" style={{ animation: 'spin 0.7s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  // ── Splash (after successful sign-in) ────────────────────
+  if (splashMode) {
+    return (
+      <div style={{ position: 'relative', height: '100dvh', background: GRADIENT, overflow: 'hidden' }}>
+        <LoadingSplash
+          mode={splashMode}
+          daysRemaining={splashMode === 'demo' ? splashDays : undefined}
+          onComplete={handleSplashComplete}
+        />
       </div>
     );
   }
