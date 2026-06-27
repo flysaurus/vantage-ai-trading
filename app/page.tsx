@@ -46,7 +46,7 @@ export default function Page() {
     return <OnboardingFlow initialScreen="quiz" />;
   }
 
-  // broker-selection: authenticated but demo not started yet
+  // broker-selection: authenticated but neither demo nor broker chosen
   if (state === 'broker-selection') {
     return <BrokerSelection />;
   }
@@ -56,5 +56,9 @@ export default function Page() {
     return <DemoExpired />;
   }
 
+  // demo-counter: demo active — MainApp with days-remaining banner
+  // connection-options: chose to connect broker — MainApp with broker-ui
+  // connection-loading: broker syncing — MainApp with loading overlay
+  // authenticated: full access — MainApp
   return <MainApp />;
 }

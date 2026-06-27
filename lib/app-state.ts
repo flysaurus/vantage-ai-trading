@@ -2,11 +2,16 @@
 // Single source of truth for auth-driven routing.
 //
 // States:
-//   loading         → checking session (show loading UI)
-//   onboarding      → no session (show onboarding flow)
-//   authenticated   → has session + full profile (show MainApp)
-//   needs-profile   → has session, no profile yet (Google OAuth edge case)
-//   needs-quiz      → has account + profile row, but no investor_style yet
+//   loading              → checking session (show loading UI)
+//   onboarding           → no session (show onboarding flow)
+//   needs-quiz           → account exists, no investor_style
+//   needs-profile        → OAuth edge case (no profile yet)
+//   broker-selection     → has style, never set demo OR connection
+//   demo-counter         → chose demo — show days remaining
+//   connection-options   → chose to connect broker
+//   connection-loading   → broker connection syncing
+//   demo-expired         → demo_expires_at passed
+//   authenticated        → full access (future)
 //
 // All routing decisions flow from this one hook.
 // No other component checks auth directly.
@@ -23,11 +28,14 @@ import { getDemoStatus } from '@/lib/demo-utils';
 export type AppState =
   | 'loading'
   | 'onboarding'
-  | 'authenticated'
-  | 'needs-profile'
   | 'needs-quiz'
+  | 'needs-profile'
   | 'broker-selection'
-  | 'demo-expired';
+  | 'demo-counter'
+  | 'connection-options'
+  | 'connection-loading'
+  | 'demo-expired'
+  | 'authenticated';
 
 export interface UserProfile {
   id: string;
@@ -58,6 +66,57 @@ const MEANINGFUL_EVENTS = new Set([
   'TOKEN_REFRESHED',
   'USER_UPDATED',
 ]);
+
+// ── Decision tree: resolve state from users row ────────────
+
+export function resolveStateFromUsers(
+  userData: Record<string, unknown> | null
+): AppState {
+  // No data → broker selection (safety fallback)
+  if (!userData) return 'broker-selection';
+
+  const demoExpired = getDemoStatus(
+    userData.demo_start_at as string | null,
+    userData.demo_expires_at as string | null
+  ).isExpired;
+
+  // 1. demo_expires_at is set AND past now → 'demo-expired'
+  if (userData.demo_expires_at && demoExpired) {
+    return 'demo-expired';
+  }
+
+  const connStatus = userData.connection_status as string | null;
+
+  // 2. connection_status = 'syncing' OR 'pending' → 'connection-loading'
+  if (connStatus === 'syncing' || connStatus === 'pending') {
+    return 'connection-loading';
+  }
+
+  // 3. connection_status = 'connected' → 'authenticated'
+  if (connStatus === 'connected') {
+    return 'authenticated';
+  }
+
+  // 4. demo_start_at is set AND demo not expired → 'demo-counter'
+  if (userData.demo_start_at && !demoExpired) {
+    return 'demo-counter';
+  }
+
+  const connType = userData.connection_type as string | null;
+
+  // 5. connection_type is set (status is null/not set yet) → 'connection-options'
+  if (connType) {
+    return 'connection-options';
+  }
+
+  // 6. demo_start_at is NULL AND connection_type is NULL → 'broker-selection'
+  if (!userData.demo_start_at && !connType) {
+    return 'broker-selection';
+  }
+
+  // 7. Default → 'authenticated'
+  return 'authenticated';
+}
 
 // ── Hook ───────────────────────────────────────────────────
 
@@ -90,6 +149,15 @@ export function useAppState(): AppStateResult {
       setUser(session.user);
       console.log('[useAppState] Session found for:', session.user.email);
 
+      // ── Fire-and-forget: update last_login_at ──────────
+      // Uses browser client; non-blocking.
+      (supabase.from('users') as any)
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', session.user.id)
+        .then((res: any) => {
+          if (res.error) console.warn('[useAppState] last_login_at update failed:', res.error.message);
+        });
+
       try {
         // Step 1: Try user_profiles (look up by id — the PK, not user_id)
         const { data: profileData, error } = await (supabase
@@ -102,13 +170,14 @@ export function useAppState(): AppStateResult {
 
         console.log('[useAppState] user_profiles:', profileData, 'error:', error);
 
-        // Step 2: If user_profiles has full data → authenticated
+        // Step 2: If user_profiles has full data → resolve state from users table
         if (profileData?.investor_style) {
-          console.log('[useAppState] Full profile in user_profiles → authenticated');
+          console.log('[useAppState] Full profile in user_profiles → resolving state');
 
-          // ── Demo routing: check if broker selection or demo-expired ──
           const { data: userData } = await (supabase.from('users') as any)
-            .select('demo_start_at, demo_expires_at, connection_type, connection_status, connection_initiated_at, last_login_at, tier_upgraded_at')
+            .select(
+              'demo_start_at, demo_expires_at, connection_type, connection_status, connection_initiated_at, last_login_at, tier_upgraded_at'
+            )
             .eq('id', session.user.id)
             .maybeSingle();
 
@@ -124,24 +193,9 @@ export function useAppState(): AppStateResult {
           };
           setProfile(mergedProfile as UserProfile);
 
-          // demo_start_at column may not exist yet → null/missing = no demo started
-          if (!userData?.demo_start_at) {
-            console.log('[useAppState] No demo_start_at → broker selection');
-            setState('broker-selection');
-            return;
-          }
-
-          const demoStatus = getDemoStatus(
-            userData.demo_start_at,
-            userData.demo_expires_at
-          );
-          if (demoStatus.isExpired) {
-            console.log('[useAppState] Demo expired → demo-expired');
-            setState('demo-expired');
-            return;
-          }
-
-          setState('authenticated');
+          const nextState = resolveStateFromUsers(userData as Record<string, unknown> | null);
+          console.log('[useAppState] State from decision tree:', nextState);
+          setState(nextState);
           return;
         }
 
@@ -171,7 +225,7 @@ export function useAppState(): AppStateResult {
             risk_tolerance: legacyUser.investor_style ? 'moderate' : null,
             tier: 'demo',
             first_open: legacyUser.created_at || new Date().toISOString(),
-            demo_start_at: null,  // legacy users see broker selection
+            demo_start_at: null,
             demo_expires_at: null,
             connection_type: null,
             connection_status: null,
@@ -195,9 +249,8 @@ export function useAppState(): AppStateResult {
             { onConflict: 'id' },
           );
 
-          console.log('[useAppState] Backfilled user_profiles from legacy → authenticated');
+          console.log('[useAppState] Backfilled user_profiles from legacy → broker-selection');
           setProfile({ ...profileToUpsert, email: '' } as UserProfile);
-          // Legacy users: no demo_start_at → broker selection
           setState('broker-selection');
           return;
         }
@@ -232,7 +285,7 @@ export function useAppState(): AppStateResult {
             { onConflict: 'id' },
           );
 
-          // Auth metadata fallback: no demo_start_at → broker selection
+          console.log('[useAppState] Auth metadata fallback → broker-selection');
           setState('broker-selection');
           return;
         }
