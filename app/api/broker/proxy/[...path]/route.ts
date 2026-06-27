@@ -11,7 +11,7 @@
 // Supported brokers: Alpaca, Tastytrade
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext } from '@/lib/broker-service';
 import type { BrokerCredentials } from '@/lib/broker-service';
 
@@ -149,17 +149,9 @@ async function handleRequest(
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   // Require authentication
-  let userId: string;
-  try {
-    const auth = await requireAuth(req);
-    userId = auth.userId;
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AuthError') {
-      const authErr = err as Error & { status?: number };
-      return NextResponse.json({ error: authErr.message }, { status: authErr.status || 401 });
-    }
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     // Determine active broker and get decrypted credentials via broker-service

@@ -4,13 +4,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext } from '@/lib/broker-service';
 import { getConnectionStatus } from '@/lib/vault';
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
     const supabase = createServerClient();
 

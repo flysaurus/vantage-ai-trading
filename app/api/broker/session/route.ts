@@ -10,7 +10,7 @@
 // Uses per-user credentials from Supabase Vault via broker-service.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext } from '@/lib/broker-service';
 
 const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
@@ -19,17 +19,9 @@ const TASTYTRADE_SANDBOX = 'https://api.cert.tastyworks.com';
 const TASTYTRADE_LIVE = 'https://api.tastytrade.com';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
-  let userId: string;
-  try {
-    const auth = await requireAuth(_req);
-    userId = auth.userId;
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AuthError') {
-      const authErr = err as Error & { status?: number };
-      return NextResponse.json({ error: authErr.message }, { status: authErr.status || 401 });
-    }
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const ctx = await getBrokerContext(userId);

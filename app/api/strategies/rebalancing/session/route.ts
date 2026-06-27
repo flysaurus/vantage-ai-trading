@@ -8,14 +8,16 @@
  * DELETE: Cleanup after execution
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 const { v4: uuidv4 } = require('uuid');
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await requireAuth(request);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
     const body = await request.json();
     const { trades, source = 'ai_chat', expiresIn = 3600 } = body;
@@ -55,7 +57,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await requireAuth(request);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -94,7 +98,9 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { userId } = await requireAuth(request);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

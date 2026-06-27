@@ -3,7 +3,7 @@
 // Requires: Authorization header with valid Bearer token.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 interface StockEntry {
@@ -13,7 +13,9 @@ interface StockEntry {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId: authUserId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const authUserId = authUser!.id;
     const supabase = createServerClient();
 
     const body = await req.json().catch(() => null);

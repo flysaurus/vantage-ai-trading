@@ -2,16 +2,13 @@
 // Fetch AI suggestions for the authenticated user (JWT Bearer auth).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
-  let userId: string;
-  try {
-    ({ userId } = await requireAuth(req));
-  } catch {
-    return NextResponse.json({ suggestions: [] });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   const supabase = createServerClient() as any;
   const { data } = await supabase

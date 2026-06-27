@@ -1,5 +1,4 @@
 // ─── Trade History Operations ────────────────────────────────
-import { getAccessToken } from '@/lib/auth';
 const API_BASE = '/api/db/trade-history';
 
 export interface Trade {
@@ -10,10 +9,8 @@ export interface Trade {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
 export async function createTrade(params: { userId: string; symbol: string; action: 'buy' | 'sell'; quantity: number; price: number; commission?: number; notes?: string; alpacaOrderId?: string; executedAt?: string }): Promise<(Trade & { _existing?: boolean }) | null> {

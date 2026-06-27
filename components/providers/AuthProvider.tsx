@@ -20,7 +20,7 @@ import React, {
   useRef,
 } from 'react';
 import type { User, VantageSession, InvestorStyle } from '@/types';
-import { storeSession, clearSession, getUser, storeUser, clearUser } from '@/lib/auth';
+import { getUser, storeUser, clearUser } from '@/lib/auth';
 
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 const WARNING_BEFORE = 2 * 60 * 1000;       // warn 2 minutes before logout
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (countdownInterval.current) clearInterval(countdownInterval.current);
       // Redirect to login — cookie cleared server-side on next API call
       clearUser();
-      clearSession();
+      // Session managed by Supabase Auth cookies
       if (typeof window !== 'undefined') window.location.href = '/';
     }, INACTIVITY_TIMEOUT);
   }, []);
@@ -209,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(u);
         setSession(vs);
         storeUser(u);
-        storeSession(vs);
+        // Session managed by Supabase Auth cookies
         setProfileNotFound(false);
         setError(null);
 
@@ -320,7 +320,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
     setSession(vs);
     storeUser(u);
-    storeSession(vs);
+    // Session managed by Supabase Auth cookies
     setProfileNotFound(false);
     setError(null);
 
@@ -361,7 +361,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setSession(null);
     clearUser();
-    clearSession();
+    // Session managed by Supabase Auth cookies
     setInactivityWarning(false);
     setShowWelcomeBack(false);
     setIsDataLoaded(false);

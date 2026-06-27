@@ -2,7 +2,7 @@
 // Updates an existing DCA schedule. Verifies ownership.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
@@ -11,7 +11,9 @@ const VALID_DATES = ['1', '15', 'last'];
 
 export async function PUT(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
     const supabase = createServerClient();
 
     const body = await req.json().catch(() => null);

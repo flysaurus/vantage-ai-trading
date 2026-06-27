@@ -1,25 +1,14 @@
 // ─── Shared API Client ───────────────────────────────────────
 // Every authenticated API call must go through these helpers.
-// Automatically attaches the Supabase JWT from localStorage.
+// Auth handled by Supabase HTTP-only cookies — no manual tokens.
+// All requests include `credentials: 'include'` to send cookies.
 //
 // Usage:
 //   import { apiGet, apiPost } from '@/lib/api-client'
 //   const res = await apiGet('/api/broker/status')
 //   const res = await apiPost('/api/strategies/execute', { ... })
 
-const TOKEN_KEY = 'vantage-auth-token';
-
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(TOKEN_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-
 async function handleResponse(res: Response): Promise<Response> {
-  // Don't auto-redirect — let callers decide how to handle 401
   return res;
 }
 
@@ -27,13 +16,11 @@ export async function apiGet(
   endpoint: string,
   init?: Omit<RequestInit, 'method' | 'headers'> & { headers?: Record<string, string> },
 ): Promise<Response> {
-  const token = getToken();
-
   return fetch(endpoint, {
     method: 'GET',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     ...init,
@@ -45,13 +32,11 @@ export async function apiPost(
   body?: unknown,
   init?: Omit<RequestInit, 'method' | 'headers'> & { headers?: Record<string, string> },
 ): Promise<Response> {
-  const token = getToken();
-
   return fetch(endpoint, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -63,13 +48,11 @@ export async function apiDelete(
   endpoint: string,
   init?: Omit<RequestInit, 'method' | 'headers'> & { headers?: Record<string, string> },
 ): Promise<Response> {
-  const token = getToken();
-
   return fetch(endpoint, {
     method: 'DELETE',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     ...init,
@@ -81,13 +64,11 @@ export async function apiPut(
   body?: unknown,
   init?: Omit<RequestInit, 'method' | 'headers'> & { headers?: Record<string, string> },
 ): Promise<Response> {
-  const token = getToken();
-
   return fetch(endpoint, {
     method: 'PUT',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -101,14 +82,11 @@ export function isAuthError(res: Response): boolean {
 }
 
 /**
- * Handle 401 errors by clearing the token and redirecting to /login.
- * Use this in components that should redirect on auth failure.
+ * Handle 401 errors by redirecting to /login.
+ * Supabase Auth manages cookies automatically — no manual token clearing.
  */
 export function handleAuthError(res: Response): void {
   if (!isAuthError(res)) return;
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch { /* ignore */ }
   if (typeof window !== 'undefined') {
     window.location.href = '/login';
   }

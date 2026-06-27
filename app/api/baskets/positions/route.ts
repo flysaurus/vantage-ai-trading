@@ -4,11 +4,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (userId === 'anonymous') {
       return NextResponse.json({ positions: [] });
     }

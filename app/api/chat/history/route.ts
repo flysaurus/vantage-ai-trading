@@ -5,12 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 /** GET: Load last 20 messages, ordered ASC by created_at */
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (userId === 'anonymous') {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 /** DELETE: Clear all chat history for current user */
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (userId === 'anonymous') {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }

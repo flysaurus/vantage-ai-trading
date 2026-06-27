@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    await requireAuth(req); // any authenticated user can update cache
+    await requireAuth(); // any authenticated user can update cache
     const supabase = createServerClient();
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: 'Missing request body' }, { status: 400 });

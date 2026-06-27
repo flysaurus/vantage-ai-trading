@@ -1,11 +1,13 @@
 // ─── GET /api/db/metrics/get-latest?userId=<id> ───────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId: authUserId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const authUserId = authUser!.id;
     const supabase = createServerClient();
     const targetUserId = req.nextUrl.searchParams.get('userId') || authUserId;
     if (targetUserId !== authUserId) return NextResponse.json({ error: 'Cannot fetch other users metrics' }, { status: 403 });

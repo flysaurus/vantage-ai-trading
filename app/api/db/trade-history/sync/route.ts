@@ -5,23 +5,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(_req: NextRequest): Promise<NextResponse> {
   // Auth check
-  let userId: string;
-  try {
-    const auth = await requireAuth(_req);
-    userId = auth.userId;
-  } catch (err: any) {
-    if (err?.name === 'AuthError') {
-      return NextResponse.json({ error: err.message }, { status: err.status || 401 });
-    }
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   let body: { limit?: number } = {};
   try { body = await _req.json(); } catch { /* keep defaults */ }

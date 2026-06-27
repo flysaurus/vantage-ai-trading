@@ -3,7 +3,6 @@
 // API routes use service_role key (bypasses RLS) and enforce
 // user-scoping manually.
 
-import { getAccessToken } from '@/lib/auth';
 
 const API_BASE = '/api/db/chat-history';
 
@@ -21,15 +20,11 @@ export interface ChatMessage {
 
 /** Shared helper: fetch with auth token */
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string>),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
 /**

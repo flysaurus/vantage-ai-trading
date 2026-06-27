@@ -5,14 +5,16 @@
 // This is a hard delete — no recovery possible.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { clearCredentials } from '@/lib/vault';
 import { seedDemoPortfolio } from '@/lib/portfolio-operations';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
     // Wipe everything — credentials, hash, broker_id, connection state
     await clearCredentials(userId);

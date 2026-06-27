@@ -8,7 +8,7 @@
 // to the client (beyond what's needed for session establishment).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { storeBrokerCredentials, type BrokerCredentials } from '@/lib/broker-service';
 import { activateLivePortfolio } from '@/lib/portfolio-operations';
@@ -153,7 +153,9 @@ async function verifyTastytrade(
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
     const body = await req.json().catch(() => null);
     if (!body) {

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { storeCredentials } from '@/lib/vault';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId: authUserId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const authUserId = authUser!.id;
 
     const body = await req.json().catch(() => null);
     if (!body) {

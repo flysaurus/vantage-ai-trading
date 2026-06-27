@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const userId = await getOptionalUserId(req);
+  const userId = await getOptionalUserId();
   if (userId === 'anonymous') return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json();

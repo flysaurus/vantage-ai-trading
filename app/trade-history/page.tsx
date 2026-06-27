@@ -146,7 +146,7 @@ function TradeHistoryPageInner() {
     setIsDemo(false);
     try {
       // 1. Sync filled orders from Alpaca to trade_history
-      const token = (await import("@/lib/auth")).getAccessToken();
+      // Auth via Supabase cookies
       const syncRes = await await apiPost('/api/db/trade-history/sync', JSON.stringify({ userId: user.id, limit: 100 }));
       if (syncRes.ok) {
         const syncData = await syncRes.json();

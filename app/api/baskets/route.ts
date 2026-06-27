@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 function getNextRefreshDate(from: Date): Date {
   // Bi-weekly on Mondays — find next Monday in an even week
@@ -31,7 +31,7 @@ function getNextRefreshDate(from: Date): Date {
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     const supabase = createServerClient();
 
     // Fetch system-generated active baskets (stocks stored as JSONB)

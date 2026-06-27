@@ -3,21 +3,14 @@
 // Uses per-user broker credentials via broker-service.
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
 export async function GET(req: NextRequest) {
   // Authenticate
-  let userId: string;
-  try {
-    const auth = await requireAuth(req);
-    userId = auth.userId;
-  } catch (err: any) {
-    if (err?.name === 'AuthError') {
-      return NextResponse.json({ error: err.message }, { status: err.status || 401 });
-    }
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   const brokerCtx = await getBrokerContext(userId);
 

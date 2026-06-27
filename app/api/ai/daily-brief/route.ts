@@ -14,7 +14,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
@@ -90,7 +90,7 @@ async function fetchMarketNews(
 export async function GET(req: NextRequest) {
   try {
     // 1. Auth
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

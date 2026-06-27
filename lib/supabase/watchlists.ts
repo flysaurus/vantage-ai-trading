@@ -1,7 +1,6 @@
 // ─── Watchlist Operations ────────────────────────────────────
 // Uses REST API endpoints for DB operations.
 
-import { getAccessToken } from '@/lib/auth';
 
 const API_BASE = '/api/db/watchlists';
 
@@ -23,15 +22,11 @@ export interface Watchlist {
 
 /** Shared helper: fetch with auth token */
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string>),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return fetch(path, { ...init, headers, cache: 'no-store' });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials, cache: 'no-store' });
 }
 
 /**

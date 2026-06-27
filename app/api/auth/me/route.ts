@@ -1,33 +1,22 @@
 // ─── GET /api/auth/me ────────────────────────────────────────
 // Returns the current authenticated user's full profile.
-// Validates the Supabase JWT from the Authorization header.
+// Uses Supabase HTTP-only cookie auth (no JWT Bearer header).
 //
 // Data is split across two tables:
 //   public.users         → id, email (parent)
 //   public.user_profiles → extended profile (FK → users.id)
 
 import { NextResponse } from 'next/server';
-import { createAuthClient, createServerClient } from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth/get-server-user';
+import { createServerClient } from '@/lib/supabase';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const authHeader = request.headers.get('Authorization');
+    const { authUser, authError } = await requireAuth();
+    if (authError) return authError;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const token = authHeader.slice(7);
-
-    const authClient = createAuthClient();
-    const { data: authData, error: authError } = await authClient.auth.getUser(token);
-
-    if (authError || !authData.user) {
-      return NextResponse.json({ error: 'Invalid or expired session' }, { status: 401 });
-    }
-
-    const userId = authData.user.id;
-    const email = authData.user.email;
+    const userId = authUser!.id;
+    const email = authUser!.email;
     const serviceDb = createServerClient() as any;
 
     // Fetch from both tables in parallel

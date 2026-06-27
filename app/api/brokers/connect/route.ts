@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { verifyAlpacaCredentials } from '@/lib/broker-service';
 
@@ -8,7 +8,9 @@ const ALPACA_LIVE = 'https://api.alpaca.markets';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const { userId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
     const supabase: any = createServerClient();
 
     const body = await req.json().catch(() => null);

@@ -1,5 +1,4 @@
 // ─── Session Operations ──────────────────────────────────────
-import { getAccessToken } from '@/lib/auth';
 const API_BASE = '/api/db/sessions';
 
 export interface Session {
@@ -8,10 +7,8 @@ export interface Session {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
 export async function createSession(params: { userId: string; token: string; ipAddress?: string; userAgent?: string; expiresAt: string }): Promise<{ id: string; userId: string; expiresAt: string; createdAt: string } | null> {

@@ -3,7 +3,7 @@
 // Requires a connected broker — returns 400 in demo mode.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
@@ -17,13 +17,9 @@ interface TradePayload {
 export const maxDuration = 55;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let userId: string;
-  try {
-    const auth = await requireAuth(req);
-    userId = auth.userId;
-  } catch (err: any) {
-    return NextResponse.json({ error: 'Unauthorized', detail: err?.message }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const supabase = createServerClient();

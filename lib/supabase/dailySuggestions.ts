@@ -1,5 +1,4 @@
 // ─── Daily Suggestion Operations ─────────────────────────────
-import { getAccessToken } from '@/lib/auth';
 const API_BASE = '/api/db/daily-suggestions';
 
 export interface DailySuggestion {
@@ -8,10 +7,8 @@ export interface DailySuggestion {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
 export async function createDailySuggestion(params: { userId: string; suggestionText: string; relatedStocks?: string[]; actionSuggested?: string }): Promise<DailySuggestion | null> {

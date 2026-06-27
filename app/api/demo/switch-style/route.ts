@@ -8,14 +8,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { switchDemoStyle, AVAILABLE_STYLES } from '@/lib/portfolio-operations';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 // ─── Auth (same pattern as chat/daily-brief) ─────────────────
 // ─── POST handler ────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

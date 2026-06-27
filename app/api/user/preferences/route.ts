@@ -3,18 +3,15 @@
 // Uses Supabase JWT Bearer auth.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 const VALID_RISK_VALUES = ['conservative', 'moderate', 'aggressive'];
 
 export async function PATCH(req: NextRequest) {
-  let userId: string;
-  try {
-    ({ userId } = await requireAuth(req));
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'Not authenticated' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   const body = await req.json();
   const updates: Record<string, any> = {};
@@ -44,12 +41,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  let userId: string;
-  try {
-    ({ userId } = await requireAuth(req));
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'Not authenticated' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   const supabase = createServerClient() as any;
   const { data } = await supabase.from('users').select('risk_tolerance, investor_style').eq('id', userId).single();

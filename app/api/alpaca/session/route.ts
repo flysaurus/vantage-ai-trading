@@ -7,13 +7,13 @@
 // from Supabase Vault via broker-service.
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext } from '@/lib/broker-service';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
   // Require authentication
   try {
-    await requireAuth(_req);
+    await requireAuth();
   } catch (err: any) {
     if (err?.name === 'AuthError') {
       return NextResponse.json({ error: err.message }, { status: err.status || 401 });
@@ -22,7 +22,9 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const { userId } = await requireAuth(_req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
     const ctx = await getBrokerContext(userId);
 
     if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {

@@ -2,17 +2,13 @@
 // Loads a previously saved rebalancing order queue
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  let userId: string;
-  try {
-    const auth = await requireAuth(req);
-    userId = auth.userId;
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const supabase = createServerClient();

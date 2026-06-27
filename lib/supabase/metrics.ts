@@ -1,5 +1,4 @@
 // ─── Metrics Operations ──────────────────────────────────────
-import { getAccessToken } from '@/lib/auth';
 const API_BASE = '/api/db/metrics';
 
 export interface MetricSnapshot {
@@ -10,10 +9,8 @@ export interface MetricSnapshot {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
 /** Record a portfolio metric snapshot */

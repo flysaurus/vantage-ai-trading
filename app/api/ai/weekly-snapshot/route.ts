@@ -12,7 +12,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
-import { getOptionalUserId } from '@/lib/auth';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -86,7 +86,7 @@ function getWeekStart(): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -303,7 +303,7 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = await getOptionalUserId(req);
+    const userId = await getOptionalUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

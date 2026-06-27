@@ -2,16 +2,13 @@
 // Fire-and-forget chat history persistence (JWT Bearer auth).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
-  let userId: string;
-  try {
-    ({ userId } = await requireAuth(req));
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'Not authenticated' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const body = await req.json();

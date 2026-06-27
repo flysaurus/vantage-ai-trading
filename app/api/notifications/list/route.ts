@@ -1,19 +1,15 @@
 // GET /api/notifications/list — last 20 notifications
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export const maxDuration = 15;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  let userId: string;
-  try {
-    const auth = await requireAuth(req);
-    userId = auth.userId;
-  } catch (err: any) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const supabase = createServerClient();

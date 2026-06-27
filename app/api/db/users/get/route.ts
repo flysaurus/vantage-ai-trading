@@ -3,7 +3,7 @@
 // Requires: Authorization header with valid Bearer token.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic'; // never cache — DB is source of truth
@@ -11,7 +11,9 @@ export const dynamic = 'force-dynamic'; // never cache — DB is source of truth
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     // Verify auth
-    const { userId: authUserId } = await requireAuth(req);
+    const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const authUserId = authUser!.id;
     const supabase = createServerClient();
 
     // Get target userId from query param — defaults to authenticated user

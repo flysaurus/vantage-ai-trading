@@ -4,7 +4,7 @@
 // Uses per-user broker credentials via broker-service (Supabase Vault).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 
@@ -27,13 +27,9 @@ interface ReplacementItem {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let userId: string;
-  try {
-    const auth = await requireAuth(req);
-    userId = auth.userId;
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const body = await req.json().catch(() => null);

@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
 export async function POST(req: NextRequest) {
-  let userId: string;
-  try {
-    ({ userId } = await requireAuth(req));
-  } catch {
-    return NextResponse.json({ updated: false });
-  }
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = authUser!.id;
 
   try {
     const oneDayAgo = new Date(Date.now() - 86400000).toISOString();

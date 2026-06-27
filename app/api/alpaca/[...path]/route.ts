@@ -13,7 +13,7 @@
 // Proxies: https://paper-api.alpaca.markets/v2/{path}
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth/get-server-user';
 
 const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
 const ALPACA_LIVE = 'https://api.alpaca.markets';
@@ -103,7 +103,7 @@ async function handleRequest(
 ): Promise<NextResponse> {
   // Require authentication — blocks anonymous trading/proxy access
   try {
-    await requireAuth(req);
+    await requireAuth();
   } catch (err: any) {
     if (err?.name === 'AuthError') {
       return NextResponse.json({ error: err.message }, { status: err.status || 401 });

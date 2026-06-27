@@ -3,21 +3,16 @@
 // API routes use service_role key (bypasses RLS) and enforce
 // user-scoping manually.
 
-import { getAccessToken } from '@/lib/auth';
 import type { InvestorStyle, User } from '@/types';
 
 const API_BASE = '/api/db/users';
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = getAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string>),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
 export async function getUserProfile(userId: string): Promise<User | null> {
@@ -86,8 +81,7 @@ export async function createUser(params: {
 }): Promise<{ id: string } | null> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = params.token || getAccessToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    // params.token optional (no longer needed for cookie auth)
     const res = await fetch(`${API_BASE}/create`, {
       method: 'POST',
       headers,
