@@ -1,6 +1,7 @@
-// ─── Server Auth Helper (Supabase Cookie-Based) ─────────────────
-// Uses Supabase Auth HTTP-only cookies instead of Bearer tokens.
-// More secure — no JS-accessible token, no XSS risk.
+// ─── Server Auth Helper (Cookie + Fallback JWT) ───────────────
+// Primary: reads Supabase Auth cookies set by @supabase/ssr createBrowserClient.
+// Fallback: reads sb-auth-token cookie (manually set by syncSessionToCookie)
+//   and validates it via supabase.auth.getUser(jwt).
 //
 // Usage in API routes:
 //   import { requireAuth } from '@/lib/auth/get-server-user'
@@ -11,6 +12,7 @@
 //   }
 
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -34,6 +36,7 @@ export async function getServerUser(
   try {
     const cookieStore = await cookies()
 
+    // ── Primary: read Supabase Auth cookies (set by createBrowserClient) ──
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -54,12 +57,25 @@ export async function getServerUser(
 
     const { data: { user }, error } = await supabase.auth.getUser()
 
-    if (error || !user) return null
-
-    return {
-      id: user.id,
-      email: user.email!
+    if (user && !error) {
+      return { id: user.id, email: user.email! }
     }
+
+    // ── Fallback: read sb-auth-token cookie (set by syncSessionToCookie) ──
+    const sbAuthCookie = cookieStore.get('sb-auth-token')
+    if (sbAuthCookie) {
+      const fallbackClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      )
+      const { data: fbData } = await fallbackClient.auth.getUser(sbAuthCookie.value)
+      if (fbData.user) {
+        return { id: fbData.user.id, email: fbData.user.email! }
+      }
+    }
+
+    return null
 
   } catch {
     return null

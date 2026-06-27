@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
-import { createClient } from '@/lib/supabase';
+import { createClient, syncSessionToCookie } from '@/lib/supabase';
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -90,6 +90,9 @@ export default function LoginPage() {
       setSubmitting(false);
       return;
     }
+
+    // Sync session to cookie so server can read it
+    await syncSessionToCookie(supabase);
 
     router.replace('/');
   }, [canSubmit, email, password, supabase, router]);
