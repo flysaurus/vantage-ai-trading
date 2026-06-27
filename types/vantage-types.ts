@@ -2,6 +2,28 @@
 // These types extend or override the auto-generated supabase.ts types.
 // Do NOT edit types/supabase.ts directly — it's generated from the DB schema.
 
+// ── Broker connection ─────────────────────────────────────
+
+export type ConnectionType = 'snaptrade' | 'alpaca' | 'tastytrade';
+
+export type ConnectionStatus = 'pending' | 'syncing' | 'connected' | 'failed';
+
+export interface BrokerConnection {
+  id: string;
+  user_id: string;
+  connection_type: ConnectionType;
+  encrypted_api_key: string | null;
+  encrypted_secret: string | null;
+  status: ConnectionStatus;
+  sync_started_at: string | null;
+  sync_completed_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── User ──────────────────────────────────────────────────
+
 export interface VantageUser {
   id?: string;
   email: string;
@@ -18,6 +40,11 @@ export interface VantageUser {
   first_open: string | null;
   last_login: string | null;
   portfolio_mode?: string;
+  connection_type: ConnectionType | null;
+  connection_status: ConnectionStatus | null;
+  connection_initiated_at: string | null;
+  last_login_at: string | null;
+  tier_upgraded_at: string | null;
   created_at?: string;
   updated_at?: string;
 }

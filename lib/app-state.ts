@@ -38,6 +38,11 @@ export interface UserProfile {
   email: string | null;
   demo_start_at: string | null;
   demo_expires_at: string | null;
+  connection_type: string | null;
+  connection_status: string | null;
+  connection_initiated_at: string | null;
+  last_login_at: string | null;
+  tier_upgraded_at: string | null;
 }
 
 export interface AppStateResult {
@@ -103,7 +108,7 @@ export function useAppState(): AppStateResult {
 
           // ── Demo routing: check if broker selection or demo-expired ──
           const { data: userData } = await (supabase.from('users') as any)
-            .select('demo_start_at, demo_expires_at')
+            .select('demo_start_at, demo_expires_at, connection_type, connection_status, connection_initiated_at, last_login_at, tier_upgraded_at')
             .eq('id', session.user.id)
             .maybeSingle();
 
@@ -111,6 +116,11 @@ export function useAppState(): AppStateResult {
             ...(profileData as Record<string, unknown>),
             demo_start_at: userData?.demo_start_at ?? null,
             demo_expires_at: userData?.demo_expires_at ?? null,
+            connection_type: userData?.connection_type ?? null,
+            connection_status: userData?.connection_status ?? null,
+            connection_initiated_at: userData?.connection_initiated_at ?? null,
+            last_login_at: userData?.last_login_at ?? null,
+            tier_upgraded_at: userData?.tier_upgraded_at ?? null,
           };
           setProfile(mergedProfile as UserProfile);
 
@@ -163,6 +173,11 @@ export function useAppState(): AppStateResult {
             first_open: legacyUser.created_at || new Date().toISOString(),
             demo_start_at: null,  // legacy users see broker selection
             demo_expires_at: null,
+            connection_type: null,
+            connection_status: null,
+            connection_initiated_at: null,
+            last_login_at: null,
+            tier_upgraded_at: null,
           };
 
           // Ensure users parent row exists (FK constraint)
