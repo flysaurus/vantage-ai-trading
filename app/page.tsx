@@ -11,6 +11,7 @@ import { BootSplash } from '@/components/onboarding/BootSplash';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
+import { ConnectionOptionsPage } from '@/components/broker/ConnectionOptionsPage';
 import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
@@ -71,6 +72,11 @@ export default function Page() {
     return <DemoExpired />;
   }
 
-  // demo-counter (dismissed) / connection-options / connection-loading / authenticated
+  // connection-options: chose to connect a broker — show broker options
+  if (state === 'connection-options') {
+    return <ConnectionOptionsPage />;
+  }
+
+  // demo-counter (dismissed) / connection-loading / authenticated
   return <MainApp />;
 }
