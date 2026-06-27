@@ -10,7 +10,7 @@ import { useAppState } from '@/lib/app-state';
 import { BootSplash } from '@/components/onboarding/BootSplash';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
-import { BrokerSelection } from '@/components/app/BrokerSelection';
+import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
 export default function Page() {
@@ -48,7 +48,7 @@ export default function Page() {
 
   // broker-selection: authenticated but neither demo nor broker chosen
   if (state === 'broker-selection') {
-    return <BrokerSelection />;
+    return <BrokerChoicePage />;
   }
 
   // demo-expired: 30-day demo has elapsed
