@@ -156,7 +156,7 @@ export default function TaxHarvestingPage() {
         // Check broker status
         let connected = false;
         try {
-const statusRes = await await apiGet('/api/broker/status');
+          const statusRes = await apiGet('/api/broker/status');
           if (statusRes.ok) {
             const status = await statusRes.json();
             connected = status.connected || status.isConnected || false;
