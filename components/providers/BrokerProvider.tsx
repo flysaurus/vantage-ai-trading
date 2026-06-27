@@ -11,7 +11,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { BrokerAdapter, BrokerConfig, BrokerId } from '@/types/broker';
 import { brokerRegistry, setActiveBroker } from '@/lib/broker';
-import { getAccessToken } from '@/lib/auth';
+import { apiGet } from '@/lib/api-client';
 
 interface BrokerContextValue {
   broker: BrokerAdapter | null;
@@ -51,10 +51,14 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
 
     async function checkStatus() {
       try {
-        const token = getAccessToken();
-        const res = await fetch('/api/broker/status', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await apiGet('/api/broker/status');
+
+        // 401: no valid token — broker not connected, that's fine
+        if (res.status === 401) {
+          if (!cancelled) setInitialized(true);
+          return;
+        }
+
         if (!res.ok) {
           if (!cancelled) setInitialized(true);
           return;
@@ -126,10 +130,8 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
 
     const interval = setInterval(async () => {
       try {
-        const token = getAccessToken();
-        const res = await fetch('/api/broker/status', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await apiGet('/api/broker/status');
+        if (res.status === 401) return; // token expired, apiGet will redirect
         if (res.ok) {
           const data = await res.json();
           if (data.connected && data.accountPreview) {

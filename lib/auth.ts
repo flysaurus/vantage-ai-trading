@@ -25,25 +25,25 @@ export async function getOptionalUserId(request: Request): Promise<string> {
 
 // ─── Session Helpers (browser-side, for API callers) ──────────
 
-/** Get the Supabase access token from sessionStorage for API Bearer auth. */
+/** Get the Supabase access token from localStorage for API Bearer auth. */
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem('vantage-auth-token');
+    const raw = localStorage.getItem('vantage-auth-token');
     return raw || null;
   } catch {
     return null;
   }
 }
 
-// ─── User Profile Cache (sessionStorage — session-scoped) ────
+// ─── User Profile Cache (localStorage — persists across sessions) ────
 
 const USER_KEY = 'vantage-user';
 
 export function getUser(): any | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(USER_KEY);
+    const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -53,20 +53,19 @@ export function getUser(): any | null {
 export function storeUser(user: any): void {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch { /* ignore */ }
 }
 
 export function clearUser(): void {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.removeItem(USER_KEY);
+    localStorage.removeItem(USER_KEY);
   } catch { /* ignore */ }
 }
 
 // ─── Legacy Session Helpers (shims for components still importing them) ──
-// These were for the old custom user_sessions table. Now they just wrap
-// sessionStorage for the Supabase JWT. Safe to keep — AuthProvider calls them.
+// These wrap localStorage for the Supabase JWT.
 
 const SESSION_KEY = 'vantage-auth-token';
 
@@ -74,7 +73,7 @@ export function storeSession(session: any): void {
   if (typeof window === 'undefined') return;
   try {
     if (session?.access_token) {
-      sessionStorage.setItem(SESSION_KEY, session.access_token);
+      localStorage.setItem(SESSION_KEY, session.access_token);
     }
   } catch { /* ignore */ }
 }
@@ -82,7 +81,7 @@ export function storeSession(session: any): void {
 export function clearSession(): void {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
   } catch { /* ignore */ }
 }
 

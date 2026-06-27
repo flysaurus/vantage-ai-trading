@@ -1,13 +1,14 @@
 // ─── Supabase Browser Client ──────────────────────────────────
-// SessionStorage-based client matching createClient() from lib/supabase.ts.
+// localStorage-based client matching createClient() from lib/supabase.ts.
 //
 // CRITICAL: Uses @supabase/supabase-js createClient() directly, NOT
 // createBrowserClient from @supabase/ssr. The SSR library OVERRIDES
 // auth.storage with cookie-based storage, which means sessions set
-// during login (via sessionStorage) are invisible on the main page.
+// during login (via localStorage) are invisible on the main page.
 //
 // Both clients now use identical setup: same library, same storageKey,
-// same sessionStorage adapter → sessions are shared across all pages.
+// same localStorage adapter → sessions are shared across all pages.
+// localStorage persists across browser sessions.
 
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -15,8 +16,8 @@ import type { Database } from '@/types/supabase';
 
 let _browserClient: SupabaseClient<Database> | null = null;
 
-/** SessionStorage adapter matching createClient() in lib/supabase.ts */
-function sessionStorageAdapter(): Storage {
+/** localStorage adapter matching createClient() in lib/supabase.ts */
+function localStorageAdapter(): Storage {
   if (typeof window === 'undefined') {
     return {
       getItem: () => null,
@@ -28,19 +29,19 @@ function sessionStorageAdapter(): Storage {
     };
   }
   return {
-    getItem: (key: string) => sessionStorage.getItem(key),
-    setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
-    removeItem: (key: string) => sessionStorage.removeItem(key),
+    getItem: (key: string) => localStorage.getItem(key),
+    setItem: (key: string, value: string) => localStorage.setItem(key, value),
+    removeItem: (key: string) => localStorage.removeItem(key),
     clear: () => {
       const keysToRemove: string[] = [];
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const k = sessionStorage.key(i);
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
         if (k?.startsWith('vantage')) keysToRemove.push(k);
       }
-      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      keysToRemove.forEach(k => localStorage.removeItem(k));
     },
-    get length() { return sessionStorage.length; },
-    key: (index: number) => sessionStorage.key(index),
+    get length() { return localStorage.length; },
+    key: (index: number) => localStorage.key(index),
   };
 }
 
@@ -48,11 +49,11 @@ function sessionStorageAdapter(): Storage {
  * Singleton Supabase browser client.
  *
  * Uses @supabase/supabase-js createClient() directly (same as
- * lib/supabase.ts) with sessionStorage adapter.
+ * lib/supabase.ts) with localStorage adapter.
  *
  * This ensures sessions created during login/signup are visible
  * to useAppState on the main page. Both clients write to the
- * same sessionStorage key: 'vantage-auth-token'.
+ * same localStorage key: 'vantage-auth-token'.
  */
 export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (_browserClient) return _browserClient;
@@ -68,7 +69,7 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
       {
         auth: {
           storageKey: 'vantage-auth-token',
-          storage: sessionStorageAdapter(),
+          storage: localStorageAdapter(),
           autoRefreshToken: true,
           persistSession: true,
         },
@@ -89,7 +90,7 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   _browserClient = createClient<Database>(url, key, {
     auth: {
       storageKey: 'vantage-auth-token',
-      storage: sessionStorageAdapter(),
+      storage: localStorageAdapter(),
       autoRefreshToken: true,
       persistSession: true,
     },

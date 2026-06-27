@@ -8,7 +8,7 @@
 
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { getAccessToken } from '@/lib/auth';
+import { apiPost } from '@/lib/api-client';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { BrokerSelection } from './BrokerSelection';
 import { BrokerCredentials } from './BrokerCredentials';
@@ -19,7 +19,6 @@ interface Props {
 }
 
 export function BrokerGate({ onDismiss }: Props) {
-  const token = getAccessToken();
   const [step, setStep] = useState<'select' | 'credentials'>('select');
   const [selectedBrokerId, setSelectedBrokerId] = useState<BrokerId | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -42,19 +41,11 @@ export function BrokerGate({ onDismiss }: Props) {
     setError(null);
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch('/api/broker/connect', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          brokerId: selectedBrokerId,
-          apiKey: credentials.apiKey,
-          secretKey: credentials.secretKey,
-          environment: credentials.environment,
-        }),
+      const res = await apiPost('/api/broker/connect', {
+        brokerId: selectedBrokerId,
+        apiKey: credentials.apiKey,
+        secretKey: credentials.secretKey,
+        environment: credentials.environment,
       });
 
       const data = await res.json();
