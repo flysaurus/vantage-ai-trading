@@ -49,80 +49,74 @@ export function BrokerSelection() {
     <div style={{
       minHeight: '100dvh',
       background: `
-        radial-gradient(ellipse 150% 60% at 50% -10%, rgba(34,211,238,0.35) 0%, rgba(14,116,144,0.20) 40%, transparent 65%),
-        radial-gradient(ellipse 80% 50% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%),
+        radial-gradient(ellipse 200% 70% at 50% -10%, rgba(34,211,238,0.50) 0%, rgba(14,116,144,0.30) 35%, transparent 65%),
+        radial-gradient(ellipse 100% 60% at 85% 100%, rgba(99,102,241,0.20) 0%, transparent 70%),
         #0a0f1e
       `,
       display: 'flex',
       flexDirection: 'column',
       overflowY: 'auto',
     }}>
-      {/* Top Bar — Vantage Orb */}
+      {/* ── Orb Hero ── */}
       <div style={{
-        height: 60,
+        marginTop: 52,
         display: 'flex',
-        alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
       }}>
-        <VantageOrb size={36} animate showEntrance={false} />
+        <VantageOrb size={180} animate showEntrance />
       </div>
 
-      {/* Hero */}
-      <div style={{ padding: '24px 28px 0' }}>
+      {/* ── Headline ── */}
+      <div style={{ marginTop: 28, textAlign: 'center', padding: '0 28px' }}>
         <div style={{
           fontFamily: 'var(--font-sans)',
-          fontWeight: 600,
-          fontSize: 11,
-          letterSpacing: '0.14em',
-          color: 'var(--accent)',
-          marginBottom: 10,
+          fontWeight: 900,
+          fontSize: 52,
+          letterSpacing: '-0.01em',
+          color: '#fff',
+          lineHeight: 1,
         }}>
-          YOU&apos;RE IN
+          YOU&apos;RE IN.
         </div>
 
-        <h1 style={{ margin: 0 }}>
-          <div style={{
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 800,
-            fontSize: 42,
-            color: '#fff',
-            lineHeight: 1.05,
-          }}>
-            Your 30-day
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle: 'italic',
-            fontWeight: 400,
-            fontSize: 42,
-            color: '#fff',
-            lineHeight: 1.05,
-          }}>
-            investing sandbox.
-          </div>
-        </h1>
-
-        <p style={{
-          marginTop: 16,
-          fontFamily: 'var(--font-sans)',
+        <div style={{
+          fontFamily: 'var(--font-serif)',
+          fontStyle: 'italic',
           fontWeight: 400,
-          fontSize: 17,
-          color: 'rgba(255,255,255,0.72)',
-          lineHeight: 1.6,
-          maxWidth: 340,
+          fontSize: 22,
+          color: 'rgba(255,255,255,0.70)',
+          marginTop: 8,
         }}>
-          Real market prices. Real AI analysis. Paper trades with no real money at risk. Your full Vantage experience, free for 30 days.
-        </p>
+          Your 30-day investing sandbox is ready.
+        </div>
       </div>
 
-      {/* Demo Features */}
-      <div style={{
-        marginTop: 24,
+      {/* ── Description ── */}
+      <p style={{
+        marginTop: 16,
+        textAlign: 'center',
+        maxWidth: 320,
+        marginLeft: 'auto',
+        marginRight: 'auto',
+        fontFamily: 'var(--font-sans)',
+        fontWeight: 400,
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.60)',
+        lineHeight: 1.6,
         padding: '0 28px',
+      }}>
+        Real market prices. Real AI analysis. Paper trades — no real money at risk.
+      </p>
+
+      {/* ── Features ── */}
+      <div style={{
+        marginTop: 20,
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
         gap: 10,
+        padding: '0 28px',
       }}>
         {[
           '$100,000 simulated portfolio',
@@ -132,12 +126,13 @@ export function BrokerSelection() {
           <div key={text} style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
+            justifyContent: 'center',
+            gap: 8,
           }}>
             <CheckCircle size={18} color="var(--gain)" />
             <span style={{
               fontFamily: 'var(--font-sans)',
-              fontWeight: 500,
+              fontWeight: 600,
               fontSize: 15,
               color: '#fff',
             }}>
@@ -195,6 +190,17 @@ export function BrokerSelection() {
             'Start my 30-day demo →'
           )}
         </button>
+
+        <div style={{
+          fontFamily: 'var(--font-sans)',
+          fontWeight: 400,
+          fontSize: 13,
+          color: 'rgba(255,255,255,0.35)',
+          textAlign: 'center',
+          marginTop: 10,
+        }}>
+          No credit card required.
+        </div>
       </div>
 
       {/* Divider */}
@@ -220,7 +226,7 @@ export function BrokerSelection() {
           background: '#0a0f1e',
           padding: '0 16px',
         }}>
-          Connect your real portfolio
+          Connect your real portfolio later
         </span>
       </div>
 
