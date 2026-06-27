@@ -56,7 +56,7 @@ export function useInvestorScore(): UseInvestorScoreReturn {
         return;
       }
 
-      const res = await fetch('/api/investor-score', {
+      const res = await fetch('/api/investor-score', { credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anonymousId: userId }),
         method: 'POST',

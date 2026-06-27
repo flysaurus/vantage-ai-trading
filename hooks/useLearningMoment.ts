@@ -63,7 +63,7 @@ export function useLearningMoment(
       const userId = user?.id || '';
       if (userId) {
         try {
-          const res = await fetch('/api/gamification/increment-learning', {
+          const res = await fetch('/api/gamification/increment-learning', { credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

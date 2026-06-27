@@ -93,7 +93,7 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
 
         // Fire all fetches in parallel
         const [scoreRes, milestonesRes] = await Promise.all([
-          fetch('/api/investor-score', {
+          fetch('/api/investor-score', { credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ anonymousId: userId }),

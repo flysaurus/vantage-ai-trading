@@ -57,7 +57,7 @@ export function useAIChat() {
     hydratedRef.current = true;
 
     // Fetch server-side remaining count on mount
-    fetch('/api/usage/remaining')
+    fetch('/api/usage/remaining', { credentials: 'include' })
       .then(r => r.json())
       .then(d => {
         if (typeof d.remaining === 'number') {
@@ -245,7 +245,7 @@ export function useAIChat() {
             setRemainingCalls(getRemainingCalls());
 
             // Refresh server-side remaining count
-            fetch('/api/usage/remaining')
+            fetch('/api/usage/remaining', { credentials: 'include' })
               .then(r => r.json())
               .then(d => {
                 if (typeof d.remaining === 'number') {
@@ -293,7 +293,7 @@ export function useAIChat() {
             const lastAi = state2.messages[state2.messages.length - 1];
             const lastUser = [...state2.messages].reverse().find(m => m.role === 'user');
             if (lastAi?.content && lastUser?.content) {
-              fetch('/api/chat/history/save', {
+              fetch('/api/chat/history/save', { credentials: 'include',
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

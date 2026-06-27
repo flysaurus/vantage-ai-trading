@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     mountedRef.current = true;
     console.log('[AuthProvider] 🔍 Checking session via /api/auth/me...');
 
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { credentials: 'include' })
       .then(async (res) => {
         if (!mountedRef.current) return;
 
@@ -261,7 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     let res: Response;
     try {
-      res = await fetch('/api/auth/login', {
+      res = await fetch('/api/auth/login', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -285,7 +285,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Fetch user profile via /me to populate context
-    const meRes = await fetch('/api/auth/me');
+    const meRes = await fetch('/api/auth/me', { credentials: 'include' });
     const meData = await meRes.json();
 
     if (!meRes.ok || !meData?.user) {
@@ -336,7 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
-    const res = await fetch('/api/auth/signup', {
+    const res = await fetch('/api/auth/signup', { credentials: 'include',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, displayName: displayName?.trim() }),
@@ -354,7 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } catch {
       // Clear locally even if server call fails
     }
@@ -371,7 +371,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resendConfirmation = useCallback(async (email: string) => {
     try {
-      const res = await fetch('/api/auth/signup', {
+      const res = await fetch('/api/auth/signup', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, resend: true }),

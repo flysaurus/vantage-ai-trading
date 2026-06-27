@@ -171,7 +171,7 @@ export function useMarketData() {
 
       // Populate demo market data from Finnhub (no hardcoded fallback)
       const symbols = getAllDemoSymbols();
-      fetch('/api/market/quotes', {
+      fetch('/api/market/quotes', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbols }),

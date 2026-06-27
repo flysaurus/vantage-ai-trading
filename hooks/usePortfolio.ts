@@ -255,7 +255,7 @@ export function usePortfolio() {
     const style = user?.investorStyle || 'buffett';
     const symbols = getDemoSymbols(style as any);
 
-    fetch('/api/market/quotes', {
+    fetch('/api/market/quotes', { credentials: 'include',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ symbols }),

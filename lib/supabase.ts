@@ -1,53 +1,19 @@
 // ─── Supabase Client Setup ────────────────────────────────────
-// Supabase SDK manages session lifecycle: persistSession stores in
-// localStorage, autoRefreshToken handles refresh before expiry.
-// AuthProvider syncs a parallel copy (vantage-session) for sync accessors.
+// Browser: @supabase/ssr createBrowserClient → HTTP-only cookie auth.
+// Server API routes read cookies via lib/auth/get-server-user.ts.
 //
 // NEVER expose SUPABASE_SERVICE_ROLE_KEY to the browser.
 // NEVER import createServerClient in client components.
 
+import { createBrowserClient } from '@supabase/ssr';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
 // ─── Browser Client ──────────────────────────────────────────
-// Uses NEXT_PUBLIC anon key. Safe to use everywhere.
-// Session stored in localStorage — persists across browser sessions
-// so users stay logged in after closing the browser.
-// 15-min inactivity timer handles idle logout.
-
-/** Custom localStorage adapter for Supabase SDK. */
-function localStorageAdapter(): Storage {
-  if (typeof window === 'undefined') {
-    // SSR fallback — never actually used because createClient()
-    // throws during SSR, but needed to satisfy the type
-    return {
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      clear: () => {},
-      get length() { return 0; },
-      key: () => null,
-    };
-  }
-  return {
-    getItem: (key: string) => localStorage.getItem(key),
-    setItem: (key: string, value: string) => localStorage.setItem(key, value),
-    removeItem: (key: string) => localStorage.removeItem(key),
-    clear: () => {
-      // Only clear Vantage keys, not all localStorage
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith('vantage')) keysToRemove.push(k);
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-    },
-    get length() { return localStorage.length; },
-    key: (index: number) => localStorage.key(index),
-  };
-}
+// Uses @supabase/ssr createBrowserClient → session stored in cookies.
+// Server reads those cookies via createServerClient in lib/auth/get-server-user.ts.
+// This replaces the old localStorage-based auth (vantage-auth-token).
 
 export function createClient(): SupabaseClient<Database> {
   if (typeof window === 'undefined') {
@@ -57,21 +23,11 @@ export function createClient(): SupabaseClient<Database> {
     );
   }
 
-  // Use plain @supabase/supabase-js in browser (no SSR cookie handling).
-  // Vantage manages tokens manually via sessionStorage, NOT cookies.
-  // This avoids iOS Safari issues with @supabase/ssr cookie adapters.
-  return createSupabaseClient<Database>(
+  // Use @supabase/ssr browser client for cookie-based session sync.
+  // Session token stored as HTTP cookie — server reads it automatically.
+  return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        storageKey: 'vantage-auth-token',
-        storage: localStorageAdapter(),
-        autoRefreshToken: true,
-        persistSession: true,
-        // detectSessionInUrl defaults to true — required for OAuth callbacks
-      },
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
 
