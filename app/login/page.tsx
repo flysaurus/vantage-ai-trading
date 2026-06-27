@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
-import { createClient, syncSessionToCookie } from '@/lib/supabase';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    return createClient();
+    return getSupabaseBrowserClient();
   }, []);
 
   const [email, setEmail] = useState('');
@@ -79,7 +79,7 @@ export default function LoginPage() {
     setSubmitting(true);
     setInlineError('');
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -91,10 +91,11 @@ export default function LoginPage() {
       return;
     }
 
-    // Sync session to cookie so server can read it
-    await syncSessionToCookie(supabase);
-
-    router.replace('/');
+    // Session cookie is now set in browser by @supabase/ssr createBrowserClient.
+    // router.refresh() forces Next.js to re-run server components
+    // with the new session cookie available.
+    router.push('/');
+    router.refresh();
   }, [canSubmit, email, password, supabase, router]);
 
   // ── Google OAuth ───────────────────────────────────────

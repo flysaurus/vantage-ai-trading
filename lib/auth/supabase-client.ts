@@ -1,79 +1,37 @@
-// ─── Supabase Browser Client ──────────────────────────────────
-// localStorage-based client matching createClient() from lib/supabase.ts.
+// ─── Supabase Browser Client (Singleton) ──────────────────────
+// Cookie-based browser client using @supabase/ssr createBrowserClient.
+// Sessions are stored in cookies — server can read them via createServerClient.
 //
-// CRITICAL: Uses @supabase/supabase-js createClient() directly, NOT
-// createBrowserClient from @supabase/ssr. The SSR library OVERRIDES
-// auth.storage with cookie-based storage, which means sessions set
-// during login (via localStorage) are invisible on the main page.
-//
-// Both clients now use identical setup: same library, same storageKey,
-// same localStorage adapter → sessions are shared across all pages.
-// localStorage persists across browser sessions.
+// SINGLETON: always returns the same client instance. This is critical
+// because createBrowserClient caches auth state internally. Multiple
+// instances would have stale/divergent session state.
 
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
 let _browserClient: SupabaseClient<Database> | null = null;
 
-/** localStorage adapter matching createClient() in lib/supabase.ts */
-function localStorageAdapter(): Storage {
-  if (typeof window === 'undefined') {
-    return {
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-      clear: () => {},
-      get length() { return 0; },
-      key: () => null,
-    };
-  }
-  return {
-    getItem: (key: string) => localStorage.getItem(key),
-    setItem: (key: string, value: string) => localStorage.setItem(key, value),
-    removeItem: (key: string) => localStorage.removeItem(key),
-    clear: () => {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith('vantage')) keysToRemove.push(k);
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-    },
-    get length() { return localStorage.length; },
-    key: (index: number) => localStorage.key(index),
-  };
-}
-
 /**
- * Singleton Supabase browser client.
+ * Singleton Supabase browser client using cookie-based auth.
  *
- * Uses @supabase/supabase-js createClient() directly (same as
- * lib/supabase.ts) with localStorage adapter.
+ * Uses @supabase/ssr createBrowserClient which:
+ * - Stores session in browser cookies (not localStorage)
+ * - Server can read these cookies via createServerClient
+ * - Requires middleware.ts for session refresh on Vercel
  *
- * This ensures sessions created during login/signup are visible
- * to useAppState on the main page. Both clients write to the
- * same localStorage key: 'vantage-auth-token'.
+ * IMPORTANT: Always use this singleton. Never create separate
+ * browser clients in individual components.
  */
 export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (_browserClient) return _browserClient;
 
-  // SSR guard — useAppState is client-only, but Next.js may call
-  // during SSR for static generation. Return a dummy client that
-  // will be replaced on hydration. Never actually called because
-  // useAppState is wrapped in useEffect (client-only).
+  // SSR guard — return a placeholder during SSR (never actually used
+  // because all callers are client components or useEffect callbacks)
   if (typeof window === 'undefined') {
-    return createClient(
+    return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder',
-      {
-        auth: {
-          storageKey: 'vantage-auth-token',
-          storage: localStorageAdapter(),
-          autoRefreshToken: true,
-          persistSession: true,
-        },
-      },
     ) as SupabaseClient<Database>;
   }
 
@@ -87,20 +45,13 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
     );
   }
 
-  _browserClient = createClient<Database>(url, key, {
-    auth: {
-      storageKey: 'vantage-auth-token',
-      storage: localStorageAdapter(),
-      autoRefreshToken: true,
-      persistSession: true,
-    },
-  });
+  _browserClient = createBrowserClient<Database>(url, key);
 
   return _browserClient;
 }
 
 /**
- * Resets the cached client instance.
+ * Resets the cached client instance (e.g., after sign-out).
  */
 export function resetBrowserClient(): void {
   _browserClient = null;

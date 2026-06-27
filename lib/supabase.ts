@@ -1,5 +1,5 @@
 // ─── Supabase Client Setup ────────────────────────────────────
-// Browser: @supabase/supabase-js with localStorage → manual cookie sync after login.
+// Browser: getSupabaseBrowserClient() singleton → cookie-based auth.
 // Server API routes read cookies via lib/auth/get-server-user.ts.
 //
 // NEVER expose SUPABASE_SERVICE_ROLE_KEY to the browser.
@@ -10,75 +10,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
 // ─── Browser Client ──────────────────────────────────────────
-// Uses @supabase/supabase-js with localStorage for session persistence.
-// The session is synced to a cookie after login so the server can read it
-// (via lib/auth/get-server-user.ts). This bridge is needed because
-// @supabase/ssr createBrowserClient cookies are inconsistent on Vercel.
+// Re-exports the singleton from lib/auth/supabase-client.ts.
+// All client components should use getSupabaseBrowserClient()
+// instead of creating their own clients.
 
-const STORAGE_KEY = 'vantage-auth-token';
+export { getSupabaseBrowserClient, resetBrowserClient } from '@/lib/auth/supabase-client';
 
-function localStorageAdapter() {
-  if (typeof window === 'undefined') {
-    return {
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-    };
-  }
-  return {
-    getItem: (key: string) => {
-      try { return window.localStorage.getItem(key); } catch { return null; }
-    },
-    setItem: (key: string, value: string) => {
-      try { window.localStorage.setItem(key, value); } catch {}
-    },
-    removeItem: (key: string) => {
-      try { window.localStorage.removeItem(key); } catch {}
-    },
-  };
-}
-
-export function createClient(): SupabaseClient<Database> {
-  if (typeof window === 'undefined') {
-    throw new Error(
-      'createClient() must only be called in the browser. ' +
-      'Use createServerClient() for server-side operations.'
-    );
-  }
-
-  return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        storage: localStorageAdapter(),
-        storageKey: STORAGE_KEY,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce',
-      },
-    }
-  );
-}
-
-// ─── Cookie Sync ─────────────────────────────────────────────
-// Sync the Supabase session to a cookie so the server can read it.
-// Call this after signInWithPassword/signUp/signInWithOAuth success.
-// The server reads this cookie in lib/auth/get-server-user.ts.
-
-export async function syncSessionToCookie(supabase: SupabaseClient<Database>) {
-  if (typeof window === 'undefined') return;
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) {
-      // Max-Age: 400 days, matches Supabase default
-      document.cookie = `sb-auth-token=${session.access_token}; path=/; max-age=34560000; sameSite=lax`;
-    }
-  } catch {
-    // Silently fail — worst case, server uses fallback path
-  }
-}
+export { getSupabaseBrowserClient as createClient } from '@/lib/auth/supabase-client';
 
 // ─── Server Auth Verification Client ────────────────────────
 // Uses the ANON key (not service_role) to verify user JWTs.

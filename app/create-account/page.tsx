@@ -196,8 +196,8 @@ export default function CreateAccountPage() {
 
     if (result.success) {
       // Sign in the user client-side so session is established
-      const { createClient } = await import('@/lib/supabase');
-      const supabase = createClient();
+      const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
+      const supabase = getSupabaseBrowserClient();
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -216,7 +216,8 @@ export default function CreateAccountPage() {
         sessionStorage.removeItem('vantage_onboarding_data');
       } catch {}
 
-      router.replace('/');
+      router.push('/');
+      router.refresh();
     } else {
       setApiError(result.error ?? 'Something went wrong. Please try again.');
       setSubmitting(false);
