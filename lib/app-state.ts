@@ -16,6 +16,7 @@
 import { useState, useEffect } from 'react';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import { getDemoStatus } from '@/lib/demo-utils';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -24,7 +25,9 @@ export type AppState =
   | 'onboarding'
   | 'authenticated'
   | 'needs-profile'
-  | 'needs-quiz';
+  | 'needs-quiz'
+  | 'broker-selection'
+  | 'demo-expired';
 
 export interface UserProfile {
   id: string;
@@ -33,6 +36,8 @@ export interface UserProfile {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  demo_start_at: string | null;
+  demo_expires_at: string | null;
 }
 
 export interface AppStateResult {
@@ -95,7 +100,37 @@ export function useAppState(): AppStateResult {
         // Step 2: If user_profiles has full data → authenticated
         if (profileData?.investor_style) {
           console.log('[useAppState] Full profile in user_profiles → authenticated');
-          setProfile(profileData as UserProfile);
+
+          // ── Demo routing: check if broker selection or demo-expired ──
+          const { data: userData } = await (supabase.from('users') as any)
+            .select('demo_start_at, demo_expires_at')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          const mergedProfile = {
+            ...(profileData as Record<string, unknown>),
+            demo_start_at: userData?.demo_start_at ?? null,
+            demo_expires_at: userData?.demo_expires_at ?? null,
+          };
+          setProfile(mergedProfile as UserProfile);
+
+          if (userData) {
+            if (!userData.demo_start_at) {
+              console.log('[useAppState] No demo_start_at → broker selection');
+              setState('broker-selection');
+              return;
+            }
+            const demoStatus = getDemoStatus(
+              userData.demo_start_at,
+              userData.demo_expires_at
+            );
+            if (demoStatus.isExpired) {
+              console.log('[useAppState] Demo expired → demo-expired');
+              setState('demo-expired');
+              return;
+            }
+          }
+
           setState('authenticated');
           return;
         }
@@ -126,9 +161,8 @@ export function useAppState(): AppStateResult {
             risk_tolerance: legacyUser.investor_style ? 'moderate' : null,
             tier: 'demo',
             first_open: legacyUser.created_at || new Date().toISOString(),
-            demo_expires_at: new Date(
-              Date.now() + 30 * 24 * 60 * 60 * 1000,
-            ).toISOString(),
+            demo_start_at: null,  // legacy users see broker selection
+            demo_expires_at: null,
           };
 
           // Ensure users parent row exists (FK constraint)
@@ -148,7 +182,8 @@ export function useAppState(): AppStateResult {
 
           console.log('[useAppState] Backfilled user_profiles from legacy → authenticated');
           setProfile({ ...profileToUpsert, email: '' } as UserProfile);
-          setState('authenticated');
+          // Legacy users: no demo_start_at → broker selection
+          setState('broker-selection');
           return;
         }
 
@@ -182,7 +217,8 @@ export function useAppState(): AppStateResult {
             { onConflict: 'id' },
           );
 
-          setState('authenticated');
+          // Auth metadata fallback: no demo_start_at → broker selection
+          setState('broker-selection');
           return;
         }
 

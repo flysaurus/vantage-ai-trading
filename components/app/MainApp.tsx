@@ -29,6 +29,8 @@ import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
+import { DemoWarningBanner } from '@/components/DemoWarningBanner';
+import { getDemoStatus } from '@/lib/demo-utils';
 
 import type { User } from '@/types';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
@@ -56,6 +58,15 @@ function AppShell() {
   const [showGreeting, setShowGreeting] = useState(false);
   const [showWelcomeToast, setShowWelcomeToast] = useState(false);
   const greetingShown = useRef(false);
+
+  const demoStatus = useMemo(() =>
+    getDemoStatus(
+      profile?.demo_start_at ?? null,
+      profile?.demo_expires_at ?? null
+    ),
+    [profile?.demo_start_at, profile?.demo_expires_at]
+  );
+
   const [chatMessages, setChatMessages] = useState<
     { role: 'user' | 'ai'; content: string }[]
   >([]);
@@ -247,6 +258,9 @@ function AppShell() {
       {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
       <WatchlistBar />
       <PlayerStatusBar />
+      {demoStatus.showWarning && (
+        <DemoWarningBanner daysRemaining={demoStatus.daysRemaining} />
+      )}
       <div className="content-area" key={activeTab}>
         {activeTab === 'ai' ? (
           <AITab messages={chatMessages} setMessages={setChatMessages} />

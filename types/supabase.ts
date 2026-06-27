@@ -24,7 +24,9 @@ export interface Database {
           tier: string | null;
           api_provider: string | null;
           first_open: string | null;
+          demo_start_at: string | null;
           demo_expires_at: string | null;
+          portfolio_mode: string | null;
           last_login: string | null;
           created_at: string;
           updated_at: string | null;
@@ -44,7 +46,9 @@ export interface Database {
           tier?: string | null;
           api_provider?: string | null;
           first_open?: string | null;
+          demo_start_at?: string | null;
           demo_expires_at?: string | null;
+          portfolio_mode?: string | null;
           last_login?: string | null;
           created_at?: string;
           updated_at?: string | null;
@@ -63,7 +67,9 @@ export interface Database {
           tier?: string | null;
           api_provider?: string | null;
           first_open?: string | null;
+          demo_start_at?: string | null;
           demo_expires_at?: string | null;
+          portfolio_mode?: string | null;
           last_login?: string | null;
           created_at?: string;
           updated_at?: string | null;
@@ -367,7 +373,9 @@ export interface Database {
           risk_tolerance: string | null;
           tier: string;
           first_open: string | null;
+          demo_start_at: string | null;
           demo_expires_at: string | null;
+          portfolio_mode: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -380,7 +388,9 @@ export interface Database {
           risk_tolerance?: string | null;
           tier?: string;
           first_open?: string | null;
+          demo_start_at?: string | null;
           demo_expires_at?: string | null;
+          portfolio_mode?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -393,7 +403,9 @@ export interface Database {
           risk_tolerance?: string | null;
           tier?: string;
           first_open?: string | null;
+          demo_start_at?: string | null;
           demo_expires_at?: string | null;
+          portfolio_mode?: string | null;
           updated_at?: string;
         };
       };

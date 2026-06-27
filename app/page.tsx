@@ -10,6 +10,8 @@ import { useAppState } from '@/lib/app-state';
 import { BootSplash } from '@/components/onboarding/BootSplash';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
+import { BrokerSelection } from '@/components/app/BrokerSelection';
+import { DemoExpired } from '@/components/app/DemoExpired';
 
 export default function Page() {
   const { state } = useAppState();
@@ -42,6 +44,16 @@ export default function Page() {
   // needs-quiz: has account + profile, just needs style quiz
   if (state === 'needs-quiz') {
     return <OnboardingFlow initialScreen="quiz" />;
+  }
+
+  // broker-selection: authenticated but demo not started yet
+  if (state === 'broker-selection') {
+    return <BrokerSelection />;
+  }
+
+  // demo-expired: 30-day demo has elapsed
+  if (state === 'demo-expired') {
+    return <DemoExpired />;
   }
 
   return <MainApp />;
