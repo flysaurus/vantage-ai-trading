@@ -104,9 +104,11 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
 
   // quiz answer selected
   function handleQuizAnswer(answer: string) {
+    // Preserve answers before AND after current question (back-button safety)
     const newAnswers = [
       ...state.quizAnswers.slice(0, state.currentQuizQuestion),
       answer,
+      ...state.quizAnswers.slice(state.currentQuizQuestion + 1),
     ];
 
     if (state.currentQuizQuestion < 4) {
@@ -203,6 +205,7 @@ export default function OnboardingFlow({ initialScreen }: OnboardingFlowProps) {
           totalQuestions={QUIZ_QUESTIONS.length}
           onAnswer={handleQuizAnswer}
           onBack={state.currentQuizQuestion > 0 ? handleQuizBack : undefined}
+          onSignIn={handleSignIn}
         />
       );
 
