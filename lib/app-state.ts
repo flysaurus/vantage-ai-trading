@@ -114,21 +114,21 @@ export function useAppState(): AppStateResult {
           };
           setProfile(mergedProfile as UserProfile);
 
-          if (userData) {
-            if (!userData.demo_start_at) {
-              console.log('[useAppState] No demo_start_at → broker selection');
-              setState('broker-selection');
-              return;
-            }
-            const demoStatus = getDemoStatus(
-              userData.demo_start_at,
-              userData.demo_expires_at
-            );
-            if (demoStatus.isExpired) {
-              console.log('[useAppState] Demo expired → demo-expired');
-              setState('demo-expired');
-              return;
-            }
+          // demo_start_at column may not exist yet → null/missing = no demo started
+          if (!userData?.demo_start_at) {
+            console.log('[useAppState] No demo_start_at → broker selection');
+            setState('broker-selection');
+            return;
+          }
+
+          const demoStatus = getDemoStatus(
+            userData.demo_start_at,
+            userData.demo_expires_at
+          );
+          if (demoStatus.isExpired) {
+            console.log('[useAppState] Demo expired → demo-expired');
+            setState('demo-expired');
+            return;
           }
 
           setState('authenticated');
