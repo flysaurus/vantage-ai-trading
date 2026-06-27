@@ -4,18 +4,25 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/app-state';
 import { BootSplash } from '@/components/onboarding/BootSplash';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
+import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
 export default function Page() {
-  const { state } = useAppState();
+  const { state, profile } = useAppState();
   const router = useRouter();
+
+  // Dismiss state for demo-counter (transient, not persisted)
+  const [showDemoCounter, setShowDemoCounter] = useState(true);
+  useEffect(() => {
+    if (state === 'demo-counter') setShowDemoCounter(true);
+  }, [state]);
 
   // needs-profile: redirect to profile completion
   useEffect(() => {
@@ -23,8 +30,6 @@ export default function Page() {
       router.push('/auth/complete');
     }
   }, [state, router]);
-
-  // needs-quiz: full profile except quiz — send straight to quiz
 
   // loading: show boot splash
   if (state === 'loading') {
@@ -51,14 +56,21 @@ export default function Page() {
     return <BrokerChoicePage />;
   }
 
+  // demo-counter: demo active — show counter, dismiss to MainApp
+  if (state === 'demo-counter' && showDemoCounter) {
+    return (
+      <DemoCounterPage
+        profile={profile}
+        onEnter={() => setShowDemoCounter(false)}
+      />
+    );
+  }
+
   // demo-expired: 30-day demo has elapsed
   if (state === 'demo-expired') {
     return <DemoExpired />;
   }
 
-  // demo-counter: demo active — MainApp with days-remaining banner
-  // connection-options: chose to connect broker — MainApp with broker-ui
-  // connection-loading: broker syncing — MainApp with loading overlay
-  // authenticated: full access — MainApp
+  // demo-counter (dismissed) / connection-options / connection-loading / authenticated
   return <MainApp />;
 }
