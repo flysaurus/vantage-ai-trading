@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info } from 'lucide-react';
 import { usePortfolioStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { getAccessToken } from '@/lib/auth';
 import { getDemoAccount } from '@/lib/demo-data';
 
 // ─── Types ─────────────────────────────────────────────────
@@ -154,7 +155,10 @@ export default function TaxHarvestingPage() {
         // Check broker status
         let connected = false;
         try {
-          const statusRes = await fetch('/api/broker/status');
+          const token = getAccessToken();
+          const statusRes = await fetch('/api/broker/status', {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
           if (statusRes.ok) {
             const status = await statusRes.json();
             connected = status.connected || status.isConnected || false;

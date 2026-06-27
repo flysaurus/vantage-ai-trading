@@ -11,6 +11,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { BrokerAdapter, BrokerConfig, BrokerId } from '@/types/broker';
 import { brokerRegistry, setActiveBroker } from '@/lib/broker';
+import { getAccessToken } from '@/lib/auth';
 
 interface BrokerContextValue {
   broker: BrokerAdapter | null;
@@ -50,7 +51,10 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
 
     async function checkStatus() {
       try {
-        const res = await fetch('/api/broker/status');
+        const token = getAccessToken();
+        const res = await fetch('/api/broker/status', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (!res.ok) {
           if (!cancelled) setInitialized(true);
           return;
@@ -122,7 +126,10 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/broker/status');
+        const token = getAccessToken();
+        const res = await fetch('/api/broker/status', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.connected && data.accountPreview) {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
 import { usePortfolioStore, useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { getAccessToken } from '@/lib/auth';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
@@ -109,7 +110,10 @@ export default function RebalancingPage() {
 
     async function load() {
       // Check broker status (fire and forget — doesn't block)
-      fetch('/api/broker/status')
+      const token = getAccessToken();
+      fetch('/api/broker/status', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (!cancelled && data?.isConnected) setIsConnected(true); })
         .catch(() => {});
