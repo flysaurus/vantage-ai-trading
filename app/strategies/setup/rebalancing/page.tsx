@@ -1,11 +1,12 @@
 'use client';
 
+import { apiGet, apiPost } from '@/lib/api-client';
+
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingUp, AlertTriangle, Activity, Layers } from 'lucide-react';
 import { usePortfolioStore, useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { getAccessToken } from '@/lib/auth';
 import { getDemoSymbols, getDemoAccount, DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { AccountSummary } from '@/types';
 import { SymbolSearch } from '@/components/trade/SymbolSearch';
@@ -110,10 +111,7 @@ export default function RebalancingPage() {
 
     async function load() {
       // Check broker status (fire and forget — doesn't block)
-      const token = getAccessToken();
-      fetch('/api/broker/status', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+apiGet('/api/broker/status')
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (!cancelled && data?.isConnected) setIsConnected(true); })
         .catch(() => {});
@@ -148,11 +146,7 @@ export default function RebalancingPage() {
 
         // Phase 2: Fetch live prices and update (fire and forget)
         try {
-          const res = await fetch('/api/market/quotes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbols }),
-          });
+          const res = await await apiPost('/api/market/quotes', { symbols });
           if (res.ok && !cancelled) {
             const data = await res.json();
             const livePrices = data.quotes || {};
@@ -331,7 +325,7 @@ export default function RebalancingPage() {
     }
 
     // Load saved target allocations if available
-    fetch('/api/strategies/rebalancing/saved')
+    apiGet('/api/strategies/rebalancing/saved')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.saved?.targetAllocations?.length) {
@@ -455,15 +449,11 @@ export default function RebalancingPage() {
         symbol,
         targetPercent: Math.round(targetPercent * 100) / 100,
       }));
-      const res = await fetch('/api/strategies/rebalancing/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await await apiPost('/api/strategies/rebalancing/save', {
           targetAllocations,
           driftThreshold,
           alertEnabled: alertOnDrift,
-        }),
-      });
+        });
       if (res.ok) {
         setTargetsSaved(true);
         setToast('✓ Allocation saved');
@@ -505,7 +495,7 @@ export default function RebalancingPage() {
 
   // Load saved queue on mount
   useEffect(() => {
-    fetch('/api/strategies/rebalancing/saved-queue')
+    apiGet('/api/strategies/rebalancing/saved-queue')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.saved?.orders?.length) {
@@ -541,14 +531,10 @@ export default function RebalancingPage() {
   const handleSaveQueue = async () => {
     setQueueLoading(true);
     try {
-      const res = await fetch('/api/strategies/rebalancing/save-queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await await apiPost('/api/strategies/rebalancing/save-queue', {
           orders: editedOrders,
           summary: { totalBuys, totalSells, netCashImpact, orderCount: editedOrders.length },
-        }),
-      });
+        });
       if (res.ok) {
         setQueueSaved(true);
         setToast('✓ Queue saved');
@@ -585,10 +571,7 @@ export default function RebalancingPage() {
     try {
       const total = editedOrders.length;
       setExecProgress(`Placing order 1 of ${total}...`);
-      const res = await fetch('/api/strategies/rebalancing/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await await apiPost('/api/strategies/rebalancing/execute', {
           trades: editedOrders.map(o => ({
             symbol: o.symbol,
             action: o.action === 'BUY' ? 'buy' : 'sell',
@@ -598,8 +581,7 @@ export default function RebalancingPage() {
           targetAllocations: targets,
           alertOnDrift,
           driftThreshold,
-        }),
-      });
+        });
       if (!res.ok) {
         const err = await res.json();
         setExecProgress('');
@@ -656,11 +638,7 @@ export default function RebalancingPage() {
         alertOnDrift,
         driftThreshold,
       };
-      const res = await fetch('/api/strategies/rebalancing/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await await apiPost('/api/strategies/rebalancing/execute', body);
       if (!res.ok) {
         const err = await res.json();
         setToast(err.error || 'Rebalance failed');

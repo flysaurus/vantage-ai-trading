@@ -1,11 +1,12 @@
 'use client';
 
+import { apiGet, apiPost } from '@/lib/api-client';
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingDown, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Activity, Info } from 'lucide-react';
 import { usePortfolioStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { getAccessToken } from '@/lib/auth';
 import { getDemoAccount } from '@/lib/demo-data';
 
 // ─── Types ─────────────────────────────────────────────────
@@ -155,10 +156,7 @@ export default function TaxHarvestingPage() {
         // Check broker status
         let connected = false;
         try {
-          const token = getAccessToken();
-          const statusRes = await fetch('/api/broker/status', {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          });
+const statusRes = await await apiGet('/api/broker/status');
           if (statusRes.ok) {
             const status = await statusRes.json();
             connected = status.connected || status.isConnected || false;
@@ -179,11 +177,7 @@ export default function TaxHarvestingPage() {
             const symbols = account.positions.map((p: any) => p.symbol);
             // Fetch live prices
             try {
-              const qRes = await fetch('/api/market/quotes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbols }),
-              });
+              const qRes = await await apiPost('/api/market/quotes', { symbols });
               if (qRes.ok) {
                 const qData = await qRes.json();
                 Object.entries(qData.quotes || qData || {}).forEach(([sym, q]: [string, any]) => {
@@ -215,11 +209,7 @@ export default function TaxHarvestingPage() {
           if (demoAccount?.positions?.length) {
             const symbols = demoAccount.positions.map((p: any) => p.symbol);
             try {
-              const qRes = await fetch('/api/market/quotes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbols }),
-              });
+              const qRes = await await apiPost('/api/market/quotes', { symbols });
               if (qRes.ok) {
                 const qData = await qRes.json();
                 Object.entries(qData.quotes || qData || {}).forEach(([sym, q]: [string, any]) => {
@@ -349,15 +339,11 @@ export default function TaxHarvestingPage() {
   const handleExecute = async () => {
     setSubmitting(true);
     try {
-      const res = await fetch('/api/strategies/tax-harvest/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await await apiPost('/api/strategies/tax-harvest/execute', {
           harvests: Object.values(selectedHarvests),
           replacements: selectedReplacements,
           taxYear: currentYear,
-        }),
-      });
+        });
       if (res.ok) {
         setShowConfirm(false);
         setSelectedHarvests({});
@@ -740,7 +726,7 @@ function getSectorForSymbol(symbol: string): string {
 async function loadTradeSummary(connected: boolean): Promise<TradeSummary> {
   // Try DB trade history first
   try {
-    const res = await fetch('/api/db/trade-history/sync', { method: 'GET' });
+    const res = await await apiGet('/api/db/trade-history/sync');
     if (res.ok) {
       const data = await res.json();
       const currentYear = getCurrentYear();

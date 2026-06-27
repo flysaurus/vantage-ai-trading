@@ -1,5 +1,7 @@
 'use client';
 
+import { apiPost } from '@/lib/api-client';
+
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -43,11 +45,7 @@ function GoalsPageInner() {
     // Calculate demo portfolio value from live prices
     const style = user?.investorStyle || 'buffett';
     const symbols = getDemoSymbols(style as any);
-    fetch('/api/market/quotes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbols }),
-    })
+    apiPost('/api/market/quotes', JSON.stringify({ symbols }))
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => {
         const account = getDemoAccount(style as any, d.quotes);

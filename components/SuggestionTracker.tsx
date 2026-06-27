@@ -1,4 +1,6 @@
 'use client';
+
+import { apiGet } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 
 interface Suggestion {
@@ -22,7 +24,7 @@ export default function SuggestionTracker() {
   });
 
   useEffect(() => {
-    fetch('/api/ai/suggestions')
+    apiGet('/api/ai/suggestions')
       .then(r => r.json())
       .then(data => {
         const list: Suggestion[] = data.suggestions || [];

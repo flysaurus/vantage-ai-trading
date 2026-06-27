@@ -1,4 +1,6 @@
 'use client';
+
+import { apiGet } from '@/lib/api-client';
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, SkipForward, AlertCircle, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
@@ -76,7 +78,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
 
   // Fetch buying power
   useEffect(() => {
-    fetch('/api/broker/session')
+    apiGet('/api/broker/session')
       .then(r => r.json())
       .then(data => {
         if (data.session?.buying_power) {

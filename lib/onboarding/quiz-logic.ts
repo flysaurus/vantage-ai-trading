@@ -157,6 +157,8 @@ export interface QuizQuestion {
   options: { key: string; text: string }[];
 }
 
+import { apiGet } from '@/lib/api-client';
+
 export const QUIZ_QUESTIONS: QuizQuestion[] = [
   {
     id: 'q1',
@@ -235,7 +237,7 @@ export async function checkQuizComplete(): Promise<{
     const timeoutId = setTimeout(() => controller.abort(), 3000);
     let res: Response;
     try {
-      res = await fetch('/api/auth/me', { signal: controller.signal });
+      res = await apiGet('/api/auth/me');
     } catch {
       return { complete: false };
     }

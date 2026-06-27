@@ -1,4 +1,6 @@
 'use client';
+
+import { apiPost } from '@/lib/api-client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
@@ -310,11 +312,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
   const handlePushToRebalance = async (content: string) => {
     try {
       const trades = parseTradesFromMarkdown(content);
-      const res = await fetch('/api/strategies/rebalancing/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades, source: 'ai_chat', expiresIn: 3600 }),
-      });
+      const res = await await apiPost('/api/strategies/rebalancing/session', JSON.stringify({ trades, source: 'ai_chat', expiresIn: 3600 }));
       const { sessionId } = await res.json();
       router.push(`/strategies/setup/rebalancing?session=${sessionId}&fresh=true`);
     } catch (err) {
@@ -328,11 +326,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         symbol: t.symbol,
         targetPercent: t.targetPercent / 100,
       }));
-      const res = await fetch('/api/strategies/rebalancing/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetAllocations, driftThreshold: 5, alertEnabled: false }),
-      });
+      const res = await await apiPost('/api/strategies/rebalancing/save', JSON.stringify({ targetAllocations, driftThreshold: 5, alertEnabled: false }));
       if (res.ok) {
         window.location.reload();
       } else {

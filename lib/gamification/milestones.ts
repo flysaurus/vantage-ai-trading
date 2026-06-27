@@ -1,3 +1,4 @@
+import { apiPost } from '@/lib/api-client';
 // ─── Gamification: Milestones ────────────────────────────────
 // Milestone definitions and idempotent award logic.
 //
@@ -113,11 +114,7 @@ export async function checkAndAwardMilestone(
   }
 
   try {
-    const res = await fetch('/api/gamification/award-milestone', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId, milestoneKey }),
-    });
+    const res = await await apiPost('/api/gamification/award-milestone', JSON.stringify({ anonymousId, milestoneKey }));
 
     if (!res.ok) {
       // 409 Conflict = already awarded (idempotent)

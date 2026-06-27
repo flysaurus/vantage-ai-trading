@@ -1,5 +1,7 @@
 'use client';
 
+import { apiGet, apiPost } from '@/lib/api-client';
+
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompassIcon from '@/components/CompassIcon';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -133,7 +135,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
     if (!isOpen) return;
     setCuratedLoading(true);
     setCuratedError(null);
-    fetch('/api/baskets')
+    apiGet('/api/baskets')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -447,15 +449,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   async function generateBasket() {
     setIsGenerating(true); setError(null); setStep('generating');
     try {
-      const res = await fetch('/api/basket/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await await apiPost('/api/basket/generate', JSON.stringify({
           theme: displayTheme, budget: budgetNum,
           investorStyle: user?.investorStyle || 'Lynch',
           riskTolerance: user?.riskTolerance || 'Moderate',
-        }),
-      });
+        }));
       if (!res.ok) { const errData = await res.json(); throw new Error(errData.error || 'Failed to generate'); }
       const data: BasketData = await res.json();
       const stocksWithPrices = await Promise.all(data.stocks.map(async (stock) => {

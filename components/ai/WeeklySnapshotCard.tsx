@@ -1,4 +1,6 @@
 'use client';
+
+import { apiDelete, apiGet } from '@/lib/api-client';
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -92,7 +94,7 @@ export default function WeeklySnapshotCard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/ai/weekly-snapshot');
+      const r = await await apiGet('/api/ai/weekly-snapshot');
       const d = await r.json();
       setData(d);
     } catch {
@@ -111,7 +113,7 @@ export default function WeeklySnapshotCard() {
     e.stopPropagation();
     setRefreshing(true);
     try {
-      await fetch('/api/ai/weekly-snapshot', { method: 'DELETE' });
+      await await apiDelete('/api/ai/weekly-snapshot');
     } catch {
       // continue to reload
     }

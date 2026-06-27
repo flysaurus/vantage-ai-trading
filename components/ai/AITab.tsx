@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { onAISessionStarted } from '@/lib/gamification/events';
+import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
@@ -405,25 +406,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
           }
         } catch (_) { /* earnings fetch is optional */ }
 
-        const res = await fetch('/api/ai/greeting', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userInitial,
-            investorStyle: invStyle,
-            riskTolerance: risk,
-            totalPnLPct: totalPnlPct,
-            cashBalance: cash,
-            cashPct,
-            positions: positions.map((p: any) => ({
-              symbol: p.symbol,
-              totalPnLPct: p.totalPnlPercent || 0,
-              totalPnL: p.totalPnl || 0,
-              marketValue: p.marketValue || 0,
-            })),
-            upcomingEarnings: upcomingEarnings || [],
-          }),
-          signal: AbortSignal.timeout(8000),
+        const res = await apiPost('/api/ai/greeting', {
+          userInitial,
+          investorStyle: invStyle,
+          riskTolerance: risk,
+          totalPnLPct: totalPnlPct,
+          cashBalance: cash,
+          cashPct,
+          positions: positions.map((p: any) => ({
+            symbol: p.symbol,
+            totalPnLPct: p.totalPnlPercent || 0,
+            totalPnL: p.totalPnl || 0,
+            marketValue: p.marketValue || 0,
+          })),
+          upcomingEarnings: upcomingEarnings || [],
         });
 
         if (!res.ok) throw new Error('API failed');
@@ -544,17 +540,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          portfolioContext,
-          mode,
-          investorStyle: investorStyle,
-          riskTolerance: user?.riskTolerance || 'Moderate',
-          name: user?.name || (typeof window !== 'undefined' ? user?.name || '' : null) || 'M',
-        })
+      const res = await apiPost('/api/chat', {
+        messages: newMessages,
+        portfolioContext,
+        mode,
+        investorStyle: investorStyle,
+        riskTolerance: user?.riskTolerance || 'Moderate',
+        name: user?.name || (typeof window !== 'undefined' ? user?.name || '' : null) || 'M',
       });
 
       if (!res.ok) throw new Error('API error');

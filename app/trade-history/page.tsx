@@ -1,5 +1,7 @@
 'use client';
 
+import { apiPost } from '@/lib/api-client';
+
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -145,14 +147,7 @@ function TradeHistoryPageInner() {
     try {
       // 1. Sync filled orders from Alpaca to trade_history
       const token = (await import("@/lib/auth")).getAccessToken();
-      const syncRes = await fetch('/api/db/trade-history/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ userId: user.id, limit: 100 }),
-      });
+      const syncRes = await await apiPost('/api/db/trade-history/sync', JSON.stringify({ userId: user.id, limit: 100 }));
       if (syncRes.ok) {
         const syncData = await syncRes.json();
         setSyncStatus(syncData.message || `Synced ${syncData.synced || 0} trades`);

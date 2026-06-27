@@ -10,6 +10,7 @@
 // All DB writes are server-side — these are just client dispatchers.
 
 import { checkAndAwardMilestone } from './milestones';
+import { apiPost } from '@/lib/api-client';
 
 // ─── Event Bus ────────────────────────────────────────────────
 
@@ -38,11 +39,7 @@ export async function onBasketCreated(anonymousId: string): Promise<void> {
 
   try {
     // 1. Increment score
-    const scoreRes = await fetch('/api/gamification/increment-baskets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId }),
-    });
+    const scoreRes = await await apiPost('/api/gamification/increment-baskets', JSON.stringify({ anonymousId }));
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -79,11 +76,7 @@ export async function onBasketCreated(anonymousId: string): Promise<void> {
     }
 
     // Recalculate score after milestones
-    await fetch('/api/gamification/recalculate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId }),
-    });
+    await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
   } catch (err) {
     console.error('[gamification/events] onBasketCreated error:', err);
   }
@@ -109,11 +102,7 @@ export async function onTradeExecuted(
 
   try {
     // 1. Increment score with style info
-    const scoreRes = await fetch('/api/gamification/increment-trades', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId, tradeStyle, investorStyle }),
-    });
+    const scoreRes = await await apiPost('/api/gamification/increment-trades', JSON.stringify({ anonymousId, tradeStyle, investorStyle }));
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -167,11 +156,7 @@ export async function onTradeExecuted(
     }
 
     // Recalculate score
-    await fetch('/api/gamification/recalculate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId }),
-    });
+    await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
   } catch (err) {
     console.error('[gamification/events] onTradeExecuted error:', err);
   }
@@ -188,11 +173,7 @@ export async function onAISessionStarted(anonymousId: string): Promise<void> {
 
   try {
     // 1. Increment score
-    const scoreRes = await fetch('/api/gamification/increment-ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId }),
-    });
+    const scoreRes = await await apiPost('/api/gamification/increment-ai', JSON.stringify({ anonymousId }));
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -212,11 +193,7 @@ export async function onAISessionStarted(anonymousId: string): Promise<void> {
     }
 
     // Recalculate
-    await fetch('/api/gamification/recalculate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId }),
-    });
+    await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
   } catch (err) {
     console.error('[gamification/events] onAISessionStarted error:', err);
   }
@@ -234,11 +211,7 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
 
   try {
     // 1. Sync streak
-    const streakRes = await fetch('/api/session/streak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonymousId }),
-    });
+    const streakRes = await await apiPost('/api/session/streak', JSON.stringify({ anonymousId }));
 
     if (!streakRes.ok) return;
 
@@ -284,11 +257,7 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
       }
 
       // Recalculate score (streak bonus changes)
-      await fetch('/api/gamification/recalculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anonymousId }),
-      });
+      await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
     }
   } catch (err) {
     console.error('[gamification/events] onDailyOpen error:', err);

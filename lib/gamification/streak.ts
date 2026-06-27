@@ -1,3 +1,4 @@
+import { apiPost } from '@/lib/api-client';
 // ─── Gamification: Streak ────────────────────────────────────
 // Client-callable wrappers around the /api/session/streak endpoint.
 // (Streak tracking via authenticated user ID — anonymous sessions removed.)
@@ -14,11 +15,7 @@ export interface StreakData {
  * Uses user_id now (was anonymous_id pre-cleanup).
  */
 export async function recordDailyOpen(userId: string): Promise<StreakData> {
-  const res = await fetch('/api/session/streak', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  });
+  const res = await await apiPost('/api/session/streak', JSON.stringify({ userId }));
 
   if (!res.ok) {
     throw new Error(`[streak] recordDailyOpen failed: ${res.status}`);

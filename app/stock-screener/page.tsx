@@ -1,5 +1,7 @@
 'use client';
 
+import { apiPost } from '@/lib/api-client';
+
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -126,11 +128,7 @@ export default function StockScreenerPage() {
       if (filters.dividendYieldMax) body.dividendYieldMax = parseFloat(filters.dividendYieldMax);
       if (filters.sector) body.sector = filters.sector;
 
-      const res = await fetch('/api/screener/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await await apiPost('/api/screener/search', JSON.stringify(body));
       const data = await res.json();
       setResults(data.results || []);
       setScanned(data.scanned || 0);

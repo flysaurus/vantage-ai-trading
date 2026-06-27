@@ -1,5 +1,7 @@
 'use client';
 
+import { apiPost } from '@/lib/api-client';
+
 import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ShareCardModal } from '@/components/sharing/ShareCardModal';
@@ -17,11 +19,7 @@ const INVESTOR_STYLES = [
 
 async function saveInvestorStyle(userId: string, style: string): Promise<boolean> {
   try {
-    const res = await fetch('/api/db/users/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, investorStyle: style }),
-    });
+    const res = await await apiPost('/api/db/users/update', JSON.stringify({ userId, investorStyle: style }));
     if (res.ok) {
       localStorage.setItem('vantage_investor_style', style);
       return true;

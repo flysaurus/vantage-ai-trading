@@ -1,4 +1,6 @@
 'use client';
+
+import { apiGet, apiPost } from '@/lib/api-client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, Settings, X } from 'lucide-react';
@@ -44,7 +46,7 @@ export function Header() {
 
   const fetchUnread = useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications/unread');
+      const res = await await apiGet('/api/notifications/unread');
       if (res.ok) {
         const data = await res.json();
         setUnreadCount(data.count || 0);
@@ -54,7 +56,7 @@ export function Header() {
 
   const fetchList = useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications/list');
+      const res = await await apiGet('/api/notifications/list');
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
@@ -64,11 +66,7 @@ export function Header() {
 
   const markAllRead = async () => {
     try {
-      await fetch('/api/notifications/mark-read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ all: true }),
-      });
+      await await apiPost('/api/notifications/mark-read', JSON.stringify({ all: true }));
       setUnreadCount(0);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch { /* ignore */ }

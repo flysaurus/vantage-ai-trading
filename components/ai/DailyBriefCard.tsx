@@ -1,4 +1,6 @@
 'use client';
+
+import { apiGet } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 
 interface MarketSnapshot {
@@ -49,7 +51,7 @@ export default function DailyBriefCard() {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    fetch('/api/ai/daily-brief')
+    apiGet('/api/ai/daily-brief')
       .then((r) => r.json())
       .then(setData)
       .catch(() => {})

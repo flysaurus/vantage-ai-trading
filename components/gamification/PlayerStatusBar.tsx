@@ -1,5 +1,7 @@
 'use client';
 
+import { apiPost } from '@/lib/api-client';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useInvestorScore } from '@/hooks/useInvestorScore';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -67,11 +69,7 @@ export function PlayerStatusBar() {
 
     if (user?.id) {
       try {
-        await fetch('/api/db/users/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, investorStyle: newStyle }),
-        });
+        await await apiPost('/api/db/users/update', JSON.stringify({ userId: user.id, investorStyle: newStyle }));
       } catch {}
     }
 

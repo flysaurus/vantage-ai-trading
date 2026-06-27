@@ -1,5 +1,7 @@
 'use client';
 
+import { apiPost } from '@/lib/api-client';
+
 /**
  * PortfolioContext — single source of truth for demo portfolio data.
  *
@@ -408,11 +410,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (symbols.length === 0) return;
 
       console.log('[Portfolio] Fetching quotes for:', symbols);
-      const res = await fetch('/api/market/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols }),
-      });
+      const res = await await apiPost('/api/market/quotes', JSON.stringify({ symbols }));
 
       if (!res.ok) throw new Error('Market data fetch failed');
 
@@ -788,11 +786,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const symbols = positionsToSell.map(p => p.symbol);
     let quoteMap: Record<string, any> = {};
     try {
-      const res = await fetch('/api/market/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols }),
-      });
+      const res = await await apiPost('/api/market/quotes', JSON.stringify({ symbols }));
       const data = await res.json();
       quoteMap = data?.quotes || {};
     } catch { /* continue */ }

@@ -10,6 +10,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+import { apiPost } from '@/lib/api-client';
+
 type Range = '1D' | '1W' | '1M' | 'YTD' | 'ALL';
 
 interface PositionInput {
@@ -60,21 +62,17 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
       setLoading(true);
       setError(false);
       try {
-        const res = await fetch('/api/portfolio/chart', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            positions: positions.map((p) => ({
-              symbol: p.symbol,
-              shares: p.shares,
-              buyDate: p.buyDate,
-              avgCost: p.avgCost,
-              totalCost: p.totalCost ?? p.shares * (p.avgCost ?? 0),
-            })),
-            cashBalance,
-            range: r,
-          }),
-        });
+        const res = await apiPost('/api/portfolio/chart', JSON.stringify({
+          positions: positions.map((p) => ({
+            symbol: p.symbol,
+            shares: p.shares,
+            buyDate: p.buyDate,
+            avgCost: p.avgCost,
+            totalCost: p.totalCost ?? p.shares * (p.avgCost ?? 0),
+          })),
+          cashBalance,
+          range: r,
+        }));
 
         const json = await res.json();
         if (!json.points || json.points.length === 0) {

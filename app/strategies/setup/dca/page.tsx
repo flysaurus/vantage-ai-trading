@@ -1,5 +1,7 @@
 'use client';
 
+import { apiGet } from '@/lib/api-client';
+
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -110,7 +112,7 @@ export default function DcaSetupPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/strategies/dca/get-all');
+        const res = await await apiGet('/api/strategies/dca/get-all');
         if (res.ok) {
           const data = await res.json();
           setExistingSchedules(data.schedules || []);

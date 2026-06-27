@@ -16,6 +16,7 @@
 
 import type { AICardComponent, Position, RebalanceSession } from '@/types';
 import { extractStructuredCards, structuredCardToComponent } from './schemas';
+import { apiPost } from '@/lib/api-client';
 
 const DEEPSEEK_CHAT_COST_PER_1K_INPUT = 0.00014;
 const DEEPSEEK_CHAT_COST_PER_1K_OUTPUT = 0.00028;
@@ -266,11 +267,7 @@ export async function streamChat(
       investorStyle,
     };
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newBody),
-    });
+    const res = await await apiPost('/api/chat', JSON.stringify(newBody));
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -327,11 +324,7 @@ export async function streamChat(
   }
 
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, context, responseMode }),
-    });
+    const res = await await apiPost('/api/chat', JSON.stringify({ messages, context, responseMode }));
 
     // Diagnostic: check response headers
     const chatSource = res.headers.get('X-Chat-Source') || 'unknown';
@@ -458,15 +451,11 @@ export async function generateTradeSignal(
   ];
 
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const res = await await apiPost('/api/chat', JSON.stringify({
         messages,
         context,
         format: 'trade_signal',
-      }),
-    });
+      }));
 
     if (!res.ok) return null;
 
@@ -521,11 +510,7 @@ export async function analyzePortfolioRisk(positions: Position[], account?: { eq
   ];
 
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, context: { portfolio: account }, format: 'risk_analysis' }),
-    });
+    const res = await await apiPost('/api/chat', JSON.stringify({ messages, context: { portfolio: account }, format: 'risk_analysis' }));
 
     if (!res.ok) return null;
 
@@ -587,11 +572,7 @@ export async function generateRebalanceSuggestions(
   ];
 
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, format: 'rebalance_plan' }),
-    });
+    const res = await await apiPost('/api/chat', JSON.stringify({ messages, format: 'rebalance_plan' }));
 
     if (!res.ok) return null;
 
@@ -646,11 +627,7 @@ export async function scanForOpportunities(
   ];
 
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, context, format: 'trade_signal' }),
-    });
+    const res = await await apiPost('/api/chat', JSON.stringify({ messages, context, format: 'trade_signal' }));
 
     if (!res.ok) return [];
 

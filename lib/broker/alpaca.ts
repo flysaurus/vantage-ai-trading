@@ -21,6 +21,7 @@ import type {
   HistoricalBar,
   MarketStatus,
 } from '@/types/broker';
+import { apiGet } from '@/lib/api-client';
 
 interface SessionPayload {
   configured: boolean;
@@ -50,7 +51,7 @@ export class AlpacaAdapter implements BrokerAdapter {
 
     // Get session from multi-broker session endpoint
     // This decrypts credentials from the vault and verifies connectivity
-    const res = await fetch('/api/broker/session');
+    const res = await apiGet('/api/broker/session');
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Session init failed' }));

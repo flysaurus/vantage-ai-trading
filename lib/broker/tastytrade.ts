@@ -20,6 +20,7 @@ import type {
   HistoricalBar,
   MarketStatus,
 } from '@/types/broker';
+import { apiGet } from '@/lib/api-client';
 
 interface SessionPayload {
   configured: boolean;
@@ -50,7 +51,7 @@ export class TastytradeAdapter implements BrokerAdapter {
     this.config = config;
 
     // Get session from multi-broker session endpoint
-    const res = await fetch('/api/broker/session');
+    const res = await apiGet('/api/broker/session');
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Session init failed' }));

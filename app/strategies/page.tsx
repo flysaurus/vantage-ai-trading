@@ -1,5 +1,7 @@
 'use client';
 
+import { apiGet } from '@/lib/api-client';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, TrendingUp, Activity } from 'lucide-react';
@@ -20,7 +22,7 @@ export default function StrategiesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/strategies/dca/get-all');
+        const res = await await apiGet('/api/strategies/dca/get-all');
         if (res.ok) {
           const data = await res.json();
           setActiveSchedules(data.schedules || []);

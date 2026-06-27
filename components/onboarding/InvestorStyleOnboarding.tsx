@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { getAccessToken } from '@/lib/auth';
+import { apiPost } from '@/lib/api-client';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { OnboardingStyleSelection } from './OnboardingStyleSelection';
 import { BrokerSelection } from './BrokerSelection';
@@ -13,7 +13,6 @@ type OnboardingStep = 'style' | 'broker' | 'credentials';
 
 export function InvestorStyleOnboarding() {
   const { user } = useAuth();
-  const token = getAccessToken();
   const [step, setStep] = useState<OnboardingStep>('style');
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle | null>(null);
   const [selectedBrokerId, setSelectedBrokerId] = useState<BrokerId | null>(null);
@@ -31,20 +30,10 @@ export function InvestorStyleOnboarding() {
     setError(null);
 
     try {
-      // Use the API route (server-side service role) — NOT the browser
-      // Supabase client (anon key, no JWT, blocked by RLS).
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch('/api/db/users/update', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          userId: user.id,
-          investorStyle: style,
-          investorStyleOnboarded: true,
-        }),
+      const res = await apiPost('/api/db/users/update', {
+        userId: user.id,
+        investorStyle: style,
+        investorStyleOnboarded: true,
       });
 
       if (!res.ok) {
@@ -82,19 +71,11 @@ export function InvestorStyleOnboarding() {
     setError(null);
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch('/api/broker/connect', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          brokerId: selectedBrokerId,
-          apiKey: credentials.apiKey,
-          secretKey: credentials.secretKey,
-          environment: credentials.environment,
-        }),
+      const res = await apiPost('/api/broker/connect', {
+        brokerId: selectedBrokerId,
+        apiKey: credentials.apiKey,
+        secretKey: credentials.secretKey,
+        environment: credentials.environment,
       });
 
       const data = await res.json();

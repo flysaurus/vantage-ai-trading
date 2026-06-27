@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api-client';
 
 import { getMarketStatus } from '@/lib/market-hours';
 
@@ -37,8 +38,8 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
     const fetchData = async () => {
       try {
         const [meRes, portfolioRes] = await Promise.all([
-          fetch('/api/auth/me'),
-          fetch('/api/portfolio/summary'),
+          apiGet('/api/auth/me'),
+          apiGet('/api/portfolio/summary'),
         ]);
 
         const me = await meRes.json();

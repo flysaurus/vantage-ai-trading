@@ -1,5 +1,7 @@
 'use client';
 
+import { apiGet } from '@/lib/api-client';
+
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -71,7 +73,7 @@ export default function NewsFeedPage() {
     try {
       const fetches: Promise<Response>[] = [
         // Macro news
-        fetch('/api/news?limit=20', { cache: 'no-store' }),
+        apiGet('/api/news?limit=20'),
       ];
 
       // Portfolio news (only if user has holdings)
