@@ -47,7 +47,7 @@ export function BrokerSelection() {
 
   return (
     <div style={{
-      minHeight: '100dvh',
+      height: '100dvh',
       background: `
         radial-gradient(ellipse 200% 70% at 50% -10%, rgba(34,211,238,0.50) 0%, rgba(14,116,144,0.30) 35%, transparent 65%),
         radial-gradient(ellipse 100% 60% at 85% 100%, rgba(99,102,241,0.20) 0%, transparent 70%),
@@ -56,6 +56,7 @@ export function BrokerSelection() {
       display: 'flex',
       flexDirection: 'column',
       overflowY: 'auto',
+      WebkitOverflowScrolling: 'touch',
     }}>
       {/* ── Orb Hero ── */}
       <div style={{
