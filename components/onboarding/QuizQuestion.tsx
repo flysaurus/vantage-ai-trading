@@ -67,6 +67,7 @@ export function QuizQuestion({
   const gradientClass = `bg-onboarding-${questionNumber}`;
   const [line1, line2] = QUESTION_LINES[question.id] || [question.question, ''];
   const isFirst = questionNumber === 1;
+  const isLastQ = questionNumber === totalQuestions;
 
   const handleTap = useCallback((key: string) => {
     if (leaving) return;
@@ -155,6 +156,41 @@ export function QuizQuestion({
 
       </div>
 
+      {/* ── PROGRESS LABELS ── */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          padding: '0 20px',
+          flexShrink: 0,
+          marginBottom: '6px',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '11px',
+            fontWeight: 400,
+            color: 'rgba(255,255,255,0.50)',
+            flex: 1,
+          }}
+        >
+          INVESTOR STYLE
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '11px',
+            fontWeight: 400,
+            color: 'rgba(34,211,238,0.70)',
+            textAlign: 'right',
+            minWidth: '40px',
+          }}
+        >
+          RISK
+        </span>
+      </div>
+
       {/* ── PROGRESS BAR ── */}
       <div
         style={{
@@ -165,21 +201,28 @@ export function QuizQuestion({
           height: '3px',
         }}
       >
-        {Array.from({ length: totalQuestions }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              flex: 1,
-              height: '3px',
-              borderRadius: '1px',
-              background:
-                i < questionNumber
-                  ? 'var(--accent)'
-                  : 'rgba(255,255,255,0.15)',
-              transition: 'background 300ms ease-out',
-            }}
-          />
-        ))}
+        {Array.from({ length: totalQuestions }).map((_, i) => {
+          const isFilled = i < questionNumber;
+          const isLast = i === totalQuestions - 1;
+          return (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                height: '3px',
+                borderRadius: '1px',
+                background: isFilled
+                  ? isLast
+                    ? 'var(--accent)'
+                    : 'rgba(255,255,255,0.60)'
+                  : isLast
+                    ? 'rgba(34,211,238,0.15)'
+                    : 'rgba(255,255,255,0.15)',
+                transition: 'background 300ms ease-out',
+              }}
+            />
+          );
+        })}
       </div>
 
       {/* ── QUESTION AREA ── */}
@@ -192,14 +235,18 @@ export function QuizQuestion({
         <p
           style={{
             fontSize: '11px',
-            color: 'rgba(34,211,238,0.7)',
+            color: isLastQ
+              ? 'var(--accent)'
+              : 'rgba(34,211,238,0.7)',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
             marginBottom: '12px',
             fontWeight: 500,
           }}
         >
-          {question.label} · {questionNumber} OF {totalQuestions}
+          {isLastQ
+            ? `YOUR RISK PROFILE · ${questionNumber} OF ${totalQuestions}`
+            : `${question.label} · ${questionNumber} OF ${totalQuestions}`}
         </p>
 
         {/* Two-line headline */}
