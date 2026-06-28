@@ -125,6 +125,7 @@ export default function CreateAccountPage() {
 
   // ── Validation state ─────────────────────────────────────
   const [emailError, setEmailError] = useState('');
+  const [emailDuplicate, setEmailDuplicate] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
 
@@ -160,6 +161,7 @@ export default function CreateAccountPage() {
     !!lastName.trim() &&
     isValidEmail(email) &&
     emailError === '' &&
+    !emailDuplicate &&
     allPasswordReqsMet &&
     password === confirmPassword &&
     confirmPassword.length > 0 &&
@@ -228,6 +230,7 @@ export default function CreateAccountPage() {
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
+    setEmailDuplicate(false);
     if (emailTouched && value.length > 0 && !isValidEmail(value)) {
       setEmailError('Enter a valid email address');
     } else {
@@ -240,6 +243,26 @@ export default function CreateAccountPage() {
 
     setSubmitting(true);
     setApiError('');
+    setEmailError('');
+    setEmailDuplicate(false);
+
+    // ── Pre-flight: check if email already registered ────
+    try {
+      const checkRes = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const { exists } = await checkRes.json();
+
+      if (exists) {
+        setEmailDuplicate(true);
+        setSubmitting(false);
+        return;
+      }
+    } catch {
+      // Fail open — proceed with signUp if check-email is down
+    }
 
     const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
     const supabase = getSupabaseBrowserClient();
@@ -261,14 +284,12 @@ export default function CreateAccountPage() {
     });
 
     if (error) {
-      // Detect duplicate email from Supabase error
+      // Detect duplicate email from Supabase error (fallback)
       if (
         error.message?.toLowerCase().includes('already') ||
         error.code === 'user_already_exists'
       ) {
-        setApiError(
-          'An account with this email already exists. Sign in instead.',
-        );
+        setEmailDuplicate(true);
       } else {
         setApiError(error.message);
       }
@@ -634,9 +655,36 @@ export default function CreateAccountPage() {
           value={email}
           onChange={handleEmailChange}
           onBlur={handleEmailBlur}
-          error={emailError}
+          error={emailDuplicate ? '' : emailError}
           disabled={submitting}
         />
+
+        {/* Inline duplicate email error */}
+        {emailDuplicate && (
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 400,
+              color: 'var(--loss)',
+              fontFamily: 'var(--font-sans)',
+              marginTop: '4px',
+              marginBottom: 0,
+              lineHeight: 1.4,
+            }}
+          >
+            An account with this email already exists.{' '}
+            <span
+              onClick={() => router.push('/login')}
+              style={{
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+              }}
+            >
+              Sign in instead →
+            </span>
+          </p>
+        )}
 
         {/* Password */}
         <div style={{ width: '100%' }}>
