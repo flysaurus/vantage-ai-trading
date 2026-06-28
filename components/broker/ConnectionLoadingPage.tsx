@@ -103,8 +103,8 @@ export function ConnectionLoadingPage({
         const newStatus = data.connection_status as string | null;
 
         if (newStatus === 'connected') {
-          // Trigger state re-evaluation → routes to 'authenticated'
-          router.refresh();
+          // Hard reload forces remount → useAppState re-evaluates → 'authenticated'
+          window.location.href = '/';
         } else if (newStatus === 'failed') {
           setStatus('failed');
           if (pollRef.current) {

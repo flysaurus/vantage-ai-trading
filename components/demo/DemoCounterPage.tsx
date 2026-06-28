@@ -44,16 +44,18 @@ export function DemoCounterPage({ profile, onEnter }: DemoCounterPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
 
-  // ── Days remaining ────────────────────────────────────
+  // ── Days remaining (robust: total minus elapsed) ─────
 
   const daysLeft = useMemo(() => {
-    if (!profile?.demo_expires_at) return null;
+    if (!profile?.demo_start_at || !profile?.demo_expires_at) return null;
     const now = Date.now();
-    const expires = new Date(profile.demo_expires_at).getTime();
-    const ms = expires - now;
-    if (ms <= 0) return 0; // should not happen (demo-expired handles this)
-    return Math.ceil(ms / (1000 * 60 * 60 * 24));
-  }, [profile?.demo_expires_at]);
+    const start = new Date(profile.demo_start_at).getTime();
+    const totalDays = 30;
+    const elapsedMs = now - start;
+    const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
+    const remaining = Math.max(0, Math.ceil(totalDays - elapsedDays));
+    return remaining;
+  }, [profile?.demo_start_at, profile?.demo_expires_at]);
 
   // ── Error handling ────────────────────────────────────
 

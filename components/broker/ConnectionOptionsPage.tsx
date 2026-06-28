@@ -53,10 +53,9 @@ export function ConnectionOptionsPage() {
   // ── Back → broker-selection ────────────────────────────
 
   const handleBack = useCallback(() => {
-    // When real API exists, clear connection_type first.
-    // For now, refresh re-evaluates state from DB —
-    // if connection_type is null, routes back to broker-selection.
-    router.refresh();
+    // Hard reload forces remount → useAppState re-evaluates from DB.
+    // If connection_type was cleared, routes back to broker-selection.
+    window.location.href = '/';
   }, [router]);
 
   // ── Start demo instead ─────────────────────────────────
@@ -69,7 +68,7 @@ export function ConnectionOptionsPage() {
         credentials: 'include',
       });
       if (res.ok) {
-        router.refresh();
+        window.location.href = '/';
       }
     } catch {
       // Silent fail — user can retry

@@ -58,9 +58,9 @@ export function BrokerChoicePage() {
         return;
       }
 
-      // Refresh triggers useAppState re-evaluation →
-      // sees demo_start_at → routes to 'demo-counter' → MainApp
-      router.refresh();
+      // Hard navigation forces full remount → useAppState re-evaluates
+      // from fresh DB data (router.refresh preserves React state, stale).
+      window.location.href = '/';
     } catch {
       setDemoError('Network error. Check your connection.');
       setLoading(null);
