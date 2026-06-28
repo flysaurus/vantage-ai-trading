@@ -12,6 +12,7 @@ import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
 import { ConnectionOptionsPage } from '@/components/broker/ConnectionOptionsPage';
+import { ConnectionLoadingPage } from '@/components/broker/ConnectionLoadingPage';
 import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
@@ -77,6 +78,11 @@ export default function Page() {
     return <ConnectionOptionsPage />;
   }
 
-  // demo-counter (dismissed) / connection-loading / authenticated
+  // connection-loading: broker syncing — animated spinner + polling
+  if (state === 'connection-loading') {
+    return <ConnectionLoadingPage profile={profile} />;
+  }
+
+  // demo-counter (dismissed) / authenticated
   return <MainApp />;
 }
