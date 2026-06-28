@@ -279,7 +279,7 @@ export default function CreateAccountPage() {
           pending_choice: pendingChoice,
           pending_connection_type: pendingConnectionType ?? null,
         },
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
       },
     });
 
