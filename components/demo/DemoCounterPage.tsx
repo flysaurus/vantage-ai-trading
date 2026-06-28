@@ -1,377 +1,379 @@
-// ─── DemoCounterPage ──────────────────────────────────────
-// Shows on EVERY login for demo users (demo_start_at set, not expired).
-// AppState = 'demo-counter'.
+// ─── DemoCounterPage ────────────────────────────────────────
+// Shown in two contexts:
+//  1. First-time: inside /welcome after "YOU'RE IN." (isFirstTime=true)
+//  2. Returning: when AppState = 'demo-counter' on login (isFirstTime=false)
 //
-// Displays days remaining, upgrade prompt, and enter-app CTA.
-// Dismissible — tapping "Enter Vantage" calls onEnter which
-// tells the routing layer to show MainApp.
+// Displays days remaining in demo, upgrade prompt, and enter-app CTA.
+// Fetches demo_expires_at from /api/connections/status if prop is null.
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { UserProfile } from '@/lib/app-state';
 
-// ── Spinner ─────────────────────────────────────────────
+// ── Props ───────────────────────────────────────────────────
+
+interface DemoCounterPageProps {
+  // New prompt-6 pattern
+  isFirstTime?: boolean;
+  onContinue?: () => void;
+  demoExpiresAt?: string | null;
+  onConnectBroker?: () => void;
+  // Legacy support (used by app/page.tsx state='demo-counter')
+  profile?: UserProfile | null;
+  onEnter?: () => void;
+}
+
+// ── Sub-components ──────────────────────────────────────────
 
 function Spinner() {
   return (
     <div
       style={{
-        width: '20px',
-        height: '20px',
+        width: '24px',
+        height: '24px',
         borderRadius: '50%',
         border: '2.5px solid rgba(255,255,255,0.15)',
         borderTopColor: 'var(--accent)',
         animation: 'spin 0.6s linear infinite',
+        flexShrink: 0,
       }}
     />
   );
 }
 
-// ── Props ──────────────────────────────────────────────
+// ── Main ────────────────────────────────────────────────────
 
-interface DemoCounterPageProps {
-  profile: UserProfile | null;
-  onEnter: () => void;
-}
+export default function DemoCounterPage({
+  isFirstTime = false,
+  onContinue,
+  demoExpiresAt: demoExpiresAtProp,
+  onConnectBroker,
+  profile,
+  onEnter,
+}: DemoCounterPageProps) {
+  // Resolve: prop takes priority, then profile.demoExpiresAt (legacy), then null
+  const resolvedExpiresAt = demoExpiresAtProp ?? profile?.demo_expires_at ?? null;
+  const resolvedOnContinue = onContinue || onEnter || (() => {});
+  const [expiresAt, setExpiresAt] = useState<string | null>(resolvedExpiresAt);
+  const [loading, setLoading] = useState(!resolvedExpiresAt);
+  const [fetchError, setFetchError] = useState('');
 
-// ── Main ───────────────────────────────────────────────
-
-export function DemoCounterPage({ profile, onEnter }: DemoCounterPageProps) {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [retrying, setRetrying] = useState(false);
-
-  // ── Days remaining (robust: total minus elapsed) ─────
-
-  const daysLeft = useMemo(() => {
-    if (!profile?.demo_start_at || !profile?.demo_expires_at) return null;
-    const now = Date.now();
-    const start = new Date(profile.demo_start_at).getTime();
-    const totalDays = 30;
-    const elapsedMs = now - start;
-    const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
-    const remaining = Math.max(0, Math.ceil(totalDays - elapsedDays));
-    return remaining;
-  }, [profile?.demo_start_at, profile?.demo_expires_at]);
-
-  // ── Error handling ────────────────────────────────────
-
+  // Fetch demo_expires_at if not provided
   useEffect(() => {
-    if (!profile) {
-      // Profile not loaded yet — give it a moment
-      const timer = setTimeout(() => {
-        if (!retrying) {
-          setRetrying(true);
-          // Force re-render by triggering state change
-          setError(null);
-        } else {
-          setError('Something went wrong. Please refresh.');
+    if (resolvedExpiresAt) return;
+
+    let cancelled = false;
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/connections/status', {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        if (!cancelled) {
+          setExpiresAt(data.demo_expires_at ?? null);
         }
-      }, 2000);
-      return () => clearTimeout(timer);
-    } else {
-      setError(null);
-      setRetrying(false);
+      } catch {
+        if (!cancelled) {
+          setFetchError('Something went wrong. Please refresh.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
-  }, [profile, retrying]);
 
-  // ── Connect broker ────────────────────────────────────
+    fetchStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [demoExpiresAtProp]);
 
-  const handleConnectBroker = useCallback(() => {
-    // TODO: When connection API is ready, call /api/connections/start
-    // then router.refresh() to trigger 'connection-options' state
-    router.push('/');
-  }, [router]);
+  // ── Derived ───────────────────────────────────────────────
 
-  // ── Loading state ─────────────────────────────────────
+  const daysRemaining = expiresAt
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(expiresAt).getTime() - Date.now()) /
+            (1000 * 60 * 60 * 24),
+        ),
+      )
+    : 0;
 
-  if (!profile && !error) {
+  const eyebrowText = isFirstTime ? 'DEMO ACTIVATED' : 'WELCOME BACK';
+
+  const subtext = isFirstTime
+    ? "Your $100,000 virtual portfolio is ready. Let's put it to work."
+    : "You're trading with $100,000 of virtual money.";
+
+  const enterButtonText = isFirstTime
+    ? 'Start trading \u2192'
+    : 'Enter Vantage \u2192';
+
+  // ── Loading state ─────────────────────────────────────────
+
+  if (loading) {
     return (
       <div
         style={{
-          width: '100%',
-          height: '100dvh',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background:
-            'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
-          gap: '16px',
+          minHeight: '100dvh',
+          background: 'var(--bg)',
+          color: '#fff',
+          fontFamily: 'var(--font-sans)',
         }}
       >
-        <VantageOrb size={56} animate showEntrance />
         <Spinner />
-        <span
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: '15px',
-            color: 'rgba(255,255,255,0.50)',
-          }}
-        >
-          Loading your demo…
-        </span>
       </div>
     );
   }
 
-  // ── Error state ───────────────────────────────────────
+  // ── Error state ───────────────────────────────────────────
 
-  if (error) {
+  if (fetchError) {
     return (
       <div
         style={{
-          width: '100%',
-          height: '100dvh',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background:
-            'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
-          padding: '0 24px',
+          minHeight: '100dvh',
+          background: 'var(--bg)',
+          color: '#fff',
+          fontFamily: 'var(--font-sans)',
+          padding: '24px',
           gap: '16px',
         }}
       >
-        <VantageOrb size={56} animate showEntrance={false} />
-        <span
+        <p
           style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: '16px',
-            fontWeight: 500,
-            color: 'var(--loss)',
+            fontSize: '15px',
+            color: 'rgba(255,255,255,0.60)',
             textAlign: 'center',
+            margin: 0,
           }}
         >
-          {error}
-        </span>
+          {fetchError}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '999px',
+            padding: '10px 24px',
+            color: 'var(--accent)',
+            fontSize: '14px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          Refresh
+        </button>
       </div>
     );
   }
 
-  // ── Days label ────────────────────────────────────────
-
-  const daysLabel =
-    daysLeft === null
-      ? '…'
-      : daysLeft === 1
-        ? '1 day'
-        : `${daysLeft} days`;
-
-  // ── Render ────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────
 
   return (
     <div
       style={{
-        width: '100%',
-        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
+        minHeight: '100dvh',
+        background: 'var(--bg)',
+        color: '#fff',
+        fontFamily: 'var(--font-sans)',
+        alignItems: 'center',
+        padding: '24px',
       }}
     >
       {/* ═══ TOP BAR ═══ */}
       <div
         style={{
-          height: '56px',
+          width: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          flexShrink: 0,
-          paddingTop: 'env(safe-area-inset-top, 0px)',
+          minHeight: '60px',
         }}
       >
-        <VantageOrb size={44} animate showEntrance={false} />
+        <VantageOrb size={44} animate />
       </div>
 
-      {/* ═══ HEADLINE ═══ */}
-      <div
+      {/* ═══ EYEBROW ═══ */}
+      <p
         style={{
-          padding: '40px 24px 0',
-          flexShrink: 0,
+          marginTop: '24px',
+          marginBottom: '12px',
+          fontSize: '12px',
+          fontWeight: 500,
+          color: 'var(--accent)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.15em',
           textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
         }}
       >
-        <h2 style={{ margin: 0 }}>
-          <span
-            style={{
-              display: 'block',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '48px',
-              fontWeight: 800,
-              color: 'var(--text-primary)',
-              lineHeight: 1.1,
-            }}
-          >
-            You have {daysLabel}
-          </span>
-          <span
-            style={{
-              display: 'block',
-              fontFamily: 'var(--font-serif)',
-              fontSize: '48px',
-              fontWeight: 400,
-              fontStyle: 'italic',
-              color: 'var(--accent)',
-              lineHeight: 1.1,
-            }}
-          >
-            left in demo.
-          </span>
-        </h2>
+        {eyebrowText}
+      </p>
 
+      {/* ═══ HEADLINE ═══ */}
+      <h1
+        style={{
+          margin: '0 0 12px',
+          textAlign: 'center',
+          lineHeight: 1.15,
+          fontSize: '48px',
+        }}
+      >
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-sans)',
+            fontWeight: 800,
+            color: '#ffffff',
+          }}
+        >
+          {daysRemaining === 1
+            ? 'You have 1 day'
+            : `You have ${daysRemaining} days`}
+        </span>
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-serif)',
+            fontWeight: 400,
+            fontStyle: 'italic',
+            color: '#ffffff',
+          }}
+        >
+          left in demo.
+        </span>
+      </h1>
+
+      {/* ═══ SUBTEXT ═══ */}
+      <p
+        style={{
+          fontSize: '14px',
+          fontWeight: 400,
+          color: 'rgba(255,255,255,0.60)',
+          textAlign: 'center',
+          margin: '0 0 28px',
+          lineHeight: 1.5,
+          maxWidth: '340px',
+        }}
+      >
+        {subtext}
+      </p>
+
+      {/* ═══ UPGRADE CARD ═══ */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '380px',
+          borderRadius: '16px',
+          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(255,255,255,0.03)',
+          padding: '20px',
+          marginBottom: '20px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '17px',
+            fontWeight: 700,
+            marginBottom: '6px',
+          }}
+        >
+          Want to use real money?
+        </div>
         <p
           style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: '15px',
-            fontWeight: 400,
+            fontSize: '14px',
             color: 'rgba(255,255,255,0.60)',
-            textAlign: 'center',
-            margin: '14px 0 0',
+            margin: '0 0 16px',
             lineHeight: 1.5,
           }}
         >
-          You&rsquo;re trading with $100,000 of virtual money.
+          Connect your broker to get AI analysis of your actual
+          portfolio.
         </p>
-      </div>
-
-      {/* ═══ CONTENT AREA ═══ */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          padding: '32px 24px 0',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          scrollbarWidth: 'none',
-        }}
-        className="hide-scrollbar"
-      >
-        {/* ── Upgrade frosted card ── */}
-        <div
-          style={{
-            width: '100%',
-            padding: '24px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid var(--border-card)',
-            borderRadius: '20px',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: '17px',
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              lineHeight: 1.3,
-            }}
-          >
-            Want to use real money?
-          </span>
-
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: '14px',
-              fontWeight: 400,
-              color: 'rgba(255,255,255,0.60)',
-              lineHeight: 1.5,
-            }}
-          >
-            Connect your broker to get AI analysis of your actual
-            portfolio.
-          </span>
-
-          <button
-            onClick={handleConnectBroker}
-            style={{
-              width: '100%',
-              height: '48px',
-              borderRadius: 'var(--radius-pill)',
-              border: 'none',
-              background: 'var(--accent)',
-              color: '#000000',
-              fontSize: '16px',
-              fontWeight: 600,
-              fontFamily: 'var(--font-sans)',
-              cursor: 'pointer',
-              marginTop: '4px',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-            onTouchStart={(e) => {
-              (e.currentTarget as HTMLElement).style.transform =
-                'scale(0.98)';
-            }}
-            onTouchEnd={(e) => {
-              (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-            }}
-          >
-            Connect a broker →
-          </button>
-        </div>
-
-        {/* ── Settings note ── */}
-        <span
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: '12px',
-            fontWeight: 400,
-            color: 'rgba(255,255,255,0.40)',
-            textAlign: 'center',
-            lineHeight: 1.4,
-            paddingBottom: '8px',
-          }}
-        >
-          You can also do this anytime from Settings.
-        </span>
-      </div>
-
-      {/* ═══ ENTER APP BUTTON ═══ */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '16px 24px',
-          paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
-        }}
-      >
         <button
-          onClick={onEnter}
+          onClick={onConnectBroker || resolvedOnContinue}
           style={{
             width: '100%',
-            height: '56px',
-            borderRadius: 'var(--radius-pill)',
+            height: '48px',
+            borderRadius: '999px',
             border: 'none',
-            background: '#ffffff',
-            color: '#000000',
-            fontSize: '17px',
-            fontWeight: 700,
+            background: 'var(--accent)',
+            color: '#000',
+            fontSize: '15px',
+            fontWeight: 600,
             fontFamily: 'var(--font-sans)',
             cursor: 'pointer',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-          onTouchStart={(e) => {
-            (e.currentTarget as HTMLElement).style.transform = 'scale(0.98)';
-          }}
-          onTouchEnd={(e) => {
-            (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+            transition: 'opacity 0.2s',
           }}
         >
-          Enter Vantage →
+          Connect a broker &rarr;
         </button>
       </div>
+
+      {/* ═══ SETTINGS NOTE ═══ */}
+      <p
+        style={{
+          margin: '0 0 24px',
+          fontSize: '12px',
+          fontWeight: 400,
+          color: 'rgba(255,255,255,0.40)',
+          textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
+          lineHeight: 1.5,
+        }}
+      >
+        You can also do this anytime from Settings.
+      </p>
+
+      {/* ═══ ENTER APP BUTTON ═══ */}
+      <button
+        onClick={resolvedOnContinue}
+        style={{
+          width: '100%',
+          maxWidth: '380px',
+          height: '56px',
+          borderRadius: '999px',
+          border: 'none',
+          background: '#ffffff',
+          color: '#000000',
+          fontSize: '17px',
+          fontWeight: 700,
+          fontFamily: 'var(--font-sans)',
+          cursor: 'pointer',
+          transition: 'opacity 0.2s',
+        }}
+      >
+        {enterButtonText}
+      </button>
+
+      {/* Spin keyframes */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
+
+// Named export for existing consumers
+export { DemoCounterPage };

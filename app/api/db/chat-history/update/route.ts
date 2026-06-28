@@ -31,7 +31,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Verify ownership
     const { data: existing } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .select('user_id')
       .eq('id', messageId)
       .maybeSingle();
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const { data, error } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .update(updates)
       .eq('id', messageId)
       .select('id, content, updated_at')

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const { data, error } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .select('id, user_id, message_type, content, investor_style, related_stocks, metadata, created_at, updated_at')
       .eq('id', messageId)
       .maybeSingle();

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Fetch total count
     const { count, error: countErr } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', targetUserId);
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Fetch paginated messages (newest first)
     const { data, error } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .select('id, user_id, message_type, content, investor_style, related_stocks, metadata, created_at, updated_at')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false })

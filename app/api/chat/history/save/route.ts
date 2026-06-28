@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     console.log('History save called', { hasUserMessage: !!userMessage, hasAssistantMessage: !!assistantMessage, userId });
 
     const { error: err1 } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .insert({
         user_id: userId,
         message_type: 'user_message',
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     if (err1) console.error('Chat history insert error:', err1);
 
     const { error: err2 } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .insert({
         user_id: userId,
         message_type: 'ai_response',

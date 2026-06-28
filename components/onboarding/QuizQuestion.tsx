@@ -114,22 +114,23 @@ export function QuizQuestion({
           paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
-        {/* Left: Back button (Q2-Q5) */}
-        {!isFirst && onBack && (
+        {/* Left: Back button (all questions) */}
+        {onBack && (
           <button
             onClick={handleBack}
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--text-secondary)',
-              fontSize: '15px',
+              color: 'rgba(255,255,255,0.70)',
+              fontSize: '14px',
+              fontWeight: 400,
               cursor: 'pointer',
               padding: '8px 12px',
               minHeight: '44px',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              fontFamily: 'inherit',
+              fontFamily: 'var(--font-sans)',
               WebkitTapHighlightColor: 'transparent',
             }}
           >

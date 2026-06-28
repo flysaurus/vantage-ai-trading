@@ -1,18 +1,19 @@
-// ─── ConnectionLoadingPage ────────────────────────────────
-// Shown when connection_status = 'pending' or 'syncing'.
-// AppState = 'connection-loading'.
+// ─── ConnectionLoadingPage ──────────────────────────────────
+// Shown when AppState = 'connection-loading' (connection_status
+// = 'pending' or 'syncing'). Also rendered inside /welcome for
+// the broker path.
 //
-// Spinning ring animation, broker name from connection_type,
-// polls /api/connections/status every 5s until connected/failed.
-// Error state with retry.
+// Polls /api/connections/status every 5s. Will not auto-advance
+// until Phase 5/6 when real broker connections ship. Page is
+// fully built now so routing is ready.
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { UserProfile } from '@/lib/app-state';
 
-// ── Broker name map ─────────────────────────────────────
+// ── Broker name map ─────────────────────────────────────────
 
 const BROKER_LABELS: Record<string, string> = {
   snaptrade: 'Snaptrade',
@@ -20,7 +21,7 @@ const BROKER_LABELS: Record<string, string> = {
   tastytrade: 'Tastytrade',
 };
 
-// ── Spinning ring graphic ───────────────────────────────
+// ── Spinning ring graphic ───────────────────────────────────
 
 function SpinningRing() {
   return (
@@ -29,66 +30,77 @@ function SpinningRing() {
       height="64"
       viewBox="0 0 64 64"
       style={{ display: 'block', flexShrink: 0 }}
+      aria-hidden="true"
     >
-      {/* Background ring */}
+      {/* Background ring (subtle) */}
       <circle
         cx="32"
         cy="32"
-        r="26"
+        r="24"
         fill="none"
-        stroke="rgba(34,211,238,0.12)"
+        stroke="rgba(34,211,238,0.10)"
         strokeWidth="3"
       />
       {/* Spinning arc */}
       <circle
         cx="32"
         cy="32"
-        r="26"
+        r="24"
         fill="none"
         stroke="var(--accent)"
         strokeWidth="3"
-        strokeDasharray="40 123"
+        strokeDasharray="38 113"
         strokeLinecap="round"
         style={{
-          animation: 'connectionSpin 1.4s linear infinite',
+          animation: 'connectionRingSpin 1.4s linear infinite',
           transformOrigin: '32px 32px',
         }}
       />
       {/* Center dot */}
-      <circle
-        cx="32"
-        cy="32"
-        r="5"
-        fill="var(--accent)"
-        opacity="0.8"
-      />
+      <circle cx="32" cy="32" r="5" fill="var(--accent)" opacity="0.8" />
     </svg>
   );
 }
 
-// ── Props ───────────────────────────────────────────────
+// ── Props ───────────────────────────────────────────────────
 
 interface ConnectionLoadingPageProps {
-  profile: UserProfile | null;
+  /** Broker type — primary API (prompt-8 pattern) */
+  connectionType?: 'snaptrade' | 'alpaca' | 'tastytrade' | null;
+  /** Legacy: UserProfile (app/page.tsx consumer) */
+  profile?: UserProfile | null;
+  /** Callback when polling detects status=connected */
+  onStateChanged?: () => void;
+  /** Callback for retry button — routes to connection-options */
+  onRetry?: () => void;
 }
 
-// ── Main ────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────
 
-export function ConnectionLoadingPage({
+export default function ConnectionLoadingPage({
+  connectionType,
   profile,
   onStateChanged,
-}: ConnectionLoadingPageProps & { onStateChanged: () => void }) {
-  const [status, setStatus] = useState<string | null>(
-    profile?.connection_status ?? 'syncing',
+  onRetry,
+}: ConnectionLoadingPageProps) {
+  // Derive broker from connectionType or profile
+  const resolvedType =
+    connectionType ?? (profile?.connection_type as string | null) ?? null;
+
+  const brokerName = BROKER_LABELS[resolvedType ?? ''] ?? 'your broker';
+
+  const [status, setLocalStatus] = useState<string | null>(
+    profile?.connection_status ?? 'pending',
   );
-  const brokerName =
-    BROKER_LABELS[profile?.connection_type ?? ''] ?? 'your broker';
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
-  // ── Polling ──────────────────────────────────────────
+  // ── Polling ──────────────────────────────────────────────
 
   useEffect(() => {
+    mountedRef.current = true;
+
     // Don't poll if already connected or failed
     if (status === 'connected' || status === 'failed') return;
 
@@ -101,18 +113,19 @@ export function ConnectionLoadingPage({
         const data = await res.json();
         const newStatus = data.connection_status as string | null;
 
+        if (!mountedRef.current) return;
+
         if (newStatus === 'connected') {
-          // State re-evaluation → useAppState sees connected → 'authenticated'
-          onStateChanged();
+          onStateChanged?.();
         } else if (newStatus === 'failed') {
-          setStatus('failed');
+          setLocalStatus('failed');
           if (pollRef.current) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
         }
       } catch {
-        // Network hiccup — keep polling
+        // Network hiccup — silently retry next interval
       }
     };
 
@@ -121,48 +134,56 @@ export function ConnectionLoadingPage({
     pollRef.current = setInterval(poll, 5000);
 
     return () => {
+      mountedRef.current = false;
       clearTimeout(initial);
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
   }, [status, onStateChanged]);
 
-  // ── Retry ────────────────────────────────────────────
+  // ── Retry ────────────────────────────────────────────────
 
   const handleRetry = useCallback(() => {
-    // Full reload to reset polling state (connection status unchanged in DB)
-    window.location.href = '/';
-  }, []);
+    if (onRetry) {
+      onRetry();
+    } else {
+      // Fallback: reload to connection-options state
+      window.location.href = '/?state=connection-options';
+    }
+  }, [onRetry]);
 
-  // ── Render ───────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────
 
   const isFailed = status === 'failed';
 
   return (
     <div
       style={{
-        width: '100%',
-        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          'radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), var(--bg-primary)',
+        minHeight: '100dvh',
+        background: 'var(--bg)',
+        color: '#fff',
+        fontFamily: 'var(--font-sans)',
+        alignItems: 'center',
       }}
     >
       {/* ═══ TOP BAR ═══ */}
       <div
         style={{
-          height: '56px',
+          width: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          flexShrink: 0,
-          paddingTop: 'env(safe-area-inset-top, 0px)',
+          minHeight: '60px',
         }}
       >
-        <VantageOrb size={44} animate showEntrance={false} />
+        <VantageOrb size={44} animate />
       </div>
 
-      {/* ═══ CENTERED CONTENT ═══ */}
+      {/* ═══ CONTENT ═══ */}
       <div
         style={{
           flex: 1,
@@ -170,23 +191,22 @@ export function ConnectionLoadingPage({
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '0 32px',
-          gap: '28px',
+          padding: '24px',
+          gap: '24px',
         }}
       >
         {/* Animated graphic */}
         <SpinningRing />
 
         {/* Headline */}
-        <h2 style={{ margin: 0, textAlign: 'center' }}>
+        <h2 style={{ margin: 0, textAlign: 'center', lineHeight: 1.15 }}>
           <span
             style={{
               display: 'block',
               fontFamily: 'var(--font-sans)',
               fontSize: '34px',
               fontWeight: 800,
-              color: 'var(--text-primary)',
-              lineHeight: 1.2,
+              color: '#ffffff',
             }}
           >
             Connecting your
@@ -199,17 +219,15 @@ export function ConnectionLoadingPage({
               fontWeight: 400,
               fontStyle: 'italic',
               color: isFailed ? 'var(--loss)' : 'var(--accent)',
-              lineHeight: 1.2,
             }}
           >
             {brokerName}
           </span>
         </h2>
 
-        {/* Subtext */}
+        {/* Subtext or error */}
         <p
           style={{
-            fontFamily: 'var(--font-sans)',
             fontSize: '15px',
             fontWeight: 400,
             color: isFailed
@@ -218,7 +236,7 @@ export function ConnectionLoadingPage({
             textAlign: 'center',
             margin: 0,
             lineHeight: 1.5,
-            maxWidth: '280px',
+            maxWidth: '300px',
           }}
         >
           {isFailed
@@ -232,25 +250,18 @@ export function ConnectionLoadingPage({
             onClick={handleRetry}
             style={{
               width: '100%',
-              maxWidth: '280px',
+              maxWidth: '300px',
               height: '48px',
-              borderRadius: 'var(--radius-pill)',
+              borderRadius: '999px',
               border: 'none',
               background: 'var(--accent)',
-              color: '#000000',
+              color: '#000',
               fontSize: '16px',
               fontWeight: 600,
               fontFamily: 'var(--font-sans)',
               cursor: 'pointer',
-              marginTop: '8px',
+              marginTop: '4px',
               WebkitTapHighlightColor: 'transparent',
-            }}
-            onTouchStart={(e) => {
-              (e.currentTarget as HTMLElement).style.transform =
-                'scale(0.98)';
-            }}
-            onTouchEnd={(e) => {
-              (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
             }}
           >
             Try again
@@ -258,9 +269,9 @@ export function ConnectionLoadingPage({
         )}
       </div>
 
-      {/* Keyframes injected inline */}
+      {/* Spin keyframes */}
       <style>{`
-        @keyframes connectionSpin {
+        @keyframes connectionRingSpin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
         }
@@ -268,3 +279,6 @@ export function ConnectionLoadingPage({
     </div>
   );
 }
+
+// Named export for existing consumers
+export { ConnectionLoadingPage };

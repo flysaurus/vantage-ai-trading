@@ -186,8 +186,8 @@ export function useAppState(): AppStateResult {
           return;
         }
 
-        // No first_name/last_name → needs profile completion
-        if (!userData.first_name && !userData.last_name) {
+        // No first_name OR last_name → needs profile completion
+        if (!userData.first_name || !userData.last_name) {
           setState('needs-profile');
           return;
         }

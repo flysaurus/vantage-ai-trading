@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient();
 
     const { data, error } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -49,7 +49,7 @@ export async function DELETE(req: NextRequest) {
 
     const supabase = createServerClient();
     const { error } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .delete()
       .eq('user_id', userId);
 

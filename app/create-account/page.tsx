@@ -56,15 +56,36 @@ interface OnboardingData {
 
 function readOnboardingData(): OnboardingData | null {
   try {
-    const raw = sessionStorage.getItem('vantage_onboarding_data');
+    // Try the old key first (set by legacy OnboardingFlow or standalone onboarding page)
+    let raw = sessionStorage.getItem('vantage_onboarding_data');
+    if (!raw) {
+      // Fall back to the new 4B-1 key (set by OnboardingFlow component)
+      raw = sessionStorage.getItem('vantage_onboarding');
+    }
     if (!raw) return null;
-    return JSON.parse(raw);
+
+    const parsed = JSON.parse(raw);
+
+    // If it's the new format (has currentStep), map field names
+    if (parsed.currentStep !== undefined) {
+      return {
+        style: parsed.investorStyle ?? '',
+        risk: parsed.riskTolerance ?? '',
+        firstName: parsed.firstName ?? '',
+        lastName: parsed.lastName ?? '',
+      } as OnboardingData;
+    }
+
+    // Old format: { style, risk, firstName, lastName }
+    return parsed as OnboardingData;
   } catch {
     return null;
   }
 }
 
-// ── Component ────────────────────────────────────────────────
+// ── Step type ──────────────────────────────────────────────
+
+type CreateAccountStep = 'form' | 'check-email';
 
 export default function CreateAccountPage() {
   const router = useRouter();
@@ -79,6 +100,30 @@ export default function CreateAccountPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // ── Step state ───────────────────────────────────────────
+  const [step, setStep] = useState<CreateAccountStep>('form');
+
+  // ── Pending choice from OnboardingFlow ───────────────────
+  const pendingChoice = onboardingData ? (
+    (() => {
+      try {
+        const raw = sessionStorage.getItem('vantage_onboarding');
+        if (raw) return JSON.parse(raw).pendingChoice ?? null;
+      } catch {}
+      return null;
+    })()
+  ) : null;
+
+  const pendingConnectionType = onboardingData ? (
+    (() => {
+      try {
+        const raw = sessionStorage.getItem('vantage_onboarding');
+        if (raw) return JSON.parse(raw).pendingConnectionType ?? null;
+      } catch {}
+      return null;
+    })()
+  ) : null;
+
   // ── Validation state ─────────────────────────────────────
   const [emailError, setEmailError] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
@@ -87,9 +132,6 @@ export default function CreateAccountPage() {
   // ── API state ────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
-  const [splashMode, setSplashMode] = useState<SplashMode | null>(null);
-  const [splashDays, setSplashDays] = useState(0);
-  const [splashPendingPush, setSplashPendingPush] = useState(false);
 
   // ── Computed ─────────────────────────────────────────────
   const style = onboardingData?.style ?? 'buffett';
@@ -155,9 +197,18 @@ export default function CreateAccountPage() {
 
   const handleBack = () => {
     try {
-      sessionStorage.setItem('vantage_onboarding_retake', 'reveal');
+      const raw = sessionStorage.getItem('vantage_onboarding');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data.pendingChoice === 'broker') {
+          data.currentStep = 'connection-options';
+        } else {
+          data.currentStep = 'broker-choice';
+        }
+        sessionStorage.setItem('vantage_onboarding', JSON.stringify(data));
+      }
     } catch {}
-    router.push('/onboarding');
+    router.back();
   };
 
   const handleChange = () => {
@@ -191,68 +242,41 @@ export default function CreateAccountPage() {
     setSubmitting(true);
     setApiError('');
 
-    const result = await createAccount({
+    const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
+    const supabase = getSupabaseBrowserClient();
+
+    const { data: _data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      investorStyle: style,
-      riskTolerance: risk,
+      options: {
+        data: {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          investor_style: style,
+          risk_tolerance: risk,
+          pending_choice: pendingChoice,
+          pending_connection_type: pendingConnectionType ?? null,
+        },
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      },
     });
 
-    if (result.success) {
-      // Sign in the user client-side so session is established
-      const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
-      const supabase = getSupabaseBrowserClient();
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (signInError) {
-        console.error('[CreateAccount] Sign-in after create failed:', signInError.message);
-        setApiError('Account created but sign-in failed. Please try signing in.');
-        setSubmitting(false);
-        return;
-      }
-
-      // Clear onboarding sessionStorage
-      try {
-        sessionStorage.removeItem('vantage_onboarding_data');
-      } catch {}
-
-      // Fetch profile to determine splash mode
-      try {
-        const res = await fetch('/api/auth/me', { credentials: 'include' });
-        if (res.ok) {
-          const { user } = await res.json();
-          if (user.demoStartAt) {
-            const status = getDemoStatus(user.demoStartAt, user.demoExpiresAt);
-            setSplashMode('demo');
-            setSplashDays(status.daysRemaining);
-            setSubmitting(false);
-            return;
-          }
-          // No demo — new user, skip splash, go to app (broker-selection)
-        }
-      } catch {}
-
-      // No demo: skip splash, go directly to app
-      router.push('/');
-      router.refresh();
-    } else {
-      setApiError(result.error ?? 'Something went wrong. Please try again.');
+    if (error) {
+      setApiError(error.message);
       setSubmitting(false);
+      return;
     }
-  }, [canSubmit, email, password, firstName, lastName, style, risk, router]);
 
-  // ── Splash complete → navigate to app ────────────────────
-  const handleSplashComplete = useCallback(() => {
-    router.push('/');
-    router.refresh();
-  }, [router]);
+    // Clear onboarding sessionStorage (both keys)
+    try {
+      sessionStorage.removeItem('vantage_onboarding_data');
+      sessionStorage.removeItem('vantage_onboarding');
+    } catch {}
 
+    setStep('check-email');
+  }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
+
+  // ── Google sign-up ───────────────────────────────────────
   const handleGoogleSignUp = useCallback(async () => {
     setSubmitting(true);
     setApiError('');
@@ -315,16 +339,13 @@ export default function CreateAccountPage() {
     </div>
   ) : null;
 
-  // ── Splash (after successful sign-in) ────────────────────
-  if (splashMode) {
+  // ── Check-email view (after successful signUp) ───────────
+  if (step === 'check-email') {
     return (
-      <div style={{ position: 'relative', height: '100dvh', background: '#0a0f1e', overflow: 'hidden' }}>
-        <LoadingSplash
-          mode={splashMode}
-          daysRemaining={splashMode === 'demo' ? splashDays : undefined}
-          onComplete={handleSplashComplete}
-        />
-      </div>
+      <CheckEmailView
+        email={email}
+        onSignIn={() => router.push('/login')}
+      />
     );
   }
 
@@ -730,27 +751,26 @@ export default function CreateAccountPage() {
       </p>
 
       {/* ═══ ALREADY HAVE ACCOUNT ═══ */}
-      <p
+      <button
+        onClick={() => router.push('/login')}
         style={{
           marginTop: '12px',
-          fontSize: '13px',
-          color: 'var(--text-secondary)',
+          background: 'none',
+          border: 'none',
+          fontSize: '14px',
+          fontWeight: 400,
+          color: 'rgba(255,255,255,0.50)',
           textAlign: 'center',
           fontFamily: 'var(--font-sans)',
+          cursor: 'pointer',
+          padding: '12px 0',
           paddingBottom: '20px',
+          width: '100%',
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
-        Already have an account?{' '}
-        <span
-          onClick={() => router.push('/login')}
-          style={{
-            color: 'var(--accent)',
-            cursor: 'pointer',
-          }}
-        >
-          Sign in
-        </span>
-      </p>
+        Already have an account? Sign in
+      </button>
 
       {/* Spin keyframes for loader */}
       <style>{`
@@ -758,6 +778,223 @@ export default function CreateAccountPage() {
           to { transform: rotate(360deg); }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ── Check Email View ────────────────────────────────────────
+// Rendered after successful signUp (email confirmation required).
+// No back button. Resend cooldown: 30s.
+
+interface CheckEmailViewProps {
+  email: string;
+  onSignIn: () => void;
+}
+
+function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
+  const router = useRouter();
+  const [resendState, setResendState] = useState<'idle' | 'loading' | 'sent'>('idle');
+  const [cooldown, setCooldown] = useState(0);
+
+  // Countdown timer for resend cooldown
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          setResendState('idle');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  const handleResend = async () => {
+    if (resendState !== 'idle') return;
+    setResendState('loading');
+
+    try {
+      const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
+      const supabase = getSupabaseBrowserClient();
+
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        console.error('[CheckEmail] Resend failed:', error.message);
+      }
+    } catch {}
+
+    setResendState('sent');
+    setCooldown(30);
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100dvh',
+        background: '#0a0f1e',
+        color: '#fff',
+        fontFamily: 'var(--font-sans)',
+        alignItems: 'center',
+        padding: '24px',
+      }}
+    >
+      {/* ═══ TOP BAR — VantageOrb centered, no back ═══ */}
+      <div
+        style={{
+          width: '100%',
+          height: '120px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <VantageOrb size={100} animate showEntrance />
+      </div>
+
+      {/* ═══ HEADLINE ═══ */}
+      <h1
+        style={{
+          marginTop: '16px',
+          marginBottom: '24px',
+          textAlign: 'center',
+          lineHeight: 1.15,
+        }}
+      >
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-sans)',
+            fontSize: '32px',
+            fontWeight: 800,
+            color: '#ffffff',
+          }}
+        >
+          Check your
+        </span>
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--font-serif)',
+            fontSize: '32px',
+            fontWeight: 400,
+            fontStyle: 'italic',
+            color: '#ffffff',
+          }}
+        >
+          inbox.
+        </span>
+      </h1>
+
+      {/* ═══ SUBTEXT ═══ */}
+      <div
+        style={{
+          textAlign: 'center',
+          marginBottom: '20px',
+          lineHeight: 1.6,
+        }}
+      >
+        <p
+          style={{
+            fontSize: '15px',
+            color: 'rgba(255,255,255,0.60)',
+            margin: 0,
+            fontWeight: 400,
+          }}
+        >
+          We sent a confirmation link to
+        </p>
+        <p
+          style={{
+            fontSize: '15px',
+            fontWeight: 600,
+            color: 'var(--accent)',
+            margin: '2px 0 0',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          {email}
+        </p>
+        <p
+          style={{
+            fontSize: '15px',
+            color: 'rgba(255,255,255,0.60)',
+            margin: '0',
+            fontWeight: 400,
+          }}
+        >
+          Click it to activate your account.
+        </p>
+      </div>
+
+      {/* ═══ EXPIRY NOTE ═══ */}
+      <p
+        style={{
+          fontSize: '12px',
+          color: 'rgba(255,255,255,0.40)',
+          textAlign: 'center',
+          margin: '0 0 32px',
+          fontFamily: 'var(--font-sans)',
+        }}
+      >
+        The link expires in 24 hours.
+      </p>
+
+      {/* ═══ RESEND ═══ */}
+      <button
+        onClick={handleResend}
+        disabled={resendState !== 'idle'}
+        style={{
+          background: 'none',
+          border: 'none',
+          fontSize: '14px',
+          fontWeight: 400,
+          color: resendState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+          cursor: resendState === 'idle' ? 'pointer' : 'default',
+          padding: '8px 12px',
+          fontFamily: 'var(--font-sans)',
+          textAlign: 'center',
+          transition: 'color 0.2s',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        {resendState === 'sent'
+          ? `Email resent ✓ (${cooldown}s)`
+          : resendState === 'loading'
+            ? 'Sending…'
+            : "Didn't get it? Resend email"}
+      </button>
+
+      {/* ═══ SIGN IN LINK ═══ */}
+      <button
+        onClick={onSignIn}
+        style={{
+          marginTop: '16px',
+          background: 'none',
+          border: 'none',
+          fontSize: '14px',
+          fontWeight: 400,
+          color: 'rgba(255,255,255,0.40)',
+          textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
+          cursor: 'pointer',
+          padding: '12px 0',
+          width: '100%',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        Already have an account? Sign in
+      </button>
     </div>
   );
 }

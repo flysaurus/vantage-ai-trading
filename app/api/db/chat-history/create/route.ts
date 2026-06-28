@@ -42,7 +42,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.log('[chat-history/create] Saving:', { userId, messageType, content: content?.substring(0, 50) });
 
     const { data, error } = await (supabase as any)
-      .from('chat_history')
+      .from('chat_messages')
       .insert({
         user_id: userId,
         message_type: messageType,

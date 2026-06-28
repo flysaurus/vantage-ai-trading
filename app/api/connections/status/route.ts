@@ -22,7 +22,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('users')
-    .select('connection_type, connection_status, connection_initiated_at')
+    .select('connection_type, connection_status, connection_initiated_at, demo_expires_at')
     .eq('id', authUser.id)
     .maybeSingle();
 
@@ -37,5 +37,6 @@ export async function GET() {
     connection_type: data?.connection_type ?? null,
     connection_status: data?.connection_status ?? null,
     connection_initiated_at: data?.connection_initiated_at ?? null,
+    demo_expires_at: data?.demo_expires_at ?? null,
   });
 }
