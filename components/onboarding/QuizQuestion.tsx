@@ -49,7 +49,10 @@ export function QuizQuestion({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [entering, setEntering] = useState(true);
+  const [showScrollFade, setShowScrollFade] = useState(false);
   const mountRef = useRef(false);
+  const lastCardRef = useRef<HTMLButtonElement | null>(null);
+  const cardsContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Entrance animation
   useEffect(() => {
@@ -63,6 +66,26 @@ export function QuizQuestion({
       requestAnimationFrame(() => setEntering(true));
     }
   }, []);
+
+  // ── Scroll fade: show gradient when last card is below viewport ─
+  useEffect(() => {
+    const container = cardsContainerRef.current;
+    const sentinel = lastCardRef.current;
+    if (!container || !sentinel) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowScrollFade(!entry.isIntersecting);
+      },
+      { root: container, threshold: 0.1 },
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [question.id]);
 
   const gradientClass = `bg-onboarding-${questionNumber}`;
   const [line1, line2] = QUESTION_LINES[question.id] || [question.question, ''];
@@ -277,16 +300,31 @@ export function QuizQuestion({
             {line2}
           </span>
         </h2>
+
+        {/* Answer count label */}
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '11px',
+            fontWeight: 400,
+            color: 'rgba(255,255,255,0.40)',
+            margin: '12px 0 0',
+          }}
+        >
+          Choose one · {question.options.length} options
+        </p>
       </div>
 
       {/* ── ANSWER CARDS ── */}
       <div
+        ref={cardsContainerRef}
         style={{
           flex: 1,
           overflowY: 'auto',
           padding: '24px',
           minHeight: 0,
           scrollbarWidth: 'none',
+          position: 'relative',
         }}
         className="hide-scrollbar"
       >
@@ -295,10 +333,12 @@ export function QuizQuestion({
             const isSelected = selectedKey === opt.key;
             const hasSelection = selectedKey !== null;
             const label = OPTION_LABELS[idx] || '';
+            const isLastOption = idx === question.options.length - 1;
 
             return (
               <button
                 key={opt.key}
+                ref={isLastOption ? lastCardRef : undefined}
                 onClick={() => handleTap(opt.key)}
                 style={{
                   width: '100%',
@@ -381,6 +421,22 @@ export function QuizQuestion({
             );
           })}
         </div>
+
+        {/* Scroll fade indicator */}
+        {showScrollFade && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '80px',
+              background:
+                'linear-gradient(to bottom, transparent 60%, var(--bg) 100%)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
       </div>
 
       {/* ── CONTINUE BUTTON ── */}
