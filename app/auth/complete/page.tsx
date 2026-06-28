@@ -24,6 +24,20 @@ export default function AuthCompletePage() {
     async function completeAuth() {
       try {
         const supabase = getSupabaseBrowserClient();
+
+        // ── Handle code exchange if redirected here directly ──
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error('[auth/complete] code exchange failed:', exchangeError.message);
+            setErrorMsg(exchangeError.message);
+            setStatus('error');
+            return;
+          }
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
@@ -79,50 +93,37 @@ export default function AuthCompletePage() {
             }
           } catch {}
 
-          // Source 3: Google user metadata
+          // Source 3: User metadata (email signup or Google OAuth)
           if (!profile) {
             const meta = session.user.user_metadata as Record<string, string> | undefined;
             profile = {
-              firstName: meta?.given_name || meta?.name?.split(' ')[0] || '',
-              lastName: meta?.family_name || meta?.name?.split(' ').slice(1).join(' ') || '',
-              investorStyle: null,
-              riskTolerance: null,
+              firstName: meta?.first_name || meta?.given_name || meta?.name?.split(' ')[0] || '',
+              lastName: meta?.last_name || meta?.family_name || meta?.name?.split(' ').slice(1).join(' ') || '',
+              investorStyle: meta?.investor_style || null,
+              riskTolerance: meta?.risk_tolerance || 'Moderate',
             };
           }
 
           if (profile) {
-            const now = new Date().toISOString();
-            const demoExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-            // Create parent users row
-            const { error: userError } = await (supabase
-              .from('users') as any)
-              .insert({
-                id: session.user.id,
-                email: session.user.email,
-                first_name: profile.firstName,
-                last_name: profile.lastName,
-              });
-
-            if (userError) throw userError;
-
-            // Create user_profiles row (no user_id or email columns)
-            const { error: profileError } = await (supabase
-              .from('user_profiles') as any)
-              .insert({
-                id: session.user.id,
+            // Call /api/user/setup (uses service role, bypasses RLS)
+            const setupRes = await fetch('/api/user/setup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
                 first_name: profile.firstName,
                 last_name: profile.lastName,
                 investor_style: profile.investorStyle,
                 risk_tolerance: profile.riskTolerance,
-                tier: 'demo',
-                first_open: now,
-                demo_expires_at: demoExpiry,
-              });
+              }),
+              credentials: 'include',
+            });
 
-            if (profileError) throw profileError;
-
-            // Demo portfolio seed will happen server-side on first portfolio access
+            if (!setupRes.ok) {
+              const errData = await setupRes.json().catch(() => null);
+              throw new Error(
+                (errData as any)?.error || `Setup failed (${setupRes.status})`,
+              );
+            }
 
             sessionStorage.removeItem('vantage_pending_profile');
             setStatus('done');
