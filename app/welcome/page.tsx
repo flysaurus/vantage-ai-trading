@@ -315,10 +315,11 @@ export default function WelcomePage() {
 
       if (!setupRes.ok) {
         const errData = await setupRes.json().catch(() => null);
-        throw new Error(
+        const errMsg =
           (errData as { error?: string })?.error ||
-            'Failed to set up your account',
-        );
+          `HTTP ${setupRes.status}: ${setupRes.statusText}`;
+        console.error('[welcome] /api/user/setup failed:', errMsg);
+        throw new Error(errMsg);
       }
 
       const setupData = await setupRes.json();

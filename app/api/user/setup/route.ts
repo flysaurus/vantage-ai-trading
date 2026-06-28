@@ -17,7 +17,11 @@ interface SetupBody {
 
 export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
-  if (authError) return authError;
+  if (authError) {
+    console.error('[user/setup] requireAuth failed — no session cookie');
+    return authError;
+  }
+  console.log('[user/setup] authUser found:', authUser.id, authUser.email);
 
   let body: SetupBody;
   try {
@@ -29,9 +33,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    console.error('[user/setup] SUPABASE_SERVICE_ROLE_KEY is empty!');
+  }
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    serviceRoleKey!,
     {
       auth: {
         autoRefreshToken: false,
@@ -55,6 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, returning: true });
   }
 
+  console.log('[user/setup] upserting users row for:', authUser.id);
   const { error } = await supabase.from('users').upsert(
     {
       id: authUser.id,

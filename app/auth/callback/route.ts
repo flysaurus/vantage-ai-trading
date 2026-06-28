@@ -47,5 +47,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  // Explicitly copy cookies to redirect response — ensures the
+  // session cookie is included even if Next.js doesn't auto-attach
+  // cookie store modifications to NextResponse.redirect().
+  const response = NextResponse.redirect(`${origin}${next}`);
+  const allCookies = cookieStore.getAll();
+  allCookies.forEach((c) => {
+    response.cookies.set(c.name, c.value, {
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
+  });
+
+  return response;
 }
