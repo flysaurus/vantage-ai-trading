@@ -347,7 +347,7 @@ export function StyleReveal({
             flexDirection: 'column',
             alignItems: 'center',
             width: '100%',
-            marginBottom: '20px',
+            marginBottom: '12px',
           }}
         >
           <p className="style-reveal-override-label">Not quite right?</p>

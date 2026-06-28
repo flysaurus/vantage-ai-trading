@@ -534,25 +534,26 @@ export default function CreateAccountPage() {
         disabled={submitting}
         style={{
           width: '100%',
-          height: '84px',
+          height: '64px',
           borderRadius: '999px',
           border: 'none',
           background: '#ffffff',
           color: '#000000',
-          fontSize: '16px',
-          fontWeight: 600,
+          fontSize: '17px',
+          fontWeight: 700,
           fontFamily: 'var(--font-sans)',
+          letterSpacing: '-0.2px',
           cursor: submitting ? 'default' : 'pointer',
           opacity: submitting ? 0.4 : 1,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '10px',
+          gap: '12px',
           marginBottom: '12px',
           transition: 'opacity 200ms var(--ease-out)',
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
             fill="#4285F4"
