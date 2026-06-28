@@ -244,7 +244,7 @@ export default function CreateAccountPage() {
     const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
     const supabase = getSupabaseBrowserClient();
 
-    const { data, error } = await supabase.auth.signUp({
+    const { data: _data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -261,25 +261,17 @@ export default function CreateAccountPage() {
     });
 
     if (error) {
-      setApiError(error.message);
-      setSubmitting(false);
-      return;
-    }
-
-    // ── Duplicate detection ───────────────────────────────
-    // Supabase with email confirmation enabled returns
-    // data.user = null when the email is already confirmed.
-    // (If user exists but unconfirmed, signUp resends the
-    // confirmation email — we let that through normally.)
-    //
-    // DO NOT check data.user.identities — for email/password
-    // signups the identities array is always empty (it only
-    // tracks OAuth/SSO providers). That check would reject
-    // every single email signup.
-    if (!data.user) {
-      setApiError(
-        'An account with this email already exists. Sign in instead.',
-      );
+      // Detect duplicate email from Supabase error
+      if (
+        error.message?.toLowerCase().includes('already') ||
+        error.code === 'user_already_exists'
+      ) {
+        setApiError(
+          'An account with this email already exists. Sign in instead.',
+        );
+      } else {
+        setApiError(error.message);
+      }
       setSubmitting(false);
       return;
     }
