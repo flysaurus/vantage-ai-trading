@@ -268,12 +268,15 @@ export default function CreateAccountPage() {
 
     // ── Duplicate detection ───────────────────────────────
     // Supabase with email confirmation enabled returns
-    // data.user = null when the email already exists.
-    // Also detects when identities array is empty (existing user).
-    if (
-      !data.user ||
-      (data.user.identities && data.user.identities.length === 0)
-    ) {
+    // data.user = null when the email is already confirmed.
+    // (If user exists but unconfirmed, signUp resends the
+    // confirmation email — we let that through normally.)
+    //
+    // DO NOT check data.user.identities — for email/password
+    // signups the identities array is always empty (it only
+    // tracks OAuth/SSO providers). That check would reject
+    // every single email signup.
+    if (!data.user) {
       setApiError(
         'An account with this email already exists. Sign in instead.',
       );
