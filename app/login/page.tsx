@@ -97,7 +97,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setInlineError('Incorrect email or password.');
+      setInlineError(error.message);
       setPassword('');
       setSubmitting(false);
       return;
