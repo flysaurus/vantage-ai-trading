@@ -405,7 +405,7 @@ export function StyleReveal({
             pointerEvents: showCta ? 'auto' : 'none',
           }}
         >
-          Create your account
+          This is me →
         </button>
       </div>
     </div>

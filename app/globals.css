@@ -588,7 +588,7 @@ input::placeholder, textarea::placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16px 24px 40px;
+  padding: 12px 24px 40px;
   gap: 0;
 }
 
@@ -637,7 +637,7 @@ input::placeholder, textarea::placeholder {
   font-size: 36px;
   color: var(--accent);
   text-align: center;
-  margin: 0 0 14px 0;
+  margin: 0 0 12px 0;
   line-height: 1.1;
 }
 
@@ -649,7 +649,7 @@ input::placeholder, textarea::placeholder {
   padding: 6px 14px;
   font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-shrink: 0;
   transition: opacity 300ms var(--ease-out);
 }
@@ -659,7 +659,7 @@ input::placeholder, textarea::placeholder {
   font-size: 16px;
   line-height: 1.6;
   text-align: center;
-  margin: 0 0 14px 0;
+  margin: 0 0 12px 0;
   max-width: 300px;
   transition: opacity 300ms var(--ease-out);
 }
@@ -672,7 +672,7 @@ input::placeholder, textarea::placeholder {
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-shrink: 0;
   transition: opacity 300ms var(--ease-out);
 }
