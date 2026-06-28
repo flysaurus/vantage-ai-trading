@@ -1,5 +1,5 @@
 // ─── Login Screen ─────────────────────────────────────────
-// Email/password sign-in + Google OAuth.
+// Email/password sign-in + forgot password flow.
 // Redirects already-authenticated users to /.
 // Handles ?error=expired and ?error=invalid URL params.
 
@@ -42,6 +42,13 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [splashMode, setSplashMode] = useState<SplashMode | null>(null);
   const [splashDays, setSplashDays] = useState(0);
+
+  // ── Forgot password flow ────────────────────────────
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   const canSubmit = isValidEmail(email) && password.length > 0 && !submitting;
 
@@ -119,23 +126,27 @@ export default function LoginPage() {
     router.refresh();
   }, [canSubmit, email, password, supabase, router]);
 
-  // ── Google OAuth ───────────────────────────────────────
-  const handleGoogleLogin = useCallback(async () => {
-    if (!supabase) return;
-    setSubmitting(true);
-    setInlineError('');
+  // ── Forgot password handler ───────────────────────────
+  const handleForgotPassword = useCallback(async () => {
+    if (!isValidEmail(resetEmail) || !supabase) return;
+    setResetSending(true);
+    setResetError('');
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + '/auth/complete',
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      resetEmail.trim(),
+      {
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/reset-password`,
       },
-    });
+    );
+
     if (error) {
-      setInlineError('Something went wrong with Google sign-in.');
-      setSubmitting(false);
+      setResetError(error.message);
+      setResetSending(false);
+    } else {
+      setResetSent(true);
+      setResetSending(false);
     }
-  }, [supabase]);
+  }, [resetEmail, supabase]);
 
   // ── Enter key ────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -339,7 +350,12 @@ export default function LoginPage() {
             {/* Forgot password link */}
             <div style={{ textAlign: 'right', marginTop: '6px' }}>
               <span
-                onClick={() => router.push('/auth/forgot-password')}
+                onClick={() => {
+                  setShowForgotPassword(true);
+                  setResetSent(false);
+                  setResetError('');
+                  if (email) setResetEmail(email);
+                }}
                 style={{
                   color: 'var(--accent)',
                   fontSize: '13px',
@@ -353,117 +369,239 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* ── Bottom zone ── */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            marginTop: '24px',
-          }}
-        >
-          {/* Sign In */}
-          <button
-            onClick={handleLogin}
-            disabled={!canSubmit}
-            style={{
-              width: '100%',
-              height: '56px',
-              borderRadius: '999px',
-              border: 'none',
-              background: canSubmit ? '#ffffff' : 'rgba(255,255,255,0.20)',
-              color: canSubmit ? '#000000' : 'rgba(0,0,0,0.40)',
-              fontSize: '17px',
-              fontWeight: 700,
-              fontFamily: 'var(--font-sans)',
-              cursor: canSubmit ? 'pointer' : 'default',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'background 200ms var(--ease-out)',
-            }}
-          >
-            {submitting ? (
-              <>
-                <Loader2 size={20} style={{ animation: 'spin-submit 0.7s linear infinite' }} />
-                Signing in…
-              </>
-            ) : (
-              'Sign in'
-            )}
-          </button>
-
-          {/* Divider */}
+        {/* ═══ FORGOT PASSWORD INLINE ═══ */}
+        {showForgotPassword && !resetSent && (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
+              marginTop: '24px',
+              padding: '24px',
+              borderRadius: '16px',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
-              or
-            </span>
-            <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+            <p
+              style={{
+                fontSize: '14px',
+                color: 'rgba(255,255,255,0.60)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 16px',
+                textAlign: 'center',
+                lineHeight: 1.5,
+              }}
+            >
+              Enter your email to reset your password.
+            </p>
+
+            <Input
+              label="EMAIL"
+              type="email"
+              placeholder="your@email.com"
+              value={resetEmail}
+              onChange={(v) => {
+                setResetEmail(v);
+                setResetError('');
+              }}
+              disabled={resetSending}
+              autoFocus
+            />
+
+            {resetError && (
+              <p
+                style={{
+                  color: 'var(--loss)',
+                  fontSize: '13px',
+                  fontFamily: 'var(--font-sans)',
+                  margin: '8px 0 0',
+                }}
+              >
+                {resetError}
+              </p>
+            )}
+
+            <button
+              onClick={handleForgotPassword}
+              disabled={resetSending || !isValidEmail(resetEmail)}
+              style={{
+                width: '100%',
+                height: '48px',
+                borderRadius: '999px',
+                border: 'none',
+                background:
+                  !resetSending && isValidEmail(resetEmail)
+                    ? 'var(--accent)'
+                    : 'rgba(255,255,255,0.15)',
+                color: !resetSending && isValidEmail(resetEmail) ? '#000' : 'rgba(255,255,255,0.30)',
+                fontSize: '15px',
+                fontWeight: 600,
+                fontFamily: 'var(--font-sans)',
+                cursor:
+                  !resetSending && isValidEmail(resetEmail)
+                    ? 'pointer'
+                    : 'default',
+                marginTop: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'background 200ms var(--ease-out)',
+              }}
+            >
+              {resetSending ? (
+                <>
+                  <Loader2 size={18} style={{ animation: 'spin-submit 0.7s linear infinite' }} />
+                  Sending…
+                </>
+              ) : (
+                'Send reset link'
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setShowForgotPassword(false);
+                setResetError('');
+              }}
+              style={{
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255,255,255,0.40)',
+                fontSize: '13px',
+                fontFamily: 'var(--font-sans)',
+                cursor: 'pointer',
+                padding: '12px 0 0',
+                textAlign: 'center',
+              }}
+            >
+              Back to sign in
+            </button>
           </div>
+        )}
 
-          {/* Google */}
-          <button
-            onClick={handleGoogleLogin}
-            disabled={submitting}
+        {/* ═══ FORGOT PASSWORD — SENT ═══ */}
+        {showForgotPassword && resetSent && (
+          <div
             style={{
-              width: '100%',
-              height: '56px',
-              borderRadius: '999px',
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: 'transparent',
-              color: '#ffffff',
-              fontSize: '17px',
-              fontWeight: 600,
-              fontFamily: 'var(--font-sans)',
-              cursor: submitting ? 'default' : 'pointer',
-              opacity: submitting ? 0.4 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              transition: 'opacity 200ms var(--ease-out)',
+              marginTop: '24px',
+              padding: '24px',
+              borderRadius: '16px',
+              background: 'rgba(34,211,238,0.06)',
+              border: '1px solid rgba(34,211,238,0.15)',
+              textAlign: 'center',
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-            </svg>
-            Continue with Google
-          </button>
-        </div>
+            <p
+              style={{
+                fontSize: '15px',
+                color: 'rgba(255,255,255,0.80)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 8px',
+                fontWeight: 600,
+              }}
+            >
+              Check your email
+            </p>
+            <p
+              style={{
+                fontSize: '13px',
+                color: 'rgba(255,255,255,0.50)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 16px',
+                lineHeight: 1.5,
+              }}
+            >
+              We sent a reset link to{' '}
+              <span style={{ color: 'var(--accent)' }}>{resetEmail}</span>.
+            </p>
+            <button
+              onClick={() => {
+                setShowForgotPassword(false);
+                setResetSent(false);
+                setResetEmail('');
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--accent)',
+                fontSize: '13px',
+                fontFamily: 'var(--font-sans)',
+                cursor: 'pointer',
+              }}
+            >
+              Back to sign in
+            </button>
+          </div>
+        )}
 
-        {/* ── New to Vantage? ── */}
-        <p
-          style={{
-            marginTop: '24px',
-            fontSize: '13px',
-            color: 'var(--text-secondary)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-sans)',
-          }}
-        >
-          New to Vantage?{' '}
-          <span
-            onClick={() => router.push('/')}
-            style={{
-              color: 'var(--accent)',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            Find your investor style →
-          </span>
-        </p>
+        {/* ── Sign In + CTA ── (hidden during forgot password) */}
+        {!showForgotPassword && (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                marginTop: '24px',
+              }}
+            >
+              {/* Sign In */}
+              <button
+                onClick={handleLogin}
+                disabled={!canSubmit}
+                style={{
+                  width: '100%',
+                  height: '56px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  background: canSubmit ? '#ffffff' : 'rgba(255,255,255,0.20)',
+                  color: canSubmit ? '#000000' : 'rgba(0,0,0,0.40)',
+                  fontSize: '17px',
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-sans)',
+                  cursor: canSubmit ? 'pointer' : 'default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'background 200ms var(--ease-out)',
+                }}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={20} style={{ animation: 'spin-submit 0.7s linear infinite' }} />
+                    Signing in…
+                  </>
+                ) : (
+                  'Sign in'
+                )}
+              </button>
+            </div>
+
+            {/* ── New to Vantage? ── */}
+            <p
+              style={{
+                marginTop: '24px',
+                fontSize: '13px',
+                color: 'var(--text-secondary)',
+                textAlign: 'center',
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              New to Vantage?{' '}
+              <span
+                onClick={() => router.push('/')}
+                style={{
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Find your investor style →
+              </span>
+            </p>
+          </>
+        )}
       </div>
 
       <style>{`
