@@ -301,10 +301,13 @@ export default function WelcomePage() {
       setFirstName(first || 'trader');
 
       // ── Call /api/user/setup ─────────────────────────────
+      // Pass access_token directly so the route can verify auth
+      // without relying solely on cookies (belt-and-suspenders).
       const setupRes = await fetch('/api/user/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          access_token: session.access_token,
           first_name: first,
           last_name: last,
           investor_style: investorStyle,

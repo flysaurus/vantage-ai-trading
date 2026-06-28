@@ -110,6 +110,7 @@ export default function AuthCompletePage() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                access_token: session.access_token,
                 first_name: profile.firstName,
                 last_name: profile.lastName,
                 investor_style: profile.investorStyle,

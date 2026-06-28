@@ -16,21 +16,47 @@ interface SetupBody {
 }
 
 export async function POST(req: NextRequest) {
-  const { authUser, authError } = await requireAuth();
-  if (authError) {
-    console.error('[user/setup] requireAuth failed — no session cookie');
-    return authError;
-  }
-  console.log('[user/setup] authUser found:', authUser.id, authUser.email);
-
-  let body: SetupBody;
+  let body: SetupBody & { access_token?: string };
   try {
-    body = (await req.json()) as SetupBody;
+    body = (await req.json()) as SetupBody & { access_token?: string };
   } catch {
     return NextResponse.json(
       { error: 'Invalid JSON body' },
       { status: 400 },
     );
+  }
+
+  // Auth: try Bearer token first, fall back to cookie session
+  let userId: string;
+  let userEmail: string;
+
+  if (body.access_token) {
+    // Verify the access token with Supabase
+    const { data: { user }, error: verifyError } = await createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    ).auth.getUser(body.access_token);
+
+    if (verifyError || !user) {
+      console.error('[user/setup] token verification failed:', verifyError?.message);
+      return NextResponse.json(
+        { error: 'Invalid access token', detail: verifyError?.message },
+        { status: 401 },
+      );
+    }
+
+    userId = user.id;
+    userEmail = user.email!;
+    console.log('[user/setup] authenticated via access_token:', userId, userEmail);
+  } else {
+    const { authUser, authError } = await requireAuth();
+    if (authError) {
+      console.error('[user/setup] requireAuth failed — no session cookie');
+      return authError;
+    }
+    userId = authUser.id;
+    userEmail = authUser.email;
+    console.log('[user/setup] authenticated via cookie:', userId, userEmail);
   }
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -56,18 +82,18 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await supabase
     .from('users')
     .select('demo_start_at, connection_type')
-    .eq('id', authUser.id)
+    .eq('id', userId)
     .maybeSingle();
 
   if (existing?.demo_start_at || existing?.connection_type) {
     return NextResponse.json({ success: true, returning: true });
   }
 
-  console.log('[user/setup] upserting users row for:', authUser.id);
+  console.log('[user/setup] upserting users row for:', userId);
   const { error } = await supabase.from('users').upsert(
     {
-      id: authUser.id,
-      email: authUser.email || undefined,
+      id: userId,
+      email: userEmail || undefined,
       first_name: body.first_name || undefined,
       last_name: body.last_name || undefined,
       investor_style: body.investor_style || undefined,
@@ -98,7 +124,7 @@ export async function POST(req: NextRequest) {
   await supabase
     .from('users')
     .update({ first_open: now })
-    .eq('id', authUser.id)
+    .eq('id', userId)
     .is('first_open', null);
 
   return NextResponse.json({ success: true });
