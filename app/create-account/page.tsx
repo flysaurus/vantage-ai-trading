@@ -3,14 +3,18 @@
 // and riskTolerance from OnboardingFlow via sessionStorage.
 //
 // Layout:
-//   Top bar (back arrow + VantageOrb)
-//   Headline (two-line, quieter than reveal)
-//   Profile summary card (emoji + style + risk + Change)
-//   Error banner (conditional, on API error)
-//   Form fields (first, last, email, password, confirm)
-//   CTA section (Create account + Google)
-//   Legal text
-//   Already have account?
+//   ZONE 1 (scrollable, padding-bottom: 100px):
+//     Top bar (back arrow + VantageOrb)
+//     Headline (two-line)
+//     Investor style summary card (emoji + style + risk + Change)
+//     Error banner (conditional, on API error)
+//     Google sign-in button
+//     OR divider
+//     Form fields (first, last, email, password, confirm)
+//     Terms text
+//     Sign in link
+//   ZONE 2 (sticky footer):
+//     Create Account button ONLY
 
 'use client';
 
@@ -22,19 +26,15 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Info,
 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
-import { LoadingSplash } from '@/components/app/LoadingSplash';
-import type { SplashMode } from '@/components/app/LoadingSplash';
 import Input from '@/components/ui/Input';
 import PasswordStrength from '@/components/ui/PasswordStrength';
-import { createAccount } from '@/app/actions/auth';
-import { signInWithGoogle } from '@/lib/auth/oauth';
-import { getDemoStatus } from '@/lib/demo-utils';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import {
   getStyleContent,
   getStyleEmoji,
-  ALL_STYLES,
 } from '@/lib/content/investor-styles';
 import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
@@ -282,19 +282,33 @@ export default function CreateAccountPage() {
     setApiError('');
 
     try {
-      await signInWithGoogle({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        investorStyle: style,
-        riskTolerance: risk,
+      const supabase = getSupabaseBrowserClient();
+      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`;
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            investor_style: style,
+            risk_tolerance: risk,
+            pending_choice: pendingChoice ?? '',
+            pending_connection_type: pendingConnectionType ?? '',
+          },
+        },
       });
+
+      if (error) {
+        setApiError('Google sign-in coming soon. Please use email for now.');
+        setSubmitting(false);
+        return;
+      }
       // Page will redirect — no need to reset state
-    } catch (err: any) {
-      console.error('[CreateAccount] Google sign-up failed:', err);
-      setApiError('Google sign-up failed. Please try again.');
+    } catch {
+      setApiError('Google sign-in coming soon. Please use email for now.');
       setSubmitting(false);
     }
-  }, [firstName, lastName, style, risk]);
+  }, [style, risk, pendingChoice, pendingConnectionType]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && canSubmit) {
@@ -500,6 +514,88 @@ export default function CreateAccountPage() {
       {/* ═══ ERROR BANNER ═══ */}
       {errorBanner}
 
+      {/* ═══ GOOGLE SIGN-IN ═══ */}
+      <button
+        onClick={handleGoogleSignUp}
+        disabled={submitting}
+        style={{
+          width: '100%',
+          height: '56px',
+          borderRadius: '999px',
+          border: 'none',
+          background: '#ffffff',
+          color: '#000000',
+          fontSize: '16px',
+          fontWeight: 600,
+          fontFamily: 'var(--font-sans)',
+          cursor: submitting ? 'default' : 'pointer',
+          opacity: submitting ? 0.4 : 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '10px',
+          marginBottom: '12px',
+          transition: 'opacity 200ms var(--ease-out)',
+        }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+            fill="#4285F4"
+          />
+          <path
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            fill="#34A853"
+          />
+          <path
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            fill="#FBBC05"
+          />
+          <path
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            fill="#EA4335"
+          />
+        </svg>
+        Continue with Google
+      </button>
+
+      {/* ═══ OR DIVIDER ═══ */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          gap: '12px',
+          marginBottom: '12px',
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            height: '1px',
+            background: 'rgba(255,255,255,0.08)',
+          }}
+        />
+        <span
+          style={{
+            flexShrink: 0,
+            fontSize: '12px',
+            fontWeight: 400,
+            color: 'rgba(255,255,255,0.30)',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          or
+        </span>
+        <div
+          style={{
+            flex: 1,
+            height: '1px',
+            background: 'rgba(255,255,255,0.08)',
+          }}
+        />
+      </div>
+
       {/* ═══ FORM FIELDS ═══ */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* First Name */}
@@ -595,10 +691,69 @@ export default function CreateAccountPage() {
         </div>
       </div>
 
-      {/* Spacer so form fields don't hide behind sticky footer */}
-      <div style={{ height: '16px', flexShrink: 0 }} />
+      {/* ═══ TERMS TEXT ═══ */}
+      <p
+        style={{
+          marginTop: '20px',
+          marginBottom: 0,
+          fontSize: '11px',
+          fontWeight: 400,
+          color: 'rgba(255,255,255,0.30)',
+          textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
+          lineHeight: 1.5,
+        }}
+      >
+        By creating an account you agree to our{' '}
+        <span
+          onClick={() => router.push('/terms')}
+          style={{
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            color: 'rgba(255,255,255,0.30)',
+          }}
+        >
+          Terms of Service
+        </span>{' '}
+        and{' '}
+        <span
+          onClick={() => router.push('/privacy')}
+          style={{
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            color: 'rgba(255,255,255,0.30)',
+          }}
+        >
+          Privacy Policy
+        </span>
+        .
+      </p>
 
-      {/* ═══ STICKY CTA FOOTER ═══ */}
+      {/* ═══ SIGN IN LINK ═══ */}
+      <button
+        onClick={() => router.push('/login')}
+        style={{
+          marginTop: '12px',
+          background: 'none',
+          border: 'none',
+          fontSize: '14px',
+          fontWeight: 400,
+          color: 'rgba(255,255,255,0.50)',
+          textAlign: 'center',
+          fontFamily: 'var(--font-sans)',
+          cursor: 'pointer',
+          padding: 0,
+          width: '100%',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        Already have an account? Sign in
+      </button>
+
+      {/* Bottom spacer to clear sticky footer */}
+      <div style={{ height: '100px', flexShrink: 0 }} />
+
+      {/* ═══ STICKY FOOTER — Create Account button only ═══ */}
       <div
         style={{
           position: 'sticky',
@@ -606,184 +761,39 @@ export default function CreateAccountPage() {
           zIndex: 10,
           marginLeft: -24,
           marginRight: -24,
-          marginBottom: -40,
-          padding: '16px 24px 24px',
+          padding: '16px 24px max(24px, env(safe-area-inset-bottom, 0px))',
           background: 'linear-gradient(to top, var(--bg) 80%, transparent)',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
-          {/* Create account button */}
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || submitting}
-            style={{
-              width: '100%',
-              height: '56px',
-              borderRadius: '999px',
-              border: 'none',
-              background: canSubmit && !submitting ? '#ffffff' : 'rgba(255,255,255,0.20)',
-              color: canSubmit && !submitting ? '#000000' : 'rgba(0,0,0,0.40)',
-              fontSize: '17px',
-              fontWeight: 700,
-              fontFamily: 'var(--font-sans)',
-              cursor: canSubmit && !submitting ? 'pointer' : 'default',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'background 200ms var(--ease-out)',
-            }}
-          >
-            {submitting ? (
-              <>
-                <Loader2 size={20} style={{ animation: 'spin 0.7s linear infinite' }} />
-                Creating account…
-              </>
-            ) : (
-              'Create account'
-            )}
-          </button>
-
-          {/* Divider: or */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              width: '100%',
-              gap: '12px',
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                height: '1px',
-                background: 'rgba(255,255,255,0.08)',
-              }}
-            />
-            <span
-              style={{
-                flexShrink: 0,
-                fontSize: '13px',
-                color: 'var(--text-muted)',
-                fontFamily: 'var(--font-sans)',
-              }}
-            >
-              or
-            </span>
-            <div
-              style={{
-                flex: 1,
-                height: '1px',
-                background: 'rgba(255,255,255,0.08)',
-              }}
-            />
-          </div>
-
-          {/* Google button */}
-          <button
-            onClick={handleGoogleSignUp}
-            disabled={submitting}
-            style={{
-              width: '100%',
-              height: '56px',
-              borderRadius: '999px',
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: 'transparent',
-              color: '#ffffff',
-              fontSize: '17px',
-              fontWeight: 600,
-              fontFamily: 'var(--font-sans)',
-              cursor: submitting ? 'default' : 'pointer',
-              opacity: submitting ? 0.4 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              transition: 'opacity 200ms var(--ease-out)',
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                fill="#34A853"
-              />
-              <path
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                fill="#EA4335"
-              />
-            </svg>
-            Continue with Google
-          </button>
-        </div>
-
-        {/* ═══ LEGAL TEXT ═══ */}
-        <p
-          style={{
-            marginTop: '16px',
-            marginBottom: 0,
-            fontSize: '12px',
-            color: 'rgba(255,255,255,0.35)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-sans)',
-            lineHeight: 1.5,
-          }}
-        >
-          By creating an account you agree to our{' '}
-          <span
-            onClick={() => router.push('/terms')}
-            style={{
-              textDecoration: 'underline',
-              cursor: 'pointer',
-            }}
-          >
-            Terms of Service
-          </span>{' '}
-          and{' '}
-          <span
-            onClick={() => router.push('/privacy')}
-            style={{
-              textDecoration: 'underline',
-              cursor: 'pointer',
-            }}
-          >
-            Privacy Policy
-          </span>
-          .
-        </p>
-
-        {/* ═══ ALREADY HAVE ACCOUNT ═══ */}
         <button
-          onClick={() => router.push('/login')}
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
           style={{
-            marginTop: '12px',
-            background: 'none',
-            border: 'none',
-            fontSize: '14px',
-            fontWeight: 400,
-            color: 'rgba(255,255,255,0.50)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-sans)',
-            cursor: 'pointer',
-            padding: 0,
             width: '100%',
-            WebkitTapHighlightColor: 'transparent',
+            height: '56px',
+            borderRadius: '999px',
+            border: 'none',
+            background: canSubmit && !submitting ? '#ffffff' : 'rgba(255,255,255,0.20)',
+            color: canSubmit && !submitting ? '#000000' : 'rgba(0,0,0,0.40)',
+            fontSize: '17px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-sans)',
+            cursor: canSubmit && !submitting ? 'pointer' : 'default',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'background 200ms var(--ease-out)',
           }}
         >
-          Already have an account? Sign in
+          {submitting ? (
+            <>
+              <Loader2 size={20} style={{ animation: 'spin 0.7s linear infinite' }} />
+              Creating account…
+            </>
+          ) : (
+            'Create account'
+          )}
         </button>
       </div>
 
