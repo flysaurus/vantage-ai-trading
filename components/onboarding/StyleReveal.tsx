@@ -52,8 +52,8 @@ const STYLE_GLOW: Record<InvestorStyleKey, { bg: string; shadow: string }> = {
 interface StyleRevealProps {
   style: InvestorStyleKey;
   risk: RiskTolerance;
-  firstName: string;
-  lastName: string;
+  firstName?: string;
+  lastName?: string;
   onBack?: () => void;
   onSignIn?: () => void;
   onCreateAccount: (data: {
@@ -394,8 +394,8 @@ export function StyleReveal({
             onCreateAccount({
               style: selectedStyle,
               risk: initialRisk,
-              firstName,
-              lastName,
+              firstName: firstName || '',
+              lastName: lastName || '',
             })
           }
           style={{

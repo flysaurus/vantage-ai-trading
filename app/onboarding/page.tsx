@@ -6,9 +6,8 @@
 //  1. Feature Splash (first-time only, 3 auto-advancing lines)
 //  2. Arrival (typewriter text, "Find my style →")
 //  3-7. Q1 → Q2 → Q3 → Q4 → Q5 (stacked answer cards)
-//  8. Name capture (first + last name, required)
-//  9. Style reveal (burst, typewriter, override pills)
-// 10. Account creation (handled by parent or next prompt)
+//  8. Style reveal (burst, typewriter, override pills)
+//  9. → Create account (names captured on create-account page)
 //
 // State: all quiz data held in React state only — no
 // localStorage, no Supabase writes until account creation.
@@ -21,12 +20,11 @@ import { BootSplash } from '@/components/onboarding/BootSplash';
 import { FeatureSplash } from '@/components/onboarding/FeatureSplash';
 import { ArrivalScreen } from '@/components/onboarding/ArrivalScreen';
 import { QuizQuestion } from '@/components/onboarding/QuizQuestion';
-import { NameCapture } from '@/components/onboarding/NameCapture';
 import { StyleReveal } from '@/components/onboarding/StyleReveal';
 import { QUIZ_QUESTIONS, scoreQuiz, checkQuizComplete } from '@/lib/onboarding/quiz-logic';
 import type { InvestorStyleKey, RiskTolerance } from '@/lib/onboarding/onboarding-state';
 
-type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'name' | 'reveal';
+type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'reveal';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -55,8 +53,6 @@ export default function OnboardingPage() {
   });
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [quizResult, setQuizResult] = useState<ReturnType<typeof scoreQuiz> | null>(null);
 
   // ── Boot Splash complete ──────────────────────────────────
@@ -95,7 +91,7 @@ export default function OnboardingPage() {
       const result = scoreQuiz(newAnswers);
       setQuizResult(result);
       setTimeout(() => {
-        setScreen('name');
+        setScreen('reveal');
       }, 400);
     }
   }, [answers]);
@@ -107,27 +103,10 @@ export default function OnboardingPage() {
     setQuestionIndex((prev) => prev - 1);
   }, []);
 
-  const handleNameBack = useCallback(() => {
-    // Go back to Q5
-    setQuestionIndex(4);
-    setAnswers((prev) => prev.slice(0, 4));
-    setScreen('quiz');
-  }, []);
-
-  // ── Name captured ──────────────────────────────────────────
-
-  const handleNameSubmit = useCallback((first: string, last: string) => {
-    setFirstName(first);
-    setLastName(last);
-    setTimeout(() => setScreen('reveal'), 300);
-  }, []);
-
-  // ── Create account (passes all state to CreateAccount screen) ─
+  // ── Create account (passes style + risk to create-account) ─
 
   const handleCreateAccount = useCallback(
-    (data: { style: InvestorStyleKey; risk: RiskTolerance; firstName: string; lastName: string }) => {
-      // Store in sessionStorage temporarily for CreateAccount to pick up
-      // (CreateAccount screen will be built in a later prompt)
+    (data: { style: InvestorStyleKey; risk: RiskTolerance }) => {
       try {
         sessionStorage.setItem('vantage_onboarding_data', JSON.stringify(data));
       } catch {}
@@ -164,19 +143,12 @@ export default function OnboardingPage() {
       }
       return null;
 
-    case 'name':
-      return (
-        <NameCapture onSubmit={handleNameSubmit} onBack={handleNameBack} onSignIn={handleSignIn} />
-      );
-
     case 'reveal':
       if (quizResult) {
         return (
           <StyleReveal
             style={quizResult.style}
             risk={quizResult.risk}
-            firstName={firstName}
-            lastName={lastName}
             onCreateAccount={handleCreateAccount}
             onSignIn={handleSignIn}
           />
