@@ -8,7 +8,6 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Link, TrendingUp, Zap } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 
@@ -23,8 +22,7 @@ interface ToastState {
 
 // ── Main ────────────────────────────────────────────────
 
-export function ConnectionOptionsPage() {
-  const router = useRouter();
+export function ConnectionOptionsPage({ onStateChanged }: { onStateChanged: () => void }) {
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: '',
@@ -53,10 +51,9 @@ export function ConnectionOptionsPage() {
   // ── Back → broker-selection ────────────────────────────
 
   const handleBack = useCallback(() => {
-    // Hard reload forces remount → useAppState re-evaluates from DB.
-    // If connection_type was cleared, routes back to broker-selection.
-    window.location.href = '/';
-  }, [router]);
+    // Trigger state re-evaluation (no navigation needed)
+    onStateChanged();
+  }, [onStateChanged]);
 
   // ── Start demo instead ─────────────────────────────────
 
@@ -68,13 +65,13 @@ export function ConnectionOptionsPage() {
         credentials: 'include',
       });
       if (res.ok) {
-        window.location.href = '/';
+        onStateChanged();
       }
     } catch {
       // Silent fail — user can retry
     }
     setDemoLoading(false);
-  }, [router]);
+  }, [onStateChanged]);
 
   // ── Render ─────────────────────────────────────────────
 

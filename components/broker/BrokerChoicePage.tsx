@@ -34,7 +34,7 @@ function Spinner() {
 
 // ── Main ──────────────────────────────────────────────────
 
-export function BrokerChoicePage() {
+export function BrokerChoicePage({ onStateChanged }: { onStateChanged: () => void }) {
   const router = useRouter();
   const [loading, setLoading] = useState<'demo' | 'connect' | null>(null);
   const [demoError, setDemoError] = useState<string | null>(null);
@@ -64,9 +64,9 @@ export function BrokerChoicePage() {
         return;
       }
 
-      // Hard navigation forces full remount → useAppState re-evaluates
-      // from fresh DB data (router.refresh preserves React state, stale).
-      window.location.href = '/';
+      // Trigger state re-evaluation (DB already updated by API)
+      // No navigation needed — useAppState re-runs resolveState
+      onStateChanged();
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         setDemoError('Request timed out. Please try again.');
@@ -75,7 +75,7 @@ export function BrokerChoicePage() {
       }
       setLoading(null);
     }
-  }, []);
+  }, [onStateChanged]);
 
   // ── Connect broker ──────────────────────────────────────
 

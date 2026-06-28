@@ -11,6 +11,7 @@ const AuthContext = createContext<AppStateResult>({
   state: 'loading',
   user: null,
   profile: null,
+  refreshState: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

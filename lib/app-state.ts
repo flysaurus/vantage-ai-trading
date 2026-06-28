@@ -57,6 +57,9 @@ export interface AppStateResult {
   state: AppState;
   user: SupabaseUser | null;
   profile: UserProfile | null;
+  /** Call after state-changing API calls (e.g. demo start, broker connect)
+   * to re-evaluate the state machine without a full page reload. */
+  refreshState: () => void;
 }
 
 // ── Meaningful auth events ─────────────────────────────────
@@ -125,6 +128,7 @@ export function useAppState(): AppStateResult {
   const [state, setState] = useState<AppState>('loading');
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -342,7 +346,10 @@ export function useAppState(): AppStateResult {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { state, user, profile };
+  // ── refreshState: call after state-changing API calls ──
+  const refreshState = () => setRefreshKey((k) => k + 1);
+
+  return { state, user, profile, refreshState };
 }

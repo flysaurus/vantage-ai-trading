@@ -9,7 +9,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { UserProfile } from '@/lib/app-state';
 
@@ -77,8 +76,8 @@ interface ConnectionLoadingPageProps {
 
 export function ConnectionLoadingPage({
   profile,
-}: ConnectionLoadingPageProps) {
-  const router = useRouter();
+  onStateChanged,
+}: ConnectionLoadingPageProps & { onStateChanged: () => void }) {
   const [status, setStatus] = useState<string | null>(
     profile?.connection_status ?? 'syncing',
   );
@@ -103,8 +102,8 @@ export function ConnectionLoadingPage({
         const newStatus = data.connection_status as string | null;
 
         if (newStatus === 'connected') {
-          // Hard reload forces remount → useAppState re-evaluates → 'authenticated'
-          window.location.href = '/';
+          // State re-evaluation → useAppState sees connected → 'authenticated'
+          onStateChanged();
         } else if (newStatus === 'failed') {
           setStatus('failed');
           if (pollRef.current) {
@@ -125,15 +124,14 @@ export function ConnectionLoadingPage({
       clearTimeout(initial);
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [status, router]);
+  }, [status, onStateChanged]);
 
   // ── Retry ────────────────────────────────────────────
 
   const handleRetry = useCallback(() => {
-    // TODO: When connection API is ready, reset connection_status
-    // via API before navigating back to connection-options
-    router.push('/');
-  }, [router]);
+    // Full reload to reset polling state (connection status unchanged in DB)
+    window.location.href = '/';
+  }, []);
 
   // ── Render ───────────────────────────────────────────
 

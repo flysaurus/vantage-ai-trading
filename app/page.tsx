@@ -17,7 +17,7 @@ import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
 export default function Page() {
-  const { state, profile } = useAppState();
+  const { state, profile, refreshState } = useAppState();
   const router = useRouter();
 
   // Dismiss state for demo-counter (transient, not persisted)
@@ -55,7 +55,7 @@ export default function Page() {
 
   // broker-selection: authenticated but neither demo nor broker chosen
   if (state === 'broker-selection') {
-    return <BrokerChoicePage />;
+    return <BrokerChoicePage onStateChanged={refreshState} />;
   }
 
   // demo-counter: demo active — show counter, dismiss to MainApp
@@ -75,12 +75,12 @@ export default function Page() {
 
   // connection-options: chose to connect a broker — show broker options
   if (state === 'connection-options') {
-    return <ConnectionOptionsPage />;
+    return <ConnectionOptionsPage onStateChanged={refreshState} />;
   }
 
   // connection-loading: broker syncing — animated spinner + polling
   if (state === 'connection-loading') {
-    return <ConnectionLoadingPage profile={profile} />;
+    return <ConnectionLoadingPage profile={profile} onStateChanged={refreshState} />;
   }
 
   // demo-counter (dismissed) / authenticated
