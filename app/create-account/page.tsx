@@ -244,7 +244,7 @@ export default function CreateAccountPage() {
     const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
     const supabase = getSupabaseBrowserClient();
 
-    const { data: _data, error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -262,6 +262,21 @@ export default function CreateAccountPage() {
 
     if (error) {
       setApiError(error.message);
+      setSubmitting(false);
+      return;
+    }
+
+    // ── Duplicate detection ───────────────────────────────
+    // Supabase with email confirmation enabled returns
+    // data.user = null when the email already exists.
+    // Also detects when identities array is empty (existing user).
+    if (
+      !data.user ||
+      (data.user.identities && data.user.identities.length === 0)
+    ) {
+      setApiError(
+        'An account with this email already exists. Sign in instead.',
+      );
       setSubmitting(false);
       return;
     }
