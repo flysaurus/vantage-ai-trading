@@ -105,7 +105,9 @@ export default function ConnectionOptionsStep({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        minHeight: '100dvh',
+        height: '100dvh',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         background: 'var(--bg)',
         color: '#fff',
         fontFamily: 'var(--font-sans)',
