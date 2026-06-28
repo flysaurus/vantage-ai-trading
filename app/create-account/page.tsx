@@ -3,7 +3,7 @@
 // and riskTolerance from OnboardingFlow via sessionStorage.
 //
 // Layout:
-//   ZONE 1 (scrollable, padding-bottom: 100px):
+//   Natural scroll flow (no sticky):
 //     Top bar (back arrow + VantageOrb)
 //     Headline (two-line)
 //     Investor style summary card (emoji + style + risk + Change)
@@ -12,9 +12,8 @@
 //     OR divider
 //     Form fields (first, last, email, password, confirm)
 //     Terms text
+//     Create Account button
 //     Sign in link
-//   ZONE 2 (sticky footer):
-//     Create Account button ONLY
 
 'use client';
 
@@ -538,7 +537,7 @@ export default function CreateAccountPage() {
           transition: 'opacity 200ms var(--ease-out)',
         }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
             fill="#4285F4"
@@ -694,7 +693,7 @@ export default function CreateAccountPage() {
       {/* ═══ TERMS TEXT ═══ */}
       <p
         style={{
-          marginTop: '20px',
+          marginTop: '8px',
           marginBottom: 0,
           fontSize: '11px',
           fontWeight: 400,
@@ -729,11 +728,45 @@ export default function CreateAccountPage() {
         .
       </p>
 
+      {/* ═══ CREATE ACCOUNT BUTTON ═══ */}
+      <button
+        onClick={handleSubmit}
+        disabled={!canSubmit || submitting}
+        style={{
+          width: '100%',
+          height: '56px',
+          borderRadius: '999px',
+          border: 'none',
+          background: canSubmit && !submitting ? '#ffffff' : 'rgba(255,255,255,0.20)',
+          color: canSubmit && !submitting ? '#000000' : 'rgba(0,0,0,0.40)',
+          fontSize: '17px',
+          fontWeight: 700,
+          fontFamily: 'var(--font-sans)',
+          cursor: canSubmit && !submitting ? 'pointer' : 'default',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          marginTop: '16px',
+          flexShrink: 0,
+          transition: 'background 200ms var(--ease-out)',
+        }}
+      >
+        {submitting ? (
+          <>
+            <Loader2 size={20} style={{ animation: 'spin 0.7s linear infinite' }} />
+            Creating account…
+          </>
+        ) : (
+          'Create account'
+        )}
+      </button>
+
       {/* ═══ SIGN IN LINK ═══ */}
       <button
         onClick={() => router.push('/login')}
         style={{
-          marginTop: '12px',
+          marginTop: '16px',
           background: 'none',
           border: 'none',
           fontSize: '14px',
@@ -743,59 +776,13 @@ export default function CreateAccountPage() {
           fontFamily: 'var(--font-sans)',
           cursor: 'pointer',
           padding: 0,
+          paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))',
           width: '100%',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
         Already have an account? Sign in
       </button>
-
-      {/* Bottom spacer to clear sticky footer */}
-      <div style={{ height: '120px', flexShrink: 0 }} />
-
-      {/* ═══ STICKY FOOTER — Create Account button only ═══ */}
-      <div
-        style={{
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 10,
-          marginLeft: -24,
-          marginRight: -24,
-          padding: '16px 24px max(24px, env(safe-area-inset-bottom, 0px))',
-          background: 'linear-gradient(to top, var(--bg) 80%, transparent)',
-        }}
-      >
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit || submitting}
-          style={{
-            width: '100%',
-            height: '56px',
-            borderRadius: '999px',
-            border: 'none',
-            background: canSubmit && !submitting ? '#ffffff' : 'rgba(255,255,255,0.20)',
-            color: canSubmit && !submitting ? '#000000' : 'rgba(0,0,0,0.40)',
-            fontSize: '17px',
-            fontWeight: 700,
-            fontFamily: 'var(--font-sans)',
-            cursor: canSubmit && !submitting ? 'pointer' : 'default',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            transition: 'background 200ms var(--ease-out)',
-          }}
-        >
-          {submitting ? (
-            <>
-              <Loader2 size={20} style={{ animation: 'spin 0.7s linear infinite' }} />
-              Creating account…
-            </>
-          ) : (
-            'Create account'
-          )}
-        </button>
-      </div>
 
       {/* Spin keyframes for loader */}
       <style>{`
