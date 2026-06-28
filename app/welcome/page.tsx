@@ -338,6 +338,10 @@ export default function WelcomePage() {
       if (pendingChoice === 'demo') {
         const demoRes = await fetch('/api/demo/start', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: session.access_token,
+          }),
           credentials: 'include',
         });
 

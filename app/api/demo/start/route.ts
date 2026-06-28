@@ -7,9 +7,36 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-export async function POST() {
-  const { authUser, authError } = await requireAuth();
-  if (authError) return authError;
+export async function POST(req: Request) {
+  // Try access_token first, fall back to cookie auth
+  let userId: string | undefined;
+
+  try {
+    const body = await req.json().catch(() => ({})) as { access_token?: string };
+
+    if (body.access_token) {
+      const { data: { user }, error: verifyError } = await createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      ).auth.getUser(body.access_token);
+
+      if (verifyError || !user) {
+        return NextResponse.json(
+          { error: 'Invalid access token' },
+          { status: 401 },
+        );
+      }
+      userId = user.id;
+    } else {
+      const { authUser, authError } = await requireAuth();
+      if (authError) return authError;
+      userId = authUser.id;
+    }
+  } catch {
+    const { authUser, authError } = await requireAuth();
+    if (authError) return authError;
+    userId = authUser.id;
+  }
 
   // Use service_role for writes (needs elevated permissions)
   const supabase = createClient(
@@ -27,6 +54,14 @@ export async function POST() {
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   try {
+    // Guard: should never happen, but satisfy TypeScript
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Authentication failed' },
+        { status: 401 },
+      );
+    }
+
     // 1. Set demo timer in users table (match by UUID, not email —
     //    Supabase Auth lowercases emails which can mismatch the users.email column)
     const { error: userError } = await supabase
@@ -36,7 +71,7 @@ export async function POST() {
         demo_expires_at: expiresAt.toISOString(),
         portfolio_mode: 'demo',
       })
-      .eq('id', authUser.id);
+      .eq('id', userId);
 
     if (userError) {
       console.error('[demo/start] users update error:', userError);
@@ -53,13 +88,13 @@ export async function POST() {
       await supabase
         .from('demo_portfolio_state')
         .delete()
-        .eq('user_id', authUser.id);
+        .eq('user_id', userId);
 
       // Set fresh cash-only state
       const { error: insertError } = await supabase
         .from('demo_portfolio_state')
         .upsert({
-          user_id: authUser.id,
+          user_id: userId,
           positions: [],
           cash_balance: 100000,
           orders: [],
