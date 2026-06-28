@@ -46,10 +46,16 @@ export function BrokerChoicePage() {
     setDemoError(null);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
       const res = await fetch('/api/demo/start', {
         method: 'POST',
         credentials: 'include',
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -61,11 +67,15 @@ export function BrokerChoicePage() {
       // Hard navigation forces full remount → useAppState re-evaluates
       // from fresh DB data (router.refresh preserves React state, stale).
       window.location.href = '/';
-    } catch {
-      setDemoError('Network error. Check your connection.');
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        setDemoError('Request timed out. Please try again.');
+      } else {
+        setDemoError('Network error. Check your connection.');
+      }
       setLoading(null);
     }
-  }, [router]);
+  }, []);
 
   // ── Connect broker ──────────────────────────────────────
 

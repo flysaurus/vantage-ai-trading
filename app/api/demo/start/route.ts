@@ -6,13 +6,10 @@
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
 export async function POST() {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
-
-  const cookieStore = await cookies();
 
   // Use service_role for writes (needs elevated permissions)
   const supabase = createClient(
@@ -30,7 +27,8 @@ export async function POST() {
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   try {
-    // 1. Set demo timer in users table
+    // 1. Set demo timer in users table (match by UUID, not email —
+    //    Supabase Auth lowercases emails which can mismatch the users.email column)
     const { error: userError } = await supabase
       .from('users')
       .update({
@@ -38,7 +36,7 @@ export async function POST() {
         demo_expires_at: expiresAt.toISOString(),
         portfolio_mode: 'demo',
       })
-      .eq('email', authUser.email);
+      .eq('id', authUser.id);
 
     if (userError) {
       console.error('[demo/start] users update error:', userError);
