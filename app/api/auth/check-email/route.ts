@@ -3,6 +3,11 @@
 // Uses service role to query public.users directly.
 // No requireAuth() — this is called before signup.
 //
+// Note: auth.users is NOT queryable via REST (Supabase security).
+// public.users is populated by /api/user/setup on first login,
+// so it's a reliable proxy. If a row exists here, signUp() will
+// also reject the email.
+//
 // Security: fails open (returns false on DB error) so signup
 // is never blocked by this check. Supabase signUp() is the
 // final gate.
@@ -12,7 +17,7 @@ import { NextResponse } from 'next/server';
 
 // Simple in-memory rate limit (per-route-instance, resets on cold start)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 10;       // requests per window
+const RATE_LIMIT = 10;        // requests per window
 const RATE_WINDOW_MS = 60000; // 1 minute
 
 function isRateLimited(ip: string): boolean {
@@ -70,10 +75,11 @@ export async function POST(req: Request) {
       },
     );
 
+    // Case-insensitive match via ilike
     const { data, error } = await supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .ilike('email', email)
       .maybeSingle();
 
     if (error) {
