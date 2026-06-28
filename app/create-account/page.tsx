@@ -751,7 +751,7 @@ export default function CreateAccountPage() {
       </button>
 
       {/* Bottom spacer to clear sticky footer */}
-      <div style={{ height: '100px', flexShrink: 0 }} />
+      <div style={{ height: '120px', flexShrink: 0 }} />
 
       {/* ═══ STICKY FOOTER — Create Account button only ═══ */}
       <div
