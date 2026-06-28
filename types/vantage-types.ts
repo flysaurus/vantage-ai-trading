@@ -62,5 +62,8 @@ export type AppState =
   | 'needs-quiz'
   | 'needs-profile'
   | 'broker-selection'
+  | 'demo-counter'
+  | 'connection-options'
+  | 'connection-loading'
   | 'demo-expired'
   | 'authenticated';
