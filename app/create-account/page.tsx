@@ -519,7 +519,7 @@ export default function CreateAccountPage() {
         disabled={submitting}
         style={{
           width: '100%',
-          height: '56px',
+          height: '84px',
           borderRadius: '999px',
           border: 'none',
           background: '#ffffff',
