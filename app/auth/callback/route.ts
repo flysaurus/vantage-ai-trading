@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/welcome';
+
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code`);
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   // Explicitly copy cookies to redirect response — ensures the
   // session cookie is included even if Next.js doesn't auto-attach
   // cookie store modifications to NextResponse.redirect().
-  const response = NextResponse.redirect(`${origin}${next}`);
+  const response = NextResponse.redirect(`${origin}/welcome`);
   const allCookies = cookieStore.getAll();
   allCookies.forEach((c) => {
     response.cookies.set(c.name, c.value, {
