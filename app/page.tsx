@@ -35,7 +35,8 @@ export default function Page() {
     if (redirectedToSetup.current) return;
     redirectedToSetup.current = true;
     router.push('/onboarding');
-  }, [state, router, refreshState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, router]);
 
   // loading: show minimal orb pulse
   if (state === 'loading') {

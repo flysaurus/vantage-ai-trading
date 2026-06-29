@@ -69,8 +69,9 @@ export interface AppStateResult {
 const MEANINGFUL_EVENTS = new Set([
   'SIGNED_IN',
   'SIGNED_OUT',
-  'TOKEN_REFRESHED',
   'USER_UPDATED',
+  // TOKEN_REFRESHED intentionally omitted — middleware refreshes
+  // tokens passively; listening here creates PATCH → refresh → PATCH loops
 ]);
 
 // ── Decision tree: resolve state from users row ────────────
@@ -150,14 +151,6 @@ export function useAppState(): AppStateResult {
       }
 
       setUser(session.user);
-
-      // ── Fire-and-forget: update last_login_at ──────────
-      (supabase.from('users') as any)
-        .update({ last_login_at: new Date().toISOString() })
-        .eq('id', session.user.id)
-        .then((res: any) => {
-          if (res.error) console.warn('[useAppState] last_login_at update failed:', res.error.message);
-        });
 
       try {
         // ── Query public.users ONLY (central identity table) ──
