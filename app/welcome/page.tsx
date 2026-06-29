@@ -261,143 +261,283 @@ export default function WelcomePage() {
   const [firstName, setFirstName] = useState('');
 
   // Refs to prevent double-fires
-  const initialized = useRef(false);
+  const hasRun = useRef(false);
   const retryCount = useRef(0);
   const [exhausted, setExhausted] = useState(false);
   const [showCelebration, setShowCelebration] = useState(true);
 
-  // ── Bootstrap ────────────────────────────────────────────
-
-  const bootstrap = useCallback(async () => {
-    // Allow retries up to 3 attempts (initial + 2 retries)
-    if (retryCount.current >= 3) return;
-    initialized.current = true;
-
-    try {
-      // 1. Get session
-      const supabase = getSupabaseBrowserClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push('/login?error=no_session');
-        return;
-      }
-
-      const meta = (session.user.user_metadata || {}) as Record<
-        string,
-        string | undefined
-      >;
-
-      const first = meta.first_name || '';
-      const last = meta.last_name || '';
-      const investorStyle = meta.investor_style || '';
-      const riskTolerance = meta.risk_tolerance || '';
-      const pendingChoice = meta.pending_choice as string | undefined;
-      const pendingConnType =
-        (meta.pending_connection_type as string) || null;
-
-      setFirstName(first || 'trader');
-
-      // ── Call /api/user/setup ─────────────────────────────
-      // Auth handled automatically via session cookie
-      const setupRes = await fetch('/api/user/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          first_name: first,
-          last_name: last,
-          investor_style: investorStyle,
-          risk_tolerance: riskTolerance,
-        }),
-      });
-
-      if (!setupRes.ok) {
-        const errData = await setupRes.json().catch(() => null);
-        const errMsg =
-          (errData as { error?: string })?.error ||
-          `HTTP ${setupRes.status}: ${setupRes.statusText}`;
-        console.error('[welcome] /api/user/setup failed:', errMsg);
-        throw new Error(errMsg);
-      }
-
-      const setupData = await setupRes.json();
-
-      // Returning user guard — hit /welcome by mistake
-      if (setupData.returning) {
-        router.push('/');
-        return;
-      }
-
-      // ── Background API calls based on pendingChoice ──────
-
-      if (pendingChoice === 'demo') {
-        const demoRes = await fetch('/api/demo/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        });
-
-        if (!demoRes.ok) {
-          throw new Error('Failed to activate demo account');
-        }
-
-        const demoData = await demoRes.json();
-        setDemoExpiresAt(demoData.demo_expires_at ?? null);
-        setNextStep('demo-counter');
-      } else if (pendingChoice === 'broker' && pendingConnType) {
-        const connRes = await fetch('/api/connections/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            connection_type: pendingConnType,
-          }),
-          credentials: 'include',
-        });
-
-        if (!connRes.ok) {
-          throw new Error('Failed to initiate broker connection');
-        }
-
-        setPendingConnectionType(
-          pendingConnType as
-            | 'snaptrade'
-            | 'alpaca'
-            | 'tastytrade',
-        );
-        setNextStep('connection-loading');
-      } else {
-        // No pendingChoice — redirect to main app for broker selection
-        setNextStep('broker-selection');
-      }
-
-      setStatus('success');
-    } catch (err: unknown) {
-      retryCount.current += 1;
-
-      // After 2 failures, show fixed message + support link
-      if (retryCount.current >= 2) {
-        setExhausted(true);
-        setErrorMsg('Something went wrong setting up your account.');
-      } else {
-        setErrorMsg(
-          err instanceof Error
-            ? err.message
-            : 'Something went wrong. Please try again.',
-        );
-      }
-
-      setStatus('error');
-      // Allow retry button to re-trigger bootstrap
-      initialized.current = false;
-    }
-  }, [router]);
+  // ── Bootstrap with session wait loop ─────────────────────
 
   useEffect(() => {
-    bootstrap();
-  }, [bootstrap]);
+    if (hasRun.current) return;
+    hasRun.current = true;
+
+    const run = async () => {
+      try {
+        const supabase = getSupabaseBrowserClient();
+
+        // ── Wait for session cookie to propagate ──────────
+        // Retry up to 10 times with 500ms gaps
+        let session = null;
+
+        for (let i = 0; i < 10; i++) {
+          const { data } = await supabase.auth.getSession();
+
+          if (data?.session) {
+            session = data.session;
+            break;
+          }
+
+          console.log(
+            `[welcome] waiting for session... attempt ${i + 1}/10`
+          );
+          await new Promise(r => setTimeout(r, 500));
+        }
+
+        if (!session) {
+          console.error('[welcome] no session after 10 attempts');
+          router.push('/login?error=no_session');
+          return;
+        }
+
+        console.log('[welcome] session confirmed:', session.user.id);
+
+        // ── Read user metadata from session ───────────────
+        const meta = (session.user.user_metadata || {}) as Record<
+          string,
+          string | undefined
+        >;
+
+        const first = meta.first_name || '';
+        const last = meta.last_name || '';
+        const investorStyle = meta.investor_style || '';
+        const riskTolerance = meta.risk_tolerance || '';
+        const pendingChoice = meta.pending_choice as string | undefined;
+        const pendingConnType =
+          (meta.pending_connection_type as string) || null;
+
+        setFirstName(first || 'trader');
+
+        // ── Call /api/user/setup ──────────────────────────
+        const setupRes = await fetch('/api/user/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            first_name: first,
+            last_name: last,
+            investor_style: investorStyle,
+            risk_tolerance: riskTolerance,
+          }),
+        });
+
+        if (!setupRes.ok) {
+          const errData = await setupRes.json().catch(() => null);
+          const errMsg =
+            (errData as { error?: string })?.error ||
+            `HTTP ${setupRes.status}: ${setupRes.statusText}`;
+          console.error('[welcome] /api/user/setup failed:', errMsg);
+
+          // Retry once after 1 second
+          await new Promise(r => setTimeout(r, 1000));
+          const retryRes = await fetch('/api/user/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              first_name: first,
+              last_name: last,
+              investor_style: investorStyle,
+              risk_tolerance: riskTolerance,
+            }),
+          });
+
+          if (!retryRes.ok) {
+            console.error('[welcome] setup retry failed');
+            // Continue anyway — don't block user
+          }
+        } else {
+          const setupData = await setupRes.json();
+
+          // Returning user guard — hit /welcome by mistake
+          if (setupData.returning) {
+            router.push('/');
+            return;
+          }
+        }
+
+        // ── Background API calls based on pendingChoice ────
+
+        if (pendingChoice === 'demo') {
+          const demoRes = await fetch('/api/demo/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+
+          if (demoRes.ok) {
+            const demoData = await demoRes.json();
+            setDemoExpiresAt(demoData.demo_expires_at ?? null);
+            setNextStep('demo-counter');
+          } else {
+            console.error('[welcome] demo start failed');
+            setNextStep('demo-counter');
+            // Continue — demo_start_at may have written despite error
+          }
+        } else if (pendingChoice === 'broker' && pendingConnType) {
+          await fetch('/api/connections/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              connection_type: pendingConnType,
+            }),
+          });
+
+          setPendingConnectionType(
+            pendingConnType as
+              | 'snaptrade'
+              | 'alpaca'
+              | 'tastytrade',
+          );
+          setNextStep('connection-loading');
+        } else {
+          // No pending choice — edge case
+          setNextStep('broker-selection');
+        }
+
+        setStatus('success');
+      } catch (err: unknown) {
+        console.error('[welcome] unhandled error:', err);
+
+        retryCount.current += 1;
+
+        if (retryCount.current >= 2) {
+          setExhausted(true);
+          setErrorMsg('Something went wrong setting up your account.');
+        } else {
+          setErrorMsg(
+            err instanceof Error
+              ? err.message
+              : 'Something went wrong. Please try again.',
+          );
+        }
+
+        setStatus('error');
+        // Allow retry button to re-trigger
+        hasRun.current = false;
+      }
+    };
+
+    run();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Retry handler ────────────────────────────────────────
+
+  const handleRetry = useCallback(() => {
+    hasRun.current = false;
+    setStatus('loading');
+    // Force re-run by toggling a key
+    setExhausted(false);
+  }, []);
+
+  useEffect(() => {
+    if (status === 'loading' && !hasRun.current) {
+      hasRun.current = true;
+      // Re-trigger the setup flow
+      const runRetry = async () => {
+        try {
+          const supabase = getSupabaseBrowserClient();
+
+          let session = null;
+          for (let i = 0; i < 10; i++) {
+            const { data } = await supabase.auth.getSession();
+            if (data?.session) {
+              session = data.session;
+              break;
+            }
+            await new Promise(r => setTimeout(r, 500));
+          }
+
+          if (!session) {
+            router.push('/login?error=no_session');
+            return;
+          }
+
+          const meta = (session.user.user_metadata || {}) as Record<string, string | undefined>;
+          const first = meta.first_name || '';
+          const last = meta.last_name || '';
+          const investorStyle = meta.investor_style || '';
+          const riskTolerance = meta.risk_tolerance || '';
+          const pendingChoice = meta.pending_choice as string | undefined;
+          const pendingConnType = (meta.pending_connection_type as string) || null;
+
+          setFirstName(first || 'trader');
+
+          // Setup
+          const setupRes = await fetch('/api/user/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ first_name: first, last_name: last, investor_style: investorStyle, risk_tolerance: riskTolerance }),
+          });
+
+          if (!setupRes.ok) {
+            await new Promise(r => setTimeout(r, 1000));
+            const retryRes = await fetch('/api/user/setup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ first_name: first, last_name: last, investor_style: investorStyle, risk_tolerance: riskTolerance }),
+            });
+            if (!retryRes.ok) {
+              console.error('[welcome] setup retry failed on manual retry');
+            }
+          }
+
+          // Next steps
+          if (pendingChoice === 'demo') {
+            const demoRes = await fetch('/api/demo/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+            });
+            if (demoRes.ok) {
+              const demoData = await demoRes.json();
+              setDemoExpiresAt(demoData.demo_expires_at ?? null);
+            }
+            setNextStep('demo-counter');
+          } else if (pendingChoice === 'broker' && pendingConnType) {
+            await fetch('/api/connections/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ connection_type: pendingConnType }),
+            });
+            setPendingConnectionType(pendingConnType as 'snaptrade' | 'alpaca' | 'tastytrade');
+            setNextStep('connection-loading');
+          } else {
+            setNextStep('broker-selection');
+          }
+
+          setStatus('success');
+        } catch (err: unknown) {
+          console.error('[welcome] retry error:', err);
+          retryCount.current += 1;
+          if (retryCount.current >= 2) {
+            setExhausted(true);
+            setErrorMsg('Something went wrong setting up your account.');
+          } else {
+            setErrorMsg(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+          }
+          setStatus('error');
+          hasRun.current = false;
+        }
+      };
+
+      runRetry();
+    }
+  }, [status, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-advance after 2.5s ─────────────────────────────
 
@@ -419,7 +559,7 @@ export default function WelcomePage() {
 
   // Error state
   if (status === 'error') {
-    return <ErrorScreen message={errorMsg} onRetry={bootstrap} exhausted={exhausted} />;
+    return <ErrorScreen message={errorMsg} onRetry={handleRetry} exhausted={exhausted} />;
   }
 
   // Celebration screen (visible during loading + min 2.5s of success)
