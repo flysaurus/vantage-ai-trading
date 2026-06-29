@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
   // Auth: cookies only (correct for this flow)
   const { authUser, authError } = await requireAuth();
 
+  console.log('[user/setup] auth result:',
+    authUser ? 'ok: ' + authUser.id : 'failed: ' + (authError ? authError.status : 'unknown'));
+
   if (authError || !authUser) {
     console.error('[user/setup] cookie auth failed');
     return NextResponse.json(
