@@ -277,7 +277,7 @@ export default function WelcomePage() {
         const supabase = getSupabaseBrowserClient();
 
         // ── Wait for session cookie to propagate ──────────
-        // Retry up to 10 times with 500ms gaps
+        // after redirect from /auth/complete
         let session = null;
 
         for (let i = 0; i < 10; i++) {
@@ -295,28 +295,31 @@ export default function WelcomePage() {
         }
 
         if (!session) {
-          console.error('[welcome] no session after 10 attempts');
+          console.error('[welcome] no session found');
           router.push('/login?error=no_session');
           return;
         }
 
         console.log('[welcome] session confirmed:', session.user.id);
 
-        // ── Read user metadata from session ───────────────
-        const meta = (session.user.user_metadata || {}) as Record<
-          string,
-          string | undefined
-        >;
+        // ── Returning user guard ──────────────────────────
+        // Check if public.users already has demo_start_at or connection_type
+        const { data: existingUser } = await (supabase
+          .from('users') as any)
+          .select('demo_start_at, connection_type')
+          .eq('id', session.user.id)
+          .maybeSingle();
 
-        const first = meta.first_name || '';
-        const last = meta.last_name || '';
-        const investorStyle = meta.investor_style || '';
-        const riskTolerance = meta.risk_tolerance || '';
-        const pendingChoice = meta.pending_choice as string | undefined;
-        const pendingConnType =
-          (meta.pending_connection_type as string) || null;
+        if (existingUser?.demo_start_at || existingUser?.connection_type) {
+          // Already set up — skip to app
+          router.push('/');
+          return;
+        }
 
-        setFirstName(first || 'trader');
+        // ── Read metadata from session ────────────────────
+        const meta = session.user.user_metadata;
+        const firstName = meta.first_name || '';
+        setFirstName(firstName || 'trader');
 
         // ── Call /api/user/setup ──────────────────────────
         const setupRes = await fetch('/api/user/setup', {
@@ -324,51 +327,34 @@ export default function WelcomePage() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            first_name: first,
-            last_name: last,
-            investor_style: investorStyle,
-            risk_tolerance: riskTolerance,
+            first_name: meta.first_name ?? '',
+            last_name: meta.last_name ?? '',
+            investor_style: meta.investor_style ?? '',
+            risk_tolerance: meta.risk_tolerance ?? '',
           }),
         });
 
         if (!setupRes.ok) {
-          const errData = await setupRes.json().catch(() => null);
-          const errMsg =
-            (errData as { error?: string })?.error ||
-            `HTTP ${setupRes.status}: ${setupRes.statusText}`;
-          console.error('[welcome] /api/user/setup failed:', errMsg);
-
+          console.error('[welcome] setup failed:', await setupRes.text());
           // Retry once after 1 second
           await new Promise(r => setTimeout(r, 1000));
-          const retryRes = await fetch('/api/user/setup', {
+          await fetch('/api/user/setup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({
-              first_name: first,
-              last_name: last,
-              investor_style: investorStyle,
-              risk_tolerance: riskTolerance,
+              first_name: meta.first_name ?? '',
+              last_name: meta.last_name ?? '',
+              investor_style: meta.investor_style ?? '',
+              risk_tolerance: meta.risk_tolerance ?? '',
             }),
           });
-
-          if (!retryRes.ok) {
-            console.error('[welcome] setup retry failed');
-            // Continue anyway — don't block user
-          }
-        } else {
-          const setupData = await setupRes.json();
-
-          // Returning user guard — hit /welcome by mistake
-          if (setupData.returning) {
-            router.push('/');
-            return;
-          }
+          // Continue regardless — don't block user
         }
 
-        // ── Background API calls based on pendingChoice ────
+        // ── Fire demo or broker API ───────────────────────
 
-        if (pendingChoice === 'demo') {
+        if (meta.pending_choice === 'demo') {
           const demoRes = await fetch('/api/demo/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -378,31 +364,22 @@ export default function WelcomePage() {
           if (demoRes.ok) {
             const demoData = await demoRes.json();
             setDemoExpiresAt(demoData.demo_expires_at ?? null);
-            setNextStep('demo-counter');
           } else {
-            console.error('[welcome] demo start failed');
-            setNextStep('demo-counter');
-            // Continue — demo_start_at may have written despite error
+            console.error('[welcome] demo start failed:', await demoRes.text());
           }
-        } else if (pendingChoice === 'broker' && pendingConnType) {
+          setNextStep('demo-counter');
+        } else if (meta.pending_choice === 'broker') {
           await fetch('/api/connections/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({
-              connection_type: pendingConnType,
+              connection_type: meta.pending_connection_type,
             }),
           });
-
-          setPendingConnectionType(
-            pendingConnType as
-              | 'snaptrade'
-              | 'alpaca'
-              | 'tastytrade',
-          );
           setNextStep('connection-loading');
         } else {
-          // No pending choice — edge case
+          // Edge case — no pending choice
           setNextStep('broker-selection');
         }
 
@@ -424,7 +401,7 @@ export default function WelcomePage() {
         }
 
         setStatus('error');
-        // Allow retry button to re-trigger
+        // Allow retry
         hasRun.current = false;
       }
     };
@@ -437,106 +414,102 @@ export default function WelcomePage() {
   const handleRetry = useCallback(() => {
     hasRun.current = false;
     setStatus('loading');
-    // Force re-run by toggling a key
     setExhausted(false);
   }, []);
 
+  // Re-run when status flips back to 'loading' via retry
   useEffect(() => {
-    if (status === 'loading' && !hasRun.current) {
-      hasRun.current = true;
-      // Re-trigger the setup flow
-      const runRetry = async () => {
-        try {
-          const supabase = getSupabaseBrowserClient();
+    if (status !== 'loading' || hasRun.current) return;
+    hasRun.current = true;
 
-          let session = null;
-          for (let i = 0; i < 10; i++) {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session) {
-              session = data.session;
-              break;
-            }
-            await new Promise(r => setTimeout(r, 500));
+    const runRetry = async () => {
+      try {
+        const supabase = getSupabaseBrowserClient();
+
+        let session = null;
+        for (let i = 0; i < 10; i++) {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) {
+            session = data.session;
+            break;
           }
+          await new Promise(r => setTimeout(r, 500));
+        }
 
-          if (!session) {
-            router.push('/login?error=no_session');
-            return;
-          }
+        if (!session) {
+          router.push('/login?error=no_session');
+          return;
+        }
 
-          const meta = (session.user.user_metadata || {}) as Record<string, string | undefined>;
-          const first = meta.first_name || '';
-          const last = meta.last_name || '';
-          const investorStyle = meta.investor_style || '';
-          const riskTolerance = meta.risk_tolerance || '';
-          const pendingChoice = meta.pending_choice as string | undefined;
-          const pendingConnType = (meta.pending_connection_type as string) || null;
+        const meta = session.user.user_metadata;
+        const firstName = meta.first_name || '';
+        setFirstName(firstName || 'trader');
 
-          setFirstName(first || 'trader');
+        const setupRes = await fetch('/api/user/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            first_name: meta.first_name ?? '',
+            last_name: meta.last_name ?? '',
+            investor_style: meta.investor_style ?? '',
+            risk_tolerance: meta.risk_tolerance ?? '',
+          }),
+        });
 
-          // Setup
-          const setupRes = await fetch('/api/user/setup', {
+        if (!setupRes.ok) {
+          await new Promise(r => setTimeout(r, 1000));
+          await fetch('/api/user/setup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ first_name: first, last_name: last, investor_style: investorStyle, risk_tolerance: riskTolerance }),
+            body: JSON.stringify({
+              first_name: meta.first_name ?? '',
+              last_name: meta.last_name ?? '',
+              investor_style: meta.investor_style ?? '',
+              risk_tolerance: meta.risk_tolerance ?? '',
+            }),
           });
-
-          if (!setupRes.ok) {
-            await new Promise(r => setTimeout(r, 1000));
-            const retryRes = await fetch('/api/user/setup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ first_name: first, last_name: last, investor_style: investorStyle, risk_tolerance: riskTolerance }),
-            });
-            if (!retryRes.ok) {
-              console.error('[welcome] setup retry failed on manual retry');
-            }
-          }
-
-          // Next steps
-          if (pendingChoice === 'demo') {
-            const demoRes = await fetch('/api/demo/start', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-            });
-            if (demoRes.ok) {
-              const demoData = await demoRes.json();
-              setDemoExpiresAt(demoData.demo_expires_at ?? null);
-            }
-            setNextStep('demo-counter');
-          } else if (pendingChoice === 'broker' && pendingConnType) {
-            await fetch('/api/connections/start', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ connection_type: pendingConnType }),
-            });
-            setPendingConnectionType(pendingConnType as 'snaptrade' | 'alpaca' | 'tastytrade');
-            setNextStep('connection-loading');
-          } else {
-            setNextStep('broker-selection');
-          }
-
-          setStatus('success');
-        } catch (err: unknown) {
-          console.error('[welcome] retry error:', err);
-          retryCount.current += 1;
-          if (retryCount.current >= 2) {
-            setExhausted(true);
-            setErrorMsg('Something went wrong setting up your account.');
-          } else {
-            setErrorMsg(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
-          }
-          setStatus('error');
-          hasRun.current = false;
         }
-      };
 
-      runRetry();
-    }
+        if (meta.pending_choice === 'demo') {
+          const demoRes = await fetch('/api/demo/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+          if (demoRes.ok) {
+            const demoData = await demoRes.json();
+            setDemoExpiresAt(demoData.demo_expires_at ?? null);
+          }
+          setNextStep('demo-counter');
+        } else if (meta.pending_choice === 'broker') {
+          await fetch('/api/connections/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ connection_type: meta.pending_connection_type }),
+          });
+          setNextStep('connection-loading');
+        } else {
+          setNextStep('broker-selection');
+        }
+
+        setStatus('success');
+      } catch (err: unknown) {
+        retryCount.current += 1;
+        if (retryCount.current >= 2) {
+          setExhausted(true);
+          setErrorMsg('Something went wrong setting up your account.');
+        } else {
+          setErrorMsg(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+        }
+        setStatus('error');
+        hasRun.current = false;
+      }
+    };
+
+    runRetry();
   }, [status, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-advance after 2.5s ─────────────────────────────
