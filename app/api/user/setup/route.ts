@@ -26,12 +26,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Auth: try Bearer token first, fall back to cookie session
+  // Auth: try cookie session first (more reliable across deploys),
+  // fall back to access_token verification if cookies not present.
   let userId: string;
   let userEmail: string;
 
-  if (body.access_token) {
-    // Verify the access token with Supabase
+  const { authUser, authError } = await requireAuth();
+
+  if (!authError && authUser) {
+    // Cookie-based auth (works across same-domain fetches with credentials)
+    userId = authUser.id;
+    userEmail = authUser.email;
+    console.log('[user/setup] authenticated via cookie:', userId, userEmail);
+  } else if (body.access_token) {
+    // Fallback: verify the access token with Supabase
+    console.log('[user/setup] cookie auth failed, trying access_token…');
     const { data: { user }, error: verifyError } = await createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -49,14 +58,11 @@ export async function POST(req: NextRequest) {
     userEmail = user.email!;
     console.log('[user/setup] authenticated via access_token:', userId, userEmail);
   } else {
-    const { authUser, authError } = await requireAuth();
-    if (authError) {
-      console.error('[user/setup] requireAuth failed — no session cookie');
-      return authError;
-    }
-    userId = authUser.id;
-    userEmail = authUser.email;
-    console.log('[user/setup] authenticated via cookie:', userId, userEmail);
+    console.error('[user/setup] All auth methods failed — no cookie, no access_token');
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 },
+    );
   }
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
