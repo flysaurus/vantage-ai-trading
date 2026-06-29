@@ -263,14 +263,24 @@ export default function CreateAccountPage() {
       const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
       const supabase = getSupabaseBrowserClient();
 
-      await supabase.auth.resend({
+      const { error } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
         options: {
           emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
         },
       });
-    } catch {}
+
+      if (error) {
+        setConfirmResendState('idle');
+        setApiError('Could not resend. Try again.');
+        return;
+      }
+    } catch {
+      setConfirmResendState('idle');
+      setApiError('Could not resend. Try again.');
+      return;
+    }
 
     setConfirmResendState('sent');
     setConfirmResendCooldown(30);
@@ -291,10 +301,16 @@ export default function CreateAccountPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim() }),
       });
-      const { exists } = await checkRes.json();
+      const { exists, confirmed } = await checkRes.json();
 
       if (exists) {
-        setShowResendConfirmation(true);
+        if (confirmed) {
+          // Case 1: Fully confirmed account — show sign-in link
+          setEmailDuplicate(true);
+        } else {
+          // Case 2: Unconfirmed — show resend confirmation UI
+          setShowResendConfirmation(true);
+        }
         setSubmitting(false);
         return;
       }

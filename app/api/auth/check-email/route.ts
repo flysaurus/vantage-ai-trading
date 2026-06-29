@@ -1,16 +1,21 @@
 // ─── POST /api/auth/check-email ────────────────────────────
 // Pre-auth check: is this email already registered?
-// Uses service role to query public.users directly.
+// Uses service role to query BOTH public.users (confirmed)
+// AND auth.users (unconfirmed) so the signup form can show
+// the right message.
+//
 // No requireAuth() — this is called before signup.
 //
-// Note: auth.users is NOT queryable via REST (Supabase security).
-// public.users is populated by /api/user/setup on first login,
-// so it's a reliable proxy. If a row exists here, signUp() will
-// also reject the email.
+// Response:
+//   { exists: false, confirmed: false }  — email is free
+//   { exists: true,  confirmed: false }  — unconfirmed (can resend)
+//   { exists: true,  confirmed: true  }  — confirmed (sign in)
 //
-// Security: fails open (returns false on DB error) so signup
-// is never blocked by this check. Supabase signUp() is the
-// final gate.
+// Performance note: listUsers() fetches all auth users.
+// Acceptable for small user base; replace with
+// auth.admin.getUserByEmail() when available.
+//
+// Security: fails open (returns exists:false on any error).
 
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
@@ -44,8 +49,7 @@ export async function POST(req: Request) {
     'unknown';
 
   if (isRateLimited(ip)) {
-    // Fail open — don't block signup on rate limit
-    return NextResponse.json({ exists: false });
+    return NextResponse.json({ exists: false, confirmed: false });
   }
 
   // ── Parse body ─────────────────────────────────────────
@@ -54,15 +58,13 @@ export async function POST(req: Request) {
     const body = await req.json();
     email = (body.email || '').trim().toLowerCase();
   } catch {
-    return NextResponse.json({ exists: false });
+    return NextResponse.json({ exists: false, confirmed: false });
   }
 
-  // ── Validate email format ──────────────────────────────
   if (!email || !isValidEmail(email)) {
-    return NextResponse.json({ exists: false });
+    return NextResponse.json({ exists: false, confirmed: false });
   }
 
-  // ── Query public.users with service role ───────────────
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -75,21 +77,42 @@ export async function POST(req: Request) {
       },
     );
 
-    // Case-insensitive match via ilike
-    const { data, error } = await supabase
+    // ── Check 1: public.users (confirmed accounts) ──────
+    const { data: publicUser, error: publicError } = await supabase
       .from('users')
       .select('id')
       .ilike('email', email)
       .maybeSingle();
 
-    if (error) {
-      // Fail open — don't block signup on DB error
-      return NextResponse.json({ exists: false });
+    if (publicUser && !publicError) {
+      return NextResponse.json({ exists: true, confirmed: true });
     }
 
-    return NextResponse.json({ exists: !!data });
+    // ── Check 2: auth.users (includes unconfirmed) ───────
+    const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+
+    if (authError) {
+      // Fail open — don't block signup on listUsers error
+      return NextResponse.json({ exists: false, confirmed: false });
+    }
+
+    const authUser = authData?.users?.find(
+      (u) => u.email?.toLowerCase() === email.toLowerCase(),
+    );
+
+    if (authUser) {
+      if (authUser.email_confirmed_at) {
+        // Confirmed in auth but missing from public — edge case, treat as confirmed
+        return NextResponse.json({ exists: true, confirmed: true });
+      }
+      // Unconfirmed — exists in auth, not in public
+      return NextResponse.json({ exists: true, confirmed: false });
+    }
+
+    // Not found in either table
+    return NextResponse.json({ exists: false, confirmed: false });
   } catch {
     // Fail open
-    return NextResponse.json({ exists: false });
+    return NextResponse.json({ exists: false, confirmed: false });
   }
 }

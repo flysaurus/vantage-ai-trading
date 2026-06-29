@@ -391,13 +391,18 @@ export default function LoginPage() {
                   onClick={async () => {
                     if (resendConfirmState !== 'idle' || !supabase) return;
                     setResendConfirmState('loading');
-                    await supabase.auth.resend({
+                    const { error: resendErr } = await supabase.auth.resend({
                       type: 'signup',
                       email: email.trim(),
                       options: {
                         emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
                       },
                     });
+                    if (resendErr) {
+                      setResendConfirmState('idle');
+                      setInlineError('Could not resend. Try again.');
+                      return;
+                    }
                     setResendConfirmState('sent');
                     setResendConfirmCooldown(30);
                   }}
