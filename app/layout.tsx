@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/components/providers/AuthProvider';
-import { AuthProvider as GateAuthProvider } from '@/context/AuthContext';
 import { AuthGuard } from '@/components/providers/AuthGuard';
-import { InactivityWarning } from '@/components/providers/InactivityWarning';
 import { MilestoneToastProvider } from '@/context/MilestoneContext';
 import { MilestoneToastRenderer } from '@/components/gamification/MilestoneToastRenderer';
 import './globals.css';
@@ -58,17 +56,14 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <GateAuthProvider>
         <AuthProvider>
-            <MilestoneToastProvider>
-              <AuthGuard>
-                {children}
-              </AuthGuard>
-              <InactivityWarning />
-              <MilestoneToastRenderer />
-            </MilestoneToastProvider>
+          <MilestoneToastProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+            <MilestoneToastRenderer />
+          </MilestoneToastProvider>
         </AuthProvider>
-        </GateAuthProvider>
       </body>
     </html>
   );

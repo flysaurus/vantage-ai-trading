@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/app-state';
-import { BootSplash } from '@/components/onboarding/BootSplash';
+import { VantageOrb } from '@/components/brand/VantageOrb';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
@@ -16,15 +16,12 @@ import { ConnectionLoadingPage } from '@/components/broker/ConnectionLoadingPage
 import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
-const SETUP_DONE_KEY = 'vantage_setup_complete';
-
 export default function Page() {
   const { state, profile, refreshState } = useAppState();
   const router = useRouter();
 
-  // Guard against repeated redirects to /auth/complete
+  // Guard against repeated redirects — only run once per mount
   const redirectedToSetup = useRef(false);
-  const justCompletedSetup = useRef(false);
 
   // Dismiss state for demo-counter (transient, not persisted)
   const [showDemoCounter, setShowDemoCounter] = useState(true);
@@ -32,31 +29,27 @@ export default function Page() {
     if (state === 'demo-counter') setShowDemoCounter(true);
   }, [state]);
 
-  // Check if we just came from a successful /auth/complete setup
-  useEffect(() => {
-    try {
-      const flag = sessionStorage.getItem(SETUP_DONE_KEY);
-      if (flag === '1') {
-        justCompletedSetup.current = true;
-        sessionStorage.removeItem(SETUP_DONE_KEY);
-        // Force a re-check of the profile since DB may have updated
-        refreshState();
-      }
-    } catch { /* ignore */ }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // needs-profile: redirect to profile completion
+  // needs-profile: redirect to onboarding
   useEffect(() => {
     if (state !== 'needs-profile') return;
-    if (redirectedToSetup.current) return; // only redirect once
-    if (justCompletedSetup.current) return; // just finished setup, DB may lag
+    if (redirectedToSetup.current) return;
     redirectedToSetup.current = true;
-    router.push('/auth/complete');
+    router.push('/onboarding');
   }, [state, router, refreshState]);
 
-  // loading: show boot splash
+  // loading: show minimal orb pulse
   if (state === 'loading') {
-    return <BootSplash onComplete={() => {}} />;
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        background: 'var(--bg-primary)',
+      }}>
+        <VantageOrb size={44} animate={true} />
+      </div>
+    );
   }
 
   // onboarding: brand new user — full onboarding flow
@@ -64,9 +57,19 @@ export default function Page() {
     return <OnboardingFlow />;
   }
 
-  // needs-profile: redirect to auth/complete
+  // needs-profile: redirect handled by useEffect above
   if (state === 'needs-profile') {
-    return <BootSplash onComplete={() => {}} />;
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        background: 'var(--bg-primary)',
+      }}>
+        <VantageOrb size={44} animate={true} />
+      </div>
+    );
   }
 
   // needs-quiz: has account + profile, just needs style quiz
