@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/app-state';
 import { BootSplash } from '@/components/onboarding/BootSplash';
@@ -16,9 +16,15 @@ import { ConnectionLoadingPage } from '@/components/broker/ConnectionLoadingPage
 import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
 import { DemoExpired } from '@/components/app/DemoExpired';
 
+const SETUP_DONE_KEY = 'vantage_setup_complete';
+
 export default function Page() {
   const { state, profile, refreshState } = useAppState();
   const router = useRouter();
+
+  // Guard against repeated redirects to /auth/complete
+  const redirectedToSetup = useRef(false);
+  const justCompletedSetup = useRef(false);
 
   // Dismiss state for demo-counter (transient, not persisted)
   const [showDemoCounter, setShowDemoCounter] = useState(true);
@@ -26,12 +32,27 @@ export default function Page() {
     if (state === 'demo-counter') setShowDemoCounter(true);
   }, [state]);
 
+  // Check if we just came from a successful /auth/complete setup
+  useEffect(() => {
+    try {
+      const flag = sessionStorage.getItem(SETUP_DONE_KEY);
+      if (flag === '1') {
+        justCompletedSetup.current = true;
+        sessionStorage.removeItem(SETUP_DONE_KEY);
+        // Force a re-check of the profile since DB may have updated
+        refreshState();
+      }
+    } catch { /* ignore */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // needs-profile: redirect to profile completion
   useEffect(() => {
-    if (state === 'needs-profile') {
-      router.push('/auth/complete');
-    }
-  }, [state, router]);
+    if (state !== 'needs-profile') return;
+    if (redirectedToSetup.current) return; // only redirect once
+    if (justCompletedSetup.current) return; // just finished setup, DB may lag
+    redirectedToSetup.current = true;
+    router.push('/auth/complete');
+  }, [state, router, refreshState]);
 
   // loading: show boot splash
   if (state === 'loading') {

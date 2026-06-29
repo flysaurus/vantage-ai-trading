@@ -1,11 +1,13 @@
 // ─── /auth/complete ──────────────────────────────────────────
-// Post-OAuth signup completion page. Writes the user's profile
-// (users + user_profiles) after Google sign-in supplies the email.
+// Post-auth profile completion page. Called after sign-up (email
+// or OAuth) to ensure the user's profile (public.users row) has
+// all required fields: first_name, last_name, investor_style,
+// and risk_tolerance.
 //
-// Data is split across two tables:
-//   public.users         → parent (id, email, name)
-//   public.user_profiles → extended profile (FK → users.id)
-// user_profiles has NO user_id or email columns — uses id as PK.
+// Also handles the case where the root page redirects here because
+// useAppState detected an incomplete profile (needs-profile state).
+//
+// Uses /api/user/setup (service role) to bypass RLS for writes.
 
 'use client';
 import { useRouter } from 'next/navigation';
@@ -21,6 +23,8 @@ export default function AuthCompletePage() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+
     async function completeAuth() {
       try {
         const supabase = getSupabaseBrowserClient();
@@ -37,108 +41,156 @@ export default function AuthCompletePage() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
+          if (cancelled) return;
           setErrorMsg('Session not found. Please try signing in again.');
           setStatus('error');
           return;
         }
 
-        // Check if users row exists
+        // ── Fetch existing users row (may be incomplete) ────
         const { data: existingUser } = await (supabase
           .from('users') as any)
-          .select('id')
+          .select('id, first_name, last_name, investor_style, risk_tolerance')
           .eq('id', session.user.id)
           .maybeSingle();
 
-        const { data: existingProfile } = await (supabase
-          .from('user_profiles') as any)
-          .select('id')
-          .eq('id', session.user.id)
-          .maybeSingle();
+        // ── Determine if profile needs completion ───────────
+        // Check for missing fields, not just missing row.
+        // This prevents the infinite loop: root → /auth/complete → root → …
+        const needsSetup =
+          !existingUser ||
+          !existingUser.first_name ||
+          !existingUser.last_name;
 
-        if (!existingUser && !existingProfile) {
-          // ── Reconstruct profile from sessionStorage ──────────
-          let profile: {
-            firstName: string;
-            lastName: string;
-            investorStyle: string | null;
-            riskTolerance: string | null;
-          } | null = null;
+        if (!needsSetup) {
+          // Profile is already complete — redirect home
+          if (cancelled) return;
+          setStatus('done');
+          if (!existingUser.investor_style) {
+            router.push('/onboarding');
+          } else {
+            router.push('/');
+          }
+          return;
+        }
 
-          // Source 1: Pending profile stored by pre-signup flow
-          try {
-            const raw = sessionStorage.getItem('vantage_pending_profile');
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (parsed?.firstName) profile = parsed;
-            }
-          } catch {}
+        // ── Reconstruct profile from available sources ──────
+        let profile: {
+          firstName: string;
+          lastName: string;
+          investorStyle: string | null;
+          riskTolerance: string | null;
+        } | null = null;
 
-          // Source 2: Onboarding result
+        // Source 1: Pending profile stored by pre-signup flow
+        try {
+          const raw = sessionStorage.getItem('vantage_pending_profile');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.firstName) profile = parsed;
+          }
+        } catch { /* ignore */ }
+
+        // Source 2: Onboarding result
+        if (!profile) {
           try {
             const raw = sessionStorage.getItem('vantage_onboarding_result');
             if (raw) {
               const parsed = JSON.parse(raw);
               if (parsed?.investorStyle) {
                 profile = {
-                  firstName: parsed.firstName || profile?.firstName || '',
-                  lastName: parsed.lastName || profile?.lastName || '',
+                  firstName: parsed.firstName || '',
+                  lastName: parsed.lastName || '',
                   investorStyle: parsed.investorStyle,
                   riskTolerance: parsed.riskTolerance || 'Moderate',
                 };
               }
             }
-          } catch {}
+          } catch { /* ignore */ }
+        }
 
-          // Source 3: User metadata (email signup or Google OAuth)
-          if (!profile) {
-            const meta = session.user.user_metadata as Record<string, string> | undefined;
-            profile = {
-              firstName: meta?.first_name || meta?.given_name || meta?.name?.split(' ')[0] || '',
-              lastName: meta?.last_name || meta?.family_name || meta?.name?.split(' ').slice(1).join(' ') || '',
-              investorStyle: meta?.investor_style || null,
-              riskTolerance: meta?.risk_tolerance || 'Moderate',
-            };
-          }
+        // Source 3: User metadata from session (email signup / OAuth)
+        if (!profile) {
+          const meta = session.user.user_metadata as Record<string, string> | undefined;
+          profile = {
+            firstName:
+              meta?.first_name ||
+              meta?.given_name ||
+              meta?.name?.split(' ')[0] ||
+              existingUser?.first_name ||
+              '',
+            lastName:
+              meta?.last_name ||
+              meta?.family_name ||
+              meta?.name?.split(' ').slice(1).join(' ') ||
+              existingUser?.last_name ||
+              '',
+            investorStyle:
+              meta?.investor_style ||
+              existingUser?.investor_style ||
+              null,
+            riskTolerance:
+              meta?.risk_tolerance ||
+              existingUser?.risk_tolerance ||
+              'Moderate',
+          };
+        }
 
-          if (profile) {
-            // Call /api/user/setup (uses service role, bypasses RLS)
-            const setupRes = await fetch('/api/user/setup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                access_token: session.access_token,
-                first_name: profile.firstName,
-                last_name: profile.lastName,
-                investor_style: profile.investorStyle,
-                risk_tolerance: profile.riskTolerance,
-              }),
-              credentials: 'include',
-            });
+        if (!profile.firstName && !profile.lastName) {
+          // No name available anywhere — still try to create with
+          // whatever metadata we have (email prefix as fallback)
+          const emailPrefix = session.user.email?.split('@')[0] || '';
+          profile.firstName = emailPrefix || 'Trader';
+          profile.lastName = '';
+        }
 
-            if (!setupRes.ok) {
-              const errData = await setupRes.json().catch(() => null);
-              throw new Error(
-                (errData as any)?.error || `Setup failed (${setupRes.status})`,
-              );
-            }
+        // ── Call /api/user/setup (service role, bypasses RLS) ──
+        const setupRes = await fetch('/api/user/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: session.access_token,
+            first_name: profile.firstName,
+            last_name: profile.lastName,
+            investor_style: profile.investorStyle,
+            risk_tolerance: profile.riskTolerance,
+          }),
+          credentials: 'include',
+        });
 
-            sessionStorage.removeItem('vantage_pending_profile');
-            setStatus('done');
+        if (cancelled) return;
 
-            if (!profile.investorStyle) {
-              router.push('/onboarding');
-            } else {
-              router.push('/');
-            }
-          }
+        if (!setupRes.ok) {
+          const errData = await setupRes.json().catch(() => null);
+          throw new Error(
+            (errData as any)?.error ||
+            (errData as any)?.detail ||
+            `Setup failed (${setupRes.status})`,
+          );
+        }
+
+        // ── Clean up sessionStorage ───────────────────────────
+        sessionStorage.removeItem('vantage_pending_profile');
+        sessionStorage.removeItem('vantage_onboarding_result');
+        // Signal to root page that setup just completed
+        // (prevents immediate re-redirect back here due to DB lag)
+        try {
+          sessionStorage.setItem('vantage_setup_complete', '1');
+        } catch { /* ignore */ }
+        setStatus('done');
+
+        // ── Redirect based on profile completeness ────────────
+        if (!profile.investorStyle) {
+          router.push('/onboarding');
         } else {
-          // Profile already exists — skip
-          setStatus('done');
           router.push('/');
         }
       } catch (err: any) {
+        if (cancelled) return;
         console.error('[auth/complete] Error:', err);
+        // Show the actual error for debugging, not a generic message
         setErrorMsg(
+          err?.message ||
           "Something went wrong setting up your account. Please try again.",
         );
         setStatus('error');
@@ -146,6 +198,10 @@ export default function AuthCompletePage() {
     }
 
     completeAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Processing state ─────────────────────────────────────────
