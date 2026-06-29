@@ -1,10 +1,14 @@
 // ─── GET /auth/complete — Email confirmation handler ────────
 // User lands here after clicking the email confirmation link.
-// Exchanges the code for a session, sets cookies, then redirects
-// to /welcome for all post-auth business logic.
 //
-// ONE job only: code exchange → redirect to /welcome.
-// No setup logic, no DB queries, no API calls.
+// TWO possible flows:
+//   A) Direct from Supabase confirmation page: ?code=xxx
+//      → exchange code for session → redirect to /welcome
+//   B) Via /auth/confirm (custom template, token_hash flow):
+//      /auth/confirm already set the session cookie,
+//      so no code param → check for session → /welcome
+//
+// If neither works → redirect to login with error.
 
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
@@ -13,11 +17,6 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-
-  if (!code) {
-    console.error('[auth/complete] No code param');
-    return NextResponse.redirect(`${origin}/login?error=no_code`);
-  }
 
   const cookieStore = await cookies();
 
@@ -38,14 +37,26 @@ export async function GET(request: NextRequest) {
     },
   );
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-  if (error) {
-    console.error('[auth/complete] Exchange failed:', error.message);
-    return NextResponse.redirect(`${origin}/login?error=callback_failed`);
+  // FLOW A: Exchange code for session (direct Supabase redirect)
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      console.error('[auth/complete] Exchange failed:', error.message);
+      return NextResponse.redirect(`${origin}/login?error=callback_failed`);
+    }
+    return NextResponse.redirect(`${origin}/welcome`);
   }
 
-  // Success — session cookie is now set
-  // Redirect to /welcome which handles all post-auth branching
-  return NextResponse.redirect(`${origin}/welcome`);
+  // FLOW B: No code — check for existing session
+  // (set by /auth/confirm via token_hash verification)
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  if (!sessionError && session) {
+    console.log('[auth/complete] Session found (Flow B) — redirecting to welcome');
+    return NextResponse.redirect(`${origin}/welcome`);
+  }
+
+  // No code, no session — give up
+  console.error('[auth/complete] No code and no session');
+  return NextResponse.redirect(`${origin}/login?error=no_code`);
 }

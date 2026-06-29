@@ -23,7 +23,7 @@ import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
-import { useAuth } from '@/context/AuthContext';
+import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
@@ -49,7 +49,7 @@ const TAB_COMPONENTS: Record<Exclude<TabId, 'ai'>, React.FC> = {
 
 function AppShell() {
   const { activeTab, setTab } = useTabStore();
-  const { state, user: supabaseUser, profile } = useAuth();
+  const { state, user: supabaseUser, profile } = useAppState();
   const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showBrokerGate, setShowBrokerGate] = useState(false);
