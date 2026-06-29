@@ -17,7 +17,7 @@ interface SetupBody {
 
 export async function POST(req: NextRequest) {
   // TEMPORARY DEBUG: verify service role key exists at runtime
-  console.log('[DEBUG] service role key:',
+  console.error('[DEBUG] service role key:',
     process.env.SUPABASE_SERVICE_ROLE_KEY
       ? 'PRESENT (' + process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10) + '...)'
       : 'EMPTY');
