@@ -1,59 +1,26 @@
 // ─── POST /api/auth/check-email ────────────────────────────
 // Pre-auth check: is this email already registered?
-// Uses service role to query BOTH public.users (confirmed)
-// AND auth.users (unconfirmed) so the signup form can show
-// the right message.
+// Uses a SECURITY DEFINER SQL function (check_email_exists)
+// that queries auth.users directly — avoiding listUsers() perf
+// issues and PostgREST auth-schema restrictions.
 //
-// No requireAuth() — this is called before signup.
+// Flow:
+//   1. Check public.users (confirmed accounts)
+//   2. Check auth.users via RPC (unconfirmed accounts)
+//   3. If neither → email is free
 //
-// Response:
-//   { exists: false, confirmed: false }  — email is free
-//   { exists: true,  confirmed: false }  — unconfirmed (can resend)
-//   { exists: true,  confirmed: true  }  — confirmed (sign in)
+// Response: { exists: boolean, confirmed: boolean }
 //
-// Performance note: listUsers() fetches all auth users.
-// Acceptable for small user base; replace with
-// auth.admin.getUserByEmail() when available.
-//
-// Security: fails open (returns exists:false on any error).
+// Security: fails open on any error (never blocks signup).
 
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Simple in-memory rate limit (per-route-instance, resets on cold start)
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 10;        // requests per window
-const RATE_WINDOW_MS = 60000; // 1 minute
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return false;
-  }
-  if (entry.count >= RATE_LIMIT) return true;
-  entry.count++;
-  return false;
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: Request) {
-  // ── Rate limit ─────────────────────────────────────────
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip') ||
-    'unknown';
-
-  if (isRateLimited(ip)) {
-    return NextResponse.json({ exists: false, confirmed: false });
-  }
-
-  // ── Parse body ─────────────────────────────────────────
   let email: string;
+
   try {
     const body = await req.json();
     email = (body.email || '').trim().toLowerCase();
@@ -61,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ exists: false, confirmed: false });
   }
 
-  if (!email || !isValidEmail(email)) {
+  if (!email || !emailRegex.test(email)) {
     return NextResponse.json({ exists: false, confirmed: false });
   }
 
@@ -77,42 +44,43 @@ export async function POST(req: Request) {
       },
     );
 
-    // ── Check 1: public.users (confirmed accounts) ──────
-    const { data: publicUser, error: publicError } = await supabase
+    // ── Step 1: Check public.users (confirmed accounts) ──
+    const { data: publicUser } = await supabase
       .from('users')
       .select('id')
       .ilike('email', email)
       .maybeSingle();
 
-    if (publicUser && !publicError) {
+    if (publicUser) {
       return NextResponse.json({ exists: true, confirmed: true });
     }
 
-    // ── Check 2: auth.users (includes unconfirmed) ───────
-    const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+    // ── Step 2: Check auth.users via RPC ──────────────────
+    const { data, error } = await supabase.rpc('check_email_exists', {
+      lookup_email: email,
+    });
 
-    if (authError) {
-      // Fail open — don't block signup on listUsers error
+    if (error) {
+      // Fail open
+      console.error('[check-email] RPC error:', error.message);
       return NextResponse.json({ exists: false, confirmed: false });
     }
 
-    const authUser = authData?.users?.find(
-      (u) => u.email?.toLowerCase() === email.toLowerCase(),
-    );
+    // RPC returns [{ found: boolean, confirmed: boolean }]
+    const result = Array.isArray(data) ? data[0] : data;
 
-    if (authUser) {
-      if (authUser.email_confirmed_at) {
-        // Confirmed in auth but missing from public — edge case, treat as confirmed
-        return NextResponse.json({ exists: true, confirmed: true });
-      }
-      // Unconfirmed — exists in auth, not in public
-      return NextResponse.json({ exists: true, confirmed: false });
+    if (result?.found) {
+      return NextResponse.json({
+        exists: true,
+        confirmed: result.confirmed === true,
+      });
     }
 
-    // Not found in either table
+    // ── Step 3: Email is free ─────────────────────────────
     return NextResponse.json({ exists: false, confirmed: false });
-  } catch {
+  } catch (err) {
     // Fail open
+    console.error('[check-email] unexpected error:', err);
     return NextResponse.json({ exists: false, confirmed: false });
   }
 }

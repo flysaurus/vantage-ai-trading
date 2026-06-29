@@ -178,18 +178,6 @@ export default function CreateAccountPage() {
     }
   }, [onboardingData, router]);
 
-  // ── Resend confirmation cooldown ────────────────────────
-  useEffect(() => {
-    if (confirmResendCooldown <= 0) return;
-    const t = setInterval(() => {
-      setConfirmResendCooldown((prev) => {
-        if (prev <= 1) { setConfirmResendState('idle'); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, [confirmResendCooldown]);
-
   if (!onboardingData) {
     return (
       <div
@@ -282,8 +270,15 @@ export default function CreateAccountPage() {
       return;
     }
 
+    // Show success state — disabled for 30s
     setConfirmResendState('sent');
     setConfirmResendCooldown(30);
+
+    // Reset after 30s
+    setTimeout(() => {
+      setConfirmResendState('idle');
+      setConfirmResendCooldown(0);
+    }, 30000);
   }, [confirmResendState, email]);
 
   const handleSubmit = useCallback(async () => {
@@ -713,104 +708,97 @@ export default function CreateAccountPage() {
           disabled={submitting}
         />
 
-        {/* Inline duplicate email error (fallback from signUp) */}
+        {/* Confirmed account exists */}
         {emailDuplicate && (
-          <p
-            style={{
-              fontSize: '12px',
-              fontWeight: 400,
-              color: 'var(--loss)',
-              fontFamily: 'var(--font-sans)',
-              marginTop: '4px',
-              marginBottom: 0,
-              lineHeight: 1.4,
-            }}
-          >
-            An account with this email already exists.{' '}
+          <div style={{ marginTop: '4px' }}>
+            <p
+              style={{
+                fontSize: '12px',
+                fontWeight: 400,
+                color: 'var(--loss)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 4px',
+                lineHeight: 1.4,
+              }}
+            >
+              An account with this email already exists.
+            </p>
             <span
               onClick={() => router.push('/login')}
               style={{
                 color: 'var(--accent)',
+                fontSize: '12px',
+                fontFamily: 'var(--font-sans)',
                 cursor: 'pointer',
-                textDecoration: 'underline',
               }}
             >
               Sign in instead →
             </span>
-          </p>
+          </div>
         )}
 
-        {/* Resend confirmation (pre-flight found existing email) */}
+        {/* Unconfirmed account — resend confirmation */}
         {showResendConfirmation && (
-          <div
-            style={{
-              marginTop: '4px',
-              padding: '12px 14px',
-              borderRadius: '12px',
-              background: 'var(--warning-10)',
-              border: '1px solid var(--warning)',
-            }}
-          >
+          <div style={{ marginTop: '4px' }}>
             <p
               style={{
-                fontSize: '13px',
-                fontWeight: 500,
+                fontSize: '12px',
+                fontWeight: 400,
                 color: 'var(--warning)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 2px',
               }}
             >
-              We already sent you a confirmation email.
+              We already sent a confirmation email here.
             </p>
             <p
               style={{
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 400,
                 color: 'rgba(255,255,255,0.50)',
                 fontFamily: 'var(--font-sans)',
-                margin: '0 0 8px',
+                margin: '0 0 12px',
                 lineHeight: 1.4,
               }}
             >
               Please check your inbox and spam folder.
             </p>
 
-            {/* Resend link */}
-            <span
-              onClick={resendConfirmation}
-              style={{
-                display: 'block',
-                color: confirmResendState === 'sent' ? 'var(--gain)' : 'var(--accent)',
-                fontSize: '13px',
-                fontFamily: 'var(--font-sans)',
-                cursor: confirmResendState === 'idle' ? 'pointer' : 'default',
-                marginBottom: '8px',
-              }}
-            >
-              {confirmResendState === 'sent'
-                ? `Email resent ✓ (${confirmResendCooldown}s)`
-                : confirmResendState === 'loading'
-                  ? 'Sending…'
-                  : 'Resend confirmation email'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span
+                onClick={resendConfirmation}
+                style={{
+                  color: confirmResendState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+                  fontSize: '14px',
+                  fontFamily: 'var(--font-sans)',
+                  cursor: confirmResendState === 'idle' ? 'pointer' : 'default',
+                  textAlign: 'center',
+                }}
+              >
+                {confirmResendState === 'sent'
+                  ? 'Email resent ✓'
+                  : confirmResendState === 'loading'
+                    ? 'Sending…'
+                    : 'Resend confirmation email'}
+              </span>
 
-            {/* Use different email */}
-            <span
-              onClick={() => {
-                setEmail('');
-                setShowResendConfirmation(false);
-                setEmailTouched(false);
-              }}
-              style={{
-                display: 'block',
-                color: 'rgba(255,255,255,0.50)',
-                fontSize: '13px',
-                fontFamily: 'var(--font-sans)',
-                cursor: 'pointer',
-              }}
-            >
-              Use a different email
-            </span>
+              <span
+                onClick={() => {
+                  setEmail('');
+                  setShowResendConfirmation(false);
+                  setEmailTouched(false);
+                }}
+                style={{
+                  color: 'rgba(255,255,255,0.50)',
+                  fontSize: '14px',
+                  fontFamily: 'var(--font-sans)',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+              >
+                Use a different email
+              </span>
+            </div>
           </div>
         )}
 
