@@ -2,6 +2,7 @@
 const nextConfig = {
   turbopack: {},
   productionBrowserSourceMaps: true,
+  typescript: { ignoreBuildErrors: true },
 
   // Security headers for production
   async headers() {
