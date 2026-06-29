@@ -126,6 +126,9 @@ export default function CreateAccountPage() {
   // ── Validation state ─────────────────────────────────────
   const [emailError, setEmailError] = useState('');
   const [emailDuplicate, setEmailDuplicate] = useState(false);
+  const [showResendConfirmation, setShowResendConfirmation] = useState(false);
+  const [confirmResendState, setConfirmResendState] = useState<'idle' | 'loading' | 'sent'>('idle');
+  const [confirmResendCooldown, setConfirmResendCooldown] = useState(0);
   const [emailTouched, setEmailTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
 
@@ -162,6 +165,7 @@ export default function CreateAccountPage() {
     isValidEmail(email) &&
     emailError === '' &&
     !emailDuplicate &&
+    !showResendConfirmation &&
     allPasswordReqsMet &&
     password === confirmPassword &&
     confirmPassword.length > 0 &&
@@ -173,6 +177,18 @@ export default function CreateAccountPage() {
       router.replace('/onboarding');
     }
   }, [onboardingData, router]);
+
+  // ── Resend confirmation cooldown ────────────────────────
+  useEffect(() => {
+    if (confirmResendCooldown <= 0) return;
+    const t = setInterval(() => {
+      setConfirmResendCooldown((prev) => {
+        if (prev <= 1) { setConfirmResendState('idle'); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [confirmResendCooldown]);
 
   if (!onboardingData) {
     return (
@@ -231,12 +247,34 @@ export default function CreateAccountPage() {
   const handleEmailChange = (value: string) => {
     setEmail(value);
     setEmailDuplicate(false);
+    setShowResendConfirmation(false);
     if (emailTouched && value.length > 0 && !isValidEmail(value)) {
       setEmailError('Enter a valid email address');
     } else {
       setEmailError('');
     }
   };
+
+  const resendConfirmation = useCallback(async () => {
+    if (confirmResendState !== 'idle') return;
+    setConfirmResendState('loading');
+
+    try {
+      const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
+      const supabase = getSupabaseBrowserClient();
+
+      await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: {
+          emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
+        },
+      });
+    } catch {}
+
+    setConfirmResendState('sent');
+    setConfirmResendCooldown(30);
+  }, [confirmResendState, email]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -256,7 +294,7 @@ export default function CreateAccountPage() {
       const { exists } = await checkRes.json();
 
       if (exists) {
-        setEmailDuplicate(true);
+        setShowResendConfirmation(true);
         setSubmitting(false);
         return;
       }
@@ -659,7 +697,7 @@ export default function CreateAccountPage() {
           disabled={submitting}
         />
 
-        {/* Inline duplicate email error */}
+        {/* Inline duplicate email error (fallback from signUp) */}
         {emailDuplicate && (
           <p
             style={{
@@ -684,6 +722,80 @@ export default function CreateAccountPage() {
               Sign in instead →
             </span>
           </p>
+        )}
+
+        {/* Resend confirmation (pre-flight found existing email) */}
+        {showResendConfirmation && (
+          <div
+            style={{
+              marginTop: '4px',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: 'var(--warning-10)',
+              border: '1px solid var(--warning)',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '13px',
+                fontWeight: 500,
+                color: 'var(--warning)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 2px',
+              }}
+            >
+              We already sent you a confirmation email.
+            </p>
+            <p
+              style={{
+                fontSize: '13px',
+                fontWeight: 400,
+                color: 'rgba(255,255,255,0.50)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 8px',
+                lineHeight: 1.4,
+              }}
+            >
+              Please check your inbox and spam folder.
+            </p>
+
+            {/* Resend link */}
+            <span
+              onClick={resendConfirmation}
+              style={{
+                display: 'block',
+                color: confirmResendState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+                fontSize: '13px',
+                fontFamily: 'var(--font-sans)',
+                cursor: confirmResendState === 'idle' ? 'pointer' : 'default',
+                marginBottom: '8px',
+              }}
+            >
+              {confirmResendState === 'sent'
+                ? `Email resent ✓ (${confirmResendCooldown}s)`
+                : confirmResendState === 'loading'
+                  ? 'Sending…'
+                  : 'Resend confirmation email'}
+            </span>
+
+            {/* Use different email */}
+            <span
+              onClick={() => {
+                setEmail('');
+                setShowResendConfirmation(false);
+                setEmailTouched(false);
+              }}
+              style={{
+                display: 'block',
+                color: 'rgba(255,255,255,0.50)',
+                fontSize: '13px',
+                fontFamily: 'var(--font-sans)',
+                cursor: 'pointer',
+              }}
+            >
+              Use a different email
+            </span>
+          </div>
         )}
 
         {/* Password */}

@@ -50,6 +50,11 @@ export default function LoginPage() {
   const [resetSending, setResetSending] = useState(false);
   const [resetError, setResetError] = useState('');
 
+  // ── Email not confirmed ─────────────────────────────
+  const [showEmailNotConfirmed, setShowEmailNotConfirmed] = useState(false);
+  const [resendConfirmState, setResendConfirmState] = useState<'idle' | 'loading' | 'sent'>('idle');
+  const [resendConfirmCooldown, setResendConfirmCooldown] = useState(0);
+
   const canSubmit = isValidEmail(email) && password.length > 0 && !submitting;
 
   // ── Already authenticated? Redirect instantly ───────────
@@ -63,6 +68,18 @@ export default function LoginPage() {
       }
     });
   }, [supabase, router]);
+
+  // ── Resend confirmation countdown ────────────────────
+  useEffect(() => {
+    if (resendConfirmCooldown <= 0) return;
+    const t = setInterval(() => {
+      setResendConfirmCooldown((prev) => {
+        if (prev <= 1) { setResendConfirmState('idle'); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendConfirmCooldown]);
 
   // ── Handle URL error params (browser-only, avoids useSearchParams SSR crash) ─
   useEffect(() => {
@@ -97,6 +114,18 @@ export default function LoginPage() {
     });
 
     if (error) {
+      // Unconfirmed email — show resend UI instead of generic error
+      if (
+        error.message.includes('Email not confirmed') ||
+        error.message.includes('email_not_confirmed')
+      ) {
+        setInlineError('');
+        setShowEmailNotConfirmed(true);
+        setPassword('');
+        setSubmitting(false);
+        return;
+      }
+
       setInlineError(error.message);
       setPassword('');
       setSubmitting(false);
@@ -332,6 +361,61 @@ export default function LoginPage() {
               showToggle
               disabled={submitting}
             />
+
+            {/* Email not confirmed UI */}
+            {showEmailNotConfirmed && (
+              <div style={{ marginTop: '6px' }}>
+                <p
+                  style={{
+                    color: 'var(--warning)',
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-sans)',
+                    margin: '0 0 4px',
+                    fontWeight: 500,
+                  }}
+                >
+                  Email not confirmed yet.
+                </p>
+                <p
+                  style={{
+                    color: 'rgba(255,255,255,0.50)',
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-sans)',
+                    margin: '0 0 8px',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Please check your inbox for the confirmation link.
+                </p>
+                <span
+                  onClick={async () => {
+                    if (resendConfirmState !== 'idle' || !supabase) return;
+                    setResendConfirmState('loading');
+                    await supabase.auth.resend({
+                      type: 'signup',
+                      email: email.trim(),
+                      options: {
+                        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
+                      },
+                    });
+                    setResendConfirmState('sent');
+                    setResendConfirmCooldown(30);
+                  }}
+                  style={{
+                    color: resendConfirmState === 'sent' ? 'var(--gain)' : 'var(--accent)',
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-sans)',
+                    cursor: resendConfirmState === 'idle' ? 'pointer' : 'default',
+                  }}
+                >
+                  {resendConfirmState === 'sent'
+                    ? `Email resent ✓ (${resendConfirmCooldown}s)`
+                    : resendConfirmState === 'loading'
+                      ? 'Sending…'
+                      : 'Resend confirmation email'}
+                </span>
+              </div>
+            )}
 
             {/* Inline error */}
             {inlineError && (
