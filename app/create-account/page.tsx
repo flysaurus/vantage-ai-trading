@@ -255,7 +255,7 @@ export default function CreateAccountPage() {
         type: 'signup',
         email: email.trim(),
         options: {
-          emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
+          emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/callback',
         },
       });
 
@@ -328,7 +328,7 @@ export default function CreateAccountPage() {
           pending_choice: pendingChoice,
           pending_connection_type: pendingConnectionType ?? null,
         },
-        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
+        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/callback',
       },
     });
 

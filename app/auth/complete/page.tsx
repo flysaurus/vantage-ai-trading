@@ -29,13 +29,9 @@ export default function AuthCompletePage() {
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
         if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            console.error('[auth/complete] code exchange failed:', exchangeError.message);
-            setErrorMsg(exchangeError.message);
-            setStatus('error');
-            return;
-          }
+          // Server-side exchange is more reliable — redirect to /auth/callback
+          window.location.replace(`/auth/callback?code=${code}`);
+          return;
         }
 
         const { data: { session } } = await supabase.auth.getSession();

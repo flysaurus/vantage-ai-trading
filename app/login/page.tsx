@@ -395,7 +395,7 @@ export default function LoginPage() {
                       type: 'signup',
                       email: email.trim(),
                       options: {
-                        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
+                        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/callback',
                       },
                     });
                     if (resendErr) {
