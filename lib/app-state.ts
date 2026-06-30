@@ -154,76 +154,68 @@ export function useAppState(): AppStateResult {
       setUser(session.user);
 
       try {
-        // ── Query public.users ONLY (central identity table) ──
-        console.log('[app-state] looking up user:', {
-          id: session.user.id,
-          email: session.user.email,
-        });
+        // ── Fetch user profile via server API (bypasses RLS) ──
+        // Direct Supabase queries are blocked by RLS on public.users.
+        // /api/auth/me uses service key server-side, so it always works.
+        console.log('[app-state] fetching profile via /api/auth/me for:', session.user.id);
 
-        let userData = null;
-        const result = await (supabase
-          .from('users') as any)
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle();
+        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!meRes.ok) {
+          console.error('[app-state] /api/auth/me failed:', meRes.status);
+          setState('onboarding');
+          return;
+        }
 
-        userData = result.data;
-        const error = result.error;
-        if (error) {
-          console.error('[app-state] DB query error:', error.message);
+        const { user: apiUser } = await meRes.json();
+        if (!apiUser) {
           setState('onboarding');
           return;
         }
 
         if (!mounted) return;
 
-        console.log('[app-state] found user:',
-          userData ? 'yes' : 'no',
-          'investor_style:',
-          userData?.investor_style ?? 'null');
+        console.log('[app-state] /api/auth/me returned:',
+          'investor_style:', apiUser.investor_style ?? 'null',
+          'demo_start_at:', apiUser.demo_start_at ? 'set' : 'null');
 
-        // No users row at all → auto-heal: create record from auth session
-        if (!userData) {
-          console.log('[app-state] No users row — auto-creating record');
-          try {
-            const meta = session.user.user_metadata || {};
-            const { error: insertError } = await (supabase.from('users') as any)
-              .insert({
-                id: session.user.id,
-                email: session.user.email,
-                first_name: meta.first_name || undefined,
-                last_name: meta.last_name || undefined,
-                investor_style: meta.investor_style || null,
-                risk_tolerance: meta.risk_tolerance || null,
-                investor_style_onboarded:
-                  !!meta.investor_style,
+        // ── Auto-create: API returned no investor_style but auth metadata has it ──
+        // This means the public.users record doesn't exist yet (or RLS blocked write).
+        // Create it server-side via /api/user/setup.
+        let userData = apiUser;
+        if (!userData.investor_style) {
+          const meta = session.user.user_metadata || {};
+          const hasMeta = meta.investor_style || meta.first_name;
+          if (hasMeta) {
+            console.log('[app-state] No users record — auto-creating via /api/user/setup');
+            try {
+              const setupRes = await fetch('/api/user/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  first_name: meta.first_name || null,
+                  last_name: meta.last_name || null,
+                  investor_style: meta.investor_style || null,
+                  risk_tolerance: meta.risk_tolerance || null,
+                }),
               });
-
-            if (insertError) {
-              console.error('[app-state] auto-create failed:', insertError.message);
-              setState('needs-profile');
-              return;
+              if (setupRes.ok) {
+                // Re-fetch the now-created record
+                const refetchRes = await fetch('/api/auth/me', { credentials: 'include' });
+                if (refetchRes.ok) {
+                  const { user: fresh } = await refetchRes.json();
+                  if (fresh) userData = fresh;
+                }
+              } else {
+                console.warn('[app-state] auto-create via /api/user/setup failed:', setupRes.status);
+              }
+            } catch (err: any) {
+              console.error('[app-state] auto-create exception:', err.message);
             }
-
-            // Re-fetch the record we just created
-            const { data: fresh } = await (supabase.from('users') as any)
-              .select('*')
-              .eq('id', session.user.id)
-              .maybeSingle();
-
-            if (!fresh) {
-              setState('needs-profile');
-              return;
-            }
-
-            userData = fresh;
-            console.log('[app-state] auto-created record — investor_style:', fresh.investor_style);
-          } catch (err: any) {
-            console.error('[app-state] auto-create exception:', err.message);
-            setState('needs-profile');
-            return;
           }
         }
+
+        if (!mounted) return;
 
         // Set profile from users data
         setProfile(userData as UserProfile);
@@ -259,15 +251,15 @@ export function useAppState(): AppStateResult {
               credentials: 'include',
             });
             if (res.ok) {
-              // Re-fetch the updated record
-              const { data: updated } = await (supabase.from('users') as any)
-                .select('*')
-                .eq('id', session.user.id)
-                .maybeSingle();
-              if (updated) {
-                setProfile(updated as UserProfile);
-                setState(resolveStateFromUsers(updated as Record<string, unknown> | null));
-                return;
+              // Re-fetch the updated record via server API
+              const refreshRes = await fetch('/api/auth/me', { credentials: 'include' });
+              if (refreshRes.ok) {
+                const { user: updated } = await refreshRes.json();
+                if (updated) {
+                  setProfile(updated as UserProfile);
+                  setState(resolveStateFromUsers(updated as Record<string, unknown> | null));
+                  return;
+                }
               }
             }
             console.warn('[app-state] demo auto-start failed, falling through to broker-selection');

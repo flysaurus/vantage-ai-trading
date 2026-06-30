@@ -48,6 +48,12 @@ export async function GET() {
       displayName: userData?.first_name
         ? `${userData.first_name} ${userData.last_name ?? ''}`.trim()
         : authUser.email?.split('@')[0] ?? null,
+
+      // snake_case fields needed by useAppState state machine
+      investor_style_onboarded:
+        userData?.investor_style_onboarded ?? false,
+      connection_initiated_at:
+        userData?.connection_initiated_at ?? null,
     },
   });
 }
