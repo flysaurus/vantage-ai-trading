@@ -60,13 +60,8 @@ export async function POST(req: NextRequest) {
 
   console.log('[user/setup] upserting users row for:', authUser.id);
 
-  // Populate all name columns (all exist on users table).
   const setupFirstName = body.first_name || '';
   const setupLastName = body.last_name || '';
-  const displayName =
-    (setupFirstName || setupLastName)
-      ? `${setupFirstName} ${setupLastName}`.trim()
-      : (authUser.email?.split('@')[0] || '');
 
   const { error: upsertError } = await (adminSupabase as any)
     .from('users')
@@ -76,7 +71,6 @@ export async function POST(req: NextRequest) {
         email: authUser.email || undefined,
         first_name: setupFirstName || undefined,
         last_name: setupLastName || undefined,
-        display_name: displayName,
         investor_style: body.investor_style || undefined,
         risk_tolerance: body.risk_tolerance || undefined,
         investor_style_onboarded: true,

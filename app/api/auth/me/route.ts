@@ -28,7 +28,6 @@ export async function GET() {
     user: {
       id: authUser.id,
       email: authUser.email,
-      display_name: userData?.display_name ?? null,
       first_name: userData?.first_name ?? null,
       last_name: userData?.last_name ?? null,
       investor_style: userData?.investor_style ?? null,
@@ -46,9 +45,9 @@ export async function GET() {
         userData?.investor_style_onboarded ?? false,
       investorStyle: userData?.investor_style ?? null,
       riskTolerance: userData?.risk_tolerance ?? null,
-      displayName: userData?.display_name
-        || authUser.email?.split('@')[0]
-        || null,
+      displayName: userData?.first_name
+        ? `${userData.first_name} ${userData.last_name ?? ''}`.trim()
+        : authUser.email?.split('@')[0] ?? null,
     },
   });
 }

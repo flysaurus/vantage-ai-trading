@@ -96,13 +96,8 @@ async function runSetup(
   // ── Create public.users record ────────────────────────────
   const now = new Date().toISOString();
 
-  // Populate all name columns (all exist on users table).
   const firstName = meta.first_name ?? '';
   const lastName = meta.last_name ?? '';
-  const derivedDisplayName =
-    (firstName || lastName)
-      ? `${firstName} ${lastName}`.trim()
-      : (user.email?.split('@')[0] || '');
 
   const { error: upsertError } = await (serviceClient as any)
     .from('users')
@@ -112,7 +107,6 @@ async function runSetup(
         email: user.email || undefined,
         first_name: firstName || undefined,
         last_name: lastName || undefined,
-        display_name: derivedDisplayName,
         investor_style: meta.investor_style ?? null,
         risk_tolerance: meta.risk_tolerance ?? null,
         investor_style_onboarded: true,
