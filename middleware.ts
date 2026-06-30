@@ -35,6 +35,22 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // 2b. Catch Supabase email confirmation landing on root URL.
+  // When Supabase redirects to the site root (instead of our
+  // emailRedirectTo), the ?code=XXX param lands on the client-side
+  // page with nobody to process it. Forward to /auth/complete.
+  const code = request.nextUrl.searchParams.get('code');
+  if (pathname === '/' && code) {
+    const url = new URL('/auth/complete', request.url);
+    url.searchParams.set('code', code);
+    // Carry any other params (e.g. type=signup)
+    request.nextUrl.searchParams.forEach((value, key) => {
+      if (key !== 'code') url.searchParams.set(key, value);
+    });
+    console.log('[middleware] forwarding root code param → /auth/complete');
+    return NextResponse.redirect(url);
+  }
+
   // 3. Supabase session refresh
   // This MUST be called on every request to keep the session alive.
   // Without it, the Supabase Auth cookies expire and getSession()
