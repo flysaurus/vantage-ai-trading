@@ -140,29 +140,29 @@ export function useAppState(): AppStateResult {
   useEffect(() => {
     let mounted = true;
 
-    async function resolveState(authUser: SupabaseUser | null) {
+    async function resolveState(session: any) {
       if (!mounted) return;
 
-      if (!authUser) {
+      if (!session) {
         setState('onboarding');
         setUser(null);
         setProfile(null);
         return;
       }
 
-      setUser(authUser);
+      setUser(session.user);
 
       try {
         // ── Query public.users ONLY (central identity table) ──
         console.log('[app-state] looking up user:', {
-          id: authUser.id,
-          email: authUser.email,
+          id: session.user.id,
+          email: session.user.email,
         });
 
         const { data: userData, error } = await (supabase
           .from('users') as any)
           .select('*')
-          .eq('id', authUser.id)
+          .eq('id', session.user.id)
           .maybeSingle();
 
         if (!mounted) return;
@@ -209,16 +209,16 @@ export function useAppState(): AppStateResult {
     }
 
     // Check existing user on mount / refresh
-    // getUser() validates JWT server-side (unlike getSession which reads local)
     supabase.auth
       .getUser()
-      .then(({ data: { user }, error: authError }) => {
-        if (authError || !user) {
-          console.log('[app-state] getUser: no valid session');
+      .then(({ data: { user }, error }) => {
+        if (error || !user) {
           if (mounted) setState('onboarding');
           return;
         }
-        resolveState(user);
+        // Build a minimal session-like object
+        // resolveState needs session.user
+        resolveState({ user } as any);
       })
       .catch((err) => {
         console.error('[useAppState] getUser error:', err);
@@ -230,7 +230,7 @@ export function useAppState(): AppStateResult {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (MEANINGFUL_EVENTS.has(event)) {
-        resolveState(session?.user || null);
+        resolveState(session);
       }
     });
 

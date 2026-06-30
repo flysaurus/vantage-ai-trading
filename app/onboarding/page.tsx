@@ -29,10 +29,17 @@ type Screen = 'boot' | 'feature' | 'arrival' | 'quiz' | 'reveal';
 export default function OnboardingPage() {
   const router = useRouter();
 
-  // If already complete, redirect to main app
+  // Don't redirect — let app/page.tsx handle routing via useAppState.
+  // Redirecting here creates an infinite loop when the state machine
+  // sends us to /onboarding but checkQuizComplete says we're done.
   useEffect(() => {
     checkQuizComplete().then(({ complete }) => {
-      if (complete) router.replace('/');
+      if (complete) {
+        // Don't redirect — let app/page.tsx
+        // handle routing via useAppState
+        // Redirecting here creates a loop
+        return;
+      }
     });
   }, [router]);
 
