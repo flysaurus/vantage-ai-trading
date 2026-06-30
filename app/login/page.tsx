@@ -161,18 +161,29 @@ export default function LoginPage() {
     setResetSending(true);
     setResetError('');
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      resetEmail.trim(),
-      {
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/reset-password`,
-      },
-    );
+    try {
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '');
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        resetEmail.trim(),
+        {
+          redirectTo: `${appUrl}/auth/callback?next=/reset-password`,
+        },
+      );
 
-    if (error) {
-      setResetError(error.message);
-      setResetSending(false);
-    } else {
-      setResetSent(true);
+      if (error) {
+        // Rate limit or other server error
+        if (error.message?.includes('rate') || error.status === 429) {
+          setResetError('Too many requests. Please wait a minute and try again.');
+        } else {
+          setResetError(error.message);
+        }
+        setResetSending(false);
+      } else {
+        setResetSent(true);
+        setResetSending(false);
+      }
+    } catch {
+      setResetError('Something went wrong. Please try again.');
       setResetSending(false);
     }
   }, [resetEmail, supabase]);
@@ -600,8 +611,9 @@ export default function LoginPage() {
                 lineHeight: 1.5,
               }}
             >
-              We sent a reset link to{' '}
-              <span style={{ color: 'var(--accent)' }}>{resetEmail}</span>.
+              If an account exists for{' '}
+              <span style={{ color: 'var(--accent)' }}>{resetEmail}</span>,
+              {' '}a reset link has been sent.
             </p>
             <button
               onClick={() => {
