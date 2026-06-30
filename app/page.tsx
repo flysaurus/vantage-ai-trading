@@ -24,6 +24,16 @@ export default function Page() {
   const redirectedToSetup = useRef(false);
 
   // ── DEBUG BANNER — remove after debugging ──
+  const [cookieDebug, setCookieDebug] = useState('');
+  useEffect(() => {
+    const c = document.cookie;
+    const hasSb = c.indexOf('sb-') !== -1;
+    setCookieDebug(
+      hasSb
+        ? `COOKIE: ✅ (${c.length} chars)`
+        : `COOKIE: ❌ NONE (len=${c.length})`
+    );
+  }, []);
   const debugBanner = (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
@@ -32,6 +42,7 @@ export default function Page() {
       borderBottom: '1px solid #333'
     }}>
       STATE: <strong>{state}</strong> | 
+      {cookieDebug} | 
       NAME: {profile?.first_name ?? 'null'} {profile?.last_name ?? 'null'} | 
       STYLE: {profile?.investor_style ?? 'null'} | 
       DEMO_START: {profile?.demo_start_at ? '✅' : '❌ NULL'} | 
