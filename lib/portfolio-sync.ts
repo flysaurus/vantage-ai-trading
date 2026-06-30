@@ -72,7 +72,7 @@ export async function loadPortfolioFromSupabase(
 
     return {
       positions: data.positions || [],
-      cashBalance: data.cash_balance ?? 65005,
+      cashBalance: data.cash_balance ?? 0,
       orderHistory: data.order_history || [],
       basketPositions: data.basket_positions || [],
       savedAt: new Date(data.updated_at).getTime(),

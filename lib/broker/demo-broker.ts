@@ -75,7 +75,7 @@ export class DemoBroker implements BrokerEngine {
   private emptyState(): DemoStateInternal {
     return {
       positions: [],
-      cashBalance: 65005,
+      cashBalance: 0,
       orders: [],
       basketOrders: [],
       savedAt: Date.now(),
@@ -114,7 +114,7 @@ export class DemoBroker implements BrokerEngine {
         .select('*')
         .eq('user_id', this.userId)
         .single();
-      if (data && data.positions?.length > 0) {
+      if (data && (data.positions?.length > 0 || data.cash_balance != null)) {
         this.state = {
           positions: data.positions,
           cashBalance: data.cash_balance,
@@ -152,7 +152,7 @@ export class DemoBroker implements BrokerEngine {
       basketEmoji: p.basketEmoji,
     }));
 
-    this.state.cashBalance = account.cash || 65005;
+    this.state.cashBalance = account.cash || 0;
 
     // Generate FILLED orders from positions
     this.state.orders = this.state.positions.map((p, i) => ({

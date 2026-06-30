@@ -121,6 +121,34 @@ export async function seedDemoPortfolio(
       portfolio_mode: 'demo',
     })
     .eq('id', userId);
+
+  // Sync demo_portfolio_state with correct cash = $100K - invested
+  const totalInvested = portfolio.positions.reduce(
+    (sum, p) => sum + p.qty * p.avgCost,
+    0,
+  );
+  const cashBalance = Math.max(0, 100000 - totalInvested);
+
+  await db
+    .from('demo_portfolio_state')
+    .upsert(
+      {
+        user_id: userId,
+        positions: positionRows.map((p: any) => ({
+          symbol: p.symbol,
+          qty: Number(p.qty),
+          avgCost: Number(p.avg_cost),
+          name: p.name,
+          sector: p.sector,
+          buyDate: new Date().toISOString(),
+        })),
+        cash_balance: cashBalance,
+        orders: [],
+        basket_orders: [],
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    );
 }
 
 // ─── activateLivePortfolio ──────────────────────────────────

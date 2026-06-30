@@ -1,12 +1,14 @@
 // ─── POST /api/demo/start — Initialize 30-day demo ─────────
 // Called when user taps "Start my 30-day demo" CTA.
 // Sets demo_start_at, demo_expires_at, portfolio_mode.
-// Resets demo portfolio to $100,000 cash (clears all positions).
+// Seeds style-specific starter positions ($15K-$25K invested).
+// Total account value: $100,000 (positions + cash).
 //
 // Auth: cookies only (session refreshed by middleware).
 
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { seedDemoPortfolio } from '@/lib/portfolio-operations';
 import { NextResponse } from 'next/server';
 
 export async function POST() {
@@ -47,32 +49,21 @@ export async function POST() {
     );
   }
 
-  // 2. Reset demo portfolio to $100,000 cash
+  // 2. Read user's investor style for seeding
+  const { data: userData } = await (adminSupabase as any)
+    .from('users')
+    .select('investor_style, first_name')
+    .eq('id', authUser.id)
+    .single();
+
+  const investmentStyle = userData?.investor_style || 'lynch';
+
+  // 3. Seed style-specific starter positions + demo_portfolio_state
   try {
-    await (adminSupabase as any)
-      .from('demo_portfolio_state')
-      .delete()
-      .eq('user_id', authUser.id);
-
-    const { error: insertError } = await (adminSupabase as any)
-      .from('demo_portfolio_state')
-      .upsert(
-        {
-          user_id: authUser.id,
-          positions: [],
-          cash_balance: 100000,
-          orders: [],
-          basket_orders: [],
-          updated_at: now.toISOString(),
-        },
-        { onConflict: 'user_id' },
-      );
-
-    if (insertError) {
-      console.warn('[demo/start] portfolio upsert warning:', insertError);
-    }
-  } catch (portfolioErr) {
-    console.warn('[demo/start] portfolio reset warning:', portfolioErr);
+    await seedDemoPortfolio(authUser.id, investmentStyle);
+    console.log('[demo/start] seeded portfolio for style:', investmentStyle);
+  } catch (seedErr) {
+    console.warn('[demo/start] seed warning (non-fatal):', seedErr);
   }
 
   return NextResponse.json({
