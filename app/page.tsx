@@ -23,6 +23,22 @@ export default function Page() {
   // Guard against repeated redirects — only run once per mount
   const redirectedToSetup = useRef(false);
 
+  // ── DEBUG BANNER — remove after debugging ──
+  const debugBanner = (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+      background: 'rgba(0,0,0,0.9)', color: '#0f0', padding: '6px 12px',
+      fontSize: '11px', fontFamily: 'monospace', lineHeight: 1.4,
+      borderBottom: '1px solid #333'
+    }}>
+      STATE: <strong>{state}</strong> | 
+      NAME: {profile?.first_name ?? 'null'} {profile?.last_name ?? 'null'} | 
+      STYLE: {profile?.investor_style ?? 'null'} | 
+      DEMO_START: {profile?.demo_start_at ? '✅' : '❌ NULL'} | 
+      ONBOARDED: {profile?.investor_style_onboarded ? '✅' : '❌'}
+    </div>
+  );
+
   // Dismiss state for demo-counter (transient, not persisted)
   const [showDemoCounter, setShowDemoCounter] = useState(true);
   useEffect(() => {
@@ -41,73 +57,82 @@ export default function Page() {
   // loading: show minimal orb pulse
   if (state === 'loading') {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: 'var(--bg-primary)',
-      }}>
-        <VantageOrb size={44} animate={true} />
-      </div>
+      <>
+        {debugBanner}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg-primary)',
+        }}>
+          <VantageOrb size={44} animate={true} />
+        </div>
+      </>
     );
   }
 
   // onboarding: brand new user — full onboarding flow
   if (state === 'onboarding') {
-    return <OnboardingFlow />;
+    return <>{debugBanner}<OnboardingFlow /></>;
   }
 
   // needs-profile: redirect handled by useEffect above
   if (state === 'needs-profile') {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: 'var(--bg-primary)',
-      }}>
-        <VantageOrb size={44} animate={true} />
-      </div>
+      <>
+        {debugBanner}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg-primary)',
+        }}>
+          <VantageOrb size={44} animate={true} />
+        </div>
+      </>
     );
   }
 
   // needs-quiz: has account + profile, just needs style quiz
   if (state === 'needs-quiz') {
-    return <OnboardingFlow initialScreen="quiz" />;
+    return <>{debugBanner}<OnboardingFlow initialScreen="quiz" /></>;
   }
 
   // broker-selection: authenticated but neither demo nor broker chosen
   if (state === 'broker-selection') {
-    return <BrokerChoicePage onStateChanged={refreshState} />;
+    return <>{debugBanner}<BrokerChoicePage onStateChanged={refreshState} /></>;
   }
 
   // demo-counter: demo active — show counter, dismiss to MainApp
   if (state === 'demo-counter' && showDemoCounter) {
     return (
-      <DemoCounterPage
-        profile={profile}
-        onEnter={() => setShowDemoCounter(false)}
-      />
+      <>
+        {debugBanner}
+        <DemoCounterPage
+          profile={profile}
+          onEnter={() => setShowDemoCounter(false)}
+        />
+      </>
     );
   }
 
   // demo-expired: 30-day demo has elapsed
   if (state === 'demo-expired') {
-    return <DemoExpired />;
+    return <>{debugBanner}<DemoExpired /></>;
   }
 
   // connection-options: chose to connect a broker — show broker options
   if (state === 'connection-options') {
-    return <ConnectionOptionsPage onStateChanged={refreshState} />;
+    return <>{debugBanner}<ConnectionOptionsPage onStateChanged={refreshState} /></>;
   }
 
   // connection-loading: broker syncing — animated spinner + polling
   if (state === 'connection-loading') {
-    return <ConnectionLoadingPage profile={profile} onStateChanged={refreshState} />;
+    return <>{debugBanner}<ConnectionLoadingPage profile={profile} onStateChanged={refreshState} /></>;
   }
 
   // demo-counter (dismissed) / authenticated
-  return <MainApp />;
+  return <>{debugBanner}<MainApp /></>;
 }
