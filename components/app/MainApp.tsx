@@ -81,12 +81,12 @@ function AppShell() {
   const effectiveUser = useMemo<User | null>(() => {
     if (!supabaseUser) return null;
     const displayName =
-      profile?.first_name ||
+      profile?.display_name ||
       supabaseUser.user_metadata?.full_name ||
       supabaseUser.user_metadata?.name ||
       supabaseUser.email?.split('@')[0] ||
       '';
-    const name = profile?.first_name || displayName;
+    const name = profile?.display_name?.split(' ')[0] || displayName;
     return {
       id: supabaseUser.id,
       email: supabaseUser.email || '',

@@ -8,7 +8,7 @@
 //   loading              → checking session (show boot splash)
 //   onboarding           → no session (show onboarding flow)
 //   needs-quiz           → account exists, no investor_style
-//   needs-profile        → no first_name/last_name
+//   needs-profile        → no display_name
 //   broker-selection     → edge case: has style + name, no demo/connection
 //   demo-counter         → demo user logging in → show days remaining
 //   connection-options   → needs to pick broker post-auth
@@ -47,6 +47,7 @@ export interface UserProfile {
   last_name: string | null;
   investor_style: string | null;
   risk_tolerance: string | null;
+  display_name: string | null;
   investor_style_onboarded: boolean;
   demo_start_at: string | null;
   demo_expires_at: string | null;
@@ -177,22 +178,23 @@ export function useAppState(): AppStateResult {
         if (!userData) {
           console.log('[app-state] No users row — auto-creating record');
           try {
-            const displayName =
-              session.user.user_metadata?.first_name && session.user.user_metadata?.last_name
-                ? `${session.user.user_metadata.first_name} ${session.user.user_metadata.last_name}`
+            const meta = session.user.user_metadata || {};
+            const derivedDisplayName =
+              (meta.first_name || meta.last_name)
+                ? `${meta.first_name || ''} ${meta.last_name || ''}`.trim()
                 : session.user.email?.split('@')[0] || '';
 
+            // Only use columns that EXIST on the users table.
+            // users table has: display_name (NOT first_name/last_name).
             const { error: insertError } = await (supabase.from('users') as any)
               .insert({
                 id: session.user.id,
                 email: session.user.email,
-                display_name: displayName,
-                first_name: session.user.user_metadata?.first_name || '',
-                last_name: session.user.user_metadata?.last_name || '',
-                investor_style: session.user.user_metadata?.investor_style || null,
-                risk_tolerance: session.user.user_metadata?.risk_tolerance || null,
+                display_name: derivedDisplayName,
+                investor_style: meta.investor_style || null,
+                risk_tolerance: meta.risk_tolerance || null,
                 investor_style_onboarded:
-                  !!session.user.user_metadata?.investor_style,
+                  !!meta.investor_style,
               });
 
             if (insertError) {
@@ -232,8 +234,8 @@ export function useAppState(): AppStateResult {
           return;
         }
 
-        // No first_name OR last_name → needs profile completion
-        if (!userData.first_name || !userData.last_name) {
+        // No display_name → needs profile completion
+        if (!userData.display_name) {
           setState('needs-profile');
           return;
         }

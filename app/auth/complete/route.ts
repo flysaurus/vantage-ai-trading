@@ -90,11 +90,20 @@ async function runSetup(
 
   if (existingUser?.demo_start_at || existingUser?.connection_type) {
     console.log('[auth/complete] returning user, skipping setup');
-    return; // Will redirect to / from /you-are-in
+    return;
   }
 
   // ── Create public.users record ────────────────────────────
   const now = new Date().toISOString();
+
+  // Derive display_name from user_metadata (first_name + last_name)
+  // or fall back to email prefix. users table has display_name column.
+  const firstName = meta.first_name ?? '';
+  const lastName = meta.last_name ?? '';
+  const derivedDisplayName =
+    (firstName || lastName)
+      ? `${firstName} ${lastName}`.trim()
+      : (user.email?.split('@')[0] || '');
 
   const { error: upsertError } = await (serviceClient as any)
     .from('users')
@@ -102,8 +111,7 @@ async function runSetup(
       {
         id: user.id,
         email: user.email || undefined,
-        first_name: meta.first_name ?? '',
-        last_name: meta.last_name ?? '',
+        display_name: derivedDisplayName,
         investor_style: meta.investor_style ?? null,
         risk_tolerance: meta.risk_tolerance ?? null,
         investor_style_onboarded: true,

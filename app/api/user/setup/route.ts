@@ -59,14 +59,22 @@ export async function POST(req: NextRequest) {
   }
 
   console.log('[user/setup] upserting users row for:', authUser.id);
+
+  // Derive display_name (users table uses display_name, not first_name/last_name)
+  const setupFirstName = body.first_name || '';
+  const setupLastName = body.last_name || '';
+  const displayName =
+    (setupFirstName || setupLastName)
+      ? `${setupFirstName} ${setupLastName}`.trim()
+      : (authUser.email?.split('@')[0] || '');
+
   const { error: upsertError } = await (adminSupabase as any)
     .from('users')
     .upsert(
       {
         id: authUser.id,
         email: authUser.email || undefined,
-        first_name: body.first_name || undefined,
-        last_name: body.last_name || undefined,
+        display_name: displayName,
         investor_style: body.investor_style || undefined,
         risk_tolerance: body.risk_tolerance || undefined,
         investor_style_onboarded: true,
