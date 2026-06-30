@@ -47,6 +47,7 @@ export interface UserProfile {
   last_name: string | null;
   investor_style: string | null;
   risk_tolerance: string | null;
+  investor_style_onboarded: boolean;
   demo_start_at: string | null;
   demo_expires_at: string | null;
   connection_type: string | null;
@@ -172,10 +173,52 @@ export function useAppState(): AppStateResult {
           'investor_style:',
           userData?.investor_style ?? 'null');
 
-        // No users row at all → needs onboarding
+        // No users row at all → auto-heal: create record from auth session
         if (!userData) {
-          setState('needs-profile');
-          return;
+          console.log('[app-state] No users row — auto-creating record');
+          try {
+            const displayName =
+              session.user.user_metadata?.first_name && session.user.user_metadata?.last_name
+                ? `${session.user.user_metadata.first_name} ${session.user.user_metadata.last_name}`
+                : session.user.email?.split('@')[0] || '';
+
+            const { error: insertError } = await (supabase.from('users') as any)
+              .insert({
+                id: session.user.id,
+                email: session.user.email,
+                display_name: displayName,
+                first_name: session.user.user_metadata?.first_name || '',
+                last_name: session.user.user_metadata?.last_name || '',
+                investor_style: session.user.user_metadata?.investor_style || null,
+                risk_tolerance: session.user.user_metadata?.risk_tolerance || null,
+                investor_style_onboarded:
+                  !!session.user.user_metadata?.investor_style,
+              });
+
+            if (insertError) {
+              console.error('[app-state] auto-create failed:', insertError.message);
+              setState('needs-profile');
+              return;
+            }
+
+            // Re-fetch the record we just created
+            const { data: fresh } = await (supabase.from('users') as any)
+              .select('*')
+              .eq('id', session.user.id)
+              .maybeSingle();
+
+            if (!fresh) {
+              setState('needs-profile');
+              return;
+            }
+
+            userData = fresh;
+            console.log('[app-state] auto-created record — investor_style:', fresh.investor_style);
+          } catch (err: any) {
+            console.error('[app-state] auto-create exception:', err.message);
+            setState('needs-profile');
+            return;
+          }
         }
 
         // Set profile from users data

@@ -93,7 +93,7 @@ function AppShell() {
       displayName,
       name,
       investorStyle: (profile?.investor_style as User['investorStyle']) || 'buffett',
-      investorStyleOnboarded: !!profile?.investor_style,
+      investorStyleOnboarded: !!profile?.investor_style_onboarded,
       riskTolerance: (profile?.risk_tolerance as User['riskTolerance']) || 'Moderate',
       createdAt: supabaseUser.created_at || '',
     };
