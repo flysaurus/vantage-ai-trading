@@ -22,7 +22,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getDemoStatus } from '@/lib/demo-utils';
 
@@ -140,29 +140,29 @@ export function useAppState(): AppStateResult {
   useEffect(() => {
     let mounted = true;
 
-    async function resolveState(session: Session | null) {
+    async function resolveState(authUser: SupabaseUser | null) {
       if (!mounted) return;
 
-      if (!session) {
+      if (!authUser) {
         setState('onboarding');
         setUser(null);
         setProfile(null);
         return;
       }
 
-      setUser(session.user);
+      setUser(authUser);
 
       try {
         // ── Query public.users ONLY (central identity table) ──
         console.log('[app-state] looking up user:', {
-          id: session.user.id,
-          email: session.user.email,
+          id: authUser.id,
+          email: authUser.email,
         });
 
         const { data: userData, error } = await (supabase
           .from('users') as any)
           .select('*')
-          .eq('id', session.user.id)
+          .eq('id', authUser.id)
           .maybeSingle();
 
         if (!mounted) return;
@@ -208,21 +208,29 @@ export function useAppState(): AppStateResult {
       }
     }
 
-    // Check existing session on mount / refresh
+    // Check existing user on mount / refresh
+    // getUser() validates JWT server-side (unlike getSession which reads local)
     supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => resolveState(session))
+      .getUser()
+      .then(({ data: { user }, error: authError }) => {
+        if (authError || !user) {
+          console.log('[app-state] getUser: no valid session');
+          if (mounted) setState('onboarding');
+          return;
+        }
+        resolveState(user);
+      })
       .catch((err) => {
-        console.error('[useAppState] getSession error:', err);
+        console.error('[useAppState] getUser error:', err);
         if (mounted) setState('onboarding');
       });
 
-    // Listen for auth changes (sign in / sign out / token refresh)
+    // Listen for auth changes (sign in / sign out)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (MEANINGFUL_EVENTS.has(event)) {
-        resolveState(session);
+        resolveState(session?.user || null);
       }
     });
 
