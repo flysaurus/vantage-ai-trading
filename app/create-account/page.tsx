@@ -362,7 +362,8 @@ export default function CreateAccountPage() {
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/auth/complete`;
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '');
+      const redirectTo = `${appUrl}/auth/complete`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -1010,7 +1011,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
         type: 'signup',
         email,
         options: {
-          emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/complete`,
+          emailRedirectTo: `${(process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')}/auth/complete`,
         },
       });
 

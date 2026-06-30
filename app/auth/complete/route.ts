@@ -55,7 +55,19 @@ export async function GET(request: NextRequest) {
 
     // Run setup with the newly created session
     await runSetup(data.session.user, origin);
-    return NextResponse.redirect(`${origin}/you-are-in`);
+
+    // Explicitly copy cookies to redirect response —
+    // exchangeCodeForSession stores them in cookieStore,
+    // but NextResponse.redirect() creates a fresh response that loses them.
+    const response = NextResponse.redirect(`${origin}/you-are-in`);
+    cookieStore.getAll().forEach((c) => {
+      response.cookies.set(c.name, c.value, {
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      });
+    });
+    return response;
   }
 
   // ── Flow B: No code — check for existing session ──────────
@@ -69,7 +81,16 @@ export async function GET(request: NextRequest) {
 
   console.log('[auth/complete] Flow B session:', session.user.id);
   await runSetup(session.user, origin);
-  return NextResponse.redirect(`${origin}/you-are-in`);
+
+  const responseB = NextResponse.redirect(`${origin}/you-are-in`);
+  cookieStore.getAll().forEach((c) => {
+    responseB.cookies.set(c.name, c.value, {
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
+  });
+  return responseB;
 }
 
 // ── Shared setup logic ───────────────────────────────────────
