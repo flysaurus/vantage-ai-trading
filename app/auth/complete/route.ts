@@ -96,8 +96,7 @@ async function runSetup(
   // ── Create public.users record ────────────────────────────
   const now = new Date().toISOString();
 
-  // Derive display_name from user_metadata (first_name + last_name)
-  // or fall back to email prefix. users table has display_name column.
+  // Populate all name columns (all exist on users table).
   const firstName = meta.first_name ?? '';
   const lastName = meta.last_name ?? '';
   const derivedDisplayName =
@@ -111,6 +110,8 @@ async function runSetup(
       {
         id: user.id,
         email: user.email || undefined,
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
         display_name: derivedDisplayName,
         investor_style: meta.investor_style ?? null,
         risk_tolerance: meta.risk_tolerance ?? null,

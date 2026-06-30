@@ -29,9 +29,8 @@ export async function GET() {
       id: authUser.id,
       email: authUser.email,
       display_name: userData?.display_name ?? null,
-      // Snake_case compatibility — derive from display_name
-      first_name: userData?.display_name?.split(' ')[0] ?? null,
-      last_name: userData?.display_name?.split(' ').slice(1).join(' ') || null,
+      first_name: userData?.first_name ?? null,
+      last_name: userData?.last_name ?? null,
       investor_style: userData?.investor_style ?? null,
       risk_tolerance: userData?.risk_tolerance ?? null,
       tier: userData?.tier ?? 'demo',

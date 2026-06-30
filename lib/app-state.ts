@@ -184,12 +184,12 @@ export function useAppState(): AppStateResult {
                 ? `${meta.first_name || ''} ${meta.last_name || ''}`.trim()
                 : session.user.email?.split('@')[0] || '';
 
-            // Only use columns that EXIST on the users table.
-            // users table has: display_name (NOT first_name/last_name).
             const { error: insertError } = await (supabase.from('users') as any)
               .insert({
                 id: session.user.id,
                 email: session.user.email,
+                first_name: meta.first_name || undefined,
+                last_name: meta.last_name || undefined,
                 display_name: derivedDisplayName,
                 investor_style: meta.investor_style || null,
                 risk_tolerance: meta.risk_tolerance || null,
@@ -234,8 +234,8 @@ export function useAppState(): AppStateResult {
           return;
         }
 
-        // No display_name → needs profile completion
-        if (!userData.display_name) {
+        // No display_name AND no first_name → needs profile completion
+        if (!userData.display_name && !userData.first_name) {
           setState('needs-profile');
           return;
         }

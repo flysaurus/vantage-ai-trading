@@ -82,11 +82,14 @@ function AppShell() {
     if (!supabaseUser) return null;
     const displayName =
       profile?.display_name ||
+      (profile?.first_name && profile?.last_name
+        ? `${profile.first_name} ${profile.last_name}`
+        : profile?.first_name) ||
       supabaseUser.user_metadata?.full_name ||
       supabaseUser.user_metadata?.name ||
       supabaseUser.email?.split('@')[0] ||
       '';
-    const name = profile?.display_name?.split(' ')[0] || displayName;
+    const name = profile?.first_name || profile?.display_name?.split(' ')[0] || displayName;
     return {
       id: supabaseUser.id,
       email: supabaseUser.email || '',

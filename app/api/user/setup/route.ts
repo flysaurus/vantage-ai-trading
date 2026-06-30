@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   console.log('[user/setup] upserting users row for:', authUser.id);
 
-  // Derive display_name (users table uses display_name, not first_name/last_name)
+  // Populate all name columns (all exist on users table).
   const setupFirstName = body.first_name || '';
   const setupLastName = body.last_name || '';
   const displayName =
@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
       {
         id: authUser.id,
         email: authUser.email || undefined,
+        first_name: setupFirstName || undefined,
+        last_name: setupLastName || undefined,
         display_name: displayName,
         investor_style: body.investor_style || undefined,
         risk_tolerance: body.risk_tolerance || undefined,
