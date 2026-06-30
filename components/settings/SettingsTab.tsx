@@ -1,6 +1,7 @@
 'use client';
 
 import { apiPost } from '@/lib/api-client';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -613,9 +614,16 @@ export function SettingsTab() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // sign-out logic here
-                  setShowSignOutConfirm(false);
+                onClick={async () => {
+                  try {
+                    const supabase = getSupabaseBrowserClient();
+                    await supabase.auth.signOut();
+                  } catch {}
+                  // Clear any local state
+                  try { sessionStorage.clear(); } catch {}
+                  try { localStorage.removeItem('vantage_investor_style'); } catch {}
+                  // Hard navigation — triggers middleware, clears cookies server-side
+                  window.location.href = '/';
                 }}
                 style={{
                   flex: 1,
