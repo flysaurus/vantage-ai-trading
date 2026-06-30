@@ -65,6 +65,7 @@ export default function Page() {
       <span>DEMO_START: <b>{profile?.demo_start_at ? '✅' : '❌'}</b></span>
       <span>ONBOARDED: <b>{profile?.investor_style_onboarded ? '✅' : '❌'}</b></span>
       <span>CONNECTION: <b>{profile?.connection_type || '—'}</b></span>
+      <span>BUILD: <b>38fc6ba</b></span>
     </div>
   ) : null;
 
