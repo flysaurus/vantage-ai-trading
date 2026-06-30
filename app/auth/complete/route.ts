@@ -11,6 +11,7 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { createServerClient as createServiceClient } from '@/lib/supabase';
+import { seedDemoPortfolio } from '@/lib/portfolio-operations';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -149,7 +150,9 @@ async function runSetup(
   }
 
   // ── Start demo or broker connection ───────────────────────
-  const pendingChoice = meta.pending_choice;
+  // Default to demo if no pendingChoice (user signed up without
+  // completing the full onboarding flow, e.g. direct signup).
+  const pendingChoice = meta.pending_choice || 'demo';
   const pendingConnectionType = meta.pending_connection_type ?? null;
 
   if (pendingChoice === 'demo') {
@@ -170,6 +173,15 @@ async function runSetup(
       console.error('[auth/complete] demo start failed:', demoError.message);
     } else {
       console.log('[auth/complete] demo started, expires:', expiresAt);
+
+      // Seed style-specific starter positions ($100K total with ~15-20% invested)
+      const investmentStyle = meta.investor_style || 'lynch';
+      try {
+        await seedDemoPortfolio(user.id, investmentStyle);
+        console.log('[auth/complete] seeded portfolio for style:', investmentStyle);
+      } catch (seedErr) {
+        console.warn('[auth/complete] seed warning (non-fatal):', seedErr);
+      }
     }
   } else if (pendingChoice === 'broker') {
     const { error: connectionError } = await (serviceClient as any)
