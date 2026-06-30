@@ -5,20 +5,20 @@
 // All setup logic runs in this handler — no client-side timing issues.
 //
 // Flows:
-//   A) Direct from Supabase: ?code=xxx → exchange → setup → 200 HTML + meta-refresh
-//   B) Via /auth/confirm: session already exists → setup → 200 HTML + meta-refresh
+//   A) Direct from Supabase: ?code=xxx → exchange → setup → 200 HTML
+//   B) Via /auth/confirm: session already exists → setup → 200 HTML
 //   C) Returning user: already has demo_start_at/connection_type → skip to /
 //
-// COOKIE STRATEGY: We return 200 HTML with a <meta http-equiv="refresh">
-// instead of a 307/302 redirect. Browsers can drop Set-Cookie from HTTP
-// redirect responses (well-documented WebKit/Safari issue, intermittent
-// with Chrome on HTTP/2). Returning 200 OK guarantees Set-Cookie is
-// processed before the client-side navigation.
+// COOKIE STRATEGY: Return 200 HTML with a <script> that polls for
+// auth cookies before navigating. Browsers can drop Set-Cookie from
+// HTTP 307/302 redirect responses (well-documented race condition).
+// Returning 200 OK guarantees the browser processes Set-Cookie headers.
+// The JS script waits until sb-* auth cookies are present in
+// document.cookie (up to 3 seconds), then navigates client-side.
+// If no cookies after 3s, shows a diagnostic message with raw cookies.
 //
 // Next.js App Router automatically merges cookies set via cookies().set()
 // into ANY returned NextResponse — no manual cookie copying needed.
-// Manual copying creates duplicate Set-Cookie headers with conflicting
-// options, which caused the previous regression.
 
 import { createServerClient } from '@supabase/ssr';
 import { createServerClient as createServiceClient } from '@/lib/supabase';
@@ -70,9 +70,9 @@ export async function GET(request: NextRequest) {
     console.log('[auth/complete] session ok:', data.session.user.id);
 
     // Run setup with the newly created session
-    await runSetup(data.session.user, origin);
+    await runSetup(data.session.user, origin, supabase);
 
-    // Return 200 HTML with cookies auto-merged by Next.js + meta-refresh
+    // Return 200 HTML with cookies auto-merged + JS cookie checker
     return htmlPage('/you-are-in', origin, cookieStore, 'Flow A (code exchange)');
   }
 
@@ -86,14 +86,15 @@ export async function GET(request: NextRequest) {
   }
 
   console.log('[auth/complete] Flow B session:', session.user.id);
-  await runSetup(session.user, origin);
+  await runSetup(session.user, origin, supabase);
 
   return htmlPage('/you-are-in', origin, cookieStore, 'Flow B (existing session)');
 }
 
-// ── 200 HTML + <meta refresh> ───────────────────────────────
+// ── 200 HTML + JS cookie-check navigation ─────────────────
 // Cookies are auto-merged by Next.js from cookieStore mutations.
-// No manual cookie.set() — avoids duplicate Set-Cookie headers.
+// The JS script polls document.cookie for sb-* auth tokens,
+// navigates when found, or shows diagnostic after timeout.
 
 function htmlPage(
   destination: string,
@@ -102,19 +103,69 @@ function htmlPage(
   logLabel: string,
 ) {
   const allCookies = cookieStore.getAll();
+  const cookieNames = allCookies.map(c => c.name).join(', ');
   console.log(`[auth/complete] ${logLabel} → 200 HTML,`, allCookies.length,
-    'cookies auto-merged:', allCookies.map(c => c.name).join(', '),
-    '→', destination);
+    'cookies auto-merged:', cookieNames,
+    '→ client-side nav to', destination);
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=${destination}">
-<title>Vantage — redirecting…</title>
-<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+<title>Vantage — almost there…</title>
+<style>
+  body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}
+  p{color:rgba(255,255,255,0.6);font-size:16px;margin:0}
+  .debug{font-family:monospace;font-size:11px;color:rgba(255,255,255,0.3);margin-top:12px}
+</style>
 </head>
-<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
+<body>
+<p>Taking you to Vantage…</p>
+<p class="debug" id="status">waiting for cookies...</p>
+<p class="debug" id="cookies"></p>
+<script>
+(function(){
+  var statusEl = document.getElementById('status');
+  var cookiesEl = document.getElementById('cookies');
+  var tries = 0;
+  var maxTries = 15; // 15 × 200ms = 3 seconds
+
+  function check() {
+    tries++;
+    var raw = document.cookie;
+    var hasAuth = raw.indexOf('sb-') !== -1;
+    var cookieList = raw.split(';').filter(Boolean).map(function(c) {
+      return c.trim().split('=')[0];
+    }).join(', ') || '(none)';
+
+    cookiesEl.textContent = 'raw cookies: ' + (cookieList || '(none)');
+    statusEl.textContent = 'try ' + tries + '/' + maxTries + ' — ' +
+      (hasAuth ? 'found auth cookies, navigating...' : 'waiting...');
+
+    if (hasAuth) {
+      window.location.href = '${destination}';
+      return;
+    }
+
+    if (tries >= maxTries) {
+      statusEl.textContent = '⏰ TIMEOUT — no auth cookies after 3s';
+      statusEl.style.color = '#f44';
+      cookiesEl.innerHTML = '<br>❌ No sb-* auth cookies found.<br>' +
+        'Server sent: ${cookieNames.replace(/'/g, "\\'")}<br>' +
+        'Browser has: ' + (cookieList || '(none)') +
+        '<br><br><a href="/" style="color:#4af">Go to app</a>' +
+        ' | <a href="/login" style="color:#4af">Login</a>';
+      return;
+    }
+
+    setTimeout(check, 200);
+  }
+
+  // Give the browser a moment to process Set-Cookie headers before first check
+  setTimeout(check, 400);
+})();
+</script>
+</body>
 </html>`;
 
   return new NextResponse(html, {
@@ -128,6 +179,7 @@ function htmlPage(
 async function runSetup(
   user: { id: string; email?: string; user_metadata?: Record<string, any> },
   origin: string,
+  authClient: ReturnType<typeof createServerClient>,
 ) {
   const serviceClient = createServiceClient();
   const meta = user.user_metadata || {};
@@ -181,14 +233,11 @@ async function runSetup(
 
   if (upsertError) {
     console.error('[auth/complete] upsert failed:', upsertError.message);
-    // Continue anyway — don't block user
   } else {
     console.log('[auth/complete] user record created');
   }
 
   // ── Start demo or broker connection ───────────────────────
-  // Default to demo if no pendingChoice (user signed up without
-  // completing the full onboarding flow, e.g. direct signup).
   const pendingChoice = meta.pending_choice || 'demo';
   const pendingConnectionType = meta.pending_connection_type ?? null;
 
@@ -211,7 +260,6 @@ async function runSetup(
     } else {
       console.log('[auth/complete] demo started, expires:', expiresAt);
 
-      // Seed style-specific starter positions ($100K total with ~15-20% invested)
       const investmentStyle = meta.investor_style || 'lynch';
       try {
         await seedDemoPortfolio(user.id, investmentStyle);

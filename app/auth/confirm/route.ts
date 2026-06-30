@@ -13,12 +13,12 @@
 // 1. Verify the token_hash via Supabase's verifyOtp API
 // 2. @supabase/ssr stores session in cookieStore (via setAll callback)
 // 3. Return 200 HTML with Set-Cookie headers (auto-merged by Next.js)
-//    + <meta http-equiv="refresh"> to navigate to the target
-// 4. Browser processes cookies from 200 OK → navigates with cookies in place
+//    + JS script that polls for cookies before navigating
+// 4. Browser processes cookies → JS script confirms → navigates to target
 //
-// COOKIE STRATEGY: 200 HTML instead of 307 redirect because browsers
-// can drop Set-Cookie from HTTP redirect responses. 200 OK guarantees
-// the browser processes cookies before the client-side navigation.
+// COOKIE STRATEGY: 200 HTML with JavaScript cookie-check navigation.
+// Browsers can drop Set-Cookie from HTTP redirect responses.
+// 200 OK guarantees cookies are processed before the JS navigates.
 // No manual cookie copying — Next.js auto-merges from cookieStore.
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -67,12 +67,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (error) {
       console.error('[confirm] verifyOtp failed:', error.message);
 
-      // If expired/used, redirect to callback so it shows the proper error page
       const params = new URLSearchParams({
         error: error.message,
         email: '',
       });
-      // Preserve quiz data even on error
       const callbackRedirectTo = url.searchParams.get('redirect_to');
       if (callbackRedirectTo) {
         const cbUrl = new URL(callbackRedirectTo, url.origin);
@@ -89,12 +87,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    console.log('[confirm] ✅ Token verified — 200 HTML with cookies →', redirect_to);
+    console.log('[confirm] ✅ Token verified — 200 HTML →', redirect_to);
 
-    // Return 200 HTML with auto-merged cookies + meta-refresh
     const allCookies = cookieStore.getAll();
-    console.log('[confirm] cookies auto-merged:', allCookies.length,
-      allCookies.map(c => c.name).join(', '));
+    const cookieNames = allCookies.map(c => c.name).join(', ');
+    console.log('[confirm] cookies auto-merged:', allCookies.length, cookieNames);
 
     const targetUrl = redirect_to.startsWith('/')
       ? redirect_to
@@ -104,11 +101,60 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=${targetUrl}">
-<title>Vantage — redirecting…</title>
-<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+<title>Vantage — almost there…</title>
+<style>
+  body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}
+  p{color:rgba(255,255,255,0.6);font-size:16px;margin:0}
+  .debug{font-family:monospace;font-size:11px;color:rgba(255,255,255,0.3);margin-top:12px}
+</style>
 </head>
-<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
+<body>
+<p>Taking you to Vantage…</p>
+<p class="debug" id="status">waiting for cookies...</p>
+<p class="debug" id="cookies"></p>
+<script>
+(function(){
+  var statusEl = document.getElementById('status');
+  var cookiesEl = document.getElementById('cookies');
+  var tries = 0;
+  var maxTries = 15;
+  var dest = '${targetUrl}';
+
+  function check() {
+    tries++;
+    var raw = document.cookie;
+    var hasAuth = raw.indexOf('sb-') !== -1;
+    var cookieList = raw.split(';').filter(Boolean).map(function(c) {
+      return c.trim().split('=')[0];
+    }).join(', ') || '(none)';
+
+    cookiesEl.textContent = 'raw cookies: ' + (cookieList || '(none)');
+    statusEl.textContent = 'try ' + tries + '/' + maxTries + ' — ' +
+      (hasAuth ? 'found auth cookies, navigating...' : 'waiting...');
+
+    if (hasAuth) {
+      window.location.href = dest;
+      return;
+    }
+
+    if (tries >= maxTries) {
+      statusEl.textContent = '⏰ TIMEOUT — no auth cookies after 3s';
+      statusEl.style.color = '#f44';
+      cookiesEl.innerHTML = '<br>❌ No sb-* auth cookies found.<br>' +
+        'Server sent: ${cookieNames.replace(/'/g, "\\'")}<br>' +
+        'Browser has: ' + (cookieList || '(none)') +
+        '<br><br><a href="' + dest + '" style="color:#4af">Go to app</a>' +
+        ' | <a href="/login" style="color:#4af">Login</a>';
+      return;
+    }
+
+    setTimeout(check, 200);
+  }
+
+  setTimeout(check, 400);
+})();
+</script>
+</body>
 </html>`;
 
     return new NextResponse(html, {
