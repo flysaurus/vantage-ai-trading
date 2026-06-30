@@ -36,10 +36,11 @@ export default function Page() {
   }, []);
   const debugBanner = (
     <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
-      background: 'rgba(0,0,0,0.9)', color: '#0f0', padding: '6px 12px',
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 2147483647,
+      background: 'rgba(0,0,0,0.95)', color: '#0f0', padding: '6px 12px',
       fontSize: '11px', fontFamily: 'monospace', lineHeight: 1.4,
-      borderBottom: '1px solid #333'
+      borderBottom: '1px solid #333',
+      pointerEvents: 'none'
     }}>
       STATE: <strong>{state}</strong> | 
       {cookieDebug} | 
