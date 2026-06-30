@@ -38,8 +38,19 @@ export default function Page() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, router]);
 
-  // Debug banner — shows current state and key profile fields
+  // Debug banner — shows current state, profile fields, and raw cookies
   const showDebug = true; // ← toggle off after debugging
+  const [cookieDebug, setCookieDebug] = useState('…');
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const names = document.cookie.split(';')
+        .map(c => c.trim().split('=')[0])
+        .filter(Boolean)
+        .join(', ');
+      const sbCookies = names.toLowerCase().includes('sb-') ? '🍪 AUTH' : '❌ NOAUTH';
+      setCookieDebug(sbCookies + ' | ' + (names || '(none)'));
+    }
+  }, [state]);
   const debugBanner = showDebug ? (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
@@ -48,6 +59,7 @@ export default function Page() {
       pointerEvents: 'none', display: 'flex', gap: '16px', flexWrap: 'wrap',
     }}>
       <span>STATE: <b>{state}</b></span>
+      <span>COOKIES: <b>{cookieDebug}</b></span>
       <span>NAME: <b>{profile?.first_name || '—'} {profile?.last_name || ''}</b></span>
       <span>STYLE: <b>{profile?.investor_style || '—'}</b></span>
       <span>DEMO_START: <b>{profile?.demo_start_at ? '✅' : '❌'}</b></span>

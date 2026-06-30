@@ -5,14 +5,20 @@
 // All setup logic runs in this handler — no client-side timing issues.
 //
 // Flows:
-//   A) Direct from Supabase: ?code=xxx → exchange → setup → /you-are-in
-//   B) Via /auth/confirm: session already exists → setup → /you-are-in
+//   A) Direct from Supabase: ?code=xxx → exchange → setup → 200 HTML + meta-refresh
+//   B) Via /auth/confirm: session already exists → setup → 200 HTML + meta-refresh
 //   C) Returning user: already has demo_start_at/connection_type → skip to /
 //
-// NOTE: DO NOT manually copy cookies to the redirect response.
+// COOKIE STRATEGY: We return 200 HTML with a <meta http-equiv="refresh">
+// instead of a 307/302 redirect. Browsers can drop Set-Cookie from HTTP
+// redirect responses (well-documented WebKit/Safari issue, intermittent
+// with Chrome on HTTP/2). Returning 200 OK guarantees Set-Cookie is
+// processed before the client-side navigation.
+//
 // Next.js App Router automatically merges cookies set via cookies().set()
-// into the returned NextResponse. Manual copying creates duplicate
-// Set-Cookie headers with conflicting options that break the auth flow.
+// into ANY returned NextResponse — no manual cookie copying needed.
+// Manual copying creates duplicate Set-Cookie headers with conflicting
+// options, which caused the previous regression.
 
 import { createServerClient } from '@supabase/ssr';
 import { createServerClient as createServiceClient } from '@/lib/supabase';
@@ -66,8 +72,8 @@ export async function GET(request: NextRequest) {
     // Run setup with the newly created session
     await runSetup(data.session.user, origin);
 
-    // Next.js auto-merges cookies from cookieStore into this redirect response
-    return NextResponse.redirect(`${origin}/you-are-in`);
+    // Return 200 HTML with cookies auto-merged by Next.js + meta-refresh
+    return htmlPage('/you-are-in', origin, cookieStore, 'Flow A (code exchange)');
   }
 
   // ── Flow B: No code — check for existing session ──────────
@@ -82,7 +88,39 @@ export async function GET(request: NextRequest) {
   console.log('[auth/complete] Flow B session:', session.user.id);
   await runSetup(session.user, origin);
 
-  return NextResponse.redirect(`${origin}/you-are-in`);
+  return htmlPage('/you-are-in', origin, cookieStore, 'Flow B (existing session)');
+}
+
+// ── 200 HTML + <meta refresh> ───────────────────────────────
+// Cookies are auto-merged by Next.js from cookieStore mutations.
+// No manual cookie.set() — avoids duplicate Set-Cookie headers.
+
+function htmlPage(
+  destination: string,
+  origin: string,
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+  logLabel: string,
+) {
+  const allCookies = cookieStore.getAll();
+  console.log(`[auth/complete] ${logLabel} → 200 HTML,`, allCookies.length,
+    'cookies auto-merged:', allCookies.map(c => c.name).join(', '),
+    '→', destination);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${destination}">
+<title>Vantage — redirecting…</title>
+<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+</head>
+<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
 }
 
 // ── Shared setup logic ───────────────────────────────────────

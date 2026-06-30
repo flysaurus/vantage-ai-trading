@@ -12,11 +12,14 @@
 // Flow:
 // 1. Verify the token_hash via Supabase's verifyOtp API
 // 2. @supabase/ssr stores session in cookieStore (via setAll callback)
-// 3. Next.js auto-merges cookies from cookieStore into the redirect response
-// 4. Redirect to /auth/callback with all original params preserved
+// 3. Return 200 HTML with Set-Cookie headers (auto-merged by Next.js)
+//    + <meta http-equiv="refresh"> to navigate to the target
+// 4. Browser processes cookies from 200 OK → navigates with cookies in place
 //
-// NOTE: NO manual cookie copying. Next.js App Router automatically
-// includes cookies set via cookies().set() in the returned response.
+// COOKIE STRATEGY: 200 HTML instead of 307 redirect because browsers
+// can drop Set-Cookie from HTTP redirect responses. 200 OK guarantees
+// the browser processes cookies before the client-side navigation.
+// No manual cookie copying — Next.js auto-merges from cookieStore.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
@@ -86,14 +89,32 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    console.log('[confirm] ✅ Token verified — redirecting to callback');
+    console.log('[confirm] ✅ Token verified — 200 HTML with cookies →', redirect_to);
 
-    // Next.js auto-merges cookies from cookieStore into this redirect response
+    // Return 200 HTML with auto-merged cookies + meta-refresh
+    const allCookies = cookieStore.getAll();
+    console.log('[confirm] cookies auto-merged:', allCookies.length,
+      allCookies.map(c => c.name).join(', '));
+
     const targetUrl = redirect_to.startsWith('/')
-      ? new URL(redirect_to, url.origin)
-      : new URL(redirect_to);
+      ? redirect_to
+      : new URL(redirect_to).pathname + new URL(redirect_to).search;
 
-    return NextResponse.redirect(targetUrl);
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${targetUrl}">
+<title>Vantage — redirecting…</title>
+<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+</head>
+<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
+</html>`;
+
+    return new NextResponse(html, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
   } catch (err: any) {
     console.error('[confirm] Unexpected error:', err.message);
     return NextResponse.redirect(
