@@ -151,8 +151,8 @@ export default function LoginPage() {
     }
 
     // No demo: skip splash, go directly to app
-    router.push('/');
-    router.refresh();
+    // Use hard navigation to go through middleware (session-only cookie)
+    window.location.href = '/';
   }, [canSubmit, email, password, supabase, router]);
 
   // ── Forgot password handler ───────────────────────────
@@ -195,9 +195,9 @@ export default function LoginPage() {
 
   // ── Splash complete → navigate to app ────────────────────
   const handleSplashComplete = useCallback(() => {
-    router.push('/');
-    router.refresh();
-  }, [router]);
+    // Hard navigation to go through middleware (session-only cookie)
+    window.location.href = '/';
+  }, []);
 
   // ── Spinner while checking session ─────────────────────
   if (checkingSession) {

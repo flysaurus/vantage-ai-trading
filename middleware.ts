@@ -63,9 +63,13 @@ export async function middleware(request: NextRequest) {
               request.cookies.set(name, value)
             );
             response = NextResponse.next({ request });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options)
-            );
+            cookiesToSet.forEach(({ name, value, options }) => {
+              // Strip expires/maxAge to make cookies session-only.
+              // When the browser closes, cookies are deleted → user is logged out.
+              // Re-opening the browser shows the landing page, not the app.
+              const { expires, maxAge, ...rest } = options;
+              response.cookies.set(name, value, rest);
+            });
           },
         },
       }
