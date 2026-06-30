@@ -17,7 +17,8 @@
 //    so the callback can create the user profile and migrate data.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/auth/supabase-server';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const url = new URL(req.url);
@@ -34,9 +35,25 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  try {
-    const supabase = await getSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
 
+  try {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
       type: type as 'email' | 'magiclink' | 'recovery' | 'invite',
@@ -54,7 +71,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const callbackRedirectTo = url.searchParams.get('redirect_to');
       if (callbackRedirectTo) {
         const cbUrl = new URL(callbackRedirectTo, url.origin);
-        // Copy quiz/anonymous params to the error redirect
         const anonId = cbUrl.searchParams.get('anon_id');
         const quizComplete = cbUrl.searchParams.get('quiz_complete');
         const quizStyle = cbUrl.searchParams.get('investor_style');
@@ -71,13 +87,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     console.log('[confirm] ✅ Token verified — redirecting to callback');
 
     // Success — redirect to the callback URL (which contains all quiz/anonymous params)
-    // The session is now stored in cookies by @supabase/ssr.
-    // The callback will detect the session and skip exchangeCodeForSession.
+    // Copy cookies to the redirect response — verifyOtp stores them in cookieStore
+    // but NextResponse.redirect() creates a fresh response that loses them.
     const targetUrl = redirect_to.startsWith('/')
       ? new URL(redirect_to, url.origin)
       : new URL(redirect_to);
 
-    return NextResponse.redirect(targetUrl);
+    const response = NextResponse.redirect(targetUrl);
+    cookieStore.getAll().forEach((c) => {
+      response.cookies.set(c.name, c.value, {
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      });
+    });
+    return response;
   } catch (err: any) {
     console.error('[confirm] Unexpected error:', err.message);
     return NextResponse.redirect(

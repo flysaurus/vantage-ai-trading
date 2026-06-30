@@ -38,76 +38,103 @@ export default function Page() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, router]);
 
+  // Debug banner — shows current state and key profile fields
+  const showDebug = true; // ← toggle off after debugging
+  const debugBanner = showDebug ? (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+      background: '#0a0', color: '#fff', padding: '8px 16px',
+      fontSize: '12px', fontFamily: 'monospace', opacity: 0.9,
+      pointerEvents: 'none', display: 'flex', gap: '16px', flexWrap: 'wrap',
+    }}>
+      <span>STATE: <b>{state}</b></span>
+      <span>NAME: <b>{profile?.first_name || '—'} {profile?.last_name || ''}</b></span>
+      <span>STYLE: <b>{profile?.investor_style || '—'}</b></span>
+      <span>DEMO_START: <b>{profile?.demo_start_at ? '✅' : '❌'}</b></span>
+      <span>ONBOARDED: <b>{profile?.investor_style_onboarded ? '✅' : '❌'}</b></span>
+      <span>CONNECTION: <b>{profile?.connection_type || '—'}</b></span>
+    </div>
+  ) : null;
+
   // loading: show minimal orb pulse
   if (state === 'loading') {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: 'var(--bg-primary)',
-      }}>
-        <VantageOrb size={44} animate={true} />
-      </div>
+      <>
+        {debugBanner}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg-primary)',
+        }}>
+          <VantageOrb size={44} animate={true} />
+        </div>
+      </>
     );
   }
 
   // onboarding: brand new user — full onboarding flow
   if (state === 'onboarding') {
-    return <OnboardingFlow />;
+    return <>{debugBanner}<OnboardingFlow /></>;
   }
 
   // needs-profile: redirect handled by useEffect above
   if (state === 'needs-profile') {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: 'var(--bg-primary)',
-      }}>
-        <VantageOrb size={44} animate={true} />
-      </div>
+      <>
+        {debugBanner}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg-primary)',
+        }}>
+          <VantageOrb size={44} animate={true} />
+        </div>
+      </>
     );
   }
 
   // needs-quiz: has account + profile, just needs style quiz
   if (state === 'needs-quiz') {
-    return <OnboardingFlow initialScreen="quiz" />;
+    return <>{debugBanner}<OnboardingFlow initialScreen="quiz" /></>;
   }
 
   // broker-selection: authenticated but neither demo nor broker chosen
   if (state === 'broker-selection') {
-    return <BrokerChoicePage onStateChanged={refreshState} />;
+    return <>{debugBanner}<BrokerChoicePage onStateChanged={refreshState} /></>;
   }
 
   // demo-counter: demo active — show counter, dismiss to MainApp
   if (state === 'demo-counter' && showDemoCounter) {
     return (
-      <DemoCounterPage
-        profile={profile}
-        onEnter={() => setShowDemoCounter(false)}
-      />
+      <>
+        {debugBanner}
+        <DemoCounterPage
+          profile={profile}
+          onEnter={() => setShowDemoCounter(false)}
+        />
+      </>
     );
   }
 
   // demo-expired: 30-day demo has elapsed
   if (state === 'demo-expired') {
-    return <DemoExpired />;
+    return <>{debugBanner}<DemoExpired /></>;
   }
 
   // connection-options: chose to connect a broker — show broker options
   if (state === 'connection-options') {
-    return <ConnectionOptionsPage onStateChanged={refreshState} />;
+    return <>{debugBanner}<ConnectionOptionsPage onStateChanged={refreshState} /></>;
   }
 
   // connection-loading: broker syncing — animated spinner + polling
   if (state === 'connection-loading') {
-    return <ConnectionLoadingPage profile={profile} onStateChanged={refreshState} />;
+    return <>{debugBanner}<ConnectionLoadingPage profile={profile} onStateChanged={refreshState} /></>;
   }
 
   // demo-counter (dismissed) / authenticated
-  return <MainApp />;
+  return <>{debugBanner}<MainApp /></>;
 }

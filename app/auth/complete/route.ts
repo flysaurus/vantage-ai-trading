@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
 
+  console.log('[auth/complete] HIT — code present:', !!code, 'origin:', origin);
+
   const cookieStore = await cookies();
 
   // Supabase SSR client — uses anon key for auth operations
@@ -61,7 +63,10 @@ export async function GET(request: NextRequest) {
     // exchangeCodeForSession stores them in cookieStore,
     // but NextResponse.redirect() creates a fresh response that loses them.
     const response = NextResponse.redirect(`${origin}/you-are-in`);
-    cookieStore.getAll().forEach((c) => {
+    const allCookies = cookieStore.getAll();
+    console.log('[auth/complete] copying', allCookies.length, 'cookies to redirect:',
+      allCookies.map(c => c.name).join(', '));
+    allCookies.forEach((c) => {
       response.cookies.set(c.name, c.value, {
         path: '/',
         sameSite: 'lax',
@@ -84,7 +89,10 @@ export async function GET(request: NextRequest) {
   await runSetup(session.user, origin);
 
   const responseB = NextResponse.redirect(`${origin}/you-are-in`);
-  cookieStore.getAll().forEach((c) => {
+  const allCookiesB = cookieStore.getAll();
+  console.log('[auth/complete] Flow B copying', allCookiesB.length, 'cookies to redirect:',
+    allCookiesB.map(c => c.name).join(', '));
+  allCookiesB.forEach((c) => {
     responseB.cookies.set(c.name, c.value, {
       path: '/',
       sameSite: 'lax',
@@ -120,6 +128,14 @@ async function runSetup(
 
   const firstName = meta.first_name ?? '';
   const lastName = meta.last_name ?? '';
+
+  console.log('[auth/complete] runSetup — meta:', {
+    first_name: firstName,
+    last_name: lastName,
+    investor_style: meta.investor_style,
+    pending_choice: meta.pending_choice,
+    risk_tolerance: meta.risk_tolerance,
+  });
 
   const { error: upsertError } = await (serviceClient as any)
     .from('users')
