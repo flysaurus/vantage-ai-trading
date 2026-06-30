@@ -37,6 +37,17 @@ export async function GET() {
       demo_expires_at: userData?.demo_expires_at ?? null,
       connection_type: userData?.connection_type ?? null,
       connection_status: userData?.connection_status ?? null,
+
+      // Legacy camelCase fields for
+      // checkQuizComplete() and any other
+      // code expecting this shape
+      investorStyleOnboarded:
+        userData?.investor_style_onboarded ?? false,
+      investorStyle: userData?.investor_style ?? null,
+      riskTolerance: userData?.risk_tolerance ?? null,
+      displayName: userData?.first_name
+        ? `${userData.first_name} ${userData.last_name ?? ''}`.trim()
+        : authUser.email?.split('@')[0] ?? null,
     },
   });
 }
