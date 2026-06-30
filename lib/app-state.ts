@@ -160,11 +160,20 @@ export function useAppState(): AppStateResult {
           email: session.user.email,
         });
 
-        const { data: userData, error } = await (supabase
+        let userData = null;
+        const result = await (supabase
           .from('users') as any)
           .select('*')
           .eq('id', session.user.id)
           .maybeSingle();
+
+        userData = result.data;
+        const error = result.error;
+        if (error) {
+          console.error('[app-state] DB query error:', error.message);
+          setState('onboarding');
+          return;
+        }
 
         if (!mounted) return;
 
@@ -237,6 +246,36 @@ export function useAppState(): AppStateResult {
         const nextState = resolveStateFromUsers(
           userData as Record<string, unknown> | null
         );
+        // ── Broker-selection auto-heal ────────────────
+        // If user has completed onboarding (name + style) but
+        // has no demo/connection started, auto-start demo.
+        // This handles edge case where pending_choice was missing
+        // from user_metadata during signup.
+        if (nextState === 'broker-selection' && userData.investor_style_onboarded) {
+          console.log('[app-state] auto-heal: broker-selection → starting demo');
+          try {
+            const res = await fetch('/api/demo/start', {
+              method: 'POST',
+              credentials: 'include',
+            });
+            if (res.ok) {
+              // Re-fetch the updated record
+              const { data: updated } = await (supabase.from('users') as any)
+                .select('*')
+                .eq('id', session.user.id)
+                .maybeSingle();
+              if (updated) {
+                setProfile(updated as UserProfile);
+                setState(resolveStateFromUsers(updated as Record<string, unknown> | null));
+                return;
+              }
+            }
+            console.warn('[app-state] demo auto-start failed, falling through to broker-selection');
+          } catch (err) {
+            console.warn('[app-state] demo auto-start error:', err);
+          }
+        }
+
         setState(nextState);
 
       } catch (err) {
