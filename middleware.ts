@@ -59,14 +59,14 @@ export async function middleware(request: NextRequest) {
             return request.cookies.getAll();
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
-            );
-            response = NextResponse.next({ request });
+            // IMPORTANT: Use ONLY response.cookies.set() — NOT request.cookies.set().
+            // Using both creates DUPLICATE Set-Cookie headers (Next.js auto-merges
+            // request.cookies.set() mutations, AND then response.cookies.set() adds
+            // another header). Browsers handle duplicates unpredictably → cookies
+            // silently lost.
+            //
+            // Session-only: strip expires/maxAge so cookies die on browser close.
             cookiesToSet.forEach(({ name, value, options }) => {
-              // Strip expires/maxAge to make cookies session-only.
-              // When the browser closes, cookies are deleted → user is logged out.
-              // Re-opening the browser shows the landing page, not the app.
               const { expires, maxAge, ...rest } = options;
               response.cookies.set(name, value, rest);
             });
