@@ -11,10 +11,10 @@
 //
 // Flow:
 // 1. Verify the token_hash via Supabase's verifyOtp API
-// 2. @supabase/ssr automatically stores session in cookies
-// 3. Redirect to /auth/callback with all original params preserved
-//    (quiz_complete, investor_style, anon_id, pending_action)
-//    so the callback can create the user profile and migrate data.
+// 2. @supabase/ssr stores session in cookieStore
+// 3. Return 200 HTML with Set-Cookie + meta-refresh to destination
+//    (avoids iOS WebView dropping cookies from 307 redirects)
+// 4. Destination (/auth/complete or /auth/callback) handles setup
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
@@ -84,23 +84,43 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    console.log('[confirm] ✅ Token verified — redirecting to callback');
+    console.log('[confirm] ✅ Token verified — redirecting via 200 HTML');
 
-    // Success — redirect to the callback URL (which contains all quiz/anonymous params)
-    // Copy cookies to the redirect response — verifyOtp stores them in cookieStore
-    // but NextResponse.redirect() creates a fresh response that loses them.
+    // Return 200 HTML with cookies + meta-refresh.
+    // iOS WebView (Gmail in-app browser) drops Set-Cookie from
+    // HTTP 307 redirect responses. 200 OK with meta-refresh is
+    // reliably handled by all browsers.
     const targetUrl = redirect_to.startsWith('/')
       ? new URL(redirect_to, url.origin)
       : new URL(redirect_to);
 
-    const response = NextResponse.redirect(targetUrl);
-    cookieStore.getAll().forEach((c) => {
+    const allCookies = cookieStore.getAll();
+    console.log('[confirm] copying', allCookies.length, 'cookies →', targetUrl.pathname);
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${targetUrl.toString()}">
+<title>Vantage — redirecting…</title>
+<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+</head>
+<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
+</html>`;
+
+    const response = new NextResponse(html, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+
+    allCookies.forEach((c) => {
       response.cookies.set(c.name, c.value, {
         path: '/',
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
       });
     });
+
     return response;
   } catch (err: any) {
     console.error('[confirm] Unexpected error:', err.message);

@@ -15,6 +15,52 @@ import { seedDemoPortfolio } from '@/lib/portfolio-operations';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
+// ── Helper: Return 200 HTML with cookies + client-side redirect ─
+// iOS WebView (Gmail/Safari in-app browser) is unreliable with Set-Cookie
+// from HTTP 302/307 redirect responses. The browser drops auth cookies
+// and the user arrives at /you-are-in with no session.
+//
+// Workaround: return 200 OK with Set-Cookie headers + <meta refresh>.
+// Browsers process Set-Cookie from 200 responses reliably, then the
+// meta refresh navigates to the destination with cookies intact.
+function htmlRedirect(
+  destination: string,
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+  logLabel: string,
+) {
+  const allCookies = cookieStore.getAll();
+  console.log(`[auth/complete] ${logLabel} → 200 HTML with`,
+    allCookies.length, 'cookies:',
+    allCookies.map(c => c.name).join(', '),
+    '→', destination);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${destination}">
+<title>Vantage — redirecting…</title>
+<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+</head>
+<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
+</html>`;
+
+  const response = new NextResponse(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+
+  allCookies.forEach((c) => {
+    response.cookies.set(c.name, c.value, {
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
+  });
+
+  return response;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
@@ -59,21 +105,9 @@ export async function GET(request: NextRequest) {
     // Run setup with the newly created session
     await runSetup(data.session.user, origin);
 
-    // Explicitly copy cookies to redirect response —
-    // exchangeCodeForSession stores them in cookieStore,
-    // but NextResponse.redirect() creates a fresh response that loses them.
-    const response = NextResponse.redirect(`${origin}/you-are-in`);
-    const allCookies = cookieStore.getAll();
-    console.log('[auth/complete] copying', allCookies.length, 'cookies to redirect:',
-      allCookies.map(c => c.name).join(', '));
-    allCookies.forEach((c) => {
-      response.cookies.set(c.name, c.value, {
-        path: '/',
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
-      });
-    });
-    return response;
+    // Return 200 HTML with cookies + meta-refresh instead of 307 redirect.
+    // iOS WebView drops Set-Cookie from 307 responses (known WebKit bug).
+    return htmlRedirect('/you-are-in', cookieStore, 'Flow A (code exchange)');
   }
 
   // ── Flow B: No code — check for existing session ──────────
@@ -88,18 +122,7 @@ export async function GET(request: NextRequest) {
   console.log('[auth/complete] Flow B session:', session.user.id);
   await runSetup(session.user, origin);
 
-  const responseB = NextResponse.redirect(`${origin}/you-are-in`);
-  const allCookiesB = cookieStore.getAll();
-  console.log('[auth/complete] Flow B copying', allCookiesB.length, 'cookies to redirect:',
-    allCookiesB.map(c => c.name).join(', '));
-  allCookiesB.forEach((c) => {
-    responseB.cookies.set(c.name, c.value, {
-      path: '/',
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    });
-  });
-  return responseB;
+  return htmlRedirect('/you-are-in', cookieStore, 'Flow B (existing session)');
 }
 
 // ── Shared setup logic ───────────────────────────────────────
