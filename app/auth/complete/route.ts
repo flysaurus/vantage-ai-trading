@@ -8,58 +8,17 @@
 //   A) Direct from Supabase: ?code=xxx → exchange → setup → /you-are-in
 //   B) Via /auth/confirm: session already exists → setup → /you-are-in
 //   C) Returning user: already has demo_start_at/connection_type → skip to /
+//
+// NOTE: DO NOT manually copy cookies to the redirect response.
+// Next.js App Router automatically merges cookies set via cookies().set()
+// into the returned NextResponse. Manual copying creates duplicate
+// Set-Cookie headers with conflicting options that break the auth flow.
 
 import { createServerClient } from '@supabase/ssr';
 import { createServerClient as createServiceClient } from '@/lib/supabase';
 import { seedDemoPortfolio } from '@/lib/portfolio-operations';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-
-// ── Helper: Return 200 HTML with cookies + client-side redirect ─
-// iOS WebView (Gmail/Safari in-app browser) is unreliable with Set-Cookie
-// from HTTP 302/307 redirect responses. The browser drops auth cookies
-// and the user arrives at /you-are-in with no session.
-//
-// Workaround: return 200 OK with Set-Cookie headers + <meta refresh>.
-// Browsers process Set-Cookie from 200 responses reliably, then the
-// meta refresh navigates to the destination with cookies intact.
-function htmlRedirect(
-  destination: string,
-  cookieStore: Awaited<ReturnType<typeof cookies>>,
-  logLabel: string,
-) {
-  const allCookies = cookieStore.getAll();
-  console.log(`[auth/complete] ${logLabel} → 200 HTML with`,
-    allCookies.length, 'cookies:',
-    allCookies.map(c => c.name).join(', '),
-    '→', destination);
-
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=${destination}">
-<title>Vantage — redirecting…</title>
-<style>body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
-</head>
-<body><p style="color:rgba(255,255,255,0.6)">Taking you to Vantage…</p></body>
-</html>`;
-
-  const response = new NextResponse(html, {
-    status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
-
-  allCookies.forEach((c) => {
-    response.cookies.set(c.name, c.value, {
-      path: '/',
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    });
-  });
-
-  return response;
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -69,7 +28,9 @@ export async function GET(request: NextRequest) {
 
   const cookieStore = await cookies();
 
-  // Supabase SSR client — uses anon key for auth operations
+  // Supabase SSR client — uses anon key for auth operations.
+  // setAll callback writes to cookieStore; Next.js auto-merges
+  // those cookies into the response returned below.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -105,9 +66,8 @@ export async function GET(request: NextRequest) {
     // Run setup with the newly created session
     await runSetup(data.session.user, origin);
 
-    // Return 200 HTML with cookies + meta-refresh instead of 307 redirect.
-    // iOS WebView drops Set-Cookie from 307 responses (known WebKit bug).
-    return htmlRedirect('/you-are-in', cookieStore, 'Flow A (code exchange)');
+    // Next.js auto-merges cookies from cookieStore into this redirect response
+    return NextResponse.redirect(`${origin}/you-are-in`);
   }
 
   // ── Flow B: No code — check for existing session ──────────
@@ -122,7 +82,7 @@ export async function GET(request: NextRequest) {
   console.log('[auth/complete] Flow B session:', session.user.id);
   await runSetup(session.user, origin);
 
-  return htmlRedirect('/you-are-in', cookieStore, 'Flow B (existing session)');
+  return NextResponse.redirect(`${origin}/you-are-in`);
 }
 
 // ── Shared setup logic ───────────────────────────────────────
