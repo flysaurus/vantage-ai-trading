@@ -154,6 +154,11 @@ export function useAppState(): AppStateResult {
 
       try {
         // ── Query public.users ONLY (central identity table) ──
+        console.log('[app-state] looking up user:', {
+          id: session.user.id,
+          email: session.user.email,
+        });
+
         const { data: userData, error } = await (supabase
           .from('users') as any)
           .select('*')
@@ -161,6 +166,11 @@ export function useAppState(): AppStateResult {
           .maybeSingle();
 
         if (!mounted) return;
+
+        console.log('[app-state] found user:',
+          userData ? 'yes' : 'no',
+          'investor_style:',
+          userData?.investor_style ?? 'null');
 
         // No users row at all → needs onboarding
         if (!userData) {
