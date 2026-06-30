@@ -278,18 +278,9 @@ export function useAppState(): AppStateResult {
     }
 
     // Check existing user on mount / refresh
-    // ── DEBUG: wrap in timeout to diagnose hanging getUser() ──
-    const getUserTimeout = setTimeout(() => {
-      if (mounted && state === 'loading') {
-        console.error('[useAppState] getUser TIMEOUT after 10s — forcing onboarding');
-        setState('onboarding');
-      }
-    }, 10000);
-
     supabase.auth
       .getUser()
       .then(({ data: { user }, error }) => {
-        clearTimeout(getUserTimeout);
         if (error || !user) {
           console.log('[useAppState] getUser returned error or no user:', error?.message);
           if (mounted) setState('onboarding');
@@ -300,7 +291,6 @@ export function useAppState(): AppStateResult {
         resolveState({ user } as any);
       })
       .catch((err) => {
-        clearTimeout(getUserTimeout);
         console.error('[useAppState] getUser error:', err);
         if (mounted) setState('onboarding');
       });
