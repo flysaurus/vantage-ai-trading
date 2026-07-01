@@ -19,10 +19,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1. Canonical domain redirect
+  const isVercelPreview = hostname.includes('flysaurus-projects.vercel.app');
+
   if (
     hostname !== CANONICAL_HOST &&
     !hostname.includes('localhost') &&
-    hostname !== '127.0.0.1'
+    hostname !== '127.0.0.1' &&
+    !isVercelPreview
   ) {
     const url = new URL(request.url);
     url.host = CANONICAL_HOST;
