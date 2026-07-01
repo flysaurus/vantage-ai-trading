@@ -278,22 +278,55 @@ export function useAppState(): AppStateResult {
     }
 
     // Check existing user on mount / refresh
-    supabase.auth
-      .getUser()
-      .then(({ data: { user }, error }) => {
-        if (error || !user) {
-          console.log('[useAppState] getUser returned error or no user:', error?.message);
-          if (mounted) setState('onboarding');
-          return;
+    // ── BRIDGE: Try sessionStorage first ─────────────────
+    // /auth/complete stores tokens in sessionStorage to bypass
+    // cookie httpOnly/duplicate-header issues. If found, restore
+    // the session via setSession(), then proceed normally.
+    async function initSession() {
+      // 1. Check for bridged session
+      const stored = typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('vantage-auth-token')
+        : null;
+      if (stored) {
+        try {
+          const tokens = JSON.parse(stored);
+          if (tokens.access_token && tokens.refresh_token) {
+            console.log('[app-state] restoring session from sessionStorage bridge');
+            const { data, error } = await supabase.auth.setSession({
+              access_token: tokens.access_token,
+              refresh_token: tokens.refresh_token,
+            });
+            if (data?.session) {
+              sessionStorage.removeItem('vantage-auth-token');
+              resolveState(data.session);
+              return;
+            }
+            console.warn('[app-state] setSession failed:', error?.message);
+          }
+        } catch(e) {
+          console.warn('[app-state] failed to parse sessionStorage token');
         }
-        // Build a minimal session-like object
-        // resolveState needs session.user
-        resolveState({ user } as any);
-      })
-      .catch((err) => {
-        console.error('[useAppState] getUser error:', err);
-        if (mounted) setState('onboarding');
-      });
+        // If bridge failed, clear it and fall through
+        try { sessionStorage.removeItem('vantage-auth-token'); } catch(e) {}
+      }
+
+      // 2. Fall back to normal cookie-based getUser()
+      supabase.auth
+        .getUser()
+        .then(({ data: { user }, error }) => {
+          if (error || !user) {
+            console.log('[useAppState] getUser returned error or no user:', error?.message);
+            if (mounted) setState('onboarding');
+            return;
+          }
+          resolveState({ user } as any);
+        })
+        .catch((err) => {
+          console.error('[useAppState] getUser error:', err);
+          if (mounted) setState('onboarding');
+        });
+    }
+    initSession();
 
     // Listen for auth changes (sign in / sign out)
     const {
