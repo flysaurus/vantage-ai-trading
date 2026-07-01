@@ -178,6 +178,15 @@ export function useAppState(): AppStateResult {
           'investor_style:', apiUser.investor_style ?? 'null',
           'demo_start_at:', apiUser.demo_start_at ? 'set' : 'null');
 
+        // ── DEBUG: temporary state machine diagnostics ──
+        console.log('[app-state] raw userData:', JSON.stringify(apiUser));
+        console.log('[app-state] checks:', {
+          hasStyle: !!apiUser?.investor_style,
+          onboarded: apiUser?.investorStyleOnboarded,
+          demoStart: apiUser?.demo_start_at,
+          firstName: apiUser?.first_name
+        });
+
         // ── Auto-create: API returned no investor_style but auth metadata has it ──
         // This means the public.users record doesn't exist yet (or RLS blocked write).
         // Create it server-side via /api/user/setup.
