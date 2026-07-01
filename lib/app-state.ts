@@ -141,7 +141,7 @@ export function useAppState(): AppStateResult {
   useEffect(() => {
     let mounted = true;
 
-    async function resolveState(session: any) {
+    async function resolveState(session: any, bridgeToken?: string | null) {
       if (!mounted) return;
 
       if (!session) {
@@ -159,7 +159,12 @@ export function useAppState(): AppStateResult {
         // /api/auth/me uses service key server-side, so it always works.
         console.log('[app-state] fetching profile via /api/auth/me for:', session.user.id);
 
-        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        const meRes = await fetch('/api/auth/me', {
+          credentials: 'include',
+          headers: bridgeToken
+            ? { 'Authorization': `Bearer ${bridgeToken}`, 'X-Bridge-Auth': '1' }
+            : {},
+        });
         if (!meRes.ok) {
           console.error('[app-state] /api/auth/me failed:', meRes.status);
           setState('onboarding');
@@ -201,7 +206,10 @@ export function useAppState(): AppStateResult {
               });
               if (setupRes.ok) {
                 // Re-fetch the now-created record
-                const refetchRes = await fetch('/api/auth/me', { credentials: 'include' });
+                const refetchRes = await fetch('/api/auth/me', {
+                  credentials: 'include',
+                  headers: bridgeToken ? { 'Authorization': `Bearer ${bridgeToken}` } : {},
+                });
                 if (refetchRes.ok) {
                   const { user: fresh } = await refetchRes.json();
                   if (fresh) userData = fresh;
@@ -252,7 +260,10 @@ export function useAppState(): AppStateResult {
             });
             if (res.ok) {
               // Re-fetch the updated record via server API
-              const refreshRes = await fetch('/api/auth/me', { credentials: 'include' });
+              const refreshRes = await fetch('/api/auth/me', {
+                credentials: 'include',
+                headers: bridgeToken ? { 'Authorization': `Bearer ${bridgeToken}` } : {},
+              });
               if (refreshRes.ok) {
                 const { user: updated } = await refreshRes.json();
                 if (updated) {
@@ -279,52 +290,47 @@ export function useAppState(): AppStateResult {
 
     // Check existing user on mount / refresh
     // ── BRIDGE: Try sessionStorage first ─────────────────
-    // /auth/complete stores tokens in sessionStorage to bypass
-    // cookie httpOnly/duplicate-header issues. If found, restore
-    // the session via setSession(), then proceed normally.
+    // /auth/complete stores tokens in sessionStorage. If found,
+    // setSession restores the Supabase client state + writes cookies.
+    // The bridge token is also passed to /api/auth/me as Bearer header
+    // for defense-in-depth if cookies fail.
     async function initSession() {
-      // 1. Check for bridged session
-      const stored = typeof sessionStorage !== 'undefined'
-        ? sessionStorage.getItem('vantage-auth-token')
-        : null;
-      if (stored) {
-        try {
+      let bridgeToken: string | null = null;
+
+      // 1. Check for bridged session in sessionStorage
+      try {
+        const stored = typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem('vantage-auth-token')
+          : null;
+        if (stored) {
           const tokens = JSON.parse(stored);
           if (tokens.access_token && tokens.refresh_token) {
-            console.log('[app-state] restoring session from sessionStorage bridge');
-            const { data, error } = await supabase.auth.setSession({
+            bridgeToken = tokens.access_token;
+            console.log('[app-state] sessionStorage bridge found, restoring session');
+            // setSession writes cookies AND sets internal state
+            const { error } = await supabase.auth.setSession({
               access_token: tokens.access_token,
               refresh_token: tokens.refresh_token,
             });
-            if (data?.session) {
-              sessionStorage.removeItem('vantage-auth-token');
-              resolveState(data.session);
-              return;
+            if (error) {
+              console.warn('[app-state] setSession failed:', error.message);
             }
-            console.warn('[app-state] setSession failed:', error?.message);
+            sessionStorage.removeItem('vantage-auth-token');
           }
-        } catch(e) {
-          console.warn('[app-state] failed to parse sessionStorage token');
         }
-        // If bridge failed, clear it and fall through
-        try { sessionStorage.removeItem('vantage-auth-token'); } catch(e) {}
+      } catch(e) {
+        console.warn('[app-state] sessionStorage parse failed:', e);
       }
 
-      // 2. Fall back to normal cookie-based getUser()
-      supabase.auth
-        .getUser()
-        .then(({ data: { user }, error }) => {
-          if (error || !user) {
-            console.log('[useAppState] getUser returned error or no user:', error?.message);
-            if (mounted) setState('onboarding');
-            return;
-          }
-          resolveState({ user } as any);
-        })
-        .catch((err) => {
-          console.error('[useAppState] getUser error:', err);
-          if (mounted) setState('onboarding');
-        });
+      // 2. Get user via Supabase client (cookies from setSession or server)
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        console.log('[useAppState] getUser returned error or no user:', error?.message);
+        if (mounted) setState('onboarding');
+        return;
+      }
+      // Pass bridge token — used as Bearer auth for /api/auth/me if cookies fail
+      resolveState({ user } as any, bridgeToken);
     }
     initSession();
 

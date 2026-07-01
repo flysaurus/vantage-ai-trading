@@ -1,13 +1,32 @@
 // ─── GET /api/auth/me — Current user profile ────────────────
 // Returns the authenticated user's data from public.users.
-// Reads ONLY public.users — no user_profiles dependency.
+// Auth: cookies (Supabase session) OR Bearer token (sessionStorage bridge).
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
-export async function GET() {
-  const { authUser, authError } = await requireAuth();
+export async function GET(request: NextRequest) {
+  // 1. Try cookie-based auth
+  let { authUser, authError } = await requireAuth(request);
+
+  // 2. Fall back to Bearer token
+  if (!authUser) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      try {
+        const supabase = createServerClient();
+        const { data: { user }, error } = await (supabase as any).auth.getUser(token);
+        if (user && !error) {
+          authUser = { id: user.id, email: user.email || '' };
+          authError = null;
+        }
+      } catch(e) {
+        console.warn('[api/auth/me] Bearer token verification failed:', e);
+      }
+    }
+  }
 
   if (authError || !authUser) {
     return NextResponse.json(
