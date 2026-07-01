@@ -45,11 +45,15 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
     );
   }
 
-  _browserClient = createBrowserClient<Database>(url, key, {
-    auth: {
-      flowType: 'implicit',
-    },
-  });
+  _browserClient = createBrowserClient<Database>(url, key);
+
+  // @supabase/ssr v0.10.3 hardcodes `flowType: "pkce"` AFTER the
+  // ...options?.auth spread, so passing it via options is silently ignored.
+  // To get implicit flow (hash-based tokens that survive SendGrid click
+  // tracking), we set flowType directly on the GoTrue auth client instance.
+  // signUp() reads `this.flowType` at call time — this mutation takes effect
+  // before any auth operations.
+  (_browserClient.auth as any).flowType = 'implicit';
 
   return _browserClient;
 }
