@@ -1,25 +1,13 @@
-// ─── /you-are-in — Post-setup celebration page ──────────────
-// Pure animation. No data fetching, no API calls.
-// Session is guaranteed — setup already completed in /auth/complete.
-// Auto-advances to / after 3 seconds.
-
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 
 export default function YouAreInPage() {
   const router = useRouter();
-  const [cookieInfo, setCookieInfo] = useState('…');
 
   useEffect(() => {
-    // Debug: check if cookies arrived
-    const hasCookies = document.cookie.length > 0;
-    console.log('[you-are-in] page loaded, document.cookie length:', document.cookie.length,
-      'cookies:', document.cookie.split(';').map(c => c.trim().split('=')[0]).join(', '));
-    setCookieInfo(hasCookies ? `🍪 ${document.cookie.split(';').length} cookies` : '❌ no cookies');
-
     const timer = setTimeout(() => {
       router.push('/');
     }, 3000);
@@ -36,6 +24,7 @@ export default function YouAreInPage() {
         height: '100dvh',
         background: 'var(--bg-primary)',
         gap: '24px',
+        padding: '0 24px',
       }}
     >
       <VantageOrb size={180} animate showEntrance />
@@ -43,7 +32,7 @@ export default function YouAreInPage() {
       <div style={{ textAlign: 'center' }}>
         <h1
           style={{
-            fontFamily: 'Inter, var(--font-sans)',
+            fontFamily: 'Inter',
             fontWeight: 800,
             fontSize: '48px',
             color: 'white',
@@ -55,7 +44,7 @@ export default function YouAreInPage() {
         </h1>
         <h1
           style={{
-            fontFamily: "'Playfair Display', var(--font-serif)",
+            fontFamily: 'Playfair Display',
             fontStyle: 'italic',
             fontWeight: 400,
             fontSize: '48px',
@@ -70,23 +59,15 @@ export default function YouAreInPage() {
 
       <p
         style={{
-          fontFamily: 'Inter, var(--font-sans)',
+          fontFamily: 'Inter',
           fontWeight: 400,
           fontSize: '16px',
           color: 'rgba(255,255,255,0.6)',
           margin: 0,
+          textAlign: 'center',
         }}
       >
-        Setting up your portfolio...
-      </p>
-
-      <p style={{
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: 'rgba(255,255,255,0.35)',
-        margin: 0,
-      }}>
-        {cookieInfo}
+        Welcome to Vantage.
       </p>
     </div>
   );
