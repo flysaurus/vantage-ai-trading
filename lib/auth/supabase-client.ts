@@ -45,7 +45,11 @@ export function getSupabaseBrowserClient(): SupabaseClient<Database> {
     );
   }
 
-  _browserClient = createBrowserClient<Database>(url, key);
+  _browserClient = createBrowserClient<Database>(url, key, {
+    auth: {
+      flowType: 'implicit',
+    },
+  });
 
   return _browserClient;
 }
