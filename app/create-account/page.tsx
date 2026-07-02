@@ -28,6 +28,7 @@ import {
   Info,
 } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
+import OTPVerification from '@/components/onboarding/OTPVerification';
 import Input from '@/components/ui/Input';
 import PasswordStrength from '@/components/ui/PasswordStrength';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
@@ -84,7 +85,7 @@ function readOnboardingData(): OnboardingData | null {
 
 // ── Step type ──────────────────────────────────────────────
 
-type CreateAccountStep = 'form' | 'check-email';
+type CreateAccountStep = 'form' | 'verify-otp' | 'check-email';
 
 export default function CreateAccountPage() {
   const router = useRouter();
@@ -330,7 +331,6 @@ export default function CreateAccountPage() {
           pending_choice: pendingChoice,
           pending_connection_type: pendingConnectionType ?? null,
         },
-        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/complete',
       },
     });
 
@@ -364,8 +364,59 @@ export default function CreateAccountPage() {
       sessionStorage.removeItem('vantage_onboarding');
     } catch {}
 
-    setStep('check-email');
+    setStep('verify-otp');
   }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
+
+  // ── OTP verification success ────────────────────────────
+  const handleOTPSuccess = useCallback(async () => {
+    setSubmitting(true);
+
+    try {
+      // Run user setup server-side
+      await fetch('/api/user/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          investor_style: style,
+          risk_tolerance: risk,
+        }),
+      });
+
+      // Start demo or broker flow
+      if (pendingChoice === 'demo') {
+        await fetch('/api/demo/start', {
+          method: 'POST',
+          credentials: 'include',
+        });
+      } else if (pendingChoice === 'broker') {
+        await fetch('/api/connections/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            connection_type: pendingConnectionType,
+          }),
+        });
+      }
+
+      // Clear onboarding sessionStorage
+      try {
+        sessionStorage.removeItem('vantage_onboarding_data');
+        sessionStorage.removeItem('vantage_onboarding');
+      } catch {}
+
+      // Navigate — session is already active from verifyOtp()
+      router.push('/you-are-in');
+    } catch (err) {
+      console.error('[otp] setup failed:', err);
+      setApiError('Something went wrong. Please try again.');
+    }
+
+    setSubmitting(false);
+  }, [firstName, lastName, style, risk, pendingChoice, pendingConnectionType, router]);
 
   // ── Google sign-up ───────────────────────────────────────
   const handleGoogleSignUp = useCallback(async () => {
@@ -444,6 +495,30 @@ export default function CreateAccountPage() {
       </p>
     </div>
   ) : null;
+
+  // ── Verify OTP view ──────────────────────────────────────
+  if (step === 'verify-otp') {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100dvh',
+          background: '#0a0f1e',
+          color: '#fff',
+          fontFamily: 'var(--font-sans)',
+          alignItems: 'center',
+          padding: '24px',
+        }}
+      >
+        <OTPVerification
+          email={email}
+          onSuccess={handleOTPSuccess}
+          onBack={() => setStep('form')}
+        />
+      </div>
+    );
+  }
 
   // ── Check-email view (after successful signUp) ───────────
   if (step === 'check-email') {
