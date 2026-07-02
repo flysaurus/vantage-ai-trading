@@ -22,7 +22,6 @@
 // before the JS-driven navigation fires.
 
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient as createServiceClient } from '@/lib/supabase';
 
@@ -193,21 +192,26 @@ export async function GET(request: NextRequest) {
   const flow = url.searchParams.get('_flow');
   const { origin } = url;
 
-  const cookieStore = await cookies();
-
   // ── Case 1: PKCE flow (?code=xxx) ─────────────────────
   if (code && flow !== 'implicit') {
+    // Create response FIRST so cookies land on the actual response object.
+    // cookieStore.set() does NOT propagate to new NextResponse().
+    let response = new NextResponse(successHtml(origin, `${origin}/you-are-in`), {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll();
+            return request.cookies.getAll();
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              response.cookies.set(name, value, options),
             );
           },
         },
@@ -229,27 +233,28 @@ export async function GET(request: NextRequest) {
       session.user.user_metadata ?? {},
     );
 
-    // Return 200 HTML with client-side navigation — no 307 redirect
-    // that could drop Set-Cookie headers.
-    return new NextResponse(successHtml(origin, `${origin}/you-are-in`), {
-      status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    });
+    return response;
   }
 
   // ── Case 2: Implicit flow (?access_token=...&refresh_token=...) ──
   if (accessToken && refreshToken) {
+    // Create response FIRST so cookies land on the actual response object.
+    let response = new NextResponse(successHtml(origin, `${origin}/you-are-in`), {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll();
+            return request.cookies.getAll();
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              response.cookies.set(name, value, options),
             );
           },
         },
@@ -274,11 +279,7 @@ export async function GET(request: NextRequest) {
       session.user.user_metadata ?? {},
     );
 
-    // Return 200 HTML with client-side navigation — no 307 redirect.
-    return new NextResponse(successHtml(origin, `${origin}/you-are-in`), {
-      status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    });
+    return response;
   }
 
   // ── Case 3: Hash-based tokens (implicit flow, first arrival) ──
