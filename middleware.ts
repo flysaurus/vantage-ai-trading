@@ -30,9 +30,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
-  // 2. Auth callbacks — always allow through
-  if (pathname.startsWith('/auth/')) {
+  // 2. Auth routes — pass through
+  // EXCEPT /auth/complete which handles its own cookies via route handler
+  if (pathname.startsWith('/auth/') && !pathname.startsWith('/auth/complete')) {
     return NextResponse.next();
+  }
+
+  // /auth/complete must pass through middleware WITHOUT a new NextResponse
+  // so route handler cookies are preserved
+  if (pathname.startsWith('/auth/complete')) {
+    return NextResponse.next({
+      request: {
+        headers: request.headers
+      }
+    });
   }
 
   // 3. Supabase session refresh
@@ -89,4 +100,7 @@ export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
+  // NOTE: /auth/complete is intentionally included in matcher but handled
+  // specially — middleware must not create new response objects for
+  // this path as it breaks cookie propagation from the route handler
 };
