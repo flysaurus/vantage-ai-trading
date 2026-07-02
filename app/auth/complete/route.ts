@@ -1,6 +1,6 @@
-// ─── GET /auth/complete — Pure server redirect (no HTML, no JS) ─────
-// Exchanges auth code for session, creates user record if needed,
-// copies cookies explicitly to redirect response.
+// ─── GET /auth/complete — PKCE code exchange ─────────────────
+// Pure server redirect. Exchanges PKCE code for session,
+// creates/updates user record, copies cookies to redirect response.
 
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
@@ -12,12 +12,12 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code');
 
   if (!code) {
+    console.error('[auth/complete] no code param, url:', request.url);
     return NextResponse.redirect(`${origin}/login?error=no_code`);
   }
 
   const cookieStore = cookies();
 
-  // SSR client for token exchange — uses ANON key + cookie handling
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     },
   );
 
-  // Exchange code for session — this sets sb-* cookies via cookieStore
+  // PKCE code exchange — sets sb-* cookies via cookieStore
   const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !session) {
@@ -45,7 +45,6 @@ export async function GET(request: NextRequest) {
 
   console.log('[auth/complete] session ok:', session.user.id);
 
-  // Service client — bypasses RLS
   const serviceClient = createServiceClient();
 
   // Check if returning user
@@ -57,11 +56,7 @@ export async function GET(request: NextRequest) {
 
   if (existingUser?.demo_start_at || existingUser?.connection_type) {
     console.log('[auth/complete] returning user');
-
-    // Build redirect response
     const response = NextResponse.redirect(`${origin}/`);
-
-    // Copy cookies from cookieStore to redirect response explicitly
     cookieStore.getAll().forEach(({ name, value }) => {
       response.cookies.set(name, value, {
         path: '/',
@@ -70,7 +65,6 @@ export async function GET(request: NextRequest) {
         httpOnly: true,
       });
     });
-
     return response;
   }
 
@@ -122,12 +116,8 @@ export async function GET(request: NextRequest) {
 
   console.log('[auth/complete] setup complete');
 
-  // Build final redirect response
   const response = NextResponse.redirect(`${origin}/you-are-in`);
 
-  // CRITICAL: Explicitly copy ALL cookies from cookieStore to the redirect response.
-  // This is required because middleware may have already created a response object —
-  // we must ensure our cookies are on THIS response object.
   cookieStore.getAll().forEach(({ name, value }) => {
     response.cookies.set(name, value, {
       path: '/',
