@@ -316,6 +316,8 @@ export default function CreateAccountPage() {
     const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
     const supabase = getSupabaseBrowserClient();
 
+    console.log('[signup] attempting signup for:', email.trim());
+
     const { data: _data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -332,6 +334,11 @@ export default function CreateAccountPage() {
       },
     });
 
+    console.log('[signup] result:', {
+      error: error?.message ?? String(error),
+      user: _data?.user?.id ?? 'none',
+    });
+
     if (error) {
       // Detect duplicate email from Supabase error (fallback)
       if (
@@ -340,7 +347,12 @@ export default function CreateAccountPage() {
       ) {
         setEmailDuplicate(true);
       } else {
-        setApiError(error.message);
+        setApiError(
+          error?.message ??
+          error?.toString() ??
+          'Signup failed. Please try again.'
+        );
+        console.error('[signup] raw error:', error);
       }
       setSubmitting(false);
       return;
