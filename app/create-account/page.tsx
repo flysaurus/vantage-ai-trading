@@ -68,8 +68,8 @@ function readOnboardingData(): OnboardingData | null {
     // If it's the new format (has currentStep), map field names
     if (parsed.currentStep !== undefined) {
       return {
-        style: parsed.investorStyle ?? '',
-        risk: parsed.riskTolerance ?? '',
+        style: parsed.investorStyle || null,
+        risk: parsed.riskTolerance || null,
         firstName: parsed.firstName ?? '',
         lastName: parsed.lastName ?? '',
       } as OnboardingData;
@@ -137,8 +137,8 @@ export default function CreateAccountPage() {
   const [apiError, setApiError] = useState('');
 
   // ── Computed ─────────────────────────────────────────────
-  const style = onboardingData?.style ?? 'buffett';
-  const risk = onboardingData?.risk ?? 'moderate';
+  const style = onboardingData?.style || 'buffett';
+  const risk = onboardingData?.risk || 'moderate';
   const styleContent = getStyleContent(style);
   const styleEmoji = getStyleEmoji(style);
   const shortLabel = styleContent.shortLabel;

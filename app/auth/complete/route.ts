@@ -14,13 +14,19 @@
 //    setSession().
 //
 // After auth, user setup runs (create record, demo/broker setup).
+//
+// IMPORTANT: We return 200 HTML + client-side navigation instead
+// of 307 redirects. Redirect responses can drop Set-Cookie headers,
+// meaning the session established server-side never reaches the
+// browser. A 200 response guarantees the browser processes cookies
+// before the JS-driven navigation fires.
 
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient as createServiceClient } from '@/lib/supabase';
 
-// ── HTML fallback page (hash extraction for implicit flow) ──
+// ── HTML pages ──────────────────────────────────────────────
 
 function hashExtractorHtml(origin: string): string {
   return `<!DOCTYPE html>
@@ -39,7 +45,6 @@ function hashExtractorHtml(origin: string): string {
 (function(){
   var hash = window.location.hash.substring(1);
   if (!hash) {
-    // No hash at all — redirect to login
     window.location.href = '${origin}/login?error=callback_failed';
     return;
   }
@@ -48,7 +53,6 @@ function hashExtractorHtml(origin: string): string {
   var refreshToken = params.get('refresh_token');
   var type = params.get('type');
   if (accessToken && refreshToken) {
-    // Move tokens from hash to query params for server processing
     var url = new URL(window.location.href);
     url.hash = '';
     url.searchParams.set('access_token', accessToken);
@@ -65,14 +69,45 @@ function hashExtractorHtml(origin: string): string {
 </html>`;
 }
 
+function successHtml(origin: string, redirectTo: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Vantage — signed in</title>
+<style>
+  body{background:#0a0a0a;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+  .box{text-align:center}
+  p{color:rgba(255,255,255,0.6);font-size:16px;margin:0 0 16px}
+  .dot{display:inline-block;width:8px;height:8px;background:rgba(255,255,255,0.4);border-radius:50%;margin:0 3px;animation:blink 1.4s infinite}
+  .dot:nth-child(2){animation-delay:0.2s}
+  .dot:nth-child(3){animation-delay:0.4s}
+  @keyframes blink{0%,60%,100%{opacity:0.2}40%{opacity:1}}
+</style>
+</head>
+<body>
+<div class="box">
+  <p>Signed in — taking you to Vantage</p>
+  <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+</div>
+<script>
+  // Short delay lets browser process Set-Cookie headers from this response,
+  // then navigate client-side (no redirect → no cookie drop).
+  setTimeout(function(){
+    window.location.href = '${redirectTo}';
+  }, 800);
+</script>
+</body>
+</html>`;
+}
+
 // ── User setup (runs after session is established) ──────────
 
 async function handleUserSetup(
   userId: string,
   email: string | undefined,
   userMeta: Record<string, any>,
-  origin: string,
-): Promise<NextResponse> {
+): Promise<void> {
   const serviceClient = createServiceClient();
 
   // Check if returning user
@@ -84,10 +119,12 @@ async function handleUserSetup(
 
   if (existingUser?.demo_start_at || existingUser?.connection_type) {
     console.log('[auth/complete] returning user, skipping setup');
-    return NextResponse.redirect(`${origin}/`);
+    return;
   }
 
   // New user setup
+  const investorStyle = userMeta.investor_style || null;
+
   const { error: upsertError } = await (serviceClient as any)
     .from('users')
     .upsert(
@@ -96,7 +133,7 @@ async function handleUserSetup(
         email,
         first_name: userMeta.first_name ?? '',
         last_name: userMeta.last_name ?? '',
-        investor_style: userMeta.investor_style ?? null,
+        investor_style: investorStyle,
         risk_tolerance: userMeta.risk_tolerance ?? null,
         investor_style_onboarded: true,
         tier: 'demo',
@@ -144,7 +181,6 @@ async function handleUserSetup(
   }
 
   console.log('[auth/complete] setup complete');
-  return NextResponse.redirect(`${origin}/you-are-in`);
 }
 
 // ── GET handler ─────────────────────────────────────────────
@@ -161,10 +197,6 @@ export async function GET(request: NextRequest) {
 
   // ── Case 1: PKCE flow (?code=xxx) ─────────────────────
   if (code && flow !== 'implicit') {
-    if (!code) {
-      return NextResponse.redirect(`${origin}/login?error=no_code`);
-    }
-
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -191,24 +223,18 @@ export async function GET(request: NextRequest) {
 
     console.log('[auth/complete] session ok (PKCE):', session.user.id);
 
-    const response = await handleUserSetup(
+    await handleUserSetup(
       session.user.id,
       session.user.email,
       session.user.user_metadata ?? {},
-      origin,
     );
 
-    // Copy cookies to redirect response
-    cookieStore.getAll().forEach((cookie) => {
-      response.cookies.set(cookie.name, cookie.value, {
-        path: '/',
-        sameSite: 'lax',
-        secure: true,
-        httpOnly: true,
-      });
+    // Return 200 HTML with client-side navigation — no 307 redirect
+    // that could drop Set-Cookie headers.
+    return new NextResponse(successHtml(origin, `${origin}/you-are-in`), {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
-
-    return response;
   }
 
   // ── Case 2: Implicit flow (?access_token=...&refresh_token=...) ──
@@ -242,24 +268,17 @@ export async function GET(request: NextRequest) {
 
     console.log('[auth/complete] session ok (implicit):', session.user.id);
 
-    const response = await handleUserSetup(
+    await handleUserSetup(
       session.user.id,
       session.user.email,
       session.user.user_metadata ?? {},
-      origin,
     );
 
-    // Copy cookies to redirect response
-    cookieStore.getAll().forEach((cookie) => {
-      response.cookies.set(cookie.name, cookie.value, {
-        path: '/',
-        sameSite: 'lax',
-        secure: true,
-        httpOnly: true,
-      });
+    // Return 200 HTML with client-side navigation — no 307 redirect.
+    return new NextResponse(successHtml(origin, `${origin}/you-are-in`), {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
-
-    return response;
   }
 
   // ── Case 3: Hash-based tokens (implicit flow, first arrival) ──
