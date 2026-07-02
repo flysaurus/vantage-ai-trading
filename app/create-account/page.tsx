@@ -165,11 +165,6 @@ export default function CreateAccountPage() {
     !!lastName.trim() &&
     isValidEmail(email) &&
     emailError === '' &&
-    !emailDuplicate &&
-    !showResendConfirmation &&
-    allPasswordReqsMet &&
-    password === confirmPassword &&
-    confirmPassword.length > 0 &&
     !submitting;
 
   // ── Redirect if no onboarding data ──────────────────────
@@ -317,12 +312,12 @@ export default function CreateAccountPage() {
     const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
     const supabase = getSupabaseBrowserClient();
 
-    console.log('[signup] attempting signup for:', email.trim());
+    console.log('[signup] sending OTP for:', email.trim());
 
-    const { data: _data, error } = await supabase.auth.signUp({
+    const { data: _data, error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      password,
       options: {
+        shouldCreateUser: true,
         data: {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
@@ -334,38 +329,23 @@ export default function CreateAccountPage() {
       },
     });
 
-    console.log('[signup] result:', {
+    console.log('[otp] send result:', {
       error: error?.message ?? String(error),
-      user: _data?.user?.id ?? 'none',
     });
 
     if (error) {
-      // Detect duplicate email from Supabase error (fallback)
-      if (
-        error.message?.toLowerCase().includes('already') ||
-        error.code === 'user_already_exists'
-      ) {
-        setEmailDuplicate(true);
-      } else {
-        setApiError(
-          error?.message ??
-          error?.toString() ??
-          'Signup failed. Please try again.'
-        );
-        console.error('[signup] raw error:', error);
-      }
+      setApiError(
+        error?.message ??
+        error?.toString() ??
+        'Could not send code. Please try again.'
+      );
+      console.error('[otp] send error:', error);
       setSubmitting(false);
       return;
     }
 
-    // Clear onboarding sessionStorage (both keys)
-    try {
-      sessionStorage.removeItem('vantage_onboarding_data');
-      sessionStorage.removeItem('vantage_onboarding');
-    } catch {}
-
     setStep('verify-otp');
-  }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
+  }, [canSubmit, email, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
 
   // ── OTP verification success ────────────────────────────
   const handleOTPSuccess = useCallback(async () => {

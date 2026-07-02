@@ -110,7 +110,7 @@ export default function OTPVerification({ email, onSuccess, onBack }: OTPVerific
     const { data, error: verifyError } = await supabase.auth.verifyOtp({
       email,
       token: otp,
-      type: 'signup',
+      type: 'email',
     });
 
     if (verifyError) {
@@ -148,9 +148,9 @@ export default function OTPVerification({ email, onSuccess, onBack }: OTPVerific
 
     const supabase = getSupabaseBrowserClient();
 
-    const { error: resendError } = await supabase.auth.resend({
-      type: 'signup',
+    const { error: resendError } = await supabase.auth.signInWithOtp({
       email,
+      options: { shouldCreateUser: true },
     });
 
     if (resendError) {
