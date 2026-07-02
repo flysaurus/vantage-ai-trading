@@ -165,6 +165,11 @@ export default function CreateAccountPage() {
     !!lastName.trim() &&
     isValidEmail(email) &&
     emailError === '' &&
+    !emailDuplicate &&
+    !showResendConfirmation &&
+    allPasswordReqsMet &&
+    password === confirmPassword &&
+    confirmPassword.length > 0 &&
     !submitting;
 
   // ── Redirect if no onboarding data ──────────────────────
@@ -312,12 +317,13 @@ export default function CreateAccountPage() {
     const { getSupabaseBrowserClient } = await import('@/lib/auth/supabase-client');
     const supabase = getSupabaseBrowserClient();
 
-    console.log('[signup] sending OTP for:', email.trim());
+    console.log('[signup] creating account for:', email.trim());
 
-    const { data: _data, error } = await supabase.auth.signInWithOtp({
+    // Step 1: Create the account
+    const { data: _data, error } = await supabase.auth.signUp({
       email: email.trim(),
+      password,
       options: {
-        shouldCreateUser: true,
         data: {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
@@ -326,26 +332,52 @@ export default function CreateAccountPage() {
           pending_choice: pendingChoice,
           pending_connection_type: pendingConnectionType ?? null,
         },
+        // NO emailRedirectTo — prevents confirmation link
       },
     });
 
-    console.log('[otp] send result:', {
+    console.log('[signup] create result:', {
       error: error?.message ?? String(error),
+      user: _data?.user?.id ?? 'none',
     });
 
     if (error) {
-      setApiError(
-        error?.message ??
-        error?.toString() ??
-        'Could not send code. Please try again.'
-      );
-      console.error('[otp] send error:', error);
+      if (
+        error.message?.toLowerCase().includes('already') ||
+        error.code === 'user_already_exists'
+      ) {
+        setEmailDuplicate(true);
+      } else {
+        setApiError(
+          error?.message ??
+          error?.toString() ??
+          'Signup failed. Please try again.'
+        );
+        console.error('[signup] raw error:', error);
+      }
       setSubmitting(false);
       return;
     }
 
+    // Step 2: Send OTP code for verification
+    // This triggers the "Confirm signup" template with {{ .Token }}
+    const { error: otpError } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim(),
+      options: {
+        // NO emailRedirectTo — forces OTP code, not link
+      },
+    });
+
+    if (otpError) {
+      console.error('[signup] resend OTP error:', otpError.message);
+      // Continue anyway — first email may have already sent with OTP
+    }
+
+    // Advance to OTP verification screen
     setStep('verify-otp');
-  }, [canSubmit, email, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
+    setSubmitting(false);
+  }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
 
   // ── OTP verification success ────────────────────────────
   const handleOTPSuccess = useCallback(async () => {
