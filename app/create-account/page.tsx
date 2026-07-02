@@ -333,18 +333,17 @@ export default function CreateAccountPage() {
     const signupData: { success?: boolean; error?: string; user_id?: string } =
       await signupRes.json();
 
-    if (!signupRes.ok || signupData.error) {
-      if (
-        signupData.error === 'duplicate_email' ||
-        signupRes.status === 409
-      ) {
-        setEmailDuplicate(true);
-      } else {
-        setApiError(
-          signupData.error ?? 'Signup failed. Please try again.',
-        );
-      }
+    if (!signupRes.ok) {
       setSubmitting(false);
+
+      if (signupData.error === 'duplicate_email') {
+        setEmailDuplicate(true);
+        return;
+      }
+
+      setApiError(
+        signupData.error ?? 'Signup failed. Please try again.',
+      );
       return;
     }
 

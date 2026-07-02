@@ -1,7 +1,7 @@
 'use client';
 
 // ─── OTP Verification Step ─────────────────────────────────
-// 6-digit code input for email verification.
+// Verification code input for email verification.
 // User stays in-app, never leaves for a confirmation link.
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -285,7 +285,7 @@ export default function OTPVerification({ email, onSuccess, onBack }: OTPVerific
             fontWeight: 400,
           }}
         >
-          We sent a 6-digit code to
+          We sent a verification code to
         </p>
         <p
           style={{
