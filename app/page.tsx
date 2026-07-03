@@ -123,6 +123,22 @@ export default function Page() {
     return <>{debugBanner}<BrokerChoicePage onStateChanged={refreshState} /></>;
   }
 
+  // connection-view override: user tapped "Connect a broker →" from demo counter
+  // MUST come before demo-counter check or it'll never be reached
+  if (connectionView) {
+    return (
+      <>
+        {debugBanner}
+        <ConnectionOptionsPage
+          onStateChanged={() => {
+            setConnectionView(false);
+            setShowDemoCounter(true); // return to demo counter, not main app
+          }}
+        />
+      </>
+    );
+  }
+
   // demo-counter: demo active — show counter, dismiss to MainApp
   if (state === 'demo-counter' && showDemoCounter) {
     return (
@@ -140,21 +156,6 @@ export default function Page() {
   // demo-expired: 30-day demo has elapsed
   if (state === 'demo-expired') {
     return <>{debugBanner}<DemoExpired /></>;
-  }
-
-  // connection-view override: user tapped "Connect a broker →" from demo counter
-  if (connectionView) {
-    return (
-      <>
-        {debugBanner}
-        <ConnectionOptionsPage
-          onStateChanged={() => {
-            setConnectionView(false);
-            refreshState();
-          }}
-        />
-      </>
-    );
   }
 
   // connection-options: chose to connect a broker — show broker options
