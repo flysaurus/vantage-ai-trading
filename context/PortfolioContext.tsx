@@ -436,14 +436,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (symbols.length === 0) return;
 
       console.log('[fetchData] requesting quotes for:', symbols);
-      const res = await await apiPost('/api/market/quotes', JSON.stringify({ symbols }));
+      const res = await apiPost('/api/market/quotes', { symbols });
 
       console.log('[fetchData] raw response status:', res.status);
       if (!res.ok) throw new Error('Market data fetch failed');
 
       const data = await res.json();
       console.log('[fetchData] raw response data:', JSON.stringify(data).slice(0, 400));
-      if (!data?.quotes || !mountedRef.current) return;
+      if (!data?.quotes) return;
 
       console.log('[fetchData] calling recomputeAccount with quotes keys:', Object.keys(data.quotes));
       recomputeAccount(data.quotes);
@@ -817,7 +817,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const symbols = positionsToSell.map(p => p.symbol);
     let quoteMap: Record<string, any> = {};
     try {
-      const res = await await apiPost('/api/market/quotes', JSON.stringify({ symbols }));
+      const res = await apiPost('/api/market/quotes', { symbols });
       const data = await res.json();
       quoteMap = data?.quotes || {};
     } catch { /* continue */ }
