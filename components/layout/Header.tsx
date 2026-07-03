@@ -37,6 +37,13 @@ function getStatusPillClass(label: string): string {
   return 'header-pill header-pill-closed';
 }
 
+function shortenLabel(label: string): string {
+  if (label === 'MARKET HOLIDAY') return 'HOLIDAY';
+  if (label === 'PRE-MARKET') return 'PRE-MKT';
+  if (label === 'AFTER HOURS') return 'AFTER HRS';
+  return label;
+}
+
 export function Header() {
   const { setTab } = useTabStore();
   const router = useRouter();
@@ -114,7 +121,7 @@ export function Header() {
 
       {/* ── Center: Market Status Pill ── */}
       <span className={getStatusPillClass(marketStatus.label)}>
-        ● {marketStatus.label}
+        ● {shortenLabel(marketStatus.label)}
       </span>
 
       {/* ── Right: Icons ── */}

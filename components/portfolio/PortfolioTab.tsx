@@ -114,126 +114,74 @@ function PositionCard({
   showCheckbox?: boolean;
   baskets?: Basket[];
 }) {
-  const livePrice = pos.currentPrice || pos.avgCost;
-  const marketValue = pos.qty * livePrice;
-  const totalPnL = marketValue - (pos.totalCost || 0);
-  const totalPnLPct = (pos.totalCost || 0) > 0 ? (totalPnL / pos.totalCost!) * 100 : 0;
-  const todayPnL = pos.dayChange || 0;
-  const todayPnLPct = pos.dayChangePercent || 0;
+  const currentPrice = pos.currentPrice ?? pos.avgCost;
+  const totalPnL = (currentPrice - pos.avgCost) * pos.qty;
+  const costBasis = pos.totalCost ?? pos.qty * pos.avgCost;
+  const totalPnLPct = costBasis > 0 ? (totalPnL / costBasis) * 100 : 0;
+  const todayPnL = pos.dayChange ?? 0;
+  const todayPnLPct = pos.dayChangePercent ?? 0;
 
   // 52-week range ball position
   const weekPos =
     pos.weekHigh52 != null &&
     pos.weekLow52 != null &&
     pos.weekHigh52 !== pos.weekLow52
-      ? Math.min(98, Math.max(2, ((pos.currentPrice - pos.weekLow52) / (pos.weekHigh52 - pos.weekLow52)) * 100))
+      ? Math.min(98, Math.max(2, ((currentPrice - pos.weekLow52) / (pos.weekHigh52 - pos.weekLow52)) * 100))
       : 50;
 
   const upToday = todayPnL >= 0;
   const upTotal = totalPnL >= 0;
 
   const companyName = pos.name && pos.name !== pos.symbol ? pos.name : '';
+  const gainLossClass = (pnl: number) => pnl > 0 ? 'gain' : pnl < 0 ? 'loss' : 'flat';
 
   return (
-    <div className="card-frost" style={{ margin: '0 14px 8px', padding: '14px 16px', overflow: 'visible' }}>
-      {/* ROW 1: Symbol + Company + Price */}
-      <div
-        onClick={onToggleExpand}
-        style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          cursor: 'pointer',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-          {showCheckbox && (
-            <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ marginRight: 4, flexShrink: 0 }}>
-              <div style={{
-                width: 18, height: 18, borderRadius: 9,
-                border: `2px solid ${isSelected ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
-                background: isSelected ? '#22d3ee' : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {isSelected && <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>}
+    <div className="position-card" style={{ margin: '0 14px 8px' }}>
+      <div className="position-card-top" onClick={onToggleExpand} style={{ cursor: 'pointer' }}>
+        <div className="position-card-left">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {showCheckbox && (
+              <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ flexShrink: 0 }}>
+                <div style={{
+                  width: 18, height: 18, borderRadius: 9,
+                  border: `2px solid ${isSelected ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
+                  background: isSelected ? '#22d3ee' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {isSelected && <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>}
+                </div>
               </div>
-            </div>
-          )}
-          <span style={{
-            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 17, color: '#ffffff',
-            flexShrink: 0,
-          }}>
-            {pos.symbol}
-          </span>
-          {companyName && (
-            <span style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
-              color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {companyName}
-            </span>
-          )}
-          {pos.type === 'ETF' && (
-            <span style={{
-              fontSize: 10, color: 'var(--accent)', flexShrink: 0,
-              background: 'rgba(34,211,238,0.10)', border: '1px solid rgba(34,211,238,0.30)',
-              borderRadius: 999, padding: '2px 8px', fontWeight: 600,
-            }}>
-              ETF
-            </span>
-          )}
+            )}
+            <span className="position-symbol">{pos.symbol}</span>
+            {pos.type === 'ETF' && (
+              <span style={{
+                fontSize: 10, color: 'var(--accent)', flexShrink: 0,
+                background: 'rgba(34,211,238,0.10)', border: '1px solid rgba(34,211,238,0.30)',
+                borderRadius: 999, padding: '2px 8px', fontWeight: 600,
+              }}>ETF</span>
+            )}
+            {companyName && <span className="position-company">{companyName}</span>}
+          </div>
+          <span className="position-qty">{pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares</span>
         </div>
-        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-          <div style={{
-            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 17, color: '#ffffff',
-          }}>
-            ${livePrice.toFixed(2)}
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
-            color: pos.dayChangePercent >= 0 ? 'var(--gain)' : 'var(--loss)',
-            marginTop: 1,
-          }}>
-            {pos.dayChangePercent >= 0 ? '+' : ''}{pos.dayChangePercent.toFixed(2)}%
-          </div>
+        <div className="position-card-right">
+          <span className="position-price">${currentPrice.toFixed(2)}</span>
+          <span className={`position-change ${gainLossClass(pos.dayChangePercent ?? 0)}`}>
+            {(pos.dayChangePercent ?? 0) >= 0 ? '+' : ''}{(pos.dayChangePercent ?? 0).toFixed(2)}%
+          </span>
         </div>
       </div>
 
-      {/* ROW 2: Shares + P&L Pills */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginTop: 8,
-      }}>
-        <span style={{
-          fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
-          color: 'var(--text-accent-warm)',
-        }}>
-          {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
-        </span>
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {/* TODAY pill */}
-          <span className="pill" style={{
-            padding: '4px 10px',
-            background: upToday ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
-            border: `1px solid ${upToday ? 'rgba(16,185,129,0.30)' : 'rgba(239,68,68,0.30)'}`,
-            color: upToday ? 'var(--gain)' : 'var(--loss)',
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 600,
-            fontSize: 12,
-          }}>
-            TODAY {todayPnL >= 0 ? '+' : ''}{formatCurrency(todayPnL)} ({todayPnL >= 0 ? '+' : ''}{todayPnLPct.toFixed(1)}%)
-          </span>
-          {/* TOTAL pill */}
-          <span className="pill" style={{
-            padding: '4px 10px',
-            background: upTotal ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
-            border: `1px solid ${upTotal ? 'rgba(16,185,129,0.30)' : 'rgba(239,68,68,0.30)'}`,
-            color: upTotal ? 'var(--gain)' : 'var(--loss)',
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 600,
-            fontSize: 12,
-          }}>
-            TOTAL {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%)
-          </span>
+      <div className="position-card-bottom">
+        <div className={`position-pill ${gainLossClass(todayPnL)}`}>
+          <span className="pill-label">TODAY</span>
+          <span className="pill-value">{todayPnL >= 0 ? '+' : ''}${Math.abs(todayPnL).toFixed(2)}</span>
+          <span className="pill-pct">({todayPnL >= 0 ? '+' : ''}{Math.abs(todayPnLPct).toFixed(1)}%)</span>
+        </div>
+        <div className={`position-pill ${gainLossClass(totalPnL)}`}>
+          <span className="pill-label">TOTAL</span>
+          <span className="pill-value">{totalPnL >= 0 ? '+' : ''}${Math.abs(totalPnL).toFixed(2)}</span>
+          <span className="pill-pct">({totalPnL >= 0 ? '+' : ''}{Math.abs(totalPnLPct).toFixed(1)}%)</span>
         </div>
       </div>
 
@@ -336,7 +284,7 @@ function PositionCard({
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Current Price</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
-                ${(pos.currentPrice || pos.avgCost).toFixed(2)}
+                ${currentPrice.toFixed(2)}
               </div>
             </div>
             <div>
@@ -366,7 +314,7 @@ function PositionCard({
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Cost Basis</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
-                ${(pos.totalCost || pos.qty * pos.avgCost).toFixed(2)}
+                ${costBasis.toFixed(2)}
               </div>
             </div>
           </div>
@@ -411,26 +359,34 @@ function PositionCard({
 
 // ─── Buying Power Card ──────────────────────────────────
 
-function BuyingPowerCard({ account }: { account: AccountSummary }) {
+function BuyingPowerCard({ account, invested }: { account: AccountSummary; invested: number }) {
   return (
-    <div style={{ padding: '0 20px 16px' }}>
-      <div className="card-frost" style={{ padding: '16px 18px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 0' }}>
-          <div>
-            <div className="section-label" style={{ marginBottom: 4 }}>Buying Power</div>
-            <div style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
-            }}>
-              ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
-            </div>
+    <div style={{ padding: '0 16px 16px' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 12,
+        padding: 16,
+        background: 'var(--card-bg)',
+        border: '1px solid var(--card-border)',
+        borderRadius: 16,
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>BUYING POWER</div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
+            ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
           </div>
-          <div>
-            <div className="section-label" style={{ marginBottom: 4 }}>Cash</div>
-            <div style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
-            }}>
-              ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
-            </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>CASH</div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
+            ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>INVESTED</div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
+            ${invested.toLocaleString('en-US', DOLLAR_FMT)}
           </div>
         </div>
       </div>
@@ -630,10 +586,10 @@ export function PortfolioTab() {
   const correctEquity = totalMarketValue + cashBalance;
   const totalTodayPnL = displayPositions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
   const totalTotalPnL = displayPositions.reduce((acc: number, p: Position) => {
-    const mv = p.qty * (p.currentPrice || p.avgCost);
-    return acc + (mv - (p.totalCost || 0));
+    const mv = p.qty * (p.currentPrice ?? p.avgCost);
+    return acc + (mv - (p.totalCost ?? p.qty * p.avgCost));
   }, 0);
-  const totalCostBasis = displayPositions.reduce((acc: number, p: Position) => acc + (p.totalCost || p.qty * p.avgCost), 0);
+  const totalCostBasis = displayPositions.reduce((acc: number, p: Position) => acc + (p.totalCost ?? p.qty * p.avgCost), 0);
   const totalTotalPnLPct = totalCostBasis > 0 ? (totalTotalPnL / totalCostBasis) * 100 : 0;
 
   const filteredPositions = useMemo(() => {
@@ -686,7 +642,7 @@ export function PortfolioTab() {
       </div>
 
       {/* ── Buying Power Card ── */}
-      <BuyingPowerCard account={accountData} />
+      <BuyingPowerCard account={accountData} invested={totalMarketValue} />
 
       {/* ── Market Overview ── */}
       <MarketOverview />

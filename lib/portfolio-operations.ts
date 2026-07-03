@@ -16,7 +16,7 @@ import {
   getDemoOrders,
 } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
-import { getCandles } from '@/lib/market-data';
+
 
 // ─── Style metadata ──────────────────────────────────────────
 
@@ -185,46 +185,8 @@ async function seedHistoricalSnapshots(
   cashBalance: number,
 ) {
   try {
-    // Backfill from Jan 1 2026 to yesterday (today already seeded above)
-    const startDate = new Date('2026-01-01');
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(23, 59, 59, 999);
-
-    if (startDate >= yesterday) {
-      console.log('[seed] no historical range to backfill');
-      return;
-    }
-
-    const fromUnix = Math.floor(startDate.getTime() / 1000);
-    const toUnix = Math.floor(yesterday.getTime() / 1000);
-
-    // Fetch daily candles for all symbols in parallel
-    const symbols = [...new Set(positions.map(p => p.symbol))];
-    const candleResults = await Promise.allSettled(
-      symbols.map(s => getCandles(s, 'D', fromUnix, toUnix, 365)),
-    );
-
-    // Build symbol → date → close map
-    const symbolPrices: Map<string, Map<string, number>> = new Map();
-    candleResults.forEach((result, i) => {
-      if (result.status === 'fulfilled' && result.value) {
-        const priceMap = new Map<string, number>();
-        for (const candle of result.value) {
-          const dateStr = new Date(candle.timestamp).toISOString().split('T')[0];
-          priceMap.set(dateStr, candle.close);
-        }
-        symbolPrices.set(symbols[i], priceMap);
-      }
-    });
-
-    if (symbolPrices.size === 0) {
-      console.log('[seed] no candle data available, skipping historical backfill');
-      return;
-    }
-
-    // Generate snapshots for each trading day in range
-    const snapshots: Array<{
+    const daysToBackfill = 90;
+    const snapshotRows: Array<{
       user_id: string;
       equity: number;
       cash: number;
@@ -235,57 +197,65 @@ async function seedHistoricalSnapshots(
       snapshot_at: string;
     }> = [];
 
-    let prevTotalValue = 100000; // starting reference for day P&L
-    const d = new Date(startDate);
+    // Deterministic seeded random from user ID
+    const seedValue = userId.split('-')[0];
+    const seedNum = parseInt(seedValue, 16) || 12345;
 
-    while (d <= yesterday) {
-      const dateStr = d.toISOString().split('T')[0];
-      // Skip weekends (Sat/Sun)
-      if (d.getDay() !== 0 && d.getDay() !== 6) {
-        let totalValue = cashBalance;
-        let allHavePrices = true;
-
-        for (const pos of positions) {
-          const priceMap = symbolPrices.get(pos.symbol);
-          const close = priceMap?.get(dateStr);
-          if (close != null) {
-            totalValue += pos.qty * close;
-          } else {
-            allHavePrices = false;
-            break;
-          }
-        }
-
-        if (allHavePrices && positions.length > 0) {
-          const dayPnl = totalValue - prevTotalValue;
-          const totalPnl = totalValue - 100000;
-          snapshots.push({
-            user_id: userId,
-            equity: Math.round(totalValue * 100) / 100,
-            cash: cashBalance,
-            buying_power: cashBalance,
-            day_pnl: Math.round(dayPnl * 100) / 100,
-            total_pnl: Math.round(totalPnl * 100) / 100,
-            positions: positions.map(p => ({
-              symbol: p.symbol,
-              qty: p.qty,
-              avgCost: p.avgCost,
-              name: p.name,
-              sector: p.sector,
-            })),
-            snapshot_at: `${dateStr}T20:00:00Z`, // after market close
-          });
-          prevTotalValue = totalValue;
-        }
-      }
-      d.setDate(d.getDate() + 1);
+    function seededRandom(seed: number): number {
+      const x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
     }
 
-    if (snapshots.length > 0) {
-      // Insert in batches of 50 to avoid per-row overhead
+    let runningValue = 100000;
+    const today = new Date();
+
+    for (let i = daysToBackfill; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+
+      // Skip weekends
+      const day = date.getDay();
+      if (day === 0 || day === 6) continue;
+
+      // Deterministic small daily variance
+      const dayVariance = (seededRandom(seedNum + i) - 0.48) * 0.008;
+      runningValue = runningValue * (1 + dayVariance);
+
+      // Clamp to reasonable range
+      runningValue = Math.max(85000, Math.min(115000, runningValue));
+
+      snapshotRows.push({
+        user_id: userId,
+        equity: Math.round(runningValue * 100) / 100,
+        cash: cashBalance,
+        buying_power: cashBalance,
+        day_pnl: 0,
+        total_pnl: Math.round((runningValue - 100000) * 100) / 100,
+        positions: positions.map((p) => ({
+          symbol: p.symbol,
+          qty: p.qty,
+          avgCost: p.avgCost,
+          name: p.name,
+          sector: p.sector,
+        })),
+        snapshot_at: date.toISOString(),
+      });
+    }
+
+    // Pin last entry to exactly $100,000 (today's seed value)
+    if (snapshotRows.length > 0) {
+      snapshotRows[snapshotRows.length - 1] = {
+        ...snapshotRows[snapshotRows.length - 1],
+        equity: 100000,
+        total_pnl: 0,
+        snapshot_at: today.toISOString(),
+      };
+    }
+
+    if (snapshotRows.length > 0) {
       const batchSize = 50;
-      for (let i = 0; i < snapshots.length; i += batchSize) {
-        const batch = snapshots.slice(i, i + batchSize);
+      for (let i = 0; i < snapshotRows.length; i += batchSize) {
+        const batch = snapshotRows.slice(i, i + batchSize);
         const { error } = await db.from('account_snapshots').upsert(batch as any, {
           onConflict: 'user_id,snapshot_at',
         });
@@ -293,13 +263,11 @@ async function seedHistoricalSnapshots(
           console.error('[seed] historical snapshot batch insert error:', error.message);
         }
       }
-      console.log(`[seed] ${snapshots.length} historical snapshots created`);
-    } else {
-      console.log('[seed] no historical snapshots generated (no price data)');
+      console.log(`[seed] backfilled ${snapshotRows.length} historical snapshots`);
     }
   } catch (err: any) {
     console.error('[seed] historical snapshot error:', err?.message || err);
-    // Non-fatal — chart may be empty but everything else works
+    // Non-fatal
   }
 }
 

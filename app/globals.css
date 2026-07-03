@@ -18,9 +18,9 @@
 
   /* ── Text ── */
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.45);
+  --text-secondary: rgba(255, 255, 255, 0.55);
   --text-accent-warm: #fbbf24;
-  --text-muted: #475569;
+  --text-muted: rgba(255, 255, 255, 0.35);
   --text-placeholder: #334155;
 
   /* ── Accent ── */
@@ -55,6 +55,10 @@
   /* ── Borders ── */
   --border-subtle: rgba(255,255,255,0.06);
   --border-card: rgba(255,255,255,0.08);
+
+  /* ── Card ── */
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-border: rgba(255, 255, 255, 0.08);
   --border-input: rgba(255,255,255,0.10);
   --border-input-focus: #22d3ee;
   --border-accent: rgba(34,211,238,0.30);
@@ -810,6 +814,130 @@ input::placeholder, textarea::placeholder {
 .gain-10 { background: rgba(16,185,129,0.10); }
 .loss-10 { background: rgba(239,68,68,0.10); }
 
+/* ── Position Cards ── */
+.position-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.position-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.position-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.position-symbol {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.position-company {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.position-qty {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-accent-warm);
+  white-space: nowrap;
+  font-family: var(--font-sans);
+}
+
+.position-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.position-price {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.position-change {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+.position-change.gain { color: var(--gain); }
+.position-change.loss { color: var(--loss); }
+.position-change.flat { color: var(--text-secondary); }
+
+.position-card-bottom {
+  display: flex;
+  gap: 10px;
+}
+
+.position-pill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.position-pill.gain { background: rgba(16,185,129,0.12); }
+.position-pill.loss { background: rgba(239,68,68,0.12); }
+.position-pill.flat { background: rgba(255,255,255,0.05); }
+
+.pill-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+
+.pill-value {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-family: var(--font-sans);
+}
+
+.position-pill.gain .pill-value,
+.position-pill.gain .pill-pct { color: var(--gain); }
+.position-pill.loss .pill-value,
+.position-pill.loss .pill-pct { color: var(--loss); }
+.position-pill.flat .pill-value,
+.position-pill.flat .pill-pct { color: var(--text-secondary); }
+
+.pill-pct {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-family: var(--font-sans);
+}
+
 /* ── Pill Base ── */
 .pill {
   border-radius: 999px;
@@ -822,27 +950,41 @@ input::placeholder, textarea::placeholder {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
   background: transparent;
   flex-shrink: 0;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
-.header-left { display: flex; align-items: center; gap: 10px; }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 1;
+}
 .header-wordmark {
   font-family: var(--font-sans);
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.12em;
   color: #ffffff;
+  white-space: nowrap;
 }
 
 .header-pill {
-  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.3px;
   font-family: var(--font-sans);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .header-pill-open {
   background: rgba(16,185,129,0.15);
@@ -886,6 +1028,11 @@ input::placeholder, textarea::placeholder {
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+/* Hide VANTAGE wordmark on very narrow screens */
+@media (max-width: 380px) {
+  .header-wordmark { display: none; }
 }
 
 /* ── Player Status Bar ── */

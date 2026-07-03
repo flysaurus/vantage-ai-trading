@@ -5,6 +5,7 @@ interface IndexData {
   symbol: string;
   label: string;
   name: string;
+  ticker?: string;
   value: number;
   change: number;
   changePct: number;
@@ -25,13 +26,13 @@ export default function MarketOverview() {
   const fetchIndices = async () => {
     try {
       const symbols = [
-        { symbol: 'SPY', label: 'S&P 500', name: 'SPY' },
-        { symbol: 'QQQ', label: 'Nasdaq', name: 'QQQ' },
-        { symbol: 'DIA', label: 'Dow Jones', name: 'DIA' },
-        { symbol: 'IWM', label: 'Russell 2000', name: 'IWM' }
+        { symbol: 'SPY', label: 'S&P 500', name: 'SPY', ticker: 'SPY' },
+        { symbol: 'QQQ', label: 'Nasdaq', name: 'QQQ', ticker: 'QQQ' },
+        { symbol: 'DIA', label: 'Dow Jones', name: 'DIA', ticker: 'DIA' },
+        { symbol: 'IWM', label: 'Russell 2000', name: 'IWM', ticker: 'IWM' }
       ];
       const results = await Promise.all(
-        symbols.map(async ({ symbol, label, name }) => {
+        symbols.map(async ({ symbol, label, name, ticker }) => {
           const res = await fetch(
             `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
           );
@@ -40,6 +41,7 @@ export default function MarketOverview() {
             symbol,
             label,
             name,
+            ticker,
             value: data.c || data.pc || 0,
             change: data.c ? (data.d ?? 0) : 0,
             changePct: data.c ? (data.dp ?? 0) : 0,
@@ -88,8 +90,21 @@ export default function MarketOverview() {
             ))
           : indices.map((idx) => (
               <div key={idx.symbol} className="card-frost-sm" style={{ padding: '14px 16px', textAlign: 'center' }}>
-                <div className="section-label" style={{ marginBottom: 4 }}>
-                  {idx.label}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 }}>
+                  <span className="section-label" style={{ marginBottom: 0 }}>
+                    {idx.label}
+                  </span>
+                  {idx.ticker && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 600,
+                      color: 'var(--text-accent-warm)',
+                      background: 'rgba(251, 191, 36, 0.1)',
+                      padding: '2px 6px', borderRadius: 4,
+                      letterSpacing: 0.3,
+                    }}>
+                      {idx.ticker}
+                    </span>
+                  )}
                 </div>
                 <div style={{
                   fontFamily: 'var(--font-sans)',
