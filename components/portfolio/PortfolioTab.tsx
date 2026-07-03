@@ -548,6 +548,31 @@ export function PortfolioTab() {
     return () => { cancelled = true; };
   }, [positions.map(p => p.symbol).join(',')]);
 
+  // ── DEBUG: direct quote test (bypasses PortfolioContext) ──
+  const [debugQuoteStatus, setDebugQuoteStatus] = useState('⏳ waiting...');
+  useEffect(() => {
+    const symbols = positions.map(p => p.symbol);
+    if (symbols.length === 0) return;
+    setDebugQuoteStatus('⏳ fetching...');
+    fetch('/api/market/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(data => {
+        const keys = Object.keys(data.quotes || {});
+        const sample = keys.length > 0 ? JSON.stringify(data.quotes[keys[0]]) : 'empty';
+        setDebugQuoteStatus(`✅ ${keys.length} quotes: ${keys.join(', ')} | sample: ${sample.slice(0, 80)}`);
+      })
+      .catch(err => {
+        setDebugQuoteStatus('❌ ' + err.message);
+      });
+  }, [positions.map(p => p.symbol).join(',')]);
+
   const toggleExpand = (symbol: string) => {
     setExpandedSymbols(prev => {
       const next = new Set(prev);
@@ -630,6 +655,7 @@ export function PortfolioTab() {
         <div>sample price: {positions[0] ? `$${positions[0].currentPrice} (avgCost=$${positions[0].avgCost})` : 'no positions'}</div>
         <div>equity: ${displayAccount?.equity?.toLocaleString?.() ?? '?'} | totalPnl: ${displayAccount?.totalPnl?.toFixed?.(2) ?? '?'}</div>
         <div>buyDate example: {positions[0]?.buyDate || 'MISSING'}</div>
+        <div style={{ color: '#fbbf24', marginTop: 6 }}>quote test: {debugQuoteStatus}</div>
       </div>
 
       {/* ── Account Hero ── */}
