@@ -3,10 +3,7 @@
 // Supabase provides cross-device persistence for authenticated users.
 // Load order: Supabase → localStorage → seed
 
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 interface PortfolioState {
   positions: any[];
@@ -20,9 +17,9 @@ export async function syncPortfolioToSupabase(
   userId: string,
   state: PortfolioState,
 ): Promise<void> {
-  if (!userId || !SUPABASE_URL) return;
+  if (!userId) return;
   try {
-    const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = getSupabaseBrowserClient();
     // Set auth JWT from session if available (browser context)
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user?.id || session.user.id !== userId) return;
@@ -56,9 +53,9 @@ export async function syncPortfolioToSupabase(
 export async function loadPortfolioFromSupabase(
   userId: string,
 ): Promise<(PortfolioState & { savedAt: number }) | null> {
-  if (!userId || !SUPABASE_URL) return null;
+  if (!userId) return null;
   try {
-    const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = getSupabaseBrowserClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user?.id || session.user.id !== userId) return null;
 
