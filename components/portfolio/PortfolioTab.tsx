@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import type { Position, AccountSummary } from '@/types';
 import type { Basket } from '@/context/PortfolioContext';
+import { getCompanyProfile } from '@/lib/market-data';
 import SellModal from './SellModal';
 import PortfolioChart from './PortfolioChart';
 import MarketOverview from '../shared/MarketOverview';
@@ -131,9 +132,11 @@ function PositionCard({
   const upToday = todayPnL >= 0;
   const upTotal = totalPnL >= 0;
 
+  const companyName = pos.name && pos.name !== pos.symbol ? pos.name : '';
+
   return (
-    <div className="card-frost" style={{ margin: '0 16px 10px', padding: '16px 18px', overflow: 'visible' }}>
-      {/* ROW 1: Symbol + Price */}
+    <div className="card-frost" style={{ margin: '0 14px 8px', padding: '14px 16px', overflow: 'visible' }}>
+      {/* ROW 1: Symbol + Company + Price */}
       <div
         onClick={onToggleExpand}
         style={{
@@ -141,9 +144,9 @@ function PositionCard({
           cursor: 'pointer',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           {showCheckbox && (
-            <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ marginRight: 4 }}>
+            <div onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} style={{ marginRight: 4, flexShrink: 0 }}>
               <div style={{
                 width: 18, height: 18, borderRadius: 9,
                 border: `2px solid ${isSelected ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
@@ -155,13 +158,22 @@ function PositionCard({
             </div>
           )}
           <span style={{
-            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
+            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 17, color: '#ffffff',
+            flexShrink: 0,
           }}>
             {pos.symbol}
           </span>
+          {companyName && (
+            <span style={{
+              fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
+              color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {companyName}
+            </span>
+          )}
           {pos.type === 'ETF' && (
             <span style={{
-              fontSize: 10, color: 'var(--accent)',
+              fontSize: 10, color: 'var(--accent)', flexShrink: 0,
               background: 'rgba(34,211,238,0.10)', border: '1px solid rgba(34,211,238,0.30)',
               borderRadius: 999, padding: '2px 8px', fontWeight: 600,
             }}>
@@ -169,34 +181,26 @@ function PositionCard({
             </span>
           )}
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
           <div style={{
-            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 18, color: '#ffffff',
+            fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 17, color: '#ffffff',
           }}>
             ${livePrice.toFixed(2)}
           </div>
           <div style={{
-            fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+            fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
             color: pos.dayChangePercent >= 0 ? 'var(--gain)' : 'var(--loss)',
-            marginTop: 2,
+            marginTop: 1,
           }}>
             {pos.dayChangePercent >= 0 ? '+' : ''}{pos.dayChangePercent.toFixed(2)}%
           </div>
         </div>
       </div>
 
-      {/* Company name */}
-      <div style={{
-        fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
-        color: 'var(--text-secondary)', marginTop: 2,
-      }}>
-        {pos.name || pos.symbol}
-      </div>
-
       {/* ROW 2: Shares + P&L Pills */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginTop: 10,
+        marginTop: 8,
       }}>
         <span style={{
           fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
@@ -568,6 +572,32 @@ export function PortfolioTab() {
   const loading = isConnected ? brokerLoading : liveLoading;
   const positions: Position[] = displayAccount?.positions || [];
 
+  // Hydrate missing company names from Finnhub
+  const [enrichedPositions, setEnrichedPositions] = useState<Position[]>(positions);
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrateNames() {
+      const needsName = positions.filter(p => !p.name || p.name === p.symbol);
+      if (needsName.length === 0) {
+        setEnrichedPositions(positions);
+        return;
+      }
+      const updated = [...positions];
+      const results = await Promise.allSettled(
+        needsName.map(p => getCompanyProfile(p.symbol))
+      );
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value?.name && !cancelled) {
+          const idx = updated.findIndex(p => p.symbol === needsName[i].symbol);
+          if (idx >= 0) updated[idx] = { ...updated[idx], name: r.value.name };
+        }
+      });
+      if (!cancelled) setEnrichedPositions(updated);
+    }
+    hydrateNames();
+    return () => { cancelled = true; };
+  }, [positions.map(p => p.symbol).join(',')]);
+
   const toggleExpand = (symbol: string) => {
     setExpandedSymbols(prev => {
       const next = new Set(prev);
@@ -592,20 +622,22 @@ export function PortfolioTab() {
   };
 
   // ── Derived values ──
-  const totalMarketValue = positions.reduce((acc: number, p: Position) => acc + p.qty * (p.currentPrice || p.avgCost), 0);
-  const totalCost = positions.reduce((acc: number, p: Position) => acc + p.qty * p.avgCost, 0);
+  const displayPositions = enrichedPositions.length > 0 ? enrichedPositions : positions;
+
+  const totalMarketValue = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * (p.currentPrice || p.avgCost), 0);
+  const totalCost = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * p.avgCost, 0);
   const cashBalance = Math.max(0, 100000 - totalCost);
   const correctEquity = totalMarketValue + cashBalance;
-  const totalTodayPnL = positions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
-  const totalTotalPnL = positions.reduce((acc: number, p: Position) => {
+  const totalTodayPnL = displayPositions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
+  const totalTotalPnL = displayPositions.reduce((acc: number, p: Position) => {
     const mv = p.qty * (p.currentPrice || p.avgCost);
     return acc + (mv - (p.totalCost || 0));
   }, 0);
-  const totalCostBasis = positions.reduce((acc: number, p: Position) => acc + (p.totalCost || p.qty * p.avgCost), 0);
+  const totalCostBasis = displayPositions.reduce((acc: number, p: Position) => acc + (p.totalCost || p.qty * p.avgCost), 0);
   const totalTotalPnLPct = totalCostBasis > 0 ? (totalTotalPnL / totalCostBasis) * 100 : 0;
 
   const filteredPositions = useMemo(() => {
-    if (filter === 'all') return positions;
+    if (filter === 'all') return displayPositions;
 
     const calcPnL = (p: Position) =>
       p.currentPrice
@@ -613,15 +645,15 @@ export function PortfolioTab() {
         : 0;
 
     if (filter === 'gainers') {
-      return positions.filter(p => calcPnL(p) >= 0);
+      return displayPositions.filter(p => calcPnL(p) >= 0);
     }
 
     if (filter === 'losers') {
-      return positions.filter(p => calcPnL(p) < 0);
+      return displayPositions.filter(p => calcPnL(p) < 0);
     }
 
-    return positions;
-  }, [positions, filter]);
+    return displayPositions;
+  }, [displayPositions, filter]);
 
   const accountData: AccountSummary = displayAccount || {
     equity: correctEquity,
@@ -631,7 +663,7 @@ export function PortfolioTab() {
     dayPnlPercent: correctEquity > 0 ? (totalTodayPnL / correctEquity) * 100 : 0,
     totalPnl: correctEquity - 100000,
     totalPnlPercent: ((correctEquity - 100000) / 100000) * 100,
-    positions,
+    positions: displayPositions,
   };
 
   return (
@@ -687,7 +719,7 @@ export function PortfolioTab() {
                 padding: '6px 12px', borderRadius: 999,
                 background: filter !== 'all' ? 'rgba(34,211,238,0.10)' : 'transparent',
                 border: filter !== 'all' ? '1px solid rgba(34,211,238,0.25)' : '1px solid rgba(255,255,255,0.08)',
-                color: filter !== 'all' ? 'var(--accent)' : 'var(--text-muted)',
+                color: filter !== 'all' ? 'var(--accent)' : 'var(--text-secondary)',
                 fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
                 cursor: 'pointer',
               }}
@@ -735,7 +767,7 @@ export function PortfolioTab() {
               padding: '6px 12px', borderRadius: 999,
               background: 'transparent',
               border: '1px solid rgba(255,255,255,0.08)',
-              color: selectMode ? 'var(--accent)' : 'var(--text-muted)',
+              color: selectMode ? 'var(--accent)' : 'var(--text-secondary)',
               fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 12,
               cursor: 'pointer',
             }}

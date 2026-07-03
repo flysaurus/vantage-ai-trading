@@ -16,6 +16,7 @@ import {
   getDemoOrders,
 } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
+import { getCandles } from '@/lib/market-data';
 
 // ─── Style metadata ──────────────────────────────────────────
 
@@ -151,20 +152,155 @@ export async function seedDemoPortfolio(
     );
 
   // Seed initial account snapshot for portfolio chart
+  const todayStr = new Date().toISOString();
   await db.from('account_snapshots').upsert({
     user_id: userId,
-    date: new Date().toISOString().split('T')[0],
-    equity: 100000, // starting value
-    cash: 100000 - totalInvested,
-    market_value: totalInvested,
+    equity: 100000,
+    cash: cashBalance,
+    buying_power: cashBalance,
     day_pnl: 0,
-    day_pnl_pct: 0,
     total_pnl: 0,
-    total_pnl_pct: 0,
-    created_at: new Date().toISOString(),
-  }, { onConflict: 'user_id,date' });
+    positions: portfolio.positions.map((p) => ({
+      symbol: p.symbol,
+      qty: p.qty,
+      avgCost: p.avgCost,
+      name: p.name,
+      sector: p.sector,
+    })),
+    snapshot_at: todayStr,
+  }, { onConflict: 'user_id,snapshot_at' });
 
   console.log('[seed] account snapshot created');
+
+  // Seed historical snapshots for chart (YTD backfill)
+  await seedHistoricalSnapshots(db, userId, portfolio.positions, cashBalance);
+}
+
+// ─── seedHistoricalSnapshots ────────────────────────────────
+
+async function seedHistoricalSnapshots(
+  db: ReturnType<typeof createServerClient>,
+  userId: string,
+  positions: Array<{ symbol: string; qty: number; avgCost: number; name?: string; sector?: string }>,
+  cashBalance: number,
+) {
+  try {
+    // Backfill from Jan 1 2026 to yesterday (today already seeded above)
+    const startDate = new Date('2026-01-01');
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(23, 59, 59, 999);
+
+    if (startDate >= yesterday) {
+      console.log('[seed] no historical range to backfill');
+      return;
+    }
+
+    const fromUnix = Math.floor(startDate.getTime() / 1000);
+    const toUnix = Math.floor(yesterday.getTime() / 1000);
+
+    // Fetch daily candles for all symbols in parallel
+    const symbols = [...new Set(positions.map(p => p.symbol))];
+    const candleResults = await Promise.allSettled(
+      symbols.map(s => getCandles(s, 'D', fromUnix, toUnix, 365)),
+    );
+
+    // Build symbol → date → close map
+    const symbolPrices: Map<string, Map<string, number>> = new Map();
+    candleResults.forEach((result, i) => {
+      if (result.status === 'fulfilled' && result.value) {
+        const priceMap = new Map<string, number>();
+        for (const candle of result.value) {
+          const dateStr = new Date(candle.timestamp).toISOString().split('T')[0];
+          priceMap.set(dateStr, candle.close);
+        }
+        symbolPrices.set(symbols[i], priceMap);
+      }
+    });
+
+    if (symbolPrices.size === 0) {
+      console.log('[seed] no candle data available, skipping historical backfill');
+      return;
+    }
+
+    // Generate snapshots for each trading day in range
+    const snapshots: Array<{
+      user_id: string;
+      equity: number;
+      cash: number;
+      buying_power: number;
+      day_pnl: number;
+      total_pnl: number;
+      positions: any;
+      snapshot_at: string;
+    }> = [];
+
+    let prevTotalValue = 100000; // starting reference for day P&L
+    const d = new Date(startDate);
+
+    while (d <= yesterday) {
+      const dateStr = d.toISOString().split('T')[0];
+      // Skip weekends (Sat/Sun)
+      if (d.getDay() !== 0 && d.getDay() !== 6) {
+        let totalValue = cashBalance;
+        let allHavePrices = true;
+
+        for (const pos of positions) {
+          const priceMap = symbolPrices.get(pos.symbol);
+          const close = priceMap?.get(dateStr);
+          if (close != null) {
+            totalValue += pos.qty * close;
+          } else {
+            allHavePrices = false;
+            break;
+          }
+        }
+
+        if (allHavePrices && positions.length > 0) {
+          const dayPnl = totalValue - prevTotalValue;
+          const totalPnl = totalValue - 100000;
+          snapshots.push({
+            user_id: userId,
+            equity: Math.round(totalValue * 100) / 100,
+            cash: cashBalance,
+            buying_power: cashBalance,
+            day_pnl: Math.round(dayPnl * 100) / 100,
+            total_pnl: Math.round(totalPnl * 100) / 100,
+            positions: positions.map(p => ({
+              symbol: p.symbol,
+              qty: p.qty,
+              avgCost: p.avgCost,
+              name: p.name,
+              sector: p.sector,
+            })),
+            snapshot_at: `${dateStr}T20:00:00Z`, // after market close
+          });
+          prevTotalValue = totalValue;
+        }
+      }
+      d.setDate(d.getDate() + 1);
+    }
+
+    if (snapshots.length > 0) {
+      // Insert in batches of 50 to avoid per-row overhead
+      const batchSize = 50;
+      for (let i = 0; i < snapshots.length; i += batchSize) {
+        const batch = snapshots.slice(i, i + batchSize);
+        const { error } = await db.from('account_snapshots').upsert(batch as any, {
+          onConflict: 'user_id,snapshot_at',
+        });
+        if (error) {
+          console.error('[seed] historical snapshot batch insert error:', error.message);
+        }
+      }
+      console.log(`[seed] ${snapshots.length} historical snapshots created`);
+    } else {
+      console.log('[seed] no historical snapshots generated (no price data)');
+    }
+  } catch (err: any) {
+    console.error('[seed] historical snapshot error:', err?.message || err);
+    // Non-fatal — chart may be empty but everything else works
+  }
 }
 
 // ─── activateLivePortfolio ──────────────────────────────────
