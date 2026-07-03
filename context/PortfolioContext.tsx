@@ -346,6 +346,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           orders: supabaseState.orderHistory || [],
           savedAt: supabaseState.savedAt,
         };
+        console.log('[portfolio init] Supabase load SUCCESS, positions:', supabaseState.positions.length, 'cash:', supabaseState.cashBalance);
         setDemoState(merged);
         setDemoOrders(merged.orders);
         // Also update localStorage as cache
@@ -359,11 +360,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // ── Recompute AccountSummary from mutable state + live quotes ──
   const recomputeAccount = useCallback(
     (quotes: Record<string, any> | null) => {
+      console.log('[recomputeAccount] called, quotes null?:', quotes === null, 'demoState exists?:', !!demoState);
       if (!demoState) return;
 
       const positions = demoState.positions.map((p) => {
         const quote = quotes?.[p.symbol];
         const hasLivePrice = quote && typeof quote.price === 'number' && quote.price > 0;
+        console.log('[recomputeAccount] position:', p.symbol, 'quote received:', JSON.stringify(quote), 'hasLivePrice:', hasLivePrice, 'currentPrice used:', hasLivePrice ? quote.price : p.avgCost);
         const currentPrice = hasLivePrice ? quote.price : p.avgCost;
         const dayChange = hasLivePrice ? (quote.change || 0) * p.qty : 0;
         const dayChangePercent = hasLivePrice && currentPrice > 0
@@ -409,6 +412,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         positions,
       };
 
+      console.log('[recomputeAccount] account set, sample position currentPrice:', summary.positions?.[0]?.currentPrice);
       setAccount(summary);
     },
     [demoState]
@@ -424,15 +428,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       const symbols = demoState.positions.map((p) => p.symbol);
       if (symbols.length === 0) return;
 
-      console.log('[Portfolio] Fetching quotes for:', symbols);
+      console.log('[fetchData] requesting quotes for:', symbols);
       const res = await await apiPost('/api/market/quotes', JSON.stringify({ symbols }));
 
+      console.log('[fetchData] raw response status:', res.status);
       if (!res.ok) throw new Error('Market data fetch failed');
 
       const data = await res.json();
-      console.log('[Portfolio] Quote result:', JSON.stringify(data).slice(0, 200));
+      console.log('[fetchData] raw response data:', JSON.stringify(data).slice(0, 400));
       if (!data?.quotes || !mountedRef.current) return;
 
+      console.log('[fetchData] calling recomputeAccount with quotes keys:', Object.keys(data.quotes));
       recomputeAccount(data.quotes);
       setError(null);
     } catch (err) {
@@ -446,7 +452,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     mountedRef.current = true;
     if (demoState) {
+      console.log('[portfolio init] demoState loaded, positions:', demoState.positions.length, 'cash:', demoState.cashBalance);
+      console.log('[portfolio init] calling recomputeAccount(null) for initial render');
       recomputeAccount(null); // initial render with avgCost
+      console.log('[portfolio init] calling fetchData() for live quotes');
       fetchData(); // then fetch live prices
     }
     const interval = setInterval(fetchData, 60000);
