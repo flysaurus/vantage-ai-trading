@@ -149,6 +149,22 @@ export async function seedDemoPortfolio(
       },
       { onConflict: 'user_id' },
     );
+
+  // Seed initial account snapshot for portfolio chart
+  await db.from('account_snapshots').upsert({
+    user_id: userId,
+    date: new Date().toISOString().split('T')[0],
+    equity: 100000, // starting value
+    cash: 100000 - totalInvested,
+    market_value: totalInvested,
+    day_pnl: 0,
+    day_pnl_pct: 0,
+    total_pnl: 0,
+    total_pnl_pct: 0,
+    created_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,date' });
+
+  console.log('[seed] account snapshot created');
 }
 
 // ─── activateLivePortfolio ──────────────────────────────────

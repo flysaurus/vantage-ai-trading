@@ -614,11 +614,11 @@ export function PortfolioTab() {
   const accountData: AccountSummary = displayAccount || {
     equity: correctEquity,
     cash: cashBalance,
-    buyingPower: cashBalance * 2,
+    buyingPower: cashBalance, // same as cash for demo
     dayPnl: totalTodayPnL,
-    dayPnlPercent: totalCostBasis > 0 ? (totalTodayPnL / totalCostBasis) * 100 : 0,
-    totalPnl: totalTotalPnL,
-    totalPnlPercent: totalTotalPnLPct,
+    dayPnlPercent: correctEquity > 0 ? (totalTodayPnL / correctEquity) * 100 : 0,
+    totalPnl: correctEquity - 100000,
+    totalPnlPercent: ((correctEquity - 100000) / 100000) * 100,
     positions,
   };
 

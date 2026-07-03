@@ -15,6 +15,7 @@ function getMarketMessage(): string {
     case 'OPEN': return 'Markets are open.';
     case 'PRE-MARKET': return 'Pre-market trading active.';
     case 'AFTER HOURS': return 'Markets closed. After-hours trading active.';
+    case 'MARKET HOLIDAY': return 'Market closed — holiday.';
     case 'CLOSED': return 'Markets are closed.';
     default: return 'Markets are closed.';
   }
