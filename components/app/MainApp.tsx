@@ -54,7 +54,6 @@ function AppShell() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showBrokerGate, setShowBrokerGate] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [greeting, setGreeting] = useState('');
   const [showGreeting, setShowGreeting] = useState(false);
   const [showWelcomeToast, setShowWelcomeToast] = useState(false);
   const greetingShown = useRef(false);
@@ -116,26 +115,6 @@ function AppShell() {
       setTimeout(() => setShowGreeting(true), 300);
     }
   }, [effectiveUser, isDataLoaded, showOnboarding, showBrokerGate, isAuthenticated]);
-
-  // ── Welcome greeting banner ──
-  useEffect(() => {
-    if (!effectiveUser || !isDataLoaded) return;
-    if (greetingShown.current) return;
-    if (!isAuthenticated) return;
-    const name = effectiveUser.displayName || effectiveUser.email?.split('@')[0] || '';
-    const initial = name.charAt(0).toUpperCase();
-    const hour = new Date().getHours();
-    const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    const phrases = [
-      `${timeGreeting}, ${initial}!`,
-      `Welcome back, ${initial}!`,
-      `Ready to make some money, ${initial}?`,
-      `Ready for a quick review, ${initial}!`,
-    ];
-    setGreeting(phrases[Math.floor(Math.random() * phrases.length)]);
-    const timer = setTimeout(() => setGreeting(''), 4000);
-    return () => clearTimeout(timer);
-  }, [effectiveUser, isDataLoaded, isAuthenticated]);
 
   // ── Cross-component navigation ──
   useEffect(() => {
@@ -245,17 +224,7 @@ function AppShell() {
 
   const mainContent = (
     <>
-      {greeting && (
-        <div style={{
-          textAlign: 'center', padding: '10px 16px',
-          background: 'linear-gradient(135deg, #06b6d4, #0d9488)',
-          color: '#0f172a', fontSize: 14, fontWeight: 700,
-          animation: 'fadeInDown 0.4s ease-out, fadeOut 0.5s ease-in 3.5s forwards',
-          position: 'sticky', top: 0, zIndex: 50,
-        }}>
-          {greeting}
-        </div>
-      )}
+
       <Header />
       {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
       <WatchlistBar />
