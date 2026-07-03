@@ -39,7 +39,7 @@ export default function Page() {
   }, [state, router]);
 
   // Debug banner — shows current state, profile fields, and raw cookies
-  const showDebug = true; // ← toggle off after debugging
+  const showDebug = false; // ← toggle off after debugging
   const [cookieDebug, setCookieDebug] = useState('…');
   useEffect(() => {
     if (typeof document !== 'undefined') {
