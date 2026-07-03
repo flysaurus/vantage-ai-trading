@@ -132,7 +132,11 @@ export default function Page() {
         <ConnectionOptionsPage
           onStateChanged={() => {
             setConnectionView(false);
-            setShowDemoCounter(true); // return to demo counter, not main app
+            setShowDemoCounter(true); // Back → return to demo counter
+          }}
+          onDemoStart={() => {
+            setConnectionView(false);
+            setShowDemoCounter(false); // "Start with demo instead" → MainApp
           }}
         />
       </>

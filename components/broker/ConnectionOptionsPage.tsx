@@ -22,7 +22,7 @@ interface ToastState {
 
 // ── Main ────────────────────────────────────────────────
 
-export function ConnectionOptionsPage({ onStateChanged }: { onStateChanged: () => void }) {
+export function ConnectionOptionsPage({ onStateChanged, onDemoStart }: { onStateChanged: () => void; onDemoStart?: () => void }) {
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: '',
@@ -65,13 +65,13 @@ export function ConnectionOptionsPage({ onStateChanged }: { onStateChanged: () =
         credentials: 'include',
       });
       if (res.ok) {
-        onStateChanged();
+        (onDemoStart || onStateChanged)();
       }
     } catch {
       // Silent fail — user can retry
     }
     setDemoLoading(false);
-  }, [onStateChanged]);
+  }, [onStateChanged, onDemoStart]);
 
   // ── Render ─────────────────────────────────────────────
 
