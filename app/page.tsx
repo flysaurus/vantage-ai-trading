@@ -29,6 +29,9 @@ export default function Page() {
     if (state === 'demo-counter') setShowDemoCounter(true);
   }, [state]);
 
+  // Manual override: show connection-options page (from demo counter button)
+  const [connectionView, setConnectionView] = useState(false);
+
   // needs-profile: redirect to onboarding
   useEffect(() => {
     if (state !== 'needs-profile') return;
@@ -128,6 +131,7 @@ export default function Page() {
         <DemoCounterPage
           profile={profile}
           onEnter={() => setShowDemoCounter(false)}
+          onConnectBroker={() => setConnectionView(true)}
         />
       </>
     );
@@ -136,6 +140,21 @@ export default function Page() {
   // demo-expired: 30-day demo has elapsed
   if (state === 'demo-expired') {
     return <>{debugBanner}<DemoExpired /></>;
+  }
+
+  // connection-view override: user tapped "Connect a broker →" from demo counter
+  if (connectionView) {
+    return (
+      <>
+        {debugBanner}
+        <ConnectionOptionsPage
+          onStateChanged={() => {
+            setConnectionView(false);
+            refreshState();
+          }}
+        />
+      </>
+    );
   }
 
   // connection-options: chose to connect a broker — show broker options
