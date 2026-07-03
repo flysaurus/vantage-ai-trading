@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { apiPost } from '@/lib/api-client';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
@@ -33,6 +34,7 @@ async function saveInvestorStyle(userId: string, style: string): Promise<boolean
 
 export function SettingsTab() {
   const { user } = useAuth() as any;
+  const router = useRouter();
   const [riskLevel, setRiskLevel] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
   const [brokerConnected, setBrokerConnected] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -371,7 +373,7 @@ export function SettingsTab() {
               <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Not connected</p>
             </div>
             <button
-              onClick={() => setBrokerConnected(true)}
+              onClick={() => router.push('/broker-setup')}
               style={{
                 background: '#22d3ee',
                 color: '#000000',
