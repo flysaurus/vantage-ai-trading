@@ -21,6 +21,15 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function getSafeRedirect(): string {
+  if (typeof window === 'undefined') return '/';
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('redirectTo');
+  // Prevent open redirect attacks — only allow same-site paths
+  if (raw && raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  return '/';
+}
+
 // ── Gradient ───────────────────────────────────────────────
 
 const GRADIENT = `radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,0.40) 0%, rgba(14,116,144,0.22) 35%, transparent 65%), radial-gradient(ellipse 70% 45% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%), #0a0f1e`;
@@ -152,7 +161,7 @@ export default function LoginPage() {
 
     // No demo: skip splash, go directly to app
     // Use hard navigation to go through middleware (session-only cookie)
-    window.location.href = '/';
+    window.location.href = getSafeRedirect();
   }, [canSubmit, email, password, supabase, router]);
 
   // ── Forgot password handler ───────────────────────────
@@ -196,7 +205,7 @@ export default function LoginPage() {
   // ── Splash complete → navigate to app ────────────────────
   const handleSplashComplete = useCallback(() => {
     // Hard navigation to go through middleware (session-only cookie)
-    window.location.href = '/';
+    window.location.href = getSafeRedirect();
   }, []);
 
   // ── Spinner while checking session ─────────────────────

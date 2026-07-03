@@ -1,6 +1,7 @@
-// ─── Middleware — Canonical domain + Session refresh ─────────────
+// ─── Middleware — Canonical domain + Route protection + Session refresh ──
 // 1. Canonical domain redirect (all Vercel aliases → vantage-ai-trading.vercel.app)
-// 2. Supabase session refresh — keeps cookies alive across requests on Vercel.
+// 2. Route protection — unauthenticated users → /login (no flash, server-side)
+// 3. Supabase session refresh — keeps cookies alive across requests on Vercel.
 //    Without this, session cookies expire between page navigations and
 //    getSession() returns null on subsequent loads.
 //
@@ -13,12 +14,23 @@ import type { NextRequest } from 'next/server';
 
 const CANONICAL_HOST = 'vantage-ai-trading.vercel.app';
 
+// Public routes — no auth needed
+const PUBLIC_ROUTES = [
+  '/', // root handles own routing via useAppState
+  '/login',
+  '/onboarding',
+  '/create-account',
+  '/you-are-in', // has its own auth check
+];
+
 export async function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const hostname = host.split(':')[0]; // strip port for local dev
   const { pathname } = request.nextUrl;
 
-  // 1. Canonical domain redirect
+  // ═══════════════════════════════════════════════════════════════
+  // 1. CANONICAL DOMAIN REDIRECT
+  // ═══════════════════════════════════════════════════════════════
   if (
     hostname !== CANONICAL_HOST &&
     !hostname.includes('localhost') &&
@@ -30,67 +42,85 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
-  // 2. Auth routes — pass through
-  // EXCEPT /auth/complete which handles its own cookies via route handler
+  // ═══════════════════════════════════════════════════════════════
+  // 2. AUTH ROUTES — pass through
+  // ═══════════════════════════════════════════════════════════════
+  // /auth/* routes handle their own cookies via route handlers.
+  // /auth/complete must pass through middleware WITHOUT a new
+  // NextResponse so route handler cookies are preserved.
   if (pathname.startsWith('/auth/') && !pathname.startsWith('/auth/complete')) {
     return NextResponse.next();
   }
-
-  // /auth/complete must pass through middleware WITHOUT a new NextResponse
-  // so route handler cookies are preserved
   if (pathname.startsWith('/auth/complete')) {
     return NextResponse.next({
-      request: {
-        headers: request.headers
-      }
+      request: { headers: request.headers },
     });
   }
 
-  // 3. Supabase session refresh
-  // This MUST be called on every request to keep the session alive.
-  // Without it, the Supabase Auth cookies expire and getSession()
-  // returns null.
+  // ═══════════════════════════════════════════════════════════════
+  // 3. CREATE SUPABASE CLIENT
+  // ═══════════════════════════════════════════════════════════════
   let response = NextResponse.next({ request });
 
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('[middleware] Missing Supabase env vars — skipping session refresh');
-      return response;
+  if (!supabaseUrl || !supabaseKey) {
+    console.error('[middleware] Missing Supabase env vars — skipping route protection');
+    return response;
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        // IMPORTANT: Use ONLY response.cookies.set() — NOT request.cookies.set().
+        cookiesToSet.forEach(({ name, value, options }) => {
+          const { expires, maxAge, ...rest } = options;
+          response.cookies.set(name, value, rest);
+        });
+      },
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 4. ROUTE PROTECTION + SESSION REFRESH
+  // ═══════════════════════════════════════════════════════════════
+  // getUser() both refreshes the session AND returns user data.
+  // Combined into one step to avoid redundant API calls.
+
+  // Check if current path is public
+  const isPublicRoute = PUBLIC_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith('/auth/'),
+  );
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Protected route + no session → /login
+    if (!isPublicRoute && !user) {
+      const loginUrl = new URL('/login', request.url);
+      // Remember where they were trying to go
+      loginUrl.searchParams.set('redirectTo', pathname);
+      return NextResponse.redirect(loginUrl);
     }
 
-    const supabase = createServerClient(
-      supabaseUrl,
-      supabaseKey,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
-          },
-          setAll(cookiesToSet) {
-            // IMPORTANT: Use ONLY response.cookies.set() — NOT request.cookies.set().
-            // Using both creates DUPLICATE Set-Cookie headers (Next.js auto-merges
-            // request.cookies.set() mutations, AND then response.cookies.set() adds
-            // another header). Browsers handle duplicates unpredictably → cookies
-            // silently lost.
-            //
-            // Session-only: strip expires/maxAge so cookies die on browser close.
-            cookiesToSet.forEach(({ name, value, options }) => {
-              const { expires, maxAge, ...rest } = options;
-              response.cookies.set(name, value, rest);
-            });
-          },
-        },
-      }
-    );
-
-    // Refresh session — must be called on every request
-    await supabase.auth.getUser();
+    // Authenticated user hitting login/signup → redirect to app
+    if (user && (pathname === '/login' || pathname === '/create-account')) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
   } catch (err) {
-    console.error('[middleware] Session refresh error:', err);
-    // Don't block the request — session refresh is best-effort
+    console.error('[middleware] Session check error:', err);
+    // getUser() failed (expired / invalid token) + not public → /login
+    if (!isPublicRoute) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('redirectTo', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
   }
 
   return response;
@@ -100,7 +130,4 @@ export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-  // NOTE: /auth/complete is intentionally included in matcher but handled
-  // specially — middleware must not create new response objects for
-  // this path as it breaks cookie propagation from the route handler
 };
