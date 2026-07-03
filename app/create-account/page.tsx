@@ -314,44 +314,36 @@ export default function CreateAccountPage() {
       // Fail open — proceed with signUp if check-email is down
     }
 
-    // Call server-side signup route (admin API for 6-digit OTP)
-    const signupRes = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: email.trim(),
-        password,
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        investor_style: style,
-        risk_tolerance: risk,
-        pending_choice: pendingChoice,
-        pending_connection_type: pendingConnectionType ?? null,
-      }),
+    // Browser-side signup — correct pattern for OTP flow.
+    // The anon key is public by Supabase design.
+    // Security comes from RLS + service role on server.
+    const supabase = getSupabaseBrowserClient();
+
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          investor_style: style,
+          risk_tolerance: risk,
+          pending_choice: pendingChoice,
+          pending_connection_type: pendingConnectionType ?? null,
+        },
+        // NO emailRedirectTo — OTP flow does not need redirect URLs
+      },
     });
 
-    const signupData: { success?: boolean; error?: string; user_id?: string } =
-      await signupRes.json();
-
-    if (!signupRes.ok) {
+    if (error) {
       setSubmitting(false);
-
-      if (signupData.error === 'duplicate_email') {
-        setEmailDuplicate(true);
-        return;
-      }
-
-      setApiError(
-        signupData.error ?? 'Signup failed. Please try again.',
-      );
+      setApiError(error.message ?? 'Signup failed. Please try again.');
       return;
     }
 
-    console.log('[signup] server-side user created:', signupData.user_id);
-
-    // Advance to OTP verification screen
-    setStep('verify-otp');
+    // Success → OTP verification screen
     setSubmitting(false);
+    setStep('verify-otp');
   }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
 
   // ── OTP verification success ────────────────────────────

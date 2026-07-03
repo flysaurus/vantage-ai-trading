@@ -110,7 +110,7 @@ export default function OTPVerification({ email, onSuccess, onBack }: OTPVerific
     const { data, error: verifyError } = await supabase.auth.verifyOtp({
       email,
       token: otp,
-      type: 'signup',
+      type: 'email',
     });
 
     if (verifyError) {
@@ -128,11 +128,11 @@ export default function OTPVerification({ email, onSuccess, onBack }: OTPVerific
 
     console.log('[otp] verified, session:', data?.session?.user?.id);
 
-    setVerifying(false);
+    // Session is now active — proceed to post-verification flow
     onSuccess();
   }, [otp, verifying, email, onSuccess]);
 
-  // ── Auto-submit when all 6 digits entered ───────────────
+  // ── Auto-submit when all digits entered ────────────────
   useEffect(() => {
     if (otp.length === 6 && !verifying) {
       // Small delay so user sees the last digit appear
