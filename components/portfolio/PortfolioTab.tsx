@@ -512,7 +512,7 @@ export function PortfolioTab() {
   const [selectMode, setSelectMode] = useState(false);
 
   const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets, debug } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -659,6 +659,7 @@ export function PortfolioTab() {
         <div>buyDate example: {positions[0]?.buyDate || 'MISSING'}</div>
         <div style={{ color: '#fbbf24', marginTop: 6 }}>quote test: {debugQuoteStatus}</div>
         <div>isConnected: {String(isConnected)} | fetch attempts: {fetchCount}</div>
+        <div style={{ color: '#60a5fa', marginTop: 4 }}>context: fetchCalled={debug?.fetchCalled} recomputeCalled={debug?.recomputeCalled} lastQuotes={debug?.lastQuotes}</div>
       </div>
 
       {/* ── Account Hero ── */}

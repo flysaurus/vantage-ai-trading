@@ -147,6 +147,8 @@ interface PortfolioContextValue {
   error: string | null;
   /** Force refresh quotes */
   refresh: () => void;
+  /** Debug info for diagnostics */
+  debug: { fetchCalled: number; recomputeCalled: number; lastQuotes: string };
   /** Execute a demo trade */
   executeTrade: (
     symbol: string,
@@ -208,6 +210,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   executePendingOrders: async () => {},
   basketOrders: [],
   pendingBaskets: [],
+  debug: { fetchCalled: 0, recomputeCalled: 0, lastQuotes: 'none' },
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -292,6 +295,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const demoStateRef = useRef(demoState);
   const basketPositionsRef = useRef<BasketPosition[]>([]);
   const brokerRef = useRef<BrokerEngine | null>(null);
+  const debugRef = useRef({ fetchCalled: 0, recomputeCalled: 0, lastQuotes: 'none' });
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
   // ── Clear stale demo portfolio cache on mount ──
@@ -361,6 +365,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const recomputeAccount = useCallback(
     (quotes: Record<string, any> | null) => {
       console.log('[recomputeAccount] called, quotes null?:', quotes === null, 'demoState exists?:', !!demoState);
+      debugRef.current.recomputeCalled++;
+      debugRef.current.lastQuotes = quotes ? Object.keys(quotes).join(',') : 'null';
       if (!demoState) return;
 
       const positions = demoState.positions.map((p) => {
@@ -425,6 +431,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
 
+      debugRef.current.fetchCalled++;
       const symbols = demoState.positions.map((p) => p.symbol);
       if (symbols.length === 0) return;
 
@@ -903,6 +910,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         loading,
         error,
         refresh: fetchData,
+        debug: debugRef.current,
         executeTrade,
         demoOrders,
         toast,
