@@ -55,7 +55,6 @@ export default function DemoCounterPage({
 }: DemoCounterPageProps) {
   // Resolve: prop takes priority, then profile.demoExpiresAt (legacy), then null
   const resolvedExpiresAt = demoExpiresAtProp ?? profile?.demo_expires_at ?? null;
-  const resolvedOnContinue = onContinue || onEnter || (() => {});
   const [expiresAt, setExpiresAt] = useState<string | null>(resolvedExpiresAt);
   const [loading, setLoading] = useState(!resolvedExpiresAt);
   const [fetchError, setFetchError] = useState('');
@@ -98,7 +97,7 @@ export default function DemoCounterPage({
   const daysRemaining = expiresAt
     ? Math.max(
         0,
-        Math.ceil(
+        Math.floor(
           (new Date(expiresAt).getTime() - Date.now()) /
             (1000 * 60 * 60 * 24),
         ),
@@ -310,7 +309,7 @@ export default function DemoCounterPage({
           portfolio.
         </p>
         <button
-          onClick={onConnectBroker || resolvedOnContinue}
+          onClick={onConnectBroker}
           style={{
             width: '100%',
             height: '48px',
@@ -346,7 +345,7 @@ export default function DemoCounterPage({
 
       {/* ═══ ENTER APP BUTTON ═══ */}
       <button
-        onClick={resolvedOnContinue}
+        onClick={onEnter || onContinue}
         style={{
           width: '100%',
           maxWidth: '380px',
