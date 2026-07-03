@@ -88,6 +88,7 @@ export async function seedDemoPortfolio(
     industry: p.industry || null,
     name: p.name,
     is_demo: true,
+    buy_date: p.buyDate || null,
   }));
 
   if (positionRows.length > 0) {
@@ -141,7 +142,7 @@ export async function seedDemoPortfolio(
           avgCost: Number(p.avg_cost),
           name: p.name,
           sector: p.sector,
-          buyDate: new Date().toISOString(),
+          buyDate: p.buy_date || new Date().toISOString(),
         })),
         cash_balance: cashBalance,
         orders: [],
@@ -181,23 +182,31 @@ export async function seedDemoPortfolio(
 async function seedHistoricalSnapshots(
   db: ReturnType<typeof createServerClient>,
   userId: string,
-  positions: Array<{ symbol: string; qty: number; avgCost: number; name?: string; sector?: string }>,
+  positions: Array<{ symbol: string; qty: number; avgCost: number; name?: string; sector?: string; buyDate?: string }>,
   cashBalance: number,
 ) {
   try {
-    const daysToBackfill = 90;
+    // Find earliest buy date — start backfill from there
+    const buyDates = positions.map(p => p.buyDate ? new Date(p.buyDate).getTime() : 0);
+    const earliestMs = Math.min(...buyDates);
+    if (earliestMs === 0 || earliestMs >= Date.now()) {
+      console.log('[seed] no valid buyDates on positions, skipping buyDate-aware backfill');
+      return;
+    }
+
     const snapshotRows: Array<{
       user_id: string;
+      date: string;
       equity: number;
       cash: number;
-      buying_power: number;
+      market_value: number;
       day_pnl: number;
+      day_pnl_pct: number;
       total_pnl: number;
-      positions: any;
-      snapshot_at: string;
+      total_pnl_pct: number;
+      created_at: string;
     }> = [];
 
-    // Deterministic seeded random from user ID
     const seedValue = userId.split('-')[0];
     const seedNum = parseInt(seedValue, 16) || 12345;
 
@@ -206,64 +215,56 @@ async function seedHistoricalSnapshots(
       return x - Math.floor(x);
     }
 
-    let runningValue = 100000;
+    let dayIndex = 0;
+    const userStartDate = new Date(earliestMs);
     const today = new Date();
+    const cursor = new Date(userStartDate);
 
-    for (let i = daysToBackfill; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
+    while (cursor <= today) {
+      const d = cursor.getDay();
+      if (d !== 0 && d !== 6) {
+        const dateStr = cursor.toISOString().split('T')[0];
 
-      // Skip weekends
-      const day = date.getDay();
-      if (day === 0 || day === 6) continue;
+        // Only include positions purchased on or before this date
+        const heldPositions = positions.filter(
+          p => p.buyDate ? new Date(p.buyDate).getTime() <= cursor.getTime() : true,
+        );
+        const costBasisToDate = heldPositions.reduce(
+          (sum, p) => sum + p.qty * p.avgCost, 0,
+        );
+        const cashOnDate = Math.max(0, 100000 - costBasisToDate);
 
-      // Deterministic small daily variance
-      const dayVariance = (seededRandom(seedNum + i) - 0.48) * 0.008;
-      runningValue = runningValue * (1 + dayVariance);
+        // Synthetic variance — ramps up as time passes
+        const variance = (seededRandom(seedNum + dayIndex) - 0.48) * 0.006;
+        const growthFactor = 1 + variance * Math.min(dayIndex / 30, 1);
+        const marketValueOnDate = heldPositions.length > 0
+          ? costBasisToDate * growthFactor
+          : 0;
+        const equityOnDate = cashOnDate + Math.max(0, marketValueOnDate);
 
-      // Clamp to reasonable range
-      runningValue = Math.max(85000, Math.min(115000, runningValue));
-
-      snapshotRows.push({
-        user_id: userId,
-        equity: Math.round(runningValue * 100) / 100,
-        cash: cashBalance,
-        buying_power: cashBalance,
-        day_pnl: 0,
-        total_pnl: Math.round((runningValue - 100000) * 100) / 100,
-        positions: positions.map((p) => ({
-          symbol: p.symbol,
-          qty: p.qty,
-          avgCost: p.avgCost,
-          name: p.name,
-          sector: p.sector,
-        })),
-        snapshot_at: date.toISOString(),
-      });
-    }
-
-    // Pin last entry to exactly $100,000 (today's seed value)
-    if (snapshotRows.length > 0) {
-      snapshotRows[snapshotRows.length - 1] = {
-        ...snapshotRows[snapshotRows.length - 1],
-        equity: 100000,
-        total_pnl: 0,
-        snapshot_at: today.toISOString(),
-      };
-    }
-
-    if (snapshotRows.length > 0) {
-      const batchSize = 50;
-      for (let i = 0; i < snapshotRows.length; i += batchSize) {
-        const batch = snapshotRows.slice(i, i + batchSize);
-        const { error } = await db.from('account_snapshots').upsert(batch as any, {
-          onConflict: 'user_id,snapshot_at',
+        snapshotRows.push({
+          user_id: userId,
+          date: dateStr,
+          equity: Math.round(equityOnDate * 100) / 100,
+          cash: Math.round(cashOnDate * 100) / 100,
+          market_value: Math.round(Math.max(0, marketValueOnDate) * 100) / 100,
+          day_pnl: 0, day_pnl_pct: 0,
+          total_pnl: Math.round((equityOnDate - 100000) * 100) / 100,
+          total_pnl_pct: Math.round(((equityOnDate - 100000) / 100000) * 10000) / 100,
+          created_at: cursor.toISOString(),
         });
-        if (error) {
-          console.error('[seed] historical snapshot batch insert error:', error.message);
-        }
+        dayIndex++;
       }
-      console.log(`[seed] backfilled ${snapshotRows.length} historical snapshots`);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    if (snapshotRows.length > 0) {
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < snapshotRows.length; i += CHUNK_SIZE) {
+        await db.from('account_snapshots')
+          .upsert(snapshotRows.slice(i, i + CHUNK_SIZE), { onConflict: 'user_id,date' });
+      }
+      console.log('[seed] backfilled', snapshotRows.length, 'snapshots from', userStartDate.toISOString().split('T')[0]);
     }
   } catch (err: any) {
     console.error('[seed] historical snapshot error:', err?.message || err);
@@ -272,90 +273,6 @@ async function seedHistoricalSnapshots(
 }
 
 // ─── activateLivePortfolio ──────────────────────────────────
-
-/**
- * Switch from demo to live: clear all demo data, insert real broker
- * positions and orders with is_demo = false.
- * Updates user's portfolio_mode to 'live'.
- */
-export async function activateLivePortfolio(
-  userId: string,
-  brokerPositions: Array<{
-    symbol: string;
-    qty: number;
-    avg_cost?: number;
-    current_price?: number;
-    market_value?: number;
-    unrealized_pnl?: number;
-    unrealized_pnl_pct?: number;
-    sector?: string | null;
-    industry?: string | null;
-    name?: string;
-  }>,
-  brokerOrders: Array<{
-    symbol: string;
-    qty: number;
-    filled_qty?: number;
-    side: string;
-    order_type?: string;
-    status: string;
-    filled_price?: number;
-    filled_at?: string;
-    time_in_force?: string;
-  }>,
-): Promise<void> {
-  const db = supabase();
-
-  // Clear existing (demo or stale live)
-  await clearPortfolio(userId);
-
-  // Insert live positions
-  const positionRows = brokerPositions.map((p) => ({
-    user_id: userId,
-    symbol: p.symbol,
-    qty: p.qty,
-    avg_cost: p.avg_cost ?? null,
-    current_price: p.current_price ?? null,
-    market_value: p.market_value ?? null,
-    unrealized_pnl: p.unrealized_pnl ?? null,
-    unrealized_pnl_pct: p.unrealized_pnl_pct ?? null,
-    sector: p.sector ?? null,
-    industry: p.industry ?? null,
-    name: p.name ?? null,
-    is_demo: false,
-  }));
-
-  if (positionRows.length > 0) {
-    await db.from('positions').insert(positionRows);
-  }
-
-  // Insert live orders
-  const orderRows = brokerOrders.map((o) => ({
-    user_id: userId,
-    symbol: o.symbol,
-    qty: o.qty,
-    filled_qty: o.filled_qty ?? o.qty,
-    side: o.side,
-    order_type: o.order_type || 'market',
-    status: o.status,
-    filled_price: o.filled_price ?? null,
-    filled_at: o.filled_at ?? new Date().toISOString(),
-    time_in_force: o.time_in_force || 'day',
-    is_demo: false,
-  }));
-
-  if (orderRows.length > 0) {
-    await db.from('orders').insert(orderRows);
-  }
-
-  // Update user
-  await db
-    .from('users')
-    .update({
-      portfolio_mode: 'live',
-    })
-    .eq('id', userId);
-}
 
 // ─── switchDemoStyle ─────────────────────────────────────────
 

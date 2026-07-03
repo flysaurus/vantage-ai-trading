@@ -364,19 +364,13 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
     <div style={{ padding: '0 16px 16px' }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: 'repeat(2, 1fr)',
         gap: 12,
         padding: 16,
         background: 'var(--card-bg)',
         border: '1px solid var(--card-border)',
         borderRadius: 16,
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>BUYING POWER</div>
-          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
-            ${account.buyingPower.toLocaleString('en-US', DOLLAR_FMT)}
-          </div>
-        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>CASH</div>
           <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
