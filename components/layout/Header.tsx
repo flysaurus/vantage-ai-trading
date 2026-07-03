@@ -31,8 +31,10 @@ function timeAgo(dateStr: string): string {
 
 function getStatusPillClass(label: string): string {
   if (label === 'OPEN') return 'header-pill header-pill-open';
-  if (label === 'CLOSED') return 'header-pill header-pill-closed';
-  return 'header-pill header-pill-ah';
+  if (label === 'PRE-MARKET') return 'header-pill header-pill-premarket';
+  if (label === 'AFTER HOURS') return 'header-pill header-pill-afterhours';
+  if (label === 'MARKET HOLIDAY') return 'header-pill header-pill-holiday';
+  return 'header-pill header-pill-closed';
 }
 
 export function Header() {

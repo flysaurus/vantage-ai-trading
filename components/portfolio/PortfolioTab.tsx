@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -188,7 +188,7 @@ function PositionCard({
       {/* Company name */}
       <div style={{
         fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
-        color: 'var(--text-muted)', marginTop: 2,
+        color: 'var(--text-secondary)', marginTop: 2,
       }}>
         {pos.name || pos.symbol}
       </div>
@@ -199,8 +199,8 @@ function PositionCard({
         marginTop: 10,
       }}>
         <span style={{
-          fontFamily: 'var(--font-sans)', fontWeight: 400, fontSize: 13,
-          color: 'var(--text-muted)',
+          fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
+          color: 'var(--text-accent-warm)',
         }}>
           {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
         </span>
@@ -293,25 +293,25 @@ function PositionCard({
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
                 {pos.name || '—'}
               </div>
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
                 {pos.sector || '—'}
               </div>
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
                 {pos.type || 'Stock'}
               </div>
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Exchange</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
                 {getExchange(pos.symbol)}
               </div>
             </div>
@@ -604,12 +604,24 @@ export function PortfolioTab() {
   const totalCostBasis = positions.reduce((acc: number, p: Position) => acc + (p.totalCost || p.qty * p.avgCost), 0);
   const totalTotalPnLPct = totalCostBasis > 0 ? (totalTotalPnL / totalCostBasis) * 100 : 0;
 
-  const filteredPositions =
-    filter === 'all'
-      ? positions
-      : filter === 'gainers'
-        ? positions.filter((p: Position) => (p.dayChange || 0) >= 0)
-        : positions.filter((p: Position) => (p.dayChange || 0) < 0);
+  const filteredPositions = useMemo(() => {
+    if (filter === 'all') return positions;
+
+    const calcPnL = (p: Position) =>
+      p.currentPrice
+        ? (p.currentPrice - p.avgCost) * p.qty
+        : 0;
+
+    if (filter === 'gainers') {
+      return positions.filter(p => calcPnL(p) >= 0);
+    }
+
+    if (filter === 'losers') {
+      return positions.filter(p => calcPnL(p) < 0);
+    }
+
+    return positions;
+  }, [positions, filter]);
 
   const accountData: AccountSummary = displayAccount || {
     equity: correctEquity,

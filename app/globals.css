@@ -18,7 +18,8 @@
 
   /* ── Text ── */
   --text-primary: #ffffff;
-  --text-secondary: #94a3b8;
+  --text-secondary: rgba(255, 255, 255, 0.45);
+  --text-accent-warm: #fbbf24;
   --text-muted: #475569;
   --text-placeholder: #334155;
 
@@ -848,15 +849,25 @@ input::placeholder, textarea::placeholder {
   border: 1px solid rgba(16,185,129,0.30);
   color: var(--gain);
 }
-.header-pill-closed {
-  background: rgba(239,68,68,0.10);
-  border: 1px solid rgba(239,68,68,0.25);
-  color: var(--loss);
+.header-pill-premarket {
+  background: rgba(34,211,238,0.12);
+  border: 1px solid rgba(34,211,238,0.25);
+  color: var(--accent);
 }
-.header-pill-ah {
+.header-pill-afterhours {
   background: rgba(245,158,11,0.10);
   border: 1px solid rgba(245,158,11,0.25);
   color: var(--warning);
+}
+.header-pill-closed {
+  background: rgba(100,116,139,0.12);
+  border: 1px solid rgba(100,116,139,0.25);
+  color: #94a3b8;
+}
+.header-pill-holiday {
+  background: rgba(100,116,139,0.12);
+  border: 1px solid rgba(100,116,139,0.25);
+  color: #94a3b8;
 }
 
 .header-icons {
