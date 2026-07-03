@@ -546,6 +546,8 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
   if (fhKey && remaining.size > 0) {
     const batchSize = 10;
     const symArr = [...remaining];
+    let fhResolved = 0;
+    let fhFailed = 0;
     for (let i = 0; i < symArr.length; i += batchSize) {
       const batch = symArr.slice(i, i + batchSize);
       const batchResults = await Promise.allSettled(
@@ -555,34 +557,50 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
         if (r.status === 'fulfilled' && r.value && r.value.price > 0) {
           results.set(r.value.symbol, r.value);
           remaining.delete(r.value.symbol);
+          fhResolved++;
+        } else {
+          fhFailed++;
         }
       }
       if (i + batchSize < symArr.length) {
         await new Promise(r => setTimeout(r, 200));
       }
     }
+    console.log('[quotes] finnhub result: resolved=' + fhResolved + ' failed=' + fhFailed + ' remaining=' + remaining.size);
+  } else {
+    console.log('[quotes] finnhub: skipped (no key=' + !fhKey + ' remaining=' + (remaining.size === 0) + ')');
   }
 
   // 2. Try Alpaca for remaining
   if (remaining.size > 0) {
     const apResults = await alpacaBatchQuotes([...remaining]);
+    let apResolved = 0;
     for (const [sym, quote] of apResults) {
       if (quote.price > 0) {
         results.set(sym, quote);
         remaining.delete(sym);
+        apResolved++;
       }
     }
+    console.log('[quotes] alpaca result: resolved=' + apResolved + ' remaining=' + remaining.size);
+  } else {
+    console.log('[quotes] alpaca: skipped (no remaining)');
   }
 
   // 3. Yahoo for any still remaining
   if (remaining.size > 0) {
     const yhResults = await yahooBatchQuotes([...remaining]);
+    let yhResolved = 0;
     for (const [sym, quote] of yhResults) {
       if (quote.price > 0) {
         results.set(sym, quote);
         remaining.delete(sym);
+        yhResolved++;
       }
     }
+    console.log('[quotes] yahoo result: resolved=' + yhResolved + ' remaining=' + remaining.size);
+  } else {
+    console.log('[quotes] yahoo: skipped (no remaining)');
   }
 
   return results;

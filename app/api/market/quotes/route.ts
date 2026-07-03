@@ -29,6 +29,8 @@ export async function POST(request: Request) {
       return Response.json({ error: 'No valid symbols' }, { status: 400 });
     }
 
+    console.log('[quotes] request symbols:', clean);
+
     const results = await getBatchQuotes(clean);
 
     // Convert Map to plain object
@@ -59,6 +61,8 @@ export async function POST(request: Request) {
         low52w: data.low52w,
       };
     }
+
+    console.log('[quotes] final response keys:', Object.keys(quotes), 'count:', Object.keys(quotes).length);
 
     return Response.json({ quotes });
   } catch (err) {
