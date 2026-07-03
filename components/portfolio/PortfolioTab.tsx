@@ -618,6 +618,20 @@ export function PortfolioTab() {
 
   return (
     <div style={{ paddingBottom: 120 }}>
+      {/* ── DEBUG OVERLAY (mobile-visible) ── */}
+      <div style={{
+        background: '#0d1321', border: '1px solid #fbbf24', borderRadius: 8,
+        margin: '8px 16px', padding: 12, fontSize: 12, fontFamily: 'monospace',
+        color: '#e2e8f0', lineHeight: 1.6
+      }}>
+        <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: 6 }}>🔍 DEBUG STATUS</div>
+        <div>account: {displayAccount ? '✅ loaded' : '❌ null'}</div>
+        <div>positions: {positions.length} | cash: ${displayAccount?.cash?.toLocaleString?.() ?? '?'}</div>
+        <div>sample price: {positions[0] ? `$${positions[0].currentPrice} (avgCost=$${positions[0].avgCost})` : 'no positions'}</div>
+        <div>equity: ${displayAccount?.equity?.toLocaleString?.() ?? '?'} | totalPnl: ${displayAccount?.totalPnl?.toFixed?.(2) ?? '?'}</div>
+        <div>buyDate example: {positions[0]?.buyDate || 'MISSING'}</div>
+      </div>
+
       {/* ── Account Hero ── */}
       <AccountHero account={accountData} isConnected={isConnected} />
 
