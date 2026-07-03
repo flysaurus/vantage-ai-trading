@@ -512,7 +512,7 @@ export function PortfolioTab() {
   const [selectMode, setSelectMode] = useState(false);
 
   const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets, debug } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -548,32 +548,6 @@ export function PortfolioTab() {
     return () => { cancelled = true; };
   }, [positions.map(p => p.symbol).join(',')]);
 
-  // ── DEBUG: direct quote test + fetchData counter ──
-  const [debugQuoteStatus, setDebugQuoteStatus] = useState('⏳ waiting...');
-  const [fetchCount, setFetchCount] = useState(0);
-  useEffect(() => {
-    const symbols = positions.map(p => p.symbol);
-    if (symbols.length === 0) return;
-    setDebugQuoteStatus('⏳ fetching...');
-    setFetchCount(c => c + 1);
-    fetch('/api/market/quotes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbols }),
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(data => {
-        const keys = Object.keys(data.quotes || {});
-        const sample = keys.length > 0 ? JSON.stringify(data.quotes[keys[0]]) : 'empty';
-        setDebugQuoteStatus(`✅ ${keys.length} quotes: ${keys.join(', ')} | sample: ${sample.slice(0, 80)}`);
-      })
-      .catch(err => {
-        setDebugQuoteStatus('❌ ' + err.message);
-      });
-  }, [positions.map(p => p.symbol).join(',')]);
 
   const toggleExpand = (symbol: string) => {
     setExpandedSymbols(prev => {
@@ -645,23 +619,6 @@ export function PortfolioTab() {
 
   return (
     <div style={{ paddingBottom: 120 }}>
-      {/* ── DEBUG OVERLAY (mobile-visible) ── */}
-      <div style={{
-        background: '#0d1321', border: '1px solid #fbbf24', borderRadius: 8,
-        margin: '8px 16px', padding: 12, fontSize: 12, fontFamily: 'monospace',
-        color: '#e2e8f0', lineHeight: 1.6
-      }}>
-        <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: 6 }}>🔍 DEBUG STATUS</div>
-        <div>account: {displayAccount ? '✅ loaded' : '❌ null'}</div>
-        <div>positions: {positions.length} | cash: ${displayAccount?.cash?.toLocaleString?.() ?? '?'}</div>
-        <div>sample price: {positions[0] ? `$${positions[0].currentPrice} (avgCost=$${positions[0].avgCost})` : 'no positions'}</div>
-        <div>equity: ${displayAccount?.equity?.toLocaleString?.() ?? '?'} | totalPnl: ${displayAccount?.totalPnl?.toFixed?.(2) ?? '?'}</div>
-        <div>buyDate example: {positions[0]?.buyDate || 'MISSING'}</div>
-        <div style={{ color: '#fbbf24', marginTop: 6 }}>quote test: {debugQuoteStatus}</div>
-        <div>isConnected: {String(isConnected)} | fetch attempts: {fetchCount}</div>
-        <div style={{ color: '#60a5fa', marginTop: 4 }}>context: fetchCalled={debug?.fetchCalled} recomputeCalled={debug?.recomputeCalled} lastQuotes={debug?.lastQuotes}</div>
-      </div>
-
       {/* ── Account Hero ── */}
       <AccountHero account={accountData} isConnected={isConnected} />
 
