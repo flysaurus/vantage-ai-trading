@@ -333,12 +333,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── Supabase: load on mount (overrides localStorage if newer) ──
   useEffect(() => {
-    if (!user?.id || !demoState) return;
+    if (!user?.id) return;
     const trySupabaseLoad = async () => {
       const supabaseState = await loadPortfolioFromSupabase(user.id);
       if (!supabaseState || !supabaseState.positions?.length) return;
       // Compare timestamps — Supabase wins if newer
-      const localTs = initialPersistedState?.savedAt || 0;
+      const localTs = initialPersistedState?.savedAt || demoState?.savedAt || 0;
       if (supabaseState.savedAt > localTs) {
         const merged: DemoState = {
           positions: supabaseState.positions,
