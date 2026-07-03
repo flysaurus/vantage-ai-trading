@@ -548,12 +548,14 @@ export function PortfolioTab() {
     return () => { cancelled = true; };
   }, [positions.map(p => p.symbol).join(',')]);
 
-  // ── DEBUG: direct quote test (bypasses PortfolioContext) ──
+  // ── DEBUG: direct quote test + fetchData counter ──
   const [debugQuoteStatus, setDebugQuoteStatus] = useState('⏳ waiting...');
+  const [fetchCount, setFetchCount] = useState(0);
   useEffect(() => {
     const symbols = positions.map(p => p.symbol);
     if (symbols.length === 0) return;
     setDebugQuoteStatus('⏳ fetching...');
+    setFetchCount(c => c + 1);
     fetch('/api/market/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -656,6 +658,7 @@ export function PortfolioTab() {
         <div>equity: ${displayAccount?.equity?.toLocaleString?.() ?? '?'} | totalPnl: ${displayAccount?.totalPnl?.toFixed?.(2) ?? '?'}</div>
         <div>buyDate example: {positions[0]?.buyDate || 'MISSING'}</div>
         <div style={{ color: '#fbbf24', marginTop: 6 }}>quote test: {debugQuoteStatus}</div>
+        <div>isConnected: {String(isConnected)} | fetch attempts: {fetchCount}</div>
       </div>
 
       {/* ── Account Hero ── */}
