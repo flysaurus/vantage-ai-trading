@@ -48,9 +48,9 @@ export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
     label: 'Patient Builder',
     description: 'Quality value — steady compounders at fair prices',
     positions: [
-      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 12, avgCost: 420.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2026-06-15' },
+      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 20, avgCost: 430.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2026-06-15' },
       { symbol: 'KO', name: 'The Coca-Cola Company', sector: 'Consumer Defensive', industry: 'Beverages', qty: 80, avgCost: 65.00, weekHigh52: 72, weekLow52: 58, type: 'Stock', buyDate: '2026-06-15' },
-      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banking', qty: 30, avgCost: 195.00, weekHigh52: 220, weekLow52: 170, type: 'Stock', buyDate: '2026-06-15' },
+      { symbol: 'AXP', name: 'American Express Company', sector: 'Financial Services', industry: 'Credit Services', qty: 20, avgCost: 280.00, weekHigh52: 310, weekLow52: 245, type: 'Stock', buyDate: '2026-06-15' },
     ],
   },
 
@@ -61,7 +61,7 @@ export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
     positions: [
       { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 25, avgCost: 175.00, weekHigh52: 210, weekLow52: 155, type: 'Stock', buyDate: '2026-06-15' },
       { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer Defensive', industry: 'Wholesale Retail', qty: 10, avgCost: 900.00, weekHigh52: 1020, weekLow52: 780, type: 'Stock', buyDate: '2026-06-15' },
-      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Cloud Software', qty: 10, avgCost: 430.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2026-06-15' },
+      { symbol: 'META', name: 'Meta Platforms Inc.', sector: 'Technology', industry: 'Social Media', qty: 12, avgCost: 540.00, weekHigh52: 610, weekLow52: 470, type: 'Stock', buyDate: '2026-06-15' },
     ],
   },
 
@@ -80,9 +80,8 @@ export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
     label: 'Rational Thinker',
     description: 'Quality moats — rationally priced durable advantages',
     positions: [
-      { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', industry: 'Consumer Electronics', qty: 20, avgCost: 195.00, weekHigh52: 230, weekLow52: 165, type: 'Stock', buyDate: '2026-06-15' },
-      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 10, avgCost: 420.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2026-06-15' },
-      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer Defensive', industry: 'Wholesale Retail', qty: 8, avgCost: 900.00, weekHigh52: 1020, weekLow52: 780, type: 'Stock', buyDate: '2026-06-15' },
+      { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', industry: 'Consumer Electronics', qty: 25, avgCost: 195.00, weekHigh52: 230, weekLow52: 165, type: 'Stock', buyDate: '2026-06-15' },
+      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 15, avgCost: 430.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2026-06-15' },
     ],
   },
 
@@ -91,9 +90,8 @@ export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
     label: 'Contrarian',
     description: 'Against the crowd — out-of-favor value with macro catalysts',
     positions: [
-      { symbol: 'XOM', name: 'Exxon Mobil Corp.', sector: 'Energy', industry: 'Oil & Gas', qty: 40, avgCost: 115.00, weekHigh52: 130, weekLow52: 100, type: 'Stock', buyDate: '2026-06-15' },
-      { symbol: 'XLF', name: 'Financial Select Sector SPDR', sector: 'Financial Services', industry: 'Financial ETF', qty: 100, avgCost: 42.00, weekHigh52: 48, weekLow52: 36, type: 'ETF', buyDate: '2026-06-15' },
-      { symbol: 'GLD', name: 'SPDR Gold Shares', sector: 'Commodities', industry: 'Gold ETF', qty: 25, avgCost: 220.00, weekHigh52: 250, weekLow52: 190, type: 'ETF', buyDate: '2026-06-15' },
+      { symbol: 'XOM', name: 'Exxon Mobil Corp.', sector: 'Energy', industry: 'Oil & Gas', qty: 45, avgCost: 115.00, weekHigh52: 130, weekLow52: 100, type: 'Stock', buyDate: '2026-06-15' },
+      { symbol: 'GLD', name: 'SPDR Gold Shares', sector: 'Commodities', industry: 'Gold ETF', qty: 30, avgCost: 220.00, weekHigh52: 250, weekLow52: 190, type: 'ETF', buyDate: '2026-06-15' },
     ],
   },
 };
@@ -115,28 +113,26 @@ const SEED_DATE = '2026-06-15T14:30:00Z';
 
 export const DEMO_ORDERS: Record<string, DemoOrderDef[]> = {
   buffett: [
-    { symbol: 'BRK.B', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 420.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'BRK.B', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 430.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
     { symbol: 'KO', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 65.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
-    { symbol: 'JPM', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'AXP', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 280.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
   ],
   lynch: [
     { symbol: 'GOOGL', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 175.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
     { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 900.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
-    { symbol: 'MSFT', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 430.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'META', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 540.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
   ],
   livermore: [
     { symbol: 'NVDA', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 130.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
     { symbol: 'TSLA', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 260.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
   ],
   munger: [
-    { symbol: 'AAPL', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
-    { symbol: 'BRK.B', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 420.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
-    { symbol: 'COST', qty: 8, side: 'buy', type: 'market', status: 'filled', filledPrice: 900.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'AAPL', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'BRK.B', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 430.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
   ],
   soros: [
-    { symbol: 'XOM', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 115.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
-    { symbol: 'XLF', qty: 100, side: 'buy', type: 'market', status: 'filled', filledPrice: 42.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
-    { symbol: 'GLD', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 220.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'XOM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 115.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
+    { symbol: 'GLD', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 220.00, filledAt: new Date(SEED_DATE), timeInForce: 'day' },
   ],
 };
 

@@ -61,9 +61,23 @@ export async function POST() {
   // 3. Seed style-specific starter positions + demo_portfolio_state
   try {
     await seedDemoPortfolio(authUser.id, investmentStyle);
-    console.log('[demo/start] seeded portfolio for style:', investmentStyle);
+    console.log('[demo/start] portfolio seeded ✅');
   } catch (seedErr) {
-    console.warn('[demo/start] seed warning (non-fatal):', seedErr);
+    console.error('[demo/start] SEED FAILED:', seedErr);
+    // Retry once
+    try {
+      await seedDemoPortfolio(authUser.id, investmentStyle);
+      console.log('[demo/start] portfolio seeded on retry ✅');
+    } catch (retryErr) {
+      console.error('[demo/start] SEED RETRY FAILED:', retryErr);
+      // Now return error — don't silently succeed
+      return NextResponse.json({
+        success: false,
+        error: 'Portfolio seeding failed. Please try again.',
+        demo_start_at: now.toISOString(),
+        demo_expires_at: expiresAt.toISOString(),
+      }, { status: 500 });
+    }
   }
 
   return NextResponse.json({

@@ -593,6 +593,9 @@ export function PortfolioTab() {
 
   // ── Derived values ──
   const totalMarketValue = positions.reduce((acc: number, p: Position) => acc + p.qty * (p.currentPrice || p.avgCost), 0);
+  const totalCost = positions.reduce((acc: number, p: Position) => acc + p.qty * p.avgCost, 0);
+  const cashBalance = Math.max(0, 100000 - totalCost);
+  const correctEquity = totalMarketValue + cashBalance;
   const totalTodayPnL = positions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
   const totalTotalPnL = positions.reduce((acc: number, p: Position) => {
     const mv = p.qty * (p.currentPrice || p.avgCost);
@@ -609,9 +612,9 @@ export function PortfolioTab() {
         : positions.filter((p: Position) => (p.dayChange || 0) < 0);
 
   const accountData: AccountSummary = displayAccount || {
-    equity: totalMarketValue,
-    cash: 50000,
-    buyingPower: 200000,
+    equity: correctEquity,
+    cash: cashBalance,
+    buyingPower: cashBalance * 2,
     dayPnl: totalTodayPnL,
     dayPnlPercent: totalCostBasis > 0 ? (totalTodayPnL / totalCostBasis) * 100 : 0,
     totalPnl: totalTotalPnL,
