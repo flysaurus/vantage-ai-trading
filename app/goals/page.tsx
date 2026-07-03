@@ -45,7 +45,7 @@ function GoalsPageInner() {
     // Calculate demo portfolio value from live prices
     const style = user?.investorStyle || 'buffett';
     const symbols = getDemoSymbols(style as any);
-    apiPost('/api/market/quotes', JSON.stringify({ symbols }))
+    apiPost('/api/market/quotes', { symbols })
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => {
         const account = getDemoAccount(style as any, d.quotes);

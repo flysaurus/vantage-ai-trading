@@ -69,7 +69,7 @@ export function PlayerStatusBar() {
 
     if (user?.id) {
       try {
-        await await apiPost('/api/db/users/update', JSON.stringify({ userId: user.id, investorStyle: newStyle }));
+        await apiPost('/api/db/users/update', { userId: user.id, investorStyle: newStyle });
       } catch {}
     }
 

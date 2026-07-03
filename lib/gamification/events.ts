@@ -39,7 +39,7 @@ export async function onBasketCreated(anonymousId: string): Promise<void> {
 
   try {
     // 1. Increment score
-    const scoreRes = await await apiPost('/api/gamification/increment-baskets', JSON.stringify({ anonymousId }));
+    const scoreRes = await apiPost('/api/gamification/increment-baskets', { anonymousId });
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -76,7 +76,7 @@ export async function onBasketCreated(anonymousId: string): Promise<void> {
     }
 
     // Recalculate score after milestones
-    await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
+    await apiPost('/api/gamification/recalculate', { anonymousId });
   } catch (err) {
     console.error('[gamification/events] onBasketCreated error:', err);
   }
@@ -102,7 +102,7 @@ export async function onTradeExecuted(
 
   try {
     // 1. Increment score with style info
-    const scoreRes = await await apiPost('/api/gamification/increment-trades', JSON.stringify({ anonymousId, tradeStyle, investorStyle }));
+    const scoreRes = await apiPost('/api/gamification/increment-trades', { anonymousId, tradeStyle, investorStyle });
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -156,7 +156,7 @@ export async function onTradeExecuted(
     }
 
     // Recalculate score
-    await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
+    await apiPost('/api/gamification/recalculate', { anonymousId });
   } catch (err) {
     console.error('[gamification/events] onTradeExecuted error:', err);
   }
@@ -173,7 +173,7 @@ export async function onAISessionStarted(anonymousId: string): Promise<void> {
 
   try {
     // 1. Increment score
-    const scoreRes = await await apiPost('/api/gamification/increment-ai', JSON.stringify({ anonymousId }));
+    const scoreRes = await apiPost('/api/gamification/increment-ai', { anonymousId });
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -193,7 +193,7 @@ export async function onAISessionStarted(anonymousId: string): Promise<void> {
     }
 
     // Recalculate
-    await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
+    await apiPost('/api/gamification/recalculate', { anonymousId });
   } catch (err) {
     console.error('[gamification/events] onAISessionStarted error:', err);
   }
@@ -211,7 +211,7 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
 
   try {
     // 1. Sync streak
-    const streakRes = await await apiPost('/api/session/streak', JSON.stringify({ anonymousId }));
+    const streakRes = await apiPost('/api/session/streak', { anonymousId });
 
     if (!streakRes.ok) return;
 
@@ -257,7 +257,7 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
       }
 
       // Recalculate score (streak bonus changes)
-      await await apiPost('/api/gamification/recalculate', JSON.stringify({ anonymousId }));
+      await apiPost('/api/gamification/recalculate', { anonymousId });
     }
   } catch (err) {
     console.error('[gamification/events] onDailyOpen error:', err);

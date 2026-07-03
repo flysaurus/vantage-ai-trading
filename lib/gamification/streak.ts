@@ -15,7 +15,7 @@ export interface StreakData {
  * Uses user_id now (was anonymous_id pre-cleanup).
  */
 export async function recordDailyOpen(userId: string): Promise<StreakData> {
-  const res = await await apiPost('/api/session/streak', JSON.stringify({ userId }));
+  const res = await apiPost('/api/session/streak', { userId });
 
   if (!res.ok) {
     throw new Error(`[streak] recordDailyOpen failed: ${res.status}`);

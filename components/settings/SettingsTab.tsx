@@ -21,7 +21,7 @@ const INVESTOR_STYLES = [
 
 async function saveInvestorStyle(userId: string, style: string): Promise<boolean> {
   try {
-    const res = await await apiPost('/api/db/users/update', JSON.stringify({ userId, investorStyle: style }));
+    const res = await apiPost('/api/db/users/update', { userId, investorStyle: style });
     if (res.ok) {
       localStorage.setItem('vantage_investor_style', style);
       return true;

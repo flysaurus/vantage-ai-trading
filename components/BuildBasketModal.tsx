@@ -449,11 +449,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   async function generateBasket() {
     setIsGenerating(true); setError(null); setStep('generating');
     try {
-      const res = await await apiPost('/api/basket/generate', JSON.stringify({
+      const res = await apiPost('/api/basket/generate', {
           theme: displayTheme, budget: budgetNum,
           investorStyle: user?.investorStyle || 'Lynch',
           riskTolerance: user?.riskTolerance || 'Moderate',
-        }));
+        });
       if (!res.ok) { const errData = await res.json(); throw new Error(errData.error || 'Failed to generate'); }
       const data: BasketData = await res.json();
       const stocksWithPrices = await Promise.all(data.stocks.map(async (stock) => {

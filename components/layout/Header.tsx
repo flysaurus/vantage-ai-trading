@@ -75,7 +75,7 @@ export function Header() {
 
   const markAllRead = async () => {
     try {
-      await await apiPost('/api/notifications/mark-read', JSON.stringify({ all: true }));
+      await apiPost('/api/notifications/mark-read', { all: true });
       setUnreadCount(0);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch { /* ignore */ }

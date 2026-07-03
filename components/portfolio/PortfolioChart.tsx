@@ -62,7 +62,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
       setLoading(true);
       setError(false);
       try {
-        const res = await apiPost('/api/portfolio/chart', JSON.stringify({
+        const res = await apiPost('/api/portfolio/chart', {
           positions: positions.map((p) => ({
             symbol: p.symbol,
             shares: p.shares,
@@ -72,7 +72,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
           })),
           cashBalance,
           range: r,
-        }));
+        });
 
         const json = await res.json();
         if (!json.points || json.points.length === 0) {

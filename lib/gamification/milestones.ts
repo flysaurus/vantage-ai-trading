@@ -114,7 +114,7 @@ export async function checkAndAwardMilestone(
   }
 
   try {
-    const res = await await apiPost('/api/gamification/award-milestone', JSON.stringify({ anonymousId, milestoneKey }));
+    const res = await apiPost('/api/gamification/award-milestone', { anonymousId, milestoneKey });
 
     if (!res.ok) {
       // 409 Conflict = already awarded (idempotent)

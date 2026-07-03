@@ -128,7 +128,7 @@ export default function StockScreenerPage() {
       if (filters.dividendYieldMax) body.dividendYieldMax = parseFloat(filters.dividendYieldMax);
       if (filters.sector) body.sector = filters.sector;
 
-      const res = await await apiPost('/api/screener/search', JSON.stringify(body));
+      const res = await apiPost('/api/screener/search', body);
       const data = await res.json();
       setResults(data.results || []);
       setScanned(data.scanned || 0);
