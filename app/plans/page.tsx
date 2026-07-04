@@ -1,15 +1,17 @@
 'use client';
 
-// ─── Vantage Plans Page ───────────────────────────────────
-// UI only — CTAs are inert ("Coming soon").
-// No Stripe, no billing logic. Pure presentation.
-// Design: frosted-glass/cyan system, consistent with the app.
+// ─── Vantage Plans & Pricing — Comparison Matrix ────────────
+// UI only — CTAs are inert ("Coming soon" toast).
+// No Stripe, no billing logic. Horizontal scroll on narrow screens
+// for the matrix; vertical scroll should never be needed.
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Zap, Shield, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, Minus } from 'lucide-react';
 
-interface Plan {
+// ── Tier Definitions ───────────────────────────────────────
+
+interface Tier {
   id: string;
   name: string;
   price: string;
@@ -17,152 +19,263 @@ interface Plan {
   accent: string;
   accentBg: string;
   accentBorder: string;
-  features: string[];
   ctaLabel: string;
-  highlighted: boolean;
+  badge?: string;
+  badgeBg?: string;
 }
 
-const PLANS: Plan[] = [
+const TIERS: Tier[] = [
   {
-    id: 'demo',
-    name: 'Demo',
-    price: 'Free',
-    period: '30-day trial',
-    accent: '#94a3b8',
-    accentBg: 'rgba(148,163,184,0.08)',
-    accentBorder: 'rgba(148,163,184,0.15)',
-    features: [
-      'AI-powered portfolio insights',
-      'Price alerts & watchlists',
-      'Macro calendar & earnings dates',
-      'Insider trading feed',
-      'News intelligence & sentiment',
-      'Strategy simulation engine',
-      'Investment style quiz',
-      '1 portfolio (paper trading)',
-    ],
-    ctaLabel: 'Current plan',
-    highlighted: false,
+    id: 'demo', name: 'Demo', price: 'Free', period: '',
+    accent: '#94a3b8', accentBg: 'rgba(148,163,184,0.06)', accentBorder: 'rgba(148,163,184,0.12)',
+    ctaLabel: 'Current plan', badge: 'ACTIVE', badgeBg: 'rgba(148,163,184,0.15)',
   },
   {
-    id: 'silver',
-    name: 'Silver',
-    price: '$12',
-    period: '/month',
-    accent: '#c0c0c0',
-    accentBg: 'rgba(192,192,192,0.08)',
-    accentBorder: 'rgba(192,192,192,0.20)',
-    features: [
-      'Everything in Demo, plus:',
-      'Connect real brokerage (read-only)',
-      'Live portfolio sync via SnapTrade',
-      'Multi-account aggregation',
-      'Advanced tax-loss harvesting',
-      'Priority AI analysis',
-      'Export to CSV / PDF reports',
-      'Email digests (daily/weekly)',
-    ],
-    ctaLabel: 'Upgrade to Silver',
-    highlighted: true,
+    id: 'silver', name: 'Silver', price: '$12', period: '/mo',
+    accent: '#22d3ee', accentBg: 'rgba(34,211,238,0.06)', accentBorder: 'rgba(34,211,238,0.18)',
+    ctaLabel: 'Upgrade to Silver', badge: 'RECOMMENDED', badgeBg: 'rgba(34,211,238,0.18)',
   },
   {
-    id: 'gold',
-    name: 'Gold',
-    price: '$29',
-    period: '/month',
-    accent: '#fbbf24',
-    accentBg: 'rgba(251,191,36,0.08)',
-    accentBorder: 'rgba(251,191,36,0.20)',
-    features: [
-      'Everything in Silver, plus:',
-      'Live trade execution via Alpaca',
-      'One-click strategy deployment',
-      'Advanced order types (OCO, bracket)',
-      'Real-time streaming quotes',
-      'TOTP / hardware 2FA security',
-      'Custom AI strategy backtesting',
-      'Priority support (same-day)',
-    ],
+    id: 'gold', name: 'Gold', price: '$29', period: '/mo',
+    accent: '#fbbf24', accentBg: 'rgba(251,191,36,0.06)', accentBorder: 'rgba(251,191,36,0.18)',
     ctaLabel: 'Upgrade to Gold',
-    highlighted: false,
   },
 ];
+
+// ── Feature Rows ────────────────────────────────────────────
+
+interface FeatureRow {
+  label: string;
+  values: { demo: string | boolean; silver: string | boolean; gold: string | boolean };
+  group?: string;
+}
+
+const FEATURES: FeatureRow[] = [
+  // ── AI & Intelligence ──
+  { label: 'AI portfolio insights', values: { demo: true, silver: true, gold: true }, group: 'AI & Intelligence' },
+  { label: 'AI strategy advisor', values: { demo: true, silver: true, gold: true } },
+  { label: 'News sentiment analysis', values: { demo: true, silver: true, gold: true } },
+  { label: 'Priority AI processing', values: { demo: false, silver: true, gold: true } },
+  { label: 'Custom AI backtesting', values: { demo: false, silver: false, gold: true } },
+
+  // ── Market Data ──
+  { label: 'Price alerts & watchlists', values: { demo: true, silver: true, gold: true }, group: 'Market Data' },
+  { label: 'Macro calendar', values: { demo: true, silver: true, gold: true } },
+  { label: 'Insider trading feed', values: { demo: true, silver: true, gold: true } },
+  { label: 'Real-time streaming quotes', values: { demo: false, silver: false, gold: true } },
+
+  // ── Strategies ──
+  { label: 'Strategy simulation engine', values: { demo: true, silver: true, gold: true }, group: 'Strategies' },
+  { label: 'Tax-loss harvesting', values: { demo: false, silver: true, gold: true } },
+  { label: 'Advanced order types', values: { demo: false, silver: false, gold: true } },
+  { label: 'One-click strategy deploy', values: { demo: false, silver: false, gold: true } },
+
+  // ── Portfolios ──
+  { label: 'Paper trading portfolios', values: { demo: '1', silver: '3', gold: 'Unlimited' }, group: 'Portfolios' },
+  { label: 'Real brokerage (read-only)', values: { demo: false, silver: true, gold: true } },
+  { label: 'Live trade execution', values: { demo: false, silver: false, gold: true } },
+  { label: 'Multi-account aggregation', values: { demo: false, silver: true, gold: true } },
+
+  // ── Security & Support ──
+  { label: 'TOTP / hardware 2FA', values: { demo: false, silver: false, gold: true }, group: 'Security & Support' },
+  { label: 'Email digests', values: { demo: false, silver: true, gold: true } },
+  { label: 'Export to CSV / PDF', values: { demo: false, silver: true, gold: true } },
+  { label: 'Priority support', values: { demo: false, silver: false, gold: true } },
+];
+
+// ── Helpers ─────────────────────────────────────────────────
+
+function Cell({ value, accent }: { value: string | boolean; accent: string }) {
+  if (value === true) {
+    return <Check size={14} style={{ color: '#10b981', flexShrink: 0 }} />;
+  }
+  if (value === false) {
+    return <Minus size={14} style={{ color: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />;
+  }
+  return <span style={{ fontSize: 12, fontWeight: 600, color: accent }}>{value}</span>;
+}
 
 export default function PlansPage() {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
 
-  const handleCTA = (planId: string, planName: string) => {
-    if (planId === 'demo') return;
-    setToast(`${planName} plans coming soon — we'll let you know when subscriptions launch.`);
+  const handleCTA = (tierName: string) => {
+    setToast(`${tierName} plans coming soon — we'll let you know when subscriptions launch.`);
     setTimeout(() => setToast(null), 3500);
   };
 
   return (
     <div style={{
       minHeight: '100dvh',
+      height: '100dvh',
       background: '#0b1120',
       color: '#ffffff',
       fontFamily: 'var(--font-sans)',
+      display: 'flex',
+      flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
       paddingBottom: 'env(safe-area-inset-bottom)',
+      overflow: 'hidden',
     }}>
       {/* ── Header ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '16px 16px 0',
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 12px 6px', flexShrink: 0,
       }}>
         <button onClick={() => router.back()} style={{
-          width: 36, height: 36, borderRadius: 10,
+          width: 32, height: 32, borderRadius: 8,
           border: 'none', background: 'rgba(255,255,255,0.05)',
-          color: '#e2e8f0', cursor: 'pointer',
+          color: '#94a3b8', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <ArrowLeft size={18} />
+          <ArrowLeft size={16} />
         </button>
-        <h1 style={{
-          fontSize: 20, fontWeight: 700, color: '#ffffff',
-          margin: 0, letterSpacing: '-0.3px',
-        }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>
           Plans &amp; Pricing
         </h1>
       </div>
 
-      <p style={{
-        fontSize: 13, color: '#94a3b8', padding: '0 16px',
-        margin: '8px 0 24px', lineHeight: 1.5, maxWidth: 420,
+      {/* ── Matrix Container ── */}
+      <div style={{
+        flex: 1, overflowX: 'auto', overflowY: 'auto',
+        padding: '0 12px 12px',
+        WebkitOverflowScrolling: 'touch',
       }}>
-        Choose the plan that fits your investing style.
-        Upgrade anytime — your data and strategies move with you.
-      </p>
+        <table style={{
+          width: '100%', minWidth: 480, borderCollapse: 'collapse',
+          tableLayout: 'fixed',
+        }}>
+          <colgroup>
+            <col style={{ width: '40%' }} />
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '20%' }} />
+          </colgroup>
 
-      {/* ── Plan Cards ── */}
-      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 460 }}>
-        {PLANS.map((plan) => (
-          <PlanCard key={plan.id} plan={plan} onClick={() => handleCTA(plan.id, plan.name)} />
-        ))}
+          {/* ── Header Row ── */}
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, textAlign: 'left' }}></th>
+              {TIERS.map((t) => (
+                <th key={t.id} style={{
+                  ...thStyle, textAlign: 'center',
+                  borderBottom: `2px solid ${t.id === 'silver' ? t.accent : 'rgba(255,255,255,0.06)'}`,
+                  background: t.id === 'silver' ? t.accentBg : 'transparent',
+                }}>
+                  {t.badge && (
+                    <div style={{
+                      fontSize: 8, fontWeight: 800, letterSpacing: '0.6px',
+                      color: t.id === 'silver' ? t.accent : '#94a3b8',
+                      background: t.badgeBg,
+                      borderRadius: 4, padding: '2px 6px',
+                      display: 'inline-block', marginBottom: 4,
+                    }}>
+                      {t.badge}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>
+                    {t.name}
+                  </div>
+                  <div style={{
+                    fontSize: 16, fontWeight: 800, color: '#ffffff',
+                    lineHeight: 1.1,
+                  }}>
+                    {t.price}
+                    {t.period && (
+                      <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8' }}>{t.period}</span>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          {/* ── Feature Rows ── */}
+          <tbody>
+            {FEATURES.map((f, i) => (
+              <React.Fragment key={i}>
+                {/* Group header */}
+                {f.group && (
+                  <tr>
+                    <td colSpan={4} style={{
+                      padding: '10px 8px 4px',
+                      fontSize: 9, fontWeight: 700, letterSpacing: '0.8px',
+                      color: '#64748b', textTransform: 'uppercase',
+                    }}>
+                      {f.group}
+                    </td>
+                  </tr>
+                )}
+                <tr style={{
+                  background: i % 2 === 1 ? 'rgba(255,255,255,0.015)' : 'transparent',
+                }}>
+                  <td style={{
+                    ...tdStyle, textAlign: 'left', padding: '6px 8px',
+                    fontSize: 11, fontWeight: 500, color: '#cbd5e1',
+                  }}>
+                    {f.label}
+                  </td>
+                  {TIERS.map((t) => (
+                    <td key={t.id} style={{
+                      ...tdStyle, textAlign: 'center', padding: '6px 4px',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                        <Cell value={f.values[t.id as keyof typeof f.values]} accent={t.accent} />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              </React.Fragment>
+            ))}
+          </tbody>
+
+          {/* ── CTA Row ── */}
+          <tfoot>
+            <tr>
+              <td style={{ padding: '10px 8px 0' }}></td>
+              {TIERS.map((t) => (
+                <td key={t.id} style={{ padding: '10px 4px 0', textAlign: 'center' }}>
+                  <button
+                    onClick={() => t.id !== 'demo' && handleCTA(t.name)}
+                    disabled={t.id === 'demo'}
+                    style={{
+                      width: '100%', padding: '8px 4px', borderRadius: 8,
+                      border: t.id === 'demo'
+                        ? '1px solid rgba(255,255,255,0.06)'
+                        : `1px solid ${t.accentBorder}`,
+                      background: t.id === 'demo'
+                        ? 'transparent'
+                        : t.id === 'silver'
+                          ? 'linear-gradient(135deg, #22d3ee, #06b6d4)'
+                          : t.accentBg,
+                      color: t.id === 'demo'
+                        ? '#475569'
+                        : t.id === 'silver'
+                          ? '#000'
+                          : t.accent,
+                      fontSize: 11, fontWeight: 700,
+                      fontFamily: 'var(--font-sans)', cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {t.ctaLabel}
+                  </button>
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
       </div>
-
-      {/* ── Fine Print ── */}
-      <p style={{
-        fontSize: 11, color: '#64748b', textAlign: 'center',
-        padding: '24px 16px', maxWidth: 380, margin: '0 auto',
-        lineHeight: 1.5,
-      }}>
-        All prices in USD. Subscriptions are not yet available —
-        this page is a preview of planned tiers. Broker connections
-        require third-party integration (SnapTrade / Alpaca).
-      </p>
 
       {/* ── Toast ── */}
       {toast && (
         <div style={{
-          position: 'fixed', bottom: 120, left: 16, right: 16,
+          position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom) + 16px)', left: 12, right: 12,
           zIndex: 200, maxWidth: 420, margin: '0 auto',
           background: 'rgba(34,211,238,0.12)',
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
           border: '1px solid rgba(34,211,238,0.25)',
-          borderRadius: 12, padding: '14px 18px',
+          borderRadius: 12, padding: '12px 16px',
           fontSize: 13, fontWeight: 600, color: '#22d3ee',
           textAlign: 'center',
         }}>
@@ -173,116 +286,15 @@ export default function PlansPage() {
   );
 }
 
-// ─── Plan Card ─────────────────────────────────────────────
+// ── Shared Styles ───────────────────────────────────────────
 
-function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
-  const isDemo = plan.id === 'demo';
+const thStyle: React.CSSProperties = {
+  padding: '8px 4px',
+  borderBottom: '1px solid rgba(255,255,255,0.06)',
+  verticalAlign: 'top',
+};
 
-  return (
-    <div style={{
-      borderRadius: 16,
-      border: `1px solid ${plan.highlighted ? plan.accentBorder : 'rgba(255,255,255,0.06)'}`,
-      background: plan.highlighted
-        ? `linear-gradient(135deg, ${plan.accentBg}, rgba(15,23,42,0.9))`
-        : 'rgba(255,255,255,0.02)',
-      padding: '20px',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      {/* Highlight badge */}
-      {plan.highlighted && (
-        <div style={{
-          position: 'absolute', top: 0, right: 0,
-          background: 'linear-gradient(135deg, #22d3ee, #06b6d4)',
-          color: '#000',
-          fontSize: 10, fontWeight: 800,
-          padding: '4px 12px', borderRadius: '0 14px 0 10px',
-          letterSpacing: '0.5px',
-        }}>
-          RECOMMENDED
-        </div>
-      )}
-
-      {/* Tier name + price */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <div>
-          <div style={{
-            fontSize: 18, fontWeight: 700, color: '#ffffff',
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            {plan.id === 'demo' && <Zap size={16} style={{ color: plan.accent }} />}
-            {plan.id === 'silver' && <Shield size={16} style={{ color: plan.accent }} />}
-            {plan.id === 'gold' && <Sparkles size={16} style={{ color: plan.accent }} />}
-            {plan.name}
-          </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-            {plan.period}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{
-            fontSize: 26, fontWeight: 800, color: '#ffffff',
-            lineHeight: 1, letterSpacing: '-0.5px',
-          }}>
-            {plan.price}
-          </div>
-          {plan.id !== 'demo' && (
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-              {plan.period}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Features */}
-      <ul style={{
-        listStyle: 'none', padding: 0, margin: '0 0 18px',
-        display: 'flex', flexDirection: 'column', gap: 8,
-      }}>
-        {plan.features.map((f, i) => (
-          <li key={i} style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8,
-            fontSize: 13,
-            color: f.startsWith('Everything') ? '#cbd5e1' : '#e2e8f0',
-            fontWeight: f.startsWith('Everything') ? 600 : 400,
-          }}>
-            <Check size={14} style={{
-              color: plan.id === 'demo' ? '#94a3b8' : '#22d3ee',
-              marginTop: 1, flexShrink: 0,
-            }} />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
-
-      {/* CTA */}
-      <button
-        onClick={onClick}
-        disabled={isDemo}
-        style={{
-          width: '100%', padding: '12px 0', borderRadius: 10,
-          border: isDemo
-            ? '1px solid rgba(255,255,255,0.08)'
-            : `1px solid ${plan.accentBorder}`,
-          background: isDemo
-            ? 'transparent'
-            : plan.highlighted
-              ? 'linear-gradient(135deg, #22d3ee, #06b6d4)'
-              : plan.accentBg,
-          color: isDemo
-            ? '#64748b'
-            : plan.highlighted
-              ? '#000'
-              : plan.accent,
-          fontSize: 14, fontWeight: 700,
-          fontFamily: 'var(--font-sans)',
-          cursor: isDemo ? 'default' : 'pointer',
-          transition: 'all 0.15s',
-          opacity: isDemo ? 0.5 : 1,
-        }}
-      >
-        {plan.ctaLabel}
-      </button>
-    </div>
-  );
-}
+const tdStyle: React.CSSProperties = {
+  borderBottom: '1px solid rgba(255,255,255,0.04)',
+  verticalAlign: 'middle',
+};

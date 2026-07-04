@@ -194,7 +194,7 @@ export default function DemoCounterPage({
         color: '#fff',
         fontFamily: 'var(--font-sans)',
         alignItems: 'center',
-        padding: '24px',
+        padding: '12px 16px 16px',
       }}
     >
       {/* ═══ TOP BAR ═══ */}
@@ -204,18 +204,17 @@ export default function DemoCounterPage({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: '60px',
+          minHeight: '36px',
         }}
       >
-        <VantageOrb size={44} animate />
+        <VantageOrb size={32} animate />
       </div>
 
       {/* ═══ EYEBROW ═══ */}
       <p
         style={{
-          marginTop: '24px',
-          marginBottom: '12px',
-          fontSize: '12px',
+          margin: '10px 0 6px',
+          fontSize: '11px',
           fontWeight: 500,
           color: 'var(--accent)',
           textTransform: 'uppercase',
@@ -233,7 +232,7 @@ export default function DemoCounterPage({
           margin: '0 0 12px',
           textAlign: 'center',
           lineHeight: 1.15,
-          fontSize: '48px',
+          fontSize: '36px',
         }}
       >
         <span
@@ -268,7 +267,7 @@ export default function DemoCounterPage({
           fontWeight: 400,
           color: 'rgba(255,255,255,0.60)',
           textAlign: 'center',
-          margin: '0 0 28px',
+          margin: '0 0 10px',
           lineHeight: 1.5,
           maxWidth: '340px',
         }}
@@ -284,25 +283,25 @@ export default function DemoCounterPage({
           borderRadius: '16px',
           border: '1px solid rgba(255,255,255,0.08)',
           background: 'rgba(255,255,255,0.03)',
-          padding: '20px',
-          marginBottom: '20px',
+          padding: '14px',
+          marginBottom: '12px',
         }}
       >
         <div
           style={{
-            fontSize: '17px',
+            fontSize: '15px',
             fontWeight: 700,
-            marginBottom: '6px',
+            marginBottom: '4px',
           }}
         >
           Want to use real money?
         </div>
         <p
           style={{
-            fontSize: '14px',
+            fontSize: '13px',
             color: 'rgba(255,255,255,0.60)',
-            margin: '0 0 16px',
-            lineHeight: 1.5,
+            margin: '0 0 12px',
+            lineHeight: 1.4,
           }}
         >
           Connect your broker to get AI analysis of your actual
@@ -338,15 +337,12 @@ export default function DemoCounterPage({
         style={{
           background: 'none',
           border: 'none',
-          color: '#64748b',
+          color: '#22d3ee',
           fontSize: '12px',
           fontWeight: 500,
           cursor: 'pointer',
           fontFamily: 'var(--font-sans)',
-          textDecoration: 'underline',
-          textUnderlineOffset: '3px',
-          textDecorationColor: 'rgba(100,116,139,0.3)',
-          margin: '0 auto 16px',
+          margin: '0 auto 10px',
           display: 'block',
           padding: 0,
         }}
@@ -357,8 +353,8 @@ export default function DemoCounterPage({
       {/* ═══ SETTINGS NOTE ═══ */}
       <p
         style={{
-          margin: '0 0 24px',
-          fontSize: '12px',
+          margin: '0 0 16px',
+          fontSize: '11px',
           fontWeight: 400,
           color: 'rgba(255,255,255,0.40)',
           textAlign: 'center',
@@ -375,12 +371,12 @@ export default function DemoCounterPage({
         style={{
           width: '100%',
           maxWidth: '380px',
-          height: '56px',
+          height: '48px',
           borderRadius: '999px',
           border: 'none',
           background: '#ffffff',
           color: '#000000',
-          fontSize: '17px',
+          fontSize: '16px',
           fontWeight: 700,
           fontFamily: 'var(--font-sans)',
           cursor: 'pointer',
