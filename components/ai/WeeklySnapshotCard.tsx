@@ -292,7 +292,7 @@ export default function WeeklySnapshotCard() {
           {/* ── Portfolio Health ── */}
           <button
             onClick={() => toggleCard('health')}
-            className="w-full text-left bg-slate-800/60 rounded-xl border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200 overflow-hidden"
+            className="w-full text-left bg-slate-800/60 rounded-xl border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200"
           >
             <div className="p-3">
               <div className="flex items-center justify-between">
@@ -332,7 +332,7 @@ export default function WeeklySnapshotCard() {
           {/* ── Risk Assessment ── */}
           <button
             onClick={() => toggleCard('risk')}
-            className="w-full text-left bg-slate-800/60 rounded-xl border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200 overflow-hidden"
+            className="w-full text-left bg-slate-800/60 rounded-xl border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200"
           >
             <div className="p-3">
               <div className="flex items-center justify-between">
@@ -372,7 +372,7 @@ export default function WeeklySnapshotCard() {
           {/* ── Opportunities ── */}
           <button
             onClick={() => toggleCard('opportunities')}
-            className="w-full text-left bg-slate-800/60 rounded-xl border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200 overflow-hidden"
+            className="w-full text-left bg-slate-800/60 rounded-xl border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200"
           >
             <div className="p-3">
               <div className="flex items-center justify-between">
