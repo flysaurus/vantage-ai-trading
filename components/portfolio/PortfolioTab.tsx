@@ -307,8 +307,9 @@ function PositionCard({
               {/* 52W Low marker */}
               <circle cx={loX} cy={loY} r={4} fill="#ef4444" fillOpacity={0.3} stroke="#ef4444" strokeWidth={1.5} />
               <text x={loX} y={loY + 14} textAnchor={loIdx < pts.length / 2 ? 'start' : 'end'} fill="#ef4444" fontSize={9} fontWeight={600} style={{ fontFamily: 'var(--font-mono, monospace)' }}>L ${pts[loIdx].c.toFixed(2)}</text>
-              {/* First price label — positioned above, right of first point */}
-              <text x={firstX + 5} y={firstY - 8} textAnchor="start" fill="#cbd5e1" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
+              {/* First price label — positioned above line with bg pill to avoid overlap */}
+              <rect x={firstX - 2} y={firstY - 22} width={46} height={16} rx={4} fill="rgba(10,15,30,0.85)" />
+              <text x={firstX + 5} y={firstY - 10} textAnchor="start" fill="#cbd5e1" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
               {/* Tooltip vertical line */}
               {tooltipSvgX != null && tooltipY != null && (
                 <line x1={tooltipSvgX} y1={pad} x2={tooltipSvgX} y2={H - pad} stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="3 2" />
@@ -388,148 +389,159 @@ function PositionCard({
       {/* Expanded section */}
       {isExpanded && (
         <div style={{ paddingTop: 16, marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          {/* Metadata */}
-          {/* ── Metadata — two-column grid, values right-justified ── */}
+          {/* ── Metadata — label-above-value 2-col grid ── */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-            gap: '6px 28px', marginBottom: 14,
+            gap: '10px 24px', marginBottom: 14,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Symbol</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right' }}>
-                {pos.symbol}
-              </div>
+            {/* Symbol */}
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Symbol</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>{pos.symbol}</div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Sector</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right' }}>
+            {/* Sector */}
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', lineHeight: 1.35 }}>
                 {pos.sector || '—'}
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Name</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+            {/* Name — full width, no truncation */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', lineHeight: 1.35 }}>
                 {pos.name || '—'}
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Asset Type</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right' }}>
+            {/* Asset Type */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                 {pos.type || 'Stock'}
               </div>
             </div>
           </div>
 
-          {/* ── Fundamentals row ── */}
+          {/* ── Fundamentals grid — 2-col label-above-value ── */}
           {fundamentals && (
             <div style={{
-              display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
-              marginBottom: 16, paddingTop: 12,
+              display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+              gap: '10px 24px', marginBottom: 14, paddingTop: 12,
               borderTop: '1px solid rgba(34,211,238,0.08)',
             }}>
               {fundamentals.marketCap != null && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Mkt Cap</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Mkt Cap</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                     {fundamentals.marketCap >= 1e12
                       ? `$${(fundamentals.marketCap / 1e12).toFixed(2)}T`
                       : `$${(fundamentals.marketCap / 1e9).toFixed(1)}B`}
-                  </span>
+                  </div>
                 </div>
               )}
-              {fundamentals.pe != null && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>P/E</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>{fundamentals.pe.toFixed(1)}</span>
+              {fundamentals.pe != null ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>P/E</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                    {fundamentals.pe.toFixed(1)}
+                  </div>
                 </div>
-              )}
-              {fundamentals.eps != null && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>EPS</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>${fundamentals.eps.toFixed(2)}</span>
+              ) : <div />}
+              {fundamentals.eps != null ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>EPS</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+                    ${fundamentals.eps.toFixed(2)}
+                  </div>
                 </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 10, color: '#e2e8f0' }}>Div Yield</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>
+              ) : <div />}
+              <div>
+                <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Div Yield</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#22d3ee', fontFamily: 'var(--font-sans)' }}>
                   {fundamentals.dividendYield != null && fundamentals.dividendYield > 0
                     ? `${fundamentals.dividendYield.toFixed(2)}%`
                     : '—'}
-                </span>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 10, color: '#e2e8f0' }}>Div Amt</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>
+              <div>
+                <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Div Amt</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#22d3ee', fontFamily: 'var(--font-sans)' }}>
                   {fundamentals.dividendRate != null && fundamentals.dividendRate > 0
                     ? `$${fundamentals.dividendRate.toFixed(2)}/yr`
                     : '—'}
-                </span>
-              </div>
-              {fundamentals.recommendation && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Analyst</span>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
-                    padding: '1px 8px', borderRadius: 4,
-                    color: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? '#10b981'
-                         : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? '#ef4444'
-                         : '#fbbf24',
-                    background: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? 'rgba(16,185,129,0.12)'
-                               : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? 'rgba(239,68,68,0.12)'
-                               : 'rgba(251,191,36,0.12)',
-                  }}>
-                    {fundamentals.recommendation.replace('_', ' ')}
-                    {fundamentals.numAnalysts != null && ` · ${fundamentals.numAnalysts}`}
-                  </span>
                 </div>
-              )}
+              </div>
+              {fundamentals.recommendation ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Analyst</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, textTransform: 'capitalize',
+                      padding: '1px 8px', borderRadius: 4,
+                      color: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? '#10b981'
+                           : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? '#ef4444'
+                           : '#fbbf24',
+                      background: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? 'rgba(16,185,129,0.12)'
+                                 : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? 'rgba(239,68,68,0.12)'
+                                 : 'rgba(251,191,36,0.12)',
+                    }}>
+                      {fundamentals.recommendation.replace('_', ' ')}
+                    </span>
+                    {fundamentals.numAnalysts != null && (
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                        · {fundamentals.numAnalysts} analysts
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : <div />}
             </div>
           )}
 
-          {/* ── Additional metrics row ── */}
+          {/* ── Additional metrics grid ── */}
           {fundamentals && (
             <div style={{
-              display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
-              marginBottom: 16, paddingTop: 12,
+              display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+              gap: '10px 24px', marginBottom: 14, paddingTop: 12,
               borderTop: '1px solid rgba(255,255,255,0.06)',
             }}>
-              {fundamentals.dayHigh != null && fundamentals.dayLow != null && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Day Range</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+              {fundamentals.dayHigh != null && fundamentals.dayLow != null ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Day Range</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                     ${fundamentals.dayLow.toFixed(2)} – ${fundamentals.dayHigh.toFixed(2)}
-                  </span>
+                  </div>
                 </div>
-              )}
-              {fundamentals.volume != null && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Volume</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+              ) : <div />}
+              {fundamentals.volume != null ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Volume</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                     {(fundamentals.volume / 1e6).toFixed(1)}M
                     {fundamentals.avgVolume != null && (
-                      <span style={{ fontSize: 10, color: '#cbd5e1', fontWeight: 400, marginLeft: 3 }}>
+                      <span style={{ fontSize: 10, color: '#cbd5e1', fontWeight: 400, marginLeft: 4 }}>
                         avg {(fundamentals.avgVolume / 1e6).toFixed(1)}M
                       </span>
                     )}
-                  </span>
+                  </div>
                 </div>
-              )}
-              {fundamentals.beta != null && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Beta</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+              ) : <div />}
+              {fundamentals.beta != null ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Beta</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                     {fundamentals.beta.toFixed(2)}
-                  </span>
+                  </div>
                 </div>
-              )}
-              {fundamentals.nextEarningsDate && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Earnings</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+              ) : <div />}
+              {fundamentals.nextEarningsDate ? (
+                <div>
+                  <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Earnings</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                     {new Date(fundamentals.nextEarningsDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
+                  </div>
                 </div>
-              )}
+              ) : <div />}
             </div>
           )}
 
@@ -575,8 +587,8 @@ function PositionCard({
           {/* Financial grid */}
           <div style={{
             borderTop: '1px solid rgba(255,255,255,0.06)',
-            paddingTop: 16,
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px',
+            paddingTop: 14,
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px 24px',
           }}>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Avg Cost</div>
