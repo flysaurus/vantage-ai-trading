@@ -114,6 +114,7 @@ function PositionCard({
   // ── Sparkline state ──
   const [sparkline, setSparkline] = useState<{ points: { t: number; c: number }[]; high52w: number; low52w: number } | null>(null);
   const [sparklineLoading, setSparklineLoading] = useState(false);
+  const [fundamentals, setFundamentals] = useState<{ eps: number|null; pe: number|null; dividendYield: number|null; recommendation: string|null } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; price: number; date: string } | null>(null);
   const sparkSvgRef = useRef<SVGSVGElement>(null);
 
@@ -123,11 +124,21 @@ function PositionCard({
     async function load() {
       setSparklineLoading(true);
       try {
-        const res = await fetch(`/api/market/sparkline?symbol=${encodeURIComponent(pos.symbol)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && data.points?.length) {
-          setSparkline({ points: data.points, high52w: data.high52w, low52w: data.low52w });
+        const [sparkRes, fundRes] = await Promise.all([
+          fetch(`/api/market/sparkline?symbol=${encodeURIComponent(pos.symbol)}`),
+          fetch(`/api/stock/fundamentals?symbol=${encodeURIComponent(pos.symbol)}`),
+        ]);
+        if (sparkRes.ok) {
+          const data = await sparkRes.json();
+          if (!cancelled && data.points?.length) {
+            setSparkline({ points: data.points, high52w: data.high52w, low52w: data.low52w });
+          }
+        }
+        if (fundRes.ok) {
+          const fData = await fundRes.json();
+          if (!cancelled && fData.symbol) {
+            setFundamentals({ eps: fData.eps, pe: fData.pe, dividendYield: fData.dividendYield, recommendation: fData.recommendation });
+          }
         }
       } catch { /* silent */ }
       finally { if (!cancelled) setSparklineLoading(false); }
@@ -227,6 +238,19 @@ function PositionCard({
 
         const curX = scaleX(pts.length - 1);
         const curY = scaleY(currentPrice);
+        const firstX = scaleX(0);
+        const firstY = scaleY(pts[0].c);
+
+        // Find exact high/low points along the line
+        let hiIdx = 0, loIdx = 0;
+        for (let i = 1; i < pts.length; i++) {
+          if (pts[i].c > pts[hiIdx].c) hiIdx = i;
+          if (pts[i].c < pts[loIdx].c) loIdx = i;
+        }
+        const hiX = scaleX(hiIdx);
+        const hiY = scaleY(pts[hiIdx].c);
+        const loX = scaleX(loIdx);
+        const loY = scaleY(pts[loIdx].c);
 
         // Tooltip indicator line X in SVG coords
         const tooltipSvgX = tooltip ? (tooltip.x / (sparkSvgRef.current?.getBoundingClientRect().width || 1)) * W : null;
@@ -250,6 +274,14 @@ function PositionCard({
               <path d={areaPath} fill={`url(#${gradId})`} opacity={0.15} />
               {/* Line */}
               <path d={linePath} fill="none" stroke="#22d3ee" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+              {/* 52W High marker */}
+              <circle cx={hiX} cy={hiY} r={4} fill="#22d3ee" fillOpacity={0.3} stroke="#22d3ee" strokeWidth={1.5} />
+              <text x={hiX} y={hiY - 7} textAnchor={hiIdx < pts.length / 2 ? 'start' : 'end'} fill="#fbbf24" fontSize={9} fontWeight={600} style={{ fontFamily: 'var(--font-mono, monospace)' }}>H ${pts[hiIdx].c.toFixed(2)}</text>
+              {/* 52W Low marker */}
+              <circle cx={loX} cy={loY} r={4} fill="#ef4444" fillOpacity={0.3} stroke="#ef4444" strokeWidth={1.5} />
+              <text x={loX} y={loY + 14} textAnchor={loIdx < pts.length / 2 ? 'start' : 'end'} fill="#ef4444" fontSize={9} fontWeight={600} style={{ fontFamily: 'var(--font-mono, monospace)' }}>L ${pts[loIdx].c.toFixed(2)}</text>
+              {/* First price label */}
+              <text x={firstX - 2} y={firstY - 6} textAnchor="end" fill="#94a3b8" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
               {/* Tooltip vertical line */}
               {tooltipSvgX != null && tooltipY != null && (
                 <line x1={tooltipSvgX} y1={pad} x2={tooltipSvgX} y2={H - pad} stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="3 2" />
@@ -258,8 +290,9 @@ function PositionCard({
               {tooltipSvgX != null && tooltipY != null && (
                 <circle cx={tooltipSvgX} cy={tooltipY} r={3.5} fill="#22d3ee" stroke="#ffffff" strokeWidth={1.5} />
               )}
-              {/* Current price dot */}
+              {/* Current price dot + label */}
               <circle cx={curX} cy={curY} r={3} fill="#ffffff" stroke="#22d3ee" strokeWidth={1.5} opacity={tooltip ? 0.4 : 1} />
+              <text x={curX + 3} y={curY - 6} textAnchor="start" fill="#ffffff" fontSize={10} fontWeight={700} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${currentPrice.toFixed(2)}</text>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
@@ -284,7 +317,7 @@ function PositionCard({
                 whiteSpace: 'nowrap',
               }}>
                 <div style={{ color: '#22d3ee', fontSize: 12, fontWeight: 600 }}>${tooltip.price.toFixed(2)}</div>
-                <div style={{ color: '#6b7280', fontSize: 10 }}>{tooltip.date}</div>
+                <div style={{ color: '#94a3b8', fontSize: 10 }}>{tooltip.date}</div>
               </div>
             )}
             {/* Labels */}
@@ -355,6 +388,51 @@ function PositionCard({
               </div>
             </div>
           </div>
+
+          {/* Fundamentals row */}
+          {fundamentals && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
+              marginBottom: 16, paddingTop: 12,
+              borderTop: '1px solid rgba(34,211,238,0.08)',
+            }}>
+              {fundamentals.eps != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>EPS</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>${fundamentals.eps.toFixed(2)}</span>
+                </div>
+              )}
+              {fundamentals.pe != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>P/E</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{fundamentals.pe.toFixed(1)}</span>
+                </div>
+              )}
+              {fundamentals.dividendYield != null && fundamentals.dividendYield > 0 && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>Div Yield</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>{fundamentals.dividendYield.toFixed(2)}%</span>
+                </div>
+              )}
+              {fundamentals.recommendation && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>Analyst</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
+                    padding: '1px 8px', borderRadius: 4,
+                    color: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? '#10b981'
+                         : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? '#ef4444'
+                         : '#fbbf24',
+                    background: fundamentals.recommendation === 'buy' || fundamentals.recommendation === 'strong_buy' ? 'rgba(16,185,129,0.12)'
+                               : fundamentals.recommendation === 'sell' || fundamentals.recommendation === 'strong_sell' ? 'rgba(239,68,68,0.12)'
+                               : 'rgba(251,191,36,0.12)',
+                  }}>
+                    {fundamentals.recommendation.replace('_', ' ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Financial grid */}
           <div style={{

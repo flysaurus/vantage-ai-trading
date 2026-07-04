@@ -62,7 +62,8 @@ export interface FundamentalMetrics {
   beta: number | null;
   dividendYield: number | null;
   marketCap: number | null;
-  source: 'finnhub';
+  recommendation: string | null;
+  source: 'finnhub' | 'yahoo';
 }
 
 // ─── Config Keys ─────────────────────────────────────────────
@@ -167,7 +168,8 @@ async function finnhubFundamentals(symbol: string, timeout = 5000): Promise<Fund
       beta: m.beta ?? null,
       dividendYield: m.dividendYieldIndicatedAnnual ?? null,
       marketCap: m.marketCapitalization != null ? m.marketCapitalization * 1e6 : null,
-      source: 'finnhub',
+      recommendation: null,
+      source: 'finnhub' as const,
     };
   } catch {
     return null;
@@ -680,12 +682,112 @@ export async function getCompanyProfile(symbol: string): Promise<CompanyProfile 
   return yahooProfile(symbol);
 }
 
+// ─── Yahoo Crumb Auth (needed for v10/v11 quoteSummary) ─────
+
+let yahooCrumb: { crumb: string; cookie: string; expires: number } | null = null;
+
+async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null> {
+  // Reuse cached crumb for up to 4 hours
+  if (yahooCrumb && Date.now() < yahooCrumb.expires) {
+    return { crumb: yahooCrumb.crumb, cookie: yahooCrumb.cookie };
+  }
+
+  try {
+    // Step 1: Get cookie from fc.yahoo.com
+    const cookieRes = await fetch('https://fc.yahoo.com/', {
+      headers: { 'User-Agent': YAHOO_UA },
+      signal: AbortSignal.timeout(5000),
+    });
+    const setCookie = cookieRes.headers.get('set-cookie');
+    if (!setCookie) return null;
+    // Extract just the cookie name=value part (without attributes)
+    const cookie = setCookie.split(';')[0];
+
+    // Step 2: Get crumb using the cookie
+    const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+      headers: { 'User-Agent': YAHOO_UA, 'Cookie': cookie },
+      signal: AbortSignal.timeout(5000),
+    });
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumb || crumb.length > 50) return null; // likely HTML error page
+
+    yahooCrumb = { crumb, cookie, expires: Date.now() + 4 * 60 * 60 * 1000 };
+    return { crumb, cookie };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Yahoo Finance fundamentals via v10 quoteSummary.
+ * Returns EPS, P/E, dividend yield, and analyst consensus.
+ */
+export async function yahooFundamentals(symbol: string): Promise<FundamentalMetrics | null> {
+  const auth = await getYahooCrumb();
+  if (!auth) return null;
+
+  const ySymbol = yahooSymbol(symbol.toUpperCase());
+  const modules = 'defaultKeyStatistics,summaryDetail,financialData';
+
+  try {
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ySymbol)}?modules=${modules}&crumb=${auth.crumb}`,
+      {
+        headers: { 'User-Agent': YAHOO_UA, 'Cookie': auth.cookie },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const result = json?.quoteSummary?.result?.[0];
+    if (!result) return null;
+
+    const dks = result.defaultKeyStatistics || {};
+    const sd = result.summaryDetail || {};
+    const fd = result.financialData || {};
+
+    const getRaw = (obj: any, key: string): number | null => {
+      const v = obj?.[key];
+      if (v && typeof v === 'object' && 'raw' in v) return v.raw as number;
+      return null;
+    };
+
+    const eps = getRaw(dks, 'trailingEps');
+    const forwardEps = getRaw(dks, 'forwardEps');
+    const trailingPE = getRaw(sd, 'trailingPE') ?? getRaw(dks, 'trailingPE');
+    const forwardPE = getRaw(dks, 'forwardPE') ?? getRaw(sd, 'forwardPE');
+    const dividendYield = getRaw(sd, 'dividendYield');
+    const dividendRate = getRaw(sd, 'dividendRate');
+    const recommendationKey = typeof fd?.recommendationKey === 'string' ? fd.recommendationKey : null;
+    const recommendationMean = getRaw(fd, 'recommendationMean');
+    const numAnalysts = getRaw(fd, 'numberOfAnalystOpinions');
+
+    return {
+      symbol: symbol.toUpperCase(),
+      eps: eps ?? forwardEps ?? null,
+      pe: trailingPE ?? forwardPE ?? null,
+      high52w: null,
+      low52w: null,
+      beta: null,
+      dividendYield: dividendYield != null ? dividendYield * 100 : null, // decimal → percentage
+      marketCap: null,
+      recommendation: recommendationKey,
+      source: 'yahoo' as const,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get fundamental metrics.
- * Finnhub only — Yahoo free API doesn't expose these well.
+ * Chain: Finnhub → Yahoo
  */
 export async function getFundamentals(symbol: string): Promise<FundamentalMetrics | null> {
-  return finnhubFundamentals(symbol);
+  const fh = await finnhubFundamentals(symbol);
+  if (fh && (fh.pe != null || fh.eps != null)) return fh;
+  return yahooFundamentals(symbol);
 }
 
 /**

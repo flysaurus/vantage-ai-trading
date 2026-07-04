@@ -155,7 +155,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
         <div style={{ color: '#22d3ee', fontWeight: 600, fontSize: 14 }}>
           ${formatCurrency(val)}
         </div>
-        <div style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
+        <div style={{ color: '#cbd5e1', fontSize: 11, marginTop: 2 }}>
           {formatXAxis(ts)}
         </div>
       </div>
@@ -219,7 +219,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#4b5563',
+            color: '#94a3b8',
             fontSize: '12px',
           }}
         >
@@ -279,7 +279,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#4b5563',
+            color: '#94a3b8',
             fontSize: '12px',
           }}
         >

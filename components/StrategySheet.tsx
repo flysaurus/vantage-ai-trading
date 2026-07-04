@@ -242,7 +242,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
               background: '#1e293b',
               border: '1px solid #334155',
               borderRadius: 8,
-              color: '#94a3b8',
+              color: '#cbd5e1',
               fontSize: 16,
               cursor: 'pointer',
               fontFamily: 'inherit',
@@ -287,7 +287,7 @@ export default function StrategySheet({ strategy, onClose, onExecute }: Strategy
             >
               💡 What is it?
             </div>
-            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
+            <p style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6, margin: 0 }}>
               {content.what}
             </p>
           </div>
