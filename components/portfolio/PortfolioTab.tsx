@@ -134,17 +134,6 @@ function PositionCard({
     return () => { cancelled = true; };
   }, [isExpanded, pos.symbol]);
 
-  // 52-week range ball position
-  const weekPos =
-    pos.weekHigh52 != null &&
-    pos.weekLow52 != null &&
-    pos.weekHigh52 !== pos.weekLow52
-      ? Math.min(98, Math.max(2, ((currentPrice - pos.weekLow52) / (pos.weekHigh52 - pos.weekLow52)) * 100))
-      : 50;
-
-  const upToday = todayPnL >= 0;
-  const upTotal = totalPnL >= 0;
-
   const companyName = pos.name && pos.name !== pos.symbol ? pos.name : '';
   const gainLossClass = (pnl: number) => pnl > 0 ? 'gain' : pnl < 0 ? 'loss' : 'flat';
 
@@ -198,44 +187,32 @@ function PositionCard({
         </div>
       </div>
 
-      {/* 52-week range bar */}
-      {pos.weekLow52 != null && pos.weekHigh52 != null && (
-        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
-            ${pos.weekLow52.toFixed(2)}
-          </span>
-          <div style={{
-            flex: 1, height: 3, borderRadius: 999,
-            background: 'rgba(255,255,255,0.06)', position: 'relative',
-          }}>
-            <div style={{
-              position: 'absolute', left: `${weekPos}%`, top: -3,
-              width: 8, height: 8, borderRadius: 9,
-              background: '#ffffff', transform: 'translateX(-50%)',
-            }} />
-          </div>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
-            ${pos.weekHigh52.toFixed(2)}
-          </span>
-        </div>
-      )}
-
-      {/* ── 52-Week Sparkline ── */}
+      {/* ── 52-Week Sparkline (replaces slider) ── */}
       {isExpanded && sparkline && sparkline.points.length >= 2 && (() => {
         const pts = sparkline.points;
         const min = sparkline.low52w;
         const max = sparkline.high52w;
         const range = max - min || 1;
-        const W = 300; // viewBox width
+        const W = 300;
         const H = 80;
         const pad = 4;
 
-        // Build SVG path
+        // Use live 52-week range from quote for labels + y-axis extent
+        const labelHigh = (pos.weekHigh52 != null && pos.weekHigh52 > 0) ? pos.weekHigh52 : max;
+        const labelLow = (pos.weekLow52 != null && pos.weekLow52 > 0) ? pos.weekLow52 : min;
+        const yMin = Math.min(labelLow, min);
+        const yMax = Math.max(labelHigh, max);
+        const yRange = yMax - yMin || 1;
+
         const scaleX = (i: number) => pad + (i / (pts.length - 1)) * (W - pad * 2);
-        const scaleY = (v: number) => H - pad - ((v - min) / range) * (H - pad * 2);
+        const scaleY = (v: number) => H - pad - ((v - yMin) / yRange) * (H - pad * 2);
 
         const linePath = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i)},${scaleY(pt.c)}`).join(' ');
         const areaPath = linePath + ` L${scaleX(pts.length - 1)},${H - pad} L${scaleX(0)},${H - pad} Z`;
+
+        // Current price marker position
+        const curX = scaleX(pts.length - 1);
+        const curY = scaleY(currentPrice);
 
         return (
           <div style={{ marginTop: 12 }}>
@@ -244,7 +221,8 @@ function PositionCard({
               <path d={areaPath} fill={`url(#sparkGrad-${pos.symbol.replace('.','_')})`} opacity={0.15} />
               {/* Line */}
               <path d={linePath} fill="none" stroke="#22d3ee" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-              {/* Gradient def */}
+              {/* Current price dot */}
+              <circle cx={curX} cy={curY} r={3} fill="#ffffff" stroke="#22d3ee" strokeWidth={1.5} />
               <defs>
                 <linearGradient id={`sparkGrad-${pos.symbol.replace('.','_')}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
@@ -255,15 +233,22 @@ function PositionCard({
             {/* Labels */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
-                52W Low ${sparkline.low52w.toFixed(2)}
+                52W Low ${labelLow.toFixed(2)}
               </span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
-                52W High ${sparkline.high52w.toFixed(2)}
+                52W High ${labelHigh.toFixed(2)}
               </span>
             </div>
           </div>
         );
       })()}
+
+      {/* Banner below sparkline if range is stale (missing live data) */}
+      {isExpanded && sparkline && (!pos.weekHigh52 || !pos.weekLow52) && (
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--font-sans)', opacity: 0.6 }}>
+          *High/Low from chart data — live range unavailable
+        </div>
+      )}
 
       {/* Basket references */}
       {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (

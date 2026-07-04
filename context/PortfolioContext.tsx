@@ -390,6 +390,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           totalPnlPercent,
           portfolioPercent,
           exchange: quote?.exchange || '',
+          // Override hardcoded 52-week range with live Yahoo Finance data
+          weekHigh52: (quote?.high52w != null && quote.high52w > 0) ? quote.high52w : p.weekHigh52,
+          weekLow52: (quote?.low52w != null && quote.low52w > 0) ? quote.low52w : p.weekLow52,
         };
       });
 
