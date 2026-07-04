@@ -106,8 +106,7 @@ async function finnhubQuote(symbol: string, timeout = 5000): Promise<Quote | nul
       high: data.h ?? 0,
       low: data.l ?? 0,
       open: data.o ?? 0,
-      high52w: data['52WeekHigh'] ?? undefined,
-      low52w: data['52WeekLow'] ?? undefined,
+      // 52-week range is NOT available on Finnhub /quote — enriched separately via /stock/metric
       source: 'finnhub',
       timestamp: (data.t || 0) * 1000,
     };
@@ -601,6 +600,25 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
     console.log('[quotes] yahoo result: resolved=' + yhResolved + ' remaining=' + remaining.size);
   } else {
     console.log('[quotes] yahoo: skipped (no remaining)');
+  }
+
+  // 4. Enrich: fetch 52-week range from Finnhub /stock/metric for all resolved symbols
+  //    (Finnhub /quote doesn't include 52-week fields — metric endpoint does)
+  if (fhKey && results.size > 0) {
+    const symArr = [...results.keys()];
+    let enriched = 0;
+    for (let i = 0; i < symArr.length; i++) {
+      try {
+        const metric = await finnhubFundamentals(symArr[i], 4000);
+        if (metric?.high52w != null && metric.high52w > 0) {
+          const q = results.get(symArr[i])!;
+          results.set(symArr[i], { ...q, high52w: metric.high52w, low52w: metric.low52w ?? q.low52w });
+          enriched++;
+        }
+      } catch { /* non-critical — keep quote as-is */ }
+      if (i < symArr.length - 1) await new Promise(r => setTimeout(r, 50));
+    }
+    console.log('[quotes] 52-week enrichment (Finnhub metric): enriched=' + enriched + '/' + symArr.length);
   }
 
   return results;
