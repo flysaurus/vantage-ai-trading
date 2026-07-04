@@ -67,12 +67,14 @@ export async function loadPortfolioFromSupabase(
 
     if (error || !data) return null;
 
+    const row = data as Record<string, unknown>;
+
     return {
-      positions: data.positions || [],
-      cashBalance: data.cash_balance ?? 0,
-      orderHistory: data.order_history || [],
-      basketPositions: data.basket_positions || [],
-      savedAt: new Date(data.updated_at).getTime(),
+      positions: (row.positions as any[]) || [],
+      cashBalance: (row.cash_balance as number) ?? 0,
+      orderHistory: (row.order_history as any[]) || [],
+      basketPositions: (row.basket_positions as any[]) || [],
+      savedAt: new Date(row.updated_at as string).getTime(),
     };
   } catch {
     return null;
