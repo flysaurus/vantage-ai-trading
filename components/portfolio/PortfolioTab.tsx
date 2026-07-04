@@ -288,6 +288,8 @@ function PositionCard({
 
         return (
           <div style={{ marginTop: 12, position: 'relative' }}>
+            {/* Chart header */}
+            <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>52-Week Price History</div>
             <svg
               ref={sparkSvgRef}
               viewBox={`0 0 ${W} ${H}`}
@@ -351,10 +353,10 @@ function PositionCard({
             {/* Labels */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
               <span style={{ fontSize: 10, color: '#cbd5e1', fontFamily: 'var(--font-sans)' }}>
-                52W Low ${labelLow.toFixed(2)}
+                Low ${labelLow.toFixed(2)}
               </span>
               <span style={{ fontSize: 10, color: '#cbd5e1', fontFamily: 'var(--font-sans)' }}>
-                52W High ${labelHigh.toFixed(2)}
+                High ${labelHigh.toFixed(2)}
               </span>
             </div>
           </div>
@@ -388,11 +390,11 @@ function PositionCard({
 
       {/* Expanded section */}
       {isExpanded && (
-        <div style={{ paddingTop: 16, marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ paddingTop: 12, marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           {/* ── Metadata — label-above-value 2-col grid ── */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-            gap: '10px 24px', marginBottom: 14,
+            gap: '8px 24px', marginBottom: 12,
           }}>
             {/* Symbol */}
             <div>
@@ -406,15 +408,15 @@ function PositionCard({
                 {pos.sector || '—'}
               </div>
             </div>
-            {/* Name — full width, no truncation */}
-            <div style={{ gridColumn: '1 / -1' }}>
+            {/* Name — left col, no truncation */}
+            <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', lineHeight: 1.35 }}>
                 {pos.name || '—'}
               </div>
             </div>
-            {/* Asset Type */}
-            <div style={{ gridColumn: '1 / -1' }}>
+            {/* Asset Type — right col, aligned with Name */}
+            <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                 {pos.type || 'Stock'}
@@ -426,7 +428,7 @@ function PositionCard({
           {fundamentals && (
             <div style={{
               display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-              gap: '10px 24px', marginBottom: 14, paddingTop: 12,
+              gap: '8px 24px', marginBottom: 12, paddingTop: 10,
               borderTop: '1px solid rgba(34,211,238,0.08)',
             }}>
               {fundamentals.marketCap != null && (
@@ -502,7 +504,7 @@ function PositionCard({
           {fundamentals && (
             <div style={{
               display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-              gap: '10px 24px', marginBottom: 14, paddingTop: 12,
+              gap: '8px 24px', marginBottom: 12, paddingTop: 10,
               borderTop: '1px solid rgba(255,255,255,0.06)',
             }}>
               {fundamentals.dayHigh != null && fundamentals.dayLow != null ? (
@@ -549,9 +551,15 @@ function PositionCard({
           {newsItems.length > 0 && (
             <div style={{
               borderTop: '1px solid rgba(255,255,255,0.06)',
-              paddingTop: 12, marginBottom: 16,
+              paddingTop: 12, marginBottom: 12,
             }}>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 8 }}>Related News</div>
+              <div style={{
+                background: 'rgba(15,23,42,0.50)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 8,
+                overflow: 'hidden',
+              }}>
               {newsItems.map((item, i) => {
                 const daysAgo = item.pubDate
                   ? Math.round((Date.now() - new Date(item.pubDate).getTime()) / (1000 * 60 * 60 * 24))
@@ -567,7 +575,7 @@ function PositionCard({
                     rel="noopener noreferrer"
                     style={{
                       display: 'block', textDecoration: 'none', color: 'inherit',
-                      padding: '6px 0',
+                      padding: '8px 12px',
                       borderBottom: i < newsItems.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                     }}
                   >
@@ -581,14 +589,15 @@ function PositionCard({
                   </a>
                 );
               })}
+              </div>
             </div>
           )}
 
           {/* Financial grid */}
           <div style={{
             borderTop: '1px solid rgba(255,255,255,0.06)',
-            paddingTop: 14,
-            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px 24px',
+            paddingTop: 12,
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px 24px',
           }}>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Avg Cost</div>
@@ -618,7 +627,7 @@ function PositionCard({
 
           {/* Action buttons */}
           <div style={{
-            display: 'flex', gap: 10, marginTop: 16,
+            display: 'flex', gap: 10, marginTop: 12,
           }}>
             <button
               onClick={onBuy}
