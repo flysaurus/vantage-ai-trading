@@ -170,9 +170,18 @@ export default function DemoCounterPage({
 
       <p style={{
         fontSize: '14px', fontWeight: 400, color: 'rgba(255,255,255,0.60)',
-        textAlign: 'center', margin: '0 0 12px', lineHeight: 1.5, maxWidth: '340px',
+        textAlign: 'center', margin: '0 0 8px', lineHeight: 1.5, maxWidth: '340px',
       }}>
         {subtext}
+      </p>
+
+      {/* AI positioning — subtle, under subtext */}
+      <p style={{
+        fontSize: '13px', fontWeight: 400, color: '#94a3b8',
+        textAlign: 'center', margin: '0 0 14px', lineHeight: 1.4,
+        fontFamily: 'var(--font-sans)',
+      }}>
+        Same AI analysis the institutions run. Now in your pocket.
       </p>
 
       {/* ═══ SECTION 1: CONTINUE IN DEMO ═══ */}
@@ -260,7 +269,8 @@ export default function DemoCounterPage({
           margin: '0 0 12px', fontSize: '12px', color: 'rgba(255,255,255,0.50)',
           lineHeight: 1.5,
         }}>
-          Silver unlocks real brokerage. Gold adds live execution, options, and advanced tools.
+          Silver: AI-powered view of your real portfolio.<br />
+          Gold: trade it — live execution, options &amp; futures, bank-grade security.
         </p>
         <button
           onClick={(e) => {
