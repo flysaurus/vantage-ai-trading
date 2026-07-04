@@ -95,15 +95,16 @@ export default function DemoCounterPage({
   // ── Derived ───────────────────────────────────────────────
 
   const daysRemaining = (() => {
-    if (!demoStartAtProp && !expiresAt) return 0;
-    const start = demoStartAtProp ? new Date(demoStartAtProp) : null;
-    const expires = expiresAt ? new Date(expiresAt) : null;
-    if (!expires) return 0;
+    if (!expiresAt) return 0;
 
     const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const startDate = start ? dateOnly(start) : dateOnly(new Date());
     const todayDate = dateOnly(new Date());
-    const expiresDate = dateOnly(expires);
+    const expiresDate = dateOnly(new Date(expiresAt));
+
+    // Prefer profile.demo_start_at; fallback to 30 days before expiration
+    const startDate = profile?.demo_start_at
+      ? dateOnly(new Date(profile.demo_start_at))
+      : new Date(expiresDate.getTime() - 30 * 86400000);
 
     const DAY_MS = 86400000;
     const totalDays = Math.round((expiresDate.getTime() - startDate.getTime()) / DAY_MS);
