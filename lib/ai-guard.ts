@@ -27,7 +27,7 @@ export async function checkUsageLimit(
 
   console.log('checkUsageLimit:', { userId, type, today, data, error });
 
-  const LIMITS = { message: 75, deepAnalysis: 20 };
+  const LIMITS = { message: 25, deepAnalysis: 20 };
 
   const limit = LIMITS[type];
   const used = type === 'message' ? (data?.message_count || 0) : (data?.deep_analysis_count || 0);

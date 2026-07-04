@@ -114,12 +114,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Fetch positions from DB
-    const { data: positions } = await (supabase as any)
-      .from('positions')
-      .select('symbol, qty, market_value, avg_cost')
+    // Fetch live portfolio state from demo_portfolio_state
+    const { data: portfolioState } = await (supabase as any)
+      .from('demo_portfolio_state')
+      .select('positions, cash_balance')
       .eq('user_id', userId)
-      .gt('qty', 0);
+      .maybeSingle();
+
+    const positions: any[] = portfolioState?.positions || [];
+    const cashBalance = portfolioState?.cash_balance ?? 0;
 
     if (!positions || positions.length === 0) {
       return NextResponse.json({
@@ -196,7 +199,7 @@ export async function GET(req: NextRequest) {
     // Build position data block — with cost basis, total cost, and dollar P&L
     const positionLines = positions.map((p: any) => {
       const q = quotes[p.symbol] || {};
-      const avgCost = p.avg_cost;
+      const avgCost = p.avgCost;
       const currentPrice = q.c ?? 0;
       const shares = p.qty;
       const totalCost = avgCost ? shares * avgCost : 0;
@@ -224,6 +227,7 @@ export async function GET(req: NextRequest) {
       `Symbols: ${symbols.join(', ')}`,
       `Style: ${investorStyle} | Risk: ${riskTolerance}`,
       `Total positions: ${positions.length}`,
+      `Cash Balance: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
       '',
       'PORTFOLIO:',
       ...positionLines,

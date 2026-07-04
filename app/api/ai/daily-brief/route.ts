@@ -115,12 +115,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 3. Get positions from DB
-    const { data: positions } = await (supabase as any)
-      .from('positions')
-      .select('symbol, qty, market_value')
+    // 3. Get live portfolio state from demo_portfolio_state
+    const { data: portfolioState } = await (supabase as any)
+      .from('demo_portfolio_state')
+      .select('positions, cash_balance')
       .eq('user_id', userId)
-      .gt('qty', 0);
+      .maybeSingle();
+
+    const positions: any[] = portfolioState?.positions || [];
+    const cashBalance = portfolioState?.cash_balance ?? 0;
 
     if (!positions || positions.length === 0) {
       return NextResponse.json({
@@ -179,11 +182,16 @@ export async function GET(req: NextRequest) {
 
     const positionsWithQuotes: PositionQuote[] = positions.map((p: any) => {
       const q = quotesMap[p.symbol] || {};
+      const currentPrice = q.c ?? 0;
       return {
         symbol: p.symbol,
         qty: p.qty,
-        price: q.c ?? 0,
+        price: currentPrice,
         changePct: q.dp ?? 0,
+        avgCost: p.avgCost ?? 0,
+        name: p.name || p.symbol,
+        sector: p.sector || 'Unknown',
+        marketValue: (p.qty || 0) * currentPrice,
       };
     });
 
@@ -212,7 +220,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 7. Fetch real market news from SearXNG
-    const newsItems = await fetchMarketNews(positions);
+    const newsItems = await fetchMarketNews(positionsWithQuotes);
 
     // 8. Build user profile context
     let investorStyle = 'buffett';
@@ -259,10 +267,15 @@ export async function GET(req: NextRequest) {
       timeZone: 'America/New_York',
     });
 
+    const cashPct = cashBalance > 0
+      ? (cashBalance / (cashBalance + positionsWithQuotes.reduce((s, p) => s + (p.marketValue || 0), 0))) * 100
+      : 0;
+
     const dataLines: string[] = [
       `DAILY BRIEF DATA — ${dateStr}`,
       `Investor Style: ${investorStyle} | Portfolio Mode: ${portfolioMode}`,
       `Total Positions: ${positions.length}`,
+      `Cash Balance: $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${cashPct.toFixed(1)}% of portfolio)`,
       '',
       'MARKET INDICES:',
       ...indices.map(

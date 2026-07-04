@@ -15,9 +15,10 @@ import { saveChatMessage } from '@/lib/chat-service';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
 import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
+import DailyBriefCard from '@/components/ai/DailyBriefCard';
+import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 
-// ── Message counter (localStorage, per-day) ──
-const MESSAGE_LIMIT = 25;
+// ── Message counter (localStorage, per-day) — fast-initial fallback, server is authoritative ──
 const getCountKey = () => {
   const today = new Date().toDateString();
   return `vantage_msg_count_${today}`;
@@ -36,8 +37,8 @@ function incrementMessageCount(): number {
   return next;
 }
 
-function getRemainingMessages(): number {
-  return Math.max(0, MESSAGE_LIMIT - getMessageCount());
+function getLocalRemaining(): number {
+  return Math.max(0, 75 - getMessageCount());
 }
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
@@ -82,8 +83,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   } = useChatStorage();
 
   // ── state ──
-  const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
-  const [snapshotExpanded, setSnapshotExpanded] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState(0);
@@ -93,15 +92,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const localName = typeof window !== 'undefined' ? user?.name || '' : null;
   const userInitial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
   const RATE_LIMIT_MS = 5000;
-  const [earnings, setEarnings] = useState<{
-    symbol: string;
-    date: string;
-    daysUntil: number;
-  }[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [marketHeadline, setMarketHeadline] = useState('');
-  const [marketNewsUrl, setMarketNewsUrl] = useState('');
-  const [portfolioSummary, setPortfolioSummary] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -166,130 +157,29 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── portfolio context for AI (shared live-priced data from PortfolioProvider) ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
 
-  // ── Local remaining messages (replaces supabaseRemaining for reliability) ──
-  const [localRemaining, setLocalRemaining] = useState(25);
+  // ── Remaining messages — server-authoritative with localStorage fallback ──
+  const [localRemaining, setLocalRemaining] = useState(() => getLocalRemaining());
+  const [serverLimit, setServerLimit] = useState(75);
 
-  // Refresh remaining count on mount and after each message
-  const refreshRemaining = useCallback(() => {
-    setLocalRemaining(getRemainingMessages());
+  // Fetch server usage on mount — server is the source of truth
+  const refreshRemaining = useCallback(async () => {
+    try {
+      const res = await fetch('/api/usage/remaining');
+      if (res.ok) {
+        const data = await res.json();
+        setLocalRemaining(data.remaining);
+        setServerLimit(data.limit || 75);
+        return;
+      }
+    } catch { /* fall through to localStorage fallback */ }
+    setLocalRemaining(getLocalRemaining());
   }, []);
 
   useEffect(() => {
     refreshRemaining();
   }, [refreshRemaining]);
 
-  // ── fetch market news ──
-  const fetchMarketNews = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      let res = await fetch(
-        `/api/finnhub/company-news?symbol=SPY&from=${today}&to=${today}`
-      );
-      let data = await res.json();
-
-      // weekend/holiday fallback
-      if (!data || data.length === 0) {
-        const yesterday = new Date(Date.now() - 86400000)
-          .toISOString()
-          .split('T')[0];
-        res = await fetch(
-          `/api/finnhub/company-news?symbol=SPY&from=${yesterday}&to=${yesterday}`
-        );
-        data = await res.json();
-      }
-
-      if (data && data.length > 0) {
-        const headline = data[0]?.headline || '';
-        setMarketHeadline(
-          headline.length > 60
-            ? headline.substring(0, 57) + '...'
-            : headline || 'Markets open'
-        );
-        setMarketNewsUrl(data[0]?.url || '');
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // ── fetch portfolio summary (top holdings today change) ──
-  const fetchPortfolioSummary = async () => {
-    try {
-      const topHoldings = ['META', 'MSFT', 'GOOGL'];
-
-      const quotes = await Promise.all(
-        topHoldings.map(async (symbol) => {
-          const res = await fetch(
-            `/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`
-          );
-          const data = await res.json();
-          return { symbol, changePct: data.dp ?? 0 };
-        })
-      );
-
-      const biggest = quotes.reduce((a, b) =>
-        Math.abs(a.changePct) > Math.abs(b.changePct) ? a : b
-      );
-
-      const direction = biggest.changePct >= 0 ? 'up' : 'down';
-      const pct = Math.abs(biggest.changePct).toFixed(1);
-
-      setPortfolioSummary(
-        `${biggest.symbol} ${direction} ${pct}% · portfolio -0.9% today`
-      );
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // ── fetch earnings calendar ──
-  const fetchEarnings = async () => {
-    try {
-      const today = new Date();
-      const fromDate = today.toISOString().split('T')[0];
-      const toDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-
-      const res = await fetch(
-        `/api/finnhub/earnings?from=${fromDate}&to=${toDate}`
-      );
-      const data = await res.json();
-
-      const demoSymbols = [
-        'META', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
-        'CRM', 'NFLX', 'ADBE', 'UBER', 'SQ',
-      ];
-
-      const relevant = (data.earningsCalendar || [])
-        .filter((e: { symbol: string; date: string }) =>
-          demoSymbols.includes(e.symbol)
-        )
-        .map((e: { symbol: string; date: string }) => {
-          const earningsDate = new Date(e.date);
-          const daysUntil = Math.ceil(
-            (earningsDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-          );
-          return { symbol: e.symbol, date: e.date, daysUntil };
-        })
-        .filter((e: { daysUntil: number }) => e.daysUntil >= 0)
-        .sort(
-          (a: { daysUntil: number }, b: { daysUntil: number }) =>
-            a.daysUntil - b.daysUntil
-        )
-        .slice(0, 3);
-
-      setEarnings(relevant);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  useEffect(() => {
-    fetchEarnings();
-    fetchMarketNews();
-    fetchPortfolioSummary();
-  }, []);
+  // (market news, portfolio summary, and earnings are now handled by DailyBriefCard)
 
   // ── persist chat to device-keyed localStorage whenever messages change ──
   useEffect(() => {
@@ -346,6 +236,25 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── Greeting fetch ref — prevent re-fetch on tab switch ──
   const greetingFetchedRef = useRef(false);
+
+  // ── Track portfolio for greeting cache invalidation on trades ──
+  const prevPositionsHashRef = useRef('');
+
+  useEffect(() => {
+    const hash = JSON.stringify({
+      cash: liveAccount?.cash,
+      count: liveAccount?.positions?.length,
+      symbols: liveAccount?.positions?.map(p => p.symbol).sort().join(','),
+    });
+    if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
+      // Portfolio changed (trade executed) — invalidate greeting cache
+      const cacheKey = GREETING_CACHE_KEY();
+      localStorage.removeItem(cacheKey);
+      greetingFetchedRef.current = false;
+      setGreetingLoaded(false);
+    }
+    prevPositionsHashRef.current = hash;
+  }, [liveAccount?.cash, liveAccount?.positions]);
 
   // Clean old cache keys on mount
   useEffect(() => {
@@ -445,7 +354,26 @@ export function AITab({ messages, setMessages }: AITabProps) {
         console.log('[Greeting] Using fallback:', e);
       }
     }
-  }, []); // empty deps — runs once per session
+  }, [greetingLoaded]); // re-run when cache invalidated (e.g. after trade)
+
+  // ── Invalidate greeting cache when portfolio changes (e.g., after buy/sell) ──
+  const prevPositionsHashRef = useRef('');
+  useEffect(() => {
+    const hash = JSON.stringify({
+      cash: liveAccount?.cash,
+      count: liveAccount?.positions?.length,
+      symbols: liveAccount?.positions?.map(p => p.symbol).sort().join(','),
+    });
+    if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
+      // Portfolio changed — invalidate greeting cache for today
+      const cacheKey = GREETING_CACHE_KEY();
+      localStorage.removeItem(cacheKey);
+      greetingFetchedRef.current = false;
+      setGreetingLoaded(false);
+    }
+    prevPositionsHashRef.current = hash;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveAccount?.cash, liveAccount?.positions]);
 
   // ── helpers ──
   function isAtBottom(): boolean {
@@ -505,12 +433,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
     // (email gate removed — auth-only app)
 
-    // Message limit check (soft — 25/day)
-    const remaining = getRemainingMessages();
-    if (remaining <= 0) {
+    // Message limit check — server-authoritative
+    if (localRemaining <= 0) {
       setMessages(prev => [...prev, {
         role: 'ai',
-        content: '📊 You\'ve used all 25 messages today. Your daily limit resets at midnight UTC.\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.'
+        content: `📊 You've used all ${serverLimit} messages today. Your daily limit resets at midnight UTC.\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.`
       }]);
       return;
     }
@@ -718,45 +645,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
   const totalPnl = liveAccount?.totalPnl ?? 0;
   const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
 
-  // ── computed risk scoring (from live data) ──
-  const riskData = (() => {
-    const positions = liveAccount?.positions || [];
-
-    // Sector concentration
-    const sectorTotals: Record<string, number> = {};
-    let totalValue = 0;
-    for (const p of positions) {
-      const mv = p.marketValue || 0;
-      sectorTotals[p.sector || 'Other'] = (sectorTotals[p.sector || 'Other'] || 0) + mv;
-      totalValue += mv;
-    }
-    const maxSectorPct = totalValue > 0
-      ? Math.max(0, ...Object.values(sectorTotals).map(v => (v / totalValue) * 100))
-      : 0;
-    const maxSectorName = Object.entries(sectorTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unknown';
-    let sectorRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
-    if (maxSectorPct > 60) sectorRisk = 'HIGH';
-    else if (maxSectorPct >= 40) sectorRisk = 'MEDIUM';
-
-    // Single position loss check
-    let posRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
-    for (const p of positions) {
-      const lossPct = p.totalPnlPercent ?? 0;
-      if (lossPct < -40) posRisk = 'HIGH';
-      else if (lossPct < -20 && posRisk !== 'HIGH') posRisk = 'MEDIUM';
-    }
-
-    // Overall: highest of the two
-    let overall: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
-    if (sectorRisk === 'HIGH' || posRisk === 'HIGH') overall = 'HIGH';
-    else if (sectorRisk === 'MEDIUM' || posRisk === 'MEDIUM') overall = 'MEDIUM';
-
-    const riskColor = overall === 'HIGH' ? '#ef4444' : overall === 'MEDIUM' ? '#f59e0b' : '#22d3ee';
-    const riskLabel = overall;
-
-    return { maxSectorPct, maxSectorName, sectorRisk, posRisk, overall, riskColor, riskLabel };
-  })();
-
   // ── suggestion chips (computed from live portfolio data) ──
   const suggestionChips: string[] = (() => {
     const chips: string[] = [];
@@ -795,14 +683,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
     background: '#1a2235',
     border: '1px solid #2a3448',
     borderRadius: '10px',
-  };
-
-  const COLLAPSIBLE_HEADER: React.CSSProperties = {
-    padding: '12px 16px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    cursor: 'pointer',
   };
 
   return (
@@ -918,490 +798,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ─── 2. Daily Brief Card ─── */}
-      <div
-        style={{
-          ...cardBox,
-          margin: '12px 16px 0 16px',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div
-          style={COLLAPSIBLE_HEADER}
-          onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span>🗞️</span>
-            <span
-              style={{
-                fontSize: '13px',
-                fontWeight: '600',
-                color: '#ffffff',
-                marginLeft: '8px',
-              }}
-            >
-              Daily Brief
-            </span>
-            <span style={{ fontSize: '11px', color: '#e2e8f0', marginLeft: '4px' }}>
-              · Today
-            </span>
-          </div>
-          <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
-            {dailyBriefExpanded ? '▲' : '▼'}
-          </span>
-        </div>
+      {/* ─── 2. Daily Brief Card (AI-powered) ─── */}
+      <DailyBriefCard />
 
-        {/* Preview rows — only visible when expanded */}
-        {dailyBriefExpanded && (
-        <div style={{ padding: '0 16px 12px 16px' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              cursor: 'pointer',
-              background: 'rgba(34,211,238,0.06)',
-              border: '1px solid rgba(34,211,238,0.12)',
-              borderRadius: '6px',
-              padding: '8px 10px',
-              marginBottom: '6px',
-            }}
-            onClick={() => {
-              if (marketNewsUrl) window.open(marketNewsUrl, '_blank');
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span
-              style={{
-                fontSize: '9px',
-                fontWeight: '700',
-                color: '#22d3ee',
-                background: 'rgba(34,211,238,0.15)',
-                borderRadius: '3px',
-                padding: '1px 5px',
-                marginRight: '6px',
-              }}
-            >
-              MARKET
-            </span>
-            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-              {marketHeadline || 'Markets mixed, monitoring macro events'}
-            </span>
-            </div>
-            <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              cursor: 'pointer',
-              background: 'rgba(34,211,238,0.06)',
-              border: '1px solid rgba(34,211,238,0.12)',
-              borderRadius: '6px',
-              padding: '8px 10px',
-            }}
-            onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent('vantage-navigate', { detail: { tab: 'portfolio' } })
-              );
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span
-              style={{
-                fontSize: '9px',
-                fontWeight: '700',
-                color: '#10b981',
-                background: 'rgba(16,185,129,0.15)',
-                borderRadius: '3px',
-                padding: '1px 5px',
-                marginRight: '6px',
-              }}
-            >
-              PORTFOLIO
-            </span>
-            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-              {portfolioSummary || 'Your portfolio down 0.9% today'}
-            </span>
-            </div>
-            <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-          </div>
-        </div>
-        )}
-
-        {/* Expanded */}
-        {dailyBriefExpanded && (
-          <div
-            style={{
-              padding: '0 16px 12px 16px',
-              borderTop: '1px solid #2a3448',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-                background: 'rgba(34,211,238,0.06)',
-                border: '1px solid rgba(34,211,238,0.12)',
-                borderRadius: '6px',
-                padding: '8px 10px',
-                marginBottom: '6px',
-                marginTop: '12px',
-              }}
-              onClick={(e) => {
-                if (earnings[0]) {
-                  sendToChat(`Tell me about ${earnings[0].symbol} upcoming earnings`, e);
-                }
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span
-                style={{
-                  fontSize: '9px',
-                  fontWeight: '700',
-                  color: '#f59e0b',
-                  background: 'rgba(245,158,11,0.15)',
-                  borderRadius: '3px',
-                  padding: '1px 5px',
-                  marginRight: '6px',
-                }}
-              >
-                WATCH
-              </span>
-              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-                {earnings.length > 0
-                  ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} day${earnings[0].daysUntil === 1 ? '' : 's'}`
-                  : 'No earnings in next 30 days for your holdings'}
-              </span>
-              </div>
-              <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-            </div>
-            {earnings.length > 1 && (
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-                background: 'rgba(34,211,238,0.06)',
-                border: '1px solid rgba(34,211,238,0.12)',
-                borderRadius: '6px',
-                padding: '8px 10px',
-              }}
-              onClick={(e) => {
-                sendToChat(`Tell me about ${earnings[1].symbol} upcoming earnings`, e);
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span
-                style={{
-                  fontSize: '9px',
-                  fontWeight: '700',
-                  color: '#a855f7',
-                  background: 'rgba(168,85,247,0.15)',
-                  borderRadius: '3px',
-                  padding: '1px 5px',
-                  marginRight: '6px',
-                }}
-              >
-                EARNINGS
-              </span>
-              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-                {earnings[1].symbol} reports in {earnings[1].daysUntil} days
-              </span>
-              </div>
-              <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-            </div>
-            )}
-            <p style={{ fontSize: '10px', color: '#334155', marginTop: '8px' }}>
-              Generated now · Updates tomorrow
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* ─── 3. Weekly Snapshot Card ─── */}
-      <div
-        style={{
-          margin: '8px 16px 0 16px',
-          background: 'rgba(26,34,53,0.6)',
-          border: '1px solid rgba(42,52,72,0.6)',
-          borderRadius: '10px',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div
-          style={COLLAPSIBLE_HEADER}
-          onClick={() => setSnapshotExpanded(!snapshotExpanded)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px' }}>📊</span>
-            <span
-              style={{
-                fontSize: '13px',
-                fontWeight: '600',
-                color: '#ffffff',
-                marginLeft: '8px',
-              }}
-            >
-              Weekly Snapshot
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span
-              style={{
-                fontSize: '14px',
-                color: '#cbd5e1',
-                cursor: 'pointer',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              ↻
-            </span>
-            <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
-              {snapshotExpanded ? '▲' : '▼'}
-            </span>
-          </div>
-        </div>
-
-        {/* Summary — only visible when expanded */}
-        {snapshotExpanded && (
-        <div style={{ padding: '0 16px 12px 16px' }}>
-          <div style={{ display: 'flex', gap: '16px' }}>
-            {/* Health Score */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'baseline' }}>
-                <span
-                  style={{
-                    fontSize: '18px',
-                    fontWeight: '700',
-                    color: '#10b981',
-                  }}
-                >
-                  7.2
-                </span>
-                <span style={{ fontSize: '12px', color: '#e2e8f0' }}>/10</span>
-              </div>
-              <p style={{ fontSize: '10px', color: '#cbd5e1' }}>
-                Portfolio Health
-              </p>
-            </div>
-
-            {/* Risk */}
-            <div>
-              <span
-                style={{
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  color: riskData.riskColor,
-                }}
-              >
-                {riskData.riskLabel}
-              </span>
-              <p style={{ fontSize: '10px', color: '#cbd5e1' }}>
-                Risk Level
-              </p>
-            </div>
-
-            {/* Opportunities */}
-            <div>
-              <span
-                style={{
-                  fontSize: '18px',
-                  fontWeight: '700',
-                  color: '#22d3ee',
-                }}
-              >
-                2
-              </span>
-              <p style={{ fontSize: '10px', color: '#cbd5e1' }}>
-                Opportunities
-              </p>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* Expanded */}
-        {snapshotExpanded && (
-          <div
-            style={{
-              padding: '0 16px 12px 16px',
-              borderTop: '1px solid rgba(42,52,72,0.6)',
-            }}
-          >
-            {/* Opportunities */}
-            <div style={{ marginTop: '12px' }}>
-              <p style={{
-                fontSize: '11px', color: '#22d3ee',
-                fontWeight: '700', letterSpacing: '0.05em',
-                marginBottom: '8px',
-              }}>
-                📈 OPPORTUNITIES
-              </p>
-              {[
-                {
-                  text: earnings[0]
-                    ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} days — prepare position`
-                    : 'NVDA showing oversold signals — consider adding',
-                  msg: earnings[0]
-                    ? `Help me prepare for ${earnings[0].symbol} earnings`
-                    : 'Analyze NVDA — is it showing oversold signals?',
-                },
-                {
-                  text: 'GOOGL trading below 52-week average — value entry',
-                  msg: 'Analyze GOOGL — is it a value entry at current price?',
-                },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  onClick={(e) => sendToChat(item.msg, e)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(34,211,238,0.06)',
-                    border: '1px solid rgba(34,211,238,0.12)',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>→ {item.text}</span>
-                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Risks */}
-            <div style={{ marginTop: '12px' }}>
-              <p style={{
-                fontSize: '11px', color: '#f59e0b',
-                fontWeight: '700', letterSpacing: '0.05em',
-                marginBottom: '8px',
-              }}>
-                ⚠️ RISKS
-              </p>
-              {(() => {
-                const riskItems: { text: string; msg: string }[] = [];
-                
-                // Sector concentration risk
-                if (riskData.maxSectorPct > 40) {
-                  riskItems.push({
-                    text: `${riskData.maxSectorName} concentration at ${Math.round(riskData.maxSectorPct)}% — above 40% threshold`,
-                    msg: `How should I reduce my ${riskData.maxSectorName} concentration?`,
-                  });
-                }
-
-                // NFLX position risk (dynamic from live data)
-                const nflx = liveAccount?.positions?.find(p => p.symbol === 'NFLX');
-                if (nflx && nflx.totalPnl < 0) {
-                  const pct = Math.abs(nflx.totalPnlPercent).toFixed(0);
-                  riskItems.push({
-                    text: `NFLX down ${pct}% from cost basis ($${nflx.avgCost.toFixed(2)} → $${nflx.currentPrice.toFixed(2)})`,
-                    msg: `Should I cut my NFLX position? It's down ${pct}%`,
-                  });
-                } else if (nflx && nflx.totalPnl >= 0) {
-                  // NFLX is profitable — no risk item needed
-                }
-
-                return riskItems.length > 0 ? riskItems.map((item, i) => (
-                <div
-                  key={i}
-                  onClick={(e) => sendToChat(item.msg, e)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(34,211,238,0.06)',
-                    border: '1px solid rgba(34,211,238,0.12)',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>→ {item.text}</span>
-                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-                </div>
-              )) : (
-                <p style={{ fontSize: '12px', color: '#e2e8f0', padding: '4px 0' }}>No significant risks detected.</p>
-              );
-              })()}
-            </div>
-
-            {/* Recommendations */}
-            <div style={{ marginTop: '12px' }}>
-              <p style={{
-                fontSize: '11px', color: '#10b981',
-                fontWeight: '700', letterSpacing: '0.05em',
-                marginBottom: '8px',
-              }}>
-                💡 RECOMMENDATIONS
-              </p>
-              {(() => {
-                const recs: { text: string; msg: string }[] = [];
-                
-                const nflxPos = liveAccount?.positions?.find(p => p.symbol === 'NFLX');
-                if (nflxPos && nflxPos.totalPnlPercent < -20) {
-                  recs.push({
-                    text: `Review NFLX position — down ${Math.abs(nflxPos.totalPnlPercent).toFixed(0)}% from cost basis`,
-                    msg: 'Give me a full analysis of my NFLX position',
-                  });
-                }
-                
-                if (riskData.maxSectorPct >= 40) {
-                  const otherSectors = ['Healthcare', 'Financial Services', 'Consumer', 'Industrials']
-                    .filter(s => s !== riskData.maxSectorName);
-                  recs.push({
-                    text: `Consider adding ${otherSectors[0]?.toLowerCase() || 'other sectors'} for diversification`,
-                    msg: `What ${otherSectors[0]?.toLowerCase() || 'diversification'} stocks should I add?`,
-                  });
-                }
-                
-                return recs.length > 0 ? recs.map((item, i) => (
-                <div
-                  key={i}
-                  onClick={(e) => sendToChat(item.msg, e)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(34,211,238,0.06)',
-                    border: '1px solid rgba(34,211,238,0.12)',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>→ {item.text}</span>
-                  <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
-                </div>
-              )) : (
-                <p style={{ fontSize: '12px', color: '#e2e8f0', padding: '4px 0' }}>Your portfolio is well-balanced.</p>
-              );
-              })()}
-            </div>
-
-            <p style={{
-              fontSize: '10px', color: '#cbd5e1',
-              marginTop: '12px',
-            }}>
-              Generated Jun 9 · Refresh uses 1 deep analysis
-            </p>
-          </div>
-        )}
-      </div>
+      {/* ─── 3. Weekly Snapshot (AI-powered) ─── */}
+      <WeeklySnapshotCard />
 
       {/* ─── 4. Ask Vantage AI Header ─── */}
       <div

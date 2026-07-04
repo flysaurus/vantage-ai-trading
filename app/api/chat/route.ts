@@ -3,6 +3,8 @@ import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-pro
 import type { SystemBlock } from '@/lib/ai-provider'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
+import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard'
+import { getOptionalUserId } from '@/lib/auth/get-server-user'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -96,6 +98,18 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { messages, portfolioContext, mode } = body
 
+    // ── Usage limit check ──
+    const userId = await getOptionalUserId();
+    if (userId && userId !== 'anonymous') {
+      const { allowed, remaining } = await checkUsageLimit(userId, 'message');
+      if (!allowed) {
+        return Response.json(
+          { error: 'Daily limit reached', remaining: 0 },
+          { status: 429 }
+        );
+      }
+    }
+
     // Build user profile context from request
     const profile: UserProfile = {
       investorStyle: body.investorStyle || 'Lynch',
@@ -155,6 +169,11 @@ export async function POST(req: Request) {
         content: m.content
       }))
     })
+
+    // ── Increment usage (non-blocking, after check passes) ──
+    if (userId && userId !== 'anonymous') {
+      incrementUsage(userId, 'message').catch(() => {});
+    }
 
     // Return streaming response
     const encoder = new TextEncoder()
