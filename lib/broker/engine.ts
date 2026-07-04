@@ -63,6 +63,7 @@ export interface BasketOrderResult {
 export interface BrokerPosition {
   symbol: string;
   name?: string;
+  sector?: string;
   type: 'Stock' | 'ETF';
   shares: number;
   avgCost: number;

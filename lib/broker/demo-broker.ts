@@ -57,8 +57,8 @@ export class DemoBroker implements BrokerEngine {
         const saved = JSON.parse(raw);
         const age = Date.now() - (saved.savedAt || 0);
         if (age < STALE_MS && saved.positions?.length > 0) {
-          // Ensure all loaded positions have a name field (patch pre-fix localStorage)
-          saved.positions = saved.positions.map((p: any) => ({ ...p, name: p.name || p.symbol }));
+          // Ensure all loaded positions have name/sector fields (patch pre-fix localStorage)
+          saved.positions = saved.positions.map((p: any) => ({ ...p, name: p.name || p.symbol, sector: p.sector || '' }));
           console.log('[DemoBroker] Loaded state:', {
             positions: saved.positions.length,
             cash: saved.cashBalance,
@@ -145,6 +145,7 @@ export class DemoBroker implements BrokerEngine {
     this.state.positions = (account.positions || []).map((p: any) => ({
       symbol: p.symbol,
       name: p.name || p.symbol,
+      sector: p.sector,
       type: 'Stock' as const,
       shares: p.qty,
       avgCost: p.avgCost,
@@ -699,6 +700,7 @@ export class DemoBroker implements BrokerEngine {
   private upsertPosition(params: {
     symbol: string;
     name?: string;
+    sector?: string;
     shares: number;
     price: number;
     cost: number;
@@ -717,10 +719,12 @@ export class DemoBroker implements BrokerEngine {
       p.totalCost = newCost;
       p.avgCost = newCost / newShares;
       if (params.name) p.name = params.name;
+      if (params.sector) p.sector = params.sector;
     } else {
       this.state.positions.push({
         symbol: params.symbol,
         name: params.name || params.symbol,
+        sector: params.sector || '',
         type: 'Stock',
         shares: params.shares,
         avgCost: params.price,
