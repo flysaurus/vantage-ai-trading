@@ -210,10 +210,16 @@ export function SettingsTab() {
               try {
                 const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
                 if (!fo) return 30;
-                const expires = new Date(fo);
-                expires.setDate(expires.getDate() + 30);
-                const diff = expires.getTime() - Date.now();
-                return Math.max(0, Math.floor(diff / 86_400_000));
+
+                const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                const start = dateOnly(new Date(fo));
+                const today = dateOnly(new Date());
+
+                const DAY_MS = 86_400_000;
+                const totalDays = 30;
+                const daysSinceStart = Math.round((today.getTime() - start.getTime()) / DAY_MS);
+
+                return Math.max(0, totalDays - daysSinceStart - 1);
               } catch { return 30; }
             })()}
           </span>

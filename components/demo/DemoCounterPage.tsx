@@ -94,15 +94,23 @@ export default function DemoCounterPage({
 
   // ── Derived ───────────────────────────────────────────────
 
-  const daysRemaining = expiresAt
-    ? Math.max(
-        0,
-        Math.floor(
-          (new Date(expiresAt).getTime() - Date.now()) /
-            (1000 * 60 * 60 * 24),
-        ),
-      )
-    : 0;
+  const daysRemaining = (() => {
+    if (!demoStartAtProp && !expiresAt) return 0;
+    const start = demoStartAtProp ? new Date(demoStartAtProp) : null;
+    const expires = expiresAt ? new Date(expiresAt) : null;
+    if (!expires) return 0;
+
+    const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const startDate = start ? dateOnly(start) : dateOnly(new Date());
+    const todayDate = dateOnly(new Date());
+    const expiresDate = dateOnly(expires);
+
+    const DAY_MS = 86400000;
+    const totalDays = Math.round((expiresDate.getTime() - startDate.getTime()) / DAY_MS);
+    const daysSinceStart = Math.round((todayDate.getTime() - startDate.getTime()) / DAY_MS);
+
+    return Math.max(0, totalDays - daysSinceStart - 1);
+  })();
 
   const eyebrowText = isFirstTime ? 'DEMO ACTIVATED' : 'WELCOME BACK';
 

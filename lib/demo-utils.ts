@@ -28,23 +28,28 @@ export function getDemoStatus(
   const expires = new Date(demoExpiresAt);
   const start = new Date(demoStartAt);
 
-  const msRemaining = expires.getTime() - now.getTime();
-  const daysRemaining = Math.max(
-    0,
-    Math.floor(msRemaining / (1000 * 60 * 60 * 24))
-  );
+  // ── Pure date (midnight-local), no time components ───
+  const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const startDate = dateOnly(start);
+  const todayDate = dateOnly(now);
+  const expiresDate = dateOnly(expires);
 
-  const totalMs = 30 * 24 * 60 * 60 * 1000;
-  const usedMs = now.getTime() - start.getTime();
-  const percentUsed = Math.min(
-    100,
-    Math.round((usedMs / totalMs) * 100)
-  );
+  const DAY_MS = 1000 * 60 * 60 * 24;
+  const totalDemoDays = Math.round((expiresDate.getTime() - startDate.getTime()) / DAY_MS);
+  const daysSinceStart = Math.round((todayDate.getTime() - startDate.getTime()) / DAY_MS);
+
+  // Display: today is in-progress → subtract it (i.e. total - 1 - elapsed)
+  const daysRemaining = Math.max(0, totalDemoDays - daysSinceStart - 1);
+
+  // Expired only after totalDemoDays full days have passed
+  const isExpired = daysSinceStart >= totalDemoDays;
+
+  const percentUsed = Math.min(100, Math.round((daysSinceStart / totalDemoDays) * 100));
 
   return {
     daysRemaining,
-    isExpired: daysRemaining <= 0,
-    showWarning: daysRemaining <= 3,
+    isExpired,
+    showWarning: daysRemaining <= 3 && !isExpired,
     percentUsed,
   };
 }

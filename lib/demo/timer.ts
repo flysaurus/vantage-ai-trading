@@ -54,16 +54,23 @@ export function getDemoStatus(): DemoStatus {
   const expiresAt = new Date(firstOpen);
   expiresAt.setDate(expiresAt.getDate() + DEMO_DURATION_DAYS);
 
-  const now = new Date();
-  const diffMs = expiresAt.getTime() - now.getTime();
-  const daysRemaining = Math.max(0, Math.floor(diffMs / 86_400_000));
-  const isExpired = daysRemaining <= 0;
+  // ── Pure date (midnight-local), no time components ───
+  const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const startDate = dateOnly(firstOpen);
+  const todayDate = dateOnly(new Date());
+
+  const DAY_MS = 86_400_000;
+  const totalDays = DEMO_DURATION_DAYS;
+  const daysSinceStart = Math.round((todayDate.getTime() - startDate.getTime()) / DAY_MS);
+
+  // Display: subtract today (in-progress) — total - 1 - elapsed
+  const daysRemaining = Math.max(0, totalDays - daysSinceStart - 1);
+  // Expired only after all 30 calendar days have passed
+  const isExpired = daysSinceStart >= totalDays;
   const showWarning = !isExpired && daysRemaining <= WARNING_THRESHOLD_DAYS;
 
   // Percent of demo period used
-  const totalDemoMs = DEMO_DURATION_DAYS * 86_400_000;
-  const elapsedMs = now.getTime() - firstOpen.getTime();
-  const percentUsed = Math.min(100, Math.max(0, Math.round((elapsedMs / totalDemoMs) * 100)));
+  const percentUsed = Math.min(100, Math.max(0, Math.round((daysSinceStart / totalDays) * 100)));
 
   return {
     daysRemaining,
