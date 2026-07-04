@@ -56,7 +56,7 @@ export function getDemoStatus(): DemoStatus {
 
   const now = new Date();
   const diffMs = expiresAt.getTime() - now.getTime();
-  const daysRemaining = Math.max(0, Math.ceil(diffMs / 86_400_000));
+  const daysRemaining = Math.max(0, Math.floor(diffMs / 86_400_000));
   const isExpired = daysRemaining <= 0;
   const showWarning = !isExpired && daysRemaining <= WARNING_THRESHOLD_DAYS;
 

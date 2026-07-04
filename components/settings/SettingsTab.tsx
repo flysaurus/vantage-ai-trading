@@ -213,7 +213,7 @@ export function SettingsTab() {
                 const expires = new Date(fo);
                 expires.setDate(expires.getDate() + 30);
                 const diff = expires.getTime() - Date.now();
-                return Math.max(0, Math.ceil(diff / 86_400_000));
+                return Math.max(0, Math.floor(diff / 86_400_000));
               } catch { return 30; }
             })()}
           </span>
@@ -259,6 +259,7 @@ export function SettingsTab() {
 
         {/* Upgrade CTA */}
         <button
+          onClick={() => window.location.href = '/plans'}
           style={{
             width: '100%',
             background: 'linear-gradient(135deg, #22d3ee, #06b6d4)',

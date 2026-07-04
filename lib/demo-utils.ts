@@ -31,7 +31,7 @@ export function getDemoStatus(
   const msRemaining = expires.getTime() - now.getTime();
   const daysRemaining = Math.max(
     0,
-    Math.ceil(msRemaining / (1000 * 60 * 60 * 24))
+    Math.floor(msRemaining / (1000 * 60 * 60 * 24))
   );
 
   const totalMs = 30 * 24 * 60 * 60 * 1000;

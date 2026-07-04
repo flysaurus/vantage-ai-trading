@@ -328,6 +328,32 @@ export default function DemoCounterPage({
         </button>
       </div>
 
+      {/* ═══ PLANS LINK (secondary) ═══ */}
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.location.href = '/plans';
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#64748b',
+          fontSize: '12px',
+          fontWeight: 500,
+          cursor: 'pointer',
+          fontFamily: 'var(--font-sans)',
+          textDecoration: 'underline',
+          textUnderlineOffset: '3px',
+          textDecorationColor: 'rgba(100,116,139,0.3)',
+          margin: '0 auto 16px',
+          display: 'block',
+          padding: 0,
+        }}
+      >
+        See what&rsquo;s included with Vantage Silver &amp; Gold &rarr;
+      </button>
+
       {/* ═══ SETTINGS NOTE ═══ */}
       <p
         style={{
