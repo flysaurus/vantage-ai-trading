@@ -235,12 +235,12 @@ function PositionCard({
       {/* ── Cost-basis row ── */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '0 2px',
+        padding: '4px 2px', margin: '2px 0',
       }}>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1 }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.4 }}>
           Avg ${(pos.avgCost ?? 0).toFixed(2)} · Cost ${((pos.avgCost ?? 0) * pos.qty).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </span>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 500, lineHeight: 1 }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', fontWeight: 500, lineHeight: 1.4 }}>
           Val ${pos.marketValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </span>
       </div>
