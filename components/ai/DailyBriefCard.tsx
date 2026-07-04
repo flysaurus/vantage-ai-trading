@@ -112,7 +112,7 @@ export default function DailyBriefCard() {
         {/* Lines */}
         <div className="space-y-2">
           {visibleLines.map((line, i) => (
-            <p key={i} className="text-xs leading-relaxed py-0.5">
+            <p key={i} className="text-sm leading-relaxed py-0.5">
               {line.label ? (
                 <>
                   <span className={`font-semibold ${LABEL_COLORS[line.label] || 'text-slate-300'}`}>

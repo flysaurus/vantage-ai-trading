@@ -37,7 +37,8 @@ Score based on:
 Never score above 7 when any position is down >30%
 Never score above 5 when any position is down >40%
 
-## RISK LEVEL (LOW/MEDIUM/HIGH):
+## RISK LEVEL (output exactly one: LOW, MEDIUM, or HIGH):
+On the line right after, write "OVERALL RISK: " followed by your chosen level.
 LOW: no sector >40%, no position down >20%
 MEDIUM: sector 40-60% OR position down 20-40%
 HIGH: sector >60% OR position down >40%
@@ -114,8 +115,13 @@ export async function GET(req: NextRequest) {
         const reHealthMatch = existing.content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
         if (healthScore == null && reHealthMatch) healthScore = parseFloat(reHealthMatch[1]);
 
-        const reRiskMatch = existing.content.match(/(?:OVERALL RISK|RISK LEVEL):?\s*(LOW|MEDIUM|HIGH)/i);
+        const reRiskMatch = existing.content.match(/(?:OVERALL RISK|RISK LEVEL)[\s\S]*?\b(LOW|MEDIUM|HIGH)\b/i);
         if (riskLevel == null && reRiskMatch) riskLevel = reRiskMatch[1].toUpperCase();
+        // Fallback: try RL: format
+        if (riskLevel == null) {
+          const rlMatch = existing.content.match(/^RL:\s*(LOW|MEDIUM|HIGH)/im);
+          if (rlMatch) riskLevel = rlMatch[1].toUpperCase();
+        }
 
         if (opportunitiesCount == null || opportunitiesCount === 0) {
           const reOppSection = existing.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?)|$)/i);
@@ -268,8 +274,9 @@ export async function GET(req: NextRequest) {
     const prompt = [
       'Run a complete weekly portfolio health snapshot on this portfolio.',
       'Format as markdown with ## sections: OVERALL HEALTH, RISKS, OPPORTUNITIES, SUMMARY.',
-      'Start each section with "## SECTION_NAME".',
-      'Include "OVERALL HEALTH: X/10" on one line and "OVERALL RISK: LOW|MEDIUM|HIGH" in the RISK section.',
+      'Use short bullet points (not dense paragraphs) for analysis within each section.',
+      'In the RISK section, put the risk level on its own line like: RL: MEDIUM',
+      'Include "OVERALL HEALTH: X/10" on one line. Put the risk level on its own line: RL: MEDIUM (or LOW/HIGH).',
       `Portfolio: ${symbols.join(', ')}`,
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
@@ -295,8 +302,13 @@ export async function GET(req: NextRequest) {
     const healthMatch = content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
     const healthScore = healthMatch ? parseFloat(healthMatch[1]) : null;
 
-    const riskMatch = content.match(/(?:OVERALL RISK|RISK LEVEL):?\s*(LOW|MEDIUM|HIGH)/i);
-    const riskLevel = riskMatch ? riskMatch[1].toUpperCase() : null;
+    const riskMatch = content.match(/(?:OVERALL RISK|RISK LEVEL)[\s\S]*?\b(LOW|MEDIUM|HIGH)\b/i);
+    let riskLevel = riskMatch ? riskMatch[1].toUpperCase() : null;
+    // Fallback: explicit RL: format
+    if (!riskLevel) {
+      const rlMatch = content.match(/^RL:\s*(LOW|MEDIUM|HIGH)/im);
+      if (rlMatch) riskLevel = rlMatch[1].toUpperCase();
+    }
 
     // Count opportunities only from the OPPORTUNITIES section (flexible bullet chars)
     const oppSection = content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?)|$)/i);
