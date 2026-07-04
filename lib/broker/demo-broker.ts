@@ -142,6 +142,7 @@ export class DemoBroker implements BrokerEngine {
 
     this.state.positions = (account.positions || []).map((p: any) => ({
       symbol: p.symbol,
+      name: p.name || p.symbol,
       type: 'Stock' as const,
       shares: p.qty,
       avgCost: p.avgCost,
@@ -695,6 +696,7 @@ export class DemoBroker implements BrokerEngine {
 
   private upsertPosition(params: {
     symbol: string;
+    name?: string;
     shares: number;
     price: number;
     cost: number;
@@ -712,9 +714,11 @@ export class DemoBroker implements BrokerEngine {
       p.shares = newShares;
       p.totalCost = newCost;
       p.avgCost = newCost / newShares;
+      if (params.name) p.name = params.name;
     } else {
       this.state.positions.push({
         symbol: params.symbol,
+        name: params.name || params.symbol,
         type: 'Stock',
         shares: params.shares,
         avgCost: params.price,
