@@ -87,7 +87,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
 
       {/* Tagline */}
       <div className={`transition-opacity duration-400 px-10 text-center ${taglineVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <p className="text-slate-400 text-sm leading-relaxed tracking-wide">
+        <p className="text-slate-300 text-sm leading-relaxed tracking-wide">
           Institutional-quality AI portfolio analysis.<br />Built for everyone.
         </p>
       </div>

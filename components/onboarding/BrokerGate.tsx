@@ -114,7 +114,7 @@ export function BrokerGate({ onDismiss }: Props) {
               right: 12,
               background: 'none',
               border: 'none',
-              color: '#64748b',
+              color: '#e2e8f0',
               cursor: 'pointer',
               padding: 4,
               borderRadius: 4,

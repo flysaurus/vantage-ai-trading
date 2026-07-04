@@ -37,7 +37,7 @@ export function BottomNav() {
               >
                 <CompassIcon size={28} color="white" />
               </button>
-              <span className={`text-[11px] font-medium mt-1 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`}>
+              <span className={`text-[11px] font-medium mt-1 ${isActive ? 'text-cyan-400' : 'text-slate-300'}`}>
                 {label}
               </span>
             </div>
@@ -53,9 +53,9 @@ export function BottomNav() {
             <Icon
               size={24}
               strokeWidth={isActive ? 2.5 : 1.5}
-              className={isActive ? 'text-cyan-400' : 'text-slate-400'}
+              className={isActive ? 'text-cyan-400' : 'text-slate-300'}
             />
-            <span className={`text-[11px] mt-1 ${isActive ? 'text-cyan-400 font-semibold' : 'text-slate-400 font-medium'}`}>
+            <span className={`text-[11px] mt-1 ${isActive ? 'text-cyan-400 font-semibold' : 'text-slate-300 font-medium'}`}>
               {label}
             </span>
           </button>

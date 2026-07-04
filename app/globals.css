@@ -805,7 +805,7 @@ input::placeholder, textarea::placeholder {
   font-family: var(--font-sans);
   font-weight: 400;
   font-size: 11px;
-  color: var(--text-muted);
+  color: #e2e8f0;
   letter-spacing: 0.10em;
   text-transform: uppercase;
 }

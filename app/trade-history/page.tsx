@@ -236,7 +236,7 @@ function TradeHistoryPageInner() {
   };
 
   const SortIcon = ({ col }: { col: SortCol }) => {
-    if (sortCol !== col) return <ChevronDown size={10} style={{ color: '#475569', opacity: 0.3 }} />;
+    if (sortCol !== col) return <ChevronDown size={10} style={{ color: '#94a3b8', opacity: 0.3 }} />;
     return sortDir === 'asc' ? <ChevronUp size={10} style={{ color: '#06b6d4' }} /> : <ChevronDown size={10} style={{ color: '#06b6d4' }} />;
   };
 
@@ -391,7 +391,7 @@ function TradeHistoryPageInner() {
       {/* Empty */}
       {!loading && isInitialized && trades.length === 0 && !error && (
         <div style={{ textAlign: 'center', padding: '60px 20px', background: '#1e293b', border: '1px solid #334155', borderRadius: 12 }}>
-          <Activity size={40} style={{ color: '#475569', marginBottom: 12 }} />
+          <Activity size={40} style={{ color: '#94a3b8', marginBottom: 12 }} />
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No trades yet</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Your trade history will appear here once you start trading.</div>
         </div>
@@ -477,14 +477,14 @@ function TradeHistoryPageInner() {
           {totalPages > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 }}>
               <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                style={{ padding: '6px 12px', borderRadius: 6, background: page === 0 ? '#0f172a' : '#1e293b', border: '1px solid #334155', color: page === 0 ? '#475569' : 'var(--text-dim)', fontSize: 11, cursor: page === 0 ? 'default' : 'pointer' }}>
+                style={{ padding: '6px 12px', borderRadius: 6, background: page === 0 ? '#0f172a' : '#1e293b', border: '1px solid #334155', color: page === 0 ? '#94a3b8' : 'var(--text-dim)', fontSize: 11, cursor: page === 0 ? 'default' : 'pointer' }}>
                 Prev
               </button>
               <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
                 {page + 1} / {totalPages}
               </span>
               <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                style={{ padding: '6px 12px', borderRadius: 6, background: page >= totalPages - 1 ? '#0f172a' : '#1e293b', border: '1px solid #334155', color: page >= totalPages - 1 ? '#475569' : 'var(--text-dim)', fontSize: 11, cursor: page >= totalPages - 1 ? 'default' : 'pointer' }}>
+                style={{ padding: '6px 12px', borderRadius: 6, background: page >= totalPages - 1 ? '#0f172a' : '#1e293b', border: '1px solid #334155', color: page === 0 ? '#94a3b8' : 'var(--text-dim)', fontSize: 11, cursor: page >= totalPages - 1 ? 'default' : 'pointer' }}>
                 Next
               </button>
             </div>

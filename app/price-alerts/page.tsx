@@ -224,7 +224,7 @@ export default function PriceAlertsPage() {
           textAlign: 'center', padding: '60px 20px',
           background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
         }}>
-          <Bell size={40} style={{ color: '#475569', marginBottom: 12 }} />
+          <Bell size={40} style={{ color: '#64748b', marginBottom: 12 }} />
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
             {filter === 'all' ? 'No price alerts yet' : `No ${filter} alerts`}
           </div>
@@ -613,7 +613,7 @@ function CreateAlertModal({
           </div>
         )}
         {stockInfoLoading && (
-          <div style={{ marginBottom: 14, padding: 10, textAlign: 'center', color: '#64748b', fontSize: 11 }}>
+          <div style={{ marginBottom: 14, padding: 10, textAlign: 'center', color: '#cbd5e1', fontSize: 11 }}>
             <RefreshCcw size={12} style={{ animation: 'spin 1s linear infinite', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} />
             Loading {symbol}...
           </div>

@@ -120,7 +120,7 @@ export default function BrokerKeysHelp() {
               </ul>
             </div>
 
-            <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14, marginTop: 16, fontSize: 12, color: '#64748b' }}>
+            <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14, marginTop: 16, fontSize: 12, color: '#cbd5e1' }}>
               📚{' '}
               <a href="https://docs.alpaca.markets" target="_blank" rel="noopener" style={{ color: '#06b6d4' }}>
                 docs.alpaca.markets
@@ -182,7 +182,7 @@ export default function BrokerKeysHelp() {
               </ul>
             </div>
 
-            <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14, marginTop: 16, fontSize: 12, color: '#64748b' }}>
+            <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14, marginTop: 16, fontSize: 12, color: '#cbd5e1' }}>
               📚{' '}
               <a href="https://developer.tastytrade.com" target="_blank" rel="noopener" style={{ color: '#06b6d4' }}>
                 developer.tastytrade.com
@@ -209,7 +209,7 @@ export default function BrokerKeysHelp() {
             </ul>
           </div>
 
-          <p style={{ fontSize: 12, color: '#475569', textAlign: 'center', margin: 0 }}>
+          <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', margin: 0 }}>
             Need help? Check your broker&apos;s support documentation or reach out to us.
           </p>
         </div>

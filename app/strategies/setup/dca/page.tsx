@@ -395,7 +395,7 @@ export default function DcaSetupPage() {
         {/* Day of week selector */}
         {(frequency === 'weekly' || frequency === 'biweekly') && (
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
+            <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {DAYS.map(d => (
                 <button key={d} onClick={() => setDayOfWeek(d)} style={{ flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid #334155', background: dayOfWeek === d ? '#06b6d4' : '#1e293b', color: dayOfWeek === d ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -409,7 +409,7 @@ export default function DcaSetupPage() {
         {/* Day of month selector */}
         {frequency === 'monthly' && (
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
+            <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 6, fontWeight: 600 }}>On which day?</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {DATES.map(d => (
                 <button key={d} onClick={() => setDayOfMonth(d)} style={{ flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid #334155', background: dayOfMonth === d ? '#06b6d4' : '#1e293b', color: dayOfMonth === d ? '#0f172a' : '#cbd5e1', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -424,7 +424,7 @@ export default function DcaSetupPage() {
       {/* ─── Section 4: Schedule ─────────────────────── */}
       <Section icon={<Calendar size={12} />} label="Schedule">
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, fontWeight: 600 }}>Start date</div>
+          <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>Start date</div>
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} min={todayStr()} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
         </div>
 
@@ -437,7 +437,7 @@ export default function DcaSetupPage() {
 
         {!runIndefinitely && (
           <>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, fontWeight: 600 }}>End date</div>
+            <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>End date</div>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} style={{ width: '100%', padding: '10px 12px', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none', fontFamily: 'inherit', colorScheme: 'dark' }} />
             {endDate && estOrders > 0 && (
               <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
@@ -471,7 +471,7 @@ export default function DcaSetupPage() {
         {loadingSchedules ? (
           <Spinner label="Loading schedules..." />
         ) : existingSchedules.length === 0 ? (
-          <div style={{ fontSize: 12, color: '#64748b' }}>No active DCA schedules.</div>
+          <div style={{ fontSize: 12, color: '#e2e8f0' }}>No active DCA schedules.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {existingSchedules.map(s => (
@@ -502,7 +502,7 @@ export default function DcaSetupPage() {
           <button onClick={handleSubmit} disabled={!canSubmit || submitting} style={{ flex: 1, padding: 14, borderRadius: 10, border: 'none', background: canSubmit && !submitting ? 'linear-gradient(135deg, #06b6d4, #0d9488)' : '#334155', color: canSubmit && !submitting ? '#0f172a' : '#64748b', fontSize: 15, fontWeight: 700, cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 0.2s ease' }}>
             {submitting ? 'Saving...' : editingSchedule ? 'Update DCA' : 'Schedule DCA'}
           </button>
-          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setRunIndefinitely(true); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => { if (editingSchedule) { setEditingSchedule(null); setSelectedSymbol(''); setAmount(''); setQuantity(''); setFrequency(null); setDayOfWeek(null); setDayOfMonth(null); setStartDate(todayStr()); setRunIndefinitely(true); setEndDate(''); setStockDetails(null); } else { router.back(); } }} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             {editingSchedule ? 'Cancel Edit' : 'Cancel'}
           </button>
         </div>
@@ -578,7 +578,7 @@ function StockCard({ details, changeColor, position }: { details: StockDetails; 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-      <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 500 }}>{label}</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>{value}</span>
     </div>
   );

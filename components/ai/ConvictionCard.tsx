@@ -129,7 +129,7 @@ export function ConvictionCard({ card }: ConvictionCardProps) {
               padding: '4px 6px', background: '#0f172a', borderRadius: 4,
               textAlign: 'center',
             }}>
-              <div style={{ fontSize: 9, color: '#64748b', textTransform: 'capitalize' }}>{key}</div>
+              <div style={{ fontSize: 9, color: '#e2e8f0', textTransform: 'capitalize' }}>{key}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1' }}>
                 {typeof val === 'number' ? val.toFixed(0) : String(val)}
               </div>

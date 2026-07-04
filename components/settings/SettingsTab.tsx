@@ -74,7 +74,7 @@ export function SettingsTab() {
         padding: '20px 16px 8px 16px',
         fontSize: '11px',
         fontWeight: '600',
-        color: '#64748b',
+        color: '#e2e8f0',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
       }}
@@ -132,13 +132,13 @@ export function SettingsTab() {
         >
           <div>
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Investor Style</p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
               {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.name || 'Peter Lynch'} ·{' '}
               {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.subtitle || 'Growth Focus'} ·{' '}
               shapes all AI responses
             </p>
           </div>
-          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
         </div>
 
         {/* Risk Tolerance */}
@@ -183,7 +183,7 @@ export function SettingsTab() {
             <p style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>
               Demo Status
             </p>
-            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            <p style={{ fontSize: '11px', color: '#e2e8f0', marginTop: '2px' }}>
               30-day free trial
             </p>
           </div>
@@ -217,7 +217,7 @@ export function SettingsTab() {
               } catch { return 30; }
             })()}
           </span>
-          <span style={{ fontSize: '13px', color: '#64748b' }}>days left</span>
+          <span style={{ fontSize: '13px', color: '#e2e8f0' }}>days left</span>
         </div>
 
         {/* Progress bar */}
@@ -300,11 +300,11 @@ export function SettingsTab() {
                 return s ? `${s.emoji} ${s.name}` : 'Lynch';
               })()}
             </p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
               {level} &middot; {score} pts
             </p>
           </div>
-          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
         </div>
 
         {/* View & Share Card button */}
@@ -340,7 +340,7 @@ export function SettingsTab() {
             borderRadius: '10px',
             border: '1px solid rgba(255,255,255,0.08)',
             background: 'transparent',
-            color: '#64748b',
+            color: '#e2e8f0',
             fontSize: '13px',
             fontWeight: 600,
             cursor: 'pointer',
@@ -370,7 +370,7 @@ export function SettingsTab() {
           >
             <div>
               <p style={{ fontSize: '15px', color: '#ffffff' }}>Connected Broker</p>
-              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Not connected</p>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Not connected</p>
             </div>
             <button
               onClick={() => router.push('/broker-setup')}
@@ -409,7 +409,7 @@ export function SettingsTab() {
                   <span style={{ color: '#10b981' }}>Connected ✓</span>
                 </p>
               </div>
-              <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+              <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
             </div>
             <div
               onClick={() => setBrokerConnected(false)}
@@ -465,9 +465,9 @@ export function SettingsTab() {
           >
             <div>
               <p style={{ fontSize: '15px', color: '#ffffff' }}>{row.label}</p>
-              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{row.sub}</p>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>{row.sub}</p>
             </div>
-            <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
           </div>
         ))}
       </div>
@@ -494,9 +494,9 @@ export function SettingsTab() {
         >
           <div>
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Preferences</p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Appearance · Security</p>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Appearance · Security</p>
           </div>
-          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
         </div>
 
         {/* Help & Support */}
@@ -515,9 +515,9 @@ export function SettingsTab() {
         >
           <div>
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Help & Support</p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Docs · Contact</p>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Docs · Contact</p>
           </div>
-          <span style={{ color: '#475569', fontSize: '18px' }}>›</span>
+          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
         </div>
       </div>
 
@@ -595,7 +595,7 @@ export function SettingsTab() {
             <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' }}>
               Sign out of Vantage?
             </p>
-            <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>
+            <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '20px' }}>
               You&apos;ll need to sign back in to access your portfolio.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -675,7 +675,7 @@ export function SettingsTab() {
                 setSelectedStyle(user?.investorStyle || 'lynch');
               }}
               style={{
-                color: '#6b7280',
+                color: '#cbd5e1',
                 background: 'none',
                 border: 'none',
                 fontSize: '22px',
@@ -687,7 +687,7 @@ export function SettingsTab() {
           </div>
 
           <div style={{
-            color: '#6b7280',
+            color: '#cbd5e1',
             fontSize: '13px',
             padding: '12px 16px',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -725,7 +725,7 @@ export function SettingsTab() {
                           <span style={{ color: '#22d3ee', fontSize: '18px' }}>✓</span>
                         )}
                       </div>
-                      <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.5' }}>{style.description}</div>
+                      <div style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: '1.5' }}>{style.description}</div>
                     </div>
                   </div>
                 </div>
@@ -790,7 +790,7 @@ export function SettingsTab() {
           <span style={{ fontSize: '13px', color: '#ffffff', flex: 1 }}>{toast}</span>
           <button
             onClick={() => setToast(null)}
-            style={{ color: '#6b7280', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
+            style={{ color: '#cbd5e1', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
           >×</button>
         </div>
       )}

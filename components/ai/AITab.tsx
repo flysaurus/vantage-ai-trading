@@ -819,7 +819,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             alignItems: 'center',
           }}
         >
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+          <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
             💬 Previous conversation from {previousSession.date}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -943,11 +943,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
             >
               Daily Brief
             </span>
-            <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
+            <span style={{ fontSize: '11px', color: '#e2e8f0', marginLeft: '4px' }}>
               · Today
             </span>
           </div>
-          <span style={{ fontSize: '10px', color: '#64748b' }}>
+          <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
             {dailyBriefExpanded ? '▲' : '▼'}
           </span>
         </div>
@@ -985,7 +985,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             >
               MARKET
             </span>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
               {marketHeadline || 'Markets mixed, monitoring macro events'}
             </span>
             </div>
@@ -1023,7 +1023,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             >
               PORTFOLIO
             </span>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
               {portfolioSummary || 'Your portfolio down 0.9% today'}
             </span>
             </div>
@@ -1073,7 +1073,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               >
                 WATCH
               </span>
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
                 {earnings.length > 0
                   ? `${earnings[0].symbol} earnings in ${earnings[0].daysUntil} day${earnings[0].daysUntil === 1 ? '' : 's'}`
                   : 'No earnings in next 30 days for your holdings'}
@@ -1111,7 +1111,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               >
                 EARNINGS
               </span>
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
                 {earnings[1].symbol} reports in {earnings[1].daysUntil} days
               </span>
               </div>
@@ -1157,7 +1157,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             <span
               style={{
                 fontSize: '14px',
-                color: '#64748b',
+                color: '#cbd5e1',
                 cursor: 'pointer',
               }}
               onClick={(e) => {
@@ -1166,7 +1166,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             >
               ↻
             </span>
-            <span style={{ fontSize: '10px', color: '#64748b' }}>
+            <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
               {snapshotExpanded ? '▲' : '▼'}
             </span>
           </div>
@@ -1188,9 +1188,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 >
                   7.2
                 </span>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>/10</span>
+                <span style={{ fontSize: '12px', color: '#e2e8f0' }}>/10</span>
               </div>
-              <p style={{ fontSize: '10px', color: '#64748b' }}>
+              <p style={{ fontSize: '10px', color: '#cbd5e1' }}>
                 Portfolio Health
               </p>
             </div>
@@ -1206,7 +1206,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               >
                 {riskData.riskLabel}
               </span>
-              <p style={{ fontSize: '10px', color: '#64748b' }}>
+              <p style={{ fontSize: '10px', color: '#cbd5e1' }}>
                 Risk Level
               </p>
             </div>
@@ -1222,7 +1222,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               >
                 2
               </span>
-              <p style={{ fontSize: '10px', color: '#64748b' }}>
+              <p style={{ fontSize: '10px', color: '#cbd5e1' }}>
                 Opportunities
               </p>
             </div>
@@ -1276,7 +1276,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                     marginBottom: '6px',
                   }}
                 >
-                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
+                  <span style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>→ {item.text}</span>
                   <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               ))}
@@ -1330,11 +1330,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
                     marginBottom: '6px',
                   }}
                 >
-                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
+                  <span style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>→ {item.text}</span>
                   <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               )) : (
-                <p style={{ fontSize: '12px', color: '#64748b', padding: '4px 0' }}>No significant risks detected.</p>
+                <p style={{ fontSize: '12px', color: '#e2e8f0', padding: '4px 0' }}>No significant risks detected.</p>
               );
               })()}
             </div>
@@ -1384,17 +1384,17 @@ Give me a market pulse check — how are the major indexes performing today, wha
                     marginBottom: '6px',
                   }}
                 >
-                  <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4' }}>→ {item.text}</span>
+                  <span style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>→ {item.text}</span>
                   <span style={{ fontSize: '14px', color: '#22d3ee', marginLeft: '8px', flexShrink: 0 }}>›</span>
                 </div>
               )) : (
-                <p style={{ fontSize: '12px', color: '#64748b', padding: '4px 0' }}>Your portfolio is well-balanced.</p>
+                <p style={{ fontSize: '12px', color: '#e2e8f0', padding: '4px 0' }}>Your portfolio is well-balanced.</p>
               );
               })()}
             </div>
 
             <p style={{
-              fontSize: '10px', color: '#94a3b8',
+              fontSize: '10px', color: '#cbd5e1',
               marginTop: '12px',
             }}>
               Generated Jun 9 · Refresh uses 1 deep analysis
@@ -1412,7 +1412,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           gap: '8px',
         }}
       >
-        <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>Ask Vantage AI</span>
+        <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: '600' }}>Ask Vantage AI</span>
         <button
           onClick={() => setShowHistory(true)}
           style={{
@@ -1553,7 +1553,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               <div style={{
                 fontSize: '14px',
                 fontWeight: '400',
-                color: '#9ca3af',
+                color: '#cbd5e1',
                 lineHeight: '1.6',
               }}>
                 {greetingHook}
@@ -1805,7 +1805,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 strokeLinecap="round"
               />
             </svg>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
+            <span style={{ fontSize: '13px', color: '#cbd5e1' }}>
               Analyzing your portfolio —
             </span>
           </div>
@@ -1963,7 +1963,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             {localRemaining} message{localRemaining !== 1 ? 's' : ''} remaining today
           </span>
           {localRemaining <= 5 && (
-            <span style={{ fontSize: '10px', color: '#64748b' }}>
+            <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
               Free tier · Resets midnight UTC
             </span>
           )}
@@ -2082,7 +2082,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           style={{
             textAlign: 'center',
             fontSize: '10px',
-            color: '#64748b',
+            color: '#cbd5e1',
             padding: '0 16px calc(12px + env(safe-area-inset-bottom)) 16px',
             margin: 0,
           }}
@@ -2169,7 +2169,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             {/* Subtitle */}
             <p style={{
               fontSize: '11px',
-              color: '#64748b',
+              color: '#cbd5e1',
               padding: '0 20px 16px 20px',
               flexShrink: 0,
             }}>
@@ -2188,7 +2188,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
                 if (sessions.length === 0) {
                   return (
-                    <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '32px 0' }}>
+                    <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '32px 0' }}>
                       No recent conversations
                     </p>
                   );
@@ -2253,7 +2253,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                         {/* Date label */}
                         <p style={{
                           fontSize: '11px',
-                          color: '#64748b',
+                          color: '#cbd5e1',
                           fontWeight: '500',
                           margin: '0 0 6px 0',
                         }}>
@@ -2278,7 +2278,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                         {/* Message count */}
                         <p style={{
                           fontSize: '11px',
-                          color: '#475569',
+                          color: '#94a3b8',
                           margin: 0,
                         }}>
                           {session.messages.length} message{session.messages.length !== 1 ? 's' : ''}
@@ -2362,7 +2362,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
             <p
               style={{
                 fontSize: '13px',
-                color: '#64748b',
+                color: '#cbd5e1',
                 marginBottom: '24px',
                 lineHeight: '1.5',
               }}

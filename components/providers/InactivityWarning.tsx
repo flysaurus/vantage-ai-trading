@@ -93,7 +93,7 @@ export function InactivityWarning() {
         </div>
 
         <div style={{
-          color: '#6b7280',
+          color: '#cbd5e1',
           fontSize: '13px',
           lineHeight: '1.5',
           marginBottom: '24px',
@@ -151,7 +151,7 @@ export function InactivityWarning() {
           style={{
             background: 'none',
             border: 'none',
-            color: '#4b5563',
+            color: '#94a3b8',
             fontSize: '13px',
             cursor: 'pointer',
           }}

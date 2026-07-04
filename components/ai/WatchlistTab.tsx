@@ -237,7 +237,7 @@ export default function WatchlistTab() {
           <span style={{ fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>
             {activeList?.name}
           </span>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>▾</span>
+          <span style={{ fontSize: '12px', color: '#e2e8f0' }}>▾</span>
         </button>
 
         {/* Actions */}
@@ -259,7 +259,7 @@ export default function WatchlistTab() {
             onClick={() => setShowOptionsMenu(true)}
             style={{
               fontSize: '18px',
-              color: '#64748b',
+              color: '#cbd5e1',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
@@ -280,7 +280,7 @@ export default function WatchlistTab() {
             <p style={{ fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>
               No stocks yet
             </p>
-            <p style={{ fontSize: '14px', color: '#64748b', marginTop: '8px' }}>
+            <p style={{ fontSize: '14px', color: '#cbd5e1', marginTop: '8px' }}>
               Add symbols to track them here
             </p>
             <button
@@ -410,7 +410,7 @@ export default function WatchlistTab() {
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#64748b',
+                      color: '#cbd5e1',
                       marginTop: '2px',
                       maxWidth: '160px',
                       overflow: 'hidden',
@@ -448,7 +448,7 @@ export default function WatchlistTab() {
                     <p
                       style={{
                         fontSize: '11px',
-                        color: '#475569',
+                        color: '#94a3b8',
                         marginTop: '1px',
                       }}
                     >
@@ -474,7 +474,7 @@ export default function WatchlistTab() {
               background: 'transparent',
               border: '1px solid #2a3448',
               borderRadius: '10px',
-              color: '#64748b',
+              color: '#cbd5e1',
               fontSize: '14px',
               cursor: 'pointer',
             }}
@@ -556,7 +556,7 @@ export default function WatchlistTab() {
                     {list.name}
                   </span>
                 </div>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                <span style={{ fontSize: '12px', color: '#e2e8f0' }}>
                   {list.items.length} stocks
                 </span>
               </div>
@@ -638,7 +638,7 @@ export default function WatchlistTab() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#64748b',
+                  color: '#cbd5e1',
                   fontSize: '18px',
                   cursor: 'pointer',
                   padding: 0,
@@ -671,7 +671,7 @@ export default function WatchlistTab() {
 
             {/* Search results */}
             {searching && (
-              <p style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', textAlign: 'center', padding: '16px 0' }}>
                 Searching...
               </p>
             )}
@@ -697,7 +697,7 @@ export default function WatchlistTab() {
                       <p
                         style={{
                           fontSize: '12px',
-                          color: '#64748b',
+                          color: '#cbd5e1',
                           marginTop: '2px',
                           maxWidth: '240px',
                           overflow: 'hidden',
@@ -725,7 +725,7 @@ export default function WatchlistTab() {
               </div>
             )}
             {!searching && addQuery && addResults.length === 0 && (
-              <p style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
+              <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '16px 0' }}>
                 No results found
               </p>
             )}
@@ -854,7 +854,7 @@ export default function WatchlistTab() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#64748b',
+                  color: '#cbd5e1',
                   fontSize: '18px',
                   cursor: 'pointer',
                   padding: 0,
@@ -960,7 +960,7 @@ export default function WatchlistTab() {
             <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' }}>
               Delete {activeList?.name}?
             </p>
-            <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>
+            <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '20px' }}>
               This will remove the list and all {activeList?.items.length} stocks in it.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -1050,7 +1050,7 @@ export default function WatchlistTab() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#64748b',
+                  color: '#cbd5e1',
                   fontSize: '18px',
                   cursor: 'pointer',
                   padding: 0,

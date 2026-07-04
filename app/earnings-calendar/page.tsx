@@ -35,7 +35,7 @@ const STATUS_STYLE: Record<ResultStatus, { bg: string; color: string; label: str
   miss:    { bg: 'rgba(239,68,68,0.1)',   color: '#ef4444', label: 'Miss',   icon: TrendingDown },
   inline:  { bg: 'rgba(250,204,21,0.1)',  color: '#facc15', label: 'Inline', icon: Minus },
   upcoming:{ bg: 'rgba(6,182,212,0.1)',   color: '#06b6d4', label: 'Upcoming', icon: Clock },
-  'no-data': { bg: 'rgba(100,116,139,0.08)', color: '#64748b', label: 'No Data', icon: Minus },
+  'no-data': { bg: 'rgba(100,116,139,0.08)', color: '#cbd5e1', label: 'No Data', icon: Minus },
 };
 
 function edgarUrl(symbol: string): string {
@@ -307,7 +307,7 @@ function EarningsCalendarPage() {
           background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
           padding: '0 10px',
         }}>
-          <Search size={14} style={{ color: '#64748b', flexShrink: 0 }} />
+          <Search size={14} style={{ color: '#cbd5e1', flexShrink: 0 }} />
           <input
             ref={searchInputRef}
             type="text"
@@ -326,7 +326,7 @@ function EarningsCalendarPage() {
             }}
           />
           {searchQuery && (
-            <button onClick={clearSearch} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 2 }}>
+            <button onClick={clearSearch} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 2 }}>
               <X size={14} />
             </button>
           )}
@@ -349,7 +349,7 @@ function EarningsCalendarPage() {
               >
                 <div>
                   <span style={{ fontWeight: 700, fontSize: 13, color: '#e2e8f0' }}>{s.symbol}</span>
-                  <span style={{ fontSize: 10, color: '#64748b', marginLeft: 8 }}>
+                  <span style={{ fontSize: 10, color: '#cbd5e1', marginLeft: 8 }}>
                     {s.name?.substring(0, 35)}{(s.name?.length || 0) > 35 ? '…' : ''}
                   </span>
                 </div>
@@ -573,7 +573,7 @@ function EarningsCalendarPage() {
               textAlign: 'center', padding: '60px 20px',
               background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
             }}>
-              <Calendar size={40} style={{ color: '#475569', marginBottom: 12 }} />
+              <Calendar size={40} style={{ color: '#64748b', marginBottom: 12 }} />
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No earnings found</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Try changing filters or search for a symbol</div>
             </div>
@@ -648,13 +648,13 @@ function EarningsRow({ event }: { event: EarningsEvent }) {
         {/* External links */}
         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           <a href={edgarUrl(event.symbol)} target="_blank" rel="noopener"
-            style={{ color: '#64748b', fontSize: 10, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
+            style={{ color: '#cbd5e1', fontSize: 10, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
             title="SEC EDGAR filings"
           >
             <FileText size={10} /> SEC
           </a>
           <a href={marketBeatUrl(event.symbol)} target="_blank" rel="noopener"
-            style={{ color: '#64748b', fontSize: 10, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
+            style={{ color: '#cbd5e1', fontSize: 10, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}
             title="MarketBeat earnings"
           >
             <ExternalLink size={10} /> MB

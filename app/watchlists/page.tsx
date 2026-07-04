@@ -202,7 +202,7 @@ export default function WatchlistsPage() {
   // ─── Helpers ────────────────────────────────────────────────
   const formatPrice = (p: number | null) => p != null ? `$${p.toFixed(2)}` : '—';
   const formatChange = (c: number | null, cp: number | null): { text: string; color: string } => {
-    if (c == null || cp == null) return { text: '—', color: '#64748b' };
+    if (c == null || cp == null) return { text: '—', color: '#e2e8f0' };
     const sign = c >= 0 ? '+' : '';
     return {
       text: `${sign}${c.toFixed(2)} (${sign}${cp.toFixed(2)}%)`,
@@ -277,7 +277,7 @@ export default function WatchlistsPage() {
           textAlign: 'center', padding: '60px 20px',
           background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
         }}>
-          <Star size={40} style={{ color: '#475569', marginBottom: 12 }} />
+          <Star size={40} style={{ color: '#94a3b8', marginBottom: 12 }} />
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No watchlists yet</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>Create your first watchlist to track stocks</div>
           <button onClick={() => setShowCreate(true)} style={{
@@ -320,13 +320,13 @@ export default function WatchlistsPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* Quick actions */}
-              <button onClick={(e) => { e.stopPropagation(); setEditing(wl); }} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}>
+              <button onClick={(e) => { e.stopPropagation(); setEditing(wl); }} style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 4 }}>
                 <Edit3 size={14} />
               </button>
               <button onClick={(e) => { e.stopPropagation(); setDeleting(wl); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}>
                 <Trash2 size={14} />
               </button>
-              {expandedId === wl.id ? <ChevronDown size={16} style={{ color: '#64748b' }} /> : <ChevronRight size={16} style={{ color: '#64748b' }} />}
+              {expandedId === wl.id ? <ChevronDown size={16} style={{ color: '#e2e8f0' }} /> : <ChevronRight size={16} style={{ color: '#e2e8f0' }} />}
             </div>
           </div>
 
@@ -384,7 +384,7 @@ export default function WatchlistsPage() {
                           }}
                         >
                           <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{s.symbol}</span>
-                          <span style={{ color: '#64748b', fontSize: 10, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                          <span style={{ color: '#e2e8f0', fontSize: 10, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                         </div>
                       ))}
                     </div>
@@ -428,7 +428,7 @@ export default function WatchlistsPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {quotesLoading ? (
-                        <RefreshCcw size={12} style={{ color: '#64748b', animation: 'spin 1s linear infinite' }} />
+                        <RefreshCcw size={12} style={{ color: '#e2e8f0', animation: 'spin 1s linear infinite' }} />
                       ) : (
                         <>
                           <span style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
@@ -441,7 +441,7 @@ export default function WatchlistsPage() {
                       )}
                       <button
                         onClick={() => handleRemoveStock(stock.symbol)}
-                        style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 2 }}
+                        style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 2 }}
                         title="Remove"
                       >
                         <X size={12} />
@@ -647,7 +647,7 @@ function WatchlistFormModal({
                     fontSize: 11, fontWeight: 600, color: '#22d3ee',
                   }}>
                     {sym}
-                    <button onClick={() => removeSymbol(sym)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1 }}>
+                    <button onClick={() => removeSymbol(sym)} style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1 }}>
                       ×
                     </button>
                   </span>
@@ -688,7 +688,7 @@ function WatchlistFormModal({
                   zIndex: 10, maxHeight: 180, overflowY: 'auto',
                 }}>
                   {suggestionsLoading ? (
-                    <div style={{ padding: '10px 12px', fontSize: 11, color: '#64748b' }}>Searching...</div>
+                    <div style={{ padding: '10px 12px', fontSize: 11, color: '#e2e8f0' }}>Searching...</div>
                   ) : (
                     suggestions.map(s => (
                       <div
@@ -702,7 +702,7 @@ function WatchlistFormModal({
                         }}
                       >
                         <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{s.symbol}</span>
-                        <span style={{ color: '#64748b', fontSize: 10, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                        <span style={{ color: '#e2e8f0', fontSize: 10, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                       </div>
                     ))
                   )}

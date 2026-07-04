@@ -199,8 +199,8 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
   if (!basket) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4 p-6">
-        <AlertCircle className="w-12 h-12 text-slate-500" />
-        <p className="text-slate-400 text-sm">Basket not found</p>
+        <AlertCircle className="w-12 h-12 text-slate-300" />
+        <p className="text-slate-300 text-sm">Basket not found</p>
         <button onClick={() => router.back()} className="text-cyan-400 text-sm font-medium">← Go back</button>
       </div>
     );
@@ -219,7 +219,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
           <div className="text-2xl">{basket.emoji}</div>
           <div className="flex-1">
             <h1 className="text-white font-semibold text-base">{basket.name}</h1>
-            <p className="text-slate-400 text-xs">
+            <p className="text-slate-300 text-xs">
               {isComplete ? 'Execution complete' : 'Executing orders...'}
             </p>
           </div>
@@ -230,7 +230,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
           <div className="bg-slate-800 rounded-2xl p-4 mb-4 border border-slate-700">
             <div className="flex items-center justify-between mb-3">
               <span className="text-slate-300 text-sm font-medium">Order Progress</span>
-              <span className="text-slate-400 text-xs">
+              <span className="text-slate-300 text-xs">
                 {filledCount + failedCount}/{orderResults.length} processed
               </span>
             </div>
@@ -300,13 +300,13 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
     <div className="min-h-screen bg-slate-900 max-w-lg mx-auto pb-24">
       {/* Header */}
       <div className="px-4 py-4 flex items-center gap-3 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
-        <button onClick={() => router.back()} className="text-slate-400 hover:text-white p-1 -ml-1">
+        <button onClick={() => router.back()} className="text-slate-300 hover:text-white p-1 -ml-1">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="text-2xl">{basket.emoji}</div>
         <div>
           <h1 className="text-white font-semibold text-base">{basket.name}</h1>
-          <p className="text-slate-400 text-xs">
+          <p className="text-slate-300 text-xs">
             {basket.basket_positions?.length || 0} stocks · Review & place orders
           </p>
         </div>
@@ -315,11 +315,11 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
       <div className="px-4 py-4">
         {/* Budget Input Section */}
         <div className="bg-slate-800 rounded-2xl p-4 mb-4 border border-slate-700">
-          <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2 block">
+          <label className="text-slate-300 text-xs font-semibold uppercase tracking-wide mb-2 block">
             Total Budget
           </label>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-slate-500 text-lg">$</span>
+            <span className="text-slate-300 text-lg">$</span>
             <input
               type="number"
               value={budget || ''}
@@ -337,7 +337,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                 className={`flex-1 py-2 rounded-lg text-xs font-semibold transition ${
                   budget === amount
                     ? 'bg-cyan-500 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
                 }`}
               >
                 ${amount >= 1000 ? `${amount / 1000}K` : amount}
@@ -346,12 +346,12 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
           </div>
           {/* Distribution toggle */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs">Distribution</span>
+            <span className="text-slate-300 text-xs">Distribution</span>
             <div className="flex bg-slate-900 rounded-lg p-0.5">
               <button
                 onClick={() => setDistribution('score')}
                 className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-                  distribution === 'score' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'
+                  distribution === 'score' ? 'bg-cyan-500 text-white' : 'text-slate-300 hover:text-white'
                 }`}
               >
                 By AI Score
@@ -359,7 +359,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
               <button
                 onClick={() => setDistribution('equal')}
                 className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-                  distribution === 'equal' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'
+                  distribution === 'equal' ? 'bg-cyan-500 text-white' : 'text-slate-300 hover:text-white'
                 }`}
               >
                 Equal Split
@@ -369,7 +369,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
           {/* Buying power */}
           {buyingPower > 0 && (
             <div className="mt-3 flex items-center justify-between text-xs border-t border-slate-700 pt-3">
-              <span className="text-slate-500">Buying Power</span>
+              <span className="text-slate-300">Buying Power</span>
               <span className="text-slate-300 font-medium">${buyingPower.toLocaleString()}</span>
             </div>
           )}
@@ -409,8 +409,8 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                     onClick={() => toggleSkip(row.symbol)}
                     className={`text-xs font-medium px-2.5 py-1 rounded-lg transition ${
                       isSkipped
-                        ? 'bg-slate-700 text-slate-400'
-                        : 'bg-slate-700 text-slate-400 hover:bg-red-900/50 hover:text-red-400'
+                        ? 'bg-slate-700 text-slate-200'
+                        : 'bg-slate-700 text-slate-200 hover:bg-red-900/50 hover:text-red-400'
                     }`}
                   >
                     {isSkipped ? 'Skipped' : 'Skip'}
@@ -422,7 +422,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                   <>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-slate-500 text-2xs font-semibold uppercase block mb-1">Shares</label>
+                        <label className="text-slate-300 text-2xs font-semibold uppercase block mb-1">Shares</label>
                         <input
                           type="number"
                           value={qtyDigits[row.symbol] ?? ''}
@@ -432,7 +432,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                         />
                       </div>
                       <div>
-                        <label className="text-slate-500 text-2xs font-semibold uppercase block mb-1">Est. Cost</label>
+                        <label className="text-slate-300 text-2xs font-semibold uppercase block mb-1">Est. Cost</label>
                         <div className="bg-slate-900 border border-slate-700 rounded-lg py-1.5 px-2.5 text-slate-300 text-sm">
                           ${((row.qty || 0) * (row.orderType === 'limit' ? (row.limitPrice || 0) : 0)).toFixed(2) || '—'}
                         </div>
@@ -442,7 +442,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                     {/* Order type + TIF */}
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-slate-500 text-2xs font-semibold uppercase block mb-1">Type</label>
+                        <label className="text-slate-300 text-2xs font-semibold uppercase block mb-1">Type</label>
                         <select
                           value={row.orderType}
                           onChange={e => updateOrderType(row.symbol, e.target.value as any)}
@@ -455,7 +455,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                         </select>
                       </div>
                       <div>
-                        <label className="text-slate-500 text-2xs font-semibold uppercase block mb-1">TIF</label>
+                        <label className="text-slate-300 text-2xs font-semibold uppercase block mb-1">TIF</label>
                         <select
                           value={row.timeInForce}
                           onChange={e => updateTIF(row.symbol, e.target.value as any)}
@@ -472,7 +472,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                     {/* Limit price (conditional) */}
                     {(row.orderType === 'limit' || row.orderType === 'stop_limit') && (
                       <div className="mb-2">
-                        <label className="text-slate-500 text-2xs font-semibold uppercase block mb-1">Limit Price</label>
+                        <label className="text-slate-300 text-2xs font-semibold uppercase block mb-1">Limit Price</label>
                         <input
                           type="number"
                           value={limitDigits[row.symbol] ?? ''}
@@ -487,8 +487,8 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                     {budget > 0 && row.estCost > 0 && (
                       <div className="mt-2">
                         <div className="flex justify-between text-xs mb-1">
-                          <span className="text-slate-500">Allocation</span>
-                          <span className="text-slate-400">
+                          <span className="text-slate-300">Allocation</span>
+                          <span className="text-slate-300">
                             {((row.estCost / budget) * 100).toFixed(1)}% · ${row.estCost.toFixed(0)}
                           </span>
                         </div>
@@ -512,11 +512,11 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-slate-900 border-t border-slate-800 px-4 py-3">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <span className="text-slate-400 text-xs">Orders</span>
+            <span className="text-slate-300 text-xs">Orders</span>
             <span className="text-white font-bold text-sm ml-1.5">{activeOrders.length}</span>
           </div>
           <div>
-            <span className="text-slate-400 text-xs">Est. Total</span>
+            <span className="text-slate-300 text-xs">Est. Total</span>
             <span className="text-white font-bold text-sm ml-1.5">
               ${totalCost.toFixed(2) || '—'}
             </span>
@@ -527,7 +527,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
           disabled={activeOrders.length === 0}
           className={`w-full py-3 rounded-xl font-semibold text-sm transition ${
             activeOrders.length === 0
-              ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+              ? 'bg-slate-700 text-slate-200 cursor-not-allowed'
               : 'bg-cyan-500 text-white hover:bg-cyan-600 active:scale-[0.98]'
           }`}
         >
@@ -544,13 +544,13 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                 <span className="text-2xl">{basket.emoji}</span>
                 <div>
                   <h2 className="text-white font-semibold">Confirm Orders</h2>
-                  <p className="text-slate-400 text-xs">{activeOrders.length} order{activeOrders.length > 1 ? 's' : ''} · {basket.name}</p>
+                  <p className="text-slate-300 text-xs">{activeOrders.length} order{activeOrders.length > 1 ? 's' : ''} · {basket.name}</p>
                 </div>
               </div>
 
               {/* Order summary table */}
               <div className="mb-4">
-                <div className="grid grid-cols-12 text-xs font-semibold text-slate-500 uppercase pb-2 border-b border-slate-700">
+                <div className="grid grid-cols-12 text-xs font-semibold text-slate-300 uppercase pb-2 border-b border-slate-700">
                   <span className="col-span-3">Symbol</span>
                   <span className="col-span-2 text-right">Qty</span>
                   <span className="col-span-3 text-center">Type</span>
@@ -562,7 +562,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                     <div key={order.symbol} className="grid grid-cols-12 text-sm py-2 border-b border-slate-700/50">
                       <span className="col-span-3 text-white font-medium">{order.symbol}</span>
                       <span className="col-span-2 text-right text-slate-300">{order.qty}</span>
-                      <span className="col-span-3 text-center text-slate-400 text-xs">
+                      <span className="col-span-3 text-center text-slate-300 text-xs">
                         {order.orderType.replace('_', ' ')} · {order.timeInForce.toUpperCase()}
                       </span>
                       <span className="col-span-4 text-right text-slate-300 font-mono text-xs">
@@ -576,11 +576,11 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
               {/* Totals */}
               <div className="bg-slate-900 rounded-xl p-3 mb-4">
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-400">Total Orders</span>
+                  <span className="text-slate-300">Total Orders</span>
                   <span className="text-white font-semibold">{activeOrders.length}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Budget</span>
+                  <span className="text-slate-300">Budget</span>
                   <span className="text-white font-semibold">${budget.toLocaleString()}</span>
                 </div>
               </div>

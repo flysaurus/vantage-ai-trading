@@ -94,7 +94,7 @@ export default function StrategiesPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>{s.name}</span>
                   {!s.available && (
-                    <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b', background: '#0f172a', padding: '2px 6px', borderRadius: 4 }}>Soon</span>
+                    <span style={{ fontSize: 9, fontWeight: 600, color: '#e2e8f0', background: '#0f172a', padding: '2px 6px', borderRadius: 4 }}>Soon</span>
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.desc}</div>
@@ -105,7 +105,7 @@ export default function StrategiesPage() {
                     {scheduleCount(s.key)} active
                   </span>
                 )}
-                {s.available && <Plus size={16} style={{ color: '#64748b' }} />}
+                {s.available && <Plus size={16} style={{ color: '#e2e8f0' }} />}
               </div>
             </div>
           </div>

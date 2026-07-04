@@ -46,7 +46,7 @@ const MARKDOWN_COMPONENTS = {
   ),
   hr: () => <hr className="border-slate-700/50 my-2" />,
   blockquote: ({ children }: { children: React.ReactNode }) => (
-    <blockquote className="border-l-2 border-cyan-500/50 pl-3 my-2 text-slate-400 text-[11px] italic">
+    <blockquote className="border-l-2 border-cyan-500/50 pl-3 my-2 text-slate-300 text-[11px] italic">
       {children}
     </blockquote>
   ),
@@ -162,7 +162,7 @@ export default function WeeklySnapshotCard() {
         : healthScore >= 5
           ? 'text-yellow-400'
           : 'text-red-400'
-      : 'text-slate-400';
+      : 'text-slate-300';
 
   const healthBgColor =
     healthScore != null
@@ -181,7 +181,7 @@ export default function WeeklySnapshotCard() {
         ? 'text-red-400'
         : riskLevel === 'MEDIUM'
           ? 'text-yellow-400'
-          : 'text-slate-400';
+          : 'text-slate-300';
 
   const riskBg =
     riskLevel === 'LOW'
@@ -195,7 +195,7 @@ export default function WeeklySnapshotCard() {
   // ─── Chevron icon (reusable) ───
   const Chevron = ({ open }: { open: boolean }) => (
     <svg
-      className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${
+      className={`w-3.5 h-3.5 text-slate-300 transition-transform duration-200 ${
         open ? 'rotate-180' : ''
       }`}
       viewBox="0 0 24 24"
@@ -225,14 +225,14 @@ export default function WeeklySnapshotCard() {
             disabled={refreshing}
             className={`text-xs transition ${
               refreshing
-                ? 'text-slate-600'
+                ? 'text-slate-400'
                 : 'text-cyan-400 hover:text-cyan-300'
             }`}
             title="Refresh analysis"
           >
             ↻
           </button>
-          <span className="text-slate-500 text-[10px]">
+          <span className="text-slate-300 text-[10px]">
             {generatedAt ? formatTime(generatedAt) : 'just now'}
             {cached ? ' · cached' : ''}
           </span>
@@ -304,7 +304,7 @@ export default function WeeklySnapshotCard() {
                       {riskLevel}
                     </span>
                   ) : (
-                    <p className="text-xs text-slate-500">No data</p>
+                    <p className="text-xs text-slate-300">No data</p>
                   )}
                 </div>
               </div>
@@ -344,7 +344,7 @@ export default function WeeklySnapshotCard() {
                       {opportunitiesCount} identified
                     </p>
                   ) : (
-                    <p className="text-xs text-slate-500">None flagged</p>
+                    <p className="text-xs text-slate-300">None flagged</p>
                   )}
                 </div>
               </div>
@@ -368,7 +368,7 @@ export default function WeeklySnapshotCard() {
       </div>
 
       {/* Footer */}
-      <p className="mt-2 text-slate-600 text-[10px] px-1">
+      <p className="mt-2 text-slate-400 text-[10px] px-1">
         {cached ? 'Refreshes next week' : 'Fresh analysis'} · Tap any card to expand
       </p>
     </div>

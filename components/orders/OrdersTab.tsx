@@ -243,7 +243,7 @@ export function OrdersTab() {
                 <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>{order.symbol}</span>
                 <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
+              <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
                 {order.type} · {order.qty} shares
               </div>
               {order.status === 'filled' && order.filledPrice != null && (
@@ -259,11 +259,11 @@ export function OrdersTab() {
                 {order.status.toUpperCase()}
               </span>
               {order.filledPrice != null && (
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                <div style={{ fontSize: 11, color: '#e2e8f0', marginTop: 3 }}>
                   ${order.filledPrice.toFixed(2)}/share
                 </div>
               )}
-              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: '#e2e8f0', marginTop: 2 }}>
                 {formatOrderDate(order.createdAt)}
               </div>
             </div>
@@ -365,7 +365,7 @@ export function OrdersTab() {
                 </>
               )}
               {(order.status === 'open' || order.status === 'pending') && (
-                <div style={{ marginTop: 4, fontSize: 10, color: '#94a3b8', textAlign: 'center', lineHeight: 1.4 }}>
+                <div style={{ marginTop: 4, fontSize: 10, color: '#cbd5e1', textAlign: 'center', lineHeight: 1.4 }}>
                   Order modification coming soon — cancel and re-place to adjust.
                 </div>
               )}
@@ -424,7 +424,7 @@ export function OrdersTab() {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-      <span style={{ color: '#94a3b8' }}>{label}</span>
+      <span style={{ color: '#e2e8f0' }}>{label}</span>
       <span style={{ color: '#e2e8f0', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );

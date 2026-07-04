@@ -86,7 +86,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  </div>
  <div style={{
  fontSize: '14px',
- color: '#64748b',
+ color: '#e2e8f0',
  marginBottom: '6px'
  }}>
  {positions.map(p => p.symbol).join(' · ')}
@@ -94,7 +94,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  </div>
  <div style={{
  fontSize: '14px',
- color: '#64748b',
+ color: '#e2e8f0',
  marginBottom: '24px'
  }}>
  Market
@@ -147,7 +147,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  style={{
  background: 'none',
  border: 'none',
- color: '#64748b',
+ color: '#e2e8f0',
  fontSize: '22px',
  cursor: 'pointer',
  lineHeight: 1,
@@ -180,7 +180,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  </div>
  <div style={{
  fontSize: '12px',
- color: '#64748b',
+ color: '#e2e8f0',
  marginTop: '3px'
  }}>
  {pos.qty} shares
@@ -198,7 +198,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  </div>
  <div style={{
  fontSize: '12px',
- color: '#64748b',
+ color: '#e2e8f0',
  marginTop: '3px'
  }}>
  All shares · Market
@@ -214,7 +214,7 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  borderTop: '1px solid #2a3448'
  }}><div style={{
  fontSize: '12px',
- color: '#64748b',
+ color: '#e2e8f0',
  textAlign: 'center',
  marginBottom: '6px'
  }}>

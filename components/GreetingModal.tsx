@@ -117,7 +117,7 @@ export default function GreetingModal({ onComplete }: GreetingModalProps) {
         <p className={`${portfolioColor === 'amber' ? 'text-amber-400' : portfolioColor === 'green' ? 'text-green-400' : 'text-white'} text-lg font-medium mb-2`}>
           {portfolioLine}
         </p>
-        <p className="text-slate-400 text-base">
+        <p className="text-slate-300 text-base">
           {marketStatus}
         </p>
       </div>

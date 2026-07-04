@@ -194,7 +194,7 @@ export function Header() {
                 style={{
                   width: 24, height: 24, display: 'flex', alignItems: 'center',
                   justifyContent: 'center', background: 'none', border: 'none',
-                  color: '#64748b', cursor: 'pointer',
+                  color: '#e2e8f0', cursor: 'pointer',
                 }}
               >
                 <X size={14} />
@@ -204,7 +204,7 @@ export function Header() {
 
           {/* Items */}
           {notifications.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#64748b' }}>
+            <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#e2e8f0' }}>
               No notifications yet
             </div>
           ) : (
@@ -233,7 +233,7 @@ export function Header() {
                   </div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, color: '#64748b' }}>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>
                     {timeAgo(n.created_at)}
                   </span>
                   {n.action_url && (

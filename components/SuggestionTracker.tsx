@@ -52,7 +52,7 @@ export default function SuggestionTracker() {
         <div className="flex items-center gap-2">
           <span className="text-sm">📊</span>
           <span className="text-white text-sm font-medium">AI Suggestions</span>
-          <span className="text-slate-400 text-xs">{stats.total} tracked</span>
+          <span className="text-slate-300 text-xs">{stats.total} tracked</span>
         </div>
         <div className="flex items-center gap-3">
           {stats.tracked > 0 && (
@@ -62,7 +62,7 @@ export default function SuggestionTracker() {
               {stats.hitRate}% hit rate
             </span>
           )}
-          <span className="text-slate-500 text-xs">{isExpanded ? '▲' : '▼'}</span>
+          <span className="text-slate-300 text-xs">{isExpanded ? '▲' : '▼'}</span>
         </div>
       </button>
 
@@ -72,17 +72,17 @@ export default function SuggestionTracker() {
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="text-center">
                 <p className="text-white font-semibold">{stats.tracked}</p>
-                <p className="text-slate-400 text-xs">Resolved</p>
+                <p className="text-slate-300 text-xs">Resolved</p>
               </div>
               <div className="text-center">
                 <p className="text-green-400 font-semibold">{stats.outperformed}</p>
-                <p className="text-slate-400 text-xs">Beat Market</p>
+                <p className="text-slate-300 text-xs">Beat Market</p>
               </div>
               <div className="text-center">
                 <p className={`font-semibold ${stats.hitRate >= 60 ? 'text-green-400' : 'text-yellow-400'}`}>
                   {stats.hitRate}%
                 </p>
-                <p className="text-slate-400 text-xs">Hit Rate</p>
+                <p className="text-slate-300 text-xs">Hit Rate</p>
               </div>
             </div>
           )}
@@ -96,12 +96,12 @@ export default function SuggestionTracker() {
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
                       s.conviction === 'high' ? 'bg-green-500/20 text-green-400' :
                       s.conviction === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-slate-600 text-slate-400'
+                      'bg-slate-600 text-slate-300'
                     }`}>
                       {s.conviction}
                     </span>
                   </div>
-                  <p className="text-slate-500 text-xs">
+                  <p className="text-slate-300 text-xs">
                     Suggested ${s.suggested_price?.toFixed(2)} · {new Date(s.created_at).toLocaleDateString()}
                   </p>
                 </div>
@@ -111,13 +111,13 @@ export default function SuggestionTracker() {
                       <p className={`text-sm font-medium ${s.return_30d >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {s.return_30d >= 0 ? '+' : ''}{s.return_30d?.toFixed(1)}%
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-300">
                         {s.outcome_30d === 'outperformed' ? '✅ Beat market' :
                          s.outcome_30d === 'underperformed' ? '❌ Missed' : '➡️ Neutral'}
                       </p>
                     </>
                   ) : (
-                    <p className="text-slate-500 text-xs">Tracking...</p>
+                    <p className="text-slate-300 text-xs">Tracking...</p>
                   )}
                 </div>
               </div>
@@ -130,7 +130,7 @@ export default function SuggestionTracker() {
             </p>
           )}
 
-          <p className="text-slate-600 text-xs text-center mt-3">
+          <p className="text-slate-400 text-xs text-center mt-3">
             30-day performance vs S&amp;P 500
           </p>
         </div>

@@ -112,7 +112,7 @@ function GoalsPageInner() {
 
           {/* Current Portfolio Value */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Current Portfolio Value</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Current Portfolio Value</div>
             <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#e2e8f0' }}>
               ${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
@@ -130,7 +130,7 @@ function GoalsPageInner() {
                   <Save size={15} />
                 </button>
               ) : (
-                <button onClick={() => startEdit('portfolio')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4 }}>
+                <button onClick={() => startEdit('portfolio')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 4 }}>
                   <Edit3 size={14} />
                 </button>
               )}
@@ -156,7 +156,7 @@ function GoalsPageInner() {
                 </div>
                 {goals.portfolioTarget > 0 && (
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#64748b', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#cbd5e1', marginBottom: 4 }}>
                       <span>{pctToTarget}% to target</span>
                       <span>${(goals.portfolioTarget - portfolioValue).toLocaleString()} remaining</span>
                     </div>
@@ -181,7 +181,7 @@ function GoalsPageInner() {
                   <Save size={15} />
                 </button>
               ) : (
-                <button onClick={() => startEdit('return')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4 }}>
+                <button onClick={() => startEdit('return')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 4 }}>
                   <Edit3 size={14} />
                 </button>
               )}
@@ -207,7 +207,7 @@ function GoalsPageInner() {
             )}
           </div>
 
-          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', marginTop: 16 }}>
+          <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 16 }}>
             Goals are saved locally on this device.
           </div>
         </div>

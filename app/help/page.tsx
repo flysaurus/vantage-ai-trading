@@ -35,7 +35,7 @@ export default function HelpPage() {
 
           {/* Quick Links */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               Quick Links
             </div>
             <div
@@ -53,7 +53,7 @@ export default function HelpPage() {
                   <div style={{ fontSize: 10, color: '#64748b' }}>How to get API keys for Alpaca & Tastytrade</div>
                 </div>
               </div>
-              <ChevronRight size={14} style={{ color: '#475569' }} />
+              <ChevronRight size={14} style={{ color: '#94a3b8' }} />
             </div>
             <div
               onClick={() => router.push('/security')}
@@ -70,13 +70,13 @@ export default function HelpPage() {
                   <div style={{ fontSize: 10, color: '#64748b' }}>How your data and credentials are protected</div>
                 </div>
               </div>
-              <ChevronRight size={14} style={{ color: '#475569' }} />
+              <ChevronRight size={14} style={{ color: '#94a3b8' }} />
             </div>
           </div>
 
           {/* Getting Started */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               Getting Started
             </div>
             <div style={{
@@ -104,7 +104,7 @@ export default function HelpPage() {
 
           {/* FAQ */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               FAQ
             </div>
             <FaqItem q="Is my broker login safe?" a="Yes. Vantage uses API keys (not your broker password) and encrypts them with AES-256-GCM using a per-user key before storage. Keys are decrypted server-side only — they never reach your browser." />
@@ -115,7 +115,7 @@ export default function HelpPage() {
 
           {/* Contact */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               Contact
             </div>
             <div style={{
@@ -162,7 +162,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
         }}
       >
         <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{q}</span>
-        <ChevronRight size={14} style={{ color: '#475569', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+        <ChevronRight size={14} style={{ color: '#94a3b8', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
       </div>
       {open && (
         <div style={{

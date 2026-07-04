@@ -67,7 +67,7 @@ export default function DailyBriefCard() {
             Daily Brief
           </span>
           <span className="ml-auto rounded-full bg-slate-700 px-2 py-0.5">
-            <span className="text-slate-500 text-[10px]">Loading...</span>
+            <span className="text-slate-300 text-[10px]">Loading...</span>
           </span>
         </div>
         <div className="space-y-2">
@@ -103,7 +103,7 @@ export default function DailyBriefCard() {
             </span>
           </div>
           {hasMore && (
-            <span className="text-slate-500 text-xs transition-transform">
+            <span className="text-slate-300 text-xs transition-transform">
               {expanded ? '▲ Show less' : '▼ Show more'}
             </span>
           )}
@@ -115,7 +115,7 @@ export default function DailyBriefCard() {
             <p key={i} className="text-xs leading-relaxed">
               {line.label ? (
                 <>
-                  <span className={`font-semibold ${LABEL_COLORS[line.label] || 'text-slate-400'}`}>
+                  <span className={`font-semibold ${LABEL_COLORS[line.label] || 'text-slate-300'}`}>
                     {line.label}:
                   </span>{' '}
                   <span className="text-slate-300">{line.text}</span>
@@ -130,7 +130,7 @@ export default function DailyBriefCard() {
         {/* Footer — visible when expanded */}
         {expanded && (
           <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center justify-between">
-            <p className="text-slate-600 text-[10px]">
+            <p className="text-slate-400 text-[10px]">
               {data?.cached
                 ? 'Cached today · Refreshes tomorrow'
                 : 'Generated just now · Refreshes tomorrow'}

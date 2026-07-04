@@ -100,7 +100,7 @@ export class AppErrorBoundary extends React.Component<Props, State> {
             </button>
           </div>
           {this.state.error && (
-            <details style={{ marginTop: '24px', fontSize: '11px', color: '#64748b', maxWidth: '400px', textAlign: 'left' }}>
+            <details style={{ marginTop: '24px', fontSize: '11px', color: '#e2e8f0', maxWidth: '400px', textAlign: 'left' }}>
               <summary style={{ cursor: 'pointer' }}>Error details</summary>
               <div style={{ marginTop: '8px' }}>
                 <strong>Message:</strong>

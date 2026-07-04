@@ -210,7 +210,7 @@ export default function InvestorStylePage() {
               background: '#1e293b', border: '1px solid #334155',
               textAlign: 'center',
             }}>
-              <Info size={24} style={{ color: '#475569', marginBottom: 6 }} />
+              <Info size={24} style={{ color: '#94a3b8', marginBottom: 6 }} />
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 2 }}>
                 Connect a broker to see style conflicts
               </div>

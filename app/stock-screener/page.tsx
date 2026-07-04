@@ -160,7 +160,7 @@ export default function StockScreenerPage() {
   };
 
   const SortIcon = ({ col }: { col: SortCol }) => {
-    if (sortCol !== col) return <ChevronDown size={10} style={{ color: '#475569', opacity: 0.3 }} />;
+    if (sortCol !== col) return <ChevronDown size={10} style={{ color: '#94a3b8', opacity: 0.3 }} />;
     return sortDir === 'asc' ? <ChevronUp size={10} style={{ color: '#06b6d4' }} /> : <ChevronDown size={10} style={{ color: '#06b6d4' }} />;
   };
 
@@ -341,7 +341,7 @@ export default function StockScreenerPage() {
           textAlign: 'center', padding: '60px 20px',
           background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
         }}>
-          <Search size={40} style={{ color: '#475569', marginBottom: 12 }} />
+          <Search size={40} style={{ color: '#64748b', marginBottom: 12 }} />
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Set your criteria</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             Configure filters above and tap "Screen Stocks" to find matches
@@ -355,7 +355,7 @@ export default function StockScreenerPage() {
           textAlign: 'center', padding: '40px 20px',
           background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
         }}>
-          <Filter size={36} style={{ color: '#475569', marginBottom: 10 }} />
+          <Filter size={36} style={{ color: '#64748b', marginBottom: 10 }} />
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>No matches found</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Try broadening your filters. Scanned {scanned} stocks.</div>
         </div>

@@ -69,14 +69,14 @@ export default function PreferencesPage() {
               </div>
               <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Preferences</h1>
             </div>
-            <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}>
+            <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 4 }}>
               <X size={20} />
             </button>
           </div>
 
           {/* Notifications */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               Notifications
             </div>
             <div style={{
@@ -87,7 +87,7 @@ export default function PreferencesPage() {
                 <Bell size={15} style={{ color: '#06b6d4' }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>Email Alerts</div>
-                  <div style={{ fontSize: 10, color: '#64748b' }}>Receive notifications for orders, alerts, and market events</div>
+                  <div style={{ fontSize: 10, color: '#e2e8f0' }}>Receive notifications for orders, alerts, and market events</div>
                 </div>
               </div>
               <div
@@ -109,7 +109,7 @@ export default function PreferencesPage() {
 
             {prefs.emailAlerts && (
               <div style={{ padding: '6px 14px 0' }}>
-                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>Alert Frequency</div>
+                <div style={{ fontSize: 10, color: '#e2e8f0', marginBottom: 6 }}>Alert Frequency</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['instant', 'daily', 'weekly'] as const).map(freq => (
                     <button
@@ -133,7 +133,7 @@ export default function PreferencesPage() {
 
           {/* Appearance */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               Appearance
             </div>
             <div style={{
@@ -144,16 +144,16 @@ export default function PreferencesPage() {
                 <Eye size={15} style={{ color: '#8b5cf6' }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>Theme</div>
-                  <div style={{ fontSize: 10, color: '#64748b' }}>Dark mode (additional themes coming soon)</div>
+                  <div style={{ fontSize: 10, color: '#e2e8f0' }}>Dark mode (additional themes coming soon)</div>
                 </div>
               </div>
-              <span style={{ fontSize: 11, color: '#475569', padding: '4px 10px', borderRadius: 6, background: '#1e293b', border: '1px solid #334155' }}>Dark</span>
+              <span style={{ fontSize: 11, color: '#94a3b8', padding: '4px 10px', borderRadius: 6, background: '#1e293b', border: '1px solid #334155' }}>Dark</span>
             </div>
           </div>
 
           {/* Security */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               Security
             </div>
             <div
@@ -168,17 +168,17 @@ export default function PreferencesPage() {
                 <Shield size={15} style={{ color: '#22c55e' }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>Security & Encryption</div>
-                  <div style={{ fontSize: 10, color: '#64748b' }}>How your data and broker keys are protected</div>
+                  <div style={{ fontSize: 10, color: '#e2e8f0' }}>How your data and broker keys are protected</div>
                 </div>
               </div>
-              <ChevronRight size={14} style={{ color: '#475569' }} />
+              <ChevronRight size={14} style={{ color: '#94a3b8' }} />
             </div>
           </div>
 
           {/* Investor Profile */}
           {investorStyle && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
                 Investor Profile
               </div>
               <div style={{
@@ -188,7 +188,7 @@ export default function PreferencesPage() {
                   <User size={15} style={{ color: '#06b6d4' }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{investorStyle.style}</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>{investorStyle.trait}</div>
+                    <div style={{ fontSize: 11, color: '#e2e8f0' }}>{investorStyle.trait}</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -215,7 +215,7 @@ export default function PreferencesPage() {
           {/* No style set yet */}
           {!investorStyle && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
                 Investor Profile
               </div>
               <div
@@ -227,18 +227,18 @@ export default function PreferencesPage() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <User size={15} style={{ color: '#475569' }} />
+                  <User size={15} style={{ color: '#94a3b8' }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Set your investor style</div>
-                    <div style={{ fontSize: 11, color: '#475569' }}>Discover your approach in 2 minutes</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>Discover your approach in 2 minutes</div>
                   </div>
                 </div>
-                <ChevronRight size={14} style={{ color: '#475569' }} />
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
               </div>
             </div>
           )}
 
-          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 8 }}>
             Preferences are saved locally on this device.
           </div>
         </div>

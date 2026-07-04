@@ -118,7 +118,7 @@ export function BrokerSelection({ onSelect, onSkip }: BrokerSelectionProps) {
                     top: 10,
                     right: 10,
                     fontSize: 9,
-                    color: '#64748b',
+                    color: '#e2e8f0',
                     background: 'rgba(100,116,139,0.15)',
                     padding: '2px 8px',
                     borderRadius: 6,

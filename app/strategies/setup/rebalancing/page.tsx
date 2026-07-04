@@ -672,14 +672,14 @@ apiGet('/api/broker/status')
             {autoMode === 'auto' && editedOrders.length > 0 ? (
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 16 }}>
                   {isConnected ? 'Orders will be placed via Alpaca' : 'Demo mode — orders simulated'}
                 </div>
 
                 {/* Order summary table */}
                 <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #1e293b' }}>
                   {/* Header */}
-                  <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                  <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase' }}>
                     <span style={{ flex: 0.5 }}>Action</span>
                     <span style={{ flex: 0.7 }}>Symbol</span>
                     <span style={{ flex: 0.6, textAlign: 'right' }}>Qty</span>
@@ -737,11 +737,11 @@ apiGet('/api/broker/status')
             ) : (
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Execute Rebalance</div>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 16 }}>
                   {isConnected ? 'Orders will be placed via Alpaca' : 'Demo mode — orders simulated'}
                 </div>
                 <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #1e293b' }}>
-                  <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                  <div style={{ display: 'flex', padding: '8px 10px', background: '#0f172a', fontSize: 10, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase' }}>
                     <span style={{ flex: 0.5 }}>Action</span>
                     <span style={{ flex: 0.7 }}>Symbol</span>
                     <span style={{ flex: 0.6, textAlign: 'right' }}>Qty</span>
@@ -851,7 +851,7 @@ apiGet('/api/broker/status')
               Portfolio: ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             {/* Table header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.6fr 0.6fr 0.5fr', gap: 4, fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.6fr 0.6fr 0.5fr', gap: 4, fontSize: 10, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
               <span>Symbol</span>
               <span style={{ textAlign: 'right' }}>Value</span>
               <span style={{ textAlign: 'right' }}>Current %</span>
@@ -879,8 +879,8 @@ apiGet('/api/broker/status')
             {Object.keys(targets).filter(s => !positionMap[s]).map(sym => (
               <div key={sym} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.6fr 0.6fr 0.5fr', gap: 4, alignItems: 'center', padding: '8px', borderBottom: '1px solid #1e293b', fontSize: 12, opacity: 0.6 }}>
                 <span style={{ fontWeight: 700, color: '#f1f5f9' }}>{sym}</span>
-                <span style={{ textAlign: 'right', color: '#64748b' }}>$0.00</span>
-                <span style={{ textAlign: 'right', color: '#64748b' }}>0.0%</span>
+                <span style={{ textAlign: 'right', color: '#e2e8f0' }}>$0.00</span>
+                <span style={{ textAlign: 'right', color: '#e2e8f0' }}>0.0%</span>
                 <span style={{ textAlign: 'right', color: '#06b6d4', fontWeight: 600 }}>{targets[sym].toFixed(1)}%</span>
                 <span style={{ textAlign: 'right', color: '#4ade80', fontWeight: 600 }}>-{targets[sym].toFixed(1)}%</span>
               </div>
@@ -904,14 +904,14 @@ apiGet('/api/broker/status')
                 onChange={e => handleTargetChange(sym, e.target.value)}
                 style={{ width: 60, padding: '6px 8px', background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: 13, fontWeight: 600, textAlign: 'center', fontFamily: 'inherit' }}
               />
-              <span style={{ fontSize: 12, color: '#64748b' }}>%</span>
+              <span style={{ fontSize: 12, color: '#e2e8f0' }}>%</span>
               {positionMap[sym] && (
-                <span style={{ fontSize: 11, color: '#475569' }}>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
                   (currently {((positionMap[sym].marketValue / totalValue) * 100).toFixed(1)}%)
                 </span>
               )}
               {!positionMap[sym] && (
-                <button onClick={() => removeTarget(sym)} style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 10, fontWeight: 600, background: 'none', border: '1px solid #475569', borderRadius: 4, color: '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={() => removeTarget(sym)} style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 10, fontWeight: 600, background: 'none', border: '1px solid #475569', borderRadius: 4, color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Remove
                 </button>
               )}
@@ -935,7 +935,7 @@ apiGet('/api/broker/status')
             </button>
           </div>
         ) : (
-          <button onClick={() => setShowAddAsset(true)} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, background: 'none', border: '1px dashed #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', marginBottom: 12, fontFamily: 'inherit' }}>
+          <button onClick={() => setShowAddAsset(true)} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, background: 'none', border: '1px dashed #334155', borderRadius: 8, color: '#e2e8f0', cursor: 'pointer', marginBottom: 12, fontFamily: 'inherit' }}>
             + Add Asset
           </button>
         )}
@@ -971,7 +971,7 @@ apiGet('/api/broker/status')
         </div>
 
         {/* Quick Presets */}
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Quick Presets</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Quick Presets</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {Object.entries(PRESETS).map(([key, p]) => (
             <button
@@ -989,7 +989,7 @@ apiGet('/api/broker/status')
       {isBalanced && (
         <Section icon={<TrendingUp size={12} />} label="Rebalance Preview">
           {!hasAnyTrade ? (
-            <div style={{ fontSize: 12, color: '#64748b', padding: '8px 0' }}>
+            <div style={{ fontSize: 12, color: '#e2e8f0', padding: '8px 0' }}>
               Portfolio is balanced — no trades needed.
             </div>
           ) : (
@@ -1004,7 +1004,7 @@ apiGet('/api/broker/status')
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 12, color: '#cbd5e1' }}>{t.shares} shares</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>~${t.estimatedValue.toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: '#e2e8f0' }}>~${t.estimatedValue.toFixed(2)}</div>
                   </div>
                 </div>
               ))}
@@ -1063,7 +1063,7 @@ apiGet('/api/broker/status')
               <div style={{ fontSize: 13, fontWeight: 700, color: autoMode === 'auto' ? '#06b6d4' : '#f1f5f9', marginBottom: 4 }}>
                 Prepare All Orders for Me
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.5 }}>
                 All buy and sell orders will be queued and ready to execute in one tap. You review before anything executes.
               </div>
             </button>
@@ -1083,7 +1083,7 @@ apiGet('/api/broker/status')
               <div style={{ fontSize: 13, fontWeight: 700, color: autoMode === 'manual' ? '#06b6d4' : '#f1f5f9', marginBottom: 4 }}>
                 I&apos;ll Place Orders Manually
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.5 }}>
                 Orders will be shown as suggestions. You place each one individually in the Trade tab.
               </div>
             </button>
@@ -1112,7 +1112,7 @@ apiGet('/api/broker/status')
                             <span style={{ fontSize: 9, fontWeight: 600, color: '#06b6d4', background: 'rgba(6,182,212,0.12)', padding: '2px 6px', borderRadius: 3 }}>AI Suggested</span>
                           )}
                           {(order as any).type && (
-                            <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b', background: 'rgba(100,116,139,0.12)', padding: '2px 6px', borderRadius: 3 }}>{(order as any).type === 'etf' ? 'ETF' : 'Stock'}</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: '#e2e8f0', background: 'rgba(100,116,139,0.12)', padding: '2px 6px', borderRadius: 3 }}>{(order as any).type === 'etf' ? 'ETF' : 'Stock'}</span>
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1133,8 +1133,8 @@ apiGet('/api/broker/status')
                         <span>{order.shares} shares · ~${order.estimatedValue.toFixed(2)}</span>
                         {(order as any).currentPct != null && (order as any).targetPct != null && (
                           <span>
-                            <span style={{ color: '#64748b' }}>{(order as any).currentPct.toFixed(1)}%</span>
-                            <span style={{ margin: '0 4px', color: '#475569' }}>→</span>
+                            <span style={{ color: '#e2e8f0' }}>{(order as any).currentPct.toFixed(1)}%</span>
+                            <span style={{ margin: '0 4px', color: '#94a3b8' }}>→</span>
                             <span style={{ color: '#06b6d4', fontWeight: 600 }}>{(order as any).targetPct.toFixed(1)}%</span>
                           </span>
                         )}
@@ -1142,7 +1142,7 @@ apiGet('/api/broker/status')
 
                       {/* Reason subtitle */}
                       {(order as any).reason && (
-                        <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.4, marginTop: 3, paddingLeft: 4, fontStyle: 'italic' }}>
+                        <div style={{ fontSize: 10, color: '#e2e8f0', lineHeight: 1.4, marginTop: 3, paddingLeft: 4, fontStyle: 'italic' }}>
                           {(order as any).reason}
                         </div>
                       )}
@@ -1242,7 +1242,7 @@ apiGet('/api/broker/status')
           {/* — Option B: Manual trade buttons — */}
           {autoMode === 'manual' && trades.length > 0 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
                 Place Individually
               </div>
               {trades.map((t, i) => (
@@ -1372,7 +1372,7 @@ apiGet('/api/broker/status')
               {submitting ? 'Executing...' : 'Execute Rebalance'}
             </button>
           )}
-          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
         </div>

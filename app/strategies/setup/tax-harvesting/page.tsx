@@ -414,7 +414,7 @@ export default function TaxHarvestingPage() {
           {/* ─── Section 1: YTD Summary ──────────────── */}
           <Section icon={<Activity size={12} />} label="YTD Summary">
             {tradeSummary.realizedGains === 0 && tradeSummary.realizedLosses === 0 ? (
-              <div style={{ fontSize: 13, color: '#64748b', padding: '12px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: '#e2e8f0', padding: '12px 0', textAlign: 'center' }}>
                 No realized gains or losses yet this year
               </div>
             ) : (
@@ -425,7 +425,7 @@ export default function TaxHarvestingPage() {
                   <SummaryCard label="Net Position" value={tradeSummary.netPosition} color={tradeSummary.netPosition >= 0 ? '#4ade80' : '#f87171'} />
                 </div>
                 {tradeSummary.realizedGains > 0 && (
-                  <div style={{ fontSize: 12, color: '#64748b', padding: '8px 12px', background: '#1e293b', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: '#e2e8f0', padding: '8px 12px', background: '#1e293b', borderRadius: 8 }}>
                     Harvestable losses could save you approximately <strong style={{ color: '#4ade80' }}>${((tradeSummary.realizedGains - tradeSummary.realizedLosses) * 0.20).toFixed(2)}</strong> in taxes (est. 20% rate)
                   </div>
                 )}
@@ -436,7 +436,7 @@ export default function TaxHarvestingPage() {
           {/* ─── Section 2: Loss Positions ───────────── */}
           <Section icon={<TrendingDown size={12} />} label="Loss Positions">
             {lossPositions.length === 0 ? (
-              <div style={{ fontSize: 13, color: '#64748b', padding: '12px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: '#e2e8f0', padding: '12px 0', textAlign: 'center' }}>
                 No harvestable losses in your portfolio
               </div>
             ) : (
@@ -454,7 +454,7 @@ export default function TaxHarvestingPage() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                         <div>
                           <span style={{ fontWeight: 700, color: '#f1f5f9', fontSize: 14 }}>{pos.symbol}</span>
-                          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>{pos.name}</span>
+                          <span style={{ fontSize: 11, color: '#e2e8f0', marginLeft: 8 }}>{pos.name}</span>
                         </div>
                         <span style={{ fontSize: 14, fontWeight: 700, color: '#f87171' }}>
                           -${Math.abs(pos.unrealizedPL).toFixed(2)} ({pos.unrealizedPLPct.toFixed(1)}%)
@@ -503,7 +503,7 @@ export default function TaxHarvestingPage() {
                       {/* Replacement suggestions */}
                       {isSelected && (
                         <div style={{ padding: '10px 12px', background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 8 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>
                             To maintain market exposure, consider buying:
                           </div>
                           {suggestions.slice(0, 2).map((s, i) => {
@@ -512,7 +512,7 @@ export default function TaxHarvestingPage() {
                               <div key={s.symbol} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderTop: i > 0 ? '1px solid #1e293b' : 'none' }}>
                                 <div>
                                   <span style={{ fontWeight: 700, color: '#f1f5f9', fontSize: 12 }}>{s.symbol}</span>
-                                  <span style={{ fontSize: 10, color: '#64748b', marginLeft: 6 }}>{s.name}</span>
+                                  <span style={{ fontSize: 10, color: '#e2e8f0', marginLeft: 6 }}>{s.name}</span>
                                 </div>
                                 <button
                                   onClick={() => handleSelectReplacement(pos.symbol, { ...s, price: pos.currentPrice * 0.95 })}
@@ -577,7 +577,7 @@ export default function TaxHarvestingPage() {
           {selectedCount > 0 && (
             <Section icon={<Info size={12} />} label="Harvest Summary">
               <div style={{ padding: 14, background: '#1e293b', border: '1px solid #334155', borderRadius: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
                   Selected Harvests
                 </div>
                 {Object.values(selectedHarvests).map(h => (
@@ -591,14 +591,14 @@ export default function TaxHarvestingPage() {
 
                 {replacementCount > 0 && (
                   <>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, margin: '12px 0 8px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 0.5, margin: '12px 0 8px' }}>
                       Replacements
                     </div>
                     {Object.entries(selectedReplacements).map(([sym, r]) => (
                       <div key={sym} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #1e293b', fontSize: 12 }}>
                         <span style={{ fontWeight: 600, color: '#06b6d4' }}>{r.symbol}</span>
                         <span style={{ color: '#94a3b8' }}>{r.name}</span>
-                        <span style={{ color: '#64748b' }}>Buy ${(selectedHarvests[sym]?.loss || 0).toFixed(2)} worth</span>
+                        <span style={{ color: '#e2e8f0' }}>Buy ${(selectedHarvests[sym]?.loss || 0).toFixed(2)} worth</span>
                       </div>
                     ))}
                   </>
@@ -606,11 +606,11 @@ export default function TaxHarvestingPage() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0', borderTop: '1px solid #334155', marginTop: 10 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: '#64748b' }}>Total Est. Tax Savings</div>
+                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>Total Est. Tax Savings</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#4ade80' }}>${totalTaxSavings.toFixed(2)}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 10, color: '#64748b' }}>Total Transactions</div>
+                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>Total Transactions</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#f1f5f9' }}>{selectedCount + replacementCount}</div>
                   </div>
                 </div>
@@ -642,7 +642,7 @@ export default function TaxHarvestingPage() {
           >
             {submitting ? 'Executing...' : isConnected ? `Execute Harvest (${selectedCount})` : 'Connect Broker to Execute'}
           </button>
-          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          <button onClick={() => router.back()} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             Cancel
           </button>
         </div>
@@ -699,7 +699,7 @@ function Section({ icon, label, children }: { icon: React.ReactNode; label: stri
 function SummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div style={{ padding: '10px 12px', background: '#1e293b', borderRadius: 8, textAlign: 'center' }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 800, color }}>
         {value < 0 ? '-' : ''}${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </div>

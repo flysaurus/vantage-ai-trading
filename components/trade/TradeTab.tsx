@@ -40,7 +40,7 @@ function getBorderColor(order: any): string {
 function getStatusStyle(status: string) {
   if (status === 'filled') return { color: '#10b981' };
   if (status === 'open') return { color: '#f59e0b' };
-  return { color: '#475569' };
+  return { color: '#94a3b8' };
 }
 
 function formatQuoteDate(ts: number) {
@@ -231,7 +231,7 @@ export function TradeTab() {
 
       {/* ─── 2. STRATEGIES SECTION ─── */}
       <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
           STRATEGIES
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', padding: '0 16px', marginBottom: '20px' }}>
@@ -277,7 +277,7 @@ export function TradeTab() {
               )}
               <div style={{ fontSize: '22px', marginBottom: '6px' }}>{strategy.icon}</div>
               <div style={{ color: strategy.available ? '#ffffff' : '#6b7280', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>{strategy.label}</div>
-              <div style={{ color: '#4b5563', fontSize: '10px', lineHeight: '1.3' }}>{strategy.description}</div>
+              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.3' }}>{strategy.description}</div>
             </button>
           ))}
         </div>
@@ -342,7 +342,7 @@ export function TradeTab() {
                   <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
                     {r.symbol}
                   </span>
-                  <span style={{ color: '#6b7280', fontSize: '12px', marginLeft: '8px' }}>
+                  <span style={{ color: '#cbd5e1', fontSize: '12px', marginLeft: '8px' }}>
                     {r.description}
                   </span>
                 </div>
@@ -369,7 +369,7 @@ export function TradeTab() {
               {symbolQuote.type === 'ETP' ? 'ETF' : 'Stock'}
             </span>
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>
+          <div style={{ fontSize: '11px', color: '#e2e8f0', marginBottom: '8px' }}>
             {symbolQuote.description}
           </div>
 
@@ -397,7 +397,7 @@ export function TradeTab() {
             paddingTop: '12px',
             borderTop: '1px solid #2a3448'
           }}>
-            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Day Range
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
@@ -436,7 +436,7 @@ export function TradeTab() {
             alignItems: 'center',
             marginTop: '10px'
           }}>
-            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               52-Wk Range
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
@@ -480,7 +480,7 @@ export function TradeTab() {
             alignItems: 'center',
             marginTop: '10px'
           }}>
-            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               OPEN ({symbolQuote.lastTradeTime ? formatQuoteDate(symbolQuote.lastTradeTime) : ''})
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
@@ -495,7 +495,7 @@ export function TradeTab() {
             alignItems: 'center',
             marginTop: '8px'
           }}>
-            <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               PREV CLOSE ({symbolQuote.lastTradeTime ? formatQuoteDate(symbolQuote.lastTradeTime - 86400) : ''})
             </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
@@ -505,7 +505,7 @@ export function TradeTab() {
           </div>
 
           {quoteLoading && (
-            <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+            <div style={{ marginTop: '8px', fontSize: '11px', color: '#e2e8f0', textAlign: 'center' }}>
               Loading quote...
             </div>
           )}
@@ -520,7 +520,7 @@ export function TradeTab() {
         borderRadius: '12px',
         padding: '20px'
       }}>
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '16px' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '16px' }}>
           PLACE ORDER
         </div>
 
@@ -536,7 +536,7 @@ export function TradeTab() {
                 borderRadius: '8px',
                 border: side === s ? 'none' : '1px solid #2a3448',
                 background: side === s ? (s === 'buy' ? '#10b981' : '#ef4444') : '#0f1829',
-                color: side === s ? '#ffffff' : '#64748b',
+                color: side === s ? '#ffffff' : '#94a3b8',
                 fontSize: '14px',
                 fontWeight: '600',
                 cursor: 'pointer'
@@ -548,7 +548,7 @@ export function TradeTab() {
         </div>
 
         {/* ORDER TYPE */}
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
           ORDER TYPE
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
@@ -562,7 +562,7 @@ export function TradeTab() {
                 borderRadius: '8px',
                 border: orderType === t ? '1px solid #22d3ee' : '1px solid #2a3448',
                 background: orderType === t ? '#1e3a5f' : '#0f1829',
-                color: orderType === t ? '#22d3ee' : '#64748b',
+                color: orderType === t ? '#22d3ee' : '#94a3b8',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer'
@@ -574,7 +574,7 @@ export function TradeTab() {
         </div>
 
         {/* QUANTITY */}
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
           QUANTITY
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
@@ -588,7 +588,7 @@ export function TradeTab() {
                 borderRadius: '8px',
                 border: qtyType === qt ? '1px solid #22d3ee' : '1px solid #2a3448',
                 background: qtyType === qt ? '#1e3a5f' : '#0f1829',
-                color: qtyType === qt ? '#22d3ee' : '#64748b',
+                color: qtyType === qt ? '#22d3ee' : '#94a3b8',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer'
@@ -621,7 +621,7 @@ export function TradeTab() {
         {/* LIMIT PRICE */}
         {(orderType === 'limit' || orderType === 'stop') && (
           <>
-            <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
               LIMIT PRICE
             </div>
             <input
@@ -647,7 +647,7 @@ export function TradeTab() {
         )}
 
         {/* TIME IN FORCE */}
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
           TIME IN FORCE
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
@@ -661,7 +661,7 @@ export function TradeTab() {
                 borderRadius: '8px',
                 border: tif === t ? '1px solid #22d3ee' : '1px solid #2a3448',
                 background: tif === t ? '#1e3a5f' : '#0f1829',
-                color: tif === t ? '#22d3ee' : '#64748b',
+                color: tif === t ? '#22d3ee' : '#94a3b8',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer'
@@ -674,7 +674,7 @@ export function TradeTab() {
 
         {/* Est. value */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ color: '#64748b', fontSize: '13px' }}>Est. value</span>
+          <span style={{ color: '#e2e8f0', fontSize: '13px' }}>Est. value</span>
           <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>
             {(() => {
               const price = orderType === 'limit' && limitPrice
@@ -692,7 +692,7 @@ export function TradeTab() {
 
         {/* Buying Power */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <span style={{ color: '#64748b', fontSize: '13px' }}>Buying Power</span>
+          <span style={{ color: '#e2e8f0', fontSize: '13px' }}>Buying Power</span>
           <span style={{
             color: (() => {
               const price = orderType === 'limit' && limitPrice
@@ -820,7 +820,7 @@ export function TradeTab() {
       {/* ─── 3.5: MY BASKETS ─── */}
       {(baskets.length > 0 || pendingBaskets.length > 0) && (
         <div style={{ margin: '0 16px 16px 16px' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
             MY BASKETS
           </div>
 
@@ -851,7 +851,7 @@ export function TradeTab() {
                   ${pb.totalReserved?.toLocaleString()}
                 </span>
               </div>
-              <div style={{ color: '#6b7280', fontSize: '11px', marginBottom: '10px' }}>
+              <div style={{ color: '#cbd5e1', fontSize: '11px', marginBottom: '10px' }}>
                 {pb.stocks?.length || 0} stocks · Submitted {new Date(pb.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </div>
               <button
@@ -894,7 +894,7 @@ export function TradeTab() {
                   {basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%
                 </span>
               </div>
-              <div style={{ color: '#6b7280', fontSize: '11px', marginBottom: '10px' }}>
+              <div style={{ color: '#cbd5e1', fontSize: '11px', marginBottom: '10px' }}>
                 Bought {new Date(basket.boughtAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${basket.totalCost.toLocaleString()} invested · {basket.activeCount} positions active
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -922,7 +922,7 @@ export function TradeTab() {
 
       {/* ─── 4. ORDER HISTORY ─── */}
       <div id="order-history" style={{ margin: '0 16px' }}>
-        <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.1em', marginBottom: '12px' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
           ORDER HISTORY
         </div>
 
@@ -944,7 +944,7 @@ export function TradeTab() {
                 background: 'none',
                 border: 'none',
                 borderBottom: historyTab === tab.key ? '2px solid #22d3ee' : '2px solid transparent',
-                color: historyTab === tab.key ? '#22d3ee' : '#64748b'
+                color: historyTab === tab.key ? '#22d3ee' : '#94a3b8'
               }}
             >
               {tab.label}
@@ -1007,7 +1007,7 @@ export function TradeTab() {
                           </span>
                         </div>
                         <div style={{
-                          color: '#6b7280',
+                          color: '#cbd5e1',
                           fontSize: '11px',
                         }}>
                           {basket.orders?.length || 0} positions ·
@@ -1039,7 +1039,7 @@ export function TradeTab() {
                           {basket.status}
                         </span>
                         <span style={{
-                          color: '#4b5563',
+                          color: '#cbd5e1',
                           fontSize: '14px',
                           transform: isExpanded ? 'rotate(90deg)' : 'none',
                           transition: 'transform 0.2s',
@@ -1080,7 +1080,7 @@ export function TradeTab() {
                                 </span>
                               </div>
                               <div style={{
-                                color: '#6b7280',
+                                color: '#cbd5e1',
                                 fontSize: '11px',
                                 marginTop: '2px',
                               }}>
@@ -1102,7 +1102,7 @@ export function TradeTab() {
                                 {order.status}
                               </div>
                               <div style={{
-                                color: '#6b7280',
+                                color: '#cbd5e1',
                                 fontSize: '11px',
                               }}>
                                 ${(order.totalCost || 0).toFixed(2)}
@@ -1135,7 +1135,7 @@ export function TradeTab() {
                               Cancel Basket Order
                             </button>
                             <div style={{
-                              color: '#4b5563',
+                              color: '#cbd5e1',
                               fontSize: '10px',
                               textAlign: 'center',
                               marginTop: '6px',
@@ -1183,18 +1183,18 @@ export function TradeTab() {
                         {order.side}
                       </span>
                     </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>
+                    <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '2px' }}>
                       market · {order.shares} shares
                     </div>
                     {order.status === 'filled' && order.price && (
-                      <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                      <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
                         Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     )}
                     {order.status === 'open' && (
                       <>
                         {order.submittedPrice > 0 && (
-                          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                          <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
                             Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         )}
@@ -1225,7 +1225,7 @@ export function TradeTab() {
                     <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                       {order.price ? `$${(order.price as number).toFixed(2)}/share` : 'pending'}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#475569' }}>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                       {(() => {
                         try {
                           const d = new Date(order.date);
@@ -1311,7 +1311,7 @@ export function TradeTab() {
                   fontSize: '12px',
                 }}>{confirmCancel.side}</span>
               </div>
-              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+              <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
                 {confirmCancel.shares} shares @ ${confirmCancel.price.toFixed(2)}
               </div>
               <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
@@ -1327,7 +1327,7 @@ export function TradeTab() {
                   background: 'rgba(255,255,255,0.06)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '10px',
-                  color: '#9ca3af',
+                  color: '#cbd5e1',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1391,7 +1391,7 @@ export function TradeTab() {
               <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
                 🔨 {confirmCancelBasket.basketDisplayName}
               </div>
-              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+              <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
                 {confirmCancelBasket.orderCount} orders · ${confirmCancelBasket.totalReserved.toFixed(2)} reserved
               </div>
               <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
@@ -1407,7 +1407,7 @@ export function TradeTab() {
                   background: 'rgba(255,255,255,0.06)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '10px',
-                  color: '#9ca3af',
+                  color: '#cbd5e1',
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1481,7 +1481,7 @@ export function TradeTab() {
           <span style={{ fontSize: '13px', color: '#ffffff', flex: 1 }}>{toast.message}</span>
           <button
             onClick={dismissToast}
-            style={{ color: '#6b7280', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
+            style={{ color: '#cbd5e1', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', marginLeft: '8px' }}
           >×</button>
         </div>
       )}

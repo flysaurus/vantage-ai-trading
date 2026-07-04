@@ -104,7 +104,7 @@ export function SharePageClient({ styleKey, name }: SharePageClientProps) {
 
   const footerStyle: React.CSSProperties = {
     fontSize: '12px',
-    color: '#64748b',
+    color: '#cbd5e1',
     marginTop: '24px',
   };
 

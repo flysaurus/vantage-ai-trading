@@ -71,7 +71,7 @@ export function PositionRow({
                 <span className="basket-badge">{basketName}</span>
               )}
             </div>
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>
+            <div style={{ fontSize: 10, color: '#cbd5e1' }}>
               {position.qty} shares{position.sector ? ` · ${position.sector}` : ''}
             </div>
           </div>
@@ -96,7 +96,7 @@ export function PositionRow({
             </button>
           )}
           {!compact && !isSelectable && (
-            <span style={{ color: '#475569', fontSize: 16, lineHeight: 1 }}>›</span>
+            <span style={{ color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>›</span>
           )}
         </div>
       </div>

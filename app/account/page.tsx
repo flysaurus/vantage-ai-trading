@@ -76,7 +76,7 @@ function AccountPageInner() {
 
           {isConnected && brokerUrl && (
             <>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
                 Broker Actions
               </div>
               {brokerSections.map((section, i) => (
@@ -95,7 +95,7 @@ function AccountPageInner() {
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{section.label}</div>
                     <div style={{ fontSize: 11, color: '#64748b' }}>{section.desc}</div>
                   </div>
-                  <ExternalLink size={14} style={{ color: '#475569', flexShrink: 0 }} />
+                  <ExternalLink size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
                 </a>
               ))}
 
@@ -122,7 +122,7 @@ function AccountPageInner() {
               <Shield size={14} style={{ color: '#f59e0b' }} />
               <span style={{ fontSize: 12, fontWeight: 600 }}>Important</span>
             </div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
               Vantage is a trading dashboard — not a broker. All deposits, withdrawals, and account management
               happen on your broker's platform. Vantage securely stores your API keys to display portfolio
               data and place trades, but never touches your funds directly.

@@ -77,7 +77,7 @@ export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Se
   return (
     <div ref={containerRef} style={{ position: 'relative', flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '0 12px' }}>
-        <Search size={14} style={{ color: '#94a3b8', marginRight: 8 }} />
+        <Search size={14} style={{ color: '#cbd5e1', marginRight: 8 }} />
         <input
           ref={inputRef}
           type="text"
@@ -103,13 +103,13 @@ export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Se
           placeholder={placeholder}
           style={{ flex: 1, padding: '10px 0', background: 'transparent', border: 'none', color: '#f1f5f9', fontSize: 13, outline: 'none' }}
         />
-        {loading && <span style={{ fontSize: 10, color: '#94a3b8' }}>...</span>}
+        {loading && <span style={{ fontSize: 10, color: '#cbd5e1' }}>...</span>}
       </div>
 
       {/* Quick-select positions */}
       {positions.length > 0 && !query && showDropdown && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
-          <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 600, marginBottom: 6, padding: '0 4px' }}>Your Positions</div>
+          <div style={{ fontSize: 9, color: '#e2e8f0', textTransform: 'uppercase', fontWeight: 600, marginBottom: 6, padding: '0 4px' }}>Your Positions</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {positions.map((sym) => (
               <button
@@ -139,11 +139,11 @@ export function SymbolSearch({ value, onChange, onInputChange, placeholder = 'Se
               }}
             >
               <div style={{ width: 32, height: 32, borderRadius: 8, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <TrendingUp size={14} style={{ color: '#94a3b8' }} />
+                <TrendingUp size={14} style={{ color: '#cbd5e1' }} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>{r.symbol}</div>
-                {r.name && <div style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>}
+                {r.name && <div style={{ fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>}
               </div>
               {r.price != null && (
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>

@@ -597,10 +597,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       >
         {/* Subtitle row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+          <span style={{ fontSize: '11px', color: '#cbd5e1' }}>
             AI-curated · Updated {formatLastUpdated(lastUpdated)}
           </span>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+          <span style={{ fontSize: '11px', color: '#cbd5e1' }}>
             Next refresh {formatNextRefresh(nextRefresh)}
           </span>
         </div>
@@ -623,7 +623,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             {changelogExpanded && (
               <div style={{
                 background: 'rgba(255,255,255,0.03)', borderRadius: '8px',
-                padding: '10px 12px', marginTop: '4px', fontSize: '11px', color: '#94a3b8',
+                padding: '10px 12px', marginTop: '4px', fontSize: '11px', color: '#cbd5e1',
                 lineHeight: '1.5', fontStyle: 'italic',
               }}>{changelog}</div>
             )}
@@ -637,7 +637,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             justifyContent: 'center', padding: '48px 0', gap: '12px',
           }}>
             <CompassIcon size={48} color="#22d3ee" animated={true} />
-            <p style={{ fontSize: '13px', color: '#94a3b8' }}>Loading curated baskets...</p>
+            <p style={{ fontSize: '13px', color: '#cbd5e1' }}>Loading curated baskets...</p>
           </div>
         )}
 
@@ -664,7 +664,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             <p style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
               No baskets yet
             </p>
-            <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>
+            <p style={{ fontSize: '12px', color: '#cbd5e1', textAlign: 'center' }}>
               AI-curated baskets are generated weekly.<br />
               Build a custom basket instead.
             </p>
@@ -702,7 +702,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                   </span>
                   <span style={{
                     display: 'block', fontSize: '10px',
-                    color: '#6b7280', textTransform: 'uppercase',
+                    color: '#e2e8f0', textTransform: 'uppercase',
                   }}>
                     {perf.label.toUpperCase()} · tap to cycle
                   </span>
@@ -710,7 +710,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               </div>
 
               {/* Thesis */}
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 8px 0', lineHeight: '1.4' }}>
+              <p style={{ fontSize: '12px', color: '#cbd5e1', margin: '0 0 8px 0', lineHeight: '1.4' }}>
                 {basket.thesis}
               </p>
 
@@ -725,7 +725,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               </div>
 
               {/* Risk note */}
-              <p style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', margin: '0 0 10px 0' }}>
+              <p style={{ fontSize: '11px', color: '#cbd5e1', fontStyle: 'italic', margin: '0 0 10px 0' }}>
                 ⚠️ {basket.risk_note}
               </p>
 
@@ -744,7 +744,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                           <span style={{ fontSize: '12px', fontWeight: '600', color: '#ffffff' }}>
                             {s.symbol}
                           </span>
-                          <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '6px' }}>
+                          <span style={{ fontSize: '10px', color: '#cbd5e1', marginLeft: '6px' }}>
                             {s.name}
                           </span>
                         </div>
@@ -761,7 +761,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                         </div>
                       </div>
                       {s.rationale && (
-                        <p style={{ fontSize: '10px', color: '#94a3b8', margin: '0 0 4px 0', lineHeight: '1.3' }}>
+                        <p style={{ fontSize: '10px', color: '#cbd5e1', margin: '0 0 4px 0', lineHeight: '1.3' }}>
                           {s.rationale}
                         </p>
                       )}
@@ -864,7 +864,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         onWheel={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
       >
-        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+        <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '16px' }}>
           Describe the basket you want
         </p>
         <textarea
@@ -881,14 +881,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           }}
         />
         {/* Inspirations */}
-        <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '16px', marginBottom: '8px' }}>
+        <p style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '16px', marginBottom: '8px' }}>
           Need inspiration? Try:
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {['Robotics & automation', 'Crypto mining stocks', 'Space economy', 'Water infrastructure'].map(tag => (
             <button key={tag} onClick={() => { setCustomName(tag); }} style={{
               background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '16px', padding: '6px 12px', fontSize: '11px', color: '#94a3b8',
+              borderRadius: '16px', padding: '6px 12px', fontSize: '11px', color: '#cbd5e1',
               cursor: 'pointer',
             }}>{tag}</button>
           ))}
@@ -968,7 +968,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         </button>
         <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '15px' }}>Set Budget</span>
         <button onClick={onClose} style={{
-          color: '#6b7280', background: 'none', border: 'none',
+          color: '#94a3b8', background: 'none', border: 'none',
           fontSize: '22px', cursor: 'pointer', minWidth: '70px', textAlign: 'right',
         }}>×</button>
       </div>
@@ -981,11 +981,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
           <div style={{
             background: '#1a2235', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
           }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Basket: </span>
+            <span style={{ fontSize: '11px', color: '#cbd5e1' }}>Basket: </span>
             <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>{selectedCurated.emoji} {selectedCurated.name}</span>
           </div>
         )}
-        <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '24px' }}>
+        <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px' }}>
           How much do you want to invest?
         </p>
 
@@ -1081,7 +1081,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       <p style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', textAlign: 'center' }}>
         Vantage AI is building your basket...
       </p>
-      <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>
+      <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center' }}>
         Selecting top stocks for {displayTheme}
       </p>
     </div>
@@ -1111,12 +1111,12 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             <p style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff', marginBottom: '4px' }}>
               {basketData.theme} Basket · ${budgetNum.toLocaleString()}
             </p>
-            <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.5', marginBottom: '16px' }}>
+            <p style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '16px' }}>
               {basketData.rationale}
             </p>
 
             {removeFlash && (
-              <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', marginBottom: '8px' }}>
+              <p style={{ fontSize: '11px', color: '#cbd5e1', textAlign: 'center', marginBottom: '8px' }}>
                 Allocation adjusted
               </p>
             )}
@@ -1129,7 +1129,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '2px' }}>
                       <div>
                         <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>{stock.symbol}</span>
-                        <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px' }}>{stock.name}</span>
+                        <span style={{ fontSize: '11px', color: '#cbd5e1', marginLeft: '6px' }}>{stock.name}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{stock.allocation}%</span>
@@ -1144,11 +1144,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                         )}
                       </div>
                     </div>
-                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>
+                    <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0 }}>
                       {stock.shares} shares @ ${(stock.price || 0).toFixed(2)}
                     </p>
                     {stock.rationale && (
-                      <p style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', margin: '2px 0 0 0', lineHeight: '1.4' }}>
+                      <p style={{ fontSize: '11px', color: '#cbd5e1', fontStyle: 'italic', margin: '2px 0 0 0', lineHeight: '1.4' }}>
                         💡 {stock.rationale}
                       </p>
                     )}
@@ -1205,7 +1205,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     maxHeight: '200px', overflow: 'auto',
                   }}>
                     {stockSearchLoading && (
-                      <div style={{ padding: '8px 12px', fontSize: '11px', color: '#94a3b8' }}>Searching…</div>
+                      <div style={{ padding: '8px 12px', fontSize: '11px', color: '#cbd5e1' }}>Searching…</div>
                     )}
                     {stockSearchResults.map((r: any, i: number) => (
                       <button
@@ -1225,9 +1225,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                       >
                         <div>
                           <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{r.symbol}</div>
-                          {r.description && <div style={{ fontSize: '10px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
+                          {r.description && <div style={{ fontSize: '10px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
                         </div>
-                        <span style={{ fontSize: '10px', color: '#94a3b8', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
+                        <span style={{ fontSize: '10px', color: '#cbd5e1', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
                       </button>
                     ))}
                   </div>
@@ -1243,7 +1243,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             {error && <p style={{ fontSize: '11px', color: '#ef4444', marginTop: '6px' }}>{error}</p>}
           </>
         ) : (
-          <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '24px 0' }}>
             No basket data available
           </p>
         )}
@@ -1630,7 +1630,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                         maxHeight: '200px', overflow: 'auto', zIndex: 50,
                       }}>
                         {reviewSearchLoading && (
-                          <div style={{ padding: '8px 12px', fontSize: '11px', color: '#94a3b8' }}>Searching…</div>
+                          <div style={{ padding: '8px 12px', fontSize: '11px', color: '#cbd5e1' }}>Searching…</div>
                         )}
                         {reviewSearchResults.map((r: any, i: number) => (
                           <button
@@ -1650,9 +1650,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                           >
                             <div>
                               <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{r.symbol}</div>
-                              {r.description && <div style={{ fontSize: '10px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
+                              {r.description && <div style={{ fontSize: '10px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>{r.description}</div>}
                             </div>
-                            <span style={{ fontSize: '10px', color: '#94a3b8', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
+                            <span style={{ fontSize: '10px', color: '#cbd5e1', flexShrink: 0, marginLeft: '8px' }}>{r.type}</span>
                           </button>
                         ))}
                       </div>
@@ -1897,7 +1897,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             </p>
             {executionResult.success && (
               <>
-                <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+                <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '16px' }}>
                   {executionResult.executed} positions filled · ${executionResult.totalSpent.toFixed(2)} spent
                 </p>
                 {executionResult.failed > 0 && (
@@ -1961,7 +1961,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                 }}
               />
               <div style={{
-                color: '#374151',
+                color: '#94a3b8',
                 fontSize: '10px',
                 marginTop: '4px',
                 textAlign: 'right',
@@ -1978,14 +1978,14 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
                 {basketDisplayName || selectedCurated.name}
               </div>
-              <div style={{ color: '#6b7280', fontSize: '13px', marginBottom: '20px' }}>
+              <div style={{ color: '#cbd5e1', fontSize: '13px', marginBottom: '20px' }}>
                 {reviewStocks.length} positions · Market order · Day
               </div>
 
               {[
                 { label: 'Budget', value: `$${(parseInt(budget) || 0).toLocaleString()}`, color: '#ffffff' },
                 { label: 'Effective (5% buffer)', value: `$${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#22d3ee' },
-                { label: 'Est. buffer held', value: `~$${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#6b7280' },
+                { label: 'Est. buffer held', value: `~$${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#cbd5e1' },
                 { label: 'Est. Total', value: `$${reviewStocks.reduce((s, r) => s + r.dollarAmount, 0).toFixed(2)}`, color: '#ffffff', bold: true },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -2290,7 +2290,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: '12px',
                     fontSize: '15px',
-                    color: '#9ca3af',
+                    color: '#cbd5e1',
                     cursor: 'pointer',
                   }}
                 >
@@ -2345,7 +2345,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: '12px',
                     fontSize: '15px',
-                    color: '#9ca3af',
+                    color: '#cbd5e1',
                     cursor: 'pointer',
                   }}
                 >

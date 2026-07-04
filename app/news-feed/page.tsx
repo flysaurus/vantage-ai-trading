@@ -250,7 +250,7 @@ export default function NewsFeedPage() {
       {/* Search bar */}
       {activeArticles.length > 0 && (
         <div style={{ position: 'relative', marginBottom: 10 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#e2e8f0' }} />
           <input
             type="text"
             value={searchQuery}
@@ -265,7 +265,7 @@ export default function NewsFeedPage() {
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 0 }}
             >
               <X size={13} />
             </button>
@@ -337,7 +337,7 @@ export default function NewsFeedPage() {
         }}>
           {sectionTab === 'portfolio' && portfolioSymbols.length === 0 ? (
             <>
-              <Briefcase size={40} style={{ color: '#475569', marginBottom: 12 }} />
+              <Briefcase size={40} style={{ color: '#64748b', marginBottom: 12 }} />
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No holdings found</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                 Add positions to your portfolio to see related news
@@ -345,7 +345,7 @@ export default function NewsFeedPage() {
             </>
           ) : (
             <>
-              <Newspaper size={40} style={{ color: '#475569', marginBottom: 12 }} />
+              <Newspaper size={40} style={{ color: '#64748b', marginBottom: 12 }} />
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
                 {sectionTab === 'portfolio' ? 'No portfolio news yet' : 'No articles found'}
               </div>
@@ -408,7 +408,7 @@ function NewsCard({
   const sentimentConfig = {
     positive: { color: '#22c55e', bg: 'rgba(34,197,94,0.08)', icon: TrendingUp, label: 'Bullish' },
     negative: { color: '#ef4444', bg: 'rgba(239,68,68,0.08)', icon: TrendingDown, label: 'Bearish' },
-    neutral: { color: '#64748b', bg: 'rgba(100,116,139,0.08)', icon: Minus, label: 'Neutral' },
+    neutral: { color: '#e2e8f0', bg: 'rgba(100,116,139,0.08)', icon: Minus, label: 'Neutral' },
   }[article.sentiment];
 
   const SentIcon = sentimentConfig.icon;
@@ -443,7 +443,7 @@ function NewsCard({
             <div style={{ flex: 1 }}>
               <h3 className="news-headline" style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, margin: 0 }}>
                 {article.headline}
-                <ExternalLink size={10} style={{ marginLeft: 4, color: '#64748b', opacity: 0 }} className="ext-icon" />
+                <ExternalLink size={10} style={{ marginLeft: 4, color: '#e2e8f0', opacity: 0 }} className="ext-icon" />
               </h3>
             </div>
           </div>
@@ -494,7 +494,7 @@ function NewsCard({
                   </span>
                 ))}
                 {article.symbols.length > 4 && (
-                  <span style={{ fontSize: 9, color: '#64748b' }}>+{article.symbols.length - 4}</span>
+                  <span style={{ fontSize: 9, color: '#e2e8f0' }}>+{article.symbols.length - 4}</span>
                 )}
               </div>
             )}

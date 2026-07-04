@@ -183,7 +183,7 @@ const MARKDOWN_COMPONENTS = {
   ),
   hr: () => <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '6px 0' }} />,
   blockquote: ({ children }: { children: React.ReactNode }) => (
-    <blockquote style={{ borderLeft: '2px solid #06b6d4', paddingLeft: 8, margin: '4px 0', color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>{children}</blockquote>
+    <blockquote style={{ borderLeft: '2px solid #06b6d4', paddingLeft: 8, margin: '4px 0', color: '#cbd5e1', fontSize: 11, fontStyle: 'italic' }}>{children}</blockquote>
   ),
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
@@ -351,7 +351,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       <div className="mx-4 mb-4">
         <div className="flex items-center gap-3">
           <div className="flex-1 border-t border-slate-700/50" />
-          <span className="text-slate-600 text-xs uppercase tracking-wider font-medium flex-shrink-0">
+          <span className="text-slate-400 text-xs uppercase tracking-wider font-medium flex-shrink-0">
             Ask Vantage AI
           </span>
           <div className="flex-1 border-t border-slate-700/50" />
@@ -374,7 +374,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
       >
         {messages.length === 0 && (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-slate-500 text-xs text-center py-8">
+            <p className="text-slate-300 text-xs text-center py-8">
               Ask about your portfolio, markets, or build a basket
             </p>
           </div>
@@ -455,7 +455,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                     padding: 16,
                     background: 'rgba(30,41,59,0.5)',
                   }}>
-                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
+                    <p style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 12 }}>
                       AI-suggested rebalancing plan ready
                     </p>
                     <button
@@ -512,7 +512,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                       Rebalance Plan Ready
                       {isStyleDefault && <span style={{ fontSize: 10, color: '#f59e0b', marginLeft: 6 }}>({styleName} defaults)</span>}
                     </div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, color: '#cbd5e1', marginBottom: 10 }}>
                       {tradeCount} trades · Est. ${totalValue.toLocaleString()}
                       {buys.length > 0 && ` · ${buys.length} buys`}
                       {sells.length > 0 && ` · ${sells.length} sells`}
@@ -588,7 +588,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4', marginBottom: 4 }}>
                           Rebalance Detected
                         </div>
-                        <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, color: '#cbd5e1', marginBottom: 10 }}>
                           {tradeCount} targets parsed
                           {buys.length > 0 && ` · ${buys.length} buys`}
                           {sells.length > 0 && ` · ${sells.length} sells`}
@@ -629,7 +629,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
               {/* Cost indicator on last AI message */}
               {msg.role === 'assistant' && idx === messages.length - 1 && lastCost > 0 && showCost && (
                 <div style={{
-                  fontSize: 9, color: '#64748b', marginTop: 4,
+                  fontSize: 9, color: '#cbd5e1', marginTop: 4,
                   textAlign: 'right', fontStyle: 'italic',
                 }}>
                   ~${lastCost.toFixed(4)} · {remainingCalls}/25 calls left
@@ -712,14 +712,14 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
             }}
             disabled={isLoading}
             title="Clear chat history"
-            className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 hover:text-red-400 transition flex-shrink-0"
+            className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-red-400 transition flex-shrink-0"
           >
             🗑
           </button>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-slate-600 text-xs pb-2 px-4">
+        <p className="text-center text-slate-400 text-xs pb-2 px-4">
           Powered by AI · Not financial advice · {remainingCalls} messages remaining
         </p>
       </div>

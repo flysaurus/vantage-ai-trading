@@ -32,11 +32,11 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
   return (
     <div className="card">
       <div>
-        <p className="text-slate-500 text-xs tracking-widest uppercase font-medium mb-1">Account Value</p>
+        <p className="text-slate-300 text-xs tracking-widest uppercase font-medium mb-1">Account Value</p>
         <div className="flex items-center justify-between">
           <p className="text-white font-bold text-4xl tracking-tight">${account.equity.toLocaleString('en-US', DOLLAR_FMT)}</p>
           {styleDef && (
-            <span className="text-xs text-slate-400 flex items-center gap-1.5 self-end mb-1">
+            <span className="text-xs text-slate-300 flex items-center gap-1.5 self-end mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block" />
               <span>{styleDef.title}</span>
               <button

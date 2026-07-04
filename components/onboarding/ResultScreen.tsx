@@ -212,7 +212,7 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
               <p
                 style={{
                   fontSize: '13px',
-                  color: '#64748b',
+                  color: '#e2e8f0',
                   textAlign: 'center',
                   marginBottom: '10px',
                 }}

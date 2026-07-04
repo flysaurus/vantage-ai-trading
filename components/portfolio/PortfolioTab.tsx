@@ -281,7 +281,7 @@ function PositionCard({
               <circle cx={loX} cy={loY} r={4} fill="#ef4444" fillOpacity={0.3} stroke="#ef4444" strokeWidth={1.5} />
               <text x={loX} y={loY + 14} textAnchor={loIdx < pts.length / 2 ? 'start' : 'end'} fill="#ef4444" fontSize={9} fontWeight={600} style={{ fontFamily: 'var(--font-mono, monospace)' }}>L ${pts[loIdx].c.toFixed(2)}</text>
               {/* First price label */}
-              <text x={firstX + 2} y={firstY - 6} textAnchor="start" fill="#94a3b8" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
+              <text x={firstX + 2} y={firstY - 6} textAnchor="start" fill="#cbd5e1" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
               {/* Tooltip vertical line */}
               {tooltipSvgX != null && tooltipY != null && (
                 <line x1={tooltipSvgX} y1={pad} x2={tooltipSvgX} y2={H - pad} stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="3 2" />
@@ -322,10 +322,10 @@ function PositionCard({
             )}
             {/* Labels */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+              <span style={{ fontSize: 10, color: '#cbd5e1', fontFamily: 'var(--font-sans)' }}>
                 52W Low ${labelLow.toFixed(2)}
               </span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+              <span style={{ fontSize: 10, color: '#cbd5e1', fontFamily: 'var(--font-sans)' }}>
                 52W High ${labelHigh.toFixed(2)}
               </span>
             </div>
@@ -371,19 +371,19 @@ function PositionCard({
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                 {pos.name || '—'}
               </div>
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                 {pos.sector || '—'}
               </div>
             </div>
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                 {pos.type || 'Stock'}
               </div>
             </div>
@@ -398,25 +398,25 @@ function PositionCard({
             }}>
               {fundamentals.eps != null && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>EPS</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>${fundamentals.eps.toFixed(2)}</span>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>EPS</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>${fundamentals.eps.toFixed(2)}</span>
                 </div>
               )}
               {fundamentals.pe != null && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>P/E</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{fundamentals.pe.toFixed(1)}</span>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>P/E</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>{fundamentals.pe.toFixed(1)}</span>
                 </div>
               )}
               {fundamentals.dividendYield != null && fundamentals.dividendYield > 0 && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>Div Yield</span>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Div Yield</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>{fundamentals.dividendYield.toFixed(2)}%</span>
                 </div>
               )}
               {fundamentals.recommendation && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>Analyst</span>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Analyst</span>
                   <span style={{
                     fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
                     padding: '1px 8px', borderRadius: 4,
@@ -519,13 +519,13 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
         borderRadius: 16,
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>CASH</div>
+          <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>CASH</div>
           <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
             ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 11, letterSpacing: 0.5, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>INVESTED</div>
+          <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>INVESTED</div>
           <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
             ${invested.toLocaleString('en-US', DOLLAR_FMT)}
           </div>
@@ -641,7 +641,7 @@ function PendingBasketCard({ basket }: { basket: Basket }) {
       <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 4 }}>
         ⏳ {basket.nextOpenLabel || 'awaiting market open'}
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
         {positionCount} positions · ${reserved.toFixed(2)} reserved
       </div>
     </div>
@@ -916,7 +916,7 @@ export function PortfolioTab() {
             }}>
               {selectedSymbols.size} selected
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
               ~$
               {filteredPositions
                 .filter(p => selectedSymbols.has(p.symbol))
@@ -930,7 +930,7 @@ export function PortfolioTab() {
               style={{
                 padding: '8px 16px', borderRadius: 999,
                 background: 'transparent', border: '1px solid rgba(255,255,255,0.10)',
-                color: 'var(--text-muted)',
+                color: '#cbd5e1',
                 fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
                 cursor: 'pointer',
               }}

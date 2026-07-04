@@ -138,7 +138,7 @@ export const StyleShareCard = forwardRef<HTMLDivElement, StyleShareCardProps>(
           {/* URL */}
           <span style={{
             fontSize: '9px',
-            color: '#475569',
+            color: '#94a3b8',
             fontWeight: 500,
           }}>
             vantage-ai-trading.vercel.app
@@ -218,7 +218,7 @@ export const StyleShareCard = forwardRef<HTMLDivElement, StyleShareCardProps>(
             </span>
             <span style={{
               fontSize: '10px',
-              color: '#64748b',
+              color: '#e2e8f0',
               fontWeight: 500,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
@@ -252,7 +252,7 @@ export const StyleShareCard = forwardRef<HTMLDivElement, StyleShareCardProps>(
             </span>
             <span style={{
               fontSize: '10px',
-              color: '#64748b',
+              color: '#e2e8f0',
               fontWeight: 500,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
@@ -286,7 +286,7 @@ export const StyleShareCard = forwardRef<HTMLDivElement, StyleShareCardProps>(
             </span>
             <span style={{
               fontSize: '10px',
-              color: '#64748b',
+              color: '#e2e8f0',
               fontWeight: 500,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
@@ -315,7 +315,7 @@ export const StyleShareCard = forwardRef<HTMLDivElement, StyleShareCardProps>(
           </p>
           <p style={{
             fontSize: '11px',
-            color: '#64748b',
+            color: '#e2e8f0',
             textAlign: 'center',
             margin: 0,
           }}>
@@ -334,7 +334,7 @@ export const StyleShareCard = forwardRef<HTMLDivElement, StyleShareCardProps>(
         }}>
           <span style={{
             fontSize: '10px',
-            color: '#475569',
+            color: '#94a3b8',
             fontWeight: 500,
             letterSpacing: '0.04em',
           }}>
