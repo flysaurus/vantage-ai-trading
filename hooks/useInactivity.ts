@@ -34,38 +34,6 @@ export function useInactivity(): UseInactivityReturn {
     if (logoutTimerRef.current) { clearTimeout(logoutTimerRef.current); logoutTimerRef.current = null; }
   }, []);
 
-  const startTimers = useCallback(() => {
-    clearTimers();
-
-    const timeSinceActivity = Date.now() - lastActivityRef.current;
-    const remainingToWarning = Math.max(0, INACTIVITY_WARNING_MS - timeSinceActivity);
-    const remainingToLogout = Math.max(0, INACTIVITY_LOGOUT_MS - timeSinceActivity);
-
-    // Schedule warning at 8 min
-    if (remainingToWarning > 0) {
-      warningTimerRef.current = setTimeout(() => {
-        setShowWarning(true);
-        setCountdown(COUNTDOWN_SECONDS);
-
-        // Start countdown ticker
-        countdownIntervalRef.current = setInterval(() => {
-          setCountdown((prev) => {
-            if (prev <= 1) {
-              if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      }, remainingToWarning);
-    }
-
-    // Schedule auto-logout at 10 min
-    logoutTimerRef.current = setTimeout(() => {
-      performSignOut();
-    }, remainingToLogout);
-  }, [clearTimers]);
-
   const performSignOut = useCallback(async () => {
     clearTimers();
     setShowWarning(false);
@@ -76,6 +44,43 @@ export function useInactivity(): UseInactivityReturn {
     try { sessionStorage.clear(); } catch {}
     window.location.href = '/';
   }, [clearTimers]);
+
+  const startTimers = useCallback(() => {
+    clearTimers();
+
+    const timeSinceActivity = Date.now() - lastActivityRef.current;
+    const remainingToWarning = Math.max(0, INACTIVITY_WARNING_MS - timeSinceActivity);
+    const remainingToLogout = Math.max(0, INACTIVITY_LOGOUT_MS - timeSinceActivity);
+
+    // Schedule warning at 8 min (countdown effect handles ticking)
+    if (remainingToWarning > 0) {
+      warningTimerRef.current = setTimeout(() => {
+        setShowWarning(true);
+        setCountdown(COUNTDOWN_SECONDS);
+      }, remainingToWarning);
+    }
+
+    // Schedule auto-logout at 10 min
+    logoutTimerRef.current = setTimeout(() => {
+      performSignOut();
+    }, remainingToLogout);
+  }, [clearTimers, performSignOut]);
+
+  // ── Countdown ticker (separate effect, React-managed) ──
+  useEffect(() => {
+    if (!showWarning) return;
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          performSignOut();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [showWarning, performSignOut]);
 
   const resetActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
