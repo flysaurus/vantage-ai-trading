@@ -181,7 +181,7 @@ export default function DemoCounterPage({
         textAlign: 'center', margin: '0 0 14px', lineHeight: 1.4,
         fontFamily: 'var(--font-sans)',
       }}>
-        Same AI analysis the institutions run. Now in your pocket.
+        Institution-grade AI-based portfolio analysis. Now in your pocket.
       </p>
 
       {/* ═══ SECTION 1: CONTINUE IN DEMO ═══ */}
