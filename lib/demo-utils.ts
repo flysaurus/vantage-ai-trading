@@ -35,21 +35,19 @@ export function getDemoStatus(
   const expiresDate = dateOnly(expires);
 
   const DAY_MS = 1000 * 60 * 60 * 24;
-  const totalDemoDays = Math.round((expiresDate.getTime() - startDate.getTime()) / DAY_MS);
+
+  // Total days from DB (not hardcoded — change demo duration in DB only)
+  const totalDays = Math.round((expiresDate.getTime() - startDate.getTime()) / DAY_MS);
+
+  // Calendar days elapsed (date-only subtraction)
   const daysSinceStart = Math.round((todayDate.getTime() - startDate.getTime()) / DAY_MS);
 
-  // Display: today is in-progress → subtract it (i.e. total - 1 - elapsed)
-  const daysRemaining = Math.max(0, totalDemoDays - daysSinceStart - 1);
-
-  // Expired only after totalDemoDays full days have passed
-  const isExpired = daysSinceStart >= totalDemoDays;
-
-  const percentUsed = Math.min(100, Math.round((daysSinceStart / totalDemoDays) * 100));
+  const daysRemaining = Math.max(0, totalDays - daysSinceStart);
 
   return {
     daysRemaining,
-    isExpired,
-    showWarning: daysRemaining <= 3 && !isExpired,
-    percentUsed,
+    isExpired: daysRemaining <= 0,
+    showWarning: daysRemaining <= 3 && daysRemaining > 0,
+    percentUsed: Math.min(100, Math.round((daysSinceStart / totalDays) * 100)),
   };
 }

@@ -63,10 +63,8 @@ export function getDemoStatus(): DemoStatus {
   const totalDays = DEMO_DURATION_DAYS;
   const daysSinceStart = Math.round((todayDate.getTime() - startDate.getTime()) / DAY_MS);
 
-  // Display: subtract today (in-progress) — total - 1 - elapsed
-  const daysRemaining = Math.max(0, totalDays - daysSinceStart - 1);
-  // Expired only after all 30 calendar days have passed
-  const isExpired = daysSinceStart >= totalDays;
+  const daysRemaining = Math.max(0, totalDays - daysSinceStart);
+  const isExpired = daysRemaining <= 0;
   const showWarning = !isExpired && daysRemaining <= WARNING_THRESHOLD_DAYS;
 
   // Percent of demo period used

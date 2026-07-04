@@ -216,10 +216,12 @@ export function SettingsTab() {
                 const today = dateOnly(new Date());
 
                 const DAY_MS = 86_400_000;
+
+                // Demo duration: hardcoded fallback only — change in DB for real users
                 const totalDays = 30;
                 const daysSinceStart = Math.round((today.getTime() - start.getTime()) / DAY_MS);
 
-                return Math.max(0, totalDays - daysSinceStart - 1);
+                return Math.max(0, totalDays - daysSinceStart);
               } catch { return 30; }
             })()}
           </span>

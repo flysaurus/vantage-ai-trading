@@ -109,7 +109,7 @@ export default function DemoCounterPage({
     const totalDays = Math.round((expiresDate.getTime() - startDate.getTime()) / DAY_MS);
     const daysSinceStart = Math.round((todayDate.getTime() - startDate.getTime()) / DAY_MS);
 
-    return Math.max(0, totalDays - daysSinceStart - 1);
+    return Math.max(0, totalDays - daysSinceStart);
   })();
 
   const eyebrowText = isFirstTime ? 'DEMO ACTIVATED' : 'WELCOME BACK';
