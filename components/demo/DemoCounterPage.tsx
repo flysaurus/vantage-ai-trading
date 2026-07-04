@@ -11,6 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import type { UserProfile } from '@/lib/app-state';
+import { estDateOnly } from '@/lib/demo-utils';
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -97,13 +98,11 @@ export default function DemoCounterPage({
   const daysRemaining = (() => {
     if (!expiresAt) return 0;
 
-    const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const todayDate = dateOnly(new Date());
-    const expiresDate = dateOnly(new Date(expiresAt));
+    const todayDate = estDateOnly(new Date());
+    const expiresDate = estDateOnly(new Date(expiresAt));
 
-    // Prefer profile.demo_start_at; fallback to 30 days before expiration
     const startDate = profile?.demo_start_at
-      ? dateOnly(new Date(profile.demo_start_at))
+      ? estDateOnly(new Date(profile.demo_start_at))
       : new Date(expiresDate.getTime() - 30 * 86400000);
 
     const DAY_MS = 86400000;

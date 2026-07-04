@@ -10,6 +10,7 @@ import { ShareCardModal } from '@/components/sharing/ShareCardModal';
 import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
 import type { Level } from '@/lib/theme/tokens';
 import { useInvestorScore } from '@/hooks/useInvestorScore';
+import { estDateOnly } from '@/lib/demo-utils';
 
 const INVESTOR_STYLES = [
   { id: 'lynch', name: 'Peter Lynch', subtitle: 'Growth Focus', description: 'Find growth before Wall Street does. GARP investing.', emoji: '📈' },
@@ -211,13 +212,10 @@ export function SettingsTab() {
                 const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
                 if (!fo) return 30;
 
-                const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-                const start = dateOnly(new Date(fo));
-                const today = dateOnly(new Date());
+                const start = estDateOnly(new Date(fo));
+                const today = estDateOnly(new Date());
 
                 const DAY_MS = 86_400_000;
-
-                // Demo duration: hardcoded fallback only — change in DB for real users
                 const totalDays = 30;
                 const daysSinceStart = Math.round((today.getTime() - start.getTime()) / DAY_MS);
 

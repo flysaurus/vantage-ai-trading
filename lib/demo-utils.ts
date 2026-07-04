@@ -1,12 +1,26 @@
 // ─── Demo Status Utilities ───────────────────────────────────
 // Calculates days remaining, expiration status, and warning state
 // based on demo_start_at and demo_expires_at timestamps.
+//
+// All date math uses America/New_York (EST/EDT) timezone —
+// midnight rolls over at Eastern time, not UTC.
 
 export interface DemoStatus {
   daysRemaining: number;
   isExpired: boolean;
   showWarning: boolean;
   percentUsed: number;
+}
+
+/**
+ * Extract a pure calendar date (midnight) in America/New_York timezone.
+ * Ensures "today" means today in EST/EDT, not UTC.
+ */
+export function estDateOnly(d: Date): Date {
+  // en-CA locale gives YYYY-MM-DD
+  const str = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const [y, m, day] = str.split('-').map(Number);
+  return new Date(y, m - 1, day);
 }
 
 export function getDemoStatus(
@@ -28,11 +42,10 @@ export function getDemoStatus(
   const expires = new Date(demoExpiresAt);
   const start = new Date(demoStartAt);
 
-  // ── Pure date (midnight-local), no time components ───
-  const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const startDate = dateOnly(start);
-  const todayDate = dateOnly(now);
-  const expiresDate = dateOnly(expires);
+  // ── Pure date in EST/EDT, no time components ───
+  const startDate = estDateOnly(start);
+  const todayDate = estDateOnly(now);
+  const expiresDate = estDateOnly(expires);
 
   const DAY_MS = 1000 * 60 * 60 * 24;
 

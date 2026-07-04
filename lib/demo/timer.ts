@@ -2,6 +2,10 @@
 // Client-side demo status utilities.
 // Works with localStorage timestamps set by lib/session/anonymous.ts.
 //
+// All date math uses America/New_York (EST/EDT).
+
+import { estDateOnly } from '@/lib/demo-utils';
+//
 // getDemoStatus() returns a full picture of the demo period:
 // days remaining, expiration, warning state, percentage used.
 
@@ -54,10 +58,9 @@ export function getDemoStatus(): DemoStatus {
   const expiresAt = new Date(firstOpen);
   expiresAt.setDate(expiresAt.getDate() + DEMO_DURATION_DAYS);
 
-  // ── Pure date (midnight-local), no time components ───
-  const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const startDate = dateOnly(firstOpen);
-  const todayDate = dateOnly(new Date());
+  // ── Pure date in EST/EDT, no time components ───
+  const startDate = estDateOnly(firstOpen);
+  const todayDate = estDateOnly(new Date());
 
   const DAY_MS = 86_400_000;
   const totalDays = DEMO_DURATION_DAYS;
