@@ -48,9 +48,9 @@ export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
     label: 'Patient Builder',
     description: 'Quality value — steady compounders at fair prices',
     positions: [
-      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 20, avgCost: 415.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2025-08-15' },
-      { symbol: 'KO', name: 'The Coca-Cola Company', sector: 'Consumer Defensive', industry: 'Beverages', qty: 80, avgCost: 62.50, weekHigh52: 72, weekLow52: 58, type: 'Stock', buyDate: '2025-10-22' },
-      { symbol: 'AXP', name: 'American Express Company', sector: 'Financial Services', industry: 'Credit Services', qty: 20, avgCost: 265.00, weekHigh52: 310, weekLow52: 245, type: 'Stock', buyDate: '2026-01-10' },
+      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 20, avgCost: 479.22, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2025-08-15' },
+      { symbol: 'KO', name: 'The Coca-Cola Company', sector: 'Consumer Defensive', industry: 'Beverages', qty: 80, avgCost: 71.22, weekHigh52: 72, weekLow52: 58, type: 'Stock', buyDate: '2025-10-22' },
+      { symbol: 'AXP', name: 'American Express Company', sector: 'Financial Services', industry: 'Credit Services', qty: 20, avgCost: 375.61, weekHigh52: 310, weekLow52: 245, type: 'Stock', buyDate: '2026-01-10' },
     ],
   },
 
