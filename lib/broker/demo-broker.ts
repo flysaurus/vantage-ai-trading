@@ -57,6 +57,8 @@ export class DemoBroker implements BrokerEngine {
         const saved = JSON.parse(raw);
         const age = Date.now() - (saved.savedAt || 0);
         if (age < STALE_MS && saved.positions?.length > 0) {
+          // Ensure all loaded positions have a name field (patch pre-fix localStorage)
+          saved.positions = saved.positions.map((p: any) => ({ ...p, name: p.name || p.symbol }));
           console.log('[DemoBroker] Loaded state:', {
             positions: saved.positions.length,
             cash: saved.cashBalance,

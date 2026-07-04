@@ -482,8 +482,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       b.getOrders(),
       b.getBasketOrders(),
     ]);
+    // Preserve real company names from previous state when broker doesn't have them
+    const prevNames = new Map<string, string>();
+    if (demoState) {
+      for (const p of demoState.positions) {
+        if (p.name && p.name !== p.symbol) prevNames.set(p.symbol, p.name);
+      }
+    }
     const ctxPositions = bPositions.map((bp: any) => ({
-      symbol: bp.symbol, name: bp.name || bp.symbol, qty: bp.shares, avgCost: bp.avgCost,
+      symbol: bp.symbol, name: bp.name && bp.name !== bp.symbol ? bp.name : prevNames.get(bp.symbol) || bp.name || bp.symbol, qty: bp.shares, avgCost: bp.avgCost,
       currentPrice: bp.avgCost, marketValue: bp.shares * bp.avgCost,
       dayChange: 0, dayChangePercent: 0, totalPnl: 0, totalPnlPercent: 0,
       portfolioPercent: 0, type: bp.type,
