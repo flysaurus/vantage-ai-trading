@@ -1,80 +1,40 @@
 'use client';
 
-// ─── Vantage Plans & Pricing — Data-Driven Matrix ───────────
-// UI only — CTAs are inert ("Coming soon" toast).
-// No Stripe, no billing. Features sourced from roadmap only.
+// ─── Vantage Plans & Pricing — DB-Driven Matrix ─────────────
+// Features and tiers are sourced from Supabase via /api/plans.
+// UI only — CTAs are inert ("Coming soon" toast). No Stripe.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Minus } from 'lucide-react';
 
-// ── Single Config — Edit features here, not in the markup ──
+// ── API Types ───────────────────────────────────────────────
 
-interface Tier {
-  id: string;
+interface TierData {
+  key: string;
   name: string;
-  price: string;
-  accent: string;
+  priceLabel: string;
+  accentColor: string;
   accentBg: string;
   accentBorder: string;
-  cta: string;
-  badge?: string;
-  badgeBg?: string;
+  badgeText: string | null;
+  badgeBg: string | null;
+  ctaLabel: string;
+  isDefault: boolean;
 }
 
-interface Feature {
+interface FeatureData {
+  key: string;
   label: string;
-  demo: string | boolean;
-  silver: string | boolean;
-  gold: string | boolean;
+  description: string | null;
+  values: Record<string, string>;
 }
-
-const TIERS: Tier[] = [
-  {
-    id: 'demo', name: 'Demo', price: 'Free',
-    accent: '#94a3b8', accentBg: 'rgba(148,163,184,0.06)',
-    accentBorder: 'rgba(148,163,184,0.15)',
-    cta: 'Current plan', badge: 'ACTIVE', badgeBg: 'rgba(148,163,184,0.15)',
-  },
-  {
-    id: 'silver', name: 'Silver', price: 'TBD',
-    accent: '#22d3ee', accentBg: 'rgba(34,211,238,0.06)',
-    accentBorder: 'rgba(34,211,238,0.18)',
-    cta: 'Coming soon', badge: 'RECOMMENDED', badgeBg: 'rgba(34,211,238,0.18)',
-  },
-  {
-    id: 'gold', name: 'Gold', price: 'TBD',
-    accent: '#fbbf24', accentBg: 'rgba(251,191,36,0.06)',
-    accentBorder: 'rgba(251,191,36,0.18)',
-    cta: 'Coming soon',
-  },
-];
-
-const FEATURES: Feature[] = [
-  // ── Core Features ──
-  { label: 'AI portfolio insights',         demo: true, silver: true,  gold: true },
-  { label: 'Price alerts & watchlists',     demo: true, silver: true,  gold: true },
-  { label: 'Macro / earnings calendar',     demo: true, silver: true,  gold: true },
-  { label: 'AI-curated news feed',          demo: true, silver: true,  gold: true },
-  { label: 'Paper trading portfolio',       demo: '1', silver: '1',    gold: '1' },
-  { label: 'Investor style quiz',           demo: true, silver: true,  gold: true },
-  // ── Brokerage ──
-  { label: 'Real brokerage (read-only)',    demo: false, silver: true,  gold: true },
-  { label: 'CSV import',                    demo: false, silver: true,  gold: true },
-  { label: 'Live trade execution',          demo: false, silver: false, gold: true },
-  { label: 'Options & futures',            demo: false, silver: false, gold: true },
-  // ── Advanced ──
-  { label: 'TOTP 2FA for real-money',       demo: false, silver: false, gold: true },
-  { label: 'Tax lot tracking',              demo: false, silver: false, gold: true },
-  { label: 'Tax-loss harvesting',          demo: false, silver: false, gold: true },
-  { label: 'Excel / CSV portfolio export',  demo: false, silver: false, gold: true },
-];
 
 // ── Cell Renderer ───────────────────────────────────────────
 
-function Cell({ value, accent }: { value: string | boolean; accent: string }) {
-  if (value === true) return <Check size={13} color="#10b981" />;
-  if (value === false) return <Minus size={13} color="rgba(255,255,255,0.10)" />;
+function Cell({ value, accent }: { value: string; accent: string }) {
+  if (value === 'true') return <Check size={13} color="#10b981" />;
+  if (value === 'false') return <Minus size={13} color="rgba(255,255,255,0.10)" />;
   return <span style={{ fontSize: 11, fontWeight: 600, color: accent }}>{value}</span>;
 }
 
@@ -83,11 +43,85 @@ function Cell({ value, accent }: { value: string | boolean; accent: string }) {
 export default function PlansPage() {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
+  const [tiers, setTiers] = useState<TierData[] | null>(null);
+  const [features, setFeatures] = useState<FeatureData[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const fetchPlans = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(false);
+      const res = await fetch('/api/plans');
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setTiers(data.tiers);
+      setFeatures(data.features);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPlans();
+  }, [fetchPlans]);
 
   const showToast = (tier: string) => {
     setToast(`${tier} subscriptions aren't live yet — we'll announce when they launch.`);
     setTimeout(() => setToast(null), 3200);
   };
+
+  // ── Loading ────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div style={{
+        height: '100dvh', background: '#0b1120',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%',
+          border: '2.5px solid rgba(255,255,255,0.10)',
+          borderTopColor: '#22d3ee',
+          animation: 'spin 0.6s linear infinite',
+        }} />
+      </div>
+    );
+  }
+
+  // ── Error ──────────────────────────────────────────
+
+  if (error || !tiers || !features) {
+    return (
+      <div style={{
+        height: '100dvh', background: '#0b1120', color: '#fff',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 12,
+        padding: 24, textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 14, color: '#f87171', fontWeight: 600 }}>
+          Couldn&apos;t load plans
+        </div>
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          Check your connection and try again.
+        </div>
+        <button
+          onClick={fetchPlans}
+          style={{
+            marginTop: 4, padding: '8px 20px', borderRadius: 8,
+            border: '1px solid rgba(34,211,238,0.3)', background: 'rgba(34,211,238,0.10)',
+            color: '#22d3ee', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // ── Main View ──────────────────────────────────────
 
   return (
     <div style={{
@@ -122,48 +156,52 @@ export default function PlansPage() {
       }}>
         <colgroup>
           <col style={{ width: '42%' }} />
-          <col style={{ width: '19.33%' }} />
-          <col style={{ width: '19.33%' }} />
-          <col style={{ width: '19.33%' }} />
+          <col style={{ width: `${58 / 3}%` }} />
+          <col style={{ width: `${58 / 3}%` }} />
+          <col style={{ width: `${58 / 3}%` }} />
         </colgroup>
 
         {/* ── Tier Headers ── */}
         <thead>
           <tr>
             <th style={labelTh}></th>
-            {TIERS.map(t => (
-              <th key={t.id} style={{
-                verticalAlign: 'top', padding: '4px 2px 6px',
-                borderBottom: t.id === 'silver'
-                  ? `2px solid ${t.accent}`
-                  : '2px solid rgba(255,255,255,0.05)',
-                background: t.id === 'silver' ? t.accentBg : 'transparent',
-              }}>
-                {t.badge && (
-                  <div style={{
-                    fontSize: 7, fontWeight: 800, letterSpacing: '0.5px',
-                    color: t.id === 'silver' ? t.accent : '#94a3b8',
-                    background: t.badgeBg, borderRadius: 3,
-                    padding: '1px 5px', display: 'inline-block', marginBottom: 2,
-                  }}>
-                    {t.badge}
+            {tiers.map(t => {
+              const isHighlighted = !t.isDefault && t.key === 'silver';
+              return (
+                <th key={t.key} style={{
+                  verticalAlign: 'top', padding: '4px 2px 6px',
+                  borderBottom: isHighlighted
+                    ? `2px solid ${t.accentColor}`
+                    : '2px solid rgba(255,255,255,0.05)',
+                  background: isHighlighted ? t.accentBg : 'transparent',
+                }}>
+                  {t.badgeText && (
+                    <div style={{
+                      fontSize: 7, fontWeight: 800, letterSpacing: '0.5px',
+                      color: isHighlighted ? t.accentColor : '#94a3b8',
+                      background: t.badgeBg || 'rgba(255,255,255,0.08)',
+                      borderRadius: 3, padding: '1px 5px',
+                      display: 'inline-block', marginBottom: 2,
+                    }}>
+                      {t.badgeText}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0' }}>
+                    {t.name}
                   </div>
-                )}
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0' }}>
-                  {t.name}
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 1 }}>
-                  {t.price}
-                </div>
-              </th>
-            ))}
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 1 }}>
+                    {t.priceLabel}
+                  </div>
+                </th>
+              );
+            })}
           </tr>
         </thead>
 
         {/* ── Features ── */}
         <tbody>
-          {FEATURES.map((f, i) => (
-            <tr key={i} style={{
+          {features.map((f, i) => (
+            <tr key={f.key} style={{
               background: i % 2 === 1 ? 'rgba(255,255,255,0.012)' : 'transparent',
             }}>
               <td style={{
@@ -172,12 +210,15 @@ export default function PlansPage() {
               }}>
                 {f.label}
               </td>
-              {TIERS.map(t => (
-                <td key={t.id} style={{
+              {tiers.map(t => (
+                <td key={t.key} style={{
                   padding: '5px 2px', textAlign: 'center',
                   borderBottom: '1px solid rgba(255,255,255,0.03)',
                 }}>
-                  <Cell value={f[t.id as keyof Pick<Feature, 'demo'|'silver'|'gold'>]} accent={t.accent} />
+                  <Cell
+                    value={f.values[t.key] || 'false'}
+                    accent={t.accentColor}
+                  />
                 </td>
               ))}
             </tr>
@@ -188,30 +229,28 @@ export default function PlansPage() {
         <tfoot>
           <tr>
             <td style={{ padding: '8px 8px 0' }}></td>
-            {TIERS.map(t => (
-              <td key={t.id} style={{ padding: '8px 2px 0', textAlign: 'center' }}>
+            {tiers.map(t => (
+              <td key={t.key} style={{ padding: '8px 2px 0', textAlign: 'center' }}>
                 <button
-                  onClick={() => t.id !== 'demo' && showToast(t.name)}
-                  disabled={t.id === 'demo'}
+                  onClick={() => !t.isDefault && showToast(t.name)}
+                  disabled={t.isDefault}
                   style={{
                     width: '100%', padding: '6px 2px', borderRadius: 6,
-                    border: t.id === 'demo'
+                    border: t.isDefault
                       ? '1px solid rgba(255,255,255,0.05)'
                       : `1px solid ${t.accentBorder}`,
-                    background: t.id === 'silver'
+                    background: t.key === 'silver'
                       ? t.accentBg
                       : 'transparent',
-                    color: t.id === 'demo'
+                    color: t.isDefault
                       ? '#475569'
-                      : t.id === 'silver'
-                        ? t.accent
-                        : t.accent,
+                      : t.accentColor,
                     fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-sans)',
-                    cursor: t.id === 'demo' ? 'default' : 'pointer',
+                    cursor: t.isDefault ? 'default' : 'pointer',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {t.cta}
+                  {t.ctaLabel}
                 </button>
               </td>
             ))}
