@@ -135,7 +135,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
     }
   };
 
-  // ── Custom tooltip ──
+  // ── Custom tooltip (frosted-glass cyan aesthetic) ──
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
     const val = payload[0].value as number;
@@ -143,16 +143,19 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
     return (
       <div
         style={{
-          background: '#1a2235',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '8px',
-          padding: '8px 12px',
+          background: 'rgba(15, 23, 42, 0.92)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(34, 211, 238, 0.25)',
+          borderRadius: '10px',
+          padding: '8px 14px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
         }}
       >
-        <div style={{ color: '#ffffff', fontWeight: 600 }}>
+        <div style={{ color: '#22d3ee', fontWeight: 600, fontSize: 14 }}>
           ${formatCurrency(val)}
         </div>
-        <div style={{ color: '#6b7280', fontSize: '11px' }}>
+        <div style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
           {formatXAxis(ts)}
         </div>
       </div>
@@ -244,7 +247,15 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
               minTickGap={40}
             />
             <YAxis hide domain={['dataMin - 500', 'dataMax + 500']} />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip
+              content={<CustomTooltip />}
+              cursor={{
+                stroke: 'rgba(34, 211, 238, 0.35)',
+                strokeWidth: 1,
+                strokeDasharray: '4 3',
+              }}
+              isAnimationActive={false}
+            />
             <Area
               type="monotone"
               dataKey="value"

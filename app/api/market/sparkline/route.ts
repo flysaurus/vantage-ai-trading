@@ -6,6 +6,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/** Normalize symbol for Yahoo Finance: BRK.B → BRK-B, BF.A → BF-A */
+function yahooSymbol(symbol: string): string {
+  return symbol.replace('.', '-');
+}
+
 interface SparklinePoint {
   t: number; // epoch seconds
   c: number; // close price
@@ -45,7 +50,9 @@ export async function GET(request: Request) {
 
   try {
     // Yahoo Finance v8/chart — free, no API key
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${oneYearAgo}&period2=${now}&interval=1d`;
+    // Use dash format for class shares (BRK.B → BRK-B) since Yahoo rejects dots
+    const ySymbol = yahooSymbol(symbol);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ySymbol)}?period1=${oneYearAgo}&period2=${now}&interval=1d`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
       signal: AbortSignal.timeout(8000),

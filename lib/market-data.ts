@@ -355,6 +355,11 @@ async function alpacaCandles(
 const YAHOO_CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const YAHOO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
+/** Normalize symbol for Yahoo Finance: BRK.B → BRK-B, BF.A → BF-A */
+function yahooSymbol(symbol: string): string {
+  return symbol.replace('.', '-');
+}
+
 /** Parse a single quote from Yahoo v8 chart meta + indicators. */
 function parseYahooQuote(symbol: string, result: any): Quote | null {
   const meta = result?.meta;
@@ -394,8 +399,9 @@ function parseYahooQuote(symbol: string, result: any): Quote | null {
 
 async function yahooQuote(symbol: string, timeout = 5000): Promise<Quote | null> {
   try {
+    const ySymbol = yahooSymbol(symbol.toUpperCase());
     const res = await fetch(
-      `${YAHOO_CHART_BASE}/${encodeURIComponent(symbol.toUpperCase())}?range=5d&interval=1d&includePrePost=false`,
+      `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=5d&interval=1d&includePrePost=false`,
       {
         signal: AbortSignal.timeout(timeout),
         headers: { 'User-Agent': YAHOO_UA, 'Accept': 'application/json' },
@@ -432,8 +438,9 @@ async function yahooBatchQuotes(symbols: string[], timeout = 10000): Promise<Map
 
 async function yahooProfile(symbol: string, timeout = 5000): Promise<CompanyProfile | null> {
   try {
+    const ySymbol = yahooSymbol(symbol.toUpperCase());
     const res = await fetch(
-      `${YAHOO_CHART_BASE}/${encodeURIComponent(symbol.toUpperCase())}?range=1d&interval=1d&includePrePost=false`,
+      `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=1d&interval=1d&includePrePost=false`,
       {
         signal: AbortSignal.timeout(timeout),
         headers: { 'User-Agent': YAHOO_UA, 'Accept': 'application/json' },
@@ -471,8 +478,9 @@ async function yahooCandles(
   timeout = 8000
 ): Promise<Candle[] | null> {
   try {
+    const ySymbol = yahooSymbol(symbol.toUpperCase());
     const res = await fetch(
-      `${YAHOO_CHART_BASE}/${encodeURIComponent(symbol.toUpperCase())}?range=${range}&interval=${interval}&includePrePost=false`,
+      `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=${range}&interval=${interval}&includePrePost=false`,
       {
         signal: AbortSignal.timeout(timeout),
         headers: { 'User-Agent': YAHOO_UA, 'Accept': 'application/json' },
@@ -602,23 +610,53 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
     console.log('[quotes] yahoo: skipped (no remaining)');
   }
 
-  // 4. Enrich: fetch 52-week range from Finnhub /stock/metric for all resolved symbols
-  //    (Finnhub /quote doesn't include 52-week fields — metric endpoint does)
-  if (fhKey && results.size > 0) {
+  // 4. Enrich: fetch 52-week range for all resolved symbols
+  //    Primary: Finnhub /stock/metric (fast, official)
+  //    Fallback: Yahoo v8/chart meta (free, no key, always works)
+  if (results.size > 0) {
     const symArr = [...results.keys()];
     let enriched = 0;
+    let yahooFallback = 0;
     for (let i = 0; i < symArr.length; i++) {
+      const sym = symArr[i];
+      const q = results.get(sym)!;
+      // Skip if quote already has valid 52-week range
+      if (q.high52w != null && q.high52w > 0) continue;
+
       try {
-        const metric = await finnhubFundamentals(symArr[i], 4000);
-        if (metric?.high52w != null && metric.high52w > 0) {
-          const q = results.get(symArr[i])!;
-          results.set(symArr[i], { ...q, high52w: metric.high52w, low52w: metric.low52w ?? q.low52w });
-          enriched++;
+        // Try Finnhub first (only if key available)
+        if (fhKey) {
+          const metric = await finnhubFundamentals(sym, 4000);
+          if (metric?.high52w != null && metric.high52w > 0) {
+            results.set(sym, { ...q, high52w: metric.high52w, low52w: metric.low52w ?? q.low52w });
+            enriched++;
+            continue;
+          }
         }
+        // Fallback: Yahoo 52-week range from v8/chart meta (always available)
+        try {
+          const ySymbol = yahooSymbol(sym);
+          const yRes = await fetch(
+            `${YAHOO_CHART_BASE}/${encodeURIComponent(ySymbol)}?range=1y&interval=1d&includePrePost=false`,
+            { headers: { 'User-Agent': YAHOO_UA }, signal: AbortSignal.timeout(4000) }
+          );
+          if (yRes.ok) {
+            const yData = await yRes.json();
+            const yMeta = yData?.chart?.result?.[0]?.meta;
+            if (yMeta?.fiftyTwoWeekHigh != null && yMeta.fiftyTwoWeekHigh > 0) {
+              results.set(sym, {
+                ...q,
+                high52w: yMeta.fiftyTwoWeekHigh,
+                low52w: yMeta.fiftyTwoWeekLow ?? 0,
+              });
+              yahooFallback++;
+            }
+          }
+        } catch { /* keep quote as-is */ }
       } catch { /* non-critical — keep quote as-is */ }
       if (i < symArr.length - 1) await new Promise(r => setTimeout(r, 50));
     }
-    console.log('[quotes] 52-week enrichment (Finnhub metric): enriched=' + enriched + '/' + symArr.length);
+    console.log('[quotes] 52-week enrichment: finnhub=' + enriched + ' yahoo=' + yahooFallback + ' total=' + symArr.length);
   }
 
   return results;

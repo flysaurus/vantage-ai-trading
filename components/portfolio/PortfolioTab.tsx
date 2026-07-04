@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -114,6 +114,8 @@ function PositionCard({
   // ── Sparkline state ──
   const [sparkline, setSparkline] = useState<{ points: { t: number; c: number }[]; high52w: number; low52w: number } | null>(null);
   const [sparklineLoading, setSparklineLoading] = useState(false);
+  const [tooltip, setTooltip] = useState<{ x: number; price: number; date: string } | null>(null);
+  const sparkSvgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -133,6 +135,24 @@ function PositionCard({
     load();
     return () => { cancelled = true; };
   }, [isExpanded, pos.symbol]);
+
+  // ── Sparkline interaction helpers ──
+  const handleSparkHover = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!sparkline || !sparkSvgRef.current) return;
+    const svg = sparkSvgRef.current;
+    const rect = svg.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const svgX = clientX - rect.left;
+    const ratio = svgX / rect.width;
+    if (ratio < 0 || ratio > 1) { setTooltip(null); return; }
+    const pts = sparkline.points;
+    const idx = Math.round(ratio * (pts.length - 1));
+    const clamped = Math.max(0, Math.min(idx, pts.length - 1));
+    const pt = pts[clamped];
+    const date = new Date(pt.t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+    setTooltip({ x: svgX, price: pt.c, date });
+  }, [sparkline]);
+  const clearSparkTooltip = useCallback(() => setTooltip(null), []);
 
   const companyName = pos.name && pos.name !== pos.symbol ? pos.name : '';
   const gainLossClass = (pnl: number) => pnl > 0 ? 'gain' : pnl < 0 ? 'loss' : 'flat';
@@ -187,22 +207,17 @@ function PositionCard({
         </div>
       </div>
 
-      {/* ── 52-Week Sparkline (replaces slider) ── */}
+      {/* ── 52-Week Sparkline (interactive) ── */}
       {isExpanded && sparkline && sparkline.points.length >= 2 && (() => {
         const pts = sparkline.points;
-        const min = sparkline.low52w;
-        const max = sparkline.high52w;
-        const range = max - min || 1;
+        const labelHigh = sparkline.high52w;
+        const labelLow = sparkline.low52w;
+        const yMin = labelLow;
+        const yMax = labelHigh;
+        const yRange = yMax - yMin || 1;
         const W = 300;
         const H = 80;
         const pad = 4;
-
-        // Use live 52-week range from quote for labels + y-axis extent
-        const labelHigh = (pos.weekHigh52 != null && pos.weekHigh52 > 0) ? pos.weekHigh52 : max;
-        const labelLow = (pos.weekLow52 != null && pos.weekLow52 > 0) ? pos.weekLow52 : min;
-        const yMin = Math.min(labelLow, min);
-        const yMax = Math.max(labelHigh, max);
-        const yRange = yMax - yMin || 1;
 
         const scaleX = (i: number) => pad + (i / (pts.length - 1)) * (W - pad * 2);
         const scaleY = (v: number) => H - pad - ((v - yMin) / yRange) * (H - pad * 2);
@@ -210,26 +225,68 @@ function PositionCard({
         const linePath = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i)},${scaleY(pt.c)}`).join(' ');
         const areaPath = linePath + ` L${scaleX(pts.length - 1)},${H - pad} L${scaleX(0)},${H - pad} Z`;
 
-        // Current price marker position
         const curX = scaleX(pts.length - 1);
         const curY = scaleY(currentPrice);
 
+        // Tooltip indicator line X in SVG coords
+        const tooltipSvgX = tooltip ? (tooltip.x / (sparkSvgRef.current?.getBoundingClientRect().width || 1)) * W : null;
+        const tooltipIdx = tooltip ? Math.round((tooltip.x / (sparkSvgRef.current?.getBoundingClientRect().width || 1)) * (pts.length - 1)) : null;
+        const tooltipY = tooltipIdx != null ? scaleY(pts[Math.max(0, Math.min(tooltipIdx, pts.length - 1))].c) : null;
+
+        const gradId = `sparkGrad-${pos.symbol.replace('.','_')}`;
+
         return (
-          <div style={{ marginTop: 12 }}>
-            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 80, display: 'block' }}>
+          <div style={{ marginTop: 12, position: 'relative' }}>
+            <svg
+              ref={sparkSvgRef}
+              viewBox={`0 0 ${W} ${H}`}
+              style={{ width: '100%', height: 80, display: 'block', touchAction: 'none' }}
+              onMouseMove={handleSparkHover}
+              onMouseLeave={clearSparkTooltip}
+              onTouchMove={(e) => { e.preventDefault(); handleSparkHover(e); }}
+              onTouchEnd={clearSparkTooltip}
+            >
               {/* Area fill */}
-              <path d={areaPath} fill={`url(#sparkGrad-${pos.symbol.replace('.','_')})`} opacity={0.15} />
+              <path d={areaPath} fill={`url(#${gradId})`} opacity={0.15} />
               {/* Line */}
               <path d={linePath} fill="none" stroke="#22d3ee" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+              {/* Tooltip vertical line */}
+              {tooltipSvgX != null && tooltipY != null && (
+                <line x1={tooltipSvgX} y1={pad} x2={tooltipSvgX} y2={H - pad} stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="3 2" />
+              )}
+              {/* Tooltip dot */}
+              {tooltipSvgX != null && tooltipY != null && (
+                <circle cx={tooltipSvgX} cy={tooltipY} r={3.5} fill="#22d3ee" stroke="#ffffff" strokeWidth={1.5} />
+              )}
               {/* Current price dot */}
-              <circle cx={curX} cy={curY} r={3} fill="#ffffff" stroke="#22d3ee" strokeWidth={1.5} />
+              <circle cx={curX} cy={curY} r={3} fill="#ffffff" stroke="#22d3ee" strokeWidth={1.5} opacity={tooltip ? 0.4 : 1} />
               <defs>
-                <linearGradient id={`sparkGrad-${pos.symbol.replace('.','_')}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
                   <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
                 </linearGradient>
               </defs>
             </svg>
+            {/* Tooltip — frosted glass */}
+            {tooltip && (
+              <div style={{
+                position: 'absolute',
+                top: -42,
+                left: Math.max(0, Math.min(tooltip.x - 50, (sparkSvgRef.current?.getBoundingClientRect().width || 300) - 110)),
+                background: 'rgba(15, 23, 42, 0.9)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1px solid rgba(34, 211, 238, 0.3)',
+                borderRadius: 8,
+                padding: '4px 10px',
+                pointerEvents: 'none',
+                zIndex: 10,
+                whiteSpace: 'nowrap',
+              }}>
+                <div style={{ color: '#22d3ee', fontSize: 12, fontWeight: 600 }}>${tooltip.price.toFixed(2)}</div>
+                <div style={{ color: '#6b7280', fontSize: 10 }}>{tooltip.date}</div>
+              </div>
+            )}
             {/* Labels */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
@@ -242,13 +299,6 @@ function PositionCard({
           </div>
         );
       })()}
-
-      {/* Banner below sparkline if range is stale (missing live data) */}
-      {isExpanded && sparkline && (!pos.weekHigh52 || !pos.weekLow52) && (
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--font-sans)', opacity: 0.6 }}>
-          *High/Low from chart data — live range unavailable
-        </div>
-      )}
 
       {/* Basket references */}
       {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
