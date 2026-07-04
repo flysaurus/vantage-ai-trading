@@ -1082,12 +1082,12 @@ export function PortfolioTab() {
             onToggleSelect={() => toggleSelect(pos.symbol)}
             onToggleExpand={() => toggleExpand(pos.symbol)}
             onBuy={() => {
-              console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', account?.cash);
+              console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
               setTradeTicket({
                 symbol: pos.symbol, side: 'BUY',
                 currentPrice: pos.currentPrice ?? pos.avgCost,
                 sharesHeld: pos.qty,
-                availableCash: account?.cash ?? 0,
+                availableCash: displayAccount?.cash ?? 0,
               });
             }}
             onSell={() => setTradeTicket({
