@@ -824,7 +824,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '16px 12px',
+          padding: '16px 16px',
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',

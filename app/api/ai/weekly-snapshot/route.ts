@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
       let opportunitiesCount = existing.opportunities_count;
 
       if (existing.content && (healthScore == null || riskLevel == null || opportunitiesCount == null || opportunitiesCount === 0)) {
-        const reHealthMatch = existing.content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH)\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
+        const reHealthMatch = existing.content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
         if (healthScore == null && reHealthMatch) healthScore = parseFloat(reHealthMatch[1]);
 
         const reRiskMatch = existing.content.match(/(?:OVERALL RISK|RISK LEVEL):?\s*(LOW|MEDIUM|HIGH)/i);
@@ -292,7 +292,7 @@ export async function GET(req: NextRequest) {
     const generatedAt = new Date().toISOString();
 
     // Parse structured fields from response — support multiple formats
-    const healthMatch = content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH)\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
+    const healthMatch = content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
     const healthScore = healthMatch ? parseFloat(healthMatch[1]) : null;
 
     const riskMatch = content.match(/(?:OVERALL RISK|RISK LEVEL):?\s*(LOW|MEDIUM|HIGH)/i);

@@ -36,10 +36,10 @@ const MARKDOWN_COMPONENTS = {
     <h3 className="font-medium text-xs text-cyan-400 uppercase tracking-wide mt-3 mb-1">{children}</h3>
   ),
   ul: ({ children }: { children: React.ReactNode }) => (
-    <ul className="list-disc pl-4 my-1 space-y-0.5">{children}</ul>
+    <ul className="list-disc pl-4 my-1 space-y-1">{children}</ul>
   ),
   ol: ({ children }: { children: React.ReactNode }) => (
-    <ol className="list-decimal pl-4 my-1 space-y-0.5">{children}</ol>
+    <ol className="list-decimal pl-4 my-1 space-y-1">{children}</ol>
   ),
   li: ({ children }: { children: React.ReactNode }) => (
     <li className="text-xs text-slate-300">{children}</li>
@@ -65,13 +65,12 @@ function formatTime(iso: string | null | undefined): string {
   return `${Math.floor(diffH / 24)}d ago`;
 }
 
-/** Parse markdown content into separate sections — handles multiple heading formats */
+/** Parse markdown content into separate sections — handles any heading format (##, ###, plain, with or without colon/score) */
 function parseSections(content: string): ParsedSections {
-  // Support: ## OVERALL HEALTH, ## PORTFOLIO HEALTH, ### Health, or plain OVERALL HEALTH:
-  const healthMatch = content.match(/(?:^#*\s*)?(?:OVERALL HEALTH|PORTFOLIO HEALTH)(?:\s*\(\w+\s*[\d.]+\/\d+\))?[:\s]*\n([\s\S]*?)(?=^#*\s*(?:RISKS?|OVERALL RISK|RISK LEVEL)|\Z)/im);
-  const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL)[:\s]*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
-  const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?[\s:]*\n([\s\S]*?)(?=^#*\s*SUMMARY|\Z)/im);
-  const summaryMatch = content.match(/(?:^#*\s*)?SUMMARY[\s:]*\n([\s\S]*?)$/im);
+  const healthMatch = content.match(/(?:^#*\s*)?(?:OVERALL HEALTH|PORTFOLIO HEALTH).*\n([\s\S]*?)(?=^#*\s*(?:RISKS?|OVERALL RISK|RISK LEVEL)|\Z)/im);
+  const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL).*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
+  const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?.*\n([\s\S]*?)(?=^#*\s*SUMMARY|\Z)/im);
+  const summaryMatch = content.match(/(?:^#*\s*)?SUMMARY.*\n?([\s\S]*?)$/im);
 
   return {
     health: (healthMatch?.[1] || '').trim(),
