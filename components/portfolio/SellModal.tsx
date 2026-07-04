@@ -18,8 +18,16 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  const [submitted, setSubmitted] = useState(false)
 
  useEffect(() => {
- document.body.style.overflow = 'hidden'
- return () => { document.body.style.overflow = '' }
+   const prev = document.body.style.overflow;
+   document.body.style.overflow = 'hidden';
+   // Also prevent touch-scroll on iOS
+   document.body.style.position = 'fixed';
+   document.body.style.width = '100%';
+   return () => {
+     document.body.style.overflow = prev;
+     document.body.style.position = '';
+     document.body.style.width = '';
+   };
  }, [])
 
  const handleDone = () => {
@@ -37,7 +45,8 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  display: 'flex',
  alignItems: 'center',
  justifyContent: 'center',
- padding: '20px'
+ padding: '20px',
+ touchAction: 'none',
  }}
  >
  <div
@@ -157,7 +166,12 @@ export default function SellModal({ positions, onClose, onConfirm }: SellModalPr
  </div>
 
  {/* STOCK LIST */}
- <div style={{ overflowY: 'auto', flex: 1 }}>
+ <div style={{
+   overflowY: 'auto',
+   flex: 1,
+   WebkitOverflowScrolling: 'touch',
+   overscrollBehavior: 'contain',
+ }}>
  {positions.map((pos, i) => (
  <div
  key={pos.symbol}

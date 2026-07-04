@@ -401,21 +401,21 @@ function PositionCard({
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Symbol</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>{pos.symbol}</div>
             </div>
-            {/* Sector */}
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', lineHeight: 1.35 }}>
-                {pos.sector || '—'}
-              </div>
-            </div>
-            {/* Name — left col, no truncation */}
+            {/* Name — right of Symbol, no truncation */}
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', lineHeight: 1.35 }}>
                 {pos.name || '—'}
               </div>
             </div>
-            {/* Asset Type — right col, aligned with Name */}
+            {/* Sector — left col */}
+            <div>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', lineHeight: 1.35 }}>
+                {pos.sector || '—'}
+              </div>
+            </div>
+            {/* Asset Type — right col, aligned with Sector */}
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
@@ -550,14 +550,15 @@ function PositionCard({
           {/* ── Related News ── */}
           {newsItems.length > 0 && (
             <div style={{
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              paddingTop: 12, marginBottom: 12,
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              paddingTop: 14, marginBottom: 12,
+              marginTop: 4,
             }}>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 8 }}>Related News</div>
               <div style={{
-                background: 'rgba(15,23,42,0.50)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 8,
+                background: 'rgba(30,41,59,0.60)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                borderRadius: 10,
                 overflow: 'hidden',
               }}>
               {newsItems.map((item, i) => {
@@ -575,8 +576,8 @@ function PositionCard({
                     rel="noopener noreferrer"
                     style={{
                       display: 'block', textDecoration: 'none', color: 'inherit',
-                      padding: '8px 12px',
-                      borderBottom: i < newsItems.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                      padding: '10px 14px',
+                      borderBottom: i < newsItems.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
                     }}
                   >
                     <div style={{ fontSize: 12, color: '#ffffff', fontWeight: 500, lineHeight: 1.4, marginBottom: 2 }}>
@@ -631,7 +632,16 @@ function PositionCard({
           }}>
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onBuy?.(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log('[BUY] clicked', pos.symbol);
+                if (typeof onBuy !== 'function') {
+                  console.error('[BUY] onBuy is not a function:', typeof onBuy, onBuy);
+                  return;
+                }
+                onBuy();
+                console.log('[BUY] onBuy called successfully');
+              }}
               style={{
                 flex: 1, minHeight: 44,
                 background: 'transparent',
@@ -1058,12 +1068,15 @@ export function PortfolioTab() {
             isExpanded={expandedSymbols.has(pos.symbol)}
             onToggleSelect={() => toggleSelect(pos.symbol)}
             onToggleExpand={() => toggleExpand(pos.symbol)}
-            onBuy={() => setTradeTicket({
-              symbol: pos.symbol, side: 'BUY',
-              currentPrice: pos.currentPrice ?? pos.avgCost,
-              sharesHeld: pos.qty,
-              availableCash: account?.cash ?? 0,
-            })}
+            onBuy={() => {
+              console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', account?.cash);
+              setTradeTicket({
+                symbol: pos.symbol, side: 'BUY',
+                currentPrice: pos.currentPrice ?? pos.avgCost,
+                sharesHeld: pos.qty,
+                availableCash: account?.cash ?? 0,
+              });
+            }}
             onSell={() => setTradeTicket({
               symbol: pos.symbol, side: 'SELL',
               currentPrice: pos.currentPrice ?? pos.avgCost,

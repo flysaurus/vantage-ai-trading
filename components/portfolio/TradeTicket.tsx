@@ -29,6 +29,7 @@ export default function TradeTicket({
   isOpen, onClose, symbol, side, currentPrice,
   sharesHeld, availableCash, onConfirm,
 }: TradeTicketProps) {
+  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash });
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [quantity, setQuantity] = useState<string>('');
   const [limitPrice, setLimitPrice] = useState<string>('');
