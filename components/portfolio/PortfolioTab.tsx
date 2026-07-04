@@ -921,7 +921,7 @@ export function PortfolioTab() {
     return acc + (mv - (p.totalCost ?? p.qty * p.avgCost));
   }, 0);
   const totalCostBasis = displayPositions.reduce((acc: number, p: Position) => acc + (p.totalCost ?? p.qty * p.avgCost), 0);
-  const totalTotalPnLPct = totalCostBasis > 0 ? (totalTotalPnL / totalCostBasis) * 100 : 0;
+  const totalTotalPnLPct = totalTotalPnL / 100000 * 100; // % of $100K starting capital
 
   const filteredPositions = useMemo(() => {
     if (filter === 'all') return displayPositions;

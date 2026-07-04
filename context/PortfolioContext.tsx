@@ -106,6 +106,7 @@ const STORAGE_KEY = `vantage_demo_portfolio_${STORAGE_VERSION}`;
 const OLD_STORAGE_KEY = 'vantage_demo_portfolio';
 const BASKET_STORAGE_KEY = 'vantage_basket_positions_v1';
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const INITIAL_CAPITAL = 100000; // $100K starting demo balance
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -400,7 +401,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       const totalEquity = positions.reduce((sum, p) => sum + p.marketValue, 0) + demoState.cashBalance;
       const totalCost = positions.reduce((sum, p) => sum + p.qty * p.avgCost, 0);
       const totalPnl = totalEquity - totalCost - demoState.cashBalance;
-      const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+      // TOTAL % vs $100K starting capital (not invested cost basis)
+      const totalPnlPercent = (totalPnl / INITIAL_CAPITAL) * 100;
       const dayPnl = positions.reduce((sum, p) => sum + p.dayChange, 0);
       const dayPnlPercent = totalEquity > 0 && dayPnl !== 0
         ? (dayPnl / (totalEquity - dayPnl)) * 100
