@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { getMarketStatus } from '@/lib/market-hours';
 import { X } from 'lucide-react';
 
@@ -95,7 +96,7 @@ export default function TradeTicket({
   const sideColor = side === 'BUY' ? '#10b981' : '#ef4444';
   const sideLabel = side === 'BUY' ? 'Buy' : 'Sell';
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
@@ -105,7 +106,7 @@ export default function TradeTicket({
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: 420, maxHeight: '85vh',
-        display: 'flex', flexDirection: 'column',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
         background: '#0f172a',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '20px 20px 0 0',
@@ -339,5 +340,5 @@ export default function TradeTicket({
         </div>{/* end sticky footer */}
       </div>
     </div>
-  );
+  , document.body);
 }

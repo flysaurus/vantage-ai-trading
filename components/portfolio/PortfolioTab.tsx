@@ -7,7 +7,6 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import type { Position, AccountSummary } from '@/types';
 import type { Basket } from '@/context/PortfolioContext';
-import { getCompanyProfile } from '@/lib/market-data';
 import SellModal from './SellModal';
 import TradeTicket from './TradeTicket';
 import PortfolioChart from './PortfolioChart';
@@ -232,17 +231,32 @@ function PositionCard({
         </div>
       </div>
 
-      {/* ── Cost-basis row ── */}
+      {/* ── Cost/Value mini-stat grid ── */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '4px 2px', margin: '2px 0',
+        display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+        gap: '8px 24px', margin: '6px 0 8px',
+        padding: '8px 0',
+        borderTop: '1px solid rgba(34,211,238,0.08)',
+        borderBottom: '1px solid rgba(34,211,238,0.08)',
       }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.72)', lineHeight: 1.5 }}>
-          Avg ${(pos.avgCost ?? 0).toFixed(2)} · Invested ${((pos.avgCost ?? 0) * pos.qty).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-        </span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
-          Market Val ${pos.marketValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-        </span>
+        <div>
+          <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>AVG COST</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+            ${(pos.avgCost ?? 0).toFixed(2)}
+          </div>
+        </div>
+        <div>
+          <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>INVESTED</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+            ${((pos.avgCost ?? 0) * pos.qty).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </div>
+        </div>
+        <div>
+          <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>MARKET VALUE</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+            ${pos.marketValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </div>
+        </div>
       </div>
 
       <div className="position-card-bottom">
@@ -870,7 +884,8 @@ export function PortfolioTab() {
       }
       const updated = [...positions];
       const results = await Promise.allSettled(
-        needsName.map(p => getCompanyProfile(p.symbol))
+        // Fetch names via server-side API (bypasses CORS that blocks client-side Yahoo calls)
+        needsName.map(p => fetch(`/api/company/profile?symbol=${encodeURIComponent(p.symbol)}`).then(r => r.json()))
       );
       results.forEach((r, i) => {
         if (r.status === 'fulfilled' && r.value?.name && !cancelled) {
