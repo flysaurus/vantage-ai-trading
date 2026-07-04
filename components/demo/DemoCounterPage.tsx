@@ -269,8 +269,7 @@ export default function DemoCounterPage({
           margin: '0 0 12px', fontSize: '12px', color: 'rgba(255,255,255,0.50)',
           lineHeight: 1.5,
         }}>
-          Silver: AI-powered view of your real portfolio.<br />
-          Gold: trade it — live execution, options &amp; futures, bank-grade security.
+          Connect real money, trade live, and let AI manage it all.
         </p>
         <button
           onClick={(e) => {

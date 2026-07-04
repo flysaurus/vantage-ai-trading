@@ -38,6 +38,9 @@ export default function TradeTicket({
 
   useEffect(() => {
     if (!isOpen) return;
+    // Lock body scroll while modal is open
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const ms = getMarketStatus();
     setMarketOpen(ms.isOpen);
     setNextOpenLabel(ms.nextOpenLabel);
@@ -46,6 +49,7 @@ export default function TradeTicket({
     setQuantity('');
     setLimitPrice('');
     setSubmitting(false);
+    return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
   const qty = parseFloat(quantity) || 0;
@@ -99,12 +103,19 @@ export default function TradeTicket({
       WebkitBackdropFilter: 'blur(4px)',
     }} onClick={onClose}>
       <div style={{
-        width: '100%', maxWidth: 420, maxHeight: '90vh', overflowY: 'auto',
+        width: '100%', maxWidth: 420, maxHeight: '85vh',
+        display: 'flex', flexDirection: 'column',
         background: '#0f172a',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '20px 20px 0 0',
-        padding: '24px 20px 32px',
       }} onClick={(e) => e.stopPropagation()}>
+        
+        {/* Scrollable body */}
+        <div style={{
+          flex: 1, overflowY: 'auto',
+          padding: '24px 20px 0',
+          WebkitOverflowScrolling: 'touch',
+        }}>
         
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -289,6 +300,17 @@ export default function TradeTicket({
           </div>
         )}
 
+        </div>{/* end scrollable body */}
+
+        {/* Sticky footer */}
+        <div style={{
+          flexShrink: 0,
+          padding: '12px 20px',
+          paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          background: '#0f172a',
+        }}>
+
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{
@@ -312,6 +334,8 @@ export default function TradeTicket({
             {submitting ? 'Processing...' : `${sideLabel} ${qty || 0} shares`}
           </button>
         </div>
+
+        </div>{/* end sticky footer */}
       </div>
     </div>
   );

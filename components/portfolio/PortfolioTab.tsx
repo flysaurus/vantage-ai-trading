@@ -630,7 +630,8 @@ function PositionCard({
             display: 'flex', gap: 10, marginTop: 12,
           }}>
             <button
-              onClick={onBuy}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onBuy?.(); }}
               style={{
                 flex: 1, minHeight: 44,
                 background: 'transparent',
@@ -644,7 +645,8 @@ function PositionCard({
               Buy More
             </button>
             <button
-              onClick={onSell}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSell?.(); }}
               style={{
                 flex: 1, minHeight: 44,
                 background: 'transparent',
