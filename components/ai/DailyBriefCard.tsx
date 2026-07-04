@@ -32,16 +32,17 @@ function parseBrief(content: string): ParsedLine[] {
   return lines
     .map((line) => {
       const match = line.match(/^(MARKET|PORTFOLIO|WATCH|EARNINGS):\s*(.+)/i);
-      if (match) return { label: match[1].toUpperCase(), text: match[2].trim() };
+      if (match) return { label: match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase(), text: match[2].trim() };
       return { label: '', text: line.trim() };
     })
     .filter((l) => l.text);
 }
 
 const LABEL_COLORS: Record<string, string> = {
-  MARKET: 'text-cyan-400',
-  PORTFOLIO: 'text-green-400',
-  WATCH: 'text-yellow-400',
+  Market: 'text-cyan-400',
+  Portfolio: 'text-green-400',
+  Watch: 'text-yellow-400',
+  Earnings: 'text-purple-400',
   EARNINGS: 'text-purple-400',
 };
 
