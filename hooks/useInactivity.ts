@@ -28,6 +28,11 @@ export function useInactivity(): UseInactivityReturn {
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Refs for stable access inside event handlers (avoid stale closures)
+  const startTimersRef = useRef<() => void>(() => {});
+  const showWarningRef = useRef(false);
+  const lastTimerRestartRef = useRef(0);
+
   const clearTimers = useCallback(() => {
     if (warningTimerRef.current) { clearTimeout(warningTimerRef.current); warningTimerRef.current = null; }
     if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
@@ -66,6 +71,10 @@ export function useInactivity(): UseInactivityReturn {
     }, remainingToLogout);
   }, [clearTimers, performSignOut]);
 
+  // Keep refs in sync for stable event handler access
+  useEffect(() => { startTimersRef.current = startTimers; }, [startTimers]);
+  useEffect(() => { showWarningRef.current = showWarning; }, [showWarning]);
+
   // ── Countdown ticker (separate effect, React-managed) ──
   useEffect(() => {
     if (!showWarning) return;
@@ -95,14 +104,27 @@ export function useInactivity(): UseInactivityReturn {
     performSignOut();
   }, [performSignOut]);
 
-  // Track user activity — only when authenticated
+  // Track user activity — restarts idle timer on every interaction
   useEffect(() => {
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
 
     // Don't track inactivity if user isn't authenticated
     if (!document.cookie.includes('sb-')) return;
+
     const handler = () => {
       lastActivityRef.current = Date.now();
+
+      // Throttle timer restarts to once per 5s (avoid churn on mousemove)
+      const now = Date.now();
+      if (now - lastTimerRestartRef.current < 5000) return;
+      lastTimerRestartRef.current = now;
+
+      // If warning is already showing, dismiss it and restart
+      if (showWarningRef.current) {
+        setShowWarning(false);
+        setCountdown(COUNTDOWN_SECONDS);
+      }
+      startTimersRef.current();
     };
 
     events.forEach((e) => window.addEventListener(e, handler, { passive: true }));
