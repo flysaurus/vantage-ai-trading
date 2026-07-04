@@ -242,6 +242,14 @@ export class DemoBroker implements BrokerEngine {
     const shares = req.shares || (req.dollarAmount ? req.dollarAmount / price : 0);
     const cost = shares * price;
 
+    // Limit order enforcement
+    const isLimit = req.type === 'limit' && req.limitPrice != null && req.limitPrice > 0;
+    const limitPrice = isLimit ? req.limitPrice! : price;
+    // A limit BUY fills if price <= limit; a limit SELL fills if price >= limit
+    const limitMet = !isLimit || (req.side === 'BUY' ? price <= limitPrice : price >= limitPrice);
+    const canFillNow = isOpen && (req.type === 'market' || limitMet);
+    const submitPrice = isLimit ? limitPrice : price;
+
     // ── BUY ──
     if (req.side === 'BUY') {
       if (cost > this.state.cashBalance) {
@@ -255,24 +263,26 @@ export class DemoBroker implements BrokerEngine {
         symbol: req.symbol,
         side: 'BUY',
         type: req.type,
-        status: isOpen ? 'FILLED' : 'OPEN',
+        status: canFillNow ? 'FILLED' : 'OPEN',
         shares,
-        submittedPrice: price,
-        fillPrice: isOpen ? price : undefined,
+        submittedPrice: submitPrice,
+        fillPrice: canFillNow ? price : undefined,
         totalCost: cost,
         submittedAt: new Date().toISOString(),
-        filledAt: isOpen ? new Date().toISOString() : undefined,
+        filledAt: canFillNow ? new Date().toISOString() : undefined,
         basketId: req.basketId,
         basketName: req.basketName,
         basketEmoji: req.basketEmoji,
         basketDisplayName: req.basketDisplayName,
-        reservedCost: isOpen ? undefined : cost,
-        note: isOpen ? undefined : `Pending · ${this.getNextOpenLabel()}`,
+        reservedCost: canFillNow ? undefined : cost,
+        note: canFillNow ? undefined : isLimit && !limitMet
+          ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)}`
+          : `Pending · ${this.getNextOpenLabel()}`,
       };
 
       this.state.orders.unshift(order);
 
-      if (isOpen) {
+      if (canFillNow) {
         this.upsertPosition({ symbol: req.symbol, shares, price, cost, basketId: req.basketId, basketName: req.basketName, basketEmoji: req.basketEmoji });
       }
 
@@ -281,11 +291,11 @@ export class DemoBroker implements BrokerEngine {
       return {
         success: true, orderId, status: order.status,
         estimatedShares: shares, reservedAmount: cost,
-        nextOpenLabel: isOpen ? undefined : this.getNextOpenLabel(),
-        fillPrice: isOpen ? price : undefined,
-        filledShares: isOpen ? shares : undefined,
+        nextOpenLabel: canFillNow ? undefined : this.getNextOpenLabel(),
+        fillPrice: canFillNow ? price : undefined,
+        filledShares: canFillNow ? shares : undefined,
         totalCost: cost,
-        filledAt: isOpen ? new Date().toISOString() : undefined,
+        filledAt: canFillNow ? new Date().toISOString() : undefined,
       };
     }
 
@@ -296,31 +306,39 @@ export class DemoBroker implements BrokerEngine {
     }
 
     const proceeds = shares * price;
-    this.removePosition(req.symbol, shares);
-    this.state.cashBalance += proceeds;
 
     const order: BrokerOrder = {
       id: orderId,
       symbol: req.symbol,
       side: 'SELL',
       type: req.type,
-      status: 'FILLED',
+      status: canFillNow ? 'FILLED' : 'OPEN',
       shares,
-      submittedPrice: price,
-      fillPrice: price,
+      submittedPrice: submitPrice,
+      fillPrice: canFillNow ? price : undefined,
       totalCost: proceeds,
       submittedAt: new Date().toISOString(),
-      filledAt: new Date().toISOString(),
+      filledAt: canFillNow ? new Date().toISOString() : undefined,
+      note: canFillNow ? undefined : isLimit && !limitMet
+        ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)}`
+        : `Pending · ${this.getNextOpenLabel()}`,
     };
+
+    if (canFillNow) {
+      this.removePosition(req.symbol, shares);
+      this.state.cashBalance += proceeds;
+    }
 
     this.state.orders.unshift(order);
     await this.saveState();
 
     return {
-      success: true, orderId, status: 'FILLED',
-      fillPrice: price, filledShares: shares,
+      success: true, orderId, status: order.status,
+      fillPrice: canFillNow ? price : undefined,
+      filledShares: canFillNow ? shares : undefined,
       totalCost: proceeds,
-      filledAt: new Date().toISOString(),
+      filledAt: canFillNow ? new Date().toISOString() : undefined,
+      nextOpenLabel: canFillNow ? undefined : this.getNextOpenLabel(),
     };
   }
 
@@ -596,6 +614,12 @@ export class DemoBroker implements BrokerEngine {
       try {
         const quote = await this.fetchQuote(order.symbol);
         const fillPrice = quote?.price || order.submittedPrice;
+
+        // Check limit price for limit orders
+        if (order.type === 'limit') {
+          if (order.side === 'BUY' && fillPrice > order.submittedPrice) continue; // limit not met
+          if (order.side === 'SELL' && fillPrice < order.submittedPrice) continue; // limit not met
+        }
 
         if (order.side === 'BUY') {
           const shares = order.reservedCost ? order.reservedCost / fillPrice : order.totalCost / fillPrice;

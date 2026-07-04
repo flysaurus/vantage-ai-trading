@@ -15,7 +15,16 @@ interface FundamentalsResponse {
   eps: number | null;
   pe: number | null;
   dividendYield: number | null;
+  dividendRate: number | null;
   recommendation: string | null;
+  numAnalysts: number | null;
+  marketCap: number | null;
+  volume: number | null;
+  avgVolume: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  beta: number | null;
+  nextEarningsDate: string | null;
   source: string;
 }
 
@@ -50,7 +59,16 @@ export async function GET(request: Request) {
       eps: fundamentals.eps,
       pe: fundamentals.pe,
       dividendYield: fundamentals.dividendYield,
+      dividendRate: fundamentals.dividendRate,
       recommendation: fundamentals.recommendation,
+      numAnalysts: fundamentals.numAnalysts,
+      marketCap: fundamentals.marketCap,
+      volume: fundamentals.volume,
+      avgVolume: fundamentals.avgVolume,
+      dayHigh: fundamentals.dayHigh,
+      dayLow: fundamentals.dayLow,
+      beta: fundamentals.beta,
+      nextEarningsDate: fundamentals.nextEarningsDate,
       source: fundamentals.source,
     };
 

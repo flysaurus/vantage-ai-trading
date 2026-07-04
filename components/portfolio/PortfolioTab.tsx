@@ -9,6 +9,7 @@ import type { Position, AccountSummary } from '@/types';
 import type { Basket } from '@/context/PortfolioContext';
 import { getCompanyProfile } from '@/lib/market-data';
 import SellModal from './SellModal';
+import TradeTicket from './TradeTicket';
 import PortfolioChart from './PortfolioChart';
 import MarketOverview from '../shared/MarketOverview';
 
@@ -92,6 +93,7 @@ function PositionCard({
   onToggleSelect,
   onToggleExpand,
   onBuy,
+  onSell,
   showCheckbox = false,
   baskets = [],
 }: {
@@ -101,6 +103,7 @@ function PositionCard({
   onToggleSelect: () => void;
   onToggleExpand: () => void;
   onBuy?: () => void;
+  onSell?: () => void;
   showCheckbox?: boolean;
   baskets?: Basket[];
 }) {
@@ -114,7 +117,16 @@ function PositionCard({
   // ── Sparkline state ──
   const [sparkline, setSparkline] = useState<{ points: { t: number; c: number }[]; high52w: number; low52w: number } | null>(null);
   const [sparklineLoading, setSparklineLoading] = useState(false);
-  const [fundamentals, setFundamentals] = useState<{ eps: number|null; pe: number|null; dividendYield: number|null; recommendation: string|null } | null>(null);
+  const [fundamentals, setFundamentals] = useState<{
+    eps: number|null; pe: number|null; dividendYield: number|null;
+    dividendRate: number|null; recommendation: string|null;
+    numAnalysts: number|null; marketCap: number|null;
+    volume: number|null; avgVolume: number|null;
+    dayHigh: number|null; dayLow: number|null;
+    beta: number|null; nextEarningsDate: string|null;
+  } | null>(null);
+  const [newsItems, setNewsItems] = useState<{ title: string; link: string; publisher: string; pubDate: string }[]>([]);
+  const [newsLoaded, setNewsLoaded] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; price: number; date: string } | null>(null);
   const sparkSvgRef = useRef<SVGSVGElement>(null);
 
@@ -124,9 +136,10 @@ function PositionCard({
     async function load() {
       setSparklineLoading(true);
       try {
-        const [sparkRes, fundRes] = await Promise.all([
+        const [sparkRes, fundRes, newsRes] = await Promise.all([
           fetch(`/api/market/sparkline?symbol=${encodeURIComponent(pos.symbol)}`),
           fetch(`/api/stock/fundamentals?symbol=${encodeURIComponent(pos.symbol)}`),
+          fetch(`/api/stock/news?symbol=${encodeURIComponent(pos.symbol)}&count=3`),
         ]);
         if (sparkRes.ok) {
           const data = await sparkRes.json();
@@ -137,7 +150,21 @@ function PositionCard({
         if (fundRes.ok) {
           const fData = await fundRes.json();
           if (!cancelled && fData.symbol) {
-            setFundamentals({ eps: fData.eps, pe: fData.pe, dividendYield: fData.dividendYield, recommendation: fData.recommendation });
+            setFundamentals({
+              eps: fData.eps, pe: fData.pe, dividendYield: fData.dividendYield,
+              dividendRate: fData.dividendRate, recommendation: fData.recommendation,
+              numAnalysts: fData.numAnalysts, marketCap: fData.marketCap,
+              volume: fData.volume, avgVolume: fData.avgVolume,
+              dayHigh: fData.dayHigh, dayLow: fData.dayLow,
+              beta: fData.beta, nextEarningsDate: fData.nextEarningsDate,
+            });
+          }
+        }
+        if (newsRes?.ok) {
+          const nData = await newsRes.json();
+          if (!cancelled && nData.news) {
+            setNewsItems(nData.news);
+            setNewsLoaded(true);
           }
         }
       } catch { /* silent */ }
@@ -280,8 +307,8 @@ function PositionCard({
               {/* 52W Low marker */}
               <circle cx={loX} cy={loY} r={4} fill="#ef4444" fillOpacity={0.3} stroke="#ef4444" strokeWidth={1.5} />
               <text x={loX} y={loY + 14} textAnchor={loIdx < pts.length / 2 ? 'start' : 'end'} fill="#ef4444" fontSize={9} fontWeight={600} style={{ fontFamily: 'var(--font-mono, monospace)' }}>L ${pts[loIdx].c.toFixed(2)}</text>
-              {/* First price label */}
-              <text x={firstX + 2} y={firstY - 6} textAnchor="start" fill="#cbd5e1" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
+              {/* First price label — positioned above, right of first point */}
+              <text x={firstX + 5} y={firstY - 8} textAnchor="start" fill="#cbd5e1" fontSize={9} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${pts[0].c.toFixed(2)}</text>
               {/* Tooltip vertical line */}
               {tooltipSvgX != null && tooltipY != null && (
                 <line x1={tooltipSvgX} y1={pad} x2={tooltipSvgX} y2={H - pad} stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="3 2" />
@@ -290,9 +317,9 @@ function PositionCard({
               {tooltipSvgX != null && tooltipY != null && (
                 <circle cx={tooltipSvgX} cy={tooltipY} r={3.5} fill="#22d3ee" stroke="#ffffff" strokeWidth={1.5} />
               )}
-              {/* Current price dot + label */}
+              {/* Current price dot + label — positioned left of point to avoid clipping */}
               <circle cx={curX} cy={curY} r={3} fill="#ffffff" stroke="#22d3ee" strokeWidth={1.5} opacity={tooltip ? 0.4 : 1} />
-              <text x={curX + 3} y={curY - 6} textAnchor="start" fill="#ffffff" fontSize={10} fontWeight={700} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${currentPrice.toFixed(2)}</text>
+              <text x={curX - 5} y={curY - 6} textAnchor="end" fill="#ffffff" fontSize={10} fontWeight={700} style={{ fontFamily: 'var(--font-mono, monospace)' }}>${currentPrice.toFixed(2)}</text>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
@@ -362,44 +389,52 @@ function PositionCard({
       {isExpanded && (
         <div style={{ paddingTop: 16, marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           {/* Metadata */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', marginBottom: 16 }}>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Symbol</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+          {/* ── Metadata — two-column grid, values right-justified ── */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            gap: '6px 28px', marginBottom: 14,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Symbol</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right' }}>
                 {pos.symbol}
               </div>
             </div>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Name</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
-                {pos.name || '—'}
-              </div>
-            </div>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Sector</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Sector</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right' }}>
                 {pos.sector || '—'}
               </div>
             </div>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Asset Type</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Name</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                {pos.name || '—'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 0, flexShrink: 0 }}>Asset Type</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)', textAlign: 'right' }}>
                 {pos.type || 'Stock'}
               </div>
             </div>
           </div>
 
-          {/* Fundamentals row */}
+          {/* ── Fundamentals row ── */}
           {fundamentals && (
             <div style={{
               display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
               marginBottom: 16, paddingTop: 12,
               borderTop: '1px solid rgba(34,211,238,0.08)',
             }}>
-              {fundamentals.eps != null && (
+              {fundamentals.marketCap != null && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>EPS</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>${fundamentals.eps.toFixed(2)}</span>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Mkt Cap</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>
+                    {fundamentals.marketCap >= 1e12
+                      ? `$${(fundamentals.marketCap / 1e12).toFixed(2)}T`
+                      : `$${(fundamentals.marketCap / 1e9).toFixed(1)}B`}
+                  </span>
                 </div>
               )}
               {fundamentals.pe != null && (
@@ -408,12 +443,28 @@ function PositionCard({
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>{fundamentals.pe.toFixed(1)}</span>
                 </div>
               )}
-              {fundamentals.dividendYield != null && fundamentals.dividendYield > 0 && (
+              {fundamentals.eps != null && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Div Yield</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>{fundamentals.dividendYield.toFixed(2)}%</span>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>EPS</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>${fundamentals.eps.toFixed(2)}</span>
                 </div>
               )}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: 10, color: '#e2e8f0' }}>Div Yield</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>
+                  {fundamentals.dividendYield != null && fundamentals.dividendYield > 0
+                    ? `${fundamentals.dividendYield.toFixed(2)}%`
+                    : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: 10, color: '#e2e8f0' }}>Div Amt</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#22d3ee' }}>
+                  {fundamentals.dividendRate != null && fundamentals.dividendRate > 0
+                    ? `$${fundamentals.dividendRate.toFixed(2)}/yr`
+                    : '—'}
+                </span>
+              </div>
               {fundamentals.recommendation && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                   <span style={{ fontSize: 10, color: '#e2e8f0' }}>Analyst</span>
@@ -428,9 +479,96 @@ function PositionCard({
                                : 'rgba(251,191,36,0.12)',
                   }}>
                     {fundamentals.recommendation.replace('_', ' ')}
+                    {fundamentals.numAnalysts != null && ` · ${fundamentals.numAnalysts}`}
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Additional metrics row ── */}
+          {fundamentals && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
+              marginBottom: 16, paddingTop: 12,
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              {fundamentals.dayHigh != null && fundamentals.dayLow != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Day Range</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                    ${fundamentals.dayLow.toFixed(2)} – ${fundamentals.dayHigh.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {fundamentals.volume != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Volume</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                    {(fundamentals.volume / 1e6).toFixed(1)}M
+                    {fundamentals.avgVolume != null && (
+                      <span style={{ fontSize: 10, color: '#cbd5e1', fontWeight: 400, marginLeft: 3 }}>
+                        avg {(fundamentals.avgVolume / 1e6).toFixed(1)}M
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {fundamentals.beta != null && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Beta</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                    {fundamentals.beta.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {fundamentals.nextEarningsDate && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: '#e2e8f0' }}>Earnings</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                    {new Date(fundamentals.nextEarningsDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Related News ── */}
+          {newsItems.length > 0 && (
+            <div style={{
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              paddingTop: 12, marginBottom: 16,
+            }}>
+              <div className="section-label" style={{ fontSize: 10, marginBottom: 8 }}>Related News</div>
+              {newsItems.map((item, i) => {
+                const daysAgo = item.pubDate
+                  ? Math.round((Date.now() - new Date(item.pubDate).getTime()) / (1000 * 60 * 60 * 24))
+                  : null;
+                const timeLabel = daysAgo != null
+                  ? daysAgo === 0 ? 'Today' : daysAgo === 1 ? '1d ago' : `${daysAgo}d ago`
+                  : '';
+                return (
+                  <a
+                    key={i}
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'block', textDecoration: 'none', color: 'inherit',
+                      padding: '6px 0',
+                      borderBottom: i < newsItems.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#ffffff', fontWeight: 500, lineHeight: 1.4, marginBottom: 2 }}>
+                      {item.title}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#cbd5e1' }}>
+                      <span>{item.publisher}</span>
+                      {timeLabel && <span>{timeLabel}</span>}
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           )}
 
@@ -485,6 +623,7 @@ function PositionCard({
               Buy More
             </button>
             <button
+              onClick={onSell}
               style={{
                 flex: 1, minHeight: 44,
                 background: 'transparent',
@@ -657,9 +796,13 @@ export function PortfolioTab() {
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  const [tradeTicket, setTradeTicket] = useState<{
+    symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
+    sharesHeld: number; availableCash: number;
+  } | null>(null);
 
   const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets, executeTrade } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -892,7 +1035,18 @@ export function PortfolioTab() {
             isExpanded={expandedSymbols.has(pos.symbol)}
             onToggleSelect={() => toggleSelect(pos.symbol)}
             onToggleExpand={() => toggleExpand(pos.symbol)}
-            onBuy={() => {}}
+            onBuy={() => setTradeTicket({
+              symbol: pos.symbol, side: 'BUY',
+              currentPrice: pos.currentPrice ?? pos.avgCost,
+              sharesHeld: pos.qty,
+              availableCash: account?.cash ?? 0,
+            })}
+            onSell={() => setTradeTicket({
+              symbol: pos.symbol, side: 'SELL',
+              currentPrice: pos.currentPrice ?? pos.avgCost,
+              sharesHeld: pos.qty,
+              availableCash: 0,
+            })}
             showCheckbox={selectMode}
             baskets={pendingBaskets as Basket[]}
           />
@@ -952,6 +1106,22 @@ export function PortfolioTab() {
           </div>
         </div>
       )}
+
+      {/* ── Trade Ticket ── */}
+      <TradeTicket
+        isOpen={tradeTicket !== null}
+        onClose={() => setTradeTicket(null)}
+        symbol={tradeTicket?.symbol || ''}
+        side={tradeTicket?.side || 'BUY'}
+        currentPrice={tradeTicket?.currentPrice || 0}
+        sharesHeld={tradeTicket?.sharesHeld || 0}
+        availableCash={tradeTicket?.availableCash || 0}
+        onConfirm={async ({ shares, type, limitPrice }) => {
+          if (!tradeTicket) return;
+          const price = type === 'limit' && limitPrice ? limitPrice : tradeTicket.currentPrice;
+          await executeTrade(tradeTicket.symbol, tradeTicket.side, shares, price, type);
+        }}
+      />
 
       {/* ── Sell Modal ── */}
       {sellModalOpen && (

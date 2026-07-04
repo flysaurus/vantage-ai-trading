@@ -152,7 +152,8 @@ interface PortfolioContextValue {
     symbol: string,
     side: 'BUY' | 'SELL',
     shares: number,
-    price: number
+    price: number,
+    orderType?: 'market' | 'limit',
   ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
@@ -523,21 +524,24 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit'): Promise<TradeResult> => {
       const b = brokerRef.current;
       if (!b) return { success: false, error: 'Broker not initialized' };
-      const result = await b.placeOrder({ symbol, side, type: 'market', shares });
+      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice: orderType === 'limit' ? price : undefined });
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);
         return { success: false, error: result.message || 'Order failed', status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
       }
       await refreshStateFromBroker();
+      const fillPx = result.fillPrice ?? price;
       if (result.status === 'OPEN') {
-        setToast({ message: `⏳ Order for ${symbol} queued — ${result.nextOpenLabel}`, type: 'success' });
+        const limitNote = orderType === 'limit' ? ` (limit $${price.toFixed(2)})` : '';
+        setToast({ message: `⏳ ${side} ${shares} ${symbol}${limitNote} queued — ${result.nextOpenLabel || 'pending'}`, type: 'success' });
       } else {
         const sideLabel = side === 'BUY' ? 'Bought' : 'Sold';
-        setToast({ message: `✅ ${sideLabel} ${result.filledShares || shares} shares of ${symbol} at $${price.toFixed(2)}`, type: 'success' });
+        const typeLabel = orderType === 'limit' ? 'limit' : '';
+        setToast({ message: `✅ ${sideLabel} ${result.filledShares || shares} ${symbol} ${typeLabel} at $${fillPx.toFixed(2)}`, type: 'success' });
       }
       setTimeout(() => setToast(null), result.status === 'FILLED' ? 3000 : 4000);
 

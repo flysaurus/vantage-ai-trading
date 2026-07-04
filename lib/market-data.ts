@@ -61,8 +61,15 @@ export interface FundamentalMetrics {
   low52w: number | null;
   beta: number | null;
   dividendYield: number | null;
+  dividendRate: number | null;
   marketCap: number | null;
+  volume: number | null;
+  avgVolume: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  numAnalysts: number | null;
   recommendation: string | null;
+  nextEarningsDate: string | null;
   source: 'finnhub' | 'yahoo';
 }
 
@@ -167,8 +174,15 @@ async function finnhubFundamentals(symbol: string, timeout = 5000): Promise<Fund
       low52w: m['52WeekLow'] ?? null,
       beta: m.beta ?? null,
       dividendYield: m.dividendYieldIndicatedAnnual ?? null,
+      dividendRate: m.dividendPerShareAnnual ?? null,
       marketCap: m.marketCapitalization != null ? m.marketCapitalization * 1e6 : null,
+      volume: null,
+      avgVolume: null,
+      dayHigh: null,
+      dayLow: null,
+      numAnalysts: null,
       recommendation: null,
+      nextEarningsDate: null,
       source: 'finnhub' as const,
     };
   } catch {
@@ -727,7 +741,7 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
   if (!auth) return null;
 
   const ySymbol = yahooSymbol(symbol.toUpperCase());
-  const modules = 'defaultKeyStatistics,summaryDetail,financialData';
+  const modules = 'defaultKeyStatistics,summaryDetail,financialData,calendarEvents,recommendationTrend';
 
   try {
     const res = await fetch(
@@ -746,6 +760,7 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
     const dks = result.defaultKeyStatistics || {};
     const sd = result.summaryDetail || {};
     const fd = result.financialData || {};
+    const ce = result.calendarEvents || {};
 
     const getRaw = (obj: any, key: string): number | null => {
       const v = obj?.[key];
@@ -760,8 +775,24 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
     const dividendYield = getRaw(sd, 'dividendYield');
     const dividendRate = getRaw(sd, 'dividendRate');
     const recommendationKey = typeof fd?.recommendationKey === 'string' ? fd.recommendationKey : null;
-    const recommendationMean = getRaw(fd, 'recommendationMean');
     const numAnalysts = getRaw(fd, 'numberOfAnalystOpinions');
+    
+    // Part 5 — new fields
+    const marketCap = getRaw(sd, 'marketCap') ?? getRaw(dks, 'marketCap');
+    const volume = getRaw(sd, 'regularMarketVolume');
+    const avgVolume = getRaw(sd, 'averageDailyVolume3Month') ?? getRaw(sd, 'averageVolume');
+    const dayHigh = getRaw(sd, 'regularMarketDayHigh');
+    const dayLow = getRaw(sd, 'regularMarketDayLow');
+    const beta = getRaw(dks, 'beta');
+    
+    // Next earnings date
+    let nextEarningsDate: string | null = null;
+    const ed = ce?.earnings?.earningsDate;
+    if (Array.isArray(ed) && ed.length > 0 && ed[0]?.raw) {
+      nextEarningsDate = new Date(ed[0].raw * 1000).toISOString().split('T')[0];
+    } else if (typeof ed === 'number') {
+      nextEarningsDate = new Date(ed * 1000).toISOString().split('T')[0];
+    }
 
     return {
       symbol: symbol.toUpperCase(),
@@ -769,10 +800,17 @@ export async function yahooFundamentals(symbol: string): Promise<FundamentalMetr
       pe: trailingPE ?? forwardPE ?? null,
       high52w: null,
       low52w: null,
-      beta: null,
-      dividendYield: dividendYield != null ? dividendYield * 100 : null, // decimal → percentage
-      marketCap: null,
+      beta: beta ?? null,
+      dividendYield: dividendYield != null ? dividendYield * 100 : null,
+      dividendRate: dividendRate ?? null,
+      marketCap: marketCap ?? null,
+      volume: volume ?? null,
+      avgVolume: avgVolume ?? null,
+      dayHigh: dayHigh ?? null,
+      dayLow: dayLow ?? null,
+      numAnalysts: numAnalysts ?? null,
       recommendation: recommendationKey,
+      nextEarningsDate,
       source: 'yahoo' as const,
     };
   } catch {
@@ -788,6 +826,89 @@ export async function getFundamentals(symbol: string): Promise<FundamentalMetric
   const fh = await finnhubFundamentals(symbol);
   if (fh && (fh.pe != null || fh.eps != null)) return fh;
   return yahooFundamentals(symbol);
+}
+
+export interface NewsItem {
+  title: string;
+  link: string;
+  publisher: string;
+  pubDate: string;
+}
+
+/**
+ * Get recent news headlines for a symbol.
+ * Chain: Finnhub company-news → Yahoo RSS
+ */
+export async function getStockNews(symbol: string, count = 3): Promise<NewsItem[]> {
+  // Try Finnhub first
+  const fhKey = finnhubKey();
+  if (fhKey) {
+    try {
+      const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const to = new Date().toISOString().split('T')[0];
+      const res = await fetch(
+        `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol.toUpperCase())}&from=${from}&to=${to}&token=${fhKey}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return data.slice(0, count).map((n: any) => ({
+            title: n.headline || '',
+            link: n.url || '',
+            publisher: n.source || 'Finnhub',
+            pubDate: n.datetime ? new Date(n.datetime * 1000).toISOString() : '',
+          }));
+        }
+      }
+    } catch { /* fall through to Yahoo */ }
+  }
+
+  // Fallback: Yahoo RSS
+  try {
+    const ySymbol = yahooSymbol(symbol.toUpperCase());
+    const res = await fetch(
+      `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(ySymbol)}&region=US&lang=en-US`,
+      { headers: { 'User-Agent': YAHOO_UA }, signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return [];
+    const xml = await res.text();
+    
+    // Parse RSS XML (lightweight, no external deps)
+    const items: NewsItem[] = [];
+    const itemRegex = /<item>[\s\S]*?<\/item>/g;
+    const tagRegex = /<(\w+)>([^<]*)<\/\1>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null && items.length < count) {
+      const itemXml = match[0];
+      const fields: Record<string, string> = {};
+      let tm;
+      while ((tm = tagRegex.exec(itemXml)) !== null) {
+        if (tm[1] && tm[2] && !fields[tm[1]]) {
+          fields[tm[1]] = tm[2];
+        }
+      }
+      if (fields.title && fields.link) {
+        // Extract publisher from link domain
+        let publisher = 'Yahoo Finance';
+        try {
+          const host = new URL(fields.link).hostname;
+          publisher = host.replace(/^www\./, '').split('.')[0];
+          // Capitalize first letter
+          publisher = publisher.charAt(0).toUpperCase() + publisher.slice(1);
+        } catch {}
+        items.push({
+          title: fields.title,
+          link: fields.link,
+          publisher,
+          pubDate: fields.pubDate || '',
+        });
+      }
+    }
+    return items;
+  } catch {
+    return [];
+  }
 }
 
 /**
