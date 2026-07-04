@@ -67,6 +67,7 @@ const FEATURES: Feature[] = [
   { label: 'TOTP 2FA for real-money',       demo: false, silver: false, gold: true },
   { label: 'Tax lot tracking',              demo: false, silver: false, gold: true },
   { label: 'Tax-loss harvesting',          demo: false, silver: false, gold: true },
+  { label: 'Excel / CSV portfolio export',  demo: false, silver: false, gold: true },
 ];
 
 // ── Cell Renderer ───────────────────────────────────────────
