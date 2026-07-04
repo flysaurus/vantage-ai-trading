@@ -85,16 +85,6 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
 
 // ─── Position Card ────────────────────────────────────────
 
-function getExchange(symbol: string): string {
-  const nyse = ['JPM', 'UNH', 'ADBE', 'COST', 'LLY'];
-  const nasdaq = ['GOOGL', 'MSFT', 'NVDA'];
-  const nysearca = ['SPY', 'QQQ'];
-  if (nysearca.includes(symbol)) return 'NYSE Arca';
-  if (nasdaq.includes(symbol)) return 'NASDAQ';
-  if (nyse.includes(symbol)) return 'NYSE';
-  return '—';
-}
-
 function PositionCard({
   pos,
   isSelected,
@@ -264,7 +254,7 @@ function PositionCard({
             <div>
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Exchange</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
-                {getExchange(pos.symbol)}
+                {pos.exchange || '—'}
               </div>
             </div>
           </div>

@@ -389,6 +389,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           totalPnl,
           totalPnlPercent,
           portfolioPercent,
+          exchange: quote?.exchange || '',
         };
       });
 

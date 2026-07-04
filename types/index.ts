@@ -56,6 +56,7 @@ export interface Position extends BasketInfo {
   type?: 'Stock' | 'ETF';
   totalCost?: number;
   buyDate?: string;
+  exchange?: string;
 }
 
 export interface SectorAllocation {
