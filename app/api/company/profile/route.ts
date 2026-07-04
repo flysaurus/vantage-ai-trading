@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 import { getCompanyProfile } from '@/lib/market-data';
 
-const cache = new Map<string, { data: { name: string; ticker: string }; ts: number }>();
+const cache = new Map<string, { data: { name: string; ticker: string; sector: string }; ts: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 export async function GET(request: Request) {
@@ -28,10 +28,10 @@ export async function GET(request: Request) {
   try {
     const profile = await getCompanyProfile(symbol);
     if (!profile || !profile.name) {
-      return Response.json({ name: symbol, ticker: symbol }, { status: 200 });
+      return Response.json({ name: symbol, ticker: symbol, sector: '' }, { status: 200 });
     }
 
-    const data = { name: profile.name, ticker: profile.ticker || symbol };
+    const data = { name: profile.name, ticker: profile.ticker || symbol, sector: profile.industry || '' };
     cache.set(symbol, { data, ts: Date.now() });
 
     return Response.json(data, {

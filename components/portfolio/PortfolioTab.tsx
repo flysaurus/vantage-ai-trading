@@ -872,25 +872,34 @@ export function PortfolioTab() {
   const loading = isConnected ? brokerLoading : liveLoading;
   const positions: Position[] = displayAccount?.positions || [];
 
-  // Hydrate missing company names from Finnhub
+  // Hydrate missing company names + sectors from API
   const [enrichedPositions, setEnrichedPositions] = useState<Position[]>(positions);
   useEffect(() => {
     let cancelled = false;
     async function hydrateNames() {
       const needsName = positions.filter(p => !p.name || p.name === p.symbol);
-      if (needsName.length === 0) {
+      const needsSector = positions.filter(p => !p.sector);
+      if (needsName.length === 0 && needsSector.length === 0) {
         setEnrichedPositions(positions);
         return;
       }
       const updated = [...positions];
+      // Fetch from server-side API (bypasses CORS)
       const results = await Promise.allSettled(
-        // Fetch names via server-side API (bypasses CORS that blocks client-side Yahoo calls)
-        needsName.map(p => fetch(`/api/company/profile?symbol=${encodeURIComponent(p.symbol)}`).then(r => r.json()))
+        positions.map(p => fetch(`/api/company/profile?symbol=${encodeURIComponent(p.symbol)}`).then(r => r.json()))
       );
       results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value?.name && !cancelled) {
-          const idx = updated.findIndex(p => p.symbol === needsName[i].symbol);
-          if (idx >= 0) updated[idx] = { ...updated[idx], name: r.value.name };
+        if (r.status === 'fulfilled' && r.value && !cancelled) {
+          const result = r.value;
+          const idx = updated.findIndex(p => p.symbol === positions[i].symbol);
+          if (idx >= 0) {
+            if (result.name && (!updated[idx].name || updated[idx].name === updated[idx].symbol)) {
+              updated[idx] = { ...updated[idx], name: result.name };
+            }
+            if (result.sector && !updated[idx].sector) {
+              updated[idx] = { ...updated[idx], sector: result.sector };
+            }
+          }
         }
       });
       if (!cancelled) setEnrichedPositions(updated);
