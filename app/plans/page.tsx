@@ -5,7 +5,7 @@
 // No Stripe, no billing logic. Horizontal scroll on narrow screens
 // for the matrix; vertical scroll should never be needed.
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Minus } from 'lucide-react';
 
