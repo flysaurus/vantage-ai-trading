@@ -65,13 +65,13 @@ function formatTime(iso: string | null | undefined): string {
   return `${Math.floor(diffH / 24)}d ago`;
 }
 
-/** Parse markdown content into separate sections */
+/** Parse markdown content into separate sections — handles multiple heading formats */
 function parseSections(content: string): ParsedSections {
-  // Match sections by ## headings
-  const healthMatch = content.match(/##\s*OVERALL HEALTH\s*\n([\s\S]*?)(?=##\s*RISKS|$)/i);
-  const riskMatch = content.match(/##\s*RISKS\s*\n([\s\S]*?)(?=##\s*OPPORTUNITIES|##\s*SUMMARY|$)/i);
-  const oppMatch = content.match(/##\s*OPPORTUNITIES\s*\n([\s\S]*?)(?=##\s*SUMMARY|$)/i);
-  const summaryMatch = content.match(/##\s*SUMMARY\s*\n([\s\S]*?)$/i);
+  // Support: ## OVERALL HEALTH, ## PORTFOLIO HEALTH, ### Health, or plain OVERALL HEALTH:
+  const healthMatch = content.match(/(?:^#*\s*)?(?:OVERALL HEALTH|PORTFOLIO HEALTH)(?:\s*\(\w+\s*[\d.]+\/\d+\))?[:\s]*\n([\s\S]*?)(?=^#*\s*(?:RISKS?|OVERALL RISK|RISK LEVEL)|\Z)/im);
+  const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL)[:\s]*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
+  const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?[\s:]*\n([\s\S]*?)(?=^#*\s*SUMMARY|\Z)/im);
+  const summaryMatch = content.match(/(?:^#*\s*)?SUMMARY[\s:]*\n([\s\S]*?)$/im);
 
   return {
     health: (healthMatch?.[1] || '').trim(),
@@ -153,6 +153,14 @@ export default function WeeklySnapshotCard() {
   } = data;
 
   const sections = parseSections(data.content);
+
+  // ─── Compute real opportunities count (API's regex may miss) ───
+  const realOppCount = (() => {
+    if (opportunitiesCount != null && opportunitiesCount > 0) return opportunitiesCount;
+    // Fall back: count bullet items in parsed opportunities section
+    const bullets = sections.opportunities.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
+    return bullets ? bullets.length : 0;
+  })();
 
   // ─── Health score color ───
   const healthColor =
@@ -339,9 +347,9 @@ export default function WeeklySnapshotCard() {
                 </div>
                 <div>
                   <p className="text-white text-xs font-semibold">Opportunities</p>
-                  {opportunitiesCount != null && opportunitiesCount > 0 ? (
+                  {realOppCount > 0 ? (
                     <p className="text-xs text-cyan-400 font-medium">
-                      {opportunitiesCount} identified
+                      {realOppCount} identified
                     </p>
                   ) : (
                     <p className="text-xs text-slate-300">None flagged</p>

@@ -28,7 +28,7 @@ Health scores must reflect reality: if ADBE is down 60%, the score cannot be abo
 
 Structure your analysis as:
 
-PORTFOLIO HEALTH (score X/10):
+## OVERALL HEALTH (score X/10):
 Score based on:
 - Diversification (sector spread)
 - Position sizing (no single position >25%)
@@ -37,22 +37,24 @@ Score based on:
 Never score above 7 when any position is down >30%
 Never score above 5 when any position is down >40%
 
-RISK LEVEL (LOW/MEDIUM/HIGH):
+## RISK LEVEL (LOW/MEDIUM/HIGH):
 LOW: no sector >40%, no position down >20%
 MEDIUM: sector 40-60% OR position down 20-40%
 HIGH: sector >60% OR position down >40%
 
-OPPORTUNITIES (list 2-3):
+## OPPORTUNITIES (list 2-3):
 Each opportunity must include:
 - What the opportunity is
 - Why it fits the investor's style
 - A specific price level to act at
 
-RISKS (list 2-3):
+## RISKS (list 2-3):
 Each risk must include:
 - What the risk is
 - Which position(s) it affects
 - Recommended action
+
+## SUMMARY:
 
 Lead with the dollar amounts at stake when relevant. "You can harvest $4,094 in losses from ADBE" is better than "ADBE presents a tax loss harvesting opportunity." Make every benefit concrete and specific.
 
@@ -103,11 +105,38 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
+      // Re-parse if cached fields are null but content exists (fix for old busted cache entries)
+      let healthScore = existing.health_score;
+      let riskLevel = existing.risk_level;
+      let opportunitiesCount = existing.opportunities_count;
+
+      if (existing.content && (healthScore == null || riskLevel == null || opportunitiesCount == null || opportunitiesCount === 0)) {
+        const reHealthMatch = existing.content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH)\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
+        if (healthScore == null && reHealthMatch) healthScore = parseFloat(reHealthMatch[1]);
+
+        const reRiskMatch = existing.content.match(/(?:OVERALL RISK|RISK LEVEL):?\s*(LOW|MEDIUM|HIGH)/i);
+        if (riskLevel == null && reRiskMatch) riskLevel = reRiskMatch[1].toUpperCase();
+
+        if (opportunitiesCount == null || opportunitiesCount === 0) {
+          const reOppSection = existing.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?)|$)/i);
+          const reOppContent = reOppSection?.[1] || '';
+          const reOppBullets = reOppContent.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
+          if (reOppBullets) opportunitiesCount = reOppBullets.length;
+        }
+
+        // Update DB with corrected values
+        (supabase as any).from('weekly_snapshots').update({
+          health_score: healthScore,
+          risk_level: riskLevel,
+          opportunities_count: opportunitiesCount,
+        }).eq('user_id', userId).eq('week_start', weekStartStr).then(() => {}).catch(() => {});
+      }
+
       return NextResponse.json({
         content: existing.content,
-        healthScore: existing.health_score,
-        riskLevel: existing.risk_level,
-        opportunitiesCount: existing.opportunities_count,
+        healthScore,
+        riskLevel,
+        opportunitiesCount,
         weekStart: weekStartStr,
         generatedAt: existing.generated_at || null,
         cached: true,
@@ -238,8 +267,9 @@ export async function GET(req: NextRequest) {
     // Build prompt
     const prompt = [
       'Run a complete weekly portfolio health snapshot on this portfolio.',
-      'Format as markdown with sections: OVERALL HEALTH, RISKS, OPPORTUNITIES, SUMMARY.',
-      'Include OVERALL HEALTH: X/10 and OVERALL RISK: LOW|MEDIUM|HIGH.',
+      'Format as markdown with ## sections: OVERALL HEALTH, RISKS, OPPORTUNITIES, SUMMARY.',
+      'Start each section with "## SECTION_NAME".',
+      'Include "OVERALL HEALTH: X/10" on one line and "OVERALL RISK: LOW|MEDIUM|HIGH" in the RISK section.',
       `Portfolio: ${symbols.join(', ')}`,
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
@@ -261,15 +291,18 @@ export async function GET(req: NextRequest) {
     const content = aiResponse.content.trim();
     const generatedAt = new Date().toISOString();
 
-    // Parse structured fields from response
-    const healthMatch = content.match(/OVERALL HEALTH:\s*(\d+\.?\d*)\/10/i);
+    // Parse structured fields from response — support multiple formats
+    const healthMatch = content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH)\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
     const healthScore = healthMatch ? parseFloat(healthMatch[1]) : null;
 
-    const riskMatch = content.match(/OVERALL RISK:\s*(LOW|MEDIUM|HIGH)/i);
+    const riskMatch = content.match(/(?:OVERALL RISK|RISK LEVEL):?\s*(LOW|MEDIUM|HIGH)/i);
     const riskLevel = riskMatch ? riskMatch[1].toUpperCase() : null;
 
-    const oppMatches = content.match(/•\s/g);
-    const opportunitiesCount = oppMatches ? oppMatches.length : 0;
+    // Count opportunities only from the OPPORTUNITIES section (flexible bullet chars)
+    const oppSection = content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?)|$)/i);
+    const oppContent = oppSection?.[1] || '';
+    const oppBullets = oppContent.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
+    const opportunitiesCount = oppBullets ? oppBullets.length : 0;
 
     // Save
     await (supabase as any).from('weekly_snapshots').upsert(

@@ -47,7 +47,7 @@ async function fetchMarketNews(
   positions: any[]
 ): Promise<{ title: string; url: string; source: string }[]> {
   const topTickers = positions
-    .sort((a: any, b: any) => (b.market_value || 0) - (a.market_value || 0))
+    .sort((a: any, b: any) => (b.marketValue || 0) - (a.marketValue || 0))
     .slice(0, 3)
     .map((p: any) => p.symbol);
 
@@ -178,6 +178,10 @@ export async function GET(req: NextRequest) {
       qty: number;
       price: number;
       changePct: number;
+      avgCost: number;
+      name: string;
+      sector: string;
+      marketValue: number;
     }
 
     const positionsWithQuotes: PositionQuote[] = positions.map((p: any) => {

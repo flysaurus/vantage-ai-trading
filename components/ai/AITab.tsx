@@ -356,25 +356,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   }, [greetingLoaded]); // re-run when cache invalidated (e.g. after trade)
 
-  // ── Invalidate greeting cache when portfolio changes (e.g., after buy/sell) ──
-  const prevPositionsHashRef = useRef('');
-  useEffect(() => {
-    const hash = JSON.stringify({
-      cash: liveAccount?.cash,
-      count: liveAccount?.positions?.length,
-      symbols: liveAccount?.positions?.map(p => p.symbol).sort().join(','),
-    });
-    if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
-      // Portfolio changed — invalidate greeting cache for today
-      const cacheKey = GREETING_CACHE_KEY();
-      localStorage.removeItem(cacheKey);
-      greetingFetchedRef.current = false;
-      setGreetingLoaded(false);
-    }
-    prevPositionsHashRef.current = hash;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveAccount?.cash, liveAccount?.positions]);
-
   // ── helpers ──
   function isAtBottom(): boolean {
     const container = messagesContainerRef.current;
@@ -1248,8 +1229,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
       {/* ─── 6. Pinned Bottom Section ─── */}
       <div style={{ flexShrink: 0, borderTop: '1px solid #1e2d45', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
-        {/* Upsell banner — shown at 2 remaining */}
-        {localRemaining === 2 && (
+        {/* Upsell banner — shown at ≤3 remaining */}
+        {localRemaining <= 3 && localRemaining > 0 && (
           <div
             style={{
               display: 'flex',
@@ -1264,7 +1245,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
               color: '#f59e0b',
             }}
           >
-            <span>⚡ 2 AI analyses remaining — <span style={{ color: '#ffffff', fontWeight: '600' }}>upgrade for 50+</span></span>
+            <span>⚡ {localRemaining} AI analysis remaining — <span style={{ color: '#ffffff', fontWeight: '600' }}>upgrade for 50+</span></span>
             <span
               onClick={() => refreshRemaining()}
               style={{

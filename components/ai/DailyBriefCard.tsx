@@ -82,8 +82,8 @@ export default function DailyBriefCard() {
   if (!brief) return null;
 
   const parsed = parseBrief(brief);
-  const visibleLines = expanded ? parsed : parsed.slice(0, 2);
-  const hasMore = parsed.length > 2;
+  const visibleLines = expanded ? parsed : [];
+  const hasMore = parsed.length > 0;
 
   return (
     <div className="mx-4 mb-3">
