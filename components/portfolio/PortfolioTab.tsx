@@ -111,6 +111,29 @@ function PositionCard({
   const todayPnL = pos.dayChange ?? 0;
   const todayPnLPct = pos.dayChangePercent ?? 0;
 
+  // ── Sparkline state ──
+  const [sparkline, setSparkline] = useState<{ points: { t: number; c: number }[]; high52w: number; low52w: number } | null>(null);
+  const [sparklineLoading, setSparklineLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    let cancelled = false;
+    async function load() {
+      setSparklineLoading(true);
+      try {
+        const res = await fetch(`/api/market/sparkline?symbol=${encodeURIComponent(pos.symbol)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.points?.length) {
+          setSparkline({ points: data.points, high52w: data.high52w, low52w: data.low52w });
+        }
+      } catch { /* silent */ }
+      finally { if (!cancelled) setSparklineLoading(false); }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [isExpanded, pos.symbol]);
+
   // 52-week range ball position
   const weekPos =
     pos.weekHigh52 != null &&
@@ -166,7 +189,7 @@ function PositionCard({
         <div className={`position-pill ${gainLossClass(todayPnL)}`}>
           <span className="pill-label">TODAY</span>
           <span className="pill-value">{todayPnL >= 0 ? '+' : ''}${Math.abs(todayPnL).toFixed(2)}</span>
-          <span className="pill-pct">({todayPnL >= 0 ? '+' : ''}{Math.abs(todayPnLPct).toFixed(1)}%)</span>
+          <span className="pill-pct">({todayPnL >= 0 ? '+' : ''}{Math.abs(todayPnLPct).toFixed(2)}%)</span>
         </div>
         <div className={`position-pill ${gainLossClass(totalPnL)}`}>
           <span className="pill-label">TOTAL</span>
@@ -196,6 +219,51 @@ function PositionCard({
           </span>
         </div>
       )}
+
+      {/* ── 52-Week Sparkline ── */}
+      {isExpanded && sparkline && sparkline.points.length >= 2 && (() => {
+        const pts = sparkline.points;
+        const min = sparkline.low52w;
+        const max = sparkline.high52w;
+        const range = max - min || 1;
+        const W = 300; // viewBox width
+        const H = 80;
+        const pad = 4;
+
+        // Build SVG path
+        const scaleX = (i: number) => pad + (i / (pts.length - 1)) * (W - pad * 2);
+        const scaleY = (v: number) => H - pad - ((v - min) / range) * (H - pad * 2);
+
+        const linePath = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i)},${scaleY(pt.c)}`).join(' ');
+        const areaPath = linePath + ` L${scaleX(pts.length - 1)},${H - pad} L${scaleX(0)},${H - pad} Z`;
+
+        return (
+          <div style={{ marginTop: 12 }}>
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 80, display: 'block' }}>
+              {/* Area fill */}
+              <path d={areaPath} fill={`url(#sparkGrad-${pos.symbol.replace('.','_')})`} opacity={0.15} />
+              {/* Line */}
+              <path d={linePath} fill="none" stroke="#22d3ee" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+              {/* Gradient def */}
+              <defs>
+                <linearGradient id={`sparkGrad-${pos.symbol.replace('.','_')}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+            </svg>
+            {/* Labels */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+                52W Low ${sparkline.low52w.toFixed(2)}
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+                52W High ${sparkline.high52w.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Basket references */}
       {baskets.filter(b => b.positions.some(p => p.symbol === pos.symbol && p.status === 'active')).map(b => (
@@ -251,12 +319,6 @@ function PositionCard({
                 {pos.type || 'Stock'}
               </div>
             </div>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Exchange</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)' }}>
-                {pos.exchange || '—'}
-              </div>
-            </div>
           </div>
 
           {/* Financial grid */}
@@ -275,24 +337,6 @@ function PositionCard({
               <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Current Price</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--font-sans)' }}>
                 ${currentPrice.toFixed(2)}
-              </div>
-            </div>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Total P&L</div>
-              <div style={{
-                fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-sans)',
-                color: totalPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
-              }}>
-                {formatCurrency(totalPnL)} ({totalPnL >= 0 ? '+' : ''}{totalPnLPct.toFixed(1)}%)
-              </div>
-            </div>
-            <div>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 2 }}>Daily G/L</div>
-              <div style={{
-                fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-sans)',
-                color: todayPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
-              }}>
-                {todayPnL >= 0 ? '+' : ''}{formatCurrency(todayPnL)} ({todayPnL >= 0 ? '+' : ''}{todayPnLPct.toFixed(1)}%)
               </div>
             </div>
             <div>
