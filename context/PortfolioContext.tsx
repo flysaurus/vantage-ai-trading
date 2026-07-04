@@ -481,7 +481,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       b.getBasketOrders(),
     ]);
     const ctxPositions = bPositions.map((bp: any) => ({
-      symbol: bp.symbol, name: bp.symbol, qty: bp.shares, avgCost: bp.avgCost,
+      symbol: bp.symbol, name: bp.name || bp.symbol, qty: bp.shares, avgCost: bp.avgCost,
       currentPrice: bp.avgCost, marketValue: bp.shares * bp.avgCost,
       dayChange: 0, dayChangePercent: 0, totalPnl: 0, totalPnlPercent: 0,
       portfolioPercent: 0, type: bp.type,

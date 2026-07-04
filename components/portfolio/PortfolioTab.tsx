@@ -232,6 +232,19 @@ function PositionCard({
         </div>
       </div>
 
+      {/* ── Cost-basis row ── */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '0 2px',
+      }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1 }}>
+          Avg ${(pos.avgCost ?? 0).toFixed(2)} · Cost ${((pos.avgCost ?? 0) * pos.qty).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+        </span>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 500, lineHeight: 1 }}>
+          Val ${pos.marketValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+        </span>
+      </div>
+
       <div className="position-card-bottom">
         <div className={`position-pill ${gainLossClass(todayPnL)}`}>
           <span className="pill-label">TODAY</span>
