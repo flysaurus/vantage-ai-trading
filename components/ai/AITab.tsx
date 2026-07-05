@@ -202,6 +202,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── Scroll behavior refs ──
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
   const wasAtBottomRef = useRef(true);
@@ -295,18 +296,37 @@ export function AITab({ messages, setMessages }: AITabProps) {
     open_afternoon: { opener: 'Afternoon, M.', hook: 'Markets are moving — ask me anything.' },
     afterhours: { opener: 'After hours, M.', hook: 'Markets closed — good time to plan ahead.' },
     evening: { opener: 'Evening, M.', hook: 'A quiet moment to think through your positions.' },
+    weekend_morning: { opener: 'Good morning, M.', hook: 'Markets are closed — perfect time for research.' },
+    weekend_afternoon: { opener: 'Afternoon, M.', hook: 'A good day to review your strategy for the week ahead.' },
   };
 
   function getMarketPeriod(): string {
     const now = new Date();
-    const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const hour = et.getHours();
-    const min = et.getMinutes();
-    const day = et.getDay();
+    // Deterministic ET time extraction — avoids fragile new Date(toLocaleString()) round-trip
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+      weekday: 'short',
+    }).formatToParts(now);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
+    const hour = parseInt(getPart('hour'), 10);
+    const min = parseInt(getPart('minute'), 10);
+    const weekday = getPart('weekday');
     const timeInMin = hour * 60 + min;
-    const isWeekend = day === 0 || day === 6;
+    const isWeekend = weekday === 'Sun' || weekday === 'Sat';
 
-    if (isWeekend || timeInMin < 240 || timeInMin >= 1200) return 'evening';
+    // Weekends: use natural time-of-day periods (not all 'evening')
+    if (isWeekend) {
+      if (timeInMin < 300) return 'evening';      // 12am–5am: night/evening
+      if (timeInMin < 720) return 'weekend_morning'; // 5am–12pm
+      if (timeInMin < 1020) return 'weekend_afternoon'; // 12pm–5pm
+      return 'evening';                             // 5pm–12am
+    }
+
+    // Weekdays
+    if (timeInMin < 240 || timeInMin >= 1200) return 'evening';
     if (timeInMin < 570) return 'premarket';
     if (timeInMin < 720) return 'open_morning';
     if (timeInMin < 960) return 'open_afternoon';
@@ -436,21 +456,21 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── helpers ──
   function isAtBottom(): boolean {
-    const container = messagesContainerRef.current;
+    const container = chatContainerRef.current;
     if (!container) return true;
     const threshold = 80;
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
   }
 
   function scrollToBottom(smooth = true) {
-    const container = messagesContainerRef.current;
+    const container = chatContainerRef.current;
     if (!container) return;
     container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'instant' as ScrollBehavior });
   }
 
   // ── Track user scroll intent ──
   useEffect(() => {
-    const container = messagesContainerRef.current;
+    const container = chatContainerRef.current;
     if (!container) return;
     let scrollTimeout: NodeJS.Timeout;
     const handleScroll = () => {
@@ -689,8 +709,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
     return chips.slice(0, 2);
   })();
 
+  // ── Collapsible top section (Daily Brief + Weekly Snapshot) ──
+  const [headerExpanded, setHeaderExpanded] = useState(true);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'transparent' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100dvh', background: 'transparent' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -760,6 +783,46 @@ Give me a market pulse check — how are the major indexes performing today, wha
           `}</style>
         </div>
       )}
+
+      {/* ======== TOP HEADER — Daily Brief + Weekly Snapshot (collapsible) ======== */}
+      <div style={{ flexShrink: 0, borderBottom: headerExpanded ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+        {/* Collapse toggle bar */}
+        <div
+          onClick={() => setHeaderExpanded(!headerExpanded)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: headerExpanded ? '10px 16px 6px 16px' : '8px 16px',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '500' }}>
+            📰 Market Briefs
+          </span>
+          <span style={{ fontSize: '11px', color: '#64748b', transition: 'transform 0.2s' }}>
+            {headerExpanded ? '▲' : '▼'}
+          </span>
+        </div>
+        {headerExpanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 16px 12px 16px' }}>
+            <DailyBriefCard />
+            <WeeklySnapshotCard />
+          </div>
+        )}
+      </div>
+
+      {/* ======== CHAT AREA — greeting + AI Noticed + chips + actions + messages ======== */}
+      <div
+        ref={chatContainerRef}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingTop: '12px',
+        }}
+      >
 
       {/* ======== 1. GREETING CARD (standalone, accent border per reference) ======== */}
       {greetingLoaded && (
@@ -919,12 +982,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== 3. DAILY BRIEF + WEEKLY SNAPSHOT PILLS ======== */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
-        <DailyBriefCard />
-        <WeeklySnapshotCard />
-      </div>
-
       {/* ======== 4. SUGGESTED CHIPS (trimmed to 2, lighter pills) ======== */}
       {suggestionChips.length > 0 && (
         <div style={{ padding: '0 16px', marginBottom: '12px' }}>
@@ -1016,15 +1073,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
       <div
         ref={messagesContainerRef}
         style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
           padding: '0 16px 16px 16px',
           display: 'flex',
           flexDirection: 'column',
           gap: '16px',
           minHeight: messages.length > 0 ? '120px' : '0px',
-          WebkitOverflowScrolling: 'touch',
           position: 'relative',
         }}
       >
@@ -1101,8 +1154,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
         )}
       </div>
 
-      {/* ======== 7. INPUT FOOTER (redesigned per reference) ======== */}
-      <div style={{ flexShrink: 0, marginTop: '32px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      {/* ======== CHAT AREA END ======== */}
+      </div>
+
+      {/* ======== 7. INPUT FOOTER — anchored at bottom ======== */}
+      <div style={{ flexShrink: 0, paddingTop: '8px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))' }}>
         {/* Usage line */}
         <div style={{
           fontSize: '11.5px',
