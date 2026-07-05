@@ -139,6 +139,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [exploreCompact, setExploreCompact] = useState(false);
+  const [exploreSeenCount, setExploreSeenCount] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
   // ── AI Noticed state — fetched from API ──
   const [noticedItems, setNoticedItems] = useState<NoticedItem[]>([]);
@@ -506,6 +510,29 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   }, [messages, loading]);
 
+  // ── Responsive Explore button: switch to icon-only below ~340px ──
+  useEffect(() => {
+    const el = document.querySelector('.vantage-input-bar');
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setExploreCompact(entry.contentRect.width < 340);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // ── Close menu on outside click ──
+  useEffect(() => {
+    if (!showMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMenu]);
+
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
@@ -786,7 +813,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== TOP BAR — Daily Brief + Weekly Snapshot pills ======== */}
+      {/* ======== TOP BAR — Daily Brief + Weekly Snapshot pills + menu ======== */}
       <div style={{
         flexShrink: 0,
         display: 'flex',
@@ -841,7 +868,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
         >
           Weekly Snapshot
           {(() => {
-            // Try to extract health score from cached data for badge display
             try {
               const cached = localStorage.getItem(`vantage_weekly_snapshot_${new Date().toDateString()}`);
               if (cached) {
@@ -852,6 +878,91 @@ Give me a market pulse check — how are the major indexes performing today, wha
             } catch {}
             return null;
           })()}
+        </div>
+        {/* ⋯ menu */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            style={{
+              width: '34px',
+              height: '34px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '50%',
+              color: 'rgba(255,255,255,0.6)',
+              fontSize: '16px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            ⋯
+          </button>
+          {showMenu && (
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                onClick={() => setShowMenu(false)}
+              />
+              <div
+                ref={menuRef}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '40px',
+                  zIndex: 9999,
+                  background: '#1a2235',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '10px',
+                  padding: '6px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  minWidth: '170px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                }}
+              >
+                <button
+                  onClick={() => { setShowMenu(false); setShowHistory(true); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#cbd5e1',
+                    fontSize: '12.5px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                >
+                  🕐 History
+                </button>
+                <button
+                  onClick={() => { setShowMenu(false); setShowClearConfirm(true); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#cbd5e1',
+                    fontSize: '12.5px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                >
+                  🗑 Clear conversation
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1053,7 +1164,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
         {/* Input bar — with Explore button */}
         <div style={{ padding: '0 16px' }}>
-          <div style={{
+          <div className="vantage-input-bar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
@@ -1064,30 +1175,33 @@ Give me a market pulse check — how are the major indexes performing today, wha
             padding: '8px 8px 8px 8px',
             boxShadow: '0 0 24px rgba(34,211,238,0.15), 0 4px 16px rgba(0,0,0,0.3)',
           }}>
-            {/* Explore button */}
+            {/* Explore button — text-first, falls back to icon-only on narrow screens */}
             <button
-              onClick={() => setShowExplore(true)}
+              onClick={() => { setShowExplore(true); setExploreSeenCount(noticedItems.length); }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                background: 'rgba(255,255,255,0.08)',
+                gap: exploreCompact ? '0px' : '6px',
+                background: exploreCompact ? 'rgba(34,211,238,0.18)' : 'rgba(255,255,255,0.08)',
+                border: exploreCompact ? '1px solid rgba(34,211,238,0.4)' : 'none',
                 borderRadius: '999px',
-                padding: '8px 14px',
+                padding: exploreCompact ? '0px' : '8px 14px',
+                width: exploreCompact ? '38px' : 'auto',
+                height: exploreCompact ? '38px' : 'auto',
+                justifyContent: 'center',
                 fontSize: '13px',
                 fontWeight: 700,
                 color: '#fff',
                 flexShrink: 0,
                 position: 'relative',
                 whiteSpace: 'nowrap',
-                border: 'none',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
               }}
             >
               <span style={{ fontSize: '15px', lineHeight: 1 }}>+</span>
-              {' '}Explore
-              {noticedItems.length > 0 && (
+              {!exploreCompact && ' Explore'}
+              {noticedItems.length > exploreSeenCount && (
                 <span style={{
                   position: 'absolute',
                   top: '-2px',
@@ -1157,47 +1271,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
         }}>
           AI-generated · Not financial advice
         </p>
-
-        {/* Trash button (subtle, for clearing chat) */}
-        {messages.length > 0 && (
-          <div style={{ textAlign: 'center', marginTop: '8px' }}>
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255,255,255,0.2)',
-                fontSize: '11px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              Clear conversation
-            </button>
-          </div>
-        )}
-
-        {/* History button */}
-        <div style={{ textAlign: 'center', marginTop: '8px' }}>
-          <button
-            onClick={() => setShowHistory(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255,255,255,0.3)',
-              fontSize: '11px',
-              cursor: 'pointer',
-              margin: '0 auto',
-              fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ fontSize: '14px' }}>🕐</span>
-            History
-          </button>
-        </div>
       </div>
 
       {/* ─── Explore Bottom Sheet ─── */}
