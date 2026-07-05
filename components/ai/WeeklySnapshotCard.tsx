@@ -273,50 +273,41 @@ export default function WeeklySnapshotCard() {
   // ─── Collapsed pill ───
   if (!parentExpanded) {
     return (
-      <div style={{ padding: '0 16px' }}>
-        <button
-          onClick={toggleParent}
-          style={{
-            width: '100%',
-            textAlign: 'left',
-            background: PILL_BG,
-            border: `1px solid ${PILL_BORDER}`,
+      <button
+        onClick={toggleParent}
+        style={{
+          background: PILL_BG,
+          border: `1px solid ${PILL_BORDER}`,
+          borderRadius: '16px',
+          padding: '8px 14px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          backdropFilter: BACKDROP_BLUR,
+          cursor: 'pointer',
+          transition: 'background 0.2s',
+          color: '#fff',
+          fontFamily: 'inherit',
+          flexShrink: 0,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
+      >
+        <span style={{ fontSize: '13px', fontWeight: 600 }}>Weekly Snapshot</span>
+        {healthScore != null && (
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            padding: '2px 6px',
             borderRadius: '999px',
-            padding: '14px 18px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            backdropFilter: BACKDROP_BLUR,
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-            color: '#fff',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
-        >
-          <span style={{ fontSize: '18px' }}>📊</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>Weekly Snapshot</div>
-            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>
-              Updated {generatedAt ? formatTime(generatedAt) : 'just now'}
-            </div>
-          </div>
-          {healthScore != null && (
-            <span style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              padding: '3px 9px',
-              borderRadius: '999px',
-              background: healthBadgeBg,
-              color: healthBadgeColor,
-            }}>
-              {healthScore}/10
-            </span>
-          )}
-          <Chevron open={false} />
-        </button>
-      </div>
+            background: healthBadgeBg,
+            color: healthBadgeColor,
+            lineHeight: 1,
+          }}>
+            {healthScore}/10
+          </span>
+        )}
+      </button>
     );
   }
 

@@ -96,7 +96,7 @@ Note: search results are from today.
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { messages, portfolioContext, mode, timezone } = body
+    const { messages, portfolioContext, additionalContext, mode, timezone } = body
 
     // ── Usage limit check ──
     const userId = await getOptionalUserId();
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
       },
       {
         type: 'text' as const,
-        text: [profileContext, portfolioContext || '', searchContext].filter(Boolean).join('\n\n'),
+        text: [profileContext, portfolioContext || '', additionalContext || '', searchContext].filter(Boolean).join('\n\n'),
       },
     ];
 

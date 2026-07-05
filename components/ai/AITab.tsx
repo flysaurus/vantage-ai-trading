@@ -533,7 +533,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [showMenu]);
 
-  const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
+  const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat', additionalContext?: string) => {
     if (!content.trim() || loading) return;
 
     if (localRemaining <= 0) {
@@ -570,6 +570,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       const res = await apiPost('/api/chat', {
         messages: newMessages,
         portfolioContext,
+        additionalContext: additionalContext || '',
         mode,
         investorStyle: investorStyle,
         riskTolerance: user?.riskTolerance || 'Moderate',
@@ -678,20 +679,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const fmtChg = (d: number) => (d > 0 ? `+${d.toFixed(2)}` : d.toFixed(2));
     const fmtPct = (dp: number) => (dp > 0 ? `+${dp.toFixed(2)}` : dp.toFixed(2));
 
-    const marketData = `LIVE MARKET DATA (real-time from Finnhub):
+    const marketContext = `LIVE MARKET DATA (real-time from Finnhub):
 S&P 500 ETF (SPY): $${quotes.SPY?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.SPY?.d || 0)} (${fmtPct(quotes.SPY?.dp || 0)}%)
 Nasdaq ETF (QQQ): $${quotes.QQQ?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.QQQ?.d || 0)} (${fmtPct(quotes.QQQ?.dp || 0)}%)
 Dow ETF (DIA): $${quotes.DIA?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.DIA?.d || 0)} (${fmtPct(quotes.DIA?.dp || 0)}%)
 Russell 2000 (IWM): $${quotes.IWM?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.IWM?.d || 0)} (${fmtPct(quotes.IWM?.dp || 0)}%)
 VIX: $${quotes.VIX?.c?.toFixed(2) || 'N/A'} ${fmtChg(quotes.VIX?.d || 0)} (${fmtPct(quotes.VIX?.dp || 0)}%)
 
-Note: For sector performance, use the ETF moves above as proxies and your knowledge of sector correlations. QQQ weakness = tech pressure. IWM weakness = small cap risk-off. DIA vs QQQ spread = value vs growth rotation.
+Note: For sector performance, use the ETF moves above as proxies and your knowledge of sector correlations. QQQ weakness = tech pressure. IWM weakness = small cap risk-off. DIA vs QQQ spread = value vs growth rotation. Use this data to answer the following — do NOT search the web for prices, these are the real current numbers:`;
 
-Use this data to answer the following — do NOT search the web for prices, these are the real current numbers:
+    const question = 'Give me a market pulse check — how are the major indexes performing today, what sectors are leading and lagging, and what should I know as an investor right now?';
 
-Give me a market pulse check — how are the major indexes performing today, what sectors are leading and lagging, and what should I know as an investor right now?`;
-
-    sendMessage(marketData);
+    sendMessage(question, 'chat', marketContext);
     wasAtBottomRef.current = true;
     scrollToBottom(true);
   };
@@ -740,7 +739,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'transparent' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'rgba(8,13,26,0.85)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', margin: '8px 12px 0 12px', overflow: 'hidden', boxShadow: '0 -4px 24px rgba(0,0,0,0.25)' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -811,16 +810,13 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== TOP BAR — hamburger menu only ======== */}
+      {/* ======== TOP BAR — hamburger menu (left-aligned) ======== */}
       <div style={{
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
-        padding: '10px 16px',
-        background: 'rgba(10,15,30,0.6)',
-        backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        justifyContent: 'flex-start',
+        padding: '8px 12px 6px 12px',
         zIndex: 20,
         position: 'relative',
       }}>
@@ -940,19 +936,13 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       </div>
 
-      {/* ======== CHAT WINDOW — bounded container ======== */}
+      {/* ======== CHAT WINDOW — structural container ======== */}
       <div style={{
         flex: 1,
         minHeight: 0,
-        margin: '10px 12px 0 12px',
-        background: 'rgba(8,13,26,0.85)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderBottom: 'none',
-        borderRadius: '16px 16px 0 0',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 -4px 24px rgba(0,0,0,0.25)',
         position: 'relative',
       }}>
 
@@ -1130,7 +1120,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
       </div>
 
       {/* ======== 3. INPUT BAR — anchored at bottom of chat window ======== */}
-      <div style={{ flexShrink: 0, paddingTop: '16px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
+      <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
         {/* Usage line */}
         <div style={{
           fontSize: '11.5px',
@@ -1323,10 +1313,10 @@ Give me a market pulse check — how are the major indexes performing today, wha
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'rgba(0,0,0,0.55)',
+            background: 'transparent',
             display: 'flex',
             alignItems: 'flex-end',
-            zIndex: 10,
+            zIndex: 5,
           }}
           onClick={() => setShowExplore(false)}
         >
@@ -1482,44 +1472,45 @@ Give me a market pulse check — how are the major indexes performing today, wha
               Quick checks
             </div>
 
-            {[
-              { icon: '📡', label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
-              { icon: '💡', label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
-              { icon: '📋', label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
-              { icon: '⚡', label: 'Alerts', live: false, onClick: () => { setShowExplore(false); setToast('💬 Vantage AI is responding...'); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
-            ].map((action) => (
-              <div
-                key={action.label}
-                onClick={action.onClick}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '13px 6px',
-                  borderRadius: '12px',
-                  fontSize: '14.5px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '16px' }}>{action.icon}</span>
-                  {action.label}
-                </span>
-                {action.live && (
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    color: ACCENT,
-                    background: 'rgba(34,211,238,0.14)',
-                    padding: '2px 8px',
-                    borderRadius: '999px',
-                  }}>
-                    LIVE
-                  </span>
-                )}
-              </div>
-            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {[
+                { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
+                { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
+                { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
+                { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); setToast('💬 Vantage AI is responding...'); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
+              ].map((action) => (
+                <div
+                  key={action.label}
+                  onClick={action.onClick}
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    borderRadius: '12px',
+                    padding: '14px 12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{action.label}</span>
+                  {action.live && (
+                    <span style={{
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      color: ACCENT,
+                      background: 'rgba(34,211,238,0.12)',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      letterSpacing: '0.05em',
+                    }}>
+                      LIVE
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

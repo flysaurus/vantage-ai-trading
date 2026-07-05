@@ -144,38 +144,28 @@ export default function DailyBriefCard() {
   // ─── Collapsed pill ───
   if (!expanded) {
     return (
-      <div style={{ padding: '0 16px' }}>
-        <button
-          onClick={() => setExpanded(true)}
-          style={{
-            width: '100%',
-            textAlign: 'left',
-            background: PILL_BG,
-            border: `1px solid ${PILL_BORDER}`,
-            borderRadius: '999px',
-            padding: '14px 18px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            backdropFilter: BACKDROP_BLUR,
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-            color: '#fff',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
-        >
-          <span style={{ fontSize: '18px' }}>🗞️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>Daily Brief</div>
-            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>
-              {data?.cached ? 'Cached' : 'Generated'} today · {summary}
-            </div>
-          </div>
-          <Chevron open={false} />
-        </button>
-      </div>
+      <button
+        onClick={() => setExpanded(true)}
+        style={{
+          background: PILL_BG,
+          border: `1px solid ${PILL_BORDER}`,
+          borderRadius: '16px',
+          padding: '8px 14px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          backdropFilter: BACKDROP_BLUR,
+          cursor: 'pointer',
+          transition: 'background 0.2s',
+          color: '#fff',
+          fontFamily: 'inherit',
+          flexShrink: 0,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
+      >
+        <span style={{ fontSize: '13px', fontWeight: 600 }}>Daily Brief</span>
+      </button>
     );
   }
 

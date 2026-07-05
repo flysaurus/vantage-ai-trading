@@ -989,8 +989,8 @@ export function PortfolioTab() {
         <div style={{ fontSize: '10px', letterSpacing: '0.08em', color: 'rgba(34,211,238,0.6)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
           <span style={{ fontSize: '11px' }}>✨</span> AI curated
         </div>
-        <DailyBriefCard />
-        <div style={{ marginTop: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
+          <DailyBriefCard />
           <WeeklySnapshotCard />
         </div>
       </div>
