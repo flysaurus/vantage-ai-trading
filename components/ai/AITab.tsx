@@ -1007,17 +1007,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {!greetingLoaded && (
         <div style={{ padding: '0 16px', marginBottom: '12px' }}>
           <div style={{
-            background: GLASS_BG,
-            border: `1px solid ${BORDER_ACCENT}`,
-            borderRadius: '20px',
+            position: 'relative',
+            background: 'rgba(255,255,255,0.05)',
+            borderRadius: '18px',
             padding: '20px',
+            overflow: 'hidden',
             backdropFilter: BACKDROP_BLUR,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: ACCENT, fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '10px' }}>🧭 VANTAGE AI</div>
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '8px 0' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0s' }} />
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
+            <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ color: ACCENT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>VANTAGE AI</div>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '4px 0' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0s' }} />
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
+              </div>
             </div>
           </div>
         </div>
@@ -1033,6 +1036,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         ref={chatContainerRef}
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
           overscrollBehavior: 'contain',
           paddingTop: '8px',
@@ -1142,14 +1146,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
-        {/* Usage line */}
+        {/* Usage + disclaimer — single combined line per spec */}
         <div style={{
           fontSize: '11px',
           color: 'rgba(255,255,255,0.35)',
           textAlign: 'center',
           marginBottom: '10px',
         }}>
-          <b style={{ color: ACCENT }}>{localRemaining}</b> messages remaining today
+          <b style={{ color: ACCENT }}>{localRemaining}</b> messages remaining today · AI-generated, not financial advice
         </div>
 
         {/* Input bar — with Explore button */}
@@ -1249,17 +1253,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             </div>
           </div>
         </div>
-
-        {/* Disclaimer */}
-        <p style={{
-          fontSize: '10.5px',
-          color: TEXT_DIM,
-          textAlign: 'center',
-          marginTop: '10px',
-          padding: '0 16px',
-        }}>
-          AI-generated · Not financial advice
-        </p>
       </div>
 
       {/* ─── AI Settings Sheet ─── */}
@@ -1373,8 +1366,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   <div
                     onClick={() => {
                       setShowExplore(false);
-                      setInput(item.followUp || `Tell me about ${item.title}`);
-                      setTimeout(() => inputRef.current?.focus(), 50);
+                      sendToChat(item.followUp || `Tell me about ${item.title}`);
+                      setToast('💬 Vantage AI is responding...');
                     }}
                     style={{
                       display: 'flex',
