@@ -311,9 +311,9 @@ export default function WeeklySnapshotCard() {
     );
   }
 
-  // ─── Expanded card ───
+  // ─── Expanded card — absolute overlay, anchored to boundary box ========
   return (
-    <div style={{ padding: '0 16px' }}>
+    <div style={{ position: 'absolute', left: '14px', right: '14px', top: 'calc(100% + 10px)', zIndex: 10 }}>
       <div style={{
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER_ACCENT}`,
@@ -326,7 +326,7 @@ export default function WeeklySnapshotCard() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '16px',
+          marginBottom: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '18px' }}>📊</span>
@@ -357,7 +357,7 @@ export default function WeeklySnapshotCard() {
                 fontFamily: 'inherit',
               }}
             >
-              ▴ Show less
+              ▲ Close
             </button>
           </div>
         </div>
@@ -439,10 +439,10 @@ export default function WeeklySnapshotCard() {
         {/* Footer */}
         <div style={{
           fontSize: '11px',
-          color: TEXT_MUTED,
-          marginTop: '16px',
-          paddingTop: '14px',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
+          color: 'rgba(255,255,255,0.3)',
+          marginTop: '12px',
+          paddingTop: '10px',
+          borderTop: '1px solid rgba(255,255,255,0.07)',
         }}>
           {data.cached ? 'Refreshes next week' : 'Fresh analysis'} · Tap any card to expand
         </div>
