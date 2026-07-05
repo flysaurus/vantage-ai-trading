@@ -711,6 +711,8 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
   // ── Collapsible top section (Daily Brief + Weekly Snapshot) ──
   const [headerExpanded, setHeaderExpanded] = useState(true);
+  // ── Explore bottom sheet ──
+  const [showExplore, setShowExplore] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100dvh', background: 'transparent' }}>
@@ -784,34 +786,82 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== TOP HEADER — Daily Brief + Weekly Snapshot (collapsible) ======== */}
-      <div style={{ flexShrink: 0, borderBottom: headerExpanded ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-        {/* Collapse toggle bar */}
+      {/* ======== TOP BAR — Daily Brief + Weekly Snapshot pills ======== */}
+      <div style={{
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '12px 16px',
+        background: 'rgba(10,15,30,0.6)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+      }}>
         <div
           onClick={() => setHeaderExpanded(!headerExpanded)}
           style={{
+            flex: 1,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: headerExpanded ? '10px 16px 6px 16px' : '8px 16px',
+            gap: '6px',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '999px',
+            padding: '9px 14px',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.85)',
+            justifyContent: 'center',
+            whiteSpace: 'nowrap',
             cursor: 'pointer',
             userSelect: 'none',
           }}
         >
-          <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '500' }}>
-            📰 Market Briefs
-          </span>
-          <span style={{ fontSize: '11px', color: '#64748b', transition: 'transform 0.2s' }}>
-            {headerExpanded ? '▲' : '▼'}
-          </span>
+          Daily Brief
         </div>
-        {headerExpanded && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 16px 12px 16px' }}>
-            <DailyBriefCard />
-            <WeeklySnapshotCard />
-          </div>
-        )}
+        <div
+          onClick={() => setHeaderExpanded(!headerExpanded)}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '999px',
+            padding: '9px 14px',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.85)',
+            justifyContent: 'center',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          Weekly Snapshot
+          {(() => {
+            // Try to extract health score from cached data for badge display
+            try {
+              const cached = localStorage.getItem(`vantage_weekly_snapshot_${new Date().toDateString()}`);
+              if (cached) {
+                const data = JSON.parse(cached);
+                const match = data.content?.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/);
+                if (match) return <span style={{ fontWeight: 700, color: GAIN }}>{match[1]}/10</span>;
+              }
+            } catch {}
+            return null;
+          })()}
+        </div>
       </div>
+
+      {/* Expanded Daily Brief + Weekly Snapshot (shown when header pills are tapped) */}
+      {headerExpanded && (
+        <div style={{ flexShrink: 0, padding: '0 16px 12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <DailyBriefCard />
+          <WeeklySnapshotCard />
+        </div>
+      )}
 
       {/* ======== CHAT AREA — greeting + AI Noticed + chips + actions + messages ======== */}
       <div
@@ -835,12 +885,12 @@ Give me a market pulse check — how are the major indexes performing today, wha
             backdropFilter: BACKDROP_BLUR,
           }}>
             {/* Brand row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: ACCENT, fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '10px' }}>
-              🧭 VANTAGE AI
+            <div style={{ color: ACCENT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', marginBottom: '8px' }}>
+              VANTAGE AI
             </div>
 
             {/* Opener */}
-            <div style={{ fontSize: '22px', fontWeight: 800, marginBottom: '10px' }}>
+            <div style={{ fontSize: '19px', fontWeight: 800, marginBottom: '8px' }}>
               {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
                 part === userInitial ? (
                   <span key={i} style={{ color: ACCENT }}>{userInitial}</span>
@@ -852,7 +902,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
             {/* Hook */}
             {greetingHook && (
-              <div style={{ fontSize: '15px', lineHeight: '1.6', color: TEXT_BODY }}>
+              <div style={{ fontSize: '14.5px', lineHeight: '1.55', color: TEXT_BODY }}>
                 {greetingHook}
               </div>
             )}
@@ -880,194 +930,10 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== 2. AI NOTICED — proactive feed (API-driven) ======== */}
-      {noticedItems.length > 0 && (
-        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {noticedItems.map((item) => {
-              const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
-              return (
-                <div key={item.id} style={{ position: 'relative' }}>
-                  <div
-                    onClick={() => {
-                      // Pre-fill input + focus (don't send)
-                      setInput(item.followUp || `Tell me about ${item.title}`);
-                      setTimeout(() => inputRef.current?.focus(), 50);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '10px',
-                      background: GLASS_BG_LIGHTER,
-                      border: `1px solid ${BORDER_SUBTLE}`,
-                      borderLeft: `3px solid ${borderColor}`,
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
-                    <span style={{ flex: 1, fontSize: '13px', lineHeight: '1.5', color: TEXT_BODY }}>
-                      {item.body}
-                    </span>
-                    <span style={{ fontSize: '11px', color: TEXT_MUTED, whiteSpace: 'nowrap', marginTop: '1px' }}>{timeAgo(item.createdAt)}</span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSnoozeTarget(snoozeTarget === item.id ? null : item.id);
-                      }}
-                      style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
-                    >
-                      ×
-                    </span>
-                  </div>
+      {/* ======== 3. SUGGESTED CHIPS — moved to Explore sheet ======== */}
+      {/* These now live in the Explore bottom sheet, opened by the + Explore button in the input bar */}
 
-                  {/* Snooze popover */}
-                  {snoozeTarget === item.id && (
-                    <>
-                      <div
-                        style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
-                        onClick={() => setSnoozeTarget(null)}
-                      />
-                      <div style={{
-                        position: 'absolute',
-                        right: '8px',
-                        top: '36px',
-                        zIndex: 9999,
-                        background: '#1a2235',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: '10px',
-                        padding: '6px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '2px',
-                        minWidth: '170px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      }}>
-                        {[
-                          { label: 'Remind in 3 days', type: '3d' },
-                          { label: 'Remind in 1 week', type: '1w' },
-                          { label: "Don't remind again", type: 'permanent' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.type}
-                            onClick={(e) => { e.stopPropagation(); handleDismiss(item.id, opt.type); }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#cbd5e1',
-                              fontSize: '12px',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              fontFamily: 'inherit',
-                            }}
-                            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', paddingTop: '4px' }}>
-            Tap any card to pre-fill a question ↓
-          </div>
-        </div>
-      )}
-
-      {/* ======== 4. SUGGESTED CHIPS (trimmed to 2, lighter pills) ======== */}
-      {suggestionChips.length > 0 && (
-        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {suggestionChips.map((chip) => (
-              <button
-                key={chip}
-                onClick={(e) => {
-                  const el = e.currentTarget;
-                  el.style.transition = 'box-shadow 0s';
-                  el.style.boxShadow = '0 0 0 2px #22d3ee';
-                  setTimeout(() => {
-                    el.style.transition = 'box-shadow 400ms ease-out';
-                    el.style.boxShadow = '';
-                  }, 100);
-                  sendToChat(chip);
-                }}
-                style={{
-                  background: GLASS_BG_LIGHTER,
-                  border: `1px solid ${BORDER_MUTED}`,
-                  borderRadius: '999px',
-                  padding: '11px 16px',
-                  fontSize: '13.5px',
-                  color: 'rgba(255,255,255,0.7)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ======== 5. QUICK ACTIONS 2×2 GRID (redesigned lighter) ======== */}
-      <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '8px',
-        }}>
-          {[
-            { icon: '📡', label: 'Market Pulse', starred: true, onClick: (e: React.MouseEvent) => handleMarketPulse(e) },
-            { icon: '💡', label: 'Strategy Ideas', starred: false, onClick: () => sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.') },
-            { icon: '📋', label: 'Tax Check', starred: true, onClick: (e: React.MouseEvent) => sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e) },
-            { icon: '⚡', label: 'Alerts', starred: false, onClick: () => { setToast('💬 Vantage AI is responding...'); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
-          ].map((action) => (
-            <button
-              key={action.label}
-              onClick={action.onClick}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: action.starred ? 'rgba(34,211,238,0.06)' : GLASS_BG_SUBTLE,
-                border: action.starred ? '1px solid rgba(34,211,238,0.3)' : `1px solid ${BORDER_SUBTLE}`,
-                borderRadius: '14px',
-                padding: '12px 14px',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.75)',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontFamily: 'inherit',
-              }}
-            >
-              <span style={{ fontSize: '15px' }}>{action.icon}</span>
-              <span>{action.label}</span>
-              {action.starred && (
-                <span style={{
-                  fontSize: '9px',
-                  background: 'rgba(34,211,238,0.15)',
-                  color: ACCENT,
-                  padding: '1px 6px',
-                  borderRadius: '999px',
-                  marginLeft: 'auto',
-                }}>
-                  LIVE
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Sections 4 & 5 — Suggested Chips + Quick Actions — moved to Explore sheet */}
 
       {/* ======== 6. CHAT MESSAGES AREA ======== */}
       <div
@@ -1087,23 +953,38 @@ Give me a market pulse check — how are the major indexes performing today, wha
         )}
 
         {/* Messages */}
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            style={{
-              alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              background: msg.role === 'user' ? 'rgba(34,211,238,0.15)' : '#1a2235',
-              border: msg.role === 'user' ? '1px solid rgba(34,211,238,0.2)' : '1px solid #2a3448',
-              borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-              padding: '10px 14px',
-              maxWidth: msg.role === 'user' ? '80%' : '85%',
-              fontSize: '14px',
-              color: '#ffffff',
-              lineHeight: '1.5',
-            }}
-          >
-            {msg.role === 'ai' ? (
-              <div>
+        {messages.map((msg, i) => {
+          if (msg.role === 'user') {
+            // User message — teal-tinted, right-aligned
+            return (
+              <div
+                key={i}
+                style={{
+                  alignSelf: 'flex-end',
+                  maxWidth: '85%',
+                  background: 'rgba(34,211,238,0.12)',
+                  border: '1px solid rgba(34,211,238,0.2)',
+                  borderRadius: '16px 16px 4px 16px',
+                  padding: '12px 15px',
+                  fontSize: '14px',
+                }}
+              >
+                <span style={{ lineHeight: '1.5', wordBreak: 'break-word', color: '#fff' }}>{msg.content}</span>
+              </div>
+            );
+          }
+          // AI message — accent left border
+          return (
+            <div
+              key={i}
+              style={{
+                maxWidth: '92%',
+                background: 'rgba(255,255,255,0.04)',
+                borderLeft: '3px solid #22d3ee',
+                borderRadius: '4px 16px 16px 16px',
+                padding: '14px 16px',
+              }}
+            >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -1126,12 +1007,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 {loading && i === messages.length - 1 && (
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
-              </div>
-            ) : (
-              <span style={{ lineHeight: '1.5', wordBreak: 'break-word' }}>{msg.content}</span>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
 
         {/* Thinking indicator */}
         {loading && (
@@ -1170,17 +1048,55 @@ Give me a market pulse check — how are the major indexes performing today, wha
           <b style={{ color: ACCENT }}>{localRemaining}</b> messages remaining today
         </div>
 
-        {/* Input bar — rounded glass pill */}
+        {/* Input bar — with Explore button */}
         <div style={{ padding: '0 16px' }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            background: GLASS_BG,
-            border: `1px solid ${BORDER_ACCENT}`,
+            background: 'rgba(20,28,48,0.85)',
+            backdropFilter: 'blur(16px)',
+            border: '1.5px solid rgba(34,211,238,0.45)',
             borderRadius: '999px',
-            padding: '14px 18px',
+            padding: '8px 8px 8px 8px',
+            boxShadow: '0 0 24px rgba(34,211,238,0.15), 0 4px 16px rgba(0,0,0,0.3)',
           }}>
+            {/* Explore button */}
+            <button
+              onClick={() => setShowExplore(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(255,255,255,0.08)',
+                borderRadius: '999px',
+                padding: '8px 14px',
+                fontSize: '13px',
+                fontWeight: 700,
+                color: '#fff',
+                flexShrink: 0,
+                position: 'relative',
+                whiteSpace: 'nowrap',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: '15px', lineHeight: 1 }}>+</span>
+              {' '}Explore
+              {noticedItems.length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-2px',
+                  right: '-2px',
+                  width: '9px',
+                  height: '9px',
+                  background: WARNING,
+                  border: '2px solid #0a0f1e',
+                  borderRadius: '50%',
+                }} />
+              )}
+            </button>
             <input
               ref={inputRef}
               type="text"
@@ -1274,6 +1190,213 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </button>
         </div>
       </div>
+
+      {/* ─── Explore Bottom Sheet ─── */}
+      {showExplore && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            zIndex: 10,
+          }}
+          onClick={() => setShowExplore(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              background: '#10162a',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '20px 20px 0 0',
+              padding: '10px 16px 24px',
+              maxHeight: '70vh',
+              overflowY: 'auto',
+            }}
+          >
+            {/* Handle */}
+            <div style={{
+              width: '36px',
+              height: '4px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '999px',
+              margin: '0 auto 16px',
+            }} />
+
+            {/* ── Suggested for you ── */}
+            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+              Suggested for you
+            </div>
+
+            {/* AI Noticed items in sheet */}
+            {noticedItems.length > 0 ? noticedItems.map((item) => {
+              const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
+              return (
+                <div key={item.id} style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => {
+                      setShowExplore(false);
+                      setInput(item.followUp || `Tell me about ${item.title}`);
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      background: GLASS_BG_LIGHTER,
+                      borderLeft: `3px solid ${borderColor}`,
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      marginBottom: '8px',
+                      fontSize: '13.5px',
+                      color: TEXT_BODY,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
+                    <span style={{ flex: 1 }}>{item.body}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSnoozeTarget(snoozeTarget === item.id ? null : item.id);
+                      }}
+                      style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
+                    >
+                      ×
+                    </span>
+                  </div>
+                  {/* Snooze popover in sheet */}
+                  {snoozeTarget === item.id && (
+                    <>
+                      <div
+                        style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                        onClick={() => setSnoozeTarget(null)}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '36px',
+                        zIndex: 9999,
+                        background: '#1a2235',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: '10px',
+                        padding: '6px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        minWidth: '170px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}>
+                        {[
+                          { label: 'Remind in 3 days', type: '3d' },
+                          { label: 'Remind in 1 week', type: '1w' },
+                          { label: "Don't remind again", type: 'permanent' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.type}
+                            onClick={(e) => { e.stopPropagation(); handleDismiss(item.id, opt.type); }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#cbd5e1',
+                              fontSize: '12px',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              fontFamily: 'inherit',
+                            }}
+                            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            }) : (
+              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', padding: '8px 4px 16px' }}>
+                No suggestions right now — check back later.
+              </div>
+            )}
+
+            {/* Suggested chips */}
+            {suggestionChips.map((chip) => (
+              <div
+                key={chip}
+                onClick={() => {
+                  setShowExplore(false);
+                  sendToChat(chip);
+                }}
+                style={{
+                  background: GLASS_BG_LIGHTER,
+                  border: `1px solid ${BORDER_MUTED}`,
+                  borderRadius: '999px',
+                  padding: '11px 16px',
+                  marginBottom: '8px',
+                  fontSize: '13.5px',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer',
+                }}
+              >
+                {chip}
+              </div>
+            ))}
+
+            {/* Divider */}
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '12px 0 10px' }} />
+
+            {/* ── Quick checks ── */}
+            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+              Quick checks
+            </div>
+
+            {[
+              { icon: '📡', label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
+              { icon: '💡', label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
+              { icon: '📋', label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
+              { icon: '⚡', label: 'Alerts', live: false, onClick: () => { setShowExplore(false); setToast('💬 Vantage AI is responding...'); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
+            ].map((action) => (
+              <div
+                key={action.label}
+                onClick={action.onClick}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '13px 6px',
+                  borderRadius: '12px',
+                  fontSize: '14.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>{action.icon}</span>
+                  {action.label}
+                </span>
+                {action.live && (
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    color: ACCENT,
+                    background: 'rgba(34,211,238,0.14)',
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                  }}>
+                    LIVE
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ─── Keyframes ─── */}
       <style jsx>{`
