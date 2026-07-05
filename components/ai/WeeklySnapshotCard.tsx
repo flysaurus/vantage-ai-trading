@@ -106,7 +106,7 @@ function extractRiskFromSection(section: string): string | null {
 function parseSections(content: string): ParsedSections {
   const healthMatch = content.match(/(?:^#*\s*)?(?:OVERALL HEALTH|PORTFOLIO HEALTH).*\n([\s\S]*?)(?=^#*\s*(?:RISKS?|OVERALL RISK|RISK LEVEL)|\Z)/im);
   const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL).*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
-  const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?.*\n([\s\S]*?)(?=^#*\s*SUMMARY|\Z)/im);
+  const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?.*\n([\s\S]*?)(?=^#*\s*(?:SUMMARY|RISK|RISKS)(?:\s|$)|\Z)/im);
   const summaryMatch = content.match(/(?:^#*\s*)?SUMMARY.*\n?([\s\S]*?)$/im);
 
   return {
@@ -233,7 +233,8 @@ export default function WeeklySnapshotCard() {
 
   const realOppCount = (() => {
     if (opportunitiesCount != null && opportunitiesCount > 0) return opportunitiesCount;
-    const bullets = sections.opportunities.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
+    // Match: - bullets, * bullets, • bullets, 1. numbered, **1.** bold-numbered
+    const bullets = sections.opportunities.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
     return bullets ? bullets.length : 0;
   })();
 

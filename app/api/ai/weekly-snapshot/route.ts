@@ -124,9 +124,9 @@ export async function GET(req: NextRequest) {
         }
 
         if (opportunitiesCount == null || opportunitiesCount === 0) {
-          const reOppSection = existing.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?)|$)/i);
+          const reOppSection = existing.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISK|RISKS)(?:\s|$)|$)/i);
           const reOppContent = reOppSection?.[1] || '';
-          const reOppBullets = reOppContent.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
+          const reOppBullets = reOppContent.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
           if (reOppBullets) opportunitiesCount = reOppBullets.length;
         }
 
@@ -312,10 +312,11 @@ export async function GET(req: NextRequest) {
       if (rlMatch) riskLevel = rlMatch[1].toUpperCase();
     }
 
-    // Count opportunities only from the OPPORTUNITIES section (flexible bullet chars)
-    const oppSection = content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?)|$)/i);
+    // Count opportunities only from the OPPORTUNITIES section
+    // Matches: - bullets, * bullets, • bullets, 1. numbered, **1.** bold-numbered
+    const oppSection = content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISK|RISKS)(?:\s|$)|$)/i);
     const oppContent = oppSection?.[1] || '';
-    const oppBullets = oppContent.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
+    const oppBullets = oppContent.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
     const opportunitiesCount = oppBullets ? oppBullets.length : 0;
 
     // Save
