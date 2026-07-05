@@ -853,6 +853,8 @@ function PendingBasketCard({ basket }: { basket: Basket }) {
 
 export function PortfolioTab() {
   const [filter, setFilter] = useState('all');
+  const [dailyExpanded, setDailyExpanded] = useState(false);
+  const [weeklyExpanded, setWeeklyExpanded] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
@@ -989,11 +991,13 @@ export function PortfolioTab() {
         <div style={{ fontSize: '13px', fontWeight: 800, color: '#22d3ee', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
           ✨ AI CURATED
         </div>
-        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)', position: 'relative' }}>
-          <div style={{ display: 'flex', gap: '10px', position: 'relative' }}>
-            <DailyBriefCard />
-            <WeeklySnapshotCard />
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => setDailyExpanded(!dailyExpanded)} />
+            <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => setWeeklyExpanded(!weeklyExpanded)} />
           </div>
+          {dailyExpanded && <DailyBriefCard mode="content" onClick={() => setDailyExpanded(false)} />}
+          {weeklyExpanded && <WeeklySnapshotCard mode="content" onClick={() => setWeeklyExpanded(false)} />}
         </div>
       </div>
 

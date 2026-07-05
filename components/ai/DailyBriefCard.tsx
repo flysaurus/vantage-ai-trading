@@ -3,29 +3,21 @@
 import { apiGet } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 
-// ── Reference design tokens (from vantage-pill-design.html) ──
+// ── Design tokens ──
 const PILL_BG = 'rgba(255,255,255,0.05)';
 const PILL_BORDER = 'rgba(255,255,255,0.08)';
 const PILL_HOVER_BG = 'rgba(255,255,255,0.08)';
-const CARD_BG = 'rgba(255,255,255,0.05)';
-const CARD_BORDER_ACCENT = 'rgba(34,211,238,0.25)'; // cyan accent
-const TEXT_SUBTLE = 'rgba(255,255,255,0.5)';
-const TEXT_MUTED = 'rgba(255,255,255,0.3)';
-const CHEVRON_COLOR = 'rgba(255,255,255,0.3)';
+const ACTIVE_PILL_BG = '#ffffff';
+const ACTIVE_PILL_COLOR = '#0f172a'; // dark navy
+const CARD_BG = 'rgba(255,255,255,0.04)';
+const CARD_BORDER = 'rgba(34,211,238,0.15)';
 const BACKDROP_BLUR = 'blur(20px)';
 
 const TAG_COLORS: Record<string, string> = {
-  MARKET: '#22d3ee',      // accent/cyan
-  PORTFOLIO: '#10b981',   // gain/green
-  WATCH: '#f59e0b',       // warning/amber
-  EARNINGS: '#a78bfa',    // purple
-};
-
-const TAG_BG: Record<string, string> = {
-  MARKET: 'rgba(34,211,238,0.15)',
-  PORTFOLIO: 'rgba(16,185,129,0.15)',
-  WATCH: 'rgba(245,158,11,0.15)',
-  EARNINGS: 'rgba(167,139,250,0.15)',
+  MARKET: '#22d3ee',
+  PORTFOLIO: '#10b981',
+  WATCH: '#f59e0b',
+  EARNINGS: '#a78bfa',
 };
 
 interface MarketSnapshot {
@@ -63,29 +55,28 @@ function parseBrief(content: string): ParsedLine[] {
     .filter((l) => l.text);
 }
 
-function extractSummary(content: string): string {
-  const lines = content.split('\n').filter((l) => l.trim());
-  for (const line of lines) {
-    if (!/^(MARKET|PORTFOLIO|WATCH|EARNINGS):/i.test(line)) {
-      const clean = line.replace(/^[-•*]\s*/, '').trim();
-      const firstSentence = clean.split(/[.!?]\s/)[0].trim();
-      if (firstSentence.length > 10) return firstSentence.length > 60 ? firstSentence.slice(0, 57) + '…' : firstSentence;
-    }
-  }
-  for (const line of lines) {
-    const match = line.match(/^(MARKET|PORTFOLIO|WATCH|EARNINGS):\s*(.+)/i);
-    if (match) {
-      const t = match[2].trim();
-      return t.length > 60 ? t.slice(0, 57) + '…' : t;
-    }
-  }
-  return 'Today\'s brief';
+function formatTime(iso: string | null | undefined): string {
+  if (!iso) return 'just now';
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.floor(diffH / 24)}d ago`;
 }
 
-export default function DailyBriefCard() {
+interface DailyBriefCardProps {
+  mode?: 'pill' | 'content';
+  active?: boolean;
+  onClick?: () => void;
+}
+
+export default function DailyBriefCard({ mode = 'pill', active = false, onClick }: DailyBriefCardProps) {
   const [data, setData] = useState<BriefData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
@@ -96,42 +87,40 @@ export default function DailyBriefCard() {
       .finally(() => setLoading(false));
   }, []);
 
-  const Chevron = ({ open }: { open: boolean }) => (
-    <svg
-      className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-      style={{ width: '14px', height: '14px', color: CHEVRON_COLOR }}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-
   // ─── Loading skeleton ───
   if (loading) {
-    return (
-      <div style={{ padding: '0 16px' }}>
+    if (mode === 'content') {
+      return (
         <div style={{
-          background: PILL_BG,
-          border: `1px solid ${PILL_BORDER}`,
-          borderRadius: '999px',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
+          marginTop: '10px',
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: '18px',
+          padding: '18px',
           backdropFilter: BACKDROP_BLUR,
         }}>
-          <span style={{ fontSize: '18px' }}>🗞️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>Daily Brief</div>
-            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>Loading…</div>
+          <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Daily Brief</div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
+            Loading…
           </div>
         </div>
-      </div>
+      );
+    }
+    return (
+      <button style={{
+        flex: 1,
+        background: PILL_BG,
+        border: `1px solid ${PILL_BORDER}`,
+        borderRadius: '999px',
+        padding: '14px 14px',
+        color: 'rgba(255,255,255,0.4)',
+        fontFamily: 'inherit',
+        fontSize: '14px',
+        fontWeight: 700,
+        cursor: 'default',
+      }}>
+        Daily Brief
+      </button>
     );
   }
 
@@ -139,138 +128,122 @@ export default function DailyBriefCard() {
   if (!brief) return null;
 
   const parsed = parseBrief(brief);
-  const summary = extractSummary(brief);
 
-  // ─── Collapsed pill ───
-  if (!expanded) {
+  // ─── Pill mode ───
+  if (mode === 'pill') {
     return (
       <button
-        onClick={() => setExpanded(true)}
+        onClick={onClick}
         style={{
           flex: 1,
-          background: PILL_BG,
-          border: `1px solid ${PILL_BORDER}`,
+          background: active ? ACTIVE_PILL_BG : PILL_BG,
+          border: active ? '1px solid rgba(255,255,255,0.2)' : `1px solid ${PILL_BORDER}`,
           borderRadius: '999px',
-          padding: '16px 14px',
+          padding: '14px 14px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           backdropFilter: BACKDROP_BLUR,
           cursor: 'pointer',
-          transition: 'background 0.2s',
-          color: '#fff',
+          transition: 'all 0.2s',
+          color: active ? ACTIVE_PILL_COLOR : '#fff',
           fontFamily: 'inherit',
-          fontSize: '17px',
+          fontSize: '14px',
           fontWeight: 700,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
+        onMouseEnter={(e) => {
+          if (!active) e.currentTarget.style.background = PILL_HOVER_BG;
+        }}
+        onMouseLeave={(e) => {
+          if (!active) e.currentTarget.style.background = PILL_BG;
+        }}
       >
         Daily Brief
       </button>
     );
   }
 
-  // ─── Expanded card — absolute overlay, anchored to boundary box ========
+  // ─── Content mode — expanded card, no close button, click card to collapse ───
   return (
-    <div style={{ position: 'absolute', left: '14px', right: '14px', top: 'calc(100% + 10px)', zIndex: 10 }}>
-      <div style={{
+    <div
+      onClick={onClick}
+      style={{
+        marginTop: '10px',
         background: CARD_BG,
-        border: `1px solid ${CARD_BORDER_ACCENT}`,
-        borderRadius: '20px',
-        padding: '20px',
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: '18px',
+        padding: '18px',
         backdropFilter: BACKDROP_BLUR,
+        cursor: 'pointer',
+      }}
+    >
+      {/* Header: title left, meta right — clean single line */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        marginBottom: '14px',
       }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '12px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '18px' }}>🗞️</span>
-            <span style={{ fontSize: '15px', fontWeight: 700 }}>Daily Brief</span>
-            <span style={{
-              fontSize: '11px',
-              background: TAG_BG['MARKET'],
-              color: TAG_COLORS['MARKET'],
-              padding: '2px 8px',
-              borderRadius: '999px',
-            }}>
-              Today
-            </span>
-            <span style={{
-              fontSize: '10px',
-              color: 'rgba(34,211,238,0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '2px',
-              letterSpacing: '0.04em',
-            }}>
-              <span style={{ fontSize: '10px' }}>✨</span> AI
-            </span>
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
-            style={{
-              color: 'rgba(255,255,255,0.4)',
-              fontSize: '12px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            ▲ Close
-          </button>
-        </div>
-
-        {/* Body — tagged lines */}
-        {parsed.map((line, i) => (
-          <div
-            key={i}
-            style={{
-              marginBottom: i < parsed.length - 1 ? '16px' : 0,
-              lineHeight: '1.6',
-              fontSize: '15px',
-            }}
-          >
-            {line.label ? (
-              <>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    letterSpacing: '0.03em',
-                    padding: '2px 0',
-                    marginRight: '6px',
-                    color: TAG_COLORS[line.label] || 'rgba(255,255,255,0.75)',
-                  }}
-                >
-                  {line.label}
-                </span>
-                <span style={{ color: 'rgba(255,255,255,0.75)' }}>{line.text}</span>
-              </>
-            ) : (
-              <span style={{ color: 'rgba(255,255,255,0.75)' }}>{line.text}</span>
-            )}
-          </div>
-        ))}
-
-        {/* Footer */}
-        <div style={{
+        <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
+          Daily Brief<span style={{ fontWeight: 400, color: 'rgba(255,255,255,0.35)', marginLeft: '6px' }}>· Today</span>
+        </span>
+        <span style={{
           fontSize: '11px',
           color: 'rgba(255,255,255,0.3)',
-          marginTop: '12px',
-          paddingTop: '10px',
-          borderTop: '1px solid rgba(255,255,255,0.07)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '3px',
+          flexShrink: 0,
+          marginLeft: '12px',
         }}>
-          {data?.cached
-            ? 'Cached today · Refreshes tomorrow'
-            : 'Generated just now · Refreshes tomorrow'}
+          ✨ AI · Updated {formatTime(data?.generatedAt)}
+        </span>
+      </div>
+
+      {/* Body — tagged lines */}
+      {parsed.map((line, i) => (
+        <div
+          key={i}
+          style={{
+            marginBottom: i < parsed.length - 1 ? '12px' : 0,
+            lineHeight: '1.55',
+            fontSize: '14px',
+          }}
+        >
+          {line.label ? (
+            <>
+              <span
+                style={{
+                  display: 'inline-block',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '0.03em',
+                  padding: '2px 0',
+                  marginRight: '6px',
+                  color: TAG_COLORS[line.label] || 'rgba(255,255,255,0.75)',
+                }}
+              >
+                {line.label}
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.8)' }}>{line.text}</span>
+            </>
+          ) : (
+            <span style={{ color: 'rgba(255,255,255,0.8)' }}>{line.text}</span>
+          )}
         </div>
+      ))}
+
+      {/* Footer */}
+      <div style={{
+        fontSize: '11px',
+        color: 'rgba(255,255,255,0.25)',
+        marginTop: '12px',
+        paddingTop: '10px',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        {data?.cached
+          ? 'Cached today · Refreshes tomorrow'
+          : 'Generated just now · Refreshes tomorrow'}
       </div>
     </div>
   );

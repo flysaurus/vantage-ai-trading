@@ -5,18 +5,17 @@ import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// ── Reference design tokens (from vantage-pill-design.html) ──
+// ── Design tokens ──
 const PILL_BG = 'rgba(255,255,255,0.05)';
 const PILL_BORDER = 'rgba(255,255,255,0.08)';
 const PILL_HOVER_BG = 'rgba(255,255,255,0.08)';
-const CARD_BG = 'rgba(255,255,255,0.05)';
-const CARD_BORDER_ACCENT = 'rgba(34,211,238,0.25)';
+const ACTIVE_PILL_BG = '#ffffff';
+const ACTIVE_PILL_COLOR = '#0f172a';
+const CARD_BG = 'rgba(255,255,255,0.04)';
+const CARD_BORDER = 'rgba(34,211,238,0.15)';
 const SUB_PILL_BG = 'rgba(255,255,255,0.04)';
 const SUB_PILL_BORDER = 'rgba(255,255,255,0.06)';
-const TEXT_SUBTLE = 'rgba(255,255,255,0.5)';
-const TEXT_MUTED = 'rgba(255,255,255,0.3)';
 const TEXT_BODY = 'rgba(255,255,255,0.75)';
-const CHEVRON_COLOR = 'rgba(255,255,255,0.3)';
 const BACKDROP_BLUR = 'blur(20px)';
 
 const ACCENT = '#22d3ee';
@@ -65,14 +64,12 @@ const MARKDOWN_COMPONENTS = {
     <ol style={{ paddingLeft: '16px', margin: '0' }}>{children}</ol>
   ),
   li: ({ children }: { children: React.ReactNode }) => (
-    <li style={{ fontSize: '14px', lineHeight: '1.7', color: TEXT_BODY, marginBottom: '4px' }}>
-      {children}
-    </li>
+    <li style={{ fontSize: '14px', lineHeight: '1.7', color: TEXT_BODY, marginBottom: '4px' }}>{children}</li>
   ),
   hr: () => <hr style={{ borderColor: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />,
   blockquote: ({ children }: { children: React.ReactNode }) => (
     <blockquote style={{
-      borderLeft: `2px solid rgba(34,211,238,0.5)`,
+      borderLeft: '2px solid rgba(34,211,238,0.5)',
       paddingLeft: '12px',
       margin: '6px 0',
       fontSize: '12px',
@@ -108,7 +105,6 @@ function parseSections(content: string): ParsedSections {
   const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL).*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
   const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?.*\n([\s\S]*?)(?=^#*\s*(?:SUMMARY|RISK|RISKS)(?:\s|$)|\Z)/im);
   const summaryMatch = content.match(/(?:^#*\s*)?SUMMARY.*\n?([\s\S]*?)$/im);
-
   return {
     health: (healthMatch?.[1] || '').trim(),
     risk: (riskMatch?.[1] || '').trim(),
@@ -131,12 +127,16 @@ const SUB_CARD_TITLES: Record<string, string> = {
 
 const SUB_CARD_ORDER = ['health', 'risk', 'opportunities'] as const;
 
-export default function WeeklySnapshotCard() {
+interface WeeklySnapshotCardProps {
+  mode?: 'pill' | 'content';
+  active?: boolean;
+  onClick?: () => void;
+}
+
+export default function WeeklySnapshotCard({ mode = 'pill', active = false, onClick }: WeeklySnapshotCardProps) {
   const [data, setData] = useState<SnapshotData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [parentExpanded, setParentExpanded] = useState(false);
   const [expandedCard, setExpandedCard] = useState<'health' | 'risk' | 'opportunities' | null>(null);
 
   const load = useCallback(async () => {
@@ -163,27 +163,19 @@ export default function WeeklySnapshotCard() {
     setRefreshing(true);
     try {
       await apiDelete('/api/ai/weekly-snapshot');
-    } catch {
-      // continue to reload
-    }
+    } catch { /* continue */ }
     await load();
   };
 
-  const toggleParent = () => {
-    setParentExpanded((prev) => {
-      if (prev) setExpandedCard(null);
-      return !prev;
-    });
-  };
-
-  const toggleCard = (card: 'health' | 'risk' | 'opportunities') => {
+  const toggleCard = (e: React.MouseEvent, card: 'health' | 'risk' | 'opportunities') => {
+    e.stopPropagation();
     setExpandedCard((prev) => (prev === card ? null : card));
   };
 
   const Chevron = ({ open }: { open: boolean }) => (
     <svg
       className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-      style={{ width: '14px', height: '14px', color: CHEVRON_COLOR }}
+      style={{ width: '14px', height: '14px', color: 'rgba(255,255,255,0.3)' }}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -197,111 +189,110 @@ export default function WeeklySnapshotCard() {
 
   // ─── Loading skeleton ───
   if (loading && !data) {
-    return (
-      <div style={{ padding: '0 16px' }}>
+    if (mode === 'content') {
+      return (
         <div style={{
-          background: PILL_BG,
-          border: `1px solid ${PILL_BORDER}`,
-          borderRadius: '999px',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
+          marginTop: '10px',
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: '18px',
+          padding: '18px',
           backdropFilter: BACKDROP_BLUR,
         }}>
-          <span style={{ fontSize: '18px' }}>📊</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>Weekly Snapshot</div>
-            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>Loading…</div>
+          <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Weekly Snapshot</div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
+            Loading…
           </div>
         </div>
-      </div>
+      );
+    }
+    return (
+      <button style={{
+        flex: 1,
+        background: PILL_BG,
+        border: `1px solid ${PILL_BORDER}`,
+        borderRadius: '999px',
+        padding: '14px 14px',
+        color: 'rgba(255,255,255,0.4)',
+        fontFamily: 'inherit',
+        fontSize: '14px',
+        fontWeight: 700,
+        cursor: 'default',
+      }}>
+        Weekly
+      </button>
     );
   }
 
   if (!data?.content) return null;
 
-  const {
-    healthScore,
-    riskLevel: apiRiskLevel,
-    opportunitiesCount,
-    generatedAt,
-  } = data;
-
+  const { healthScore, riskLevel: apiRiskLevel, opportunitiesCount, generatedAt } = data;
   const sections = parseSections(data.content);
   const riskLevel = apiRiskLevel || extractRiskFromSection(sections.risk);
 
   const realOppCount = (() => {
     if (opportunitiesCount != null && opportunitiesCount > 0) return opportunitiesCount;
-    // Match: - bullets, * bullets, • bullets, 1. numbered, **1.** bold-numbered
     const bullets = sections.opportunities.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
     return bullets ? bullets.length : 0;
   })();
 
-  // ─── Health score badge color ───
   const healthSummaryColor = healthScore != null
     ? healthScore >= 7 ? GAIN : healthScore >= 5 ? WARNING : LOSS
-    : TEXT_MUTED;
+    : 'rgba(255,255,255,0.3)';
 
-  const healthBadgeBg = healthScore != null
-    ? healthScore >= 7 ? BADGE_LOW_BG : healthScore >= 5 ? BADGE_MED_BG : BADGE_HIGH_BG
-    : 'transparent';
-
-  const healthBadgeColor = healthScore != null
-    ? healthScore >= 7 ? GAIN : healthScore >= 5 ? WARNING : LOSS
-    : TEXT_MUTED;
-
-  // ─── Risk badge ───
-  const riskSummaryColor = riskLevel === 'LOW' ? GAIN : riskLevel === 'HIGH' ? LOSS : riskLevel === 'MEDIUM' ? WARNING : TEXT_MUTED;
+  const riskSummaryColor = riskLevel === 'LOW' ? GAIN : riskLevel === 'HIGH' ? LOSS : riskLevel === 'MEDIUM' ? WARNING : 'rgba(255,255,255,0.3)';
   const riskBadgeBg = riskLevel === 'LOW' ? BADGE_LOW_BG : riskLevel === 'HIGH' ? BADGE_HIGH_BG : riskLevel === 'MEDIUM' ? BADGE_MED_BG : 'transparent';
 
-  // ─── Sub-card summary value ───
   const subCardValue = (card: 'health' | 'risk' | 'opportunities'): { text: string; color: string; isBadge?: boolean; badgeBg?: string } | null => {
     switch (card) {
       case 'health':
         if (healthScore != null) return { text: `${healthScore}/10`, color: healthSummaryColor };
-        return { text: 'Calculating…', color: TEXT_MUTED };
+        return { text: 'Calculating…', color: 'rgba(255,255,255,0.3)' };
       case 'risk':
         if (riskLevel) return { text: riskLevel, color: riskSummaryColor, isBadge: true, badgeBg: riskBadgeBg };
-        return { text: 'Calculating…', color: TEXT_MUTED };
+        return { text: 'Calculating…', color: 'rgba(255,255,255,0.3)' };
       case 'opportunities':
         if (realOppCount > 0) return { text: `${realOppCount}`, color: GAIN };
-        return { text: '0', color: TEXT_MUTED };
+        return { text: '0', color: 'rgba(255,255,255,0.3)' };
     }
   };
 
-  // ─── Collapsed pill ───
-  if (!parentExpanded) {
+  // ─── Pill mode ───
+  if (mode === 'pill') {
     return (
       <button
-        onClick={toggleParent}
+        onClick={onClick}
         style={{
           flex: 1,
-          background: PILL_BG,
-          border: `1px solid ${PILL_BORDER}`,
+          background: active ? ACTIVE_PILL_BG : PILL_BG,
+          border: active ? '1px solid rgba(255,255,255,0.2)' : `1px solid ${PILL_BORDER}`,
           borderRadius: '999px',
-          padding: '16px 14px',
+          padding: '14px 14px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           gap: '8px',
           backdropFilter: BACKDROP_BLUR,
           cursor: 'pointer',
-          transition: 'background 0.2s',
-          color: '#fff',
+          transition: 'all 0.2s',
+          color: active ? ACTIVE_PILL_COLOR : '#fff',
           fontFamily: 'inherit',
-          fontSize: '17px',
+          fontSize: '14px',
           fontWeight: 700,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
+        onMouseEnter={(e) => {
+          if (!active) e.currentTarget.style.background = PILL_HOVER_BG;
+        }}
+        onMouseLeave={(e) => {
+          if (!active) e.currentTarget.style.background = PILL_BG;
+        }}
       >
         Weekly
         {healthScore != null && (
           <span style={{
-            fontSize: '17px',
+            fontSize: '14px',
             fontWeight: 800,
-            color: '#10b981',
+            color: active ? GAIN : GAIN,
             lineHeight: 1,
           }}>
             {healthScore}/10
@@ -311,141 +302,146 @@ export default function WeeklySnapshotCard() {
     );
   }
 
-  // ─── Expanded card — absolute overlay, anchored to boundary box ========
+  // ─── Content mode — expanded card, no close button, click card to collapse ───
   return (
-    <div style={{ position: 'absolute', left: '14px', right: '14px', top: 'calc(100% + 10px)', zIndex: 10 }}>
-      <div style={{
+    <div
+      onClick={onClick}
+      style={{
+        marginTop: '10px',
         background: CARD_BG,
-        border: `1px solid ${CARD_BORDER_ACCENT}`,
-        borderRadius: '20px',
-        padding: '20px',
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: '18px',
+        padding: '18px',
         backdropFilter: BACKDROP_BLUR,
+        cursor: 'pointer',
+      }}
+    >
+      {/* Header: title left, meta right — clean single line */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        marginBottom: '14px',
       }}>
-        {/* Header */}
+        <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
+          Weekly Snapshot
+        </span>
         <div style={{
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '12px',
+          gap: '8px',
+          flexShrink: 0,
+          marginLeft: '12px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '18px' }}>📊</span>
-            <span style={{ fontSize: '15px', fontWeight: 700 }}>Weekly Snapshot</span>
-            <span style={{
-              fontSize: '10px',
-              color: 'rgba(34,211,238,0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '2px',
-              letterSpacing: '0.04em',
-            }}>
-              <span style={{ fontSize: '10px' }}>✨</span> AI
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-              ↻ {generatedAt ? formatTime(generatedAt) : 'just now'}
-            </span>
+          <span style={{
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px',
+          }}>
+            ✨ AI · Updated {formatTime(generatedAt)}
+          </span>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.3)',
+              cursor: 'pointer',
+              fontSize: '13px',
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              opacity: refreshing ? 0.5 : 1,
+            }}
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+
+      {/* Sub-pills */}
+      {SUB_CARD_ORDER.map((key, idx) => {
+        const value = subCardValue(key as 'health' | 'risk' | 'opportunities');
+        const isExpanded = expandedCard === key;
+        const sectionContent = sections[key as keyof ParsedSections];
+
+        return (
+          <div key={key} style={{ marginBottom: idx < SUB_CARD_ORDER.length - 1 ? '8px' : 0 }}>
             <button
-              onClick={(e) => { e.stopPropagation(); toggleParent(); }}
+              onClick={(e) => toggleCard(e, key as 'health' | 'risk' | 'opportunities')}
               style={{
-                color: 'rgba(255,255,255,0.4)',
-                fontSize: '13px',
-                background: 'none',
-                border: 'none',
+                width: '100%',
+                textAlign: 'left',
+                background: SUB_PILL_BG,
+                border: `1px solid ${SUB_PILL_BORDER}`,
+                borderRadius: '16px',
+                padding: '14px 16px',
                 cursor: 'pointer',
+                color: '#fff',
                 fontFamily: 'inherit',
               }}
             >
-              ▲ Close
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                  <span style={{ fontSize: '16px' }}>{SUB_CARD_ICONS[key]}</span>
+                  <span style={{ fontSize: '14px', fontWeight: 600 }}>{SUB_CARD_TITLES[key]}</span>
+                </div>
+                {value && (
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    marginLeft: 'auto',
+                    marginRight: '10px',
+                    ...(value.isBadge ? {
+                      background: value.badgeBg,
+                      color: value.color,
+                      padding: '3px 9px',
+                      borderRadius: '999px',
+                    } : {
+                      color: value.color,
+                    }),
+                  }}>
+                    {value.text}
+                  </span>
+                )}
+                <Chevron open={isExpanded} />
+              </div>
             </button>
+
+            {isExpanded && sectionContent && (
+              <div style={{
+                fontSize: '14px',
+                lineHeight: '1.7',
+                color: TEXT_BODY,
+                marginTop: '12px',
+                paddingTop: '12px',
+                paddingLeft: '26px',
+                paddingRight: '10px',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={MARKDOWN_COMPONENTS as any}
+                >
+                  {sectionContent}
+                </ReactMarkdown>
+              </div>
+            )}
           </div>
-        </div>
+        );
+      })}
 
-        {/* Sub-pills — always 16px radius per reference */}
-        {SUB_CARD_ORDER.map((key, idx) => {
-          const value = subCardValue(key as 'health' | 'risk' | 'opportunities');
-          const isExpanded = expandedCard === key;
-          const sectionContent = sections[key as keyof ParsedSections];
-
-          return (
-            <div key={key} style={{ marginBottom: idx < SUB_CARD_ORDER.length - 1 ? '8px' : 0 }}>
-              {/* Sub-pill — always rounded-16px, no shape toggle */}
-              <button
-                onClick={() => toggleCard(key as 'health' | 'risk' | 'opportunities')}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  background: SUB_PILL_BG,
-                  border: `1px solid ${SUB_PILL_BORDER}`,
-                  borderRadius: '16px',
-                  padding: '14px 16px',
-                  cursor: 'pointer',
-                  color: '#fff',
-                  fontFamily: 'inherit',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                    <span style={{ fontSize: '16px' }}>{SUB_CARD_ICONS[key]}</span>
-                    <span style={{ fontSize: '14px', fontWeight: 600 }}>{SUB_CARD_TITLES[key]}</span>
-                  </div>
-                  {value && (
-                    <span style={{
-                      fontSize: '13px',
-                      fontWeight: 700,
-                      marginLeft: 'auto',
-                      marginRight: '10px',
-                      ...(value.isBadge ? {
-                        background: value.badgeBg,
-                        color: value.color,
-                        padding: '3px 9px',
-                        borderRadius: '999px',
-                      } : {
-                        color: value.color,
-                      }),
-                    }}>
-                      {value.text}
-                    </span>
-                  )}
-                  <Chevron open={isExpanded} />
-                </div>
-              </button>
-
-              {/* Expanded content — matches reference sub-pill-body */}
-              {isExpanded && sectionContent && (
-                <div style={{
-                  fontSize: '14px',
-                  lineHeight: '1.7',
-                  color: TEXT_BODY,
-                  marginTop: '12px',
-                  paddingTop: '12px',
-                  paddingLeft: '26px',
-                  paddingRight: '10px',
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
-                }}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={MARKDOWN_COMPONENTS as any}
-                  >
-                    {sectionContent}
-                  </ReactMarkdown>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Footer */}
-        <div style={{
-          fontSize: '11px',
-          color: 'rgba(255,255,255,0.3)',
-          marginTop: '12px',
-          paddingTop: '10px',
-          borderTop: '1px solid rgba(255,255,255,0.07)',
-        }}>
-          {data.cached ? 'Refreshes next week' : 'Fresh analysis'} · Tap any card to expand
-        </div>
+      {/* Footer */}
+      <div style={{
+        fontSize: '11px',
+        color: 'rgba(255,255,255,0.25)',
+        marginTop: '12px',
+        paddingTop: '10px',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        {data.cached ? 'Refreshes next week' : 'Fresh analysis'} · Tap any card to expand
       </div>
     </div>
   );
