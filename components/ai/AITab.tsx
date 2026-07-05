@@ -829,7 +829,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           padding: '16px 16px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '24px',
+          gap: '32px',
           background: '#0d1526',
           borderTop: '2px solid rgba(34,211,238,0.4)',
           borderRadius: '16px',

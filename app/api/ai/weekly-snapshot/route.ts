@@ -275,7 +275,8 @@ export async function GET(req: NextRequest) {
     const prompt = [
       'Run a complete weekly portfolio health snapshot on this portfolio.',
       'Format as markdown with ## sections: OVERALL HEALTH, RISKS, OPPORTUNITIES, SUMMARY.',
-      'Use short bullet points (not dense paragraphs) for analysis within each section.',
+      'CRITICAL: Within each section, use ONLY bullet points (starting with -). Never output paragraphs longer than 2 sentences.',
+      'Each bullet must be a single sentence on its own line starting with -. Bold key phrases with **.',
       'In the RISK section, put the risk level on its own line like: RL: MEDIUM',
       'Include "OVERALL HEALTH: X/10" on one line. Put the risk level on its own line: RL: MEDIUM (or LOW/HIGH).',
       `Portfolio: ${symbols.join(', ')}`,
