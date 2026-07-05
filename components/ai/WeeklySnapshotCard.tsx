@@ -276,32 +276,32 @@ export default function WeeklySnapshotCard() {
       <button
         onClick={toggleParent}
         style={{
+          flex: 1,
           background: PILL_BG,
           border: `1px solid ${PILL_BORDER}`,
-          borderRadius: '16px',
-          padding: '8px 14px',
-          display: 'inline-flex',
+          borderRadius: '999px',
+          padding: '16px 14px',
+          display: 'flex',
           alignItems: 'center',
-          gap: '6px',
+          justifyContent: 'center',
+          gap: '8px',
           backdropFilter: BACKDROP_BLUR,
           cursor: 'pointer',
           transition: 'background 0.2s',
           color: '#fff',
           fontFamily: 'inherit',
-          flexShrink: 0,
+          fontSize: '17px',
+          fontWeight: 700,
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
       >
-        <span style={{ fontSize: '13px', fontWeight: 600 }}>Weekly Snapshot</span>
+        Weekly
         {healthScore != null && (
           <span style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            padding: '2px 6px',
-            borderRadius: '999px',
-            background: healthBadgeBg,
-            color: healthBadgeColor,
+            fontSize: '17px',
+            fontWeight: 800,
+            color: '#10b981',
             lineHeight: 1,
           }}>
             {healthScore}/10

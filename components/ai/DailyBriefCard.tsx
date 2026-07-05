@@ -147,24 +147,26 @@ export default function DailyBriefCard() {
       <button
         onClick={() => setExpanded(true)}
         style={{
+          flex: 1,
           background: PILL_BG,
           border: `1px solid ${PILL_BORDER}`,
-          borderRadius: '16px',
-          padding: '8px 14px',
-          display: 'inline-flex',
+          borderRadius: '999px',
+          padding: '16px 14px',
+          display: 'flex',
           alignItems: 'center',
-          gap: '6px',
+          justifyContent: 'center',
           backdropFilter: BACKDROP_BLUR,
           cursor: 'pointer',
           transition: 'background 0.2s',
           color: '#fff',
           fontFamily: 'inherit',
-          flexShrink: 0,
+          fontSize: '17px',
+          fontWeight: 700,
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
       >
-        <span style={{ fontSize: '13px', fontWeight: 600 }}>Daily Brief</span>
+        Daily Brief
       </button>
     );
   }

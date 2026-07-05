@@ -985,13 +985,15 @@ export function PortfolioTab() {
       <AccountHero account={accountData} isConnected={isConnected} />
 
       {/* ── AI Curated Briefs ── */}
-      <div style={{ padding: '4px 16px 2px 16px' }}>
-        <div style={{ fontSize: '10px', letterSpacing: '0.08em', color: 'rgba(34,211,238,0.6)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
-          <span style={{ fontSize: '11px' }}>✨</span> AI curated
+      <div style={{ padding: '0 16px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 800, color: '#22d3ee', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+          ✨ AI CURATED
         </div>
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
-          <DailyBriefCard />
-          <WeeklySnapshotCard />
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <DailyBriefCard />
+            <WeeklySnapshotCard />
+          </div>
         </div>
       </div>
 

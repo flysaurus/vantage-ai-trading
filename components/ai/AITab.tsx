@@ -739,7 +739,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'rgba(8,13,26,0.85)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', margin: '8px 12px 0 12px', overflow: 'hidden', boxShadow: '0 -4px 24px rgba(0,0,0,0.25)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: '28px', margin: '8px 12px 0 12px', overflow: 'hidden' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -810,23 +810,22 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         </div>
       )}
 
-      {/* ======== TOP BAR — hamburger menu (left-aligned) ======== */}
+      {/* ======== TOP BAR — hamburger + title (left-aligned) ======== */}
       <div style={{
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-start',
-        padding: '8px 12px 6px 12px',
+        gap: '12px',
+        padding: '16px 16px 12px',
         zIndex: 20,
         position: 'relative',
       }}>
-        {/* Hamburger menu */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <button
             onClick={() => setShowMenu(!showMenu)}
             style={{
-              width: '34px',
-              height: '34px',
+              width: '36px',
+              height: '36px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -834,7 +833,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               border: showMenu ? '1px solid rgba(34,211,238,0.3)' : '1px solid rgba(255,255,255,0.1)',
               borderRadius: '50%',
               color: showMenu ? ACCENT : 'rgba(255,255,255,0.6)',
-              fontSize: '16px',
+              fontSize: '15px',
               cursor: 'pointer',
               fontFamily: 'inherit',
               lineHeight: 1,
@@ -934,6 +933,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             </>
           )}
         </div>
+        <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>Vantage AI Advisor</div>
       </div>
 
       {/* ======== CHAT WINDOW — structural container ======== */}
@@ -1119,31 +1119,29 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {/* ======== MESSAGE THREAD END ======== */}
       </div>
 
-      {/* ======== 3. INPUT BAR — anchored at bottom of chat window ======== */}
-      <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
+      {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
+      <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
         {/* Usage line */}
         <div style={{
-          fontSize: '11.5px',
-          color: TEXT_SUBTLE,
+          fontSize: '11px',
+          color: 'rgba(255,255,255,0.35)',
           textAlign: 'center',
           marginBottom: '10px',
-          padding: '0 16px',
         }}>
           <b style={{ color: ACCENT }}>{localRemaining}</b> messages remaining today
         </div>
 
         {/* Input bar — with Explore button */}
-        <div style={{ padding: '0 16px' }}>
+        <div>
           <div className="vantage-input-bar" style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            background: 'rgba(20,28,48,0.85)',
-            backdropFilter: 'blur(16px)',
+            background: 'rgba(20,28,48,0.9)',
             border: '1.5px solid rgba(34,211,238,0.45)',
             borderRadius: '999px',
             padding: '8px 8px 8px 8px',
-            boxShadow: '0 0 24px rgba(34,211,238,0.15), 0 4px 16px rgba(0,0,0,0.3)',
+            boxShadow: '0 0 20px rgba(34,211,238,0.12)',
           }}>
             {/* Explore button — text-first, falls back to icon-only on narrow screens */}
             <button
