@@ -985,6 +985,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 padding: '14px 16px',
               }}
             >
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#22d3ee', marginBottom: '6px', letterSpacing: '0.03em' }}>
+                VANTAGE AI
+              </div>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -1108,7 +1111,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   if (localRemaining > 0) sendMessage(input);
                 }
               }}
-              placeholder="Ask anything about markets, your portfolio..."
+              placeholder="Ask about your portfolio..."
               maxLength={500}
               disabled={localRemaining <= 0}
               style={{
@@ -1125,15 +1128,21 @@ Give me a market pulse check — how are the major indexes performing today, wha
             <div
               onClick={() => { if (localRemaining > 0 && input.trim()) sendMessage(input); }}
               style={{
-                cursor: input.trim() && localRemaining > 0 ? 'pointer' : 'default',
-                color: input.trim() && localRemaining > 0 ? ACCENT : 'rgba(255,255,255,0.3)',
-                fontSize: '18px',
-                flexShrink: 0,
+                width: '34px',
+                height: '34px',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
+                background: input.trim() && localRemaining > 0 ? ACCENT : 'rgba(255,255,255,0.12)',
+                borderRadius: '50%',
+                fontSize: '15px',
+                color: input.trim() && localRemaining > 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
+                flexShrink: 0,
+                cursor: input.trim() && localRemaining > 0 ? 'pointer' : 'default',
+                fontWeight: 700,
               }}
             >
-              🧭
+              ↑
             </div>
           </div>
         </div>
