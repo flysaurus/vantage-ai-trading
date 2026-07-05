@@ -742,7 +742,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100dvh', background: 'transparent' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, background: 'transparent' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
