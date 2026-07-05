@@ -234,7 +234,7 @@ export default function WeeklySnapshotCard() {
   );
 
   return (
-    <div className="mx-4 mb-3">
+    <div className="mx-4">
       {/* ─── Parent: Weekly Snapshot header (tap to expand/collapse) ─── */}
       <button
         onClick={toggleParent}

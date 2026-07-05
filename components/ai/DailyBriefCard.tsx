@@ -88,7 +88,7 @@ export default function DailyBriefCard() {
   const hasMore = parsed.length > 0;
 
   return (
-    <div className="mx-4 mb-3">
+    <div className="mx-4">
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-full text-left bg-slate-800 rounded-2xl p-4 border border-slate-700 hover:border-slate-600 transition-colors"
