@@ -283,8 +283,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
-          const { opener, hook } = JSON.parse(cached);
-          // Smooth swap from fallback to cached
+          const { hook } = JSON.parse(cached);
+          // Always use current time-of-day opener — never cache it
+          const period = getMarketPeriod();
+          const opener = STATIC_FALLBACKS[period].opener;
           setTimeout(() => {
             setGreetingOpener(opener);
             setGreetingHook(hook);
@@ -336,17 +338,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
 
         if (data.opener && data.hook) {
-          // Cache for today
+          // Cache hook only — opener is time-of-day dependent, recomputed fresh
           localStorage.setItem(cacheKey, JSON.stringify({
-            opener: data.opener,
             hook: data.hook,
             generatedAt: Date.now(),
           }));
 
           // Smooth swap from fallback to personalized
           setTimeout(() => {
-            setGreetingOpener(data.opener);
             setGreetingHook(data.hook);
+            // Opener stays from current getMarketPeriod() — never use stale cached time
           }, 200);
         }
       } catch (e) {
