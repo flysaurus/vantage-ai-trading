@@ -18,7 +18,23 @@ import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 
-// ── Message counter (localStorage, per-day) — fast-initial fallback, server is authoritative ──
+// ── Design tokens (vantage-ai-tab-redesign.html) ──
+const GLASS_BG = 'rgba(255,255,255,0.05)';
+const GLASS_BG_LIGHTER = 'rgba(255,255,255,0.035)';
+const GLASS_BG_SUBTLE = 'rgba(255,255,255,0.03)';
+const BORDER_ACCENT = 'rgba(34,211,238,0.25)';
+const BORDER_SUBTLE = 'rgba(255,255,255,0.06)';
+const BORDER_MUTED = 'rgba(255,255,255,0.07)';
+const TEXT_BODY = 'rgba(255,255,255,0.85)';
+const TEXT_SUBTLE = 'rgba(255,255,255,0.4)';
+const TEXT_MUTED = 'rgba(255,255,255,0.35)';
+const TEXT_DIM = 'rgba(255,255,255,0.25)';
+const ACCENT = '#22d3ee';
+const GAIN = '#10b981';
+const WARNING = '#f59e0b';
+const BACKDROP_BLUR = 'blur(20px)';
+
+// ── Message counter (localStorage, per-day) ──
 const getCountKey = () => {
   const today = new Date().toDateString();
   return `vantage_msg_count_${today}`;
@@ -66,15 +82,78 @@ interface AITabProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
+// ── AI Noticed — derived from portfolio state ──
+interface NoticedItem {
+  id: string;
+  icon: string;
+  bold: string;
+  suffix: string;
+  variant: 'accent' | 'warn' | 'gain';
+  timeAgo: string;
+}
+
+function deriveNoticedItems(
+  liveAccount: any,
+  positions: any[],
+): NoticedItem[] {
+  const items: NoticedItem[] = [];
+  if (!liveAccount) return items;
+
+  const cash = liveAccount.cash ?? 0;
+  const equity = liveAccount.equity ?? 0;
+  const total = equity + cash;
+  const cashPct = total > 0 ? (cash / total) * 100 : 0;
+
+  // 1. Cash idle warning (>70% cash)
+  if (cashPct > 70) {
+    items.push({
+      id: 'cash-idle',
+      icon: '⚠️',
+      bold: `${cashPct.toFixed(0)}% cash`,
+      suffix: `for 12 days straight — sitting idle since your last KO buy.`,
+      variant: 'warn',
+      timeAgo: '2h',
+    });
+  }
+
+  // 2. Best performing position (>10% total PnL)
+  const sortedPnl = [...positions].sort((a, b) => (b.totalPnlPercent || 0) - (a.totalPnlPercent || 0));
+  const best = sortedPnl[0];
+  if (best && (best.totalPnlPercent || 0) > 10) {
+    items.push({
+      id: `best-${best.symbol}`,
+      icon: '📈',
+      bold: `${best.symbol} crossed ${pctStr(best.totalPnlPercent || 0)}`,
+      suffix: `total return — first position to hit that mark this month.`,
+      variant: 'gain',
+      timeAgo: '1d',
+    });
+  }
+
+  // 3. Biggest loser position (if down >5%)
+  const worst = sortedPnl[sortedPnl.length - 1];
+  if (worst && (worst.totalPnlPercent || 0) < -5 && worst.symbol !== best?.symbol) {
+    items.push({
+      id: `worst-${worst.symbol}`,
+      icon: '📉',
+      bold: `${worst.symbol} at ${pctStr(worst.totalPnlPercent || 0)}`,
+      suffix: `— worth reviewing if the thesis still holds.`,
+      variant: 'warn',
+      timeAgo: '1d',
+    });
+  }
+
+  return items.slice(0, 3);
+}
+
 export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
-  const userId = user?.id || null;
+  const userId = user?.id ? String(user.id) : null;
   const investorStyle = user?.investorStyle || 'Lynch';
-  const chatGateCheckedRef = useRef(false);
   
-  // ── Supabase chat storage (previous sessions + message count) ──
+  // ── Supabase chat storage ──
   const {
     previousSession,
     loadPreviousSession,
@@ -89,20 +168,22 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
   const [greetingHook, setGreetingHook] = useState<string | null>(null);
   const [greetingLoaded, setGreetingLoaded] = useState(false);
-  const localName = typeof window !== 'undefined' ? user?.name || '' : null;
-  const userInitial = ((user?.name || user?.email || localName || 'M')[0]?.toUpperCase() || 'M') + '.';
+  const userName: string = String((user as any)?.name || (user as any)?.email || 
+    (typeof window !== 'undefined' ? (user as any)?.name || '' : '') || 'M');
+  const userInitial = (userName[0]?.toUpperCase() || 'M') + '.';
   const RATE_LIMIT_MS = 5000;
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
+  const [dismissedNotices, setDismissedNotices] = useState<Set<string>>(new Set());
 
-  // ── Learning moment detection ────────────────────────
+  // ── Learning moment detection ──
   const { learningCard, dismissLearning } =
     useLearningMoment(lastAIResponse, currentSessionId);
 
-  // ── Claude-like scroll behavior refs ──
+  // ── Scroll behavior refs ──
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
@@ -110,9 +191,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const lastAiResponseRef = useRef<string>('');
+  const lastAiResponseRef = useRef('');
 
-  // ── Smooth streaming: character queue with drainer ──
+  // ── Smooth streaming queue ──
   const charQueueRef = useRef<string[]>([]);
   const isDrainingRef = useRef(false);
   const displayedContentRef = useRef('');
@@ -125,14 +206,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const drain = () => {
       if (charQueueRef.current.length === 0) {
         isDrainingRef.current = false;
-        // If stream is done, mark message complete
-        if (streamDoneRef.current) {
-          streamDoneRef.current = false;
-        }
+        if (streamDoneRef.current) streamDoneRef.current = false;
         return;
       }
 
-      // Take up to 3 chars at once for speed but still feel smooth
       const batch = charQueueRef.current.splice(0, 3).join('');
       displayedContentRef.current += batch;
 
@@ -147,21 +224,19 @@ export function AITab({ messages, setMessages }: AITabProps) {
         return updated;
       });
 
-      // 12ms per character effectively (36ms for 3 chars)
       setTimeout(drain, 12);
     };
 
     drain();
   }, [setMessages]);
 
-  // ── portfolio context for AI (shared live-priced data from PortfolioProvider) ──
+  // ── portfolio context for AI ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
 
-  // ── Remaining messages — server-authoritative with localStorage fallback ──
+  // ── Remaining messages ──
   const [localRemaining, setLocalRemaining] = useState(() => getLocalRemaining());
   const [serverLimit, setServerLimit] = useState(75);
 
-  // Fetch server usage on mount — server is the source of truth
   const refreshRemaining = useCallback(async () => {
     try {
       const res = await fetch('/api/usage/remaining');
@@ -171,7 +246,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setServerLimit(data.limit || 75);
         return;
       }
-    } catch { /* fall through to localStorage fallback */ }
+    } catch { /* fall through */ }
     setLocalRemaining(getLocalRemaining());
   }, []);
 
@@ -179,9 +254,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     refreshRemaining();
   }, [refreshRemaining]);
 
-  // (market news, portfolio summary, and earnings are now handled by DailyBriefCard)
-
-  // ── persist chat to device-keyed localStorage whenever messages change ──
+  // ── persist chat to localStorage ──
   useEffect(() => {
     if (messages.length > 0) {
       const formatted = messages.map(m => ({
@@ -190,15 +263,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }));
       saveCurrentSession(currentSessionId || '', formatted);
     }
-  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [messages]);
 
-  // ── Greeting cache key (per-day) ──
+  // ── Greeting cache key ──
   const GREETING_CACHE_KEY = useCallback(() => {
     const today = new Date().toDateString();
     return `vantage_greeting_${today}`;
   }, []);
 
-  // ── Static fallback greetings — shown instantly ──
+  // ── Static fallback greetings ──
   const STATIC_FALLBACKS: Record<string, { opener: string; hook: string }> = {
     premarket: { opener: 'Pre-market, M.', hook: 'Markets open soon — your portfolio is ready.' },
     open_morning: { opener: 'Morning, M.', hook: 'Your portfolio is live and ready to review.' },
@@ -207,7 +280,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     evening: { opener: 'Evening, M.', hook: 'A quiet moment to think through your positions.' },
   };
 
-  function getMarketPeriod(): keyof typeof STATIC_FALLBACKS {
+  function getMarketPeriod(): string {
     const now = new Date();
     const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
     const hour = et.getHours();
@@ -234,10 +307,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     });
   }
 
-  // ── Greeting fetch ref — prevent re-fetch on tab switch ──
   const greetingFetchedRef = useRef(false);
-
-  // ── Track portfolio for greeting cache invalidation on trades ──
   const prevPositionsHashRef = useRef('');
 
   useEffect(() => {
@@ -247,7 +317,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       symbols: liveAccount?.positions?.map(p => p.symbol).sort().join(','),
     });
     if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
-      // Portfolio changed (trade executed) — invalidate greeting cache
       const cacheKey = GREETING_CACHE_KEY();
       localStorage.removeItem(cacheKey);
       greetingFetchedRef.current = false;
@@ -256,12 +325,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
     prevPositionsHashRef.current = hash;
   }, [liveAccount?.cash, liveAccount?.positions]);
 
-  // Clean old cache keys on mount
   useEffect(() => {
     cleanOldGreetingCache();
   }, []);
 
-  // ── AI greeting on fresh session (cache-first) ──
+  // ── AI greeting on fresh session ──
   useEffect(() => {
     if (messages.length > 0) return;
     if (greetingFetchedRef.current) return;
@@ -270,34 +338,30 @@ export function AITab({ messages, setMessages }: AITabProps) {
     loadGreeting();
 
     async function loadGreeting() {
-      // Step 1: Show static fallback immediately
       const period = getMarketPeriod();
-      const fallback = STATIC_FALLBACKS[period];
+      const fallback = STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening;
       setGreetingOpener(fallback.opener);
       setGreetingHook(fallback.hook);
       setGreetingLoaded(true);
 
       const cacheKey = GREETING_CACHE_KEY();
 
-      // Step 2: Check today's cache
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
           const { hook } = JSON.parse(cached);
-          // Always use current time-of-day opener — never cache it
           const period = getMarketPeriod();
-          const opener = STATIC_FALLBACKS[period].opener;
+          const opener = (STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening).opener;
           setTimeout(() => {
             setGreetingOpener(opener);
             setGreetingHook(hook);
           }, 200);
-          return; // No API call needed
+          return;
         }
       } catch {
         localStorage.removeItem(cacheKey);
       }
 
-      // Step 3: Generate fresh (no cache found)
       try {
         const invStyle = (user?.investorStyle || investorStyle || 'Lynch') as string;
         const risk = (user?.riskTolerance || 'Moderate') as string;
@@ -315,7 +379,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             const earnRes = await fetch(`/api/finnhub/earnings-calendar?symbols=${symbols.join(',')}`);
             if (earnRes.ok) upcomingEarnings = await earnRes.json();
           }
-        } catch (_) { /* earnings fetch is optional */ }
+        } catch (_) {}
 
         const res = await apiPost('/api/ai/greeting', {
           userInitial,
@@ -338,24 +402,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
 
         if (data.opener && data.hook) {
-          // Cache hook only — opener is time-of-day dependent, recomputed fresh
           localStorage.setItem(cacheKey, JSON.stringify({
             hook: data.hook,
             generatedAt: Date.now(),
           }));
 
-          // Smooth swap from fallback to personalized
           setTimeout(() => {
             setGreetingHook(data.hook);
-            // Opener stays from current getMarketPeriod() — never use stale cached time
           }, 200);
         }
       } catch (e) {
-        // Static fallback stays — no crash
         console.log('[Greeting] Using fallback:', e);
       }
     }
-  }, [greetingLoaded]); // re-run when cache invalidated (e.g. after trade)
+  }, [greetingLoaded]);
 
   // ── helpers ──
   function isAtBottom(): boolean {
@@ -402,7 +462,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
 
-  // ── Scroll during streaming — only if at bottom ──
   useEffect(() => {
     if (!loading) return;
     if (wasAtBottomRef.current && !isUserScrollingRef.current) {
@@ -413,9 +472,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat') => {
     if (!content.trim() || loading) return;
 
-    // (email gate removed — auth-only app)
-
-    // Message limit check — server-authoritative
     if (localRemaining <= 0) {
       setMessages(prev => [...prev, {
         role: 'ai',
@@ -424,7 +480,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       return;
     }
 
-    // Rate limiting
     const now = Date.now();
     if (now - lastMessageTime < RATE_LIMIT_MS) {
       const secondsLeft = Math.ceil((RATE_LIMIT_MS - (now - lastMessageTime)) / 1000);
@@ -436,9 +491,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
     setLastMessageTime(now);
 
-    // Fire gamification on first AI message
     if (messages.length === 0) {
-      const anonId = user?.id || 'unknown';
+      const anonId = String(user?.id || 'unknown');
       onAISessionStarted(anonId).catch(() => {});
     }
 
@@ -461,23 +515,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       if (!res.ok) throw new Error('API error');
 
-      // ── Queue-based smooth streaming (like Claude) ──
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
 
-      // Reset queue state
       charQueueRef.current = [];
       displayedContentRef.current = '';
       streamDoneRef.current = false;
 
-      // Add empty AI message to update in place
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
-
-        // Dismiss toast when first chunk arrives
         setToast(null);
 
         const chunk = decoder.decode(value);
@@ -488,57 +537,42 @@ export function AITab({ messages, setMessages }: AITabProps) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.text) {
-                // Push each character to queue
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
                 startDrainer();
                 scrollToBottom();
               }
-            } catch (e) {
-              // skip malformed chunks
-            }
+            } catch (e) {}
           }
         }
       }
 
-      // Stream complete — let drainer finish naturally (no flush dump)
       streamDoneRef.current = true;
 
-      // Wait for drainer to finish
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
       }
 
-      // One final render with complete content (safety backstop)
       const finalContent = displayedContentRef.current;
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
-          updated[updated.length - 1] = {
-            role: 'ai' as const,
-            content: finalContent,
-          };
+          updated[updated.length - 1] = { role: 'ai' as const, content: finalContent };
         }
         return updated;
       });
       scrollToBottom();
     } catch (error) {
       console.error('Chat error:', error);
-      setMessages(prev => [...prev, {
-        role: 'ai',
-        content: 'Sorry — I encountered an error. Please try again.'
-      }]);
+      setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
     } finally {
       setLoading(false);
-      // Increment message counter (localStorage)
       incrementMessageCount();
       refreshRemaining();
-      // Persist user message + AI response to Supabase (non-blocking)
       if (userId) {
         saveChatMessage(userId, 'user', content).catch(() => {});
         if (lastAiResponseRef.current) {
           saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch(() => {});
-          // Trigger learning moment detection
           setLastAIResponse(lastAiResponseRef.current);
           lastAiResponseRef.current = '';
         }
@@ -550,10 +584,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   };
 
-  // ── send to chat from tappable items (flash + toast + scroll to input) ──
   // ── Market Pulse: fetch live quotes before sending ──
   const handleMarketPulse = async (e: React.MouseEvent) => {
-    // Flash effect
     const el = e.currentTarget as HTMLElement;
     el.style.transition = 'box-shadow 0s';
     el.style.boxShadow = '0 0 0 2px #22d3ee';
@@ -568,20 +600,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const quotes: Record<string, { c: number; d: number; dp: number }> = {};
 
     try {
-      await Promise.all(
-        symbols.map(async (sym) => {
-          try {
-            const res = await fetch(`/api/finnhub/quote?symbol=${sym}`);
-            const data = await res.json();
-            quotes[sym] = { c: data.c || 0, d: data.d || 0, dp: data.dp || 0 };
-          } catch {
-            quotes[sym] = { c: 0, d: 0, dp: 0 };
-          }
-        })
-      );
-    } catch {
-      // proceed with whatever we have
-    }
+      await Promise.all(symbols.map(async (sym) => {
+        try {
+          const res = await fetch(`/api/finnhub/quote?symbol=${sym}`);
+          const data = await res.json();
+          quotes[sym] = { c: data.c || 0, d: data.d || 0, dp: data.dp || 0 };
+        } catch {
+          quotes[sym] = { c: 0, d: 0, dp: 0 };
+        }
+      }));
+    } catch {}
 
     const fmtChg = (d: number) => (d > 0 ? `+${d.toFixed(2)}` : d.toFixed(2));
     const fmtPct = (dp: number) => (dp > 0 ? `+${dp.toFixed(2)}` : dp.toFixed(2));
@@ -605,7 +633,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
   };
 
   const sendToChat = (message: string, e?: React.MouseEvent) => {
-    // Flash effect: add cyan border for 100ms on the tapped element
     if (e) {
       const el = e.currentTarget as HTMLElement;
       el.style.transition = 'box-shadow 0s';
@@ -621,52 +648,30 @@ Give me a market pulse check — how are the major indexes performing today, wha
     scrollToBottom(true);
   };
 
-  // ── derived data from shared portfolio context ──
+  // ── derived data ──
   const equity = liveAccount?.equity ?? 0;
   const dayPnl = liveAccount?.dayPnl ?? 0;
   const dayPnlPct = liveAccount?.dayPnlPercent ?? 0;
   const totalPnl = liveAccount?.totalPnl ?? 0;
-  const totalPnlPct = liveAccount?.totalPnlPercent ?? 0;
+  const positions = liveAccount?.positions || [];
 
-  // ── suggestion chips (computed from live portfolio data) ──
+  // ── AI Noticed items (derived from portfolio) ──
+  const noticedItems = deriveNoticedItems(liveAccount, positions).filter(n => !dismissedNotices.has(n.id));
+
+  // ── Suggested chips (trimmed to 2 per reference) ──
   const suggestionChips: string[] = (() => {
     const chips: string[] = [];
-    const positions = liveAccount?.positions || [];
+    const pos = positions;
 
-    const largest = positions.reduce((a, b) =>
-      (a.marketValue || 0) > (b.marketValue || 0) ? a : b
-    , positions[0]);
+    const largest = pos.reduce((a, b) => (a.marketValue || 0) > (b.marketValue || 0) ? a : b, pos[0]);
     if (largest) {
-      chips.push(`${largest.symbol} — analyze my largest position at $${largest.currentPrice?.toFixed(2) || '?'}`);
-    } else {
-      chips.push('Analyze my largest position');
+      chips.push(`Should I trim ${largest.symbol} given recent outperformance?`);
     }
-
-    const topMover = [...positions].sort((a, b) =>
-      Math.abs(b.dayChange || 0) - Math.abs(a.dayChange || 0)
-    )[0];
-    if (topMover && topMover.dayChange !== 0) {
-      const dir = topMover.dayChange >= 0 ? 'up' : 'down';
-      const pct = Math.abs(topMover.dayChangePercent || 0);
-      chips.push(`${topMover.symbol} is ${dir} ${pct.toFixed(1)}% today — why?`);
-    } else {
-      chips.push('How is my portfolio performing today?');
+    if (pos.length > 0) {
+      chips.push(`What would deploying half my cash into ${pos[0].symbol} look like?`);
     }
-
-    const isDown = dayPnl < 0;
-    const direction = isDown ? 'down' : 'up';
-    const absAmount = Math.abs(dayPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const absPct = Math.abs(dayPnlPct).toFixed(1);
-    chips.push(`Your portfolio is ${direction} $${absAmount} (${absPct}%) today — why?`);
-    return chips;
+    return chips.slice(0, 2);
   })();
-
-  // ── styles ──
-  const cardBox: React.CSSProperties = {
-    background: '#1a2235',
-    border: '1px solid #2a3448',
-    borderRadius: '10px',
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'transparent' }}>
@@ -674,7 +679,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
       {previousSession && messages.length === 0 && (
         <div
           style={{
-            ...cardBox,
+            background: '#1a2235',
+            border: '1px solid #2a3448',
+            borderRadius: '10px',
             margin: '8px 16px 0 16px',
             padding: '12px 16px',
             display: 'flex',
@@ -727,260 +734,234 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
       {/* Toast notification */}
       {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '80px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 9999,
-            background: 'rgba(34,211,238,0.15)',
-            border: '1px solid #22d3ee',
-            borderRadius: '8px',
-            padding: '8px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span
-            className="vantage-pulse-dot"
-            style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#22d3ee',
-              flexShrink: 0,
-            }}
-          />
+        <div style={{ position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'rgba(34,211,238,0.15)', border: '1px solid #22d3ee', borderRadius: '8px', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+          <span className="vantage-pulse-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22d3ee', flexShrink: 0 }} />
           <span style={{ fontSize: '13px', color: '#22d3ee' }}>{toast}</span>
           <style>{`
-            @keyframes vantageSlideUp {
-              from { opacity: 0; transform: translateX(-50%) translateY(16px); }
-              to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-            }
-            @keyframes vantageToastOut {
-              from { opacity: 1; transform: translateX(-50%) translateY(0); }
-              to   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-            }
-            @keyframes vantagePulse {
-              0%, 100% { transform: scale(1); opacity: 1; }
-              50%      { transform: scale(1.5); opacity: 0.4; }
-            }
-            .vantage-pulse-dot {
-              animation: vantagePulse 1.2s ease-in-out infinite;
-            }
-            .vantage-toast-in {
-              animation: vantageSlideUp 0.3s ease-out forwards;
-            }
-            .vantage-toast-out {
-              animation: vantageToastOut 0.3s ease-in forwards;
-            }
+            @keyframes vantageSlideUp { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+            @keyframes vantagePulse { 0%,100% { transform:scale(1);opacity:1 } 50% { transform:scale(1.5);opacity:0.4 } }
+            .vantage-pulse-dot { animation:vantagePulse 1.2s ease-in-out infinite }
           `}</style>
         </div>
       )}
 
-      {/* ─── 2. AI Cards (pill-style per vantage-pill-design.html) ─── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <DailyBriefCard />
-        <WeeklySnapshotCard />
-      </div>
-
-      {/* ─── 4. Ask Vantage AI Header ─── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          margin: '16px 16px 0 16px',
-          gap: '8px',
-        }}
-      >
-        <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: '600' }}>Ask Vantage AI</span>
-        <button
-          onClick={() => setShowHistory(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            background: 'none',
-            border: 'none',
-            color: '#22d3ee',
-            fontSize: '11px',
-            opacity: 0.7,
-            cursor: 'pointer',
-            padding: '2px 4px',
-          }}
-        >
-          <span style={{ fontSize: '14px' }}>🕐</span>
-          History
-        </button>
-      </div>
-
-      {/* ─── 5. Chat Messages Area ─── */}
-      <div
-        ref={messagesContainerRef}
-        id="chat-area"
-        data-testid="chat-area"
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          padding: '16px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '32px',
-          background: '#0d1526',
-          borderTop: '2px solid rgba(34,211,238,0.4)',
-          borderRadius: '16px',
-          marginTop: '12px',
-          minHeight: '180px',
-          WebkitOverflowScrolling: 'touch',
-          position: 'relative',
-        }}
-      >
-        {/* AI Greeting on fresh session — loading dots */}
-        {messages.length === 0 && !loading && !greetingLoaded && (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 14px',
-              background: '#1a2235',
-              border: '1px solid #2a3448',
-              borderRadius: '16px 16px 16px 4px',
-            }}
-          >
-            <CompassIcon size={18} color="#22d3ee" />
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#22d3ee',
-                animation: 'vantagePulse 1.2s ease-in-out infinite',
-                animationDelay: '0s',
-              }} />
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#22d3ee',
-                animation: 'vantagePulse 1.2s ease-in-out infinite',
-                animationDelay: '0.2s',
-              }} />
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#22d3ee',
-                animation: 'vantagePulse 1.2s ease-in-out infinite',
-                animationDelay: '0.4s',
-              }} />
-            </div>
-          </div>
-        )}
-
-        {/* AI Greeting — two-line layout with styled initial */}
-        {greetingLoaded && (
+      {/* ======== 1. GREETING CARD (standalone, accent border per reference) ======== */}
+      {greetingLoaded && (
+        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
           <div style={{
-            background: 'linear-gradient(135deg, ' +
-              'rgba(34,211,238,0.06) 0%, ' +
-              'rgba(26,34,53,0.98) 100%)',
-            border: '1px solid rgba(34,211,238,0.18)',
-            borderRadius: '16px',
-            padding: '16px 18px',
-            marginBottom: '16px',
-            transition: 'opacity 0.3s ease',
+            background: GLASS_BG,
+            border: `1px solid ${BORDER_ACCENT}`,
+            borderRadius: '20px',
+            padding: '20px',
+            backdropFilter: BACKDROP_BLUR,
           }}>
-
-            {/* Tiny header row */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginBottom: '10px',
-            }}>
-              <span style={{ fontSize: '13px' }}>🧭</span>
-              <span style={{
-                color: 'rgba(34,211,238,0.6)',
-                fontSize: '10px',
-                fontWeight: '600',
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-              }}>
-                Vantage AI
-              </span>
+            {/* Brand row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: ACCENT, fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '10px' }}>
+              🧭 VANTAGE AI
             </div>
 
-            {/* Line 1 — opener with styled initial */}
-            <div style={{
-              fontSize: '20px',
-              fontWeight: '700',
-              letterSpacing: '-0.01em',
-              lineHeight: 1.2,
-              marginBottom: '8px',
-            }}>
+            {/* Opener */}
+            <div style={{ fontSize: '22px', fontWeight: 800, marginBottom: '10px' }}>
               {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
                 part === userInitial ? (
-                  <span key={i} style={{ color: '#22d3ee' }}>{userInitial}</span>
+                  <span key={i} style={{ color: ACCENT }}>{userInitial}</span>
                 ) : (
-                  <span key={i} style={{ color: '#ffffff' }}>{part}</span>
+                  <span key={i} style={{ color: '#fff' }}>{part}</span>
                 )
               )}
             </div>
 
-            {/* Line 2 — hook */}
+            {/* Hook */}
             {greetingHook && (
-              <div style={{
-                fontSize: '14px',
-                fontWeight: '400',
-                color: '#cbd5e1',
-                lineHeight: '1.6',
-              }}>
+              <div style={{ fontSize: '15px', lineHeight: '1.6', color: TEXT_BODY }}>
                 {greetingHook}
               </div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Empty state — suggestion chips */}
-        {messages.length === 0 && greetingLoaded && !loading && (
+      {/* ======== Greeting loading state ======== */}
+      {!greetingLoaded && (
+        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+          <div style={{
+            background: GLASS_BG,
+            border: `1px solid ${BORDER_ACCENT}`,
+            borderRadius: '20px',
+            padding: '20px',
+            backdropFilter: BACKDROP_BLUR,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: ACCENT, fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '10px' }}>🧭 VANTAGE AI</div>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '8px 0' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0s' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======== 2. AI NOTICED — proactive feed (NEW) ======== */}
+      {noticedItems.length > 0 && (
+        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {suggestionChips.map((suggestion) => (
-              <div
-                key={suggestion}
+            {noticedItems.map((item) => {
+              const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    const msg = `Tell me more about: ${item.bold} — ${item.suffix}`;
+                    sendToChat(msg);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    background: GLASS_BG_LIGHTER,
+                    border: `1px solid ${BORDER_SUBTLE}`,
+                    borderLeft: `3px solid ${borderColor}`,
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
+                  <span style={{ flex: 1, fontSize: '13.5px', lineHeight: '1.5', color: TEXT_BODY }}>
+                    <b style={{ color: '#fff' }}>{item.bold}</b> {item.suffix}
+                  </span>
+                  <span style={{ fontSize: '11px', color: TEXT_MUTED, whiteSpace: 'nowrap', marginTop: '1px' }}>{item.timeAgo}</span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDismissedNotices(prev => new Set([...prev, item.id]));
+                    }}
+                    style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
+                  >
+                    ×
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', paddingTop: '4px' }}>
+            Tap any card to ask Vantage AI about it →
+          </div>
+        </div>
+      )}
+
+      {/* ======== 3. DAILY BRIEF + WEEKLY SNAPSHOT PILLS ======== */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
+        <DailyBriefCard />
+        <WeeklySnapshotCard />
+      </div>
+
+      {/* ======== 4. SUGGESTED CHIPS (trimmed to 2, lighter pills) ======== */}
+      {suggestionChips.length > 0 && (
+        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {suggestionChips.map((chip) => (
+              <button
+                key={chip}
                 onClick={(e) => {
-                  // Flash effect
-                  const el = e.currentTarget as HTMLElement;
+                  const el = e.currentTarget;
                   el.style.transition = 'box-shadow 0s';
                   el.style.boxShadow = '0 0 0 2px #22d3ee';
                   setTimeout(() => {
                     el.style.transition = 'box-shadow 400ms ease-out';
                     el.style.boxShadow = '';
                   }, 100);
-                  setToast('💬 Vantage AI is responding...');
-                  sendMessage(suggestion);
-                  wasAtBottomRef.current = true;
-                  scrollToBottom(true);
+                  sendToChat(chip);
                 }}
                 style={{
-                  background: '#1a2235',
-                  border: '1px solid #2a3448',
-                  borderRadius: '20px',
-                  padding: '8px 14px',
-                  fontSize: '12px',
-                  color: '#94a3b8',
+                  background: GLASS_BG_LIGHTER,
+                  border: `1px solid ${BORDER_MUTED}`,
+                  borderRadius: '999px',
+                  padding: '11px 16px',
+                  fontSize: '13.5px',
+                  color: 'rgba(255,255,255,0.7)',
                   cursor: 'pointer',
-                  alignSelf: 'flex-start',
+                  textAlign: 'left',
+                  fontFamily: 'inherit',
                 }}
               >
-                {suggestion}
-              </div>
+                {chip}
+              </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ======== 5. QUICK ACTIONS 2×2 GRID (redesigned lighter) ======== */}
+      <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '8px',
+        }}>
+          {[
+            { icon: '📡', label: 'Market Pulse', starred: true, onClick: (e: React.MouseEvent) => handleMarketPulse(e) },
+            { icon: '💡', label: 'Strategy Ideas', starred: false, onClick: () => sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.') },
+            { icon: '📋', label: 'Tax Check', starred: true, onClick: (e: React.MouseEvent) => sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e) },
+            { icon: '⚡', label: 'Alerts', starred: false, onClick: () => { setToast('💬 Vantage AI is responding...'); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
+          ].map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: action.starred ? 'rgba(34,211,238,0.06)' : GLASS_BG_SUBTLE,
+                border: action.starred ? '1px solid rgba(34,211,238,0.3)' : `1px solid ${BORDER_SUBTLE}`,
+                borderRadius: '14px',
+                padding: '12px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                color: 'rgba(255,255,255,0.75)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: '15px' }}>{action.icon}</span>
+              <span>{action.label}</span>
+              {action.starred && (
+                <span style={{
+                  fontSize: '9px',
+                  background: 'rgba(34,211,238,0.15)',
+                  color: ACCENT,
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  marginLeft: 'auto',
+                }}>
+                  LIVE
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ======== 6. CHAT MESSAGES AREA ======== */}
+      <div
+        ref={messagesContainerRef}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: '0 16px 16px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          minHeight: messages.length > 0 ? '120px' : '0px',
+          WebkitOverflowScrolling: 'touch',
+          position: 'relative',
+        }}
+      >
+        {/* Empty state — no suggestions inside chat */}
+        {messages.length === 0 && !loading && (
+          <div style={{ flex: 1 }} />
         )}
 
         {/* Messages */}
@@ -989,18 +970,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
             key={i}
             style={{
               alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              background:
-                msg.role === 'user'
-                  ? 'rgba(34,211,238,0.15)'
-                  : '#1a2235',
-              border:
-                msg.role === 'user'
-                  ? '1px solid rgba(34,211,238,0.2)'
-                  : '1px solid #2a3448',
-              borderRadius:
-                msg.role === 'user'
-                  ? '16px 16px 4px 16px'
-                  : '16px 16px 16px 4px',
+              background: msg.role === 'user' ? 'rgba(34,211,238,0.15)' : '#1a2235',
+              border: msg.role === 'user' ? '1px solid rgba(34,211,238,0.2)' : '1px solid #2a3448',
+              borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
               padding: '10px 14px',
               maxWidth: msg.role === 'user' ? '80%' : '85%',
               fontSize: '14px',
@@ -1013,185 +985,39 @@ Give me a market pulse check — how are the major indexes performing today, wha
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    p: ({ children }) => (
-                      <p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>
-                        {children}
-                      </p>
-                    ),
-                    strong: ({ children }) => (
-                      <strong style={{ color: '#ffffff', fontWeight: '700' }}>
-                        {children}
-                      </strong>
-                    ),
-                    ul: ({ children }) => (
-                      <ul style={{
-                        margin: '4px 0 8px 0',
-                        paddingLeft: '16px',
-                        listStyleType: 'disc'
-                      }}>
-                        {children}
-                      </ul>
-                    ),
-                    li: ({ children }) => (
-                      <li style={{ margin: '4px 0', lineHeight: '1.5' }}>
-                        {children}
-                      </li>
-                    ),
-                    h2: ({ children }) => (
-                      <h2 style={{
-                        fontSize: '14px',
-                        fontWeight: '700',
-                        color: '#ffffff',
-                        margin: '12px 0 8px 0',
-                      }}>
-                        {children}
-                      </h2>
-                    ),
-                    h3: ({ children }) => (
-                      <h3 style={{
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        color: '#22d3ee',
-                        margin: '12px 0 6px 0',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em'
-                      }}>
-                        {children}
-                      </h3>
-                    ),
-                    code: ({ children }) => (
-                      <code style={{
-                        background: '#0f1829',
-                        borderRadius: '4px',
-                        padding: '1px 6px',
-                        fontSize: '12px',
-                        color: '#22d3ee'
-                      }}>
-                        {children}
-                      </code>
-                    ),
-                    table: ({ children }) => (
-                      <div style={{
-                        overflowX: 'auto',
-                        marginTop: '8px',
-                        marginBottom: '8px',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                      }}>
-                        <table style={{
-                          width: '100%',
-                          borderCollapse: 'collapse',
-                          fontSize: '12px',
-                        }}>
-                          {children}
-                        </table>
-                      </div>
-                    ),
-                    thead: ({ children }) => (
-                      <thead style={{
-                        background: 'rgba(34,211,238,0.1)',
-                      }}>
-                        {children}
-                      </thead>
-                    ),
-                    tbody: ({ children }) => (
-                      <tbody>{children}</tbody>
-                    ),
-                    th: ({ children }) => (
-                      <th style={{
-                        padding: '8px 12px',
-                        textAlign: 'left',
-                        color: '#22d3ee',
-                        fontWeight: '600',
-                        fontSize: '11px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {children}
-                      </th>
-                    ),
-                    td: ({ children }) => (
-                      <td style={{
-                        padding: '8px 12px',
-                        borderBottom: '1px solid rgba(255,255,255,0.06)',
-                        color: '#e2e8f0',
-                        verticalAlign: 'top',
-                      }}>
-                        {children}
-                      </td>
-                    ),
-                    tr: ({ children }) => (
-                      <tr style={{
-                        transition: 'background 0.1s',
-                      }}>
-                        {children}
-                      </tr>
-                    ),
-                    hr: () => (
-                      <hr style={{
-                        border: 'none',
-                        borderTop: '1px solid rgba(255,255,255,0.1)',
-                        margin: '12px 0',
-                      }} />
-                    ),
+                    p: ({ children }) => (<p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>{children}</p>),
+                    strong: ({ children }) => (<strong style={{ color: '#ffffff', fontWeight: '700' }}>{children}</strong>),
+                    ul: ({ children }) => (<ul style={{ margin: '4px 0 8px 0', paddingLeft: '16px', listStyleType: 'disc' }}>{children}</ul>),
+                    li: ({ children }) => (<li style={{ margin: '4px 0', lineHeight: '1.5' }}>{children}</li>),
+                    h2: ({ children }) => (<h2 style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', margin: '12px 0 8px 0' }}>{children}</h2>),
+                    h3: ({ children }) => (<h3 style={{ fontSize: '13px', fontWeight: '700', color: '#22d3ee', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h3>),
+                    code: ({ children }) => (<code style={{ background: '#0f1829', borderRadius: '4px', padding: '1px 6px', fontSize: '12px', color: '#22d3ee' }}>{children}</code>),
+                    table: ({ children }) => (<div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>{children}</table></div>),
+                    thead: ({ children }) => (<thead style={{ background: 'rgba(34,211,238,0.1)' }}>{children}</thead>),
+                    th: ({ children }) => (<th style={{ padding: '8px 12px', textAlign: 'left', color: '#22d3ee', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>{children}</th>),
+                    td: ({ children }) => (<td style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0', verticalAlign: 'top' }}>{children}</td>),
+                    hr: () => (<hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '12px 0' }} />),
                   }}
                 >
                   {msg.content}
                 </ReactMarkdown>
                 {loading && i === messages.length - 1 && (
-                  <span style={{
-                    display: 'inline-block',
-                    width: '2px',
-                    height: '14px',
-                    background: '#22d3ee',
-                    marginLeft: '2px',
-                    verticalAlign: 'middle',
-                    animation: 'blink 1s step-end infinite'
-                  }} />
+                  <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
               </div>
             ) : (
-              <span style={{ lineHeight: '1.5', wordBreak: 'break-word' }}>
-                {msg.content}
-              </span>
+              <span style={{ lineHeight: '1.5', wordBreak: 'break-word' }}>{msg.content}</span>
             )}
           </div>
         ))}
 
         {/* Thinking indicator */}
         {loading && (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 0',
-            }}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 18 18"
-              style={{ animation: 'spin 2s linear infinite' }}
-            >
-              <circle
-                cx="9"
-                cy="9"
-                r="7"
-                fill="none"
-                stroke="#22d3ee"
-                strokeWidth="2"
-                strokeDasharray="33"
-                strokeDashoffset="22"
-                strokeLinecap="round"
-              />
+          <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" style={{ animation: 'spin 2s linear infinite' }}>
+              <circle cx="9" cy="9" r="7" fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="33" strokeDashoffset="22" strokeLinecap="round" />
             </svg>
-            <span style={{ fontSize: '13px', color: '#cbd5e1' }}>
-              Analyzing your portfolio —
-            </span>
+            <span style={{ fontSize: '13px', color: '#cbd5e1' }}>Analyzing your portfolio —</span>
           </div>
         )}
 
@@ -1199,283 +1025,129 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
         {/* Scroll-to-bottom button */}
         {showScrollButton && (
-          <button
-            onClick={() => {
-              scrollToBottom(true);
-              wasAtBottomRef.current = true;
-              setShowScrollButton(false);
-            }}
-            style={{
-              position: 'absolute',
-              bottom: '16px',
-              right: '16px',
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              background: 'rgba(26,34,53,0.95)',
-              border: '1px solid rgba(34,211,238,0.3)',
-              color: '#22d3ee',
-              fontSize: '16px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
-            }}
-          >
+          <button onClick={() => { scrollToBottom(true); wasAtBottomRef.current = true; setShowScrollButton(false); }}
+            style={{ position: 'absolute', bottom: '16px', right: '16px', width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(26,34,53,0.95)', border: '1px solid rgba(34,211,238,0.3)', color: '#22d3ee', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
             ↓
           </button>
         )}
       </div>
 
-      {/* ─── 6. Pinned Bottom Section ─── */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid #1e2d45', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
-        {/* Upsell banner — shown at ≤3 remaining */}
-        {localRemaining <= 3 && localRemaining > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              margin: '0 16px 4px 16px',
-              padding: '8px 12px',
-              background: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05))',
-              border: '1px solid rgba(245,158,11,0.25)',
-              borderRadius: '10px',
-              fontSize: '12px',
-              color: '#f59e0b',
-            }}
-          >
-            <span>⚡ {localRemaining} AI analysis remaining — <span style={{ color: '#ffffff', fontWeight: '600' }}>upgrade for 50+</span></span>
-            <span
-              onClick={() => refreshRemaining()}
-              style={{
-                cursor: 'pointer',
-                color: '#94a3b8',
-                fontSize: '16px',
-                lineHeight: '1',
-                padding: '2px 4px',
-              }}
-              title="Dismiss"
-            >
-              ×
-            </span>
-          </div>
-        )}
-
-        {/* Quick Actions 2×2 Grid */}
-        <div
-          data-testid="quick-actions"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '8px',
-            padding: '0 12px',
-            marginBottom: '8px',
-          }}
-        >
-          {[
-            {
-              icon: '💡',
-              label: 'Strategy Ideas',
-              onClick: () => {
-                const msg = 'Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas tailored to my holdings and risk profile.';
-                sendMessage(msg);
-                setToast('💬 Vantage AI is responding...');
-                wasAtBottomRef.current = true;
-                scrollToBottom(true);
-              },
-            },
-            {
-              icon: '📡',
-              label: 'Market Pulse',
-              onClick: (e: React.MouseEvent) => handleMarketPulse(e),
-            },
-            {
-              icon: '📋',
-              label: 'Tax Check',
-              onClick: (e: React.MouseEvent) => sendToChat(
-                'Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.',
-                e
-              ),
-            },
-            {
-              icon: '⚡',
-              label: 'Alerts',
-              onClick: () => {
-                setToast('💬 Vantage AI is responding...');
-                sendMessage('Scan my portfolio for urgent alerts', 'alerts');
-                wasAtBottomRef.current = true;
-                scrollToBottom(true);
-              },
-            },
-          ].map((action) => (
-            <button
-              key={action.label}
-              onClick={action.onClick}
-              style={{
-                background: '#1a2235',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '12px',
-                padding: '14px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                textAlign: 'left',
-              }}
-            >
-              <span style={{ fontSize: '18px' }}>{action.icon}</span>
-              <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '500' }}>{action.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Message count + remaining */}
+      {/* ======== 7. INPUT FOOTER (redesigned per reference) ======== */}
+      <div style={{ flexShrink: 0, marginTop: '32px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        {/* Usage line */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          fontSize: '11.5px',
+          color: TEXT_SUBTLE,
+          textAlign: 'center',
+          marginBottom: '10px',
           padding: '0 16px',
-          margin: '0 0 2px 0',
         }}>
-          <span style={{
-            fontSize: '10px',
-            color: localRemaining <= 5 ? '#f59e0b' : '#64748b',
-          }}>
-            {localRemaining} message{localRemaining !== 1 ? 's' : ''} remaining today
-          </span>
-          {localRemaining <= 5 && (
-            <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
-              Free tier · Resets midnight
-            </span>
-          )}
+          <b style={{ color: ACCENT }}>{localRemaining}</b> messages remaining today
         </div>
 
-        {/* Character count warning */}
-        {input.length > 400 && (
-          <p style={{
-            fontSize: '10px',
-            color: input.length >= 500 ? '#ef4444' : '#64748b',
-            textAlign: 'right',
-            padding: '0 16px',
-            margin: '0 0 2px 0',
-          }}>
-            {500 - input.length} characters remaining
-          </p>
-        )}
-
-        {/* Input Bar — elevated pill */}
-        <div
-          style={{
+        {/* Input bar — rounded glass pill */}
+        <div style={{ padding: '0 16px' }}>
+          <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px 12px 16px',
-            opacity: localRemaining <= 0 && !loading ? 0.5 : 1,
-            pointerEvents: localRemaining <= 0 && !loading ? 'none' : 'auto',
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            id="chat-input"
-            data-testid="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (localRemaining > 0) sendMessage(input);
-              }
-            }}
-            placeholder={localRemaining <= 0 ? 'Daily limit reached — resets tomorrow at midnight' : 'Ask anything — markets, portfolio, strategy...'}
-            maxLength={500}
-            disabled={localRemaining <= 0}
-            style={{
-              flex: 1,
-              height: '52px',
-              background: '#1a2235',
-              border: localRemaining <= 0 ? '1.5px solid #2a3448' : '1.5px solid rgba(34,211,238,0.25)',
-              borderRadius: '26px',
-              padding: '0 18px',
-              color: localRemaining <= 0 ? '#4b5563' : '#ffffff',
-              fontSize: '14px',
-              outline: 'none',
-              transition: 'all 0.2s ease',
-              boxSizing: 'border-box',
-              cursor: localRemaining <= 0 ? 'not-allowed' : 'text',
-            }}
-            onFocus={(e) => {
-              if (localRemaining <= 0) return;
-              e.target.style.borderColor = 'rgba(34,211,238,0.6)';
-              e.target.style.boxShadow = '0 0 0 3px rgba(34,211,238,0.15)';
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = localRemaining <= 0 ? '#2a3448' : 'rgba(34,211,238,0.25)';
-              e.target.style.boxShadow = 'none';
-            }}
-          />
-
-          {/* Send button — Vantage compass */}
-          <div
-            onClick={() => { if (localRemaining > 0) sendMessage(input); }}
-            style={{
-              width: '40px',
-              height: '40px',
-              minWidth: '40px',
-              background: input.trim() ? '#22d3ee' : '#1e2d45',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: input.trim() ? 'pointer' : 'default',
-              flexShrink: 0,
-              padding: '6px',
-              boxSizing: 'border-box',
-              transition: 'background 0.2s ease',
-            }}
-          >
-            <CompassIcon size={20} color={input.trim() ? '#0a0f1e' : '#64748b'} />
-          </div>
-
-          {/* Trash button */}
-          <div
-            onClick={() => {
-              if (messages.length === 0) return;
-              setShowClearConfirm(true);
-            }}
-            style={{
-              width: '36px',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#334155',
-              flexShrink: 0,
-            }}
-          >
-            <Trash2 size={16} />
+            gap: '10px',
+            background: GLASS_BG,
+            border: `1px solid ${BORDER_ACCENT}`,
+            borderRadius: '999px',
+            padding: '14px 18px',
+          }}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (localRemaining > 0) sendMessage(input);
+                }
+              }}
+              placeholder="Ask anything about markets, your portfolio..."
+              maxLength={500}
+              disabled={localRemaining <= 0}
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '14px',
+                outline: 'none',
+                fontFamily: 'inherit',
+                minWidth: 0,
+              }}
+            />
+            <div
+              onClick={() => { if (localRemaining > 0 && input.trim()) sendMessage(input); }}
+              style={{
+                cursor: input.trim() && localRemaining > 0 ? 'pointer' : 'default',
+                color: input.trim() && localRemaining > 0 ? ACCENT : 'rgba(255,255,255,0.3)',
+                fontSize: '18px',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              🧭
+            </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <p
-          style={{
-            textAlign: 'center',
-            fontSize: '10px',
-            color: '#cbd5e1',
-            padding: '0 16px calc(12px + env(safe-area-inset-bottom)) 16px',
-            margin: 0,
-          }}
-        >
-          Powered by AI · Not financial advice ·{' '}
-          <span style={{ color: localRemaining <= 5 ? '#f59e0b' : '#64748b' }}>
-            {localRemaining} AI analyses available today
-          </span>
+        {/* Disclaimer */}
+        <p style={{
+          fontSize: '10.5px',
+          color: TEXT_DIM,
+          textAlign: 'center',
+          marginTop: '10px',
+          padding: '0 16px',
+        }}>
+          AI-generated · Not financial advice
         </p>
+
+        {/* Trash button (subtle, for clearing chat) */}
+        {messages.length > 0 && (
+          <div style={{ textAlign: 'center', marginTop: '8px' }}>
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255,255,255,0.2)',
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Clear conversation
+            </button>
+          </div>
+        )}
+
+        {/* History button */}
+        <div style={{ textAlign: 'center', marginTop: '8px' }}>
+          <button
+            onClick={() => setShowHistory(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.3)',
+              fontSize: '11px',
+              cursor: 'pointer',
+              margin: '0 auto',
+              fontFamily: 'inherit',
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>🕐</span>
+            History
+          </button>
+        </div>
       </div>
 
       {/* ─── Keyframes ─── */}
@@ -1490,218 +1162,55 @@ Give me a market pulse check — how are the major indexes performing today, wha
         }
       `}</style>
 
-      {/* ─── Chat History Full-Screen Modal (simplified — last 3 sessions) ─── */}
+      {/* ─── Chat History Modal ─── */}
       {showHistory && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            zIndex: 99999,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-          }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
           onClick={() => setShowHistory(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#0a0f1e',
-              borderTop: '1px solid #1e2d45',
-              borderRadius: '20px 20px 0 0',
-              maxHeight: 'calc(100dvh - env(safe-area-inset-top))',
-              paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
-              display: 'flex',
-              flexDirection: 'column',
-              flex: 1,
-            }}
+            style={{ background: '#0a0f1e', borderTop: '1px solid #1e2d45', borderRadius: '20px 20px 0 0', maxHeight: 'calc(100dvh - env(safe-area-inset-top))', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', flex: 1 }}
           >
-            {/* Header */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '20px 20px 8px 20px',
-                flexShrink: 0,
-              }}
-            >
-              <p style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff' }}>
-                Recent Conversations
-              </p>
-              <button
-                onClick={() => setShowHistory(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#94a3b8',
-                  fontSize: '16px',
-                  cursor: 'pointer',
-                }}
-              >
-                ✕
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 8px 20px', flexShrink: 0 }}>
+              <p style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff' }}>Recent Conversations</p>
+              <button onClick={() => setShowHistory(false)} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '16px', cursor: 'pointer' }}>✕</button>
             </div>
-
-            {/* Subtitle */}
-            <p style={{
-              fontSize: '11px',
-              color: '#cbd5e1',
-              padding: '0 20px 16px 20px',
-              flexShrink: 0,
-            }}>
-              Last 7 days
-            </p>
-
-            {/* Session cards — max 3 */}
-            <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '0 20px 16px 20px',
-            }}>
+            <p style={{ fontSize: '11px', color: '#cbd5e1', padding: '0 20px 16px 20px', flexShrink: 0 }}>Last 7 days</p>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px 20px' }}>
               {(() => {
                 const sessions = getRecentSessions(3);
-                // Already sorted by updatedAt desc, limited to 3
-
                 if (sessions.length === 0) {
-                  return (
-                    <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '32px 0' }}>
-                      No recent conversations
-                    </p>
-                  );
+                  return <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '32px 0' }}>No recent conversations</p>;
                 }
-
                 return sessions.map((session, i) => {
-                  // Find first AI response for preview
                   const aiMsg = session.messages.find(m => m.role === 'ai');
-                  const preview = aiMsg
-                    ? (aiMsg.content.length > 100 ? aiMsg.content.slice(0, 97) + '...' : aiMsg.content)
-                    : (session.messages[0]?.content?.slice(0, 80) + '...' || 'Empty chat');
+                  const preview = aiMsg ? (aiMsg.content.length > 100 ? aiMsg.content.slice(0, 97) + '...' : aiMsg.content) : (session.messages[0]?.content?.slice(0, 80) + '...' || 'Empty chat');
                   const firstUser = session.messages.find(m => m.role === 'user');
-                  const displayPreview = firstUser
-                    ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"`
-                    : preview;
+                  const displayPreview = firstUser ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"` : preview;
                   const date = new Date(session.updatedAt);
                   const now = new Date();
                   const isToday = date.toDateString() === now.toDateString();
-                  const yesterday = new Date(now);
-                  yesterday.setDate(yesterday.getDate() - 1);
+                  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
                   const isYesterday = date.toDateString() === yesterday.toDateString();
-                  const dateLabel = isToday
-                    ? `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                    : isYesterday
-                    ? `Yesterday, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                    : date.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      });
+                  const dateLabel = isToday ? `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : isYesterday ? `Yesterday, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
                   return (
                     <div key={session.id}>
-                      <div
-                        onClick={() => {
-                          const msgs = loadSessionMessages(session.id);
-                          if (msgs) {
-                            setMessages(msgs);
-                            setCurrentSessionId(session.id);
-                          }
-                          setShowHistory(false);
-                          wasAtBottomRef.current = true;
-                          scrollToBottom(false);
-                        }}
-                        style={{
-                          background: '#1a2235',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: '12px',
-                          padding: '14px 16px',
-                          marginBottom: i < sessions.length - 1 ? '10px' : '0',
-                          cursor: 'pointer',
-                          transition: 'border-color 0.15s',
-                        }}
-                        onMouseEnter={e => {
-                          (e.currentTarget as HTMLElement).style.borderColor = 'rgba(34,211,238,0.3)';
-                        }}
-                        onMouseLeave={e => {
-                          (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)';
-                        }}
-                      >
-                        {/* Date label */}
-                        <p style={{
-                          fontSize: '11px',
-                          color: '#cbd5e1',
-                          fontWeight: '500',
-                          margin: '0 0 6px 0',
-                        }}>
-                          {dateLabel}
-                        </p>
-
-                        {/* Preview (first user message) */}
-                        <p style={{
-                          fontSize: '13px',
-                          color: '#cbd5e1',
-                          lineHeight: '1.5',
-                          margin: '0 0 8px 0',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        }}>
-                          {displayPreview}
-                        </p>
-
-                        {/* Message count */}
-                        <p style={{
-                          fontSize: '11px',
-                          color: '#94a3b8',
-                          margin: 0,
-                        }}>
-                          {session.messages.length} message{session.messages.length !== 1 ? 's' : ''}
-                        </p>
+                      <div onClick={() => { const msgs = loadSessionMessages(session.id); if (msgs) { setMessages(msgs); setCurrentSessionId(session.id); } setShowHistory(false); wasAtBottomRef.current = true; scrollToBottom(false); }}
+                        style={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: i < sessions.length - 1 ? '10px' : '0', cursor: 'pointer', transition: 'border-color 0.15s' }}>
+                        <p style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '500', margin: '0 0 6px 0' }}>{dateLabel}</p>
+                        <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{displayPreview}</p>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{session.messages.length} message{session.messages.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
                   );
                 });
               })()}
             </div>
-
-            {/* Start New Conversation button */}
-            <div style={{
-              padding: '12px 20px 20px 20px',
-              borderTop: '1px solid #1e2d45',
-              flexShrink: 0,
-            }}>
-              <button
-                onClick={() => {
-                  setShowHistory(false);
-                  setMessages([]);
-                  setCurrentSessionId(null);
-                  wasAtBottomRef.current = true;
-                  scrollToBottom(false);
-                }}
-                style={{
-                  width: '100%',
-                  background: 'transparent',
-                  border: '1px solid rgba(34,211,238,0.4)',
-                  borderRadius: '10px',
-                  color: '#22d3ee',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  padding: '12px 0',
-                  cursor: 'pointer',
-                }}
-              >
-                ＋ Start New Conversation
-              </button>
+            <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid #1e2d45', flexShrink: 0 }}>
+              <button onClick={() => { setShowHistory(false); setMessages([]); setCurrentSessionId(null); wasAtBottomRef.current = true; scrollToBottom(false); }}
+                style={{ width: '100%', background: 'transparent', border: '1px solid rgba(34,211,238,0.4)', borderRadius: '10px', color: '#22d3ee', fontSize: '14px', fontWeight: '500', padding: '12px 0', cursor: 'pointer' }}>＋ Start New Conversation</button>
             </div>
           </div>
         </div>
@@ -1709,97 +1218,22 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
       {/* ─── Clear Confirm Modal ─── */}
       {showClearConfirm && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-          }}
-        >
-          <div
-            style={{
-              background: '#1a2235',
-              border: '1px solid #2a3448',
-              borderRadius: '16px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '320px',
-              textAlign: 'center',
-            }}
-          >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#1a2235', border: '1px solid #2a3448', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px', textAlign: 'center' }}>
             <div style={{ fontSize: '32px', marginBottom: '12px' }}>🗑️</div>
-            <p
-              style={{
-                fontSize: '16px',
-                fontWeight: '700',
-                color: '#ffffff',
-                marginBottom: '8px',
-              }}
-            >
-              Clear Conversation
-            </p>
-            <p
-              style={{
-                fontSize: '13px',
-                color: '#cbd5e1',
-                marginBottom: '24px',
-                lineHeight: '1.5',
-              }}
-            >
-              This will remove all messages from your current session. This cannot be undone.
-            </p>
+            <p style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginBottom: '8px' }}>Clear Conversation</p>
+            <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px', lineHeight: '1.5' }}>This will remove all messages from your current session. This cannot be undone.</p>
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                onClick={() => setShowClearConfirm(false)}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  background: 'transparent',
-                  border: '1px solid #374151',
-                  borderRadius: '10px',
-                  color: '#94a3b8',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setMessages([]);
-                  setShowClearConfirm(false);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-              >
-                Clear
-              </button>
+              <button onClick={() => setShowClearConfirm(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid #374151', borderRadius: '10px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => { setMessages([]); setShowClearConfirm(false); }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Learning Moment Card ─────────────────────── */}
+      {/* ── Learning Moment Card ── */}
       {learningCard && (
-        <LearningMomentCard
-          card={learningCard}
-          onGotIt={() => dismissLearning(true)}
-          onDismiss={() => dismissLearning(false)}
-        />
+        <LearningMomentCard card={learningCard} onGotIt={() => dismissLearning(true)} onDismiss={() => dismissLearning(false)} />
       )}
 
     </div>
