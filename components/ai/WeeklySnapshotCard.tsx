@@ -340,6 +340,16 @@ export default function WeeklySnapshotCard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '18px' }}>📊</span>
             <span style={{ fontSize: '15px', fontWeight: 700 }}>Weekly Snapshot</span>
+            <span style={{
+              fontSize: '10px',
+              color: 'rgba(34,211,238,0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2px',
+              letterSpacing: '0.04em',
+            }}>
+              <span style={{ fontSize: '10px' }}>✨</span> AI
+            </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>

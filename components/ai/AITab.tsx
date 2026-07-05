@@ -15,8 +15,7 @@ import { saveChatMessage } from '@/lib/chat-service';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
 import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
-import DailyBriefCard from '@/components/ai/DailyBriefCard';
-import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
+
 
 // ── Design tokens (vantage-ai-tab-redesign.html) ──
 const GLASS_BG = 'rgba(255,255,255,0.05)';
@@ -142,6 +141,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [exploreCompact, setExploreCompact] = useState(false);
   const [exploreSeenCount, setExploreSeenCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
   // ── AI Noticed state — fetched from API ──
@@ -736,9 +736,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
     return chips.slice(0, 2);
   })();
 
-  // ── Collapsible top section (Daily Brief + Weekly Snapshot) ──
-  const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
-  const [weeklySnapshotExpanded, setWeeklySnapshotExpanded] = useState(false);
   // ── Explore bottom sheet ──
   const [showExplore, setShowExplore] = useState(false);
 
@@ -814,73 +811,20 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== TOP BAR — Daily Brief + Weekly Snapshot pills + menu ======== */}
+      {/* ======== TOP BAR — hamburger menu only ======== */}
       <div style={{
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
-        padding: '12px 16px',
+        justifyContent: 'flex-end',
+        padding: '10px 16px',
         background: 'rgba(10,15,30,0.6)',
         backdropFilter: 'blur(16px)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
+        zIndex: 20,
+        position: 'relative',
       }}>
-        <div
-          onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '999px',
-            padding: '9px 14px',
-            fontSize: '12.5px',
-            fontWeight: 600,
-            color: 'rgba(255,255,255,0.85)',
-            justifyContent: 'center',
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-        >
-          Daily Brief
-        </div>
-        <div
-          onClick={() => setWeeklySnapshotExpanded(!weeklySnapshotExpanded)}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '999px',
-            padding: '9px 14px',
-            fontSize: '12.5px',
-            fontWeight: 600,
-            color: 'rgba(255,255,255,0.85)',
-            justifyContent: 'center',
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-        >
-          Weekly Snapshot
-          {(() => {
-            try {
-              const cached = localStorage.getItem(`vantage_weekly_snapshot_${new Date().toDateString()}`);
-              if (cached) {
-                const data = JSON.parse(cached);
-                const match = data.content?.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/);
-                if (match) return <span style={{ fontWeight: 700, color: GAIN }}>{match[1]}/10</span>;
-              }
-            } catch {}
-            return null;
-          })()}
-        </div>
-        {/* ⋯ menu */}
+        {/* Hamburger menu */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <button
             onClick={() => setShowMenu(!showMenu)}
@@ -890,16 +834,17 @@ Give me a market pulse check — how are the major indexes performing today, wha
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: showMenu ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.06)',
+              border: showMenu ? '1px solid rgba(34,211,238,0.3)' : '1px solid rgba(255,255,255,0.1)',
               borderRadius: '50%',
-              color: 'rgba(255,255,255,0.6)',
+              color: showMenu ? ACCENT : 'rgba(255,255,255,0.6)',
               fontSize: '16px',
               cursor: 'pointer',
               fontFamily: 'inherit',
+              lineHeight: 1,
             }}
           >
-            ⋯
+            ☰
           </button>
           {showMenu && (
             <>
@@ -913,16 +858,16 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   position: 'absolute',
                   right: 0,
                   top: '40px',
-                  zIndex: 9999,
+                  zIndex: 999999,
                   background: '#1a2235',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '10px',
+                  border: '1px solid rgba(34,211,238,0.2)',
+                  borderRadius: '12px',
                   padding: '6px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '2px',
-                  minWidth: '170px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  minWidth: '190px',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(34,211,238,0.1)',
                 }}
               >
                 <button
@@ -930,36 +875,64 @@ Give me a market pulse check — how are the major indexes performing today, wha
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#cbd5e1',
-                    fontSize: '12.5px',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
+                    color: '#e2e8f0',
+                    fontSize: '13px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
                     cursor: 'pointer',
                     textAlign: 'left',
                     fontFamily: 'inherit',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}
                   onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
                   onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
                 >
-                  🕐 History
+                  <span style={{ fontSize: '14px' }}>🕐</span> History
                 </button>
                 <button
                   onClick={() => { setShowMenu(false); setShowClearConfirm(true); }}
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#cbd5e1',
-                    fontSize: '12.5px',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
+                    color: '#e2e8f0',
+                    fontSize: '13px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
                     cursor: 'pointer',
                     textAlign: 'left',
                     fontFamily: 'inherit',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}
                   onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
                   onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
                 >
-                  🗑 Clear conversation
+                  <span style={{ fontSize: '14px' }}>🗑</span> Clear conversation
+                </button>
+                <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 8px' }} />
+                <button
+                  onClick={() => { setShowMenu(false); setShowSettings(true); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#e2e8f0',
+                    fontSize: '13px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                  onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <span style={{ fontSize: '14px' }}>⚙️</span> AI Settings
                 </button>
               </div>
             </>
@@ -967,24 +940,20 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       </div>
 
-      {/* Expanded Daily Brief + Weekly Snapshot (shown when respective pill is tapped) */}
-      {(dailyBriefExpanded || weeklySnapshotExpanded) && (
-        <div style={{ flexShrink: 0, padding: '0 16px 12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {dailyBriefExpanded && <DailyBriefCard />}
-          {weeklySnapshotExpanded && <WeeklySnapshotCard />}
-        </div>
-      )}
-
-      {/* ======== CHAT AREA — greeting + AI Noticed + chips + actions + messages ======== */}
-      <div
-        ref={chatContainerRef}
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          overscrollBehavior: 'contain',
-          paddingTop: '12px',
-        }}
-      >
+      {/* ======== CHAT WINDOW — bounded container ======== */}
+      <div style={{
+        flex: 1,
+        minHeight: 0,
+        margin: '10px 12px 0 12px',
+        background: 'rgba(8,13,26,0.85)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderBottom: 'none',
+        borderRadius: '16px 16px 0 0',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.25)',
+      }}>
 
       {/* ======== 1. GREETING CARD (standalone, accent border per reference) ======== */}
       {greetingLoaded && (
@@ -1047,18 +1016,27 @@ Give me a market pulse check — how are the major indexes performing today, wha
 
       {/* Sections 4 & 5 — Suggested Chips + Quick Actions — moved to Explore sheet */}
 
-      {/* ======== 6. CHAT MESSAGES AREA ======== */}
+      {/* ======== 2. MESSAGE THREAD — only this scrolls ======== */}
       <div
-        ref={messagesContainerRef}
+        ref={chatContainerRef}
         style={{
-          padding: '0 16px 16px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          minHeight: messages.length > 0 ? '120px' : '0px',
-          position: 'relative',
+          flex: 1,
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingTop: '8px',
         }}
       >
+        <div
+          ref={messagesContainerRef}
+          style={{
+            padding: '0 16px 16px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            minHeight: messages.length > 0 ? '120px' : '0px',
+            position: 'relative',
+          }}
+        >
         {/* Empty state — no suggestions inside chat */}
         {messages.length === 0 && !loading && (
           <div style={{ flex: 1 }} />
@@ -1147,11 +1125,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
         )}
       </div>
 
-      {/* ======== CHAT AREA END ======== */}
+      {/* ======== MESSAGE THREAD END ======== */}
       </div>
 
-      {/* ======== 7. INPUT FOOTER — anchored at bottom ======== */}
-      <div style={{ flexShrink: 0, paddingTop: '8px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))' }}>
+      {/* ======== 3. INPUT BAR — anchored at bottom of chat window ======== */}
+      <div style={{ flexShrink: 0, paddingTop: '16px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
         {/* Usage line */}
         <div style={{
           fontSize: '11.5px',
@@ -1273,6 +1251,73 @@ Give me a market pulse check — how are the major indexes performing today, wha
           AI-generated · Not financial advice
         </p>
       </div>
+
+      {/* ======== CHAT WINDOW END ======== */}
+      </div>
+
+      {/* ─── AI Settings Sheet ─── */}
+      {showSettings && (
+        <>
+          <div
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 11 }}
+            onClick={() => setShowSettings(false)}
+          />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 12,
+              background: '#10162a',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '20px 20px 0 0',
+              padding: '20px 20px 28px',
+              maxHeight: '60vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{
+              width: '36px', height: '4px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '999px',
+              margin: '0 auto 20px',
+            }} />
+            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '16px' }}>
+              AI Settings
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                  Investor Style Lens
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', lineHeight: '1.5' }}>
+                  Your AI responses are tailored to your investor profile. Update your style in Preferences → Investor Style.
+                </div>
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                  Response Detail
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', lineHeight: '1.5' }}>
+                  Default response depth and length preferences. More controls coming soon.
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ─── Explore Bottom Sheet ─── */}
       {showExplore && (

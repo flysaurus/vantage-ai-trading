@@ -11,6 +11,8 @@ import SellModal from './SellModal';
 import TradeTicket from './TradeTicket';
 import PortfolioChart from './PortfolioChart';
 import MarketOverview from '../shared/MarketOverview';
+import DailyBriefCard from '@/components/ai/DailyBriefCard';
+import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -981,6 +983,17 @@ export function PortfolioTab() {
     <div style={{ paddingBottom: 120 }}>
       {/* ── Account Hero ── */}
       <AccountHero account={accountData} isConnected={isConnected} />
+
+      {/* ── AI Curated Briefs ── */}
+      <div style={{ padding: '4px 16px 2px 16px' }}>
+        <div style={{ fontSize: '10px', letterSpacing: '0.08em', color: 'rgba(34,211,238,0.6)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+          <span style={{ fontSize: '11px' }}>✨</span> AI curated
+        </div>
+        <DailyBriefCard />
+        <div style={{ marginTop: '12px' }}>
+          <WeeklySnapshotCard />
+        </div>
+      </div>
 
       {/* ── Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>

@@ -208,6 +208,16 @@ export default function DailyBriefCard() {
             }}>
               Today
             </span>
+            <span style={{
+              fontSize: '10px',
+              color: 'rgba(34,211,238,0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2px',
+              letterSpacing: '0.04em',
+            }}>
+              <span style={{ fontSize: '10px' }}>✨</span> AI
+            </span>
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
