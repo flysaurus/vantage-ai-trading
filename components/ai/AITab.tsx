@@ -739,7 +739,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: '28px', margin: '8px 12px 0 12px', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 40%, rgba(10,15,30,0.4) 100%)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: '28px', margin: '8px 12px 0 12px', overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.4)' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -841,100 +841,95 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           >
             ☰
           </button>
-          {showMenu && (
-            <>
-              <div
-                style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
-                onClick={() => setShowMenu(false)}
-              />
-              <div
-                ref={menuRef}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: '40px',
-                  zIndex: 999999,
-                  background: '#1a2235',
-                  border: '1px solid rgba(34,211,238,0.2)',
-                  borderRadius: '12px',
-                  padding: '6px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px',
-                  minWidth: '190px',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(34,211,238,0.1)',
-                }}
-              >
-                <button
-                  onClick={() => { setShowMenu(false); setShowHistory(true); }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#e2e8f0',
-                    fontSize: '13px',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                  onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <span style={{ fontSize: '14px' }}>🕐</span> History
-                </button>
-                <button
-                  onClick={() => { setShowMenu(false); setShowClearConfirm(true); }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#e2e8f0',
-                    fontSize: '13px',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                  onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <span style={{ fontSize: '14px' }}>🗑</span> Clear conversation
-                </button>
-                <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 8px' }} />
-                <button
-                  onClick={() => { setShowMenu(false); setShowSettings(true); }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#e2e8f0',
-                    fontSize: '13px',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                  onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <span style={{ fontSize: '14px' }}>⚙️</span> AI Settings
-                </button>
-              </div>
-            </>
-          )}
+
         </div>
         <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>Vantage AI Advisor</div>
+        {/* Live pulse indicator */}
+        <div style={{
+          width: '7px',
+          height: '7px',
+          borderRadius: '50%',
+          background: ACCENT,
+          animation: 'vantageLivePulse 2s infinite',
+          marginLeft: '2px',
+        }} />
+        <style>{`
+          @keyframes vantageLivePulse {
+            0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.5); }
+            70% { box-shadow: 0 0 0 8px rgba(34,211,238,0); }
+            100% { box-shadow: 0 0 0 0 rgba(34,211,238,0); }
+          }
+        `}</style>
       </div>
+
+      {/* Hamburger dropdown — inline panel below header, per redesign spec */}
+      {showMenu && (
+        <div style={{
+          flexShrink: 0,
+          margin: '0 16px 10px',
+          background: 'rgba(20,28,48,0.95)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '14px',
+          overflow: 'hidden',
+        }}>
+          <button
+            onClick={() => { setShowMenu(false); setShowHistory(true); }}
+            style={{
+              display: 'block',
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              color: '#e2e8f0',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              padding: '12px 16px',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+            }}
+          >
+            History
+          </button>
+          <button
+            onClick={() => { setShowMenu(false); setShowClearConfirm(true); }}
+            style={{
+              display: 'block',
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              color: '#e2e8f0',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              padding: '12px 16px',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+            }}
+          >
+            Clear Conversation
+          </button>
+          <button
+            onClick={() => { setShowMenu(false); setShowSettings(true); }}
+            style={{
+              display: 'block',
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              color: '#e2e8f0',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              padding: '12px 16px',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+            }}
+          >
+            AI Settings
+          </button>
+        </div>
+      )}
 
       {/* ======== CHAT WINDOW — structural container ======== */}
       <div style={{
@@ -946,35 +941,61 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         position: 'relative',
       }}>
 
-      {/* ======== 1. GREETING CARD (standalone, accent border per reference) ======== */}
+      {/* ======== 1. GREETING CARD (gradient border + radial glow per reference) ======== */}
       {greetingLoaded && (
         <div style={{ padding: '0 16px', marginBottom: '12px' }}>
           <div style={{
-            background: GLASS_BG,
-            border: `1px solid ${BORDER_ACCENT}`,
-            borderRadius: '20px',
+            position: 'relative',
+            background: 'rgba(255,255,255,0.05)',
+            borderRadius: '18px',
             padding: '20px',
+            overflow: 'hidden',
             backdropFilter: BACKDROP_BLUR,
           }}>
+            {/* Gradient border (pseudo-element simulation) */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '18px',
+              padding: '1px',
+              background: 'linear-gradient(135deg, rgba(34,211,238,0.5), rgba(34,211,238,0.05) 40%, rgba(34,211,238,0.25))',
+              WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+              WebkitMaskComposite: 'xor',
+              maskComposite: 'exclude',
+              pointerEvents: 'none',
+              zIndex: 1,
+            }} />
+            {/* Radial glow overlay */}
+            <div style={{
+              position: 'absolute',
+              top: '-40%',
+              left: '-20%',
+              width: '140%',
+              height: '140%',
+              background: 'radial-gradient(circle, rgba(34,211,238,0.10), transparent 60%)',
+              pointerEvents: 'none',
+              zIndex: 0,
+            }} />
+
             {/* Brand row */}
-            <div style={{ color: ACCENT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em', marginBottom: '8px' }}>
+            <div style={{ position: 'relative', zIndex: 2, color: ACCENT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '8px' }}>
               VANTAGE AI
             </div>
 
-            {/* Opener */}
-            <div style={{ fontSize: '19px', fontWeight: 800, marginBottom: '8px' }}>
+            {/* Opener — serif italic 28px */}
+            <div style={{ position: 'relative', zIndex: 2, fontFamily: "Georgia, 'Playfair Display', serif", fontStyle: 'italic', fontWeight: 400, fontSize: '28px', marginBottom: '10px', color: '#fff' }}>
               {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
                 part === userInitial ? (
                   <span key={i} style={{ color: ACCENT }}>{userInitial}</span>
                 ) : (
-                  <span key={i} style={{ color: '#fff' }}>{part}</span>
+                  <span key={i}>{part}</span>
                 )
               )}
             </div>
 
             {/* Hook */}
             {greetingHook && (
-              <div style={{ fontSize: '14.5px', lineHeight: '1.55', color: TEXT_BODY }}>
+              <div style={{ position: 'relative', zIndex: 2, fontSize: '14.5px', lineHeight: '1.6', color: 'rgba(255,255,255,0.85)' }}>
                 {greetingHook}
               </div>
             )}
