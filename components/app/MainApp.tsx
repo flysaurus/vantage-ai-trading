@@ -232,7 +232,7 @@ function AppShell() {
       {demoStatus.showWarning && (
         <DemoWarningBanner daysRemaining={demoStatus.daysRemaining} />
       )}
-      <div className="content-area" key={activeTab}>
+      <div className="content-area" key={activeTab} style={activeTab === 'ai' ? { overflow: 'hidden', paddingBottom: 0 } : undefined}>
         {activeTab === 'ai' ? (
           <AITab messages={chatMessages} setMessages={setChatMessages} />
         ) : (

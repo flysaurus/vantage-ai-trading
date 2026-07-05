@@ -737,12 +737,13 @@ Give me a market pulse check — how are the major indexes performing today, wha
   })();
 
   // ── Collapsible top section (Daily Brief + Weekly Snapshot) ──
-  const [headerExpanded, setHeaderExpanded] = useState(true);
+  const [dailyBriefExpanded, setDailyBriefExpanded] = useState(false);
+  const [weeklySnapshotExpanded, setWeeklySnapshotExpanded] = useState(false);
   // ── Explore bottom sheet ──
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, background: 'transparent' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'transparent' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -825,7 +826,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
         borderBottom: '1px solid rgba(255,255,255,0.08)',
       }}>
         <div
-          onClick={() => setHeaderExpanded(!headerExpanded)}
+          onClick={() => setDailyBriefExpanded(!dailyBriefExpanded)}
           style={{
             flex: 1,
             display: 'flex',
@@ -847,7 +848,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           Daily Brief
         </div>
         <div
-          onClick={() => setHeaderExpanded(!headerExpanded)}
+          onClick={() => setWeeklySnapshotExpanded(!weeklySnapshotExpanded)}
           style={{
             flex: 1,
             display: 'flex',
@@ -966,11 +967,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       </div>
 
-      {/* Expanded Daily Brief + Weekly Snapshot (shown when header pills are tapped) */}
-      {headerExpanded && (
+      {/* Expanded Daily Brief + Weekly Snapshot (shown when respective pill is tapped) */}
+      {(dailyBriefExpanded || weeklySnapshotExpanded) && (
         <div style={{ flexShrink: 0, padding: '0 16px 12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <DailyBriefCard />
-          <WeeklySnapshotCard />
+          {dailyBriefExpanded && <DailyBriefCard />}
+          {weeklySnapshotExpanded && <WeeklySnapshotCard />}
         </div>
       )}
 
