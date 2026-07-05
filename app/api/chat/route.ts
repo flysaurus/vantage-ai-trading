@@ -96,7 +96,7 @@ Note: search results are from today.
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { messages, portfolioContext, mode } = body
+    const { messages, portfolioContext, mode, timezone } = body
 
     // ── Usage limit check ──
     const userId = await getOptionalUserId();
@@ -115,6 +115,7 @@ export async function POST(req: Request) {
       investorStyle: body.investorStyle || 'Lynch',
       riskTolerance: body.riskTolerance || 'Moderate',
       name: body.name || 'M',
+      timezone: timezone || 'America/New_York',
     }
     const profileContext = buildUserProfileContext(profile)
 

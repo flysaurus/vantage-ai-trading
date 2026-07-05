@@ -418,7 +418,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (localRemaining <= 0) {
       setMessages(prev => [...prev, {
         role: 'ai',
-        content: `📊 You've used all ${serverLimit} messages today. Your daily limit resets at midnight UTC.\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.`
+        content: `📊 You've used all ${serverLimit} messages today. Your daily limit resets at midnight (local time).\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.`
       }]);
       return;
     }
@@ -455,6 +455,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         investorStyle: investorStyle,
         riskTolerance: user?.riskTolerance || 'Moderate',
         name: user?.name || (typeof window !== 'undefined' ? user?.name || '' : null) || 'M',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
       });
 
       if (!res.ok) throw new Error('API error');
@@ -1346,7 +1347,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
           </span>
           {localRemaining <= 5 && (
             <span style={{ fontSize: '10px', color: '#cbd5e1' }}>
-              Free tier · Resets midnight UTC
+              Free tier · Resets midnight
             </span>
           )}
         </div>

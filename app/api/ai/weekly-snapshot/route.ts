@@ -228,6 +228,7 @@ export async function GET(req: NextRequest) {
       investorStyle: styleMap[investorStyle] || 'Lynch',
       riskTolerance: riskLabel,
       name: profileName,
+      timezone: req.nextUrl.searchParams.get('tz') || 'America/New_York',
     };
     const profileContext = buildUserProfileContext(profile);
 

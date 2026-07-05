@@ -6,6 +6,7 @@ export interface UserProfile {
   investorStyle: 'Lynch' | 'Buffett' | 'Livermore' | 'Munger' | 'Soros'
   riskTolerance: 'Conservative' | 'Moderate' | 'Aggressive'
   name: string
+  timezone?: string
 }
 
 export function getInvestorStylePrompt(
@@ -54,14 +55,38 @@ export function getRiskTolerancePrompt(
   return risks[risk] || risks.Moderate
 }
 
+function formatLocalTime(timezone: string): string {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return formatter.format(now);
+  } catch {
+    return new Date().toLocaleString('en-US', { timeZone: 'UTC' });
+  }
+}
+
 export function buildUserProfileContext(
   profile: UserProfile
 ): string {
+  const timeContext = profile.timezone
+    ? `\nUSER TIMEZONE: ${profile.timezone}\nLOCAL TIME: ${formatLocalTime(profile.timezone)}\nIMPORTANT: Use this local time for all references. When mentioning dates, times, market open/close, or time-sensitive events, use the USER'S timezone, not UTC.`
+    : '';
+
   return `
 USER INVESTMENT PROFILE:
 Name: ${profile.name}
 Investor Style: ${profile.investorStyle}
 Risk Tolerance: ${profile.riskTolerance}
+${timeContext}
 
 ${getInvestorStylePrompt(profile.investorStyle)}
 

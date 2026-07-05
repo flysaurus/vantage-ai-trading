@@ -101,7 +101,8 @@ export default function WeeklySnapshotCard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await await apiGet('/api/ai/weekly-snapshot');
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+      const r = await await apiGet(`/api/ai/weekly-snapshot?tz=${encodeURIComponent(tz)}`);
       const d = await r.json();
       setData(d);
     } catch {

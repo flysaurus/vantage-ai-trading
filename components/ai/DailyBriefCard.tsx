@@ -52,7 +52,8 @@ export default function DailyBriefCard() {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    apiGet('/api/ai/daily-brief')
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+    apiGet(`/api/ai/daily-brief?tz=${encodeURIComponent(tz)}`)
       .then((r) => r.json())
       .then(setData)
       .catch(() => {})
