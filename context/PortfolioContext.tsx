@@ -574,6 +574,37 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // Fire-and-forget: re-check AI Noticed triggers after trade (use fresh broker data)
+      if (b) {
+        b.getAccount().then(acct => {
+          b.getPositions().then(pos => {
+            fetch('/api/ai/noticed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                portfolio: {
+                  cash: acct?.cashBalance ?? 0,
+                  equity: acct?.portfolioValue ?? 0,
+                  totalPnl: acct?.totalPnl ?? 0,
+                  totalPnlPercent: acct?.totalPnlPercent ?? 0,
+                  dayPnl: acct?.dayPnl ?? 0,
+                  dayPnlPercent: acct?.dayPnlPercent ?? 0,
+                },
+                positions: (pos || []).map((p: any) => ({
+                  symbol: p.symbol,
+                  qty: p.qty || 0,
+                  marketValue: p.marketValue || 0,
+                  avgCost: p.avgCost || 0,
+                  totalPnl: p.totalPnl || 0,
+                  totalPnlPercent: p.totalPnlPercent || 0,
+                })),
+                watchlistSymbols: [],
+              }),
+            }).catch(() => {});
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
       return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
     },
     [brokerRef, refreshStateFromBroker],

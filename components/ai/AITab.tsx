@@ -82,68 +82,31 @@ interface AITabProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
-// ── AI Noticed — derived from portfolio state ──
+// ── AI Noticed — fetched from Supabase via API ──
 interface NoticedItem {
   id: string;
-  icon: string;
-  bold: string;
-  suffix: string;
+  triggerKey: string;
+  triggerType: string;
+  title: string;
+  body: string;
+  followUp: string;
   variant: 'accent' | 'warn' | 'gain';
-  timeAgo: string;
+  icon: string;
+  meta: Record<string, any>;
+  createdAt: string;
+  dismissedUntil: string | null;
 }
 
-function deriveNoticedItems(
-  liveAccount: any,
-  positions: any[],
-): NoticedItem[] {
-  const items: NoticedItem[] = [];
-  if (!liveAccount) return items;
-
-  const cash = liveAccount.cash ?? 0;
-  const equity = liveAccount.equity ?? 0;
-  const total = equity + cash;
-  const cashPct = total > 0 ? (cash / total) * 100 : 0;
-
-  // 1. Cash idle warning (>70% cash)
-  if (cashPct > 70) {
-    items.push({
-      id: 'cash-idle',
-      icon: '⚠️',
-      bold: `${cashPct.toFixed(0)}% cash`,
-      suffix: `for 12 days straight — sitting idle since your last KO buy.`,
-      variant: 'warn',
-      timeAgo: '2h',
-    });
-  }
-
-  // 2. Best performing position (>10% total PnL)
-  const sortedPnl = [...positions].sort((a, b) => (b.totalPnlPercent || 0) - (a.totalPnlPercent || 0));
-  const best = sortedPnl[0];
-  if (best && (best.totalPnlPercent || 0) > 10) {
-    items.push({
-      id: `best-${best.symbol}`,
-      icon: '📈',
-      bold: `${best.symbol} crossed ${pctStr(best.totalPnlPercent || 0)}`,
-      suffix: `total return — first position to hit that mark this month.`,
-      variant: 'gain',
-      timeAgo: '1d',
-    });
-  }
-
-  // 3. Biggest loser position (if down >5%)
-  const worst = sortedPnl[sortedPnl.length - 1];
-  if (worst && (worst.totalPnlPercent || 0) < -5 && worst.symbol !== best?.symbol) {
-    items.push({
-      id: `worst-${worst.symbol}`,
-      icon: '📉',
-      bold: `${worst.symbol} at ${pctStr(worst.totalPnlPercent || 0)}`,
-      suffix: `— worth reviewing if the thesis still holds.`,
-      variant: 'warn',
-      timeAgo: '1d',
-    });
-  }
-
-  return items.slice(0, 3);
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.floor(days / 7)}w`;
 }
 
 export function AITab({ messages, setMessages }: AITabProps) {
@@ -177,7 +140,61 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
-  const [dismissedNotices, setDismissedNotices] = useState<Set<string>>(new Set());
+  // ── AI Noticed state — fetched from API ──
+  const [noticedItems, setNoticedItems] = useState<NoticedItem[]>([]);
+  const [noticedLoaded, setNoticedLoaded] = useState(false);
+  const [snoozeTarget, setSnoozeTarget] = useState<string | null>(null); // item id for popover
+
+  const fetchNoticed = useCallback(async () => {
+    if (!liveAccount) return;
+    try {
+      const res = await apiPost('/api/ai/noticed', {
+        portfolio: {
+          cash: liveAccount.cash ?? 0,
+          equity: liveAccount.equity ?? 0,
+          totalPnl: liveAccount.totalPnl ?? 0,
+          totalPnlPercent: liveAccount.totalPnlPercent ?? 0,
+          dayPnl: liveAccount.dayPnl ?? 0,
+          dayPnlPercent: liveAccount.dayPnlPercent ?? 0,
+        },
+        positions: (liveAccount.positions || []).map((p: any) => ({
+          symbol: p.symbol,
+          qty: p.qty || 0,
+          marketValue: p.marketValue || 0,
+          avgCost: p.avgCost || 0,
+          totalPnl: p.totalPnl || 0,
+          totalPnlPercent: p.totalPnlPercent || 0,
+        })),
+        watchlistSymbols: [], // TODO: pass from watchlist context when available
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNoticedItems(data.items || []);
+      }
+    } catch {
+      // silent — feed hides when empty
+    } finally {
+      setNoticedLoaded(true);
+    }
+  }, [liveAccount]);
+
+  useEffect(() => {
+    if (liveAccount && !noticedLoaded) {
+      fetchNoticed();
+    }
+  }, [liveAccount, noticedLoaded, fetchNoticed]);
+
+  const handleDismiss = async (itemId: string, dismissType: string) => {
+    setSnoozeTarget(null);
+    // Optimistic remove
+    setNoticedItems(prev => prev.filter(i => i.id !== itemId));
+    try {
+      await apiPost('/api/ai/noticed/dismiss', { itemId, dismissType });
+    } catch {
+      // Re-fetch on failure
+      fetchNoticed();
+    }
+  };
 
   // ── Learning moment detection ──
   const { learningCard, dismissLearning } =
@@ -655,8 +672,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
   const totalPnl = liveAccount?.totalPnl ?? 0;
   const positions = liveAccount?.positions || [];
 
-  // ── AI Noticed items (derived from portfolio) ──
-  const noticedItems = deriveNoticedItems(liveAccount, positions).filter(n => !dismissedNotices.has(n.id));
+  // ── AI Noticed items (fetched from API — already set via useEffect) ──
 
   // ── Suggested chips (trimmed to 2 per reference) ──
   const suggestionChips: string[] = (() => {
@@ -801,51 +817,104 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ======== 2. AI NOTICED — proactive feed (NEW) ======== */}
+      {/* ======== 2. AI NOTICED — proactive feed (API-driven) ======== */}
       {noticedItems.length > 0 && (
         <div style={{ padding: '0 16px', marginBottom: '12px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {noticedItems.map((item) => {
               const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
               return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    const msg = `Tell me more about: ${item.bold} — ${item.suffix}`;
-                    sendToChat(msg);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '10px',
-                    background: GLASS_BG_LIGHTER,
-                    border: `1px solid ${BORDER_SUBTLE}`,
-                    borderLeft: `3px solid ${borderColor}`,
-                    borderRadius: '12px',
-                    padding: '12px 14px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
-                  <span style={{ flex: 1, fontSize: '13.5px', lineHeight: '1.5', color: TEXT_BODY }}>
-                    <b style={{ color: '#fff' }}>{item.bold}</b> {item.suffix}
-                  </span>
-                  <span style={{ fontSize: '11px', color: TEXT_MUTED, whiteSpace: 'nowrap', marginTop: '1px' }}>{item.timeAgo}</span>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDismissedNotices(prev => new Set([...prev, item.id]));
+                <div key={item.id} style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => {
+                      // Pre-fill input + focus (don't send)
+                      setInput(item.followUp || `Tell me about ${item.title}`);
+                      setTimeout(() => inputRef.current?.focus(), 50);
                     }}
-                    style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      background: GLASS_BG_LIGHTER,
+                      border: `1px solid ${BORDER_SUBTLE}`,
+                      borderLeft: `3px solid ${borderColor}`,
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                    }}
                   >
-                    ×
-                  </span>
+                    <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
+                    <span style={{ flex: 1, fontSize: '13px', lineHeight: '1.5', color: TEXT_BODY }}>
+                      {item.body}
+                    </span>
+                    <span style={{ fontSize: '11px', color: TEXT_MUTED, whiteSpace: 'nowrap', marginTop: '1px' }}>{timeAgo(item.createdAt)}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSnoozeTarget(snoozeTarget === item.id ? null : item.id);
+                      }}
+                      style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
+                    >
+                      ×
+                    </span>
+                  </div>
+
+                  {/* Snooze popover */}
+                  {snoozeTarget === item.id && (
+                    <>
+                      <div
+                        style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                        onClick={() => setSnoozeTarget(null)}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '36px',
+                        zIndex: 9999,
+                        background: '#1a2235',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: '10px',
+                        padding: '6px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        minWidth: '170px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}>
+                        {[
+                          { label: 'Remind in 3 days', type: '3d' },
+                          { label: 'Remind in 1 week', type: '1w' },
+                          { label: "Don't remind again", type: 'permanent' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.type}
+                            onClick={(e) => { e.stopPropagation(); handleDismiss(item.id, opt.type); }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#cbd5e1',
+                              fontSize: '12px',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              fontFamily: 'inherit',
+                            }}
+                            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}
           </div>
           <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', paddingTop: '4px' }}>
-            Tap any card to ask Vantage AI about it →
+            Tap any card to pre-fill a question ↓
           </div>
         </div>
       )}
