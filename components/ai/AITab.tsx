@@ -953,6 +953,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '0 -4px 24px rgba(0,0,0,0.25)',
+        position: 'relative',
       }}>
 
       {/* ======== 1. GREETING CARD (standalone, accent border per reference) ======== */}
@@ -1129,7 +1130,7 @@ Give me a market pulse check — how are the major indexes performing today, wha
       </div>
 
       {/* ======== 3. INPUT BAR — anchored at bottom of chat window ======== */}
-      <div style={{ flexShrink: 0, paddingTop: '16px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flexShrink: 0, paddingTop: '16px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
         {/* Usage line */}
         <div style={{
           fontSize: '11.5px',
@@ -1250,9 +1251,6 @@ Give me a market pulse check — how are the major indexes performing today, wha
         }}>
           AI-generated · Not financial advice
         </p>
-      </div>
-
-      {/* ======== CHAT WINDOW END ======== */}
       </div>
 
       {/* ─── AI Settings Sheet ─── */}
@@ -1537,6 +1535,9 @@ Give me a market pulse check — how are the major indexes performing today, wha
           50% { opacity: 0; }
         }
       `}</style>
+
+      {/* ======== CHAT WINDOW END ======== */}
+      </div>
 
       {/* ─── Chat History Modal ─── */}
       {showHistory && (
