@@ -781,11 +781,11 @@ Give me a market pulse check — how are the major indexes performing today, wha
         </div>
       )}
 
-      {/* ─── 2. Daily Brief Card (AI-powered) ─── */}
-      <DailyBriefCard />
-
-      {/* ─── 3. Weekly Snapshot (AI-powered) ─── */}
-      <WeeklySnapshotCard />
+      {/* ─── 2. AI Cards (pill-style per vantage-pill-design.html) ─── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <DailyBriefCard />
+        <WeeklySnapshotCard />
+      </div>
 
       {/* ─── 4. Ask Vantage AI Header ─── */}
       <div

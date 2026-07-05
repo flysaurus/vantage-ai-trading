@@ -3,6 +3,31 @@
 import { apiGet } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 
+// ── Reference design tokens (from vantage-pill-design.html) ──
+const PILL_BG = 'rgba(255,255,255,0.05)';
+const PILL_BORDER = 'rgba(255,255,255,0.08)';
+const PILL_HOVER_BG = 'rgba(255,255,255,0.08)';
+const CARD_BG = 'rgba(255,255,255,0.05)';
+const CARD_BORDER_ACCENT = 'rgba(34,211,238,0.25)'; // cyan accent
+const TEXT_SUBTLE = 'rgba(255,255,255,0.5)';
+const TEXT_MUTED = 'rgba(255,255,255,0.3)';
+const CHEVRON_COLOR = 'rgba(255,255,255,0.3)';
+const BACKDROP_BLUR = 'blur(20px)';
+
+const TAG_COLORS: Record<string, string> = {
+  MARKET: '#22d3ee',      // accent/cyan
+  PORTFOLIO: '#10b981',   // gain/green
+  WATCH: '#f59e0b',       // warning/amber
+  EARNINGS: '#a78bfa',    // purple
+};
+
+const TAG_BG: Record<string, string> = {
+  MARKET: 'rgba(34,211,238,0.15)',
+  PORTFOLIO: 'rgba(16,185,129,0.15)',
+  WATCH: 'rgba(245,158,11,0.15)',
+  EARNINGS: 'rgba(167,139,250,0.15)',
+};
+
 interface MarketSnapshot {
   sym: string;
   price: number;
@@ -32,40 +57,30 @@ function parseBrief(content: string): ParsedLine[] {
   return lines
     .map((line) => {
       const match = line.match(/^(MARKET|PORTFOLIO|WATCH|EARNINGS):\s*(.+)/i);
-      if (match) return { label: match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase(), text: match[2].trim() };
+      if (match) return { label: match[1].toUpperCase(), text: match[2].trim() };
       return { label: '', text: line.trim() };
     })
     .filter((l) => l.text);
 }
 
-/** Pull a one-line summary from the brief content — use first non-label line or first sentence */
 function extractSummary(content: string): string {
   const lines = content.split('\n').filter((l) => l.trim());
   for (const line of lines) {
-    // Skip label-prefixed lines to get a real content snippet
     if (!/^(MARKET|PORTFOLIO|WATCH|EARNINGS):/i.test(line)) {
       const clean = line.replace(/^[-•*]\s*/, '').trim();
       const firstSentence = clean.split(/[.!?]\s/)[0].trim();
-      if (firstSentence.length > 10) return firstSentence.length > 80 ? firstSentence.slice(0, 77) + '…' : firstSentence;
+      if (firstSentence.length > 10) return firstSentence.length > 60 ? firstSentence.slice(0, 57) + '…' : firstSentence;
     }
   }
-  // Fallback: use first label line without the label
   for (const line of lines) {
     const match = line.match(/^(MARKET|PORTFOLIO|WATCH|EARNINGS):\s*(.+)/i);
     if (match) {
       const t = match[2].trim();
-      return t.length > 80 ? t.slice(0, 77) + '…' : t;
+      return t.length > 60 ? t.slice(0, 57) + '…' : t;
     }
   }
   return 'Today\'s brief';
 }
-
-const LABEL_COLORS: Record<string, string> = {
-  Market: 'text-cyan-400',
-  Portfolio: 'text-green-400',
-  Watch: 'text-yellow-400',
-  Earnings: 'text-purple-400',
-};
 
 export default function DailyBriefCard() {
   const [data, setData] = useState<BriefData | null>(null);
@@ -81,12 +96,10 @@ export default function DailyBriefCard() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ─── Chevron icon ───
   const Chevron = ({ open }: { open: boolean }) => (
     <svg
-      className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${
-        open ? 'rotate-180' : ''
-      }`}
+      className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+      style={{ width: '14px', height: '14px', color: CHEVRON_COLOR }}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -98,18 +111,25 @@ export default function DailyBriefCard() {
     </svg>
   );
 
-  // ─── Loading skeleton (pill) ───
+  // ─── Loading skeleton ───
   if (loading) {
     return (
-      <div className="mx-4">
-        <div className="bg-slate-800/60 rounded-full border border-slate-700/60 px-4 py-2.5 flex items-center gap-2.5">
-          <span className="text-sm">📡</span>
-          <span className="text-white text-xs font-semibold uppercase tracking-wide">
-            Daily Brief ✦
-          </span>
-          <span className="ml-auto">
-            <span className="text-slate-300 text-[10px]">Loading…</span>
-          </span>
+      <div style={{ padding: '0 16px' }}>
+        <div style={{
+          background: PILL_BG,
+          border: `1px solid ${PILL_BORDER}`,
+          borderRadius: '999px',
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          backdropFilter: BACKDROP_BLUR,
+        }}>
+          <span style={{ fontSize: '18px' }}>🗞️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Daily Brief</div>
+            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>Loading…</div>
+          </div>
         </div>
       </div>
     );
@@ -124,18 +144,35 @@ export default function DailyBriefCard() {
   // ─── Collapsed pill ───
   if (!expanded) {
     return (
-      <div className="mx-4">
+      <div style={{ padding: '0 16px' }}>
         <button
           onClick={() => setExpanded(true)}
-          className="w-full text-left bg-slate-800/60 rounded-full border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200 px-4 py-2.5 flex items-center gap-2.5"
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            background: PILL_BG,
+            border: `1px solid ${PILL_BORDER}`,
+            borderRadius: '999px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backdropFilter: BACKDROP_BLUR,
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+            color: '#fff',
+            fontFamily: 'inherit',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
         >
-          <span className="text-sm shrink-0">📡</span>
-          <span className="text-white text-xs font-semibold uppercase tracking-wide shrink-0">
-            Daily Brief ✦
-          </span>
-          <span className="text-slate-400 text-[11px] truncate flex-1 min-w-0">
-            · {data?.cached ? 'Cached' : 'Generated'} today · {summary}
-          </span>
+          <span style={{ fontSize: '18px' }}>🗞️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Daily Brief</div>
+            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>
+              {data?.cached ? 'Cached' : 'Generated'} today · {summary}
+            </div>
+          </div>
           <Chevron open={false} />
         </button>
       </div>
@@ -144,52 +181,93 @@ export default function DailyBriefCard() {
 
   // ─── Expanded card ───
   return (
-    <div className="mx-4">
-      <div className="bg-slate-800/60 rounded-xl border border-slate-700/60 overflow-hidden">
+    <div style={{ padding: '0 16px' }}>
+      <div style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER_ACCENT}`,
+        borderRadius: '20px',
+        padding: '20px',
+        backdropFilter: BACKDROP_BLUR,
+      }}>
         {/* Header */}
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">📡</span>
-            <span className="text-white text-xs font-semibold uppercase tracking-wide">
-              Daily Brief ✦
-            </span>
-            <span className="rounded-full bg-cyan-500/15 px-2 py-0.5">
-              <span className="text-cyan-400 text-[10px] font-medium">Today</span>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '18px' }}>🗞️</span>
+            <span style={{ fontSize: '15px', fontWeight: 700 }}>Daily Brief</span>
+            <span style={{
+              fontSize: '11px',
+              background: TAG_BG['MARKET'],
+              color: TAG_COLORS['MARKET'],
+              padding: '2px 8px',
+              borderRadius: '999px',
+            }}>
+              Today
             </span>
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
-            className="text-slate-400 hover:text-slate-300 text-[11px] transition-colors"
+            style={{
+              color: 'rgba(255,255,255,0.4)',
+              fontSize: '13px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
           >
-            Show less ▲
+            ▴ Show less
           </button>
         </div>
 
-        {/* Body — labeled lines */}
-        <div className="px-4 pb-3 space-y-2.5">
-          {parsed.map((line, i) => (
-            <p key={i} className="text-sm leading-relaxed">
-              {line.label ? (
-                <>
-                  <span className={`font-semibold ${LABEL_COLORS[line.label] || 'text-slate-300'}`}>
-                    {line.label}
-                  </span>{' '}
-                  <span className="text-slate-300">{line.text}</span>
-                </>
-              ) : (
-                <span className="text-slate-300">{line.text}</span>
-              )}
-            </p>
-          ))}
-        </div>
+        {/* Body — tagged lines */}
+        {parsed.map((line, i) => (
+          <div
+            key={i}
+            style={{
+              marginBottom: i < parsed.length - 1 ? '16px' : 0,
+              lineHeight: '1.6',
+              fontSize: '15px',
+            }}
+          >
+            {line.label ? (
+              <>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    letterSpacing: '0.03em',
+                    padding: '2px 0',
+                    marginRight: '6px',
+                    color: TAG_COLORS[line.label] || 'rgba(255,255,255,0.75)',
+                  }}
+                >
+                  {line.label}
+                </span>
+                <span style={{ color: 'rgba(255,255,255,0.75)' }}>{line.text}</span>
+              </>
+            ) : (
+              <span style={{ color: 'rgba(255,255,255,0.75)' }}>{line.text}</span>
+            )}
+          </div>
+        ))}
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-slate-700/50">
-          <p className="text-slate-400 text-[10px]">
-            {data?.cached
-              ? 'Cached today · Refreshes tomorrow'
-              : 'Generated just now · Refreshes tomorrow'}
-          </p>
+        <div style={{
+          fontSize: '11px',
+          color: TEXT_MUTED,
+          marginTop: '16px',
+          paddingTop: '14px',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          {data?.cached
+            ? 'Cached today · Refreshes tomorrow'
+            : 'Generated just now · Refreshes tomorrow'}
         </div>
       </div>
     </div>

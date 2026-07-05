@@ -5,6 +5,29 @@ import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+// ── Reference design tokens (from vantage-pill-design.html) ──
+const PILL_BG = 'rgba(255,255,255,0.05)';
+const PILL_BORDER = 'rgba(255,255,255,0.08)';
+const PILL_HOVER_BG = 'rgba(255,255,255,0.08)';
+const CARD_BG = 'rgba(255,255,255,0.05)';
+const CARD_BORDER_ACCENT = 'rgba(34,211,238,0.25)';
+const SUB_PILL_BG = 'rgba(255,255,255,0.04)';
+const SUB_PILL_BORDER = 'rgba(255,255,255,0.06)';
+const TEXT_SUBTLE = 'rgba(255,255,255,0.5)';
+const TEXT_MUTED = 'rgba(255,255,255,0.3)';
+const TEXT_BODY = 'rgba(255,255,255,0.75)';
+const CHEVRON_COLOR = 'rgba(255,255,255,0.3)';
+const BACKDROP_BLUR = 'blur(20px)';
+
+const ACCENT = '#22d3ee';
+const GAIN = '#10b981';
+const WARNING = '#f59e0b';
+const LOSS = '#ef4444';
+
+const BADGE_LOW_BG = 'rgba(16,185,129,0.15)';
+const BADGE_MED_BG = 'rgba(245,158,11,0.15)';
+const BADGE_HIGH_BG = 'rgba(239,68,68,0.15)';
+
 interface SnapshotData {
   content?: string | null;
   healthScore?: number | null;
@@ -24,29 +47,38 @@ interface ParsedSections {
 
 const MARKDOWN_COMPONENTS = {
   p: ({ children }: { children: React.ReactNode }) => (
-    <p className="text-sm text-slate-300 mb-1.5 leading-relaxed">{children}</p>
+    <p style={{ fontSize: '14px', lineHeight: '1.7', color: TEXT_BODY, marginBottom: '8px' }}>{children}</p>
   ),
   strong: ({ children }: { children: React.ReactNode }) => (
-    <strong className="font-semibold text-white">{children}</strong>
+    <strong style={{ color: '#fff' }}>{children}</strong>
   ),
   h2: ({ children }: { children: React.ReactNode }) => (
-    <h2 className="font-semibold text-sm text-white mt-3 mb-1.5">{children}</h2>
+    <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#fff', marginTop: '12px', marginBottom: '6px' }}>{children}</h2>
   ),
   h3: ({ children }: { children: React.ReactNode }) => (
-    <h3 className="font-medium text-xs text-cyan-400 uppercase tracking-wide mt-2 mb-1">{children}</h3>
+    <h3 style={{ fontSize: '12px', fontWeight: 600, color: '#22d3ee', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '10px', marginBottom: '4px' }}>{children}</h3>
   ),
   ul: ({ children }: { children: React.ReactNode }) => (
-    <ul className="list-disc pl-4 space-y-0.5">{children}</ul>
+    <ul style={{ paddingLeft: '16px', margin: '0' }}>{children}</ul>
   ),
   ol: ({ children }: { children: React.ReactNode }) => (
-    <ol className="list-decimal pl-4 space-y-0.5">{children}</ol>
+    <ol style={{ paddingLeft: '16px', margin: '0' }}>{children}</ol>
   ),
   li: ({ children }: { children: React.ReactNode }) => (
-    <li className="text-sm text-slate-300">{children}</li>
+    <li style={{ fontSize: '14px', lineHeight: '1.7', color: TEXT_BODY, marginBottom: '4px' }}>
+      {children}
+    </li>
   ),
-  hr: () => <hr className="border-slate-700/50 my-2" />,
+  hr: () => <hr style={{ borderColor: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />,
   blockquote: ({ children }: { children: React.ReactNode }) => (
-    <blockquote className="border-l-2 border-cyan-500/50 pl-3 my-1.5 text-slate-300 text-xs italic">
+    <blockquote style={{
+      borderLeft: `2px solid rgba(34,211,238,0.5)`,
+      paddingLeft: '12px',
+      margin: '6px 0',
+      fontSize: '12px',
+      fontStyle: 'italic',
+      color: TEXT_BODY,
+    }}>
       {children}
     </blockquote>
   ),
@@ -65,14 +97,12 @@ function formatTime(iso: string | null | undefined): string {
   return `${Math.floor(diffH / 24)}d ago`;
 }
 
-/** Extract risk level from section text as UI fallback */
 function extractRiskFromSection(section: string): string | null {
   if (!section) return null;
   const match = section.match(/\b(LOW|MEDIUM|HIGH)\b/i);
   return match ? match[1].toUpperCase() : null;
 }
 
-/** Parse markdown content into separate sections */
 function parseSections(content: string): ParsedSections {
   const healthMatch = content.match(/(?:^#*\s*)?(?:OVERALL HEALTH|PORTFOLIO HEALTH).*\n([\s\S]*?)(?=^#*\s*(?:RISKS?|OVERALL RISK|RISK LEVEL)|\Z)/im);
   const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL).*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
@@ -150,12 +180,10 @@ export default function WeeklySnapshotCard() {
     setExpandedCard((prev) => (prev === card ? null : card));
   };
 
-  // ─── Chevron icon ───
   const Chevron = ({ open }: { open: boolean }) => (
     <svg
-      className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${
-        open ? 'rotate-180' : ''
-      }`}
+      className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+      style={{ width: '14px', height: '14px', color: CHEVRON_COLOR }}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -167,18 +195,25 @@ export default function WeeklySnapshotCard() {
     </svg>
   );
 
-  // ─── Loading skeleton (pill) ───
+  // ─── Loading skeleton ───
   if (loading && !data) {
     return (
-      <div className="mx-4">
-        <div className="bg-slate-800/60 rounded-full border border-slate-700/60 px-4 py-2.5 flex items-center gap-2.5">
-          <span className="text-sm">📊</span>
-          <span className="text-white text-xs font-semibold uppercase tracking-wide">
-            Weekly Snapshot
-          </span>
-          <span className="ml-auto">
-            <span className="text-slate-300 text-[10px]">Loading…</span>
-          </span>
+      <div style={{ padding: '0 16px' }}>
+        <div style={{
+          background: PILL_BG,
+          border: `1px solid ${PILL_BORDER}`,
+          borderRadius: '999px',
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          backdropFilter: BACKDROP_BLUR,
+        }}>
+          <span style={{ fontSize: '18px' }}>📊</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Weekly Snapshot</div>
+            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>Loading…</div>
+          </div>
         </div>
       </div>
     );
@@ -196,83 +231,85 @@ export default function WeeklySnapshotCard() {
   const sections = parseSections(data.content);
   const riskLevel = apiRiskLevel || extractRiskFromSection(sections.risk);
 
-  // ─── Compute real opportunities count ───
   const realOppCount = (() => {
     if (opportunitiesCount != null && opportunitiesCount > 0) return opportunitiesCount;
     const bullets = sections.opportunities.match(/^[\s]*[-•*]\s|\n[\s]*[-•*]\s/gm);
     return bullets ? bullets.length : 0;
   })();
 
-  // ─── Health score colors ───
-  const healthColor =
-    healthScore != null
-      ? healthScore >= 7
-        ? 'text-green-400'
-        : healthScore >= 5
-          ? 'text-yellow-400'
-          : 'text-red-400'
-      : 'text-slate-400';
+  // ─── Health score badge color ───
+  const healthSummaryColor = healthScore != null
+    ? healthScore >= 7 ? GAIN : healthScore >= 5 ? WARNING : LOSS
+    : TEXT_MUTED;
 
-  const healthBg =
-    healthScore != null
-      ? healthScore >= 7
-        ? 'bg-green-500/10 text-green-400'
-        : healthScore >= 5
-          ? 'bg-yellow-500/10 text-yellow-400'
-          : 'bg-red-500/10 text-red-400'
-      : 'bg-slate-500/10 text-slate-400';
+  const healthBadgeBg = healthScore != null
+    ? healthScore >= 7 ? BADGE_LOW_BG : healthScore >= 5 ? BADGE_MED_BG : BADGE_HIGH_BG
+    : 'transparent';
+
+  const healthBadgeColor = healthScore != null
+    ? healthScore >= 7 ? GAIN : healthScore >= 5 ? WARNING : LOSS
+    : TEXT_MUTED;
 
   // ─── Risk badge ───
-  const riskColor =
-    riskLevel === 'LOW'
-      ? 'text-green-400'
-      : riskLevel === 'HIGH'
-        ? 'text-red-400'
-        : riskLevel === 'MEDIUM'
-          ? 'text-yellow-400'
-          : 'text-slate-400';
+  const riskSummaryColor = riskLevel === 'LOW' ? GAIN : riskLevel === 'HIGH' ? LOSS : riskLevel === 'MEDIUM' ? WARNING : TEXT_MUTED;
+  const riskBadgeBg = riskLevel === 'LOW' ? BADGE_LOW_BG : riskLevel === 'HIGH' ? BADGE_HIGH_BG : riskLevel === 'MEDIUM' ? BADGE_MED_BG : 'transparent';
 
-  const riskBadgeBg =
-    riskLevel === 'LOW'
-      ? 'bg-green-500/15 text-green-400'
-      : riskLevel === 'HIGH'
-        ? 'bg-red-500/15 text-red-400'
-        : riskLevel === 'MEDIUM'
-          ? 'bg-yellow-500/15 text-yellow-400'
-      : 'bg-slate-500/15 text-slate-400';
-
-  // ─── Sub-card summary value getter ───
-  const subCardValue = (card: 'health' | 'risk' | 'opportunities'): { text: string; colorClass: string; badgeClass?: string } | null => {
+  // ─── Sub-card summary value ───
+  const subCardValue = (card: 'health' | 'risk' | 'opportunities'): { text: string; color: string; isBadge?: boolean; badgeBg?: string } | null => {
     switch (card) {
       case 'health':
-        if (healthScore != null) return { text: `${healthScore}/10`, colorClass: healthColor };
-        return { text: 'Calculating…', colorClass: 'text-slate-400' };
+        if (healthScore != null) return { text: `${healthScore}/10`, color: healthSummaryColor };
+        return { text: 'Calculating…', color: TEXT_MUTED };
       case 'risk':
-        if (riskLevel) return { text: riskLevel, colorClass: riskColor, badgeClass: riskBadgeBg };
-        return { text: 'Calculating…', colorClass: 'text-slate-400' };
+        if (riskLevel) return { text: riskLevel, color: riskSummaryColor, isBadge: true, badgeBg: riskBadgeBg };
+        return { text: 'Calculating…', color: TEXT_MUTED };
       case 'opportunities':
-        if (realOppCount > 0) return { text: `${realOppCount}`, colorClass: 'text-cyan-400' };
-        return { text: '0', colorClass: 'text-slate-400' };
+        if (realOppCount > 0) return { text: `${realOppCount}`, color: GAIN };
+        return { text: '0', color: TEXT_MUTED };
     }
   };
 
   // ─── Collapsed pill ───
   if (!parentExpanded) {
     return (
-      <div className="mx-4">
+      <div style={{ padding: '0 16px' }}>
         <button
           onClick={toggleParent}
-          className="w-full text-left bg-slate-800/60 rounded-full border border-slate-700/60 hover:border-cyan-500/40 transition-all duration-200 px-4 py-2.5 flex items-center gap-2"
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            background: PILL_BG,
+            border: `1px solid ${PILL_BORDER}`,
+            borderRadius: '999px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backdropFilter: BACKDROP_BLUR,
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+            color: '#fff',
+            fontFamily: 'inherit',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = PILL_HOVER_BG; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = PILL_BG; }}
         >
-          <span className="text-sm shrink-0">📊</span>
-          <span className="text-white text-xs font-semibold uppercase tracking-wide shrink-0">
-            Weekly Snapshot
-          </span>
-          <span className="text-slate-400 text-[11px] truncate flex-1 min-w-0">
-            · Updated {generatedAt ? formatTime(generatedAt) : 'just now'}
-          </span>
+          <span style={{ fontSize: '18px' }}>📊</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Weekly Snapshot</div>
+            <div style={{ fontSize: '12px', color: TEXT_SUBTLE, marginTop: '1px' }}>
+              Updated {generatedAt ? formatTime(generatedAt) : 'just now'}
+            </div>
+          </div>
           {healthScore != null && (
-            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${healthBg}`}>
+            <span style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '3px 9px',
+              borderRadius: '999px',
+              background: healthBadgeBg,
+              color: healthBadgeColor,
+            }}>
               {healthScore}/10
             </span>
           )}
@@ -284,97 +321,128 @@ export default function WeeklySnapshotCard() {
 
   // ─── Expanded card ───
   return (
-    <div className="mx-4">
-      <div className="bg-slate-800/60 rounded-xl border border-slate-700/60 overflow-hidden">
+    <div style={{ padding: '0 16px' }}>
+      <div style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER_ACCENT}`,
+        borderRadius: '20px',
+        padding: '20px',
+        backdropFilter: BACKDROP_BLUR,
+      }}>
         {/* Header */}
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">📊</span>
-            <span className="text-white text-xs font-semibold uppercase tracking-wide">
-              Weekly Snapshot
-            </span>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '18px' }}>📊</span>
+            <span style={{ fontSize: '15px', fontWeight: 700 }}>Weekly Snapshot</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400 text-[11px]">
-              {generatedAt ? formatTime(generatedAt) : 'just now'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
+              ↻ {generatedAt ? formatTime(generatedAt) : 'just now'}
             </span>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className={`text-xs transition shrink-0 ${
-                refreshing
-                  ? 'text-slate-400'
-                  : 'text-cyan-400 hover:text-cyan-300'
-              }`}
-            >
-              ↻
-            </button>
             <button
               onClick={(e) => { e.stopPropagation(); toggleParent(); }}
-              className="text-slate-400 hover:text-slate-300 text-[11px] transition-colors shrink-0"
+              style={{
+                color: 'rgba(255,255,255,0.4)',
+                fontSize: '13px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
             >
-              Show less ▲
+              ▴ Show less
             </button>
           </div>
         </div>
 
-        {/* Sub-pills */}
-        <div className="px-3 pb-3 space-y-2">
-          {SUB_CARD_ORDER.map((key) => {
-            const value = subCardValue(key as 'health' | 'risk' | 'opportunities');
-            const isExpanded = expandedCard === key;
-            const sectionContent = sections[key as keyof ParsedSections];
+        {/* Sub-pills — always 16px radius per reference */}
+        {SUB_CARD_ORDER.map((key, idx) => {
+          const value = subCardValue(key as 'health' | 'risk' | 'opportunities');
+          const isExpanded = expandedCard === key;
+          const sectionContent = sections[key as keyof ParsedSections];
 
-            return (
-              <div key={key}>
-                {/* Sub-pill button (collapsed state) */}
-                <button
-                  onClick={() => toggleCard(key as 'health' | 'risk' | 'opportunities')}
-                  className={`w-full text-left border transition-all duration-200 ${
-                    isExpanded
-                      ? 'bg-slate-800/80 rounded-xl border-slate-700/60'
-                      : 'bg-slate-800/40 rounded-full border-slate-700/40 hover:border-cyan-500/40'
-                  } px-4 py-2.5 flex items-center gap-2.5`}
-                >
-                  <span className="text-sm shrink-0">{SUB_CARD_ICONS[key]}</span>
-                  <span className="text-white text-xs font-medium flex-1">
-                    {SUB_CARD_TITLES[key]}
-                  </span>
+          return (
+            <div key={key} style={{ marginBottom: idx < SUB_CARD_ORDER.length - 1 ? '8px' : 0 }}>
+              {/* Sub-pill — always rounded-16px, no shape toggle */}
+              <button
+                onClick={() => toggleCard(key as 'health' | 'risk' | 'opportunities')}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: SUB_PILL_BG,
+                  border: `1px solid ${SUB_PILL_BORDER}`,
+                  borderRadius: '16px',
+                  padding: '14px 16px',
+                  cursor: 'pointer',
+                  color: '#fff',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                    <span style={{ fontSize: '16px' }}>{SUB_CARD_ICONS[key]}</span>
+                    <span style={{ fontSize: '14px', fontWeight: 600 }}>{SUB_CARD_TITLES[key]}</span>
+                  </div>
                   {value && (
-                    <span className="shrink-0 mr-1">
-                      {key === 'risk' && value.badgeClass ? (
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${value.badgeClass}`}>
-                          {value.text}
-                        </span>
-                      ) : (
-                        <span className={`text-xs font-semibold ${value.colorClass}`}>
-                          {value.text}
-                        </span>
-                      )}
+                    <span style={{
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      marginLeft: 'auto',
+                      marginRight: '10px',
+                      ...(value.isBadge ? {
+                        background: value.badgeBg,
+                        color: value.color,
+                        padding: '3px 9px',
+                        borderRadius: '999px',
+                      } : {
+                        color: value.color,
+                      }),
+                    }}>
+                      {value.text}
                     </span>
                   )}
                   <Chevron open={isExpanded} />
-                </button>
+                </div>
+              </button>
 
-                {/* Expanded content */}
-                {isExpanded && sectionContent && (
-                  <div className="px-4 py-3 border-t border-slate-700/50 mx-3">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={MARKDOWN_COMPONENTS as any}
-                    >
-                      {sectionContent}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              {/* Expanded content — matches reference sub-pill-body */}
+              {isExpanded && sectionContent && (
+                <div style={{
+                  fontSize: '14px',
+                  lineHeight: '1.7',
+                  color: TEXT_BODY,
+                  marginTop: '12px',
+                  paddingTop: '12px',
+                  paddingLeft: '26px',
+                  paddingRight: '10px',
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={MARKDOWN_COMPONENTS as any}
+                  >
+                    {sectionContent}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
+          );
+        })}
 
-          {/* Footer */}
-          <p className="text-slate-400 text-[10px] px-1 pt-1">
-            {data.cached ? 'Refreshes next week' : 'Fresh analysis'} · Tap any card to expand
-          </p>
+        {/* Footer */}
+        <div style={{
+          fontSize: '11px',
+          color: TEXT_MUTED,
+          marginTop: '16px',
+          paddingTop: '14px',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          {data.cached ? 'Refreshes next week' : 'Fresh analysis'} · Tap any card to expand
         </div>
       </div>
     </div>
