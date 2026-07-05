@@ -269,7 +269,7 @@ export async function GET(req: NextRequest) {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      timeZone: 'America/New_York',
+      timeZone: req.nextUrl.searchParams.get('tz') || 'America/New_York',
     });
 
     const cashPct = cashBalance > 0
