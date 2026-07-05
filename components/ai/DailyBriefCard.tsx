@@ -105,7 +105,7 @@ export default function DailyBriefCard() {
         <div className="bg-slate-800/60 rounded-full border border-slate-700/60 px-4 py-2.5 flex items-center gap-2.5">
           <span className="text-sm">📡</span>
           <span className="text-white text-xs font-semibold uppercase tracking-wide">
-            Daily Brief
+            Daily Brief ✦
           </span>
           <span className="ml-auto">
             <span className="text-slate-300 text-[10px]">Loading…</span>
@@ -131,7 +131,7 @@ export default function DailyBriefCard() {
         >
           <span className="text-sm shrink-0">📡</span>
           <span className="text-white text-xs font-semibold uppercase tracking-wide shrink-0">
-            Daily Brief
+            Daily Brief ✦
           </span>
           <span className="text-slate-400 text-[11px] truncate flex-1 min-w-0">
             · {data?.cached ? 'Cached' : 'Generated'} today · {summary}
@@ -151,7 +151,7 @@ export default function DailyBriefCard() {
           <div className="flex items-center gap-2">
             <span className="text-sm">📡</span>
             <span className="text-white text-xs font-semibold uppercase tracking-wide">
-              Daily Brief
+              Daily Brief ✦
             </span>
             <span className="rounded-full bg-cyan-500/15 px-2 py-0.5">
               <span className="text-cyan-400 text-[10px] font-medium">Today</span>
