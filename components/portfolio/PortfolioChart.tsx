@@ -297,7 +297,7 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
             <XAxis
               dataKey="timestamp"
               tickFormatter={formatXAxis}
-              tick={{ fill: '#4b5563', fontSize: 10 }}
+              tick={{ fill: '#9ca3af', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               interval="preserveStartEnd"

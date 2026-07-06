@@ -585,7 +585,7 @@ function PositionCard({
             }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div className="section-label" style={{ fontSize: 10 }}>Related News</div>
-                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.40)', fontStyle: 'italic' }}>
                   Sentiment reflects article tone, not investment advice.
                 </span>
               </div>

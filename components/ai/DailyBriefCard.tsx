@@ -189,7 +189,7 @@ export default function DailyBriefCard({ mode = 'pill', active = false, onClick 
         </span>
         <span style={{
           fontSize: '11px',
-          color: 'rgba(255,255,255,0.3)',
+          color: 'rgba(255,255,255,0.45)',
           display: 'flex',
           alignItems: 'center',
           gap: '3px',
