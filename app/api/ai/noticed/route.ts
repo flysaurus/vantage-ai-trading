@@ -13,6 +13,8 @@ import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 
+const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
+
 // ── Threshold bands for position milestones ──
 const POSITIVE_BANDS = [15, 25, 50, 100, 250];
 const NEGATIVE_BANDS = [-10, -20, -35, -50];
@@ -246,6 +248,89 @@ async function findEarningsTriggers(
   return triggers;
 }
 
+// ── Fetch sentiment-shift triggers (FinBERT) ──
+async function findSentimentShiftTriggers(
+  input: NoticedRuleInput,
+  existingKeys: Set<string>,
+): Promise<NewTrigger[]> {
+  const triggers: NewTrigger[] = [];
+  const allSymbols = [
+    ...input.positions.map(p => p.symbol),
+    ...(input.watchlistSymbols || []),
+  ];
+  const unique = [...new Set(allSymbols)];
+  if (unique.length === 0) return triggers;
+
+  const FINNHUB_KEY = process.env.FINNHUB_API_KEY || process.env.FINNHUB_IO_API_KEY;
+  if (!FINNHUB_KEY) return triggers;
+
+  const today = new Date().toISOString().split('T')[0];
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0];
+
+  for (const symbol of unique.slice(0, 10)) {
+    try {
+      // Fetch recent company news from Finnhub
+      const newsUrl = `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${threeDaysAgo}&to=${today}&token=${FINNHUB_KEY}`;
+      const newsRes = await fetch(newsUrl, { signal: AbortSignal.timeout(5000) });
+      if (!newsRes.ok) continue;
+      const articles = await newsRes.json();
+      if (!Array.isArray(articles) || articles.length === 0) continue;
+
+      // Score headlines with FinBERT (first 5 headlines)
+      const headlines = articles.slice(0, 5).map((a: any) => a.headline || a.title || '').filter(Boolean);
+      if (headlines.length < 2) continue;
+
+      const finbertResults: { label: string; score: number; headline: string }[] = [];
+      for (const headline of headlines) {
+        try {
+          const fbRes = await fetch(`${FINBERT_URL}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: headline }),
+            signal: AbortSignal.timeout(3000),
+          });
+          if (fbRes.ok) {
+            const fb = await fbRes.json();
+            finbertResults.push({ label: fb.label, score: fb.score, headline });
+          }
+        } catch { /* skip failed headline */ }
+      }
+
+      // Trigger: 2+ headlines are "negative" with score > 0.5
+      const negativeHeadlines = finbertResults.filter(
+        r => r.label === 'negative' && r.score > 0.5
+      );
+      if (negativeHeadlines.length < 2) continue;
+
+      const key = `SENTIMENT_${symbol}`;
+      if (existingKeys.has(key)) continue;
+
+      const sample = negativeHeadlines.slice(0, 3).map(r => `"${r.headline.slice(0, 80)}..."`).join(', ');
+      triggers.push({
+        trigger_type: 'sentiment_shift',
+        trigger_key: key,
+        title: `${symbol} headlines turning negative`,
+        variant: 'warn',
+        icon: '📰',
+        meta: {
+          symbol,
+          negativeCount: negativeHeadlines.length,
+          totalHeadlines: headlines.length,
+          sample,
+        },
+        follow_up: `What's happening with ${symbol}?`,
+        context: `${symbol}: ${negativeHeadlines.length} of ${headlines.length} recent headlines scored negative by FinBERT. Headlines: ${sample}`,
+      });
+
+      console.log(`[noticed] Sentiment shift: ${symbol} — ${negativeHeadlines.length}/${headlines.length} negative`);
+    } catch (err: any) {
+      console.warn(`[noticed] Sentiment check failed for ${symbol}:`, err.message);
+    }
+  }
+
+  return triggers;
+}
+
 // ── GET: Return visible items (no re-check) ──
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const userId = await getOptionalUserId();
@@ -325,6 +410,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // ── Earnings (separate — async fetch) ──
     const earningsTriggers = await findEarningsTriggers(input, existingKeys);
     newTriggers = [...newTriggers, ...earningsTriggers];
+
+    // ── Sentiment shift (separate — async FinBERT) ──
+    const sentimentTriggers = await findSentimentShiftTriggers(input, existingKeys);
+    newTriggers = [...newTriggers, ...sentimentTriggers];
 
     if (newTriggers.length === 0) {
       // Update last_checked_at on existing items

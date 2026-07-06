@@ -31,6 +31,10 @@ VOICE: Sharp analyst texting their notes to a friend, not a Bloomberg terminal r
 Use real numbers. Call out what's actually wrong. Don't soften bad news.
 Don't describe the market academically. Tell the user what it means for THEIR portfolio specifically. If tech is selling off and they're 40% tech — say that directly and what it means for their day.
 
+SENTIMENT DATA: Each news headline includes a FinBERT sentiment score (positive/negative/neutral).
+Use these to weight your tone. Strongly negative headlines about held positions should make the WATCH or PORTFOLIO line more urgent.
+Strongly positive headlines about held positions should be reflected in the PORTFOLIO line.
+
 FORMAT (exactly 4 lines, no headers, no bullets):
 Line 1 - MARKET: One sentence on market direction with real index numbers
 Line 2 - PORTFOLIO: One sentence mentioning 1-2 specific holdings and their move today
@@ -312,11 +316,45 @@ export async function GET(req: NextRequest) {
       dataLines.push('  (none — no holdings reporting earnings this week)');
     }
 
-    // Add real news items
+    // Add real news items with FinBERT sentiment
     if (newsItems.length > 0) {
       dataLines.push('');
       dataLines.push('REAL NEWS HEADLINES (use these — do not fabricate):');
-      dataLines.push(...newsItems.map((n, i) => `  [${i + 1}] ${n.title} (${n.source})`));
+
+      // Score headlines with FinBERT directly (parallel)
+      const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
+      let sentimentScores: { overall: string; score: number }[] = [];
+      try {
+        const results = await Promise.allSettled(
+          newsItems.map(async (n) => {
+            const res = await fetch(`${FINBERT_URL}/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: n.title }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (!res.ok) return { overall: 'neutral', score: 0 };
+            const fb = await res.json();
+            return {
+              overall: fb.label === 'positive' ? 'positive' : fb.label === 'negative' ? 'negative' : 'neutral',
+              score: fb.score || 0,
+            };
+          })
+        );
+        sentimentScores = results.map(r =>
+          r.status === 'fulfilled' ? r.value : { overall: 'neutral', score: 0 }
+        );
+      } catch {
+        sentimentScores = newsItems.map(() => ({ overall: 'neutral', score: 0 }));
+      }
+
+      dataLines.push(
+        ...newsItems.map((n, i) => {
+          const s = sentimentScores[i] || { overall: 'neutral', score: 0 };
+          const scoreStr = s.score !== 0 ? ` (${s.score > 0 ? '+' : ''}${s.score.toFixed(2)})` : '';
+          return `  [${i + 1}] ${n.title} (${n.source}) — Sentiment: ${s.overall}${scoreStr}`;
+        })
+      );
     }
 
     // Add profile context
