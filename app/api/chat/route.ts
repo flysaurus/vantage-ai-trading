@@ -5,6 +5,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
+import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -134,6 +135,25 @@ export async function POST(req: Request) {
       ? ALERTS_SYSTEM_PROMPT
       : VANTAGE_SYSTEM_PROMPT
 
+    // ── Deviation facts: inject history so AI knows not to repeat ──
+    let deviationContext = '';
+    try {
+      if (userId && userId !== 'anonymous') {
+        const facts = await getActiveFacts(userId);
+        const devFacts = facts.filter((f: any) => f.subject === 'user_style_deviation');
+        if (devFacts.length > 0) {
+          deviationContext = `
+DEVIATION HISTORY (style deviations previously discussed):
+${devFacts.map((f: any, i: number) => `${i + 1}. ${f.claim} (${f.confidence}, ${new Date(f.created_at).toLocaleDateString()})`).join('\n')}
+
+If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar categories` : 'a deviation'} above, apply Rule 5: soften or skip the acknowledgment.
+`;
+        }
+      }
+    } catch (e) {
+      console.error('[chat] deviation facts fetch error:', e);
+    }
+
     // Stage 1: DeepSeek screening
     const screening = await screenMessage(lastMessage)
 
@@ -152,7 +172,7 @@ export async function POST(req: Request) {
       },
       {
         type: 'text' as const,
-        text: [profileContext, portfolioContext || '', additionalContext || '', searchContext].filter(Boolean).join('\n\n'),
+        text: [profileContext, portfolioContext || '', additionalContext || '', searchContext, deviationContext].filter(Boolean).join('\n\n'),
       },
     ];
 
@@ -176,8 +196,9 @@ export async function POST(req: Request) {
       incrementUsage(userId, 'message').catch(() => {});
     }
 
-    // Return streaming response
+    // Return streaming response (accumulate for deviation detection)
     const encoder = new TextEncoder()
+    const fullResponse: string[] = []
     const readable = new ReadableStream({
       async start(controller) {
         for await (const chunk of stream) {
@@ -185,6 +206,7 @@ export async function POST(req: Request) {
             chunk.type === 'content_block_delta' &&
             chunk.delta.type === 'text_delta'
           ) {
+            fullResponse.push(chunk.delta.text)
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
             )
@@ -192,6 +214,39 @@ export async function POST(req: Request) {
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         controller.close()
+
+        // ── Post-stream: detect style deviation & write fact ──
+        try {
+          if (userId && userId !== 'anonymous') {
+            const responseText = fullResponse.join('')
+            const deviationPatterns = [
+              /isn't.*typical.*(Buffett|Lynch|Livermore|Munger|Soros).*pick/i,
+              /outside.*your.*(typical|usual|style|wheelhouse)/i,
+              /not.*(what|something).*(Buffett|Lynch|Livermore|Munger|Soros).*(would|typically|usually)/i,
+              /deviat(?:es?|ion|ing).*(?:from.*style|from.*profile)/i,
+            ]
+            const hasDeviation = deviationPatterns.some(p => p.test(responseText))
+            if (hasDeviation) {
+              // Detect category from user message
+              let category = 'speculative'
+              if (/spacex|pre-?ipo|private company|startup|crypto|meme stock|penny stock/i.test(lastMessage)) category = 'speculative'
+              else if (/options?|calls?|puts?|leveraged|margin/i.test(lastMessage)) category = 'derivatives'
+              else if (/dividend|yield|value trap|turnaround|dying/i.test(lastMessage)) category = 'value'
+              else if (/momentum|breakout|trend|chart pattern/i.test(lastMessage)) category = 'momentum'
+              else if (/index|etf|passive|diversif/i.test(lastMessage)) category = 'passive'
+
+              writeFact(userId, {
+                subject: 'user_style_deviation',
+                fact_type: 'observation',
+                claim: `User asked about ${category} despite ${profile.investorStyle}-style profile`,
+                confidence: 'confirmed',
+                source: 'chat',
+              }).catch(err => console.error('[chat] deviation writeFact error:', err))
+            }
+          }
+        } catch (e) {
+          console.error('[chat] deviation detection error:', e)
+        }
       }
     })
 

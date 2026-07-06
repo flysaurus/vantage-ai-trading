@@ -24,6 +24,7 @@ const PUBLIC_ROUTES = [
   '/api/ai/facts/test', // admin-only test endpoint (uses service role internally)
   '/api/ai/weekly-snapshot/test-contradiction', // admin-only test endpoint (uses service role internally)
   '/api/ai/greeting/test-variety', // admin-only test endpoint (uses service role internally)
+  '/api/ai/chat/test-deviation', // admin-only test endpoint (uses service role internally)
 ];
 
 export async function middleware(request: NextRequest) {
