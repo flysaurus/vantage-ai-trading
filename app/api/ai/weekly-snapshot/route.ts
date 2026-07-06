@@ -25,9 +25,9 @@ VOICE: Write this like a sharp analyst texting their notes to a friend, not a Bl
 Use real numbers. Call out what's actually wrong. Don't soften bad news — surface it clearly with a specific recommended action.
 
 FORMAT RULES:
-- Every bullet MUST be a single line of 1-2 sentences. Never write paragraphs.
-- No "What:" / "Why:" sub-headers inside bullets. Just say it.
-- If you exceed 2 sentences in any bullet, you've written too much — cut it.
+- Use bullet points starting with -. No long paragraphs.
+- Keep each bullet focused — one clear point per bullet.
+- No generic fluff. Every bullet must name a specific ticker, dollar amount, or percentage.
 
 Health scores must reflect reality: if ADBE is down 60%, the score cannot be above 6/10. Period.
 
@@ -48,15 +48,17 @@ LOW: no sector >40%, no position down >20%
 MEDIUM: sector 40-60% OR position down 20-40%
 HIGH: sector >60% OR position down >40%
 
-## OPPORTUNITIES (list exactly 2):
-Keep each opportunity to ONE bullet line of 1-2 sentences max.
-Format: "- **Ticker/Theme:** single sentence with action + price level"
-No "What/Why" sub-sections. Be direct and scannable.
+## OPPORTUNITIES (list 2-3):
+Each opportunity must include:
+- What the opportunity is
+- Why it fits the investor's style
+- A specific price level to act at
 
-## RISKS (list exactly 2):
-Keep each risk to ONE bullet line of 1-2 sentences max.
-Format: "- **Risk:** single sentence with ticker + impact + action"
-No sub-sections. Be direct.
+## RISKS (list 2-3):
+Each risk must include:
+- What the risk is
+- Which position(s) it affects
+- Recommended action
 
 ## SUMMARY:
 
@@ -278,11 +280,10 @@ export async function GET(req: NextRequest) {
     const prompt = [
       'Run a complete weekly portfolio health snapshot on this portfolio.',
       'Format as markdown with ## sections: OVERALL HEALTH, RISKS, OPPORTUNITIES, SUMMARY.',
-      'CRITICAL: Within each section, use ONLY bullet points (starting with -). Never output paragraphs longer than 2 sentences.',
-      'Each bullet must be a single sentence on its own line starting with -. Bold key phrases with **.',
+      'Within each section, use bullet points (starting with -). Bold key phrases with **.',
       'In the RISK section, put the risk level on its own line like: RL: MEDIUM',
       'Include "OVERALL HEALTH: X/10" on one line. Put the risk level on its own line: RL: MEDIUM (or LOW/HIGH).',
-      'CRITICAL: OPPORTUNITIES and RISKS sections — exactly 2 bullets each, 1 sentence per bullet. No sub-sections. No "What:" or "Why:" prefixes. Just state the opportunity/risk directly.',
+      'For OPPORTUNITIES and RISKS, use the structured sub-point format (What:/Why:/Price level) described in the system instructions.',
       `Portfolio: ${symbols.join(', ')}`,
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
