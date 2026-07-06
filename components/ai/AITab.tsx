@@ -301,11 +301,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   }, [messages]);
 
-  // ── Greeting cache key ──
-  const GREETING_CACHE_KEY = useCallback(() => {
-    const today = new Date().toDateString();
-    return `vantage_greeting_${today}`;
-  }, []);
+  // ── Category rotation tracking (no greeting caching) ──
+  const CATEGORY_HISTORY_KEY = 'vantage_category_history';
 
   // ── Static fallback greetings ──
   const STATIC_FALLBACKS: Record<string, { opener: string; hook: string }> = {
@@ -353,13 +350,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
   }
 
   function cleanOldGreetingCache() {
-    const today = new Date().toDateString();
-    const keys = Object.keys(sessionStorage);
-    keys.forEach(key => {
-      if (key.startsWith('vantage_greeting_') && key !== `vantage_greeting_${today}`) {
-        sessionStorage.removeItem(key);
-      }
-    });
+    // Clean up leftover greeting cache keys from localStorage (pre-migration) and sessionStorage
+    const storages = [localStorage, sessionStorage];
+    for (const store of storages) {
+      try {
+        const keys = Object.keys(store);
+        keys.forEach(key => {
+          if (key.startsWith('vantage_greeting_')) {
+            store.removeItem(key);
+          }
+        });
+      } catch { /* cross-origin may throw */ }
+    }
   }
 
   const greetingFetchedRef = useRef(false);
@@ -372,8 +374,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       symbols: liveAccount?.positions?.map(p => p.symbol).sort().join(','),
     });
     if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
-      const cacheKey = GREETING_CACHE_KEY();
-      sessionStorage.removeItem(cacheKey);
       greetingFetchedRef.current = false;
       setGreetingLoaded(false);
     }
@@ -395,27 +395,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
     async function loadGreeting() {
       const period = getMarketPeriod();
       const fallback = STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening;
-      const cacheKey = GREETING_CACHE_KEY();
 
-      // ── Step 1: Check sessionStorage first (no flash) ──
-      try {
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-          const { hook } = JSON.parse(cached);
-          setGreetingOpener(fallback.opener);
-          setGreetingHook(hook);
-          setGreetingLoaded(true);
-          return;
-        }
-      } catch {
-        sessionStorage.removeItem(cacheKey);
-      }
-
-      // ── Step 2: No cache — show fallback while API loads ──
+      // ── Step 1: Show fallback while API loads ──
       setGreetingOpener(fallback.opener);
       setGreetingHook(fallback.hook);
       setGreetingLoaded(true);
 
+      // ── Step 2: Read category history for rotation ──
+      let recentCategories: string[] = [];
+      try {
+        const raw = sessionStorage.getItem(CATEGORY_HISTORY_KEY);
+        if (raw) recentCategories = JSON.parse(raw);
+      } catch { /* ignore */ }
+
+      // ── Step 3: Always call API fresh (no greeting cache) ──
       try {
         const invStyle = (user?.investorStyle || investorStyle || 'Lynch') as string;
         const risk = (user?.riskTolerance || 'Moderate') as string;
@@ -449,12 +442,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             marketValue: p.marketValue || 0,
           })),
           upcomingEarnings: upcomingEarnings || [],
-          lastCategory: (() => {
-            try {
-              const c = sessionStorage.getItem(cacheKey);
-              return c ? JSON.parse(c).lastCategory || null : null;
-            } catch { return null; }
-          })(),
+          lastCategories: recentCategories,
         });
 
         if (!res.ok) throw new Error('API failed');
@@ -462,15 +450,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
 
         if (data.opener && data.hook) {
-          sessionStorage.setItem(cacheKey, JSON.stringify({
-            hook: data.hook,
-            lastCategory: data.category || null,
-            generatedAt: Date.now(),
-          }));
+          setGreetingHook(data.hook);
 
-          setTimeout(() => {
-            setGreetingHook(data.hook);
-          }, 200);
+          // ── Save category history for next load ──
+          try {
+            sessionStorage.setItem(CATEGORY_HISTORY_KEY, JSON.stringify(data.categoriesUsed || [data.category]));
+          } catch { /* ignore */ }
         }
       } catch (e) {
         console.log('[Greeting] Using fallback:', e);
