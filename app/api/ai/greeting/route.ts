@@ -105,6 +105,8 @@ TONE: Sound like a sharp friend checking in, not a financial advisor filing a re
 One hook sentence max — never two ideas.
 Never mention Claude, Anthropic, or any AI model.
 
+VARIETY RULE: You have a rotating insight lens (position, cash, events, structure, risk, market, macro). Use it. Don't default to the same stock comparison every time. If the previous hooks (shown in ANTI-REPETITION) mention specific tickers, deliberately pick different positions or a different framing.
+
 FACTS-AWARE CROSS-CHECK:
 The prompt includes an "AI FACTS" grounding section if active facts exist. If it contains a [question] or [observation] about a subject your greeting mentions, do NOT contradict it. If a fact says "AXP drawdown cause unconfirmed," do not dismiss it as "nothing to worry about." Defer or stay silent on unresolved facts — do not confidently overrule them.`;
 
@@ -201,6 +203,7 @@ export async function POST(req: NextRequest) {
       includeStyleAck = false,
       lastCategory = null,
       lastCategories = [], // array of last 2-3 categories used
+      lastHooks = [], // array of last 1-2 hook texts to avoid repeating
     } = body;
 
     // Backward-compat: if frontend sends lastCategory (string), wrap in array
@@ -338,6 +341,11 @@ ${categoryContext}
 FOCUS INSTRUCTION: Generate a hook centered on the "${CATEGORY_GUIDANCE[category]}" category.
 HOWEVER — if there is genuinely nothing interesting or actionable in that category (e.g. zero cash to comment on, no upcoming events), fall back to whatever IS most interesting. Do not force a boring observation.
 
+ANTI-REPETITION:
+${lastHooks && lastHooks.length > 0 ? `You recently said these:
+${lastHooks.map((h: string) => `- "${h}"`).join('\n')}
+
+Your new hook MUST be genuinely different. Do NOT rephrase the same observation about the same stocks. Pick a different position to highlight, or a different structural angle, or tie in macro context — anything fresh. If the last hook was about KO/AXP, mention something else entirely.` : ''}
 Opener to use: "${market.opener}"
 `;
 

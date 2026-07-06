@@ -401,11 +401,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setGreetingHook(fallback.hook);
       setGreetingLoaded(true);
 
-      // ── Step 2: Read category history for rotation ──
+      // ── Step 2: Read category history + last hooks for rotation ──
       let recentCategories: string[] = [];
+      let lastHooks: string[] = [];
       try {
         const raw = sessionStorage.getItem(CATEGORY_HISTORY_KEY);
-        if (raw) recentCategories = JSON.parse(raw);
+        if (raw) {
+          const history = JSON.parse(raw);
+          recentCategories = history.categories || [];
+          lastHooks = history.hooks || [];
+        }
       } catch { /* ignore */ }
 
       // ── Step 3: Always call API fresh (no greeting cache) ──
@@ -443,6 +448,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           })),
           upcomingEarnings: upcomingEarnings || [],
           lastCategories: recentCategories,
+          lastHooks,
         });
 
         if (!res.ok) throw new Error('API failed');
@@ -452,9 +458,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
         if (data.opener && data.hook) {
           setGreetingHook(data.hook);
 
-          // ── Save category history for next load ──
+          // ── Save category history + last hooks for next load ──
           try {
-            sessionStorage.setItem(CATEGORY_HISTORY_KEY, JSON.stringify(data.categoriesUsed || [data.category]));
+            sessionStorage.setItem(CATEGORY_HISTORY_KEY, JSON.stringify({
+              categories: data.categoriesUsed || [data.category],
+              hooks: [data.hook, ...lastHooks].slice(0, 2),
+            }));
           } catch { /* ignore */ }
         }
       } catch (e) {
