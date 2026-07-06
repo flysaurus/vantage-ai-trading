@@ -126,7 +126,7 @@ function PositionCard({
     dayHigh: number|null; dayLow: number|null;
     beta: number|null; nextEarningsDate: string|null;
   } | null>(null);
-  const [newsItems, setNewsItems] = useState<{ title: string; link: string; publisher: string; pubDate: string }[]>([]);
+  const [newsItems, setNewsItems] = useState<{ title: string; link: string; publisher: string; pubDate: string; sentiment?: { label: 'positive' | 'negative' | 'neutral'; score: number } }[]>([]);
   const [newsLoaded, setNewsLoaded] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; price: number; date: string } | null>(null);
   const sparkSvgRef = useRef<SVGSVGElement>(null);
@@ -583,7 +583,12 @@ function PositionCard({
               paddingTop: 14, marginBottom: 12,
               marginTop: 4,
             }}>
-              <div className="section-label" style={{ fontSize: 10, marginBottom: 8 }}>Related News</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div className="section-label" style={{ fontSize: 10 }}>Related News</div>
+                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
+                  Sentiment reflects article tone, not investment advice.
+                </span>
+              </div>
               <div style={{
                 background: 'rgba(30,41,59,0.60)',
                 border: '1px solid rgba(255,255,255,0.10)',
@@ -597,6 +602,12 @@ function PositionCard({
                 const timeLabel = daysAgo != null
                   ? daysAgo === 0 ? 'Today' : daysAgo === 1 ? '1d ago' : `${daysAgo}d ago`
                   : '';
+                const sentColor = item.sentiment?.label === 'positive' ? 'var(--gain)'
+                  : item.sentiment?.label === 'negative' ? 'var(--loss)'
+                  : 'rgba(255,255,255,0.35)';
+                const sentLabel = item.sentiment?.label
+                  ? item.sentiment.label.charAt(0).toUpperCase() + item.sentiment.label.slice(1)
+                  : '';
                 return (
                   <a
                     key={i}
@@ -609,8 +620,30 @@ function PositionCard({
                       borderBottom: i < newsItems.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
                     }}
                   >
-                    <div style={{ fontSize: 12, color: '#ffffff', fontWeight: 500, lineHeight: 1.4, marginBottom: 2 }}>
-                      {item.title}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                      <div style={{ fontSize: 12, color: '#ffffff', fontWeight: 500, lineHeight: 1.4, marginBottom: 2, flex: 1 }}>
+                        {item.title}
+                      </div>
+                      {sentLabel && (
+                        <span style={{
+                          fontSize: 9,
+                          fontWeight: 600,
+                          color: sentColor,
+                          background: item.sentiment?.label === 'positive' ? 'rgba(16,185,129,0.10)'
+                            : item.sentiment?.label === 'negative' ? 'rgba(239,68,68,0.10)'
+                            : 'rgba(255,255,255,0.06)',
+                          border: `1px solid ${item.sentiment?.label === 'positive' ? 'rgba(16,185,129,0.20)'
+                            : item.sentiment?.label === 'negative' ? 'rgba(239,68,68,0.20)'
+                            : 'rgba(255,255,255,0.10)'}`,
+                          borderRadius: 4,
+                          padding: '1px 6px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                          marginTop: 1,
+                        }}>
+                          {sentLabel}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#cbd5e1' }}>
                       <span>{item.publisher}</span>
