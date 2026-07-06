@@ -604,7 +604,7 @@ function PositionCard({
                   : '';
                 const sentColor = item.sentiment?.label === 'positive' ? 'var(--gain)'
                   : item.sentiment?.label === 'negative' ? 'var(--loss)'
-                  : 'rgba(255,255,255,0.35)';
+                  : 'var(--warning)';
                 const sentLabel = item.sentiment?.label
                   ? item.sentiment.label.charAt(0).toUpperCase() + item.sentiment.label.slice(1)
                   : '';
@@ -631,10 +631,10 @@ function PositionCard({
                           color: sentColor,
                           background: item.sentiment?.label === 'positive' ? 'rgba(16,185,129,0.10)'
                             : item.sentiment?.label === 'negative' ? 'rgba(239,68,68,0.10)'
-                            : 'rgba(255,255,255,0.06)',
+                            : 'rgba(245,158,11,0.10)',
                           border: `1px solid ${item.sentiment?.label === 'positive' ? 'rgba(16,185,129,0.20)'
                             : item.sentiment?.label === 'negative' ? 'rgba(239,68,68,0.20)'
-                            : 'rgba(255,255,255,0.10)'}`,
+                            : 'rgba(245,158,11,0.20)'}`,
                           borderRadius: 4,
                           padding: '1px 6px',
                           whiteSpace: 'nowrap',
