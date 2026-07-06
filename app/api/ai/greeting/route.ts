@@ -136,6 +136,10 @@ function pickCategory(lastCategories: string[] | null | undefined): InsightCateg
   const recent = (lastCategories || [])
     .filter((c) => INSIGHT_CATEGORIES.includes(c as InsightCategory))
     .slice(0, 3); // track up to last 3
+  // If no history, pick random to avoid always starting from position
+  if (recent.length === 0) {
+    return INSIGHT_CATEGORIES[Math.floor(Math.random() * INSIGHT_CATEGORIES.length)];
+  }
   // Pick first category NOT in recent set; if all are recent, just take the next after the most recent
   for (const cat of INSIGHT_CATEGORIES) {
     if (!recent.includes(cat)) return cat;

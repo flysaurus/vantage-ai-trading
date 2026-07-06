@@ -354,10 +354,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   function cleanOldGreetingCache() {
     const today = new Date().toDateString();
-    const keys = Object.keys(localStorage);
+    const keys = Object.keys(sessionStorage);
     keys.forEach(key => {
       if (key.startsWith('vantage_greeting_') && key !== `vantage_greeting_${today}`) {
-        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
       }
     });
   }
@@ -373,7 +373,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     });
     if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
       const cacheKey = GREETING_CACHE_KEY();
-      localStorage.removeItem(cacheKey);
+      sessionStorage.removeItem(cacheKey);
       greetingFetchedRef.current = false;
       setGreetingLoaded(false);
     }
@@ -402,7 +402,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       const cacheKey = GREETING_CACHE_KEY();
 
       try {
-        const cached = localStorage.getItem(cacheKey);
+        const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
           const { hook } = JSON.parse(cached);
           const period = getMarketPeriod();
@@ -414,7 +414,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           return;
         }
       } catch {
-        localStorage.removeItem(cacheKey);
+        sessionStorage.removeItem(cacheKey);
       }
 
       try {
@@ -452,7 +452,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           upcomingEarnings: upcomingEarnings || [],
           lastCategory: (() => {
             try {
-              const c = localStorage.getItem(cacheKey);
+              const c = sessionStorage.getItem(cacheKey);
               return c ? JSON.parse(c).lastCategory || null : null;
             } catch { return null; }
           })(),
@@ -463,7 +463,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
 
         if (data.opener && data.hook) {
-          localStorage.setItem(cacheKey, JSON.stringify({
+          sessionStorage.setItem(cacheKey, JSON.stringify({
             hook: data.hook,
             lastCategory: data.category || null,
             generatedAt: Date.now(),
