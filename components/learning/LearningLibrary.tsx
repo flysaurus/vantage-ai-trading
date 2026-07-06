@@ -130,7 +130,7 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
           {/* Investopedia link */}
           {selectedCard.investopediaSlug && (
             <a
-              href={`https://www.investopedia.com/terms/${selectedCard.investopediaSlug.replace(/^[a-z]\//, '')}`}
+              href={`https://www.investopedia.com/terms/${selectedCard.investopediaSlug}`}
               target="_blank" rel="noopener noreferrer"
               style={{
                 fontSize: '13px', color: '#22d3ee',
