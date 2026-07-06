@@ -23,6 +23,7 @@ const PUBLIC_ROUTES = [
   '/you-are-in', // has its own auth check
   '/api/ai/facts/test', // admin-only test endpoint (uses service role internally)
   '/api/ai/weekly-snapshot/test-contradiction', // admin-only test endpoint (uses service role internally)
+  '/api/ai/greeting/test-variety', // admin-only test endpoint (uses service role internally)
 ];
 
 export async function middleware(request: NextRequest) {

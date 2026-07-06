@@ -1,6 +1,8 @@
 // ─── POST /api/ai/greeting ───────────────────────────────────
 // Generates a personalized two-part greeting (opener ||| hook)
 // using durable portfolio data only — no intraday prices/P&L.
+// Now includes: category rotation (7 types incl macro), AI facts
+// grounding, and post-generation fact write-back.
 // Uses Anthropic Claude Haiku with prompt caching.
 //
 // Body: {
@@ -13,6 +15,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts';
+import type { AiFact } from '@/lib/ai/facts';
+import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -98,7 +103,10 @@ STRICT RULES — these are non-negotiable:
 
 TONE: Sound like a sharp friend checking in, not a financial advisor filing a report. One observation. One hook. That's it. No corporate language. No hedging. If a position is bleeding — say so directly. If something's crushing it — own it. Warm, direct, punchy.
 One hook sentence max — never two ideas.
-Never mention Claude, Anthropic, or any AI model.`;
+Never mention Claude, Anthropic, or any AI model.
+
+FACTS-AWARE CROSS-CHECK:
+The prompt includes an "AI FACTS" grounding section if active facts exist. If it contains a [question] or [observation] about a subject your greeting mentions, do NOT contradict it. If a fact says "AXP drawdown cause unconfirmed," do not dismiss it as "nothing to worry about." Defer or stay silent on unresolved facts — do not confidently overrule them.`;
 
 // ─── Insight category rotation ─────────────────────────────────
 
@@ -109,6 +117,7 @@ const INSIGHT_CATEGORIES = [
   'structure',  // portfolio composition, sector mix, position count
   'risk',       // concentration, correlation between holdings
   'market',     // market context relevant to holdings
+  'macro',      // live index data tied back to actual holdings
 ] as const;
 
 type InsightCategory = (typeof INSIGHT_CATEGORIES)[number];
@@ -120,13 +129,19 @@ const CATEGORY_GUIDANCE: Record<InsightCategory, string> = {
   structure: 'Focus on portfolio structure: number of positions, sector composition, diversification level, balance between holdings.',
   risk: 'Focus on risk and concentration: how correlated are the holdings, is there sector concentration, does the portfolio lean too heavily into one area?',
   market: 'Focus on market context: how the portfolio relates to broader market conditions, or frame the portfolio against what the market is doing this week.',
+  macro: 'Focus on macro indices and how the portfolio is positioned: describe the observed PATTERN using real index data that was fetched and provided (e.g. "Tech is under pressure — QQQ down 1.2%, but your financial-heavy book is holding up"). Always tie the macro observation back to the user\'s actual holdings — never present as a disconnected market-news blurb. GUARDRAIL: describe the pattern without inventing an unverified causal story (no "this is a safety rotation" or "traders are de-risking" unless the fetched data includes a news-driven reason). If no clear cause is available, describe the pattern only.',
 };
 
-function pickCategory(lastCategory: string | null | undefined): InsightCategory {
-  if (!lastCategory || !INSIGHT_CATEGORIES.includes(lastCategory as InsightCategory)) {
-    return INSIGHT_CATEGORIES[0];
+function pickCategory(lastCategories: string[] | null | undefined): InsightCategory {
+  const recent = (lastCategories || [])
+    .filter((c) => INSIGHT_CATEGORIES.includes(c as InsightCategory))
+    .slice(0, 3); // track up to last 3
+  // Pick first category NOT in recent set; if all are recent, just take the next after the most recent
+  for (const cat of INSIGHT_CATEGORIES) {
+    if (!recent.includes(cat)) return cat;
   }
-  const idx = INSIGHT_CATEGORIES.indexOf(lastCategory as InsightCategory);
+  // All categories recently used — rotate past the most recent
+  const idx = INSIGHT_CATEGORIES.indexOf(recent[0] as InsightCategory);
   return INSIGHT_CATEGORIES[(idx + 1) % INSIGHT_CATEGORIES.length];
 }
 
@@ -136,9 +151,33 @@ function detectHookType(hook: string): string {
   if (!hook) return 'signal';
   if (hook.includes('report') || hook.includes('earnings')) return 'event';
   if (hook.includes('cash') || hook.includes('% of your portfolio') || hook.includes('sitting on')) return 'structure';
-  if (hook.includes('SPY') || hook.includes('market')) return 'market';
-  if (hook.includes('inflation') || hook.includes('Fed') || hook.includes('sector')) return 'macro';
+  if (hook.includes('SPY') || hook.includes('QQQ') || hook.includes('DIA') || hook.includes('VIX') || hook.includes('IWM')) return 'macro';
+  if (hook.includes('market') || hook.includes('inflation') || hook.includes('Fed') || hook.includes('sector')) return 'market';
   return 'signal';
+}
+
+// ─── Macro index quotes fetcher ──────────────────────────────
+
+async function fetchMacroQuotes(): Promise<Record<string, { c: number; dp: number }>> {
+  const key = process.env.FINNHUB_IO_API_KEY;
+  if (!key) return {};
+  const indices = ['SPY', 'QQQ', 'DIA', 'IWM', '^VIX'];
+  const results: Record<string, { c: number; dp: number }> = {};
+  await Promise.all(indices.map(async (sym) => {
+    try {
+      const r = await fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${key}`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      const q = await r.json();
+      if (q.c != null) {
+        results[sym === '^VIX' ? 'VIX' : sym] = { c: q.c, dp: q.dp ?? 0 };
+      }
+    } catch {
+      // index unavailable — skip
+    }
+  }));
+  return results;
 }
 
 // ─── POST handler ──────────────────────────────────────────────
@@ -157,7 +196,20 @@ export async function POST(req: NextRequest) {
       upcomingEarnings = [],
       includeStyleAck = false,
       lastCategory = null,
+      lastCategories = [], // array of last 2-3 categories used
     } = body;
+
+    // ── Auth: get userId for facts read/write ──────────────
+    const userId = await getOptionalUserId();
+
+    // ── Fetch AI facts for grounding context ──────────────
+    let activeFacts: AiFact[] = [];
+    try {
+      if (userId) activeFacts = await getActiveFacts(userId);
+    } catch (err) {
+      console.error('[greeting] getActiveFacts error:', err);
+    }
+    const factsContext = formatFactsForPrompt(activeFacts);
 
     const market = getMarketStatus();
 
@@ -180,8 +232,8 @@ export async function POST(req: NextRequest) {
       ? `You identified as a ${investorStyle} — ${STYLE_GREETINGS[styleKey]}\n\n`
       : '';
 
-    // ── Pick insight category (rotate away from last used) ──
-    const category = pickCategory(lastCategory);
+    // ── Pick insight category (avoid last 3 used) ──
+    const category = pickCategory(lastCategories);
 
     // ── Build category context block ──
     let categoryContext = '';
@@ -237,6 +289,19 @@ Portfolio total return: ${totalPnLPct >= 0 ? '+' : ''}${totalPnLPct.toFixed(1)}%
 Cash on sidelines: ${cashPct.toFixed(1)}%
 `;
         break;
+      case 'macro': {
+        const macroQuotes = await fetchMacroQuotes();
+        const indexLines = Object.entries(macroQuotes)
+          .map(([sym, q]) => `${sym}: $${q.c.toFixed(2)} (${q.dp >= 0 ? '+' : ''}${q.dp.toFixed(2)}%)`)
+          .join('\n');
+        categoryContext = `
+MACRO CONTEXT (REAL LIVE INDEX DATA — use these exact figures, do not invent):
+${indexLines || 'No index data available — skip this category.'}
+Holdings: ${positions.map((p: any) => p.symbol).join(', ') || 'None'}
+GUARDRAIL: Describe the observed pattern (e.g. "QQQ down 1.2%, but your financial-heavy book is holding up"). Do NOT invent a causal explanation unless a real news headline from the fetched data supports it. Pattern only — no narrative fabrication.
+`;
+        break;
+      }
     }
 
     // ── Build dynamic context (durable data only — NO intraday) ──
@@ -280,12 +345,16 @@ Opener to use: "${market.opener}"
           type: 'text' as const,
           text: dynamicContext,
         },
+        ...(factsContext ? [{
+          type: 'text' as const,
+          text: factsContext,
+        }] : []),
       ],
       messages: [{
         role: 'user' as const,
         content: styleAck
-          ? `${styleAck}Now generate my regular greeting.`
-          : 'Generate my greeting now.',
+          ? `${styleAck}[FACTS NOTE: Grounding facts are provided in system context. Cross-check your response against them — do not contradict active facts.]\n\nNow generate my regular greeting.`
+          : '[FACTS NOTE: Grounding facts are provided in system context. Cross-check your response against them — do not contradict active facts.]\n\nGenerate my greeting now.',
       }],
     });
 
@@ -302,6 +371,34 @@ Opener to use: "${market.opener}"
     const hook = parts[1] || null;
 
     console.log('[Greeting] Parsed:', { opener, hook });
+
+    // ── Step 4: Write greeting observation back as a fact ────
+    if (userId && hook) {
+      // Determine subject: use the most relevant ticker mentioned in the hook
+      let subject = 'portfolio';
+      const symbols = positions.map((p: any) => p.symbol);
+      for (const sym of symbols) {
+        if (hook.toUpperCase().includes(sym.toUpperCase())) {
+          subject = sym;
+          break;
+        }
+      }
+      // If hook mentions cash/portfolio-level, use portfolio
+      if (subject === 'portfolio' || !symbols.some((s: string) => hook.toUpperCase().includes(s.toUpperCase()))) {
+        // Check if it's about cash or general portfolio structure
+        if (/cash.*idle|idle.*cash|sitting on|% cash/i.test(hook)) {
+          subject = 'portfolio';
+        }
+      }
+      writeFact(userId, {
+        subject,
+        fact_type: 'observation',
+        claim: hook,
+        confidence: 'tentative',
+        source: 'greeting',
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
+      }).catch(err => console.error('[greeting] writeFact error:', err));
+    }
 
     return NextResponse.json({
       opener,
