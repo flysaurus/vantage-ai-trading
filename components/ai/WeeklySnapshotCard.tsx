@@ -365,14 +365,19 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
             onClick={handleRefresh}
             disabled={refreshing}
             style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255,255,255,0.3)',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 6,
+              color: 'rgba(255,255,255,0.45)',
               cursor: 'pointer',
-              fontSize: '13px',
+              fontSize: '14px',
+              fontWeight: 600,
               lineHeight: 1,
+              padding: '4px 10px',
               fontFamily: 'inherit',
               opacity: refreshing ? 0.5 : 1,
+              minWidth: 36,
+              minHeight: 30,
             }}
           >
             ↻
