@@ -141,7 +141,9 @@ export async function getAnalystData(
   }
 }
 
-// ─── FinBERT Sentiment ───────────────────────────────────────
+// ─── FinBERT Sentiment (local service) ────────────────────
+
+const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
 
 export async function getNewsSentiment(
   symbol: string,
@@ -179,49 +181,55 @@ export async function getNewsSentiment(
   }
 
   try {
-    const response = await fetch(
-      'https://api-inference.huggingface.co/models/ProsusAI/finbert',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          inputs: headlines.slice(0, 5).join(' [SEP] '),
-        }),
-      }
-    );
+    // Call local FinBERT service for each headline
+    const results: Array<{ label: string; score: number }> = [];
+    for (const headline of headlines.slice(0, 5)) {
+      try {
+        const response = await fetch(`${FINBERT_URL}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: headline }),
+        });
 
-    if (!response.ok) {
-      console.warn(`FinBERT ${symbol}: ${response.status}`);
+        if (!response.ok) {
+          console.warn(`FinBERT ${symbol}: ${response.status}`);
+          continue;
+        }
+
+        const result: { label: string; score: number } = await response.json();
+        results.push(result);
+      } catch (err) {
+        console.warn(`FinBERT ${symbol} headline:`, err);
+      }
+    }
+
+    if (results.length === 0) {
       return { overall: 'neutral', score: 0, headlines };
     }
 
-    const results = await response.json();
-
     let positiveScore = 0;
     let negativeScore = 0;
+    let neutralScore = 0;
 
-    // FinBERT returns array of [{label, score}]
-    if (Array.isArray(results) && Array.isArray(results[0])) {
-      results[0].forEach(
-        (item: { label: string; score: number }) => {
-          if (item.label === 'positive') positiveScore = item.score;
-          if (item.label === 'negative') negativeScore = item.score;
-        }
-      );
-    }
+    results.forEach((item: { label: string; score: number }) => {
+      if (item.label === 'positive') positiveScore += item.score;
+      if (item.label === 'negative') negativeScore += item.score;
+      if (item.label === 'neutral') neutralScore += item.score;
+    });
 
-    const netScore = positiveScore - negativeScore;
+    // Average the scores across headlines
+    const avgPositive = positiveScore / results.length;
+    const avgNegative = negativeScore / results.length;
+    const netScore = avgPositive - avgNegative;
+
     const overall =
-      netScore > 0.1
+      netScore > 0.15
         ? 'positive'
-        : netScore < -0.1
+        : netScore < -0.15
           ? 'negative'
           : 'neutral';
 
-    // Cache for 1 hour
+    console.log(`FinBERT ${symbol}: ${overall} (${netScore.toFixed(2)}) from ${results.length} headlines`);
     await supabase
       .from('stock_analysis_cache')
       .upsert({
