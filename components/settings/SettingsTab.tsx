@@ -11,6 +11,7 @@ import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
 import type { Level } from '@/lib/theme/tokens';
 import { useInvestorScore } from '@/hooks/useInvestorScore';
 import { estDateOnly } from '@/lib/demo-utils';
+import { isLearningEnabled, setLearningEnabled as saveLearningPref } from '@/lib/learning/preferences';
 
 const INVESTOR_STYLES = [
   { id: 'lynch', name: 'Peter Lynch', subtitle: 'Growth Focus', description: 'Find growth before Wall Street does. GARP investing.', emoji: '📈' },
@@ -49,6 +50,7 @@ export function SettingsTab() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const { score, level } = useInvestorScore();
 
   async function selectStyle(styleId: string) {
@@ -104,6 +106,63 @@ export function SettingsTab() {
       >
         {label}
       </button>
+    );
+  };
+
+  // ── Learning Toggle ───────────────────────────────────
+  const LearningToggle = () => {
+    const handleToggle = () => {
+      const next = !learningEnabled;
+      setLearningEnabled(next);
+      saveLearningPref(next);
+    };
+    return (
+      <div
+        onClick={handleToggle}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '14px 16px',
+          background: '#1a2235',
+          borderRadius: '0 0 10px 10px',
+          minHeight: '52px',
+          cursor: 'pointer',
+        }}
+      >
+        <div>
+          <p style={{ fontSize: '15px', color: '#ffffff' }}>Learning</p>
+          <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
+            {learningEnabled ? 'Financial concept tips after AI responses' : 'No educational cards shown'}
+          </p>
+        </div>
+        {/* Toggle switch */}
+        <div
+          style={{
+            width: '44px',
+            height: '26px',
+            borderRadius: '13px',
+            background: learningEnabled ? '#22d3ee' : '#334155',
+            position: 'relative',
+            transition: 'background 0.2s ease',
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: '20px',
+              height: '20px',
+              borderRadius: '50%',
+              background: '#ffffff',
+              position: 'absolute',
+              top: '3px',
+              left: learningEnabled ? '21px' : '3px',
+              transition: 'left 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }}
+          />
+        </div>
+      </div>
     );
   };
 
@@ -457,14 +516,10 @@ export function SettingsTab() {
               alignItems: 'center',
               padding: '14px 16px',
               background: '#1a2235',
-              borderBottom: i < arr.length - 1 ? '1px solid #0f1829' : 'none',
+              borderBottom: '1px solid #0f1829',
               borderRadius:
-                arr.length === 1
-                  ? '10px'
-                  : i === 0
+                i === 0
                   ? '10px 10px 0 0'
-                  : i === arr.length - 1
-                  ? '0 0 10px 10px'
                   : 0,
               minHeight: '52px',
               cursor: 'pointer',
@@ -477,6 +532,9 @@ export function SettingsTab() {
             <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
           </div>
         ))}
+
+        {/* Learning toggle */}
+        <LearningToggle />
       </div>
 
       {/* ═══════════════════════════════════════════════════════

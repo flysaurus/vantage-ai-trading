@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { detectLearningMoment } from '@/lib/learning/detector';
 import type { LearningCard } from '@/lib/learning/triggers';
+import { isLearningEnabled } from '@/lib/learning/preferences';
 import { useAuth } from '@/components/providers/AuthProvider';
 
 // ─── Constants ───────────────────────────────────────────────
@@ -44,6 +45,7 @@ export function useLearningMoment(
     if (learningCard) return; // already showing one
 
     const timer = setTimeout(() => {
+      if (!isLearningEnabled()) return;
       const card = detectLearningMoment(aiResponse, shownThisConversation.current);
       if (card) {
         shownThisConversation.current.add(card.term);
