@@ -15,6 +15,7 @@ import { saveChatMessage } from '@/lib/chat-service';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
 import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
+import { LearningLibrary } from '@/components/learning/LearningLibrary';
 
 
 // ── Design tokens (vantage-ai-tab-redesign.html) ──
@@ -154,6 +155,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [exploreSeenCount, setExploreSeenCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
   // ── AI Noticed state — fetched from API ──
@@ -855,6 +857,30 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           animation: 'vantageLivePulse 2s infinite',
           marginLeft: '2px',
         }} />
+        {/* Spacer pushes 📚 to the right */}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setShowLibrary(true)}
+          title="Learning Library"
+          style={{
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px',
+            color: 'rgba(255,255,255,0.6)',
+            fontSize: '16px',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+        >
+          📚
+        </button>
         <style>{`
           @keyframes vantageLivePulse {
             0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.5); }
@@ -1661,6 +1687,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {learningCard && (
         <LearningMomentCard card={learningCard} onGotIt={() => dismissLearning(true)} onDismiss={() => dismissLearning(false)} />
       )}
+
+      {/* ── Learning Library Overlay ── */}
+      <LearningLibrary open={showLibrary} onClose={() => setShowLibrary(false)} />
 
     </div>
   );
