@@ -101,15 +101,22 @@ function extractRiskFromSection(section: string): string | null {
 }
 
 function parseSections(content: string): ParsedSections {
-  const healthMatch = content.match(/(?:^#*\s*)?(?:OVERALL HEALTH|PORTFOLIO HEALTH).*\n([\s\S]*?)(?=^#*\s*(?:RISKS?|OVERALL RISK|RISK LEVEL)|\Z)/im);
-  const riskMatch = content.match(/(?:^#*\s*)?(?:RISKS?|OVERALL RISK|RISK LEVEL).*\n([\s\S]*?)(?=^#*\s*(?:OPPORTUNITIES?|SUMMARY)|\Z)/im);
-  const oppMatch = content.match(/(?:^#*\s*)?OPPORTUNITIES?.*\n([\s\S]*?)(?=^#*\s*(?:SUMMARY|RISK|RISKS)(?:\s|$)|\Z)/im);
-  const summaryMatch = content.match(/(?:^#*\s*)?SUMMARY.*\n?([\s\S]*?)$/im);
+  // Same regex as server-side — matches ## headers, flexible whitespace, no line-start requirement
+  const parse = (label: string, nextLabels: string[]): string => {
+    const escaped = nextLabels.map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const re = new RegExp(
+      `(?:##\\s*)?${label}\\s*\\n?([\\s\\S]*?)(?=(?:##\\s*)?(?:${escaped})(?:\\s|$)|$)`,
+      'i'
+    );
+    const m = content.match(re);
+    return (m?.[1] || '').trim();
+  };
+
   return {
-    health: (healthMatch?.[1] || '').trim(),
-    risk: (riskMatch?.[1] || '').trim(),
-    opportunities: (oppMatch?.[1] || '').trim(),
-    summary: (summaryMatch?.[1] || '').trim(),
+    health: parse('(?:OVERALL HEALTH|PORTFOLIO HEALTH)', ['RISKS?', 'OVERALL RISK', 'RISK LEVEL']),
+    risk: parse('(?:RISKS?|OVERALL RISK|RISK LEVEL)', ['OPPORTUNITIES?', 'SUMMARY']),
+    opportunities: parse('OPPORTUNITIES?', ['SUMMARY', 'RISKS?', 'RISK']),
+    summary: parse('SUMMARY', []),
   };
 }
 
@@ -377,7 +384,12 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
       {SUB_CARD_ORDER.map((key, idx) => {
         const value = subCardValue(key as 'health' | 'risk' | 'opportunities');
         const isExpanded = expandedCard === key;
-        const sectionContent = sections[key as keyof ParsedSections];
+        let sectionContent = sections[key as keyof ParsedSections];
+        // Fallback: if parsing failed but we have content, try server-side regex directly
+        if (!sectionContent && key === 'opportunities' && realOppCount > 0 && data.content) {
+          const fb = data.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?|RISK)(?:\s|$)|$)/i);
+          sectionContent = (fb?.[1] || '').trim();
+        }
 
         return (
           <div key={key} style={{ marginBottom: idx < SUB_CARD_ORDER.length - 1 ? '8px' : 0 }}>
