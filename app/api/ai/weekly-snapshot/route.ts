@@ -13,8 +13,8 @@ import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
-import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts';
-import type { AiFact } from '@/lib/ai/facts';
+import { writeFact } from '@/lib/ai/facts';
+import { beginGenLog } from '@/lib/ai/generation-log';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -102,7 +102,8 @@ async function writeSnapshotFacts(
   userId: string,
   content: string,
   symbols: string[],
-): Promise<void> {
+): Promise<Array<{ subject: string; claim: string; fact_type: string; id?: string }>> {
+  const written: Array<{ subject: string; claim: string; fact_type: string; id?: string }> = [];
   try {
     // Extract OPPORTUNITIES section
     const oppRe = new RegExp(
@@ -145,7 +146,10 @@ async function writeSnapshotFacts(
           source: 'weekly_snapshot',
         });
 
-        if (r.fact) writtenRiskIds.push(r.fact.id);
+        if (r.fact) {
+          writtenRiskIds.push(r.fact.id);
+          written.push({ subject, claim, fact_type: 'observation', id: r.fact.id });
+        }
       }
     }
 
@@ -173,7 +177,7 @@ async function writeSnapshotFacts(
 
         // based_on: reference any risk observations written above that
         // mention the same subject
-        await writeFact(userId, {
+        const r = await writeFact(userId, {
           subject,
           fact_type: 'recommendation',
           claim: fullClaim,
@@ -181,8 +185,14 @@ async function writeSnapshotFacts(
           based_on: writtenRiskIds.length > 0 ? writtenRiskIds : null,
           source: 'weekly_snapshot',
         });
+
+        if (r.fact) {
+          written.push({ subject, claim: fullClaim, fact_type: 'recommendation', id: r.fact.id });
+        }
       }
     }
+
+    return written;
   } catch (err) {
     // Facts writing is non-critical — don't fail the snapshot
     console.error('[weekly-snapshot] writeSnapshotFacts error:', err);
@@ -401,14 +411,9 @@ export async function GET(req: NextRequest) {
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
 
-    // ── Fetch active AI facts for grounding context ──────────
-    let activeFacts: AiFact[] = [];
-    try {
-      activeFacts = await getActiveFacts(userId);
-    } catch (err) {
-      console.error('[weekly-snapshot] getActiveFacts error:', err);
-    }
-    const factsContext = formatFactsForPrompt(activeFacts);
+    // ── Fetch active AI facts for grounding context (with audit logging) ──
+    const genLog = await beginGenLog(userId, 'weekly_snapshot');
+    const factsContext = genLog.factsPrompt;
     const fullUserContent = factsContext
       ? `${dataBlock}\n\n${factsContext}`
       : dataBlock;
@@ -464,9 +469,10 @@ export async function GET(req: NextRequest) {
     );
 
     // ── Step 3: Write generated conclusions back as facts ─────
-    // Parse OPPORTUNITIES and RISKS from the generated content and
-    // write them as ai_facts for future generations to reference.
-    await writeSnapshotFacts(supabase, userId, content, symbols);
+    const writtenFacts = await writeSnapshotFacts(supabase, userId, content, symbols);
+
+    // Log the generation event (async, non-blocking)
+    genLog.flush(writtenFacts);
 
     return NextResponse.json({
       content,

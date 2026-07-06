@@ -15,8 +15,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts';
-import type { AiFact } from '@/lib/ai/facts';
+import { writeFact } from '@/lib/ai/facts';
+import { beginGenLog } from '@/lib/ai/generation-log';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
 
 const anthropic = new Anthropic({
@@ -214,14 +214,9 @@ export async function POST(req: NextRequest) {
     // ── Auth: get userId for facts read/write ──────────────
     const userId = await getOptionalUserId();
 
-    // ── Fetch AI facts for grounding context ──────────────
-    let activeFacts: AiFact[] = [];
-    try {
-      if (userId) activeFacts = await getActiveFacts(userId);
-    } catch (err) {
-      console.error('[greeting] getActiveFacts error:', err);
-    }
-    const factsContext = formatFactsForPrompt(activeFacts);
+    // ── Fetch AI facts for grounding context (with audit logging) ──
+    const genLog = await beginGenLog(userId, 'greeting');
+    const factsContext = genLog.factsPrompt;
 
     const market = getMarketStatus();
 
@@ -407,14 +402,17 @@ Opener to use: "${market.opener}"
           subject = 'portfolio';
         }
       }
-      writeFact(userId, {
+      const r = await writeFact(userId, {
         subject,
         fact_type: 'observation',
         claim: hook,
         confidence: 'tentative',
         source: 'greeting',
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
-      }).catch(err => console.error('[greeting] writeFact error:', err));
+      }).catch(err => { console.error('[greeting] writeFact error:', err); return { fact: null }; });
+
+      // Log the generation event
+      genLog.flush(r?.fact ? [{ subject, claim: hook, fact_type: 'observation', id: r.fact.id }] : []);
     }
 
     return NextResponse.json({

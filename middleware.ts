@@ -25,6 +25,9 @@ const PUBLIC_ROUTES = [
   '/api/ai/weekly-snapshot/test-contradiction', // admin-only test endpoint (uses service role internally)
   '/api/ai/greeting/test-variety', // admin-only test endpoint (uses service role internally)
   '/api/ai/chat/test-deviation', // admin-only test endpoint (uses service role internally)
+  '/admin', // admin debug view (self-gated via ADMIN_ACCESS_CODE)
+  '/api/admin/facts', // admin facts API (self-gated)
+  '/api/admin/generation-log', // admin generation log API (self-gated)
 ];
 
 export async function middleware(request: NextRequest) {
