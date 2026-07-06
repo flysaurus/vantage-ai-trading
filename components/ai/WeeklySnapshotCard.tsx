@@ -224,7 +224,35 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     );
   }
 
-  if (!data?.content) return null;
+  if (!data?.content) {
+    // Show fallback instead of returning null — so the user sees SOMETHING
+    if (mode === 'content') {
+      return (
+        <div
+          onClick={onClick}
+          style={{
+            marginTop: '10px',
+            background: CARD_BG,
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: '18px',
+            padding: '18px',
+            backdropFilter: BACKDROP_BLUR,
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>
+            Weekly Snapshot
+          </div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
+            {loading
+              ? 'Generating your weekly analysis…'
+              : 'No snapshot available yet. Check back after market close on Friday — your weekly portfolio review is generated over the weekend.'}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const { healthScore, riskLevel: apiRiskLevel, opportunitiesCount, generatedAt } = data;
   const sections = parseSections(data.content);

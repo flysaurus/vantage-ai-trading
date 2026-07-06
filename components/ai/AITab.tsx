@@ -629,6 +629,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       scrollToBottom();
     } catch (error) {
       console.error('Chat error:', error);
+      setToast(null);
       setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
     } finally {
       setLoading(false);
@@ -658,8 +659,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       el.style.transition = 'box-shadow 400ms ease-out';
       el.style.boxShadow = '';
     }, 100);
-
-    setToast('💬 Vantage AI is responding...');
 
     const symbols = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX'];
     const quotes: Record<string, { c: number; d: number; dp: number }> = {};
@@ -706,7 +705,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       }, 100);
     }
     sendMessage(message);
-    setToast('💬 Vantage AI is responding...');
     wasAtBottomRef.current = true;
     scrollToBottom(true);
   };
@@ -739,7 +737,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
   const [showExplore, setShowExplore] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', minHeight: 0, position: 'relative', background: 'linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 40%, rgba(10,15,30,0.4) 100%)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: '28px', margin: '8px 12px 0 12px', overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.4)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative', background: 'linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 40%, rgba(10,15,30,0.4) 100%)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: '28px', margin: '8px 12px 6px 12px', overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.4)' }}>
       {/* Previous session banner */}
       {previousSession && messages.length === 0 && (
         <div
@@ -794,19 +792,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               Load
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Toast notification */}
-      {toast && (
-        <div style={{ position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'rgba(34,211,238,0.15)', border: '1px solid #22d3ee', borderRadius: '8px', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-          <span className="vantage-pulse-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22d3ee', flexShrink: 0 }} />
-          <span style={{ fontSize: '13px', color: '#22d3ee' }}>{toast}</span>
-          <style>{`
-            @keyframes vantageSlideUp { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-            @keyframes vantagePulse { 0%,100% { transform:scale(1);opacity:1 } 50% { transform:scale(1.5);opacity:0.4 } }
-            .vantage-pulse-dot { animation:vantagePulse 1.2s ease-in-out infinite }
-          `}</style>
         </div>
       )}
 
@@ -1079,7 +1064,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               </div>
             );
           }
-          // AI message — accent left border
+          // AI message — accent left border, same 14px font as user messages
           return (
             <div
               key={i}
@@ -1089,6 +1074,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 borderLeft: '3px solid #22d3ee',
                 borderRadius: '4px 16px 16px 16px',
                 padding: '14px 16px',
+                fontSize: '14px',
+                color: 'rgba(255,255,255,0.85)',
               }}
             >
               <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#22d3ee', marginBottom: '6px', letterSpacing: '0.03em' }}>
@@ -1122,11 +1109,21 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
         {/* Thinking indicator */}
         {loading && (
-          <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-            <svg width="18" height="18" viewBox="0 0 18 18" style={{ animation: 'spin 2s linear infinite' }}>
-              <circle cx="9" cy="9" r="7" fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="33" strokeDashoffset="22" strokeLinecap="round" />
-            </svg>
-            <span style={{ fontSize: '13px', color: '#cbd5e1' }}>Analyzing your portfolio —</span>
+          <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 0 4px' }}>
+            <span className="vantage-typing-dot" style={{ animationDelay: '0s' }} />
+            <span className="vantage-typing-dot" style={{ animationDelay: '0.2s' }} />
+            <span className="vantage-typing-dot" style={{ animationDelay: '0.4s' }} />
+            <style>{`
+              .vantage-typing-dot {
+                width: 6px; height: 6px; border-radius: 50%;
+                background: #22d3ee;
+                animation: vantageTypingBounce 1.4s ease-in-out infinite;
+              }
+              @keyframes vantageTypingBounce {
+                0%, 60%, 100% { opacity: 0.2; transform: scale(0.9); }
+                30% { opacity: 1; transform: scale(1.1); }
+              }
+            `}</style>
           </div>
         )}
 
@@ -1259,21 +1256,22 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {showSettings && (
         <>
           <div
-            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 11 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 99990 }}
             onClick={() => setShowSettings(false)}
           />
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              position: 'absolute',
+              position: 'fixed',
               bottom: 0,
               left: 0,
               right: 0,
-              zIndex: 12,
+              zIndex: 99991,
               background: '#10162a',
               borderTop: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '20px 20px 0 0',
               padding: '20px 20px 28px',
+              paddingBottom: 'calc(28px + env(safe-area-inset-bottom))',
               maxHeight: '60vh',
               overflowY: 'auto',
             }}
@@ -1325,10 +1323,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'transparent',
+            background: 'rgba(0,0,0,0.01)',
             display: 'flex',
             alignItems: 'flex-end',
             zIndex: 5,
+            overflow: 'hidden',
           }}
           onClick={() => setShowExplore(false)}
         >
@@ -1340,7 +1339,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               borderTop: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '20px 20px 0 0',
               padding: '10px 16px 24px',
-              maxHeight: '70vh',
+              maxHeight: '100%',
               overflowY: 'auto',
             }}
           >
@@ -1367,7 +1366,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     onClick={() => {
                       setShowExplore(false);
                       sendToChat(item.followUp || `Tell me about ${item.title}`);
-                      setToast('💬 Vantage AI is responding...');
                     }}
                     style={{
                       display: 'flex',
@@ -1489,7 +1487,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
                 { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
                 { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
-                { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); setToast('💬 Vantage AI is responding...'); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
+                { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
               ].map((action) => (
                 <div
                   key={action.label}
@@ -1589,7 +1587,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               })()}
             </div>
             <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid #1e2d45', flexShrink: 0 }}>
-              <button onClick={() => { setShowHistory(false); setMessages([]); setCurrentSessionId(null); wasAtBottomRef.current = true; scrollToBottom(false); }}
+              <button onClick={() => { setShowHistory(false); setMessages([]); setCurrentSessionId(null); setLoading(false); setToast(null); greetingFetchedRef.current = false; setGreetingLoaded(false); charQueueRef.current = []; displayedContentRef.current = ''; streamDoneRef.current = false; isDrainingRef.current = false; wasAtBottomRef.current = true; scrollToBottom(false); }}
                 style={{ width: '100%', background: 'transparent', border: '1px solid rgba(34,211,238,0.4)', borderRadius: '10px', color: '#22d3ee', fontSize: '14px', fontWeight: '500', padding: '12px 0', cursor: 'pointer' }}>＋ Start New Conversation</button>
             </div>
           </div>
@@ -1605,7 +1603,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px', lineHeight: '1.5' }}>This will remove all messages from your current session. This cannot be undone.</p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => setShowClearConfirm(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid #374151', borderRadius: '10px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={() => { setMessages([]); setShowClearConfirm(false); }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
+              <button onClick={() => { setMessages([]); setShowClearConfirm(false); setLoading(false); setToast(null); greetingFetchedRef.current = false; setGreetingLoaded(false); charQueueRef.current = []; displayedContentRef.current = ''; streamDoneRef.current = false; isDrainingRef.current = false; }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
             </div>
           </div>
         </div>
