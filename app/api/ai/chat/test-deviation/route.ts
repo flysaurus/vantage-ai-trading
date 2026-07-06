@@ -127,7 +127,7 @@ export async function GET() {
     results.push({
       test: 1,
       query: query1,
-      response_full: text1,
+      response_start: text1.substring(0, 200),
       checks: {
         acknowledges_deviation: ackDeviation,
         no_lecture: noLecture,
@@ -194,8 +194,6 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
   const query3 = "What's your take on the Rivian IPO?";
   
   try {
-    const facts3 = await getActiveFacts(userId);
-    // Also check directly (bypass or() filter which may not see just-inserted rows)
     const { data: rawFacts } = await (supabase as any)
       .from('ai_facts')
       .select('id,subject,claim,confidence,status')
