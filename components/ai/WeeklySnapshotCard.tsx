@@ -260,9 +260,9 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
   const riskLevel = apiRiskLevel || extractRiskFromSection(sections.risk);
 
   const realOppCount = (() => {
-    if (opportunitiesCount != null && opportunitiesCount > 0) return opportunitiesCount;
+    // Always count from actual content — never trust the stored count (can be stale)
     const bullets = sections.opportunities.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
-    return bullets ? bullets.length : 0;
+    return bullets ? bullets.length : (opportunitiesCount ?? 0);
   })();
 
   const healthSummaryColor = healthScore != null

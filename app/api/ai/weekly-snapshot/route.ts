@@ -49,16 +49,18 @@ MEDIUM: sector 40-60% OR position down 20-40%
 HIGH: sector >60% OR position down >40%
 
 ## OPPORTUNITIES (list 2-3):
-Each opportunity must include:
-- What the opportunity is
-- Why it fits the investor's style
-- A specific price level to act at
+Format each opportunity EXACTLY like this (use these exact sub-headers):
+- **What:** [single sentence describing the opportunity]
+- **Why:** [why it fits the investor's style]
+- **Price:** [specific price level to act at]
+Use - bullets (not numbered). Separate each opportunity with a blank line.
 
 ## RISKS (list 2-3):
-Each risk must include:
-- What the risk is
-- Which position(s) it affects
-- Recommended action
+Format each risk EXACTLY like this (use these exact sub-headers):
+- **Risk:** [single sentence — what is happening]
+- **Affects:** [which ticker(s) / position(s)]
+- **Action:** [recommended response]
+Use - bullets (not numbered). Separate each risk with a blank line.
 
 ## SUMMARY:
 
@@ -283,7 +285,9 @@ export async function GET(req: NextRequest) {
       'Within each section, use bullet points (starting with -). Bold key phrases with **.',
       'In the RISK section, put the risk level on its own line like: RL: MEDIUM',
       'Include "OVERALL HEALTH: X/10" on one line. Put the risk level on its own line: RL: MEDIUM (or LOW/HIGH).',
-      'For OPPORTUNITIES and RISKS, use the structured sub-point format (What:/Why:/Price level) described in the system instructions.',
+      'For OPPORTUNITIES: use - **What:** / - **Why:** / - **Price:** sub-headers exactly as shown in system instructions.',
+      'For RISKS: use - **Risk:** / - **Affects:** / - **Action:** sub-headers exactly as shown in system instructions.',
+      'Use - bullets, not numbered items. Use the exact sub-header labels — do not rename them.',
       `Portfolio: ${symbols.join(', ')}`,
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
