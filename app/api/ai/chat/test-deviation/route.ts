@@ -76,11 +76,17 @@ export async function GET() {
   const profileContext = buildUserProfileContext(profile) + '\n' + STYLE_DEVIATION_RULES;
 
   // Clean any previous test deviation facts
-  await (supabase as any)
+  const { data: oldFacts } = await (supabase as any)
     .from('ai_facts')
-    .delete()
-    .eq('subject', 'user_style_deviation')
-    .eq('source', 'deviation_test');
+    .select('id')
+    .eq('source', 'deviation_test')
+    .like('subject', 'user_style_deviation:%');
+  if (oldFacts?.length) {
+    await (supabase as any)
+      .from('ai_facts')
+      .delete()
+      .in('id', oldFacts.map((f: any) => f.id));
+  }
 
   // ── Test 1: First deviation (Buffett + SpaceX) ───────────
   const query1 = "What do you think of SpaceX as an investment?";
@@ -104,14 +110,14 @@ export async function GET() {
     const noLecture = !/should stick to|you shouldn't|doesn't fit|wrong approach|instead you should|I wouldn't/i.test(text1);
     // Assertion 1c: Contains real analysis
     const hasAnalysis = /SpaceX|Starship|Starlink|launch|revenue|valuation|market|business|thesis|Elon/i.test(text1);
-    // Assertion 1d: Exactly one question (count ? at end)
-    const questionMarks = (text1.match(/\?/g) || []).length;
-    // Check for lecture-y follow-up phrasing
+    // Assertion 1d: Exactly one ending question (check last ~150 chars)
+    const ending = text1.substring(Math.max(0, text1.length - 150));
+    const endingQuestions = (ending.match(/\?/g) || []).length;
     const badFollowUp = /are you sure|do you really|do you understand/i.test(text1);
 
     // Write test fact 1
     await writeFact(userId, {
-      subject: 'user_style_deviation',
+      subject: 'user_style_deviation:speculative',
       fact_type: 'observation',
       claim: 'User asked about speculative/pre-IPO (SpaceX) despite Buffett-style profile',
       confidence: 'confirmed',
@@ -126,9 +132,9 @@ export async function GET() {
         acknowledges_deviation: ackDeviation,
         no_lecture: noLecture,
         has_analysis: hasAnalysis,
-        exactly_one_question: questionMarks === 1 && !badFollowUp,
+        exactly_one_question: endingQuestions === 1 && !badFollowUp,
       },
-      passed: ackDeviation && noLecture && hasAnalysis && questionMarks === 1 && !badFollowUp,
+      passed: ackDeviation && noLecture && hasAnalysis && endingQuestions === 1 && !badFollowUp,
     });
   } catch (e: any) {
     results.push({ test: 1, error: e.message, passed: false });
@@ -139,7 +145,7 @@ export async function GET() {
   
   try {
     const activeFacts = await getActiveFacts(userId);
-    const devFacts = activeFacts.filter(f => f.subject === 'user_style_deviation');
+    const devFacts = activeFacts.filter((f: any) => f.subject?.startsWith?.('user_style_deviation:') ?? false);
     const devHistory = devFacts.length > 0 ? `
 DEVIATION HISTORY:
 ${devFacts.map((f, i) => `${i+1}. ${f.claim} (${f.confidence})`).join('\n')}
@@ -163,7 +169,7 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
 
     // Write test fact 2
     await writeFact(userId, {
-      subject: 'user_style_deviation',
+      subject: 'user_style_deviation:crypto',
       fact_type: 'observation',
       claim: 'User asked about crypto (Bitcoin) despite Buffett-style profile',
       confidence: 'confirmed',
@@ -189,9 +195,16 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
   
   try {
     const facts3 = await getActiveFacts(userId);
-    const devHistory3 = facts3
-      .filter(f => f.subject === 'user_style_deviation')
-      .map((f, i) => `${i+1}. ${f.claim} (${f.confidence})`)
+    // Also check directly (bypass or() filter which may not see just-inserted rows)
+    const { data: rawFacts } = await (supabase as any)
+      .from('ai_facts')
+      .select('id,subject,claim,confidence,status')
+      .eq('user_id', userId)
+      .ilike('subject', 'user_style_deviation:%')
+      .eq('status', 'active');
+    const deviationFacts3 = rawFacts || [];
+    const devHistory3 = deviationFacts3
+      .map((f: any, i: number) => `${i+1}. ${f.claim} (${f.confidence})`)
       .join('\n');
 
     const res3 = await anthropic.messages.create({
@@ -200,7 +213,7 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
       system: [
         { type: 'text' as const, text: VANTAGE_SYSTEM_PROMPT },
         { type: 'text' as const, text: profileContext },
-        { type: 'text' as const, text: `\nDEVIATION HISTORY (${facts3.filter(f => f.subject === 'user_style_deviation').length} prior deviations):\n${devHistory3}\n\nMultiple deviations in speculative category exist. Apply Rule 5: skip the acknowledgment — this is a deliberate recurring interest, not an anomaly.\n` },
+        { type: 'text' as const, text: `\nDEVIATION HISTORY (${deviationFacts3.length} prior deviations):\n${devHistory3}\n\n${deviationFacts3.length >= 2 ? 'Multiple deviations in speculative category exist. Apply Rule 5: skip the acknowledgment — this is a deliberate recurring interest, not an anomaly.' : 'One prior deviation noted.'}\n` },
       ],
       messages: [{ role: 'user' as const, content: query3 }],
     });
@@ -210,9 +223,9 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
     const skippedAck = !/Buffett.*pick|isn't.*typical|outside.*your.*style|not.*usual for you/i.test(text3);
     const hasAnalysis = text3.length > 50 && /[Rr]ivian|EV|truck|IPO|production|delivery|Amazon/i.test(text3);
 
-    // Write test fact 3
+    // Write test fact 3 (unique subject to avoid superseding fact 1)
     await writeFact(userId, {
-      subject: 'user_style_deviation',
+      subject: `user_style_deviation:speculative:ipo`,
       fact_type: 'observation',
       claim: 'User asked about speculative IPO (Rivian) despite Buffett-style profile',
       confidence: 'confirmed',
@@ -224,7 +237,7 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
       query: query3,
       response_start: text3.substring(0, 200),
       checks: {
-        deviation_count_before: facts3.filter(f => f.subject === 'user_style_deviation').length,
+        deviation_count_before: deviationFacts3.length,
         acknowledgment_skipped: skippedAck,
         has_analysis: hasAnalysis,
       },
@@ -236,7 +249,7 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
 
   // ── Test 4: Facts written ────────────────────────────────
   const facts4 = await getActiveFacts(userId);
-  const devFactsWritten = facts4.filter(f => f.subject === 'user_style_deviation' && f.source === 'deviation_test');
+  const devFactsWritten = facts4.filter((f: any) => (f.subject?.startsWith?.('user_style_deviation:') ?? false) && f.source === 'deviation_test');
   
   results.push({
     test: 4,
@@ -248,11 +261,17 @@ ${devFacts.length >= 2 ? 'Multiple deviations exist — apply Rule 5: soften ack
   });
 
   // ── Clean up test facts ──
-  await (supabase as any)
+  const { data: cleanupIds } = await (supabase as any)
     .from('ai_facts')
-    .delete()
-    .eq('subject', 'user_style_deviation')
-    .eq('source', 'deviation_test');
+    .select('id')
+    .eq('source', 'deviation_test')
+    .like('subject', 'user_style_deviation:%');
+  if (cleanupIds?.length) {
+    await (supabase as any)
+      .from('ai_facts')
+      .delete()
+      .in('id', cleanupIds.map((f: any) => f.id));
+  }
 
   const allPassed = results.every((r: any) => r.passed);
   const passedCount = results.filter((r: any) => r.passed).length;

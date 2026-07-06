@@ -140,7 +140,7 @@ export async function POST(req: Request) {
     try {
       if (userId && userId !== 'anonymous') {
         const facts = await getActiveFacts(userId);
-        const devFacts = facts.filter((f: any) => f.subject === 'user_style_deviation');
+        const devFacts = facts.filter((f: any) => f.subject?.startsWith?.('user_style_deviation:') ?? false);
         if (devFacts.length > 0) {
           deviationContext = `
 DEVIATION HISTORY (style deviations previously discussed):
@@ -236,7 +236,7 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
               else if (/index|etf|passive|diversif/i.test(lastMessage)) category = 'passive'
 
               writeFact(userId, {
-                subject: 'user_style_deviation',
+                subject: `user_style_deviation:${category}`,
                 fact_type: 'observation',
                 claim: `User asked about ${category} despite ${profile.investorStyle}-style profile`,
                 confidence: 'confirmed',
