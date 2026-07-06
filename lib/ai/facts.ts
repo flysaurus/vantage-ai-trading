@@ -128,8 +128,7 @@ export async function getActiveFacts(
   let query = (supabase as any)
     .from('ai_facts')
     .select('*')
-    .eq('status', 'active')
-    .or('expires_at.is.null,expires_at.gt.now()');
+    .eq('status', 'active');
 
   if (typeof supabaseOrUserId === 'string') {
     query = query.eq('user_id', supabaseOrUserId);

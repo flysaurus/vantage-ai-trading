@@ -127,7 +127,7 @@ export async function GET() {
     results.push({
       test: 1,
       query: query1,
-      response_start: text1.substring(0, 200),
+      response_full: text1,
       checks: {
         acknowledges_deviation: ackDeviation,
         no_lecture: noLecture,
