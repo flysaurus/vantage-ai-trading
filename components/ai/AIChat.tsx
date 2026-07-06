@@ -187,6 +187,18 @@ const MARKDOWN_COMPONENTS = {
   ),
 };  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
+// ── Rotating chat placeholder pool ──────────────────────────
+const PLACEHOLDERS = [
+  'Ask about your portfolio…',
+  'What should my next move be?',
+  'Curious about a stock? Ask away…',
+  'Ask about any stock or the market…',
+  'Looking for new opportunities? Ask Vantage…',
+  "What's Vantage AI noticing today?",
+  'Research any stock, sector, or strategy…',
+  'Markets, stocks, or your portfolio — ask anything',
+];
+
 export function AIChat({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -209,6 +221,8 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
+  // ── Rotating placeholder: picked once on mount ──
+  const [chatPlaceholder] = useState(() => PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]);
 
   // Reset sendingRef when loading finishes
   useEffect(() => {
@@ -375,7 +389,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
         {messages.length === 0 && (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-slate-300 text-xs text-center py-8">
-              Ask about your portfolio, markets, or build a basket
+              {chatPlaceholder}
             </p>
           </div>
         )}
@@ -690,7 +704,7 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about your portfolio, markets, or build a basket"
+            placeholder={chatPlaceholder}
             disabled={isLoading || remainingCalls === 0}
             className="flex-1 bg-slate-800 border border-slate-700 rounded-xl pl-5 pr-4 py-3.5 text-white text-base placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition"
             style={{ opacity: isLoading ? 0.6 : 1 }}

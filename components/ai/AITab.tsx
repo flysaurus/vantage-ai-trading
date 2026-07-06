@@ -108,6 +108,18 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(days / 7)}w`;
 }
 
+// ── Rotating chat placeholder pool ──────────────────────────
+const PLACEHOLDERS = [
+  'Ask about your portfolio…',
+  'What should my next move be?',
+  'Curious about a stock? Ask away…',
+  'Ask about any stock or the market…',
+  'Looking for new opportunities? Ask Vantage…',
+  "What's Vantage AI noticing today?",
+  'Research any stock, sector, or strategy…',
+  'Markets, stocks, or your portfolio — ask anything',
+];
+
 export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount } = useLivePortfolio();
   const { isConnected } = useBroker();
@@ -148,6 +160,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [noticedItems, setNoticedItems] = useState<NoticedItem[]>([]);
   const [noticedLoaded, setNoticedLoaded] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<string | null>(null); // item id for popover
+  // ── Rotating placeholder: picked once on mount ──
+  const [chatPlaceholder] = useState(() => PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]);
 
   const fetchNoticed = useCallback(async () => {
     if (!liveAccount) return;
@@ -1213,7 +1227,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   if (localRemaining > 0) sendMessage(input);
                 }
               }}
-              placeholder="Ask about your portfolio..."
+              placeholder={chatPlaceholder}
               maxLength={500}
               disabled={localRemaining <= 0}
               style={{
