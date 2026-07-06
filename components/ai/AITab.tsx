@@ -1327,7 +1327,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'flex-end',
-            zIndex: 20,
+            zIndex: 9,
             overflow: 'hidden',
           }}
           onClick={() => setShowExplore(false)}
@@ -1336,13 +1336,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             onClick={(e) => e.stopPropagation()}
             style={{
               width: '100%',
-              background: '#10162a',
-              borderTop: '1px solid rgba(255,255,255,0.1)',
+              background: '#ffffff',
+              borderTop: '1px solid rgba(0,0,0,0.08)',
               borderRadius: '20px 20px 0 0',
-              padding: '8px 16px 64px',
-              maxHeight: '92%',
+              padding: '10px 16px 32px',
               overflowY: 'auto',
               WebkitOverflowScrolling: 'touch',
+              boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
             }}
           >
             {/* Handle row: drag handle centered + X close button right */}
@@ -1350,13 +1350,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: '16px',
+              marginBottom: '14px',
               position: 'relative',
             }}>
               <div style={{
                 width: '36px',
                 height: '4px',
-                background: 'rgba(255,255,255,0.2)',
+                background: 'rgba(0,0,0,0.15)',
                 borderRadius: '999px',
               }} />
               <button
@@ -1366,15 +1366,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   right: 0,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(0,0,0,0.04)',
+                  border: '1px solid rgba(0,0,0,0.1)',
                   borderRadius: '50%',
                   width: '28px',
                   height: '28px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'rgba(255,255,255,0.6)',
+                  color: 'rgba(0,0,0,0.45)',
                   fontSize: '14px',
                   cursor: 'pointer',
                   padding: 0,
@@ -1386,10 +1386,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               </button>
             </div>
 
-            {/* ── Suggested for you ── */}
+            {/* ── AI Noticed items (if any) ── */}
             {noticedItems.length > 0 && (
               <>
-                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(0,0,0,0.45)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
                   Suggested for you
                 </div>
                 {noticedItems.map((item) => {
@@ -1405,13 +1405,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: '8px',
-                          background: GLASS_BG_LIGHTER,
+                          background: '#f1f5f9',
                           borderLeft: `3px solid ${borderColor}`,
                           borderRadius: '12px',
                           padding: '12px 14px',
                           marginBottom: '8px',
                           fontSize: '13.5px',
-                          color: TEXT_BODY,
+                          color: '#1e293b',
                           cursor: 'pointer',
                         }}
                       >
@@ -1422,12 +1422,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                             e.stopPropagation();
                             setSnoozeTarget(snoozeTarget === item.id ? null : item.id);
                           }}
-                          style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
+                          style={{ color: 'rgba(0,0,0,0.4)', fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
                         >
                           ×
                         </span>
                       </div>
-                      {/* Snooze popover in sheet */}
+                      {/* Snooze popover */}
                       {snoozeTarget === item.id && (
                         <>
                           <div
@@ -1439,15 +1439,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                             right: '8px',
                             top: '36px',
                             zIndex: 9999,
-                            background: '#1a2235',
-                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: '#ffffff',
+                            border: '1px solid rgba(0,0,0,0.12)',
                             borderRadius: '10px',
                             padding: '6px',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '2px',
                             minWidth: '170px',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                           }}>
                             {[
                               { label: 'Remind in 3 days', type: '3d' },
@@ -1460,7 +1460,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                                 style={{
                                   background: 'transparent',
                                   border: 'none',
-                                  color: '#cbd5e1',
+                                  color: '#334155',
                                   fontSize: '12px',
                                   padding: '8px 12px',
                                   borderRadius: '6px',
@@ -1468,7 +1468,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                                   textAlign: 'left',
                                   fontFamily: 'inherit',
                                 }}
-                                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(0,0,0,0.04)'; }}
                                 onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
                               >
                                 {opt.label}
@@ -1483,7 +1483,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               </>
             )}
 
-            {/* Suggested chips */}
+            {/* ── Quick prompts (suggested chips) ── */}
+            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(0,0,0,0.45)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+              Quick prompts
+            </div>
             {suggestionChips.map((chip) => (
               <div
                 key={chip}
@@ -1492,13 +1495,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   sendToChat(chip);
                 }}
                 style={{
-                  background: GLASS_BG_LIGHTER,
-                  border: `1px solid ${BORDER_MUTED}`,
+                  background: '#f1f5f9',
+                  border: '1px solid rgba(0,0,0,0.08)',
                   borderRadius: '999px',
                   padding: '10px 16px',
                   marginBottom: '8px',
                   fontSize: '12px',
-                  color: 'rgba(255,255,255,0.8)',
+                  color: '#1e293b',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
@@ -1510,51 +1513,55 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             ))}
 
             {/* Divider */}
-            <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0 6px' }} />
+            <div style={{ height: '1px', background: 'rgba(0,0,0,0.08)', margin: '4px 0 8px' }} />
 
-            {/* ── Quick checks ── */}
-            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
-              Quick checks
+            {/* ── Quick tools ── */}
+            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(0,0,0,0.45)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+              Quick tools
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {[
-                { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
-                { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
-                { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
-                { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
-              ].map((action) => (
-                <div
-                  key={action.label}
-                  onClick={action.onClick}
-                  style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.07)',
-                    borderRadius: '12px',
-                    padding: '14px 12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    gap: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{action.label}</span>
-                  {action.live && (
-                    <span style={{
-                      fontSize: '9px',
-                      fontWeight: 700,
-                      color: ACCENT,
-                      background: 'rgba(34,211,238,0.12)',
-                      padding: '1px 6px',
-                      borderRadius: '999px',
-                      letterSpacing: '0.05em',
-                    }}>
-                      LIVE
-                    </span>
-                  )}
-                </div>
-              ))}
+            <div style={{ padding: '0 calc(20% - 4px)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {[
+                  { label: 'Market Pulse', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); handleMarketPulse(e); } },
+                  { label: 'Strategy Ideas', live: false, onClick: () => { setShowExplore(false); sendToChat('Based on my current portfolio and market conditions, what investment strategies should I consider right now? Give me 2-3 specific actionable ideas.'); } },
+                  { label: 'Tax Check', live: true, onClick: (e: React.MouseEvent) => { setShowExplore(false); sendToChat('Run a tax check on my portfolio — identify any positions with unrealized losses I could harvest, flag wash sale risks, and give me any year-end tax optimization moves to consider.', e); } },
+                  { label: 'Alerts', live: false, onClick: () => { setShowExplore(false); sendMessage('Scan my portfolio for urgent alerts', 'alerts'); wasAtBottomRef.current = true; scrollToBottom(true); } },
+                ].map((action) => (
+                  <div
+                    key={action.label}
+                    onClick={action.onClick}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid rgba(0,0,0,0.08)',
+                      borderRadius: '12px',
+                      padding: '13px 10px',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#0f172a' }}>{action.label}</span>
+                    {action.live && (
+                      <span style={{
+                        fontSize: '8.5px',
+                        fontWeight: 700,
+                        color: '#0891b2',
+                        background: 'rgba(8,145,178,0.12)',
+                        padding: '1px 5px',
+                        borderRadius: '999px',
+                        letterSpacing: '0.05em',
+                        lineHeight: 1.4,
+                      }}>
+                        LIVE
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
