@@ -67,7 +67,7 @@ export async function GET() {
       results.push({
         name: '1. Write question fact',
         passed: false,
-        detail: `Insert failed: ${JSON.stringify(q1.warnings)}`,
+        detail: `Insert failed (userId=${userId}): ${JSON.stringify(q1.warnings)}`,
       });
       return finish(supabase, results, createdIds);
     }
