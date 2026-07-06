@@ -21,6 +21,7 @@ const PUBLIC_ROUTES = [
   '/onboarding',
   '/create-account',
   '/you-are-in', // has its own auth check
+  '/api/ai/facts/test', // admin-only test endpoint (uses service role internally)
 ];
 
 export async function middleware(request: NextRequest) {
