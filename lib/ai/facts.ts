@@ -7,6 +7,14 @@
  *
  * This ensures future generations are grounded in what's already been
  * concluded instead of each starting from a blank slate.
+ *
+ * DESIGN CHOICE — Hedge vs Block:
+ * When a recommendation references an unconfirmed fact chain, we ALLOW the
+ * write but force hedged language ("Pending verification: …") and tentative
+ * confidence.  This is more practical than blocking: surfaces don't need to
+ * handle write failures, and downstream consumers can still see + qualify
+ * the recommendation.  Blocking would require every surface to implement
+ * retry/rewrite logic.
  */
 
 import { createServerClient } from '@/lib/supabase';
@@ -40,6 +48,7 @@ export interface WriteFactInput {
   confidence?: FactConfidence;
   based_on?: string[] | null;
   source: string;
+  /** Override default expiration. NULL = structural (never expires). */
   expires_at?: string | null;
 }
 
@@ -48,11 +57,58 @@ export interface FactValidationError {
   message: string;
 }
 
+// ── Helpers ───────────────────────────────────────────────────
+
+const HEDGE_PREFIX = 'Pending verification: ';
+const HOURS = 3600_000;
+
+/**
+ * Default expiration based on fact_type:
+ *  - volatile (observation, recommendation) → 72 h
+ *  - persistent (question, user_action) → NULL (never auto-expire)
+ * Caller can always override via input.expires_at.
+ */
+function defaultExpiration(type: FactType): string | null {
+  switch (type) {
+    case 'observation':
+    case 'recommendation':
+      return new Date(Date.now() + 72 * HOURS).toISOString();
+    default:
+      return null;
+  }
+}
+
+// ── Maintenance ───────────────────────────────────────────────
+
+/**
+ * Marks all facts whose expires_at has passed as status: 'stale'.
+ * Called lazily inside getActiveFacts so no separate cron is needed.
+ */
+export async function markStaleFacts(
+  supabase: SupabaseClient,
+): Promise<number> {
+  const { data, error } = await (supabase as any)
+    .from('ai_facts')
+    .update({ status: 'stale' })
+    .eq('status', 'active')
+    .lt('expires_at', new Date().toISOString())
+    .select('id');
+
+  if (error) {
+    console.error('[ai-facts] markStaleFacts error:', error);
+    return 0;
+  }
+
+  return (data || []).length;
+}
+
 // ── Read ──────────────────────────────────────────────────────
 
 /**
  * Returns all active facts for a user, optionally filtered by subject.
- * Active = status = 'active' AND (expires_at IS NULL OR expires_at > now()).
+ * Active = status = 'active' AND expires_at has not passed.
+ *
+ * Automatically marks expired facts as stale before querying.
  *
  * Call this BEFORE building any AI generation prompt to include as
  * grounding context in the system or user message.
@@ -65,6 +121,9 @@ export async function getActiveFacts(
     typeof supabaseOrUserId === 'string'
       ? createServerClient()
       : supabaseOrUserId;
+
+  // Lazy staleness check — piggyback on every read
+  await markStaleFacts(supabase);
 
   let query = (supabase as any)
     .from('ai_facts')
@@ -93,21 +152,23 @@ export async function getActiveFacts(
 // ── Write ─────────────────────────────────────────────────────
 
 /**
- * Writes a new fact with dedup and confidence-enforcement logic.
+ * Writes a new fact with dedup, confidence enforcement, and conflict resolution.
  *
- * Before inserting:
- * 1. Checks for existing active facts on the same subject.
- * 2. If an exact duplicate (same subject + same claim text) exists, returns
- *    the existing fact id (no-op).
- * 3. If the new fact is an `observation` that contradicts an existing active
- *    observation (different claim text), the old one is superseded.
- * 4. `recommendation` facts MUST have `based_on` populated. If any fact in
- *    the based_on chain has `confidence: unconfirmed`, this recommendation's
- *    confidence is forced to `tentative`.
- * 5. `user_action` facts resolve/supersede any active `question` or
- *    `recommendation` facts on the same subject.
+ * Rules enforced:
+ * 1. Exact duplicate detection (same subject + claim) → returns existing (no-op).
+ * 2. Subject conflict → same subject + same fact_type + different claim:
+ *    OLD fact is marked status: superseded, superseded_by = new fact id.
+ * 3. Recommendation chain validation:
+ *    - MUST have based_on populated.
+ *    - If any based_on fact is `unconfirmed`, or an open question exists
+ *      for the same subject → confidence forced to `tentative` AND claim
+ *      is prepended with "Pending verification: …".
+ * 4. user_action → resolves any active question/recommendation on the same
+ *    subject (status → 'resolved').
+ * 5. Auto-expiration: observation/recommendation default to 72 h,
+ *    question/user_action default to NULL. Overridable via input.expires_at.
  *
- * Returns { fact, warnings[] }.
+ * Returns { fact, warnings[], superseded[] }.
  */
 export async function writeFact(
   supabaseOrUserId: SupabaseClient | string,
@@ -129,8 +190,12 @@ export async function writeFact(
 
   const warnings: FactValidationError[] = [];
   const superseded: string[] = [];
+  let hedged = false;
 
-  // ── 1. Check for exact duplicate ────────────────────────────
+  // ── 1. Lazy stale cleanup ───────────────────────────────────
+  await markStaleFacts(supabase);
+
+  // ── 2. Check for exact duplicate ────────────────────────────
   const { data: existing } = await (supabase as any)
     .from('ai_facts')
     .select('*')
@@ -142,82 +207,90 @@ export async function writeFact(
   if (existing) {
     return {
       fact: existing as AiFact,
-      warnings: [{ code: 'DUPLICATE', message: `Fact "${input.claim}" already active for subject "${input.subject}"` }],
+      warnings: [{ code: 'DUPLICATE', message: `Fact already active for "${input.subject}"` }],
       superseded: [],
     };
   }
 
-  // ── 2. Validate recommendation facts ────────────────────────
+  // ── 3. Conflict detection — supersede old facts on same subject+type ──
+  const { data: conflicting } = await (supabase as any)
+    .from('ai_facts')
+    .select('id,claim')
+    .eq('subject', input.subject)
+    .eq('fact_type', input.fact_type)
+    .eq('status', 'active')
+    .neq('claim', input.claim);
+
+  if (conflicting && conflicting.length > 0) {
+    // Marked for post-insert supersede (need new fact id first)
+    for (const old of conflicting) {
+      superseded.push(old.id);
+    }
+  }
+
+  // ── 4. Validate recommendation facts ────────────────────────
   let confidence: FactConfidence = input.confidence || 'unconfirmed';
+  let claim = input.claim;
 
   if (input.fact_type === 'recommendation') {
     if (!input.based_on || input.based_on.length === 0) {
       warnings.push({
         code: 'MISSING_BASED_ON',
-        message: 'Recommendation fact must reference at least one observation in based_on',
+        message: 'Recommendation must reference at least one observation in based_on',
       });
     }
 
-    // Check based_on chain for unconfirmed facts
     if (input.based_on && input.based_on.length > 0) {
       const { data: basedFacts } = await (supabase as any)
         .from('ai_facts')
         .select('id,confidence,subject')
         .in('id', input.based_on);
 
+      let chainHasUnconfirmed = false;
+
       if (basedFacts) {
         for (const bf of basedFacts) {
           if (bf.confidence === 'unconfirmed') {
-            warnings.push({
-              code: 'UNCONFIRMED_CHAIN',
-              message: `Recommendation based on unconfirmed fact ${bf.id} ("${bf.subject}") — confidence forced to tentative`,
-            });
-            confidence = 'tentative';
+            chainHasUnconfirmed = true;
+            break;
           }
         }
 
-        // Also check if any open question facts exist for the same subject
-        const { data: openQuestions } = await (supabase as any)
-          .from('ai_facts')
-          .select('id')
-          .eq('subject', input.subject)
-          .eq('fact_type', 'question')
-          .eq('status', 'active');
-
-        if (openQuestions && openQuestions.length > 0) {
+        if (chainHasUnconfirmed) {
           warnings.push({
-            code: 'OPEN_QUESTION_EXISTS',
-            message: `Open question fact(s) exist for "${input.subject}" — recommendation confidence forced to tentative`,
+            code: 'UNCONFIRMED_CHAIN',
+            message: `Recommendation based on unconfirmed fact(s) — hedged`,
           });
           confidence = 'tentative';
+          hedged = true;
         }
       }
-    }
-  }
 
-  // ── 3. Handle observation contradictions ────────────────────
-  if (input.fact_type === 'observation') {
-    const { data: existingObs } = await (supabase as any)
-      .from('ai_facts')
-      .select('*')
-      .eq('subject', input.subject)
-      .eq('fact_type', 'observation')
-      .eq('status', 'active')
-      .neq('claim', input.claim);
+      // Also check for open question facts on same subject
+      const { data: openQuestions } = await (supabase as any)
+        .from('ai_facts')
+        .select('id')
+        .eq('subject', input.subject)
+        .eq('fact_type', 'question')
+        .eq('status', 'active');
 
-    if (existingObs && existingObs.length > 0) {
-      // Supersede all old observations on same subject
-      for (const old of existingObs) {
-        await (supabase as any)
-          .from('ai_facts')
-          .update({ status: 'superseded', superseded_by: null }) // will update once we have the new id
-          .eq('id', old.id);
-        superseded.push(old.id);
+      if (openQuestions && openQuestions.length > 0) {
+        warnings.push({
+          code: 'OPEN_QUESTION_EXISTS',
+          message: `Open question(s) exist for "${input.subject}" — hedged`,
+        });
+        confidence = 'tentative';
+        hedged = true;
       }
     }
+
+    // Apply hedge prefix if needed
+    if (hedged && !claim.startsWith(HEDGE_PREFIX)) {
+      claim = HEDGE_PREFIX + claim;
+    }
   }
 
-  // ── 4. Handle user_action — resolve questions + recommendations
+  // ── 5. Handle user_action — resolve questions + recommendations ──
   if (input.fact_type === 'user_action') {
     const { data: toResolve } = await (supabase as any)
       .from('ai_facts')
@@ -237,16 +310,20 @@ export async function writeFact(
     }
   }
 
-  // ── 5. Insert ───────────────────────────────────────────────
+  // ── 6. Build & insert ───────────────────────────────────────
+  const expires = input.expires_at !== undefined
+    ? input.expires_at
+    : defaultExpiration(input.fact_type);
+
   const insertPayload: Record<string, unknown> = {
     ...(userId ? { user_id: userId } : {}),
     subject: input.subject,
     fact_type: input.fact_type,
-    claim: input.claim,
+    claim,
     confidence,
     based_on: input.based_on || null,
     source: input.source,
-    expires_at: input.expires_at || null,
+    expires_at: expires,
     status: 'active',
   };
 
@@ -263,12 +340,20 @@ export async function writeFact(
 
   const fact = inserted as AiFact;
 
-  // ── 6. Post-insert: backfill superseded_by links ────────────
+  // ── 7. Post-insert: backfill superseded_by + resolve conflicting ──
   if (superseded.length > 0) {
-    await (supabase as any)
-      .from('ai_facts')
-      .update({ superseded_by: fact.id })
-      .in('id', superseded);
+    const allResolved = superseded.filter((id) => {
+      // Don't touch facts already resolved by user_action path
+      return true;
+    });
+
+    if (allResolved.length > 0) {
+      await (supabase as any)
+        .from('ai_facts')
+        .update({ status: 'superseded', superseded_by: fact.id })
+        .in('id', allResolved)
+        .neq('status', 'resolved'); // don't overwrite user_action resolves
+    }
   }
 
   return { fact, warnings, superseded };
@@ -284,8 +369,13 @@ export async function writeFact(
  * --- AI FACTS (grounding context) ---
  * [observation·confirmed] AXP: +15.6% gain, near 52-week high
  * [question·unconfirmed] AXP: -5.1% drawdown cause not yet investigated
- * [recommendation·tentative] AXP: consider buying $350-355 level
+ * [recommendation·tentative] AXP: Pending verification: consider buying $350-355
  * --- END FACTS ---
+ *
+ * FACTS WITH confidence: tentative or unconfirmed MUST be treated as
+ * low-certainty. Do not restate them as definitive conclusions. If a
+ * recommendation is prefixed with "Pending verification:", the AI
+ * should surface the uncertainty rather than acting on it.
  */
 export function formatFactsForPrompt(facts: AiFact[]): string {
   if (facts.length === 0) return '';
