@@ -293,7 +293,7 @@ export async function GET(req: NextRequest) {
         },
       ],
       systemBlocks: [SNAPSHOT_STATIC],
-      maxTokens: 500,
+      maxTokens: 1200,
       temperature: 0.2,
     });
 
