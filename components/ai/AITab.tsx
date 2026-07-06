@@ -436,6 +436,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
             marketValue: p.marketValue || 0,
           })),
           upcomingEarnings: upcomingEarnings || [],
+          lastCategory: (() => {
+            try {
+              const c = localStorage.getItem(cacheKey);
+              return c ? JSON.parse(c).lastCategory || null : null;
+            } catch { return null; }
+          })(),
         });
 
         if (!res.ok) throw new Error('API failed');
@@ -445,6 +451,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         if (data.opener && data.hook) {
           localStorage.setItem(cacheKey, JSON.stringify({
             hook: data.hook,
+            lastCategory: data.category || null,
             generatedAt: Date.now(),
           }));
 

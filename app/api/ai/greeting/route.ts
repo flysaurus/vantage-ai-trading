@@ -100,6 +100,36 @@ TONE: Sound like a sharp friend checking in, not a financial advisor filing a re
 One hook sentence max — never two ideas.
 Never mention Claude, Anthropic, or any AI model.`;
 
+// ─── Insight category rotation ─────────────────────────────────
+
+const INSIGHT_CATEGORIES = [
+  'position',   // winner/laggard performance contrast
+  'cash',       // idle cash deployment observations
+  'events',     // upcoming earnings, FOMC, macro calendar
+  'structure',  // portfolio composition, sector mix, position count
+  'risk',       // concentration, correlation between holdings
+  'market',     // market context relevant to holdings
+] as const;
+
+type InsightCategory = (typeof INSIGHT_CATEGORIES)[number];
+
+const CATEGORY_GUIDANCE: Record<InsightCategory, string> = {
+  position: 'Focus on individual position performance: biggest winner vs biggest laggard, or the position with the most dramatic total return story. Compare a standout performer to a struggling one.',
+  cash: 'Focus on cash deployment: how much idle cash sits in the portfolio, what percentage of the total it represents, and whether that cash could be working harder.',
+  events: 'Focus on upcoming events: earnings reports, Fed meetings, or other scheduled catalysts that affect held positions in the coming days.',
+  structure: 'Focus on portfolio structure: number of positions, sector composition, diversification level, balance between holdings.',
+  risk: 'Focus on risk and concentration: how correlated are the holdings, is there sector concentration, does the portfolio lean too heavily into one area?',
+  market: 'Focus on market context: how the portfolio relates to broader market conditions, or frame the portfolio against what the market is doing this week.',
+};
+
+function pickCategory(lastCategory: string | null | undefined): InsightCategory {
+  if (!lastCategory || !INSIGHT_CATEGORIES.includes(lastCategory as InsightCategory)) {
+    return INSIGHT_CATEGORIES[0];
+  }
+  const idx = INSIGHT_CATEGORIES.indexOf(lastCategory as InsightCategory);
+  return INSIGHT_CATEGORIES[(idx + 1) % INSIGHT_CATEGORIES.length];
+}
+
 // ─── Hook type detection ───────────────────────────────────────
 
 function detectHookType(hook: string): string {
@@ -126,6 +156,7 @@ export async function POST(req: NextRequest) {
       positions = [],
       upcomingEarnings = [],
       includeStyleAck = false,
+      lastCategory = null,
     } = body;
 
     const market = getMarketStatus();
@@ -149,6 +180,65 @@ export async function POST(req: NextRequest) {
       ? `You identified as a ${investorStyle} — ${STYLE_GREETINGS[styleKey]}\n\n`
       : '';
 
+    // ── Pick insight category (rotate away from last used) ──
+    const category = pickCategory(lastCategory);
+
+    // ── Build category context block ──
+    let categoryContext = '';
+    switch (category) {
+      case 'position':
+        if (biggestWinner || biggestLaggard) {
+          categoryContext = `
+KEY POSITION SIGNALS:
+${biggestWinner ? `Top performer: ${biggestWinner.symbol} (+${(biggestWinner.totalPnLPct || 0).toFixed(1)}% total, $${((biggestWinner.marketValue || 0)).toLocaleString()} value)` : ''}
+${biggestLaggard && biggestLaggard.symbol !== biggestWinner?.symbol ? `Weakest performer: ${biggestLaggard.symbol} (${(biggestLaggard.totalPnLPct || 0).toFixed(1)}% total, $${((biggestLaggard.marketValue || 0)).toLocaleString()} value)` : ''}
+Largest position: ${largestPosition?.symbol || 'N/A'} ($${((largestPosition?.marketValue || 0)).toLocaleString()})
+`;
+        }
+        break;
+      case 'cash':
+        categoryContext = `
+CASH FOCUS:
+Idle cash: $${cashBalance.toLocaleString()}
+Cash as % of portfolio: ${cashPct.toFixed(1)}%
+Total invested: $${positions.reduce((sum: number, p: any) => sum + (p.marketValue || 0), 0).toLocaleString()}
+`;
+        break;
+      case 'events':
+        categoryContext = `
+UPCOMING CATALYSTS:
+${upcomingEarnings.length > 0
+  ? upcomingEarnings.map((e: any) => `${e.symbol} earnings ${e.date}`).join('\n')
+  : 'No earnings scheduled for held positions'}
+`;
+        break;
+      case 'structure':
+        categoryContext = `
+PORTFOLIO STRUCTURE:
+Position count: ${positions.length}
+Total market value: $${positions.reduce((sum: number, p: any) => sum + (p.marketValue || 0), 0).toLocaleString()}
+Cash % vs invested %: ${cashPct.toFixed(1)}% / ${(100 - cashPct).toFixed(1)}%
+Top 3 by value: ${positions.slice(0, 3).map((p: any) => `${p.symbol} ($${((p.marketValue || 0)).toLocaleString()})`).join(', ')}
+`;
+        break;
+      case 'risk':
+        categoryContext = `
+RISK & CONCENTRATION:
+Position count: ${positions.length}
+Largest position: ${largestPosition?.symbol || 'N/A'} at $${((largestPosition?.marketValue || 0)).toLocaleString()} (${positions.length > 0 && largestPosition?.marketValue ? ((largestPosition.marketValue / positions.reduce((sum: number, p: any) => sum + (p.marketValue || 0), 1)) * 100).toFixed(1) : '0'}% of portfolio)
+${positions.length <= 3 ? '⚠️ Very concentrated — fewer than 4 positions' : positions.length <= 6 ? 'Moderate diversification' : 'Well diversified across multiple positions'}
+`;
+        break;
+      case 'market':
+        categoryContext = `
+MARKET CONTEXT:
+Holdings: ${positions.map((p: any) => p.symbol).join(', ') || 'None'}
+Portfolio total return: ${totalPnLPct >= 0 ? '+' : ''}${totalPnLPct.toFixed(1)}%
+Cash on sidelines: ${cashPct.toFixed(1)}%
+`;
+        break;
+    }
+
     // ── Build dynamic context (durable data only — NO intraday) ──
     const dynamicContext = `
 CURRENT CONTEXT:
@@ -169,16 +259,10 @@ ${positions.map((p: any) =>
   `${p.symbol}: ${(p.totalPnLPct || 0) >= 0 ? '+' : ''}${(p.totalPnLPct || 0).toFixed(1)}% total, $${((p.marketValue || 0)).toLocaleString()} value`
 ).join('\n')}
 
-${biggestWinner ? `NOTABLE:
-Biggest winner: ${biggestWinner.symbol} (+${(biggestWinner.totalPnLPct || 0).toFixed(1)}% total)
-Biggest laggard: ${biggestLaggard?.symbol} (${(biggestLaggard?.totalPnLPct || 0).toFixed(1)}% total)
-Largest position: ${largestPosition?.symbol} ($${((largestPosition?.marketValue || 0)).toLocaleString()})` : ''}
+${categoryContext}
 
-UPCOMING EVENTS (next 48h):
-${upcomingEarnings.length > 0
-  ? upcomingEarnings.map((e: any) =>
-    `${e.symbol} earnings ${e.date}`).join('\n')
-  : 'None scheduled'}
+FOCUS INSTRUCTION: Generate a hook centered on the "${CATEGORY_GUIDANCE[category]}" category.
+HOWEVER — if there is genuinely nothing interesting or actionable in that category (e.g. zero cash to comment on, no upcoming events), fall back to whatever IS most interesting. Do not force a boring observation.
 
 Opener to use: "${market.opener}"
 `;
@@ -222,6 +306,7 @@ Opener to use: "${market.opener}"
     return NextResponse.json({
       opener,
       hook,
+      category,
       hookType: detectHookType(hook || ''),
       styleAcknowledged: includeStyleAck && !!STYLE_GREETINGS[styleKey],
     });
