@@ -285,7 +285,7 @@ export async function GET(req: NextRequest) {
 
     // Call AI with cached static analysis instructions + explicit model
     const aiResponse = await callChatAI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5',
       messages: [
         {
           role: 'user',
