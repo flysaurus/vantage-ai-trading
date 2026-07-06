@@ -828,7 +828,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </button>
 
         </div>
-        <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>Vantage AI Advisor</div>
         {/* Live pulse indicator */}
         <div style={{
           width: '7px',
@@ -926,97 +925,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         position: 'relative',
       }}>
 
-      {/* ======== 1. GREETING CARD (gradient border + radial glow per reference) ======== */}
-      {greetingLoaded && (
-        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-          <div style={{
-            position: 'relative',
-            background: 'rgba(255,255,255,0.05)',
-            borderRadius: '18px',
-            padding: '20px',
-            overflow: 'hidden',
-            backdropFilter: BACKDROP_BLUR,
-          }}>
-            {/* Gradient border (pseudo-element simulation) */}
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '18px',
-              padding: '1px',
-              background: 'linear-gradient(135deg, rgba(34,211,238,0.5), rgba(34,211,238,0.05) 40%, rgba(34,211,238,0.25))',
-              WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-              pointerEvents: 'none',
-              zIndex: 1,
-            }} />
-            {/* Radial glow overlay */}
-            <div style={{
-              position: 'absolute',
-              top: '-40%',
-              left: '-20%',
-              width: '140%',
-              height: '140%',
-              background: 'radial-gradient(circle, rgba(34,211,238,0.10), transparent 60%)',
-              pointerEvents: 'none',
-              zIndex: 0,
-            }} />
-
-            {/* Brand row */}
-            <div style={{ position: 'relative', zIndex: 2, color: ACCENT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '8px' }}>
-              VANTAGE AI
-            </div>
-
-            {/* Opener — serif italic 28px */}
-            <div style={{ position: 'relative', zIndex: 2, fontFamily: "Georgia, 'Playfair Display', serif", fontStyle: 'italic', fontWeight: 400, fontSize: '28px', marginBottom: '10px', color: '#fff' }}>
-              {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
-                part === userInitial ? (
-                  <span key={i} style={{ color: ACCENT }}>{userInitial}</span>
-                ) : (
-                  <span key={i}>{part}</span>
-                )
-              )}
-            </div>
-
-            {/* Hook */}
-            {greetingHook && (
-              <div style={{ position: 'relative', zIndex: 2, fontSize: '14.5px', lineHeight: '1.6', color: 'rgba(255,255,255,0.85)' }}>
-                {greetingHook}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ======== Greeting loading state ======== */}
-      {!greetingLoaded && (
-        <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-          <div style={{
-            position: 'relative',
-            background: 'rgba(255,255,255,0.05)',
-            borderRadius: '18px',
-            padding: '20px',
-            overflow: 'hidden',
-            backdropFilter: BACKDROP_BLUR,
-          }}>
-            <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ color: ACCENT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>VANTAGE AI</div>
-              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '4px 0' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0s' }} />
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ======== 3. SUGGESTED CHIPS — moved to Explore sheet ======== */}
-      {/* These now live in the Explore bottom sheet, opened by the + Explore button in the input bar */}
-
-      {/* Sections 4 & 5 — Suggested Chips + Quick Actions — moved to Explore sheet */}
-
-      {/* ======== 2. MESSAGE THREAD — only this scrolls ======== */}
+      {/* ======== MESSAGE THREAD — greeting scrolls with chat ======== */}
       <div
         ref={chatContainerRef}
         style={{
@@ -1027,6 +936,86 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           paddingTop: '8px',
         }}
       >
+
+        {/* ======== 1. GREETING CARD (gradient border + radial glow) ======== */}
+        {greetingLoaded && (
+          <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+            <div style={{
+              position: 'relative',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '18px',
+              padding: '20px',
+              overflow: 'hidden',
+              backdropFilter: BACKDROP_BLUR,
+            }}>
+              {/* Gradient border (pseudo-element simulation) */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '18px',
+                padding: '1px',
+                background: 'linear-gradient(135deg, rgba(34,211,238,0.5), rgba(34,211,238,0.05) 40%, rgba(34,211,238,0.25))',
+                WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                WebkitMaskComposite: 'xor',
+                maskComposite: 'exclude',
+                pointerEvents: 'none',
+                zIndex: 1,
+              }} />
+              {/* Radial glow overlay */}
+              <div style={{
+                position: 'absolute',
+                top: '-40%',
+                left: '-20%',
+                width: '140%',
+                height: '140%',
+                background: 'radial-gradient(circle, rgba(34,211,238,0.10), transparent 60%)',
+                pointerEvents: 'none',
+                zIndex: 0,
+              }} />
+
+              {/* Opener — serif italic 28px */}
+              <div style={{ position: 'relative', zIndex: 2, fontFamily: "Georgia, 'Playfair Display', serif", fontStyle: 'italic', fontWeight: 400, fontSize: '28px', marginBottom: '4px', color: '#fff' }}>
+                {greetingOpener && greetingOpener.split(new RegExp(`\\b(${userInitial.replace('.', '\\.')})\\b`)).map((part, i) =>
+                  part === userInitial ? (
+                    <span key={i} style={{ color: ACCENT }}>{userInitial}</span>
+                  ) : (
+                    <span key={i}>{part}</span>
+                  )
+                )}
+              </div>
+
+              {/* Hook */}
+              {greetingHook && (
+                <div style={{ position: 'relative', zIndex: 2, fontSize: '14.5px', lineHeight: '1.6', color: 'rgba(255,255,255,0.85)' }}>
+                  {greetingHook}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ======== Greeting loading state ======== */}
+        {!greetingLoaded && (
+          <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+            <div style={{
+              position: 'relative',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '18px',
+              padding: '20px',
+              overflow: 'hidden',
+              backdropFilter: BACKDROP_BLUR,
+            }}>
+              <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '4px 0' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0s' }} />
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div
           ref={messagesContainerRef}
           style={{
@@ -1167,7 +1156,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           }}>
             {/* Explore button — text-first, falls back to icon-only on narrow screens */}
             <button
-              onClick={() => { setShowExplore(true); setExploreSeenCount(noticedItems.length); }}
+              onClick={() => { setShowExplore(!showExplore); setExploreSeenCount(noticedItems.length); }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1209,6 +1198,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onFocus={() => { if (showExplore) setShowExplore(false); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -1484,7 +1474,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             )}
 
             {/* ── Quick prompts (suggested chips) ── */}
-            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
               Quick prompts
             </div>
             {suggestionChips.map((chip) => (
@@ -1516,7 +1506,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '4px 0 8px' }} />
 
             {/* ── Quick tools ── */}
-            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
               Quick tools
             </div>
 
