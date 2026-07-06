@@ -33,9 +33,9 @@ const GAIN = '#10b981';
 const WARNING = '#f59e0b';
 const BACKDROP_BLUR = 'blur(20px)';
 
-// ── Message counter (localStorage, per-day) ──
+// ── Message counter (localStorage, per-day, UTC date = server-aligned) ──
 const getCountKey = () => {
-  const today = new Date().toDateString();
+  const today = new Date().toISOString().split('T')[0];
   return `vantage_msg_count_${today}`;
 };
 
@@ -53,7 +53,7 @@ function incrementMessageCount(): number {
 }
 
 function getLocalRemaining(): number {
-  return Math.max(0, 75 - getMessageCount());
+  return Math.max(0, 25 - getMessageCount());
 }
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
@@ -257,7 +257,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── Remaining messages ──
   const [localRemaining, setLocalRemaining] = useState(() => getLocalRemaining());
-  const [serverLimit, setServerLimit] = useState(75);
+  const [serverLimit, setServerLimit] = useState(25);
 
   const refreshRemaining = useCallback(async () => {
     try {
