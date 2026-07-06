@@ -48,7 +48,7 @@ export async function GET() {
 
   try {
     // ── Step 1: Write a question fact ───────────────────────
-    const q1 = await writeFact(supabase, {
+    const q1 = await writeFact(userId, {
       subject: 'AXP',
       fact_type: 'question',
       claim: 'AXP drawdown cause unconfirmed as of Jul 6',
@@ -73,7 +73,7 @@ export async function GET() {
     }
 
     // ── Step 2: Write an unconfirmed observation ─────────────
-    const o1 = await writeFact(supabase, {
+    const o1 = await writeFact(userId, {
       subject: 'AXP',
       fact_type: 'observation',
       claim: 'AXP drawdown may be caused by macro credit concerns',
@@ -98,7 +98,7 @@ export async function GET() {
     }
 
     // ── Step 3: Recommendation BASED ON unconfirmed observation ──
-    const r1 = await writeFact(supabase, {
+    const r1 = await writeFact(userId, {
       subject: 'AXP',
       fact_type: 'recommendation',
       claim: 'Buy the AXP dip at $350-355',
@@ -133,7 +133,7 @@ export async function GET() {
     }
 
     // ── Step 4: user_action resolves questions + recommendations ──
-    const ua1 = await writeFact(supabase, {
+    const ua1 = await writeFact(userId, {
       subject: 'AXP',
       fact_type: 'user_action',
       claim: 'User confirmed AXP moat intact after checking Q2 earnings',
