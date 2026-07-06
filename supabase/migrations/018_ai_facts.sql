@@ -61,8 +61,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_facts_user_subject
   ON ai_facts(user_id, subject);
 
 CREATE INDEX IF NOT EXISTS idx_ai_facts_expires
-  ON ai_facts(expires_at)
-  WHERE expires_at IS NOT NULL AND expires_at < now() + interval '1 day';
+  ON ai_facts(user_id, expires_at)
+  WHERE expires_at IS NOT NULL;
 
 -- ── RLS ───────────────────────────────────────────────────────
 
