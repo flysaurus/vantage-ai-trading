@@ -860,6 +860,7 @@ export function PortfolioTab() {
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  const briefsRef = useRef<HTMLDivElement>(null);
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
@@ -874,6 +875,19 @@ export function PortfolioTab() {
     ? (brokerAccount as AccountSummary | null)
     : (liveAccount as AccountSummary | null);
   const loading = isConnected ? brokerLoading : liveLoading;
+
+  // ── Close briefs on outside click ──
+  useEffect(() => {
+    if (!dailyExpanded && !weeklyExpanded) return;
+    const handler = (e: MouseEvent) => {
+      if (briefsRef.current && !briefsRef.current.contains(e.target as Node)) {
+        setDailyExpanded(false);
+        setWeeklyExpanded(false);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dailyExpanded, weeklyExpanded]);
   const positions: Position[] = displayAccount?.positions || [];
 
   // Hydrate missing company names + sectors from API
@@ -991,7 +1005,7 @@ export function PortfolioTab() {
         <div style={{ fontSize: '13px', fontWeight: 800, color: '#22d3ee', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
           ✨ AI CURATED
         </div>
-        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+        <div ref={briefsRef} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
             <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
             <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />

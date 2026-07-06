@@ -45,12 +45,43 @@ function formatCurrency(n: number): string {
 
 const RANGES: Range[] = ['1D', '1W', '1M', 'YTD', 'ALL'];
 
+// ─── Module-level cache (survives component unmount/remount) ───
+interface CacheEntry {
+  points: ChartPoint[];
+  rangeReturn: number;
+  rangeReturnPct: number;
+  range: Range;
+  date: string; // YYYY-MM-DD of fetch
+  timestamp: number; // ms timestamp of fetch
+  positionHash: string;
+}
+
+const chartCache = new Map<Range, CacheEntry>();
+
+function makePositionHash(positions: PositionInput[], cashBalance: number): string {
+  return JSON.stringify({
+    c: cashBalance,
+    p: positions.map(p => `${p.symbol}:${p.avgCost}:${p.totalCost}`).sort().join(','),
+  });
+}
+
+function isCacheValid(entry: CacheEntry, range: Range, positionHash: string): boolean {
+  if (entry.range !== range) return false;
+  if (entry.positionHash !== positionHash) return false;
+  const today = new Date().toISOString().split('T')[0];
+  if (entry.date !== today) return false; // new day = stale
+  if (range === '1D') {
+    return (Date.now() - entry.timestamp) < 5 * 60 * 1000; // 5 min TTL for 1D
+  }
+  return true; // 1W/1M/YTD/ALL valid for the day
+}
+
 // ─── Component ────────────────────────────────────────
 
 export default function PortfolioChart({ positions, cashBalance }: Props) {
   const [range, setRange] = useState<Range>('1M');
   const [data, setData] = useState<ChartPoint[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rangeReturn, setRangeReturn] = useState(0);
   const [rangeReturnPct, setRangeReturnPct] = useState(0);
@@ -86,8 +117,21 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
         if (json.points.length >= 2) {
           const first = json.points[0].value;
           const last = json.points[json.points.length - 1].value;
-          setRangeReturn(last - first);
-          setRangeReturnPct(((last - first) / (first || 1)) * 100);
+          const ret = last - first;
+          const retPct = ((last - first) / (first || 1)) * 100;
+          setRangeReturn(ret);
+          setRangeReturnPct(retPct);
+
+          // Save to module cache
+          chartCache.set(r, {
+            points: json.points,
+            rangeReturn: ret,
+            rangeReturnPct: retPct,
+            range: r,
+            date: new Date().toISOString().split('T')[0],
+            timestamp: Date.now(),
+            positionHash: makePositionHash(positions, cashBalance),
+          });
         }
       } catch {
         setError(true);
@@ -99,6 +143,19 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
   );
 
   useEffect(() => {
+    const posHash = makePositionHash(positions, cashBalance);
+    const cached = chartCache.get(range);
+
+    if (cached && isCacheValid(cached, range, posHash)) {
+      // Restore from cache — no flicker
+      setData(cached.points);
+      setRangeReturn(cached.rangeReturn);
+      setRangeReturnPct(cached.rangeReturnPct);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
     fetchChartData(range);
   }, [range, fetchChartData]);
 
