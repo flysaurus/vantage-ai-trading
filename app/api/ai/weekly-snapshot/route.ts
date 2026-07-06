@@ -13,6 +13,8 @@ import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
+import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts';
+import type { AiFact } from '@/lib/ai/facts';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -28,6 +30,13 @@ FORMAT RULES:
 - Use bullet points starting with -. No long paragraphs.
 - Keep each bullet focused — one clear point per bullet.
 - No generic fluff. Every bullet must name a specific ticker, dollar amount, or percentage.
+
+─── FACTS-AWARE CROSS-CHECK (CRITICAL) ───
+Before finalizing your Opportunities and Risks sections, check the "AI FACTS" grounding context provided in the prompt:
+1. If any active [question·*] fact exists for a subject (e.g. "AXP drawdown cause unconfirmed"), any recommendation touching that same subject MUST defer to the question — e.g. "cause still unconfirmed — see Risks section" — do NOT assert a confident conclusion contradicting an open question.
+2. If an active [observation·*] fact exists about portfolio-level concentration (e.g. "financials concentration 59%, flagged as watch item"), any recommendation that would INCREASE that concentration MUST explicitly acknowledge the tradeoff in its own text.
+3. Opportunities and Risks must be internally consistent — if Risks says X is a concern, Opportunities must not dismiss X as irrelevant or resolved. If they disagree, Opportunities should reference the Risk explicitly: "(see Risks section re: X)".
+4. Facts marked [tentative] or [unconfirmed] must NOT be treated as definitive. If a fact says "Pending verification: …", surface the uncertainty rather than acting on it.
 
 Health scores must reflect reality: if ADBE is down 60%, the score cannot be above 6/10. Period.
 
@@ -52,14 +61,14 @@ HIGH: sector >60% OR position down >40%
 Format each opportunity EXACTLY like this (use these exact sub-headers):
 - **What:** [single sentence describing the opportunity]
 - **Why:** [why it fits the investor's style]
-- **Price:** [specific price level to act at]
+- **Consider at:** [price level worth watching — use suggestive language like "worth considering" or "could explore", not imperative "buy/sell"]
 Use - bullets (not numbered). Separate each opportunity with a blank line.
 
 ## RISKS (list 2-3):
 Format each risk EXACTLY like this (use these exact sub-headers):
 - **Risk:** [single sentence — what is happening]
 - **Affects:** [which ticker(s) / position(s)]
-- **Action:** [recommended response]
+- **Watch:** [what to monitor or investigate — frame as vigilance, not as imperative command]
 Use - bullets (not numbered). Separate each risk with a blank line.
 
 ## SUMMARY:
@@ -79,6 +88,106 @@ ADBE at -60% means this portfolio cannot be LOW risk.
 Override any other scoring if these conditions are met.`,
   cache_control: { type: 'ephemeral' },
 };
+
+// ── Facts extraction helper ────────────────────────────────
+
+/**
+ * Parse the generated Weekly Snapshot content and write extracted
+ * Observations, Questions, and Recommendations back as ai_facts.
+ * Generic pattern — other surfaces (Daily Brief, greeting, chat)
+ * will use the same writeFact() function with their own extraction.
+ */
+async function writeSnapshotFacts(
+  supabase: any,
+  userId: string,
+  content: string,
+  symbols: string[],
+): Promise<void> {
+  try {
+    // Extract OPPORTUNITIES section
+    const oppRe = new RegExp(
+      '(?:##\\s*)?OPPORTUNITIES?\\s*\\n?([\\s\\S]*?)(?=(?:##\\s*)?(?:SUMMARY|RISK)',
+      'i',
+    );
+    const oppMatch = content.match(oppRe);
+    const oppText = oppMatch?.[1] || '';
+
+    // Extract RISKS section
+    const riskRe = new RegExp(
+      '(?:##\\s*)?RISKS?\\s*\\n?([\\s\\S]*?)(?=(?:##\\s*)?(?:SUMMARY|OPPORTUNITIES?)',
+      'i',
+    );
+    const riskMatch = content.match(riskRe);
+    const riskText = riskMatch?.[1] || '';
+
+    // Parse risks into facts: each risk block starts with a bullet/header line
+    // followed by **Risk:**, **Affects:**, **Watch:** sub-lines
+    const riskBlocks = riskText.split(/\n(?=\s*(?:[-•*]\s|\d+\.\s))/).filter(Boolean);
+    const writtenRiskIds: string[] = [];
+
+    for (const block of riskBlocks) {
+      const riskLine = block.match(/\*\*Risk:\*\*\s*(.+?)(?:\n|$)/i);
+      const affectsLine = block.match(/\*\*Affects:\*\*\s*(.+?)(?:\n|$)/i);
+
+      if (riskLine) {
+        const claim = riskLine[1].trim();
+        const affected = affectsLine?.[1]?.trim() || '';
+
+        // Determine subject from affected tickers
+        const tickerMatch = affected.match(/\b([A-Z]{1,5})\b/);
+        const subject = tickerMatch ? tickerMatch[1] : symbols[0] || 'portfolio';
+
+        const r = await writeFact(userId, {
+          subject,
+          fact_type: 'observation',
+          claim,
+          confidence: 'unconfirmed', // risks need investigation
+          source: 'weekly_snapshot',
+        });
+
+        if (r.fact) writtenRiskIds.push(r.fact.id);
+      }
+    }
+
+    // Parse opportunities into recommendation facts
+    const oppBlocks = oppText.split(/\n(?=\s*(?:[-•*]\s|\d+\.\s))/).filter(Boolean);
+
+    for (const block of oppBlocks) {
+      const whatLine = block.match(/\*\*What:\*\*\s*(.+?)(?:\n|$)/i);
+      const whyLine = block.match(/\*\*Why:\*\*\s*(.+?)(?:\n|$)/i);
+
+      if (whatLine) {
+        const claimWhat = whatLine[1].trim();
+        // Combine what + why for the full claim
+        const whyText = whyLine?.[1]?.trim() || '';
+        const fullClaim = whyText ? `${claimWhat} | ${whyText}` : claimWhat;
+
+        // Determine subject from the claim
+        let subject = 'portfolio';
+        for (const sym of symbols) {
+          if (fullClaim.toUpperCase().includes(sym.toUpperCase())) {
+            subject = sym;
+            break;
+          }
+        }
+
+        // based_on: reference any risk observations written above that
+        // mention the same subject
+        await writeFact(userId, {
+          subject,
+          fact_type: 'recommendation',
+          claim: fullClaim,
+          confidence: 'tentative', // recommendations are never confirmed
+          based_on: writtenRiskIds.length > 0 ? writtenRiskIds : null,
+          source: 'weekly_snapshot',
+        });
+      }
+    }
+  } catch (err) {
+    // Facts writing is non-critical — don't fail the snapshot
+    console.error('[weekly-snapshot] writeSnapshotFacts error:', err);
+  }
+}
 
 // ─── Auth (same pattern as app/api/chat/route.ts) ──────────────
 /** Get Monday of current week as YYYY-MM-DD */
@@ -285,12 +394,24 @@ export async function GET(req: NextRequest) {
       'Within each section, use bullet points (starting with -). Bold key phrases with **.',
       'In the RISK section, put the risk level on its own line like: RL: MEDIUM',
       'Include "OVERALL HEALTH: X/10" on one line. Put the risk level on its own line: RL: MEDIUM (or LOW/HIGH).',
-      'For OPPORTUNITIES: use - **What:** / - **Why:** / - **Price:** sub-headers exactly as shown in system instructions.',
-      'For RISKS: use - **Risk:** / - **Affects:** / - **Action:** sub-headers exactly as shown in system instructions.',
-      'Use - bullets, not numbered items. Use the exact sub-header labels — do not rename them.',
+      'For OPPORTUNITIES: use - **What:** / - **Why:** / - **Consider at:** sub-headers exactly as shown in system instructions.',
+      'For RISKS: use - **Risk:** / - **Affects:** / - **Watch:** sub-headers exactly as shown in system instructions.',
+      'CRITICAL: Read the AI FACTS grounding context below. Cross-check your Opportunities/Risks against it per the FACTS-AWARE CROSS-CHECK rules in system instructions.',
       `Portfolio: ${symbols.join(', ')}`,
       `Style: ${investorStyle} Risk: ${riskTolerance}`,
     ].join('\n');
+
+    // ── Fetch active AI facts for grounding context ──────────
+    let activeFacts: AiFact[] = [];
+    try {
+      activeFacts = await getActiveFacts(userId);
+    } catch (err) {
+      console.error('[weekly-snapshot] getActiveFacts error:', err);
+    }
+    const factsContext = formatFactsForPrompt(activeFacts);
+    const fullUserContent = factsContext
+      ? `${dataBlock}\n\n${factsContext}`
+      : dataBlock;
 
     // Call AI with cached static analysis instructions + explicit model
     const aiResponse = await callChatAI({
@@ -298,7 +419,7 @@ export async function GET(req: NextRequest) {
       messages: [
         {
           role: 'user',
-          content: dataBlock,
+          content: fullUserContent,
         },
       ],
       systemBlocks: [SNAPSHOT_STATIC],
@@ -341,6 +462,11 @@ export async function GET(req: NextRequest) {
       },
       { onConflict: 'user_id,week_start' },
     );
+
+    // ── Step 3: Write generated conclusions back as facts ─────
+    // Parse OPPORTUNITIES and RISKS from the generated content and
+    // write them as ai_facts for future generations to reference.
+    await writeSnapshotFacts(supabase, userId, content, symbols);
 
     return NextResponse.json({
       content,
