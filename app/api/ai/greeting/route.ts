@@ -199,6 +199,11 @@ export async function POST(req: NextRequest) {
       lastCategories = [], // array of last 2-3 categories used
     } = body;
 
+    // Backward-compat: if frontend sends lastCategory (string), wrap in array
+    const recentCategories: string[] = (lastCategories && lastCategories.length > 0)
+      ? lastCategories
+      : (lastCategory ? [lastCategory] : []);
+
     // ── Auth: get userId for facts read/write ──────────────
     const userId = await getOptionalUserId();
 
@@ -233,7 +238,7 @@ export async function POST(req: NextRequest) {
       : '';
 
     // ── Pick insight category (avoid last 3 used) ──
-    const category = pickCategory(lastCategories);
+    const category = pickCategory(recentCategories);
 
     // ── Build category context block ──
     let categoryContext = '';
@@ -404,6 +409,7 @@ Opener to use: "${market.opener}"
       opener,
       hook,
       category,
+      categoriesUsed: [category, ...recentCategories].slice(0, 3), // last 3 used
       hookType: detectHookType(hook || ''),
       styleAcknowledged: includeStyleAck && !!STYLE_GREETINGS[styleKey],
     });
