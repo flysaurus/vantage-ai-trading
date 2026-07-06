@@ -1339,8 +1339,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               background: '#10162a',
               borderTop: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '20px 20px 0 0',
-              padding: '10px 16px 44px',
-              maxHeight: '85%',
+              padding: '8px 16px 64px',
+              maxHeight: '92%',
               overflowY: 'auto',
               WebkitOverflowScrolling: 'touch',
             }}
@@ -1387,102 +1387,100 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             </div>
 
             {/* ── Suggested for you ── */}
-            <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
-              Suggested for you
-            </div>
-
-            {/* AI Noticed items in sheet */}
-            {noticedItems.length > 0 ? noticedItems.map((item) => {
-              const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
-              return (
-                <div key={item.id} style={{ position: 'relative' }}>
-                  <div
-                    onClick={() => {
-                      setShowExplore(false);
-                      sendToChat(item.followUp || `Tell me about ${item.title}`);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      background: GLASS_BG_LIGHTER,
-                      borderLeft: `3px solid ${borderColor}`,
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      marginBottom: '8px',
-                      fontSize: '13.5px',
-                      color: TEXT_BODY,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
-                    <span style={{ flex: 1 }}>{item.body}</span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSnoozeTarget(snoozeTarget === item.id ? null : item.id);
-                      }}
-                      style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
-                    >
-                      ×
-                    </span>
-                  </div>
-                  {/* Snooze popover in sheet */}
-                  {snoozeTarget === item.id && (
-                    <>
-                      <div
-                        style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
-                        onClick={() => setSnoozeTarget(null)}
-                      />
-                      <div style={{
-                        position: 'absolute',
-                        right: '8px',
-                        top: '36px',
-                        zIndex: 9999,
-                        background: '#1a2235',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: '10px',
-                        padding: '6px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '2px',
-                        minWidth: '170px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      }}>
-                        {[
-                          { label: 'Remind in 3 days', type: '3d' },
-                          { label: 'Remind in 1 week', type: '1w' },
-                          { label: "Don't remind again", type: 'permanent' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.type}
-                            onClick={(e) => { e.stopPropagation(); handleDismiss(item.id, opt.type); }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#cbd5e1',
-                              fontSize: '12px',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              fontFamily: 'inherit',
-                            }}
-                            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
-                            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
+            {noticedItems.length > 0 && (
+              <>
+                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+                  Suggested for you
                 </div>
-              );
-            }) : (
-              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', padding: '8px 4px 16px' }}>
-                No suggestions right now — check back later.
-              </div>
+                {noticedItems.map((item) => {
+                  const borderColor = item.variant === 'warn' ? WARNING : item.variant === 'gain' ? GAIN : ACCENT;
+                  return (
+                    <div key={item.id} style={{ position: 'relative' }}>
+                      <div
+                        onClick={() => {
+                          setShowExplore(false);
+                          sendToChat(item.followUp || `Tell me about ${item.title}`);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '8px',
+                          background: GLASS_BG_LIGHTER,
+                          borderLeft: `3px solid ${borderColor}`,
+                          borderRadius: '12px',
+                          padding: '12px 14px',
+                          marginBottom: '8px',
+                          fontSize: '13.5px',
+                          color: TEXT_BODY,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: '14px', marginTop: '1px' }}>{item.icon}</span>
+                        <span style={{ flex: 1 }}>{item.body}</span>
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSnoozeTarget(snoozeTarget === item.id ? null : item.id);
+                          }}
+                          style={{ color: TEXT_DIM, fontSize: '14px', padding: '0 2px', cursor: 'pointer' }}
+                        >
+                          ×
+                        </span>
+                      </div>
+                      {/* Snooze popover in sheet */}
+                      {snoozeTarget === item.id && (
+                        <>
+                          <div
+                            style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                            onClick={() => setSnoozeTarget(null)}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '36px',
+                            zIndex: 9999,
+                            background: '#1a2235',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            borderRadius: '10px',
+                            padding: '6px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
+                            minWidth: '170px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                          }}>
+                            {[
+                              { label: 'Remind in 3 days', type: '3d' },
+                              { label: 'Remind in 1 week', type: '1w' },
+                              { label: "Don't remind again", type: 'permanent' },
+                            ].map((opt) => (
+                              <button
+                                key={opt.type}
+                                onClick={(e) => { e.stopPropagation(); handleDismiss(item.id, opt.type); }}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#cbd5e1',
+                                  fontSize: '12px',
+                                  padding: '8px 12px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  fontFamily: 'inherit',
+                                }}
+                                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                                onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
             )}
 
             {/* Suggested chips */}
@@ -1497,11 +1495,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   background: GLASS_BG_LIGHTER,
                   border: `1px solid ${BORDER_MUTED}`,
                   borderRadius: '999px',
-                  padding: '11px 16px',
+                  padding: '10px 16px',
                   marginBottom: '8px',
-                  fontSize: '13.5px',
+                  fontSize: '12px',
                   color: 'rgba(255,255,255,0.8)',
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}
               >
                 {chip}
@@ -1509,7 +1510,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             ))}
 
             {/* Divider */}
-            <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '12px 0 10px' }} />
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0 6px' }} />
 
             {/* ── Quick checks ── */}
             <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
