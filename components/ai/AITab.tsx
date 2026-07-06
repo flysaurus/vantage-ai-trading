@@ -1323,10 +1323,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'rgba(0,0,0,0.01)',
+            background: 'rgba(0,0,0,0.4)',
             display: 'flex',
-            alignItems: 'flex-end',
-            zIndex: 5,
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            zIndex: 20,
             overflow: 'hidden',
           }}
           onClick={() => setShowExplore(false)}
@@ -1338,19 +1339,52 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               background: '#10162a',
               borderTop: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '20px 20px 0 0',
-              padding: '10px 16px 24px',
-              maxHeight: '100%',
+              padding: '10px 16px 44px',
+              maxHeight: '85%',
               overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
             }}
           >
-            {/* Handle */}
+            {/* Handle row: drag handle centered + X close button right */}
             <div style={{
-              width: '36px',
-              height: '4px',
-              background: 'rgba(255,255,255,0.2)',
-              borderRadius: '999px',
-              margin: '0 auto 16px',
-            }} />
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '16px',
+              position: 'relative',
+            }}>
+              <div style={{
+                width: '36px',
+                height: '4px',
+                background: 'rgba(255,255,255,0.2)',
+                borderRadius: '999px',
+              }} />
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowExplore(false); }}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'rgba(255,255,255,0.6)',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontFamily: 'inherit',
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
 
             {/* ── Suggested for you ── */}
             <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
