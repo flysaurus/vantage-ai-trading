@@ -395,27 +395,26 @@ export function AITab({ messages, setMessages }: AITabProps) {
     async function loadGreeting() {
       const period = getMarketPeriod();
       const fallback = STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening;
-      setGreetingOpener(fallback.opener);
-      setGreetingHook(fallback.hook);
-      setGreetingLoaded(true);
-
       const cacheKey = GREETING_CACHE_KEY();
 
+      // ── Step 1: Check sessionStorage first (no flash) ──
       try {
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
           const { hook } = JSON.parse(cached);
-          const period = getMarketPeriod();
-          const opener = (STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening).opener;
-          setTimeout(() => {
-            setGreetingOpener(opener);
-            setGreetingHook(hook);
-          }, 200);
+          setGreetingOpener(fallback.opener);
+          setGreetingHook(hook);
+          setGreetingLoaded(true);
           return;
         }
       } catch {
         sessionStorage.removeItem(cacheKey);
       }
+
+      // ── Step 2: No cache — show fallback while API loads ──
+      setGreetingOpener(fallback.opener);
+      setGreetingHook(fallback.hook);
+      setGreetingLoaded(true);
 
       try {
         const invStyle = (user?.investorStyle || investorStyle || 'Lynch') as string;
