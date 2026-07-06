@@ -396,10 +396,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
       const period = getMarketPeriod();
       const fallback = STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening;
 
-      // ── Step 1: Show fallback while API loads ──
-      setGreetingOpener(fallback.opener);
-      setGreetingHook(fallback.hook);
-      setGreetingLoaded(true);
+      // ── Step 1: Show loading skeleton (no fallback text flash) ──
+      // greetingLoaded stays false → skeleton renders
 
       // ── Step 2: Read category history + last hooks for rotation ──
       let recentCategories: string[] = [];
@@ -456,7 +454,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
 
         if (data.opener && data.hook) {
+          setGreetingOpener(data.opener);
           setGreetingHook(data.hook);
+          setGreetingLoaded(true);
 
           // ── Save category history + last hooks for next load ──
           try {
@@ -467,7 +467,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
           } catch { /* ignore */ }
         }
       } catch (e) {
-        console.log('[Greeting] Using fallback:', e);
+        console.log('[Greeting] API failed, using fallback:', e);
+        setGreetingOpener(fallback.opener);
+        setGreetingHook(fallback.hook);
+        setGreetingLoaded(true);
       }
     }
   }, [greetingLoaded]);
