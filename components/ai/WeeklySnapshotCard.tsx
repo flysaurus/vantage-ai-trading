@@ -113,12 +113,6 @@ function parseSections(content: string): ParsedSections {
   };
 }
 
-const SUB_CARD_ICONS: Record<string, string> = {
-  health: '❤️',
-  risk: '🛡️',
-  opportunities: '💡',
-};
-
 const SUB_CARD_TITLES: Record<string, string> = {
   health: 'Portfolio Health',
   risk: 'Risk Assessment',
@@ -219,7 +213,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
         fontWeight: 700,
         cursor: 'default',
       }}>
-        Weekly
+        Weekly Snapshot
       </button>
     );
   }
@@ -315,17 +309,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
           if (!active) e.currentTarget.style.background = PILL_BG;
         }}
       >
-        Weekly
-        {healthScore != null && (
-          <span style={{
-            fontSize: '14px',
-            fontWeight: 800,
-            color: active ? GAIN : GAIN,
-            lineHeight: 1,
-          }}>
-            {healthScore}/10
-          </span>
-        )}
+        Weekly Snapshot
       </button>
     );
   }
@@ -413,7 +397,6 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
             >
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                  <span style={{ fontSize: '16px' }}>{SUB_CARD_ICONS[key]}</span>
                   <span style={{ fontSize: '14px', fontWeight: 600 }}>{SUB_CARD_TITLES[key]}</span>
                 </div>
                 {value && (

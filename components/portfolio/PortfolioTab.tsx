@@ -993,8 +993,8 @@ export function PortfolioTab() {
         </div>
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => setDailyExpanded(!dailyExpanded)} />
-            <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => setWeeklyExpanded(!weeklyExpanded)} />
+            <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
+            <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
           </div>
           {dailyExpanded && <DailyBriefCard mode="content" onClick={() => setDailyExpanded(false)} />}
           {weeklyExpanded && <WeeklySnapshotCard mode="content" onClick={() => setWeeklyExpanded(false)} />}
