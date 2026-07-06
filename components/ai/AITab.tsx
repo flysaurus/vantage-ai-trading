@@ -828,6 +828,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </button>
 
         </div>
+        <div style={{ fontSize: '15px', fontWeight: 800, color: '#22d3ee' }}>Vantage AI Advisor</div>
         {/* Live pulse indicator */}
         <div style={{
           width: '7px',
@@ -1473,9 +1474,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               </>
             )}
 
-            {/* ── Quick prompts (suggested chips) ── */}
-            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
-              Quick prompts
+            {/* ── Quick Prompts (suggested chips) ── */}
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#22d3ee', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+              Quick Prompts
             </div>
             {suggestionChips.map((chip) => (
               <div
@@ -1505,9 +1506,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             {/* Divider */}
             <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '4px 0 8px' }} />
 
-            {/* ── Quick tools ── */}
-            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
-              Quick tools
+            {/* ── Quick Tools ── */}
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#22d3ee', textTransform: 'uppercase', padding: '4px 4px 10px' }}>
+              Quick Tools
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
