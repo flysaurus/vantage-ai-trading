@@ -163,6 +163,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const forceRegen = searchParams.get('forceRegen') === 'true';
     const weekStartStr = getWeekStart();
     const supabase = createServerClient();
 
@@ -208,7 +210,19 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Fetch live portfolio state from demo_portfolio_state
+    // No cache — only regenerate if explicitly requested (user tapped ↻)
+    if (!forceRegen) {
+      return NextResponse.json({
+        content: null,
+        healthScore: null,
+        riskLevel: null,
+        weekStart: weekStartStr,
+        generatedAt: null,
+        cached: false,
+      });
+    }
+
+    // ─── forceRegen: generate fresh snapshot ───
     const { data: portfolioState } = await (supabase as any)
       .from('demo_portfolio_state')
       .select('positions, cash_balance')
