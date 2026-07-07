@@ -60,8 +60,10 @@ Question: "${userMessage}"`
     const data = await res.json()
     return JSON.parse(data.choices[0].message.content)
   } catch (e) {
-    // Default to no search on error
-    return { needsSearch: false, searchQuery: null, queryType: 'general_finance' }
+    console.error('[chat] DeepSeek screening failed:', e);
+    // DEFAULT TO SEARCH — safer to search unnecessarily than to miss current data
+    // Claude's training cutoff means it will hallucinate dates for recent events without search.
+    return { needsSearch: true, searchQuery: userMessage.slice(0, 200), queryType: 'market_research' as const };
   }
 }
 
@@ -86,7 +88,8 @@ Source: ${r.url}
 `).join('\n')}
 Use these results to answer with current information.
 IMPORTANT: Cross-check any dates found in these results against the authoritative current date provided in the context section above. If a search result mentions a date that doesn't align with the real current date, the search result may be stale — do not confidently assert its date as current.
-`
+
+CRITICAL: When search results are present, trust them OVER your training data for factual questions about IPOs, current stock prices, recent events, and company status. Your training data may be outdated — the search results are authoritative. Never contradict search results with training-data claims.`
   } catch (e) {
     console.error('Search error:', e)
     return ''
