@@ -99,12 +99,15 @@ function extractRiskFromSection(section: string): string | null {
 }
 
 function parseSections(content: string): ParsedSections {
-  // Same regex as server-side — matches ## headers, flexible whitespace, no line-start requirement
+  // Match section headers with ## prefix on their own line.
+  // Consume the entire header line (including trailing text like "(score 7/10):")
+  // before starting capture. Boundaries require \n## to prevent false matches
+  // on bare words like "risk" appearing in health prose.
   const parse = (label: string, nextLabels: string[]): string => {
     const escaped = nextLabels.map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     const re = new RegExp(
-      `(?:##\\s*)?${label}\\s*\\n?([\\s\\S]*?)(?=(?:##\\s*)?(?:${escaped})(?:\\s|$)|$)`,
-      'i'
+      `(?:^|\n)##\\s*${label}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s*(?:${escaped})\\b|$)`,
+      'im'
     );
     const m = content.match(re);
     return (m?.[1] || '').trim();
