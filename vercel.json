@@ -37,6 +37,21 @@
     },
     "app/api/baskets/generate/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/ai/weekly-snapshot/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/ai/greeting/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/ai/daily-brief/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/admin/facts/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/admin/generation-log/route.ts": {
+      "maxDuration": 30
     }
   }
 }
