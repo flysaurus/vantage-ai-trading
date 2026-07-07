@@ -147,10 +147,20 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
       const params = new URLSearchParams({ tz });
       if (force) params.set('forceRegen', 'true');
       const r = await apiGet(`/api/ai/weekly-snapshot?${params.toString()}`);
+      if (!r.ok) {
+        console.warn('[WeeklySnapshot] API returned', r.status, r.statusText);
+        // Keep null data so we show the error/loading state, not nothing
+        if (r.status === 401 || r.status === 307) {
+          // Auth issue — will resolve on next page load
+          console.warn('[WeeklySnapshot] Auth redirect — try reloading the page');
+        }
+        return;
+      }
       const d = await r.json();
       setData(d);
-    } catch {
-      // keep existing data
+    } catch (err) {
+      console.error('[WeeklySnapshot] Load failed:', err);
+      // Don't silently hide — keep loading false so the pill shows as empty/retryable
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -228,7 +238,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
   }
 
   if (!data?.content) {
-    // Show fallback instead of returning null — so the user sees SOMETHING
+    // Show fallback pill — don't disappear on error
     if (mode === 'content') {
       return (
         <div
@@ -254,7 +264,27 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
         </div>
       );
     }
-    return null;
+    // Pill mode: show dimmed but tappable pill (don't disappear!)
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          flex: 1,
+          background: PILL_BG,
+          border: `1px solid ${PILL_BORDER}`,
+          borderRadius: '999px',
+          padding: '14px 14px',
+          color: 'rgba(255,255,255,0.35)',
+          fontFamily: 'inherit',
+          fontSize: '14px',
+          fontWeight: 700,
+          cursor: 'pointer',
+          backdropFilter: BACKDROP_BLUR,
+        }}
+      >
+        {loading ? 'Weekly Snapshot…' : 'Weekly Snapshot'}
+      </button>
+    );
   }
 
   const { healthScore, riskLevel: apiRiskLevel, opportunitiesCount, generatedAt } = data;
