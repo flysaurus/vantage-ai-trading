@@ -276,7 +276,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
           border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: '999px',
           padding: '14px 14px',
-          color: 'rgba(255,255,255,0.6)',
+          color: '#fff',
           fontFamily: 'inherit',
           fontSize: '14px',
           fontWeight: 600,
@@ -464,7 +464,9 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
             </button>
 
             {isExpanded && sectionContent && (
-              <div style={{
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
                 fontSize: '14px',
                 lineHeight: '1.7',
                 color: TEXT_BODY,
