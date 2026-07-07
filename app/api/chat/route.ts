@@ -6,6 +6,7 @@ import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
+import { getBatchQuotes } from '@/lib/market-data'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -15,6 +16,29 @@ const client = new Anthropic({
 })
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888'
+
+// ─── Common words that look like tickers but aren't ──
+const NOT_TICKERS = new Set([
+  'IPO', 'ETF', 'REIT', 'CEO', 'CFO', 'GDP', 'API', 'AI', 'ML', 'ITM', 'OTM',
+  'THE', 'AND', 'FOR', 'NOT', 'BUT', 'WAS', 'HAS', 'CAN', 'ARE', 'YOU', 'OUR',
+  'HOW', 'WHAT', 'WHEN', 'WHY', 'WHO', 'NEW', 'OUT', 'ALL', 'ANY', 'ONE', 'TWO',
+  'ITS', 'HIS', 'HER', 'THEM', 'THEY', 'FROM', 'THAT', 'THIS', 'WITH', 'WILL',
+  'JUST', 'NOW', 'VERY', 'MUCH', 'WELL', 'ALSO', 'THEN', 'SOME', 'LIKE', 'GET',
+  'SEE', 'GOOD', 'BAD', 'BIG', 'PUT', 'CALL', 'IN', 'ON', 'IT', 'AT', 'TO',
+  'BE', 'IS', 'SO', 'ME', 'MY', 'WE', 'HE', 'NO', 'GO', 'DO', 'UP', 'AM',
+  'A', 'I', 'O',
+]);
+
+// ─── Ticker extraction ──
+function extractTickers(text: string): string[] {
+  // Match: $SPCX, SPCX (2-5 uppercase letters, standalone)
+  const matches = text.match(/\$?\b([A-Z]{2,5})\b/g);
+  if (!matches) return [];
+  const tickers = matches
+    .map(t => t.replace('$', '').toUpperCase())
+    .filter(t => !NOT_TICKERS.has(t));
+  return [...new Set(tickers)]; // deduplicate
+}
 
 // ─── Stage 0: DeepSeek Screening ───
 async function screenMessage(userMessage: string): Promise<{
@@ -176,6 +200,41 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       searchContext = await searchWeb(screening.searchQuery)
     }
 
+    // ── Live market data: extract tickers from user message → Finnhub ──
+    let liveMarketContext = ''
+    const tickers = extractTickers(lastMessage)
+    if (tickers.length > 0) {
+      try {
+        const quotes = await getBatchQuotes(tickers)
+        if (quotes.size > 0) {
+          const quoteLines: string[] = []
+          for (const [symbol, q] of quotes) {
+            if (q && q.price > 0) {
+              const sign = q.change >= 0 ? '+' : ''
+              quoteLines.push(
+                `${symbol}: $${q.price.toFixed(2)} | ` +
+                `${sign}$${q.change.toFixed(2)} (${sign}${q.changePercent.toFixed(1)}%) | ` +
+                `Day: $${q.low?.toFixed(2)}–$${q.high?.toFixed(2)} | ` +
+                `Prev close: $${q.previousClose?.toFixed(2)} | ` +
+                `Source: ${q.source}`
+              )
+            }
+          }
+          if (quoteLines.length > 0) {
+            liveMarketContext = `
+📡 LIVE MARKET DATA (real-time via Finnhub — AUTHORITATIVE):
+${quoteLines.join('\n')}
+
+CRITICAL: Use these live prices for any current-price questions. They override both training data AND web search results for current stock prices. Web search results may contain additional context (news, IPO dates, analysis) but the PRICES above are real-time and authoritative.
+`
+          }
+        }
+      } catch (e) {
+        console.error('[chat] Live market data fetch error:', e)
+        // Non-fatal — continue with search results only
+      }
+    }
+
     // ── Prompt Caching: static instructions cached, dynamic context not ──
     // CRITICAL: Inject authoritative server date — models do NOT know the real date
     const currentDate = new Date().toLocaleDateString('en-US', {
@@ -195,7 +254,7 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       },
       {
         type: 'text' as const,
-        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, deviationContext].filter(Boolean).join('\n\n'),
+        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, deviationContext].filter(Boolean).join('\n\n'),
       },
     ];
 
