@@ -99,24 +99,35 @@ function extractRiskFromSection(section: string): string | null {
 }
 
 function parseSections(content: string): ParsedSections {
-  // Match section headers with ## prefix on their own line.
-  // Consume the entire header line (including trailing text like "(score 7/10):")
-  // before starting capture. Boundaries require \n## to prevent false matches
-  // on bare words like "risk" appearing in health prose.
-  const parse = (label: string, nextLabels: string[]): string => {
-    const escaped = nextLabels.map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    const re = new RegExp(
-      `(?:^|\n)##\\s*${label}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s*(?:${escaped})\\b|$)`,
-      'im'
-    );
-    const m = content.match(re);
-    return (m?.[1] || '').trim();
-  };
-
+  // Split on ## headers at line starts — much more robust than complex lookahead regexes.
+  // Classify each block by its header prefix, then combine related sections.
+  const blocks = content.split(/\n(?=##\s)/);
+  
+  const health: string[] = [];
+  const risk: string[] = [];
+  const summary: string[] = [];
+  
+  for (const block of blocks) {
+    // Extract header name from start of block (until : or newline)
+    const headerMatch = block.match(/^##\s*(.+?)(?:\s*:.*)?\n/);
+    if (!headerMatch) continue;
+    const header = headerMatch[1].trim().toLowerCase();
+    // Body is everything after the header line
+    const body = block.substring(headerMatch[0].length).trim();
+    
+    if (/overall health|portfolio health/i.test(header)) {
+      health.push(body);
+    } else if (/risks?|risk level|overall risk/i.test(header)) {
+      risk.push(body);
+    } else if (/summary/i.test(header)) {
+      summary.push(body);
+    }
+  }
+  
   return {
-    health: parse('(?:OVERALL HEALTH|PORTFOLIO HEALTH)', ['RISKS?', 'OVERALL RISK', 'RISK LEVEL']),
-    risk: parse('(?:RISKS?|OVERALL RISK|RISK LEVEL)', ['SUMMARY']),
-    summary: parse('SUMMARY', []),
+    health: health.join('\n\n'),
+    risk: risk.join('\n\n'),
+    summary: summary.join('\n\n'),
   };
 }
 
