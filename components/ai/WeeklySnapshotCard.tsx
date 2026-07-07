@@ -234,33 +234,62 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
           <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>
             Weekly Snapshot
           </div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
-            {loading
-              ? 'Generating your weekly analysis…'
-              : 'No snapshot available yet. Check back after market close on Friday — your weekly portfolio review is generated over the weekend.'}
-          </div>
+          {loading ? (
+            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
+              Generating your weekly analysis…
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6', marginBottom: '12px' }}>
+                No snapshot yet this week. Generate one now to see your portfolio health, risks, and summary.
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleRefresh(e); }}
+                disabled={refreshing}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  color: '#fff',
+                  fontFamily: 'inherit',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {refreshing ? 'Generating…' : '↻ Generate'}
+              </button>
+            </div>
+          )}
         </div>
       );
     }
-    // Pill mode: show dimmed but tappable pill (don't disappear!)
+    // Pill mode: always clickable, even when empty — prompt user to generate
     return (
       <button
         onClick={onClick}
+        title="Tap ↻ to generate this week's snapshot"
         style={{
           flex: 1,
-          background: PILL_BG,
-          border: `1px solid ${PILL_BORDER}`,
+          background: 'rgba(255,255,255,0.08)',
+          border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: '999px',
           padding: '14px 14px',
-          color: 'rgba(255,255,255,0.35)',
+          color: 'rgba(255,255,255,0.6)',
           fontFamily: 'inherit',
           fontSize: '14px',
-          fontWeight: 700,
+          fontWeight: 600,
           cursor: 'pointer',
           backdropFilter: BACKDROP_BLUR,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px',
         }}
       >
-        {loading ? 'Weekly Snapshot…' : 'Weekly Snapshot'}
+        Weekly Snapshot
+        <span style={{ fontSize: '12px', opacity: 0.5 }}>↻</span>
       </button>
     );
   }
