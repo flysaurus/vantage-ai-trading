@@ -53,12 +53,22 @@ needsSearch = false if:
 - Historical analysis
 
 Question: "${userMessage}"`
-        }],
-        response_format: { type: 'json_object' }
+        }]
       })
     })
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('[chat] DeepSeek screening HTTP', res.status, errText.slice(0, 200));
+      // Fail open → search anyway
+      return { needsSearch: true, searchQuery: userMessage.slice(0, 200), queryType: 'market_research' as const };
+    }
+
     const data = await res.json()
-    return JSON.parse(data.choices[0].message.content)
+    let raw = data.choices?.[0]?.message?.content || '';
+    // DeepSeek sometimes wraps JSON in markdown code fences even with response_format
+    raw = raw.replace(/```(?:json)?\s*\n?/g, '').trim();
+    return JSON.parse(raw)
   } catch (e) {
     console.error('[chat] DeepSeek screening failed:', e);
     // DEFAULT TO SEARCH — safer to search unnecessarily than to miss current data
