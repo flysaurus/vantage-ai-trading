@@ -331,6 +331,7 @@ export async function GET(req: NextRequest) {
 
     const dataBlock = [
       `WEEKLY PORTFOLIO HEALTH CHECK — Week of ${weekStartStr}`,
+      `AUTHORITATIVE CURRENT DATE: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
       '',
       `Symbols: ${symbols.join(', ')}`,
       `Style: ${investorStyle} | Risk: ${riskTolerance}`,

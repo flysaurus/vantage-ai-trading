@@ -140,9 +140,22 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState(0);
-  const [greetingOpener, setGreetingOpener] = useState<string | null>(null);
-  const [greetingHook, setGreetingHook] = useState<string | null>(null);
-  const [greetingLoaded, setGreetingLoaded] = useState(false);
+  // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
+  const getCachedGreeting = (): { opener: string; hook: string } | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = sessionStorage.getItem('vantage_greet_cache');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (Date.now() - data.at < 15 * 60 * 1000) return data;
+      }
+    } catch {}
+    return null;
+  };
+  const cachedGreeting = getCachedGreeting();
+  const [greetingOpener, setGreetingOpener] = useState<string | null>(cachedGreeting?.opener || null);
+  const [greetingHook, setGreetingHook] = useState<string | null>(cachedGreeting?.hook || null);
+  const [greetingLoaded, setGreetingLoaded] = useState(cachedGreeting !== null);
   const userName: string = String((user as any)?.name || (user as any)?.email || 
     (typeof window !== 'undefined' ? (user as any)?.name || '' : '') || 'M');
   const userInitial = (userName[0]?.toUpperCase() || 'M') + '.';
@@ -402,25 +415,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── AI greeting on fresh session ──
   useEffect(() => {
     if (messages.length > 0) return;
+    if (greetingLoaded) return; // Already shown from cache or previous fetch
     if (greetingFetchedRef.current) return;
-
-    // Check sessionStorage first — persist greeting across unmount/remount
-    const CACHE_KEY = 'vantage_greet_cache';
-    const CACHE_TTL = 15 * 60 * 1000; // 15 min
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if (Date.now() - cached.at < CACHE_TTL) {
-          setGreetingOpener(cached.opener);
-          setGreetingHook(cached.hook);
-          setGreetingLoaded(true);
-          greetingFetchedRef.current = true;
-          return;
-        }
-      }
-    } catch { /* ignore */ }
-
     greetingFetchedRef.current = true;
 
     loadGreeting();
@@ -429,8 +425,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       const period = getMarketPeriod();
       const fallback = STATIC_FALLBACKS[period as keyof typeof STATIC_FALLBACKS] || STATIC_FALLBACKS.evening;
 
-      // ── Step 1: Show loading skeleton (no fallback text flash) ──
-      // greetingLoaded stays false → skeleton renders
+      // ↓ greetingLoaded stays false while fetching → skeleton renders (only on FIRST visit, no cache)
 
       // ── Step 2: Read category history + last hooks for rotation ──
       let recentCategories: string[] = [];

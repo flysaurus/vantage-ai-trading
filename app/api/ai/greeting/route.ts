@@ -312,8 +312,15 @@ GUARDRAIL: Describe the observed pattern (e.g. "QQQ down 1.2%, but your financia
     }
 
     // ── Build dynamic context (durable data only — NO intraday) ──
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
     const dynamicContext = `
 CURRENT CONTEXT:
+Today: ${currentDate}
 User initial: ${userInitial}
 Time period: ${market.opener}
 Market status: ${market.period}

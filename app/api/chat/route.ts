@@ -85,7 +85,7 @@ ${r.content || r.snippet || ''}
 Source: ${r.url}
 `).join('\n')}
 Use these results to answer with current information.
-Note: search results are from today.
+IMPORTANT: Cross-check any dates found in these results against the authoritative current date provided in the context section above. If a search result mentions a date that doesn't align with the real current date, the search result may be stale — do not confidently assert its date as current.
 `
   } catch (e) {
     console.error('Search error:', e)
@@ -164,6 +164,16 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
     }
 
     // ── Prompt Caching: static instructions cached, dynamic context not ──
+    // CRITICAL: Inject authoritative server date — models do NOT know the real date
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: timezone || 'America/New_York',
+    });
+    const dateContext = `\nAUTHORITATIVE CURRENT DATE: ${currentDate} (in user's timezone). Treat this as ground truth. Never assert a specific date or recency claim ("today", "just happened", "recently", "IPO'd on [date]") that conflicts with this date. If you are unsure about the timing of an event, hedge with "reportedly" or "according to recent coverage" rather than fabricating a specific date.`;
+
     const systemBlocks: SystemBlock[] = [
       {
         type: 'text' as const,
@@ -172,7 +182,7 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       },
       {
         type: 'text' as const,
-        text: [profileContext, portfolioContext || '', additionalContext || '', searchContext, deviationContext].filter(Boolean).join('\n\n'),
+        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, deviationContext].filter(Boolean).join('\n\n'),
       },
     ];
 
