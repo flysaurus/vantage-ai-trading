@@ -405,7 +405,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (greetingFetchedRef.current) return;
 
     // Check sessionStorage first — persist greeting across unmount/remount
-    const CACHE_KEY = 'vantage_greeting_snapshot';
+    const CACHE_KEY = 'vantage_greet_cache';
     const CACHE_TTL = 15 * 60 * 1000; // 15 min
     try {
       const raw = sessionStorage.getItem(CACHE_KEY);
@@ -493,7 +493,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
           // ── Save greeting to sessionStorage (persists across tab switches) ──
           try {
-            sessionStorage.setItem('vantage_greeting_snapshot', JSON.stringify({
+            sessionStorage.setItem('vantage_greet_cache', JSON.stringify({
               opener: data.opener,
               hook: data.hook,
               at: Date.now(),
@@ -549,7 +549,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     return () => { container.removeEventListener('scroll', handleScroll); clearTimeout(scrollTimeout); };
   }, []);
 
-  // ── Auto-scroll when messages change ──
+  // ── Auto-scroll only for first message and user sends ──
   const prevMessageCountRef = useRef(0);
   useEffect(() => {
     if (messages.length === 0) return;
@@ -558,9 +558,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (lastMsg.role === 'user') {
       scrollToBottom(true);
       wasAtBottomRef.current = true;
-    } else if (lastMsg.role === 'ai') {
-      if (wasAtBottomRef.current) scrollToBottom(true);
     }
+    // AI messages: no auto-scroll — user controls position during generation
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
 
@@ -669,7 +668,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
                 startDrainer();
-                scrollToBottom();
+                // Auto-scroll disabled — user controls scroll during generation
               }
             } catch (e) {}
           }
@@ -690,7 +689,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
         return updated;
       });
-      scrollToBottom();
+      // Scroll suppressed — user controls position
     } catch (error) {
       console.error('Chat error:', error);
       setToast(null);
