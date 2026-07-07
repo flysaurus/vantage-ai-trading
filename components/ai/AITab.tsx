@@ -368,6 +368,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const greetingFetchedRef = useRef(false);
   const prevPositionsHashRef = useRef('');
+  const positionsInitializedRef = useRef(false);
 
   useEffect(() => {
     const hash = JSON.stringify({
@@ -375,11 +376,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
       count: liveAccount?.positions?.length,
       symbols: liveAccount?.positions?.map(p => p.symbol).sort().join(','),
     });
-    if (prevPositionsHashRef.current && hash !== prevPositionsHashRef.current && prevPositionsHashRef.current !== '') {
+
+    // Skip if no actual data yet
+    if (!hash || hash === '{}' || hash === '{"cash":0,"count":0,"symbols":""}') return;
+
+    // First time positions arrive with real data — just record the hash, don't reset greeting
+    if (!positionsInitializedRef.current) {
+      positionsInitializedRef.current = true;
+      prevPositionsHashRef.current = hash;
+      return;
+    }
+
+    // Subsequent change (user added/removed positions mid-session) — refresh greeting
+    if (hash !== prevPositionsHashRef.current) {
       greetingFetchedRef.current = false;
       setGreetingLoaded(false);
+      prevPositionsHashRef.current = hash;
     }
-    prevPositionsHashRef.current = hash;
   }, [liveAccount?.cash, liveAccount?.positions]);
 
   useEffect(() => {
@@ -475,7 +488,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setGreetingLoaded(true);
       }
     }
-  }, [greetingLoaded]);
+  // Only re-run when messages are cleared (new session) or greeting is explicitly reset
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [greetingLoaded, messages.length]);
 
   // ── helpers ──
   function isAtBottom(): boolean {
