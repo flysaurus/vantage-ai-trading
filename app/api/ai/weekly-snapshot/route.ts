@@ -107,7 +107,7 @@ async function writeSnapshotFacts(
   try {
     // Extract OPPORTUNITIES section
     const oppRe = new RegExp(
-      '(?:##\\s*)?OPPORTUNITIES?\\s*\\n?([\\s\\S]*?)(?=(?:##\\s*)?(?:SUMMARY|RISK)',
+      '(?:##\s*)?OPPORTUNITIES?\s*\n([\s\S]*?)(?=##\s*(?:SUMMARY|RISK\\S))',
       'i',
     );
     const oppMatch = content.match(oppRe);
@@ -115,15 +115,15 @@ async function writeSnapshotFacts(
 
     // Extract RISKS section
     const riskRe = new RegExp(
-      '(?:##\\s*)?RISKS?\\s*\\n?([\\s\\S]*?)(?=(?:##\\s*)?(?:SUMMARY|OPPORTUNITIES?)',
+      '(?:##\s*)?RISKS?\s*\n([\s\S]*?)(?=##\s*(?:SUMMARY|OPPORTUNITIES?))',
       'i',
     );
     const riskMatch = content.match(riskRe);
     const riskText = riskMatch?.[1] || '';
 
-    // Parse risks into facts: each risk block starts with a bullet/header line
-    // followed by **Risk:**, **Affects:**, **Watch:** sub-lines
-    const riskBlocks = riskText.split(/\n(?=\s*(?:[-•*]\s|\d+\.\s))/).filter(Boolean);
+    // Parse risks into facts: each risk block starts with **Risk:**
+    // Split on lines that begin a new risk block (containing **Risk:**)
+    const riskBlocks = riskText.split(/\n(?=\s*[-•*]\s+\*\*Risk:\*\*)/).filter(Boolean);
     const writtenRiskIds: string[] = [];
 
     for (const block of riskBlocks) {
@@ -154,7 +154,8 @@ async function writeSnapshotFacts(
     }
 
     // Parse opportunities into recommendation facts
-    const oppBlocks = oppText.split(/\n(?=\s*(?:[-•*]\s|\d+\.\s))/).filter(Boolean);
+    // Split on lines that begin a new opportunity block (containing **What:**)
+    const oppBlocks = oppText.split(/\n(?=\s*[-•*]\s+\*\*What:\*\*)/).filter(Boolean);
 
     for (const block of oppBlocks) {
       const whatLine = block.match(/\*\*What:\*\*\s*(.+?)(?:\n|$)/i);
