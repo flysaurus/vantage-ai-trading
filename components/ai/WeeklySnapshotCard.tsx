@@ -196,40 +196,22 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     </svg>
   );
 
-  // ─── Loading skeleton ───
-  if (loading && !data) {
-    if (mode === 'content') {
-      return (
-        <div style={{
-          marginTop: '10px',
-          background: CARD_BG,
-          border: `1px solid ${CARD_BORDER}`,
-          borderRadius: '18px',
-          padding: '18px',
-          backdropFilter: BACKDROP_BLUR,
-        }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Weekly Snapshot</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
-            Loading…
-          </div>
-        </div>
-      );
-    }
+  // ─── Loading skeleton (content mode only — pill is always tappable) ───
+  if (loading && !data && mode === 'content') {
     return (
-      <button style={{
-        flex: 1,
-        background: PILL_BG,
-        border: `1px solid ${PILL_BORDER}`,
-        borderRadius: '999px',
-        padding: '14px 14px',
-        color: 'rgba(255,255,255,0.4)',
-        fontFamily: 'inherit',
-        fontSize: '14px',
-        fontWeight: 700,
-        cursor: 'default',
+      <div style={{
+        marginTop: '10px',
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: '18px',
+        padding: '18px',
+        backdropFilter: BACKDROP_BLUR,
       }}>
-        Weekly Snapshot
-      </button>
+        <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Weekly Snapshot</div>
+        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
+          Loading…
+        </div>
+      </div>
     );
   }
 
