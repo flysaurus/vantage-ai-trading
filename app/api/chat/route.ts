@@ -200,9 +200,15 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       searchContext = await searchWeb(screening.searchQuery)
     }
 
-    // ── Live market data: extract tickers from user message → Finnhub ──
+    // ── Live market data: extract tickers from user message + search results → Finnhub ──
     let liveMarketContext = ''
-    const tickers = extractTickers(lastMessage)
+    // Primary: explicit tickers in user message ($SPCX, AAPL)
+    let tickers = extractTickers(lastMessage)
+    // Secondary: extract tickers from search result titles (handles company names like SpaceX→SPCX)
+    if (searchContext) {
+      const searchTickers = extractTickers(searchContext)
+      tickers = [...new Set([...tickers, ...searchTickers])]
+    }
     if (tickers.length > 0) {
       try {
         const quotes = await getBatchQuotes(tickers)
