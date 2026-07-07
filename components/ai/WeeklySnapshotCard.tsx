@@ -140,11 +140,13 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCard, setExpandedCard] = useState<'health' | 'risk' | 'opportunities' | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force?: boolean) => {
     setLoading(true);
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
-      const r = await apiGet(`/api/ai/weekly-snapshot?tz=${encodeURIComponent(tz)}`);
+      const params = new URLSearchParams({ tz });
+      if (force) params.set('forceRegen', 'true');
+      const r = await apiGet(`/api/ai/weekly-snapshot?${params.toString()}`);
       const d = await r.json();
       setData(d);
     } catch {
@@ -165,7 +167,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     try {
       await apiDelete('/api/ai/weekly-snapshot');
     } catch { /* continue */ }
-    await load();
+    await load(true);
   };
 
   const toggleCard = (e: React.MouseEvent, card: 'health' | 'risk' | 'opportunities') => {
