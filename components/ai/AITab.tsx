@@ -403,6 +403,24 @@ export function AITab({ messages, setMessages }: AITabProps) {
   useEffect(() => {
     if (messages.length > 0) return;
     if (greetingFetchedRef.current) return;
+
+    // Check sessionStorage first — persist greeting across unmount/remount
+    const CACHE_KEY = 'vantage_greeting_snapshot';
+    const CACHE_TTL = 15 * 60 * 1000; // 15 min
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Date.now() - cached.at < CACHE_TTL) {
+          setGreetingOpener(cached.opener);
+          setGreetingHook(cached.hook);
+          setGreetingLoaded(true);
+          greetingFetchedRef.current = true;
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+
     greetingFetchedRef.current = true;
 
     loadGreeting();
@@ -473,6 +491,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
           setGreetingHook(data.hook);
           setGreetingLoaded(true);
 
+          // ── Save greeting to sessionStorage (persists across tab switches) ──
+          try {
+            sessionStorage.setItem('vantage_greeting_snapshot', JSON.stringify({
+              opener: data.opener,
+              hook: data.hook,
+              at: Date.now(),
+            }));
+          } catch { /* ignore */ }
+
           // ── Save category history + last hooks for next load ──
           try {
             sessionStorage.setItem(CATEGORY_HISTORY_KEY, JSON.stringify({
@@ -537,12 +564,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
 
-  useEffect(() => {
-    if (!loading) return;
-    if (wasAtBottomRef.current && !isUserScrollingRef.current) {
-      scrollToBottom(false);
-    }
-  }, [messages, loading]);
+  // ── Auto-scroll during streaming: DISABLED — user controls scrolling ──
+  // Previously scrolled to bottom on every token during generation.
+  // Now user scrolls manually; only initial message push scrolls.
+  // useEffect(() => {
+  //   if (!loading) return;
+  //   if (wasAtBottomRef.current && !isUserScrollingRef.current) {
+  //     scrollToBottom(false);
+  //   }
+  // }, [messages, loading]);
 
   // ── Responsive Explore button: switch to icon-only below ~340px ──
   useEffect(() => {
@@ -1651,10 +1681,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   return <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '32px 0' }}>No recent conversations</p>;
                 }
                 return sessions.map((session, i) => {
-                  const aiMsg = session.messages.find(m => m.role === 'ai');
-                  const preview = aiMsg ? (aiMsg.content.length > 100 ? aiMsg.content.slice(0, 97) + '...' : aiMsg.content) : (session.messages[0]?.content?.slice(0, 80) + '...' || 'Empty chat');
-                  const firstUser = session.messages.find(m => m.role === 'user');
-                  const displayPreview = firstUser ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"` : preview;
+                  const aiMsg = session.messages.find((m: any) => m.role === 'ai' || m.role === 'assistant');
+                  const rawPreview = aiMsg ? aiMsg.content : (session.messages[0]?.content || 'Empty chat');
+                  // Strip markdown for clean preview: remove **bold**, ## headers, *italics*, ---, etc.
+                  const cleanPreview = rawPreview
+                    .replace(/^#{1,6}\s+/gm, '')     // strip markdown headers
+                    .replace(/\*\*(.+?)\*\*/g, '$1')  // strip bold
+                    .replace(/\*(.+?)\*/g, '$1')       // strip italic
+                    .replace(/`(.+?)`/g, '$1')         // strip inline code
+                    .replace(/^---+/gm, '')            // strip horizontal rules
+                    .replace(/\n{3,}/g, '\n\n')       // collapse multiple newlines
+                    .trim();
+                  const displayPreview = cleanPreview.length > 120 ? cleanPreview.slice(0, 117) + '...' : cleanPreview;
+                  const firstUser = session.messages.find((m: any) => m.role === 'user');
+                  const finalPreview = firstUser ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"` : displayPreview;
                   const date = new Date(session.updatedAt);
                   const now = new Date();
                   const isToday = date.toDateString() === now.toDateString();
@@ -1667,7 +1707,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       <div onClick={() => { const msgs = loadSessionMessages(session.id); if (msgs) { setMessages(msgs); setCurrentSessionId(session.id); } setShowHistory(false); wasAtBottomRef.current = true; scrollToBottom(false); }}
                         style={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: i < sessions.length - 1 ? '10px' : '0', cursor: 'pointer', transition: 'border-color 0.15s' }}>
                         <p style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '500', margin: '0 0 6px 0' }}>{dateLabel}</p>
-                        <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{displayPreview}</p>
+                        <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{finalPreview}</p>
                         <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{session.messages.length} message{session.messages.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
