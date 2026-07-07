@@ -32,11 +32,10 @@ FORMAT RULES:
 - No generic fluff. Every bullet must name a specific ticker, dollar amount, or percentage.
 
 ─── FACTS-AWARE CROSS-CHECK (CRITICAL) ───
-Before finalizing your Opportunities and Risks sections, check the "AI FACTS" grounding context provided in the prompt:
-1. If any active [question·*] fact exists for a subject (e.g. "AXP drawdown cause unconfirmed"), any recommendation touching that same subject MUST defer to the question — e.g. "cause still unconfirmed — see Risks section" — do NOT assert a confident conclusion contradicting an open question.
-2. If an active [observation·*] fact exists about portfolio-level concentration (e.g. "financials concentration 59%, flagged as watch item"), any recommendation that would INCREASE that concentration MUST explicitly acknowledge the tradeoff in its own text.
-3. Opportunities and Risks must be internally consistent — if Risks says X is a concern, Opportunities must not dismiss X as irrelevant or resolved. If they disagree, Opportunities should reference the Risk explicitly: "(see Risks section re: X)".
-4. Facts marked [tentative] or [unconfirmed] must NOT be treated as definitive. If a fact says "Pending verification: …", surface the uncertainty rather than acting on it.
+Before finalizing your Risks section, check the "AI FACTS" grounding context provided in the prompt:
+1. If any active [question·*] fact exists for a subject (e.g. "AXP drawdown cause unconfirmed"), any analysis touching that same subject MUST defer to the question — e.g. "cause still unconfirmed" — do NOT assert a confident conclusion contradicting an open question.
+2. If an active [observation·*] fact exists about portfolio-level concentration (e.g. "financials concentration 59%, flagged as watch item"), the Risks section must explicitly acknowledge it.
+3. Facts marked [tentative] or [unconfirmed] must NOT be treated as definitive. If a fact says "Pending verification: …", surface the uncertainty rather than acting on it.
 
 Health scores must reflect reality: if ADBE is down 60%, the score cannot be above 6/10. Period.
 
@@ -57,13 +56,6 @@ LOW: no sector >40%, no position down >20%
 MEDIUM: sector 40-60% OR position down 20-40%
 HIGH: sector >60% OR position down >40%
 
-## OPPORTUNITIES (list 2-3):
-Format each opportunity EXACTLY like this (use these exact sub-headers):
-- **What:** [single sentence describing the opportunity]
-- **Why:** [why it fits the investor's style]
-- **Consider at:** [price level worth watching — use suggestive language like "worth considering" or "could explore", not imperative "buy/sell"]
-Use - bullets (not numbered). Separate each opportunity with a blank line.
-
 ## RISKS (list 2-3):
 Format each risk EXACTLY like this (use these exact sub-headers):
 - **Risk:** [single sentence — what is happening]
@@ -73,7 +65,7 @@ Use - bullets (not numbered). Separate each risk with a blank line.
 
 ## SUMMARY:
 
-Lead with the dollar amounts at stake when relevant. "You can harvest $4,094 in losses from ADBE" is better than "ADBE presents a tax loss harvesting opportunity." Make every benefit concrete and specific.
+Lead with the dollar amounts at stake when relevant. Make every benefit concrete and specific.
 
 Use actual ticker symbols and dollar amounts from the portfolio context. Never be generic. Frame all analysis through the investor's chosen style lens.
 
@@ -105,17 +97,9 @@ async function writeSnapshotFacts(
 ): Promise<Array<{ subject: string; claim: string; fact_type: string; id?: string }>> {
   const written: Array<{ subject: string; claim: string; fact_type: string; id?: string }> = [];
   try {
-    // Extract OPPORTUNITIES section
-    const oppRe = new RegExp(
-      '(?:##\s*)?OPPORTUNITIES?\s*\n([\s\S]*?)(?=##\s*(?:SUMMARY|RISK\\S))',
-      'i',
-    );
-    const oppMatch = content.match(oppRe);
-    const oppText = oppMatch?.[1] || '';
-
     // Extract RISKS section
     const riskRe = new RegExp(
-      '(?:##\s*)?RISKS?\s*\n([\s\S]*?)(?=##\s*(?:SUMMARY|OPPORTUNITIES?))',
+      '(?:##\s*)?RISKS?\s*\n([\s\S]*?)(?=##\s*SUMMARY)',
       'i',
     );
     const riskMatch = content.match(riskRe);
@@ -124,7 +108,6 @@ async function writeSnapshotFacts(
     // Parse risks into facts: each risk block starts with **Risk:**
     // Split on lines that begin a new risk block (containing **Risk:**)
     const riskBlocks = riskText.split(/\n(?=\s*[-•*]\s+\*\*Risk:\*\*)/).filter(Boolean);
-    const writtenRiskIds: string[] = [];
 
     for (const block of riskBlocks) {
       const riskLine = block.match(/\*\*Risk:\*\*\s*(.+?)(?:\n|$)/i);
@@ -147,48 +130,7 @@ async function writeSnapshotFacts(
         });
 
         if (r.fact) {
-          writtenRiskIds.push(r.fact.id);
           written.push({ subject, claim, fact_type: 'observation', id: r.fact.id });
-        }
-      }
-    }
-
-    // Parse opportunities into recommendation facts
-    // Split on lines that begin a new opportunity block (containing **What:**)
-    const oppBlocks = oppText.split(/\n(?=\s*[-•*]\s+\*\*What:\*\*)/).filter(Boolean);
-
-    for (const block of oppBlocks) {
-      const whatLine = block.match(/\*\*What:\*\*\s*(.+?)(?:\n|$)/i);
-      const whyLine = block.match(/\*\*Why:\*\*\s*(.+?)(?:\n|$)/i);
-
-      if (whatLine) {
-        const claimWhat = whatLine[1].trim();
-        // Combine what + why for the full claim
-        const whyText = whyLine?.[1]?.trim() || '';
-        const fullClaim = whyText ? `${claimWhat} | ${whyText}` : claimWhat;
-
-        // Determine subject from the claim
-        let subject = 'portfolio';
-        for (const sym of symbols) {
-          if (fullClaim.toUpperCase().includes(sym.toUpperCase())) {
-            subject = sym;
-            break;
-          }
-        }
-
-        // based_on: reference any risk observations written above that
-        // mention the same subject
-        const r = await writeFact(userId, {
-          subject,
-          fact_type: 'recommendation',
-          claim: fullClaim,
-          confidence: 'tentative', // recommendations are never confirmed
-          based_on: writtenRiskIds.length > 0 ? writtenRiskIds : null,
-          source: 'weekly_snapshot',
-        });
-
-        if (r.fact) {
-          written.push({ subject, claim: fullClaim, fact_type: 'recommendation', id: r.fact.id });
         }
       }
     }
@@ -236,9 +178,8 @@ export async function GET(req: NextRequest) {
       // Re-parse if cached fields are null but content exists (fix for old busted cache entries)
       let healthScore = existing.health_score;
       let riskLevel = existing.risk_level;
-      let opportunitiesCount = existing.opportunities_count;
 
-      if (existing.content && (healthScore == null || riskLevel == null || opportunitiesCount == null || opportunitiesCount === 0)) {
+      if (existing.content && (healthScore == null || riskLevel == null)) {
         const reHealthMatch = existing.content.match(/(?:OVERALL HEALTH|PORTFOLIO HEALTH):?\s*(?:\(score\s*)?(\d+\.?\d*)\s*\/\s*10/i);
         if (healthScore == null && reHealthMatch) healthScore = parseFloat(reHealthMatch[1]);
 
@@ -250,18 +191,10 @@ export async function GET(req: NextRequest) {
           if (rlMatch) riskLevel = rlMatch[1].toUpperCase();
         }
 
-        if (opportunitiesCount == null || opportunitiesCount === 0) {
-          const reOppSection = existing.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISK|RISKS)(?:\s|$)|$)/i);
-          const reOppContent = reOppSection?.[1] || '';
-          const reOppBullets = reOppContent.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
-          if (reOppBullets) opportunitiesCount = reOppBullets.length;
-        }
-
         // Update DB with corrected values
         (supabase as any).from('weekly_snapshots').update({
           health_score: healthScore,
           risk_level: riskLevel,
-          opportunities_count: opportunitiesCount,
         }).eq('user_id', userId).eq('week_start', weekStartStr).then(() => {}).catch(() => {});
       }
 
@@ -269,7 +202,6 @@ export async function GET(req: NextRequest) {
         content: existing.content,
         healthScore,
         riskLevel,
-        opportunitiesCount,
         weekStart: weekStartStr,
         generatedAt: existing.generated_at || null,
         cached: true,
@@ -291,7 +223,6 @@ export async function GET(req: NextRequest) {
         content: null,
         healthScore: null,
         riskLevel: null,
-        opportunitiesCount: 0,
         weekStart: weekStartStr,
         generatedAt: null,
         cached: false,
@@ -448,13 +379,6 @@ export async function GET(req: NextRequest) {
       if (rlMatch) riskLevel = rlMatch[1].toUpperCase();
     }
 
-    // Count opportunities only from the OPPORTUNITIES section
-    // Matches: - bullets, * bullets, • bullets, 1. numbered, **1.** bold-numbered
-    const oppSection = content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISK|RISKS)(?:\s|$)|$)/i);
-    const oppContent = oppSection?.[1] || '';
-    const oppBullets = oppContent.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
-    const opportunitiesCount = oppBullets ? oppBullets.length : 0;
-
     // Save
     await (supabase as any).from('weekly_snapshots').upsert(
       {
@@ -462,7 +386,6 @@ export async function GET(req: NextRequest) {
         week_start: weekStartStr,
         health_score: healthScore,
         risk_level: riskLevel,
-        opportunities_count: opportunitiesCount,
         content,
         generated_at: generatedAt,
       },
@@ -479,7 +402,6 @@ export async function GET(req: NextRequest) {
       content,
       healthScore,
       riskLevel,
-      opportunitiesCount,
       weekStart: weekStartStr,
       generatedAt,
       cached: false,

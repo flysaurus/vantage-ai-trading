@@ -31,7 +31,6 @@ interface SnapshotData {
   content?: string | null;
   healthScore?: number | null;
   riskLevel?: string | null;
-  opportunitiesCount?: number;
   weekStart?: string;
   generatedAt?: string | null;
   cached?: boolean;
@@ -40,7 +39,6 @@ interface SnapshotData {
 interface ParsedSections {
   health: string;
   risk: string;
-  opportunities: string;
   summary: string;
 }
 
@@ -114,8 +112,7 @@ function parseSections(content: string): ParsedSections {
 
   return {
     health: parse('(?:OVERALL HEALTH|PORTFOLIO HEALTH)', ['RISKS?', 'OVERALL RISK', 'RISK LEVEL']),
-    risk: parse('(?:RISKS?|OVERALL RISK|RISK LEVEL)', ['OPPORTUNITIES?', 'SUMMARY']),
-    opportunities: parse('OPPORTUNITIES?', ['SUMMARY', 'RISKS?', 'RISK']),
+    risk: parse('(?:RISKS?|OVERALL RISK|RISK LEVEL)', ['SUMMARY']),
     summary: parse('SUMMARY', []),
   };
 }
@@ -123,10 +120,9 @@ function parseSections(content: string): ParsedSections {
 const SUB_CARD_TITLES: Record<string, string> = {
   health: 'Portfolio Health',
   risk: 'Risk Assessment',
-  opportunities: 'Opportunities',
 };
 
-const SUB_CARD_ORDER = ['health', 'risk', 'opportunities'] as const;
+const SUB_CARD_ORDER = ['health', 'risk'] as const;
 
 interface WeeklySnapshotCardProps {
   mode?: 'pill' | 'content';
@@ -138,7 +134,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
   const [data, setData] = useState<SnapshotData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedCard, setExpandedCard] = useState<'health' | 'risk' | 'opportunities' | null>(null);
+  const [expandedCard, setExpandedCard] = useState<'health' | 'risk' | null>(null);
 
   const load = useCallback(async (force?: boolean) => {
     setLoading(true);
@@ -180,7 +176,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     await load(true);
   };
 
-  const toggleCard = (e: React.MouseEvent, card: 'health' | 'risk' | 'opportunities') => {
+  const toggleCard = (e: React.MouseEvent, card: 'health' | 'risk') => {
     e.stopPropagation();
     setExpandedCard((prev) => (prev === card ? null : card));
   };
@@ -287,15 +283,9 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     );
   }
 
-  const { healthScore, riskLevel: apiRiskLevel, opportunitiesCount, generatedAt } = data;
+  const { healthScore, riskLevel: apiRiskLevel, generatedAt } = data;
   const sections = parseSections(data.content);
   const riskLevel = apiRiskLevel || extractRiskFromSection(sections.risk);
-
-  const realOppCount = (() => {
-    // Always count from actual content — never trust the stored count (can be stale)
-    const bullets = sections.opportunities.match(/^\s*(?:[-•*]\s|\d+\.\s|\*\*\d+\.\*\*\s)/gm);
-    return bullets ? bullets.length : (opportunitiesCount ?? 0);
-  })();
 
   const healthSummaryColor = healthScore != null
     ? healthScore >= 7 ? GAIN : healthScore >= 5 ? WARNING : LOSS
@@ -304,7 +294,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
   const riskSummaryColor = riskLevel === 'LOW' ? GAIN : riskLevel === 'HIGH' ? LOSS : riskLevel === 'MEDIUM' ? WARNING : 'rgba(255,255,255,0.3)';
   const riskBadgeBg = riskLevel === 'LOW' ? BADGE_LOW_BG : riskLevel === 'HIGH' ? BADGE_HIGH_BG : riskLevel === 'MEDIUM' ? BADGE_MED_BG : 'transparent';
 
-  const subCardValue = (card: 'health' | 'risk' | 'opportunities'): { text: string; color: string; isBadge?: boolean; badgeBg?: string } | null => {
+  const subCardValue = (card: 'health' | 'risk'): { text: string; color: string; isBadge?: boolean; badgeBg?: string } | null => {
     switch (card) {
       case 'health':
         if (healthScore != null) return { text: `${healthScore}/10`, color: healthSummaryColor };
@@ -312,9 +302,6 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
       case 'risk':
         if (riskLevel) return { text: riskLevel, color: riskSummaryColor, isBadge: true, badgeBg: riskBadgeBg };
         return { text: 'Calculating…', color: 'rgba(255,255,255,0.3)' };
-      case 'opportunities':
-        if (realOppCount > 0) return { text: `${realOppCount}`, color: GAIN };
-        return { text: '0', color: 'rgba(255,255,255,0.3)' };
     }
   };
 
@@ -419,19 +406,14 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
 
       {/* Sub-pills */}
       {SUB_CARD_ORDER.map((key, idx) => {
-        const value = subCardValue(key as 'health' | 'risk' | 'opportunities');
+        const value = subCardValue(key);
         const isExpanded = expandedCard === key;
-        let sectionContent = sections[key as keyof ParsedSections];
-        // Fallback: if parsing failed but we have content, try server-side regex directly
-        if (!sectionContent && key === 'opportunities' && realOppCount > 0 && data.content) {
-          const fb = data.content.match(/(?:##\s*)?OPPORTUNITIES?\s*\n?([\s\S]*?)(?=(?:##\s*)?(?:SUMMARY|RISKS?|RISK)(?:\s|$)|$)/i);
-          sectionContent = (fb?.[1] || '').trim();
-        }
+        const sectionContent = sections[key as keyof ParsedSections];
 
         return (
           <div key={key} style={{ marginBottom: idx < SUB_CARD_ORDER.length - 1 ? '8px' : 0 }}>
             <button
-              onClick={(e) => toggleCard(e, key as 'health' | 'risk' | 'opportunities')}
+              onClick={(e) => toggleCard(e, key)}
               style={{
                 width: '100%',
                 textAlign: 'left',
