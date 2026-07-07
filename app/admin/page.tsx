@@ -264,7 +264,13 @@ function GenLogView({ logs }: { logs: GenLogEntry[] }) {
 // ─── Main Admin Page ───────────────────────────────────────────
 
 export default function AdminPage() {
-  const [code, setCode] = useState('');
+  // Auto-populate code from URL query param
+  const [code, setCode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('code') || '';
+    }
+    return '';
+  });
   const [userId, setUserId] = useState('');
   const [tab, setTab] = useState<'facts' | 'logs'>('facts');
   const [facts, setFacts] = useState<Fact[]>([]);
@@ -324,7 +330,9 @@ export default function AdminPage() {
         {/* Auth controls */}
         <div className="flex gap-3 mb-6 flex-wrap items-end">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Admin Code</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Admin Code {code && <span className="text-green-500">✓ from URL</span>}
+            </label>
             <input
               type="password"
               value={code}
@@ -339,18 +347,21 @@ export default function AdminPage() {
               type="text"
               value={userId}
               onChange={e => setUserId(e.target.value)}
-              placeholder="UUID from users table"
+              placeholder="e.g. 58ffa82a-2b14-4a5d-9662-5c48f105031f"
               className="px-3 py-2 border rounded text-sm w-80 font-mono dark:bg-gray-800 dark:border-gray-600"
             />
           </div>
           <button
             onClick={() => { if (tab === 'facts') loadFacts(); else loadLogs(); }}
-            disabled={loading}
+            disabled={loading || !code || !userId}
             className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? 'Loading...' : 'Load'}
           </button>
         </div>
+        <p className="text-xs text-gray-400 -mt-4 mb-4">
+          Tip: visit <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/admin?code=your-code</code> to pre-fill the admin code
+        </p>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
