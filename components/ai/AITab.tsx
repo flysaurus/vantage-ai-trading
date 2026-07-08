@@ -9,8 +9,8 @@ import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
-import { saveCurrentSession, generateSessionId, getRecentSessions, loadSessionMessages } from '@/lib/chat-history';
-import { fetchRecentSessions, fetchSessionMessages, type DBSession } from '@/lib/chat-history-db';
+import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
+import { fetchRecentSessions, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import CompassIcon from '@/components/CompassIcon';
@@ -35,33 +35,27 @@ const GAIN = '#10b981';
 const WARNING = '#f59e0b';
 const BACKDROP_BLUR = 'blur(20px)';
 
-// ── Inline-only markdown components for history preview ──
-// Renders all markdown as inline spans so it fits within line-clamp.
-const INLINE_MARKDOWN_COMPONENTS = {
-  p: ({ children }: any) => <span>{children} </span>,
-  strong: ({ children }: any) => <strong style={{ color: '#ffffff', fontWeight: 700 }}>{children}</strong>,
-  em: ({ children }: any) => <em style={{ color: '#cbd5e1' }}>{children}</em>,
-  code: ({ children }: any) => <code style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '3px', padding: '0 4px', fontSize: '11px', color: '#22d3ee' }}>{children}</code>,
-  h1: ({ children }: any) => <span style={{ fontWeight: 700, color: '#ffffff' }}>{children} </span>,
-  h2: ({ children }: any) => <span style={{ fontWeight: 700, color: '#ffffff' }}>{children} </span>,
-  h3: ({ children }: any) => <span style={{ fontWeight: 700, color: '#22d3ee', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.03em' }}>{children} </span>,
-  h4: ({ children }: any) => <span style={{ fontWeight: 600, color: '#ffffff' }}>{children} </span>,
-  h5: ({ children }: any) => <span style={{ fontWeight: 600, color: '#ffffff' }}>{children} </span>,
-  h6: ({ children }: any) => <span style={{ fontWeight: 600, color: '#ffffff' }}>{children} </span>,
-  ul: ({ children }: any) => <span>{children}</span>,
-  ol: ({ children }: any) => <span>{children}</span>,
-  li: ({ children }: any) => <span>• {children} </span>,
-  hr: () => <span style={{ color: 'rgba(255,255,255,0.2)' }}> · </span>,
-  blockquote: ({ children }: any) => <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>"{children}" </span>,
-  a: ({ children }: any) => <span style={{ color: '#22d3ee', textDecoration: 'underline' }}>{children}</span>,
-  table: ({ children }: any) => <span>[table] </span>,
-  thead: ({ children }: any) => <span>{children}</span>,
-  tbody: ({ children }: any) => <span>{children}</span>,
-  tr: ({ children }: any) => <span>{children}</span>,
-  th: ({ children }: any) => <strong style={{ color: '#22d3ee', fontSize: '11px' }}>{children} </strong>,
-  td: ({ children }: any) => <span>{children} </span>,
-  img: ({ alt }: any) => <span>[image: {alt}]</span>,
-};
+// ── TL;DR extraction: client-side heuristic, zero API cost ──
+// Matches natural closing statements the AI already produces.
+const TLDR_PATTERN = /(?:^|\n)(?:Bottom[ -]?[Ll]ine|TL;DR|In [Ss]ummary|Key [Tt]akeaway|The [Gg]ist)[:—\-]?\s*/m;
+
+/** Check if a response is long enough to warrant a TL;DR toggle */
+function qualifiesForTLDR(content: string): boolean {
+  const paragraphs = content.split(/\n\n+/).filter(p => p.trim().length > 0);
+  return content.length > 500 || paragraphs.length >= 3;
+}
+
+/** Extract the summary line from a response, or return null */
+function extractTLDR(content: string): string | null {
+  const match = content.match(TLDR_PATTERN);
+  if (!match) return null;
+  const startIdx = match.index! + match[0].length;
+  // Take from match start to end of paragraph (next double newline or end of string)
+  const rest = content.slice(startIdx);
+  const endMatch = rest.match(/\n\n|$/);
+  const endIdx = endMatch ? endMatch.index! : rest.length;
+  return (match[0] + rest.slice(0, endIdx)).trim();
+}
 
 // ── Message counter (localStorage, per-day, UTC date = server-aligned) ──
 const getCountKey = () => {
@@ -191,12 +185,21 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const RATE_LIMIT_MS = 5000;
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [exploreCompact, setExploreCompact] = useState(false);
   const [exploreSeenCount, setExploreSeenCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // ── TL;DR toggle state (set of collapsed message indices) ──
+  const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
+  const toggleTLDR = useCallback((index: number) => {
+    setCollapsedTLDRs(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  }, []);
   const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
@@ -354,9 +357,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     fetchRecentSessions(userId, 10).then(sessions => {
       let allSessions: DBSession[] = sessions;
 
-      if (sessions.length > 0) {
-        setDbSessions(sessions);
-      } else {
+      if (sessions.length === 0) {
         // Fallback: no DB sessions yet — check device localStorage
         const local = getRecentSessions(10).map(s => ({
           id: s.id,
@@ -373,7 +374,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
           })),
         }));
         if (local.length > 0) {
-          setDbSessions(local as DBSession[]);
           allSessions = local as DBSession[];
         }
       }
@@ -384,7 +384,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const todaySession = allSessions.find(s => s.date === today);
         const targetSession = todaySession || allSessions[0];
         if (targetSession.messages.length > 0) {
-          setMessages(targetSession.messages.map(m => ({
+          // Load only last 10 messages (5 user/AI exchange pairs) on session start
+          const lastMessages = targetSession.messages.slice(-10);
+          setMessages(lastMessages.map(m => ({
             role: m.role as 'user' | 'ai',
             content: m.content,
           })));
@@ -393,41 +395,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
     }).catch(() => {});
   }, [userId]); // re-fetch when user changes
-
-  // ── Refresh sessions when opening history modal ──
-  useEffect(() => {
-    if (showHistory && userId) {
-      fetchRecentSessions(userId, 10).then(s => {
-        if (s.length > 0) {
-          setDbSessions(s);
-        } else {
-          // Fallback to device localStorage
-          const local = getRecentSessions(10).map(session => ({
-            id: session.id,
-            label: session.date,
-            date: new Date(session.updatedAt).toISOString().slice(0, 10),
-            timestamp: session.updatedAt,
-            preview: session.preview,
-            messageCount: session.messageCount,
-            messages: session.messages.map((m: any) => ({ id: '', role: m.role as 'user' | 'ai', content: m.content, createdAt: new Date(session.updatedAt).toISOString() })),
-          }));
-          if (local.length > 0) setDbSessions(local as DBSession[]);
-        }
-      }).catch(() => {
-        // Network error — fall back to localStorage
-        const local = getRecentSessions(10).map(session => ({
-          id: session.id,
-          label: session.date,
-          date: new Date(session.updatedAt).toISOString().slice(0, 10),
-          timestamp: session.updatedAt,
-          preview: session.preview,
-          messageCount: session.messageCount,
-          messages: session.messages.map((m: any) => ({ id: '', role: m.role as 'user' | 'ai', content: m.content, createdAt: new Date(session.updatedAt).toISOString() })),
-        }));
-        if (local.length > 0) setDbSessions(local as DBSession[]);
-      });
-    }
-  }, [showHistory, userId]);
 
   // ── Persist current session to DB cache (lightweight, offline fallback) ──
   // Only save metadata, not full message content — DB is authority.
@@ -441,7 +408,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
     }
   }, [messages.length]); // only on count change, NOT on every token
 
-  const [dbSessions, setDbSessions] = useState<DBSession[]>([]);
   // ── Category rotation tracking (no greeting caching) ──
   const CATEGORY_HISTORY_KEY = 'vantage_category_history';
 
@@ -670,29 +636,33 @@ export function AITab({ messages, setMessages }: AITabProps) {
     return () => { container.removeEventListener('scroll', handleScroll); clearTimeout(scrollTimeout); };
   }, []);
 
-  // ── Auto-scroll only for first message and user sends ──
+  // ── Scroll on user sends + initial load ──
   const prevMessageCountRef = useRef(0);
+  const initialScrollDoneRef = useRef(false);
   useEffect(() => {
     if (messages.length === 0) return;
-    if (messages.length === 1) { scrollToBottom(false); prevMessageCountRef.current = 1; return; }
+    // Initial load: scroll to bottom once on first non-empty render
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      scrollToBottom(false);
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role === 'user') {
       scrollToBottom(true);
       wasAtBottomRef.current = true;
     }
-    // AI messages: no auto-scroll — user controls position during generation
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
 
-  // ── Auto-scroll during streaming: DISABLED — user controls scrolling ──
-  // Previously scrolled to bottom on every token during generation.
-  // Now user scrolls manually; only initial message push scrolls.
-  // useEffect(() => {
-  //   if (!loading) return;
-  //   if (wasAtBottomRef.current && !isUserScrollingRef.current) {
-  //     scrollToBottom(false);
-  //   }
-  // }, [messages, loading]);
+  // ── Auto-scroll during streaming: pin to bottom unless user scrolled away ──
+  useEffect(() => {
+    if (!loading) return;
+    if (wasAtBottomRef.current && !isUserScrollingRef.current) {
+      scrollToBottom(false);
+    }
+  }, [messages, loading]);
 
   // ── Responsive Explore button: switch to icon-only below ~340px ──
   useEffect(() => {
@@ -801,7 +771,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
                 startDrainer();
-                // Auto-scroll disabled — user controls scroll during generation
+                // Auto-scroll handled by the streaming useEffect above (pin-to-bottom)
               }
             } catch (e) {}
           }
@@ -863,7 +833,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             setLastAIResponse(lastAiResponseRef.current);
             lastAiResponseRef.current = '';
             // Refresh session list after saving to DB
-            fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); setDbSessions(s); }).catch(() => {});
+            fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); }).catch(() => {});
           }
         } catch (e) {
           console.error('[AITab] save message failed:', e);
@@ -1113,24 +1083,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           overflow: 'hidden',
         }}>
           <button
-            onClick={() => { setShowMenu(false); setShowHistory(true); }}
-            style={{
-              display: 'block',
-              width: '100%',
-              background: 'transparent',
-              border: 'none',
-              color: '#e2e8f0',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              padding: '12px 16px',
-              cursor: 'pointer',
-              textAlign: 'left',
-              fontFamily: 'inherit',
-            }}
-          >
-            History
-          </button>
-          <button
             onClick={() => { setShowMenu(false); setShowClearConfirm(true); }}
             style={{
               display: 'block',
@@ -1326,25 +1278,61 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#22d3ee', marginBottom: '6px', letterSpacing: '0.03em' }}>
                 VANTAGE AI
               </div>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    p: ({ children }) => (<p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>{children}</p>),
-                    strong: ({ children }) => (<strong style={{ color: '#ffffff', fontWeight: '700' }}>{children}</strong>),
-                    ul: ({ children }) => (<ul style={{ margin: '4px 0 8px 0', paddingLeft: '16px', listStyleType: 'disc' }}>{children}</ul>),
-                    li: ({ children }) => (<li style={{ margin: '4px 0', lineHeight: '1.5' }}>{children}</li>),
-                    h2: ({ children }) => (<h2 style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', margin: '12px 0 8px 0' }}>{children}</h2>),
-                    h3: ({ children }) => (<h3 style={{ fontSize: '13px', fontWeight: '700', color: '#22d3ee', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h3>),
-                    code: ({ children }) => (<code style={{ background: '#0f1829', borderRadius: '4px', padding: '1px 6px', fontSize: '12px', color: '#22d3ee' }}>{children}</code>),
-                    table: ({ children }) => (<div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>{children}</table></div>),
-                    thead: ({ children }) => (<thead style={{ background: 'rgba(34,211,238,0.1)' }}>{children}</thead>),
-                    th: ({ children }) => (<th style={{ padding: '8px 12px', textAlign: 'left', color: '#22d3ee', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>{children}</th>),
-                    td: ({ children }) => (<td style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0', verticalAlign: 'top' }}>{children}</td>),
-                    hr: () => (<hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '12px 0' }} />),
-                  }}
-                >
-                  {msg.content}
-                </ReactMarkdown>
+              {(() => {
+                const tldr = extractTLDR(msg.content);
+                const showTLDR = tldr && qualifiesForTLDR(msg.content);
+                const isCollapsed = collapsedTLDRs.has(i);
+                return (
+                  <>
+                    {showTLDR && (
+                      <div style={{ marginBottom: isCollapsed ? '0' : '6px' }}>
+                        <button
+                          onClick={() => toggleTLDR(i)}
+                          style={{
+                            background: 'rgba(34,211,238,0.08)',
+                            border: '1px solid rgba(34,211,238,0.2)',
+                            borderRadius: '6px',
+                            color: '#22d3ee',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 10px',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            opacity: 0.85,
+                          }}
+                        >
+                          {isCollapsed ? 'Show full response ▲' : 'TL;DR ▼'}
+                        </button>
+                      </div>
+                    )}
+                    {isCollapsed ? (
+                      <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.6', fontStyle: 'italic', borderLeft: '2px solid rgba(34,211,238,0.3)', paddingLeft: '10px' }}>
+                        {tldr}
+                      </div>
+                    ) : (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => (<p style={{ margin: '0 0 8px 0', lineHeight: '1.6' }}>{children}</p>),
+                          strong: ({ children }) => (<strong style={{ color: '#ffffff', fontWeight: '700' }}>{children}</strong>),
+                          ul: ({ children }) => (<ul style={{ margin: '4px 0 8px 0', paddingLeft: '16px', listStyleType: 'disc' }}>{children}</ul>),
+                          li: ({ children }) => (<li style={{ margin: '4px 0', lineHeight: '1.5' }}>{children}</li>),
+                          h2: ({ children }) => (<h2 style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', margin: '12px 0 8px 0' }}>{children}</h2>),
+                          h3: ({ children }) => (<h3 style={{ fontSize: '13px', fontWeight: '700', color: '#22d3ee', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h3>),
+                          code: ({ children }) => (<code style={{ background: '#0f1829', borderRadius: '4px', padding: '1px 6px', fontSize: '12px', color: '#22d3ee' }}>{children}</code>),
+                          table: ({ children }) => (<div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>{children}</table></div>),
+                          thead: ({ children }) => (<thead style={{ background: 'rgba(34,211,238,0.1)' }}>{children}</thead>),
+                          th: ({ children }) => (<th style={{ padding: '8px 12px', textAlign: 'left', color: '#22d3ee', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>{children}</th>),
+                          td: ({ children }) => (<td style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0', verticalAlign: 'top' }}>{children}</td>),
+                          hr: () => (<hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '12px 0' }} />),
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    )}
+                  </>
+                );
+              })()}
                 {loading && i === messages.length - 1 && (
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
@@ -1915,76 +1903,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ======== CHAT WINDOW END ======== */}
       </div>
-
-      {/* ─── Chat History Modal ─── */}
-      {showHistory && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
-          onClick={() => setShowHistory(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: '#0a0f1e', borderTop: '1px solid #1e2d45', borderRadius: '20px 20px 0 0', maxHeight: 'calc(100dvh - env(safe-area-inset-top))', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', flex: 1 }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 8px 20px', flexShrink: 0 }}>
-              <p style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff' }}>Recent Conversations</p>
-              <button onClick={() => setShowHistory(false)} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '16px', cursor: 'pointer' }}>✕</button>
-            </div>
-            <p style={{ fontSize: '11px', color: '#cbd5e1', padding: '0 20px 16px 20px', flexShrink: 0 }}>From Supabase (synced across devices)</p>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px 20px' }}>
-              {(() => {
-                if (dbSessions.length === 0) {
-                  return <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '32px 0' }}>No recent conversations</p>;
-                }
-                return dbSessions.map((session, i) => {
-                  const rawPreview = session.preview;
-                  const firstUser = session.messages.find(m => m.role === 'user');
-                  const date = new Date(session.date + 'T12:00:00');
-                  const now = new Date();
-                  const isToday = session.date === now.toISOString().slice(0, 10);
-                  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-                  const isYesterday = session.date === yesterday.toISOString().slice(0, 10);
-                  const lastMsgTime = session.messages[session.messages.length - 1];
-                  const timeStr = lastMsgTime ? new Date(lastMsgTime.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
-                  const dateLabel = isToday ? `Today, ${timeStr}` : isYesterday ? `Yesterday, ${timeStr}` : `${session.label}, ${timeStr}`;
-
-                  return (
-                    <div key={session.id}>
-                      <div onClick={() => {
-                        setMessages(session.messages.map(m => ({ role: m.role as 'user' | 'ai', content: m.content })));
-                        setCurrentSessionId(session.id);
-                        setShowHistory(false);
-                        wasAtBottomRef.current = true;
-                        scrollToBottom(false);
-                      }}
-                        style={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: i < dbSessions.length - 1 ? '10px' : '0', cursor: 'pointer', transition: 'border-color 0.15s' }}>
-                        <p style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '500', margin: '0 0 6px 0' }}>{dateLabel}</p>
-                        {firstUser ? (
-                          <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>💬 "{firstUser.content.slice(0, 80)}{firstUser.content.length > 80 ? '...' : ''}"</p>
-                        ) : (
-                          <div className="markdown-body" style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={INLINE_MARKDOWN_COMPONENTS}
-                            >
-                              {rawPreview.slice(0, 250)}
-                            </ReactMarkdown>
-                          </div>
-                        )}
-                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{session.messageCount} message{session.messageCount !== 1 ? 's' : ''}</p>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-            <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid #1e2d45', flexShrink: 0 }}>
-              <button onClick={() => { setShowHistory(false); setMessages([]); setCurrentSessionId(null); setLoading(false); setToast(null); greetingFetchedRef.current = false; setGreetingLoaded(false); charQueueRef.current = []; displayedContentRef.current = ''; streamDoneRef.current = false; isDrainingRef.current = false; wasAtBottomRef.current = true; scrollToBottom(false); }}
-                style={{ width: '100%', background: 'transparent', border: '1px solid rgba(34,211,238,0.4)', borderRadius: '10px', color: '#22d3ee', fontSize: '14px', fontWeight: '500', padding: '12px 0', cursor: 'pointer' }}>＋ Start New Conversation</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ─── Clear Confirm Modal ─── */}
       {showClearConfirm && (
