@@ -100,19 +100,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 1.5 Usage limit check
-    const usageCheck = await checkUsageLimit(userId, 'dailyBrief');
-    if (!usageCheck.allowed) {
-      return NextResponse.json(
-        { error: 'Daily brief limit reached', reason: usageCheck.reason },
-        { status: 429 },
-      );
-    }
-
-    // 2. Check cache
+    // 1. Parse query params
+    const { searchParams } = new URL(req.url);
+    const forceRegen = searchParams.get('forceRegen') === 'true';
     const today = new Date().toISOString().split('T')[0];
     const supabase = createServerClient();
 
+    // 2. Check cache (no usage check for cached reads)
     const { data: existing } = await (supabase as any)
       .from('daily_briefs')
       .select('content, market_summary, generated_at')
@@ -120,13 +114,22 @@ export async function GET(req: NextRequest) {
       .eq('date', today)
       .maybeSingle();
 
-    if (existing) {
+    if (existing && !forceRegen) {
       return NextResponse.json({
         content: existing.content,
         marketSummary: existing.market_summary,
         generatedAt: existing.generated_at,
         cached: true,
       });
+    }
+
+    // 3. Usage limit check (only when generating fresh content)
+    const usageCheck = await checkUsageLimit(userId, 'dailyBrief');
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Daily brief limit reached', reason: usageCheck.reason },
+        { status: 429 },
+      );
     }
 
     // 3. Get live portfolio state from demo_portfolio_state
@@ -431,5 +434,29 @@ export async function GET(req: NextRequest) {
       { error: 'Failed to generate daily brief' },
       { status: 500 },
     );
+  }
+}
+
+/** DELETE /api/ai/daily-brief — Clear today's cached brief for regeneration */
+export async function DELETE(req: NextRequest) {
+  try {
+    const userId = await getOptionalUserId();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const supabase = createServerClient();
+
+    await (supabase as any)
+      .from('daily_briefs')
+      .delete()
+      .eq('user_id', userId)
+      .eq('date', today);
+
+    return NextResponse.json({ deleted: true });
+  } catch (error: any) {
+    console.error('[daily-brief] DELETE error:', error?.message || error);
+    return NextResponse.json({ deleted: true });
   }
 }

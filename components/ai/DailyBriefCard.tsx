@@ -1,7 +1,7 @@
 'use client';
 
-import { apiGet } from '@/lib/api-client';
-import { useState, useEffect } from 'react';
+import { apiDelete, apiGet } from '@/lib/api-client';
+import { useState, useEffect, useCallback } from 'react';
 
 // ── Design tokens ──
 const PILL_BG = 'rgba(255,255,255,0.05)';
@@ -77,15 +77,36 @@ interface DailyBriefCardProps {
 export default function DailyBriefCard({ mode = 'pill', active = false, onClick }: DailyBriefCardProps) {
   const [data, setData] = useState<BriefData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async (force?: boolean) => {
+    setLoading(true);
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+      const params = new URLSearchParams({ tz });
+      if (force) params.set('forceRegen', 'true');
+      const r = await apiGet(`/api/ai/daily-brief?${params.toString()}`);
+      if (!r.ok) return;
+      const d = await r.json();
+      setData(d);
+    } catch {
+      // keep previous data on error
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
-    apiGet(`/api/ai/daily-brief?tz=${encodeURIComponent(tz)}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    load();
+  }, [load]);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    try { await apiDelete('/api/ai/daily-brief'); } catch { /* continue */ }
+    await load(true);
+  };
 
   // ─── Loading skeleton ───
   if (loading) {
@@ -125,7 +146,90 @@ export default function DailyBriefCard({ mode = 'pill', active = false, onClick 
   }
 
   const brief = data?.content;
-  if (!brief) return null;
+
+  // ─── No content yet — show fallback pill (don't disappear) ───
+  if (!brief) {
+    if (mode === 'content') {
+      return (
+        <div
+          onClick={onClick}
+          style={{
+            marginTop: '10px',
+            background: CARD_BG,
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: '18px',
+            padding: '18px',
+            backdropFilter: BACKDROP_BLUR,
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>
+            Daily Brief
+          </div>
+          {loading ? (
+            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
+              Generating your market brief…
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6', marginBottom: '12px' }}>
+                No brief yet today. Generate one now for a quick market overview.
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleRefresh(e); }}
+                disabled={refreshing}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  color: '#fff',
+                  fontFamily: 'inherit',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {refreshing ? 'Generating…' : '↻ Generate'}
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    // Pill mode: always show, prompt to generate on expand
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          flex: 1,
+          background: PILL_BG,
+          border: `1px solid ${PILL_BORDER}`,
+          borderRadius: '999px',
+          padding: '14px 14px',
+          color: '#fff',
+          fontFamily: 'inherit',
+          fontSize: '14px',
+          fontWeight: 700,
+          cursor: 'pointer',
+          backdropFilter: BACKDROP_BLUR,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = PILL_HOVER_BG;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = PILL_BG;
+        }}
+      >
+        Daily Brief
+        <span style={{ fontSize: '12px', opacity: 0.5 }}>↻</span>
+      </button>
+    );
+  }
 
   const parsed = parseBrief(brief);
 
@@ -187,17 +291,42 @@ export default function DailyBriefCard({ mode = 'pill', active = false, onClick 
         <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
           Daily Brief<span style={{ fontWeight: 400, color: 'rgba(255,255,255,0.35)', marginLeft: '6px' }}>· Today</span>
         </span>
-        <span style={{
-          fontSize: '11px',
-          color: 'rgba(255,255,255,0.45)',
+        <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '3px',
+          gap: '8px',
           flexShrink: 0,
           marginLeft: '12px',
         }}>
-          ✨ AI · Updated {formatTime(data?.generatedAt)}
-        </span>
+          <span style={{
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px',
+          }}>
+            ✨ AI · Updated {formatTime(data?.generatedAt)}
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleRefresh(e); }}
+            disabled={refreshing}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 6,
+              color: 'rgba(255,255,255,0.45)',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 600,
+              lineHeight: 1,
+              padding: '4px 10px',
+              fontFamily: 'inherit',
+              opacity: refreshing ? 0.5 : 1,
+            }}
+          >
+            ↻
+          </button>
+        </div>
       </div>
 
       {/* Body — tagged lines */}
