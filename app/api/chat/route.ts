@@ -198,17 +198,18 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { messages, portfolioContext, additionalContext, mode, timezone } = body
 
-    // ── Usage limit check ──
+    // ── Usage limit check (type depends on mode) ──
     const userId = await getOptionalUserId();
+    const usageType = mode === 'deep' ? 'deepAnalysis' : 'message';
     if (userId && userId !== 'anonymous') {
-      const usageCheck = await checkUsageLimit(userId, 'message');
+      const usageCheck = await checkUsageLimit(userId, usageType);
       if (!usageCheck.allowed) {
         return Response.json(
           {
             error: usageCheck.reason || 'Daily limit reached',
             remaining: usageCheck.remaining,
             resetsIn: usageCheck.resetsIn,
-            type: 'message',
+            type: usageType,
           },
           { status: 429 }
         );
@@ -408,7 +409,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
             ? (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15
             : (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5;
           try {
-            await incrementUsage(userId, 'message', totalTokens, cost);
+            await incrementUsage(userId, usageType, totalTokens, cost);
           } catch (e) {
             console.error('[chat] incrementUsage failed:', e);
           }
