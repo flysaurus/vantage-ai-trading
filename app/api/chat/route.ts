@@ -395,9 +395,10 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           }
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        controller.close()
 
-        // ── Post-stream: log actual token usage & cost ──
+        // ── Post-stream: await DB write BEFORE closing the stream ──
+        // Must complete before controller.close() so the client's
+        // refreshRemaining() reads the updated count, not the old one.
         if (userId && userId !== 'anonymous') {
           const totalTokens = inputTokens + outputTokens;
           const isDeep = mode === 'deep';
@@ -406,10 +407,14 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           const cost = isDeep
             ? (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15
             : (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5;
-          incrementUsage(userId, 'message', totalTokens, cost).catch((e) =>
-            console.error('[chat] incrementUsage failed:', e),
-          );
+          try {
+            await incrementUsage(userId, 'message', totalTokens, cost);
+          } catch (e) {
+            console.error('[chat] incrementUsage failed:', e);
+          }
         }
+
+        controller.close()
 
         // ── Post-stream: detect style deviation & write fact ──
         try {

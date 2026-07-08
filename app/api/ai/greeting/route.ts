@@ -409,9 +409,11 @@ Opener to use: "${market.opener}"
       const usage = response.usage;
       const totalTokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
       const cost = (totalTokens / 1_000_000) * 1; // Haiku pricing
-      incrementUsage(userId, 'greeting', totalTokens, cost).catch((e) =>
-        console.error('[greeting] incrementUsage failed:', e),
-      );
+      try {
+        await incrementUsage(userId, 'greeting', totalTokens, cost);
+      } catch (e) {
+        console.error('[greeting] incrementUsage failed:', e);
+      }
     }
 
     // ── Step 4: Write greeting observation back as a fact ────

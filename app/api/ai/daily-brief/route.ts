@@ -392,9 +392,11 @@ export async function GET(req: NextRequest) {
     // Track usage
     const totalTokens = aiResponse.tokensUsed || 0;
     const cost = (totalTokens / 1_000_000) * 1; // Haiku pricing
-    incrementUsage(userId, 'dailyBrief', totalTokens, cost).catch((e) =>
-      console.error('[daily-brief] incrementUsage failed:', e),
-    );
+    try {
+      await incrementUsage(userId, 'dailyBrief', totalTokens, cost);
+    } catch (e) {
+      console.error('[daily-brief] incrementUsage failed:', e);
+    }
     const generatedAt = new Date().toISOString();
 
     // 9. Save to cache
