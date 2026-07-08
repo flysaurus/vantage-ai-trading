@@ -9,7 +9,8 @@ import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
-import { saveCurrentSession, getRecentSessions, loadSessionMessages, generateSessionId } from '@/lib/chat-history';
+import { saveCurrentSession, generateSessionId } from '@/lib/chat-history';
+import { fetchRecentSessions, fetchSessionMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import CompassIcon from '@/components/CompassIcon';
@@ -333,17 +334,47 @@ export function AITab({ messages, setMessages }: AITabProps) {
     refreshRemaining();
   }, [refreshRemaining]);
 
-  // ── persist chat to localStorage ──
+  // ── DB hydration: load recent sessions from Supabase on mount ──
   useEffect(() => {
-    if (messages.length > 0) {
+    if (!userId) return;
+    fetchRecentSessions(userId, 10).then(sessions => {
+      setDbSessions(sessions);
+      // If chat is empty and there's a session from today, hydrate it
+      if (messages.length === 0 && sessions.length > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        const todaySession = sessions.find(s => s.date === today);
+        const targetSession = todaySession || sessions[0];
+        if (targetSession.messages.length > 0) {
+          setMessages(targetSession.messages.map(m => ({
+            role: m.role as 'user' | 'ai',
+            content: m.content,
+          })));
+          setCurrentSessionId(targetSession.id);
+        }
+      }
+    }).catch(() => {});
+  }, [userId]); // re-fetch when user changes
+
+  // ── Refresh sessions when opening history modal ──
+  useEffect(() => {
+    if (showHistory && userId) {
+      fetchRecentSessions(userId, 10).then(setDbSessions).catch(() => {});
+    }
+  }, [showHistory, userId]);
+
+  // ── Persist current session to DB cache (lightweight, offline fallback) ──
+  // Only save metadata, not full message content — DB is authority.
+  useEffect(() => {
+    if (messages.length > 0 && currentSessionId) {
       const formatted = messages.map(m => ({
         role: (m.role as string === 'assistant' ? 'ai' : 'user') as 'user' | 'ai',
         content: m.content,
       }));
-      saveCurrentSession(currentSessionId || '', formatted);
+      saveCurrentSession(currentSessionId, formatted);
     }
-  }, [messages]);
+  }, [messages.length]); // only on count change, NOT on every token
 
+  const [dbSessions, setDbSessions] = useState<DBSession[]>([]);
   // ── Category rotation tracking (no greeting caching) ──
   const CATEGORY_HISTORY_KEY = 'vantage_category_history';
 
@@ -727,6 +758,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
           saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch(() => {});
           setLastAIResponse(lastAiResponseRef.current);
           lastAiResponseRef.current = '';
+          // Refresh session list after saving to DB
+          fetchRecentSessions(userId, 10).then(setDbSessions).catch(() => {});
         }
       } else if (lastAiResponseRef.current) {
         setLastAIResponse(lastAiResponseRef.current);
@@ -1695,28 +1728,34 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               <p style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff' }}>Recent Conversations</p>
               <button onClick={() => setShowHistory(false)} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '16px', cursor: 'pointer' }}>✕</button>
             </div>
-            <p style={{ fontSize: '11px', color: '#cbd5e1', padding: '0 20px 16px 20px', flexShrink: 0 }}>Last 7 days</p>
+            <p style={{ fontSize: '11px', color: '#cbd5e1', padding: '0 20px 16px 20px', flexShrink: 0 }}>From Supabase (synced across devices)</p>
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px 20px' }}>
               {(() => {
-                const sessions = getRecentSessions(3);
-                if (sessions.length === 0) {
+                if (dbSessions.length === 0) {
                   return <p style={{ fontSize: '13px', color: '#cbd5e1', textAlign: 'center', padding: '32px 0' }}>No recent conversations</p>;
                 }
-                return sessions.map((session, i) => {
-                  const aiMsg = session.messages.find((m: any) => m.role === 'ai' || m.role === 'assistant');
-                  const rawPreview = aiMsg ? aiMsg.content : (session.messages[0]?.content || 'Empty chat');
-                  const firstUser = session.messages.find((m: any) => m.role === 'user');
-                  const date = new Date(session.updatedAt);
+                return dbSessions.map((session, i) => {
+                  const rawPreview = session.preview;
+                  const firstUser = session.messages.find(m => m.role === 'user');
+                  const date = new Date(session.date + 'T12:00:00');
                   const now = new Date();
-                  const isToday = date.toDateString() === now.toDateString();
+                  const isToday = session.date === now.toISOString().slice(0, 10);
                   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-                  const isYesterday = date.toDateString() === yesterday.toDateString();
-                  const dateLabel = isToday ? `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : isYesterday ? `Yesterday, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                  const isYesterday = session.date === yesterday.toISOString().slice(0, 10);
+                  const lastMsgTime = session.messages[session.messages.length - 1];
+                  const timeStr = lastMsgTime ? new Date(lastMsgTime.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+                  const dateLabel = isToday ? `Today, ${timeStr}` : isYesterday ? `Yesterday, ${timeStr}` : `${session.label}, ${timeStr}`;
 
                   return (
                     <div key={session.id}>
-                      <div onClick={() => { const msgs = loadSessionMessages(session.id); if (msgs) { setMessages(msgs); setCurrentSessionId(session.id); } setShowHistory(false); wasAtBottomRef.current = true; scrollToBottom(false); }}
-                        style={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: i < sessions.length - 1 ? '10px' : '0', cursor: 'pointer', transition: 'border-color 0.15s' }}>
+                      <div onClick={() => {
+                        setMessages(session.messages.map(m => ({ role: m.role as 'user' | 'ai', content: m.content })));
+                        setCurrentSessionId(session.id);
+                        setShowHistory(false);
+                        wasAtBottomRef.current = true;
+                        scrollToBottom(false);
+                      }}
+                        style={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: i < dbSessions.length - 1 ? '10px' : '0', cursor: 'pointer', transition: 'border-color 0.15s' }}>
                         <p style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '500', margin: '0 0 6px 0' }}>{dateLabel}</p>
                         {firstUser ? (
                           <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>💬 "{firstUser.content.slice(0, 80)}{firstUser.content.length > 80 ? '...' : ''}"</p>
@@ -1730,7 +1769,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                             </ReactMarkdown>
                           </div>
                         )}
-                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{session.messages.length} message{session.messages.length !== 1 ? 's' : ''}</p>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{session.messageCount} message{session.messageCount !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
                   );

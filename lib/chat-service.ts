@@ -28,6 +28,22 @@ export async function saveChatMessage(
   content: string,
 ): Promise<string> {
   const supabase = createClient();
+  const messageType = role === 'user' ? 'user_message' : 'ai_response';
+
+  // Try updated RPC first (with message_type support), fall back to original
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.rpc as any)('insert_chat_message', {
+      p_user_id: userId,
+      p_role: role,
+      p_content: content,
+      p_message_type: messageType,
+    });
+    if (!error) return data as string;
+    console.warn('[chat-service] insert_chat_message with message_type failed, trying fallback:', error?.message);
+  } catch {}
+
+  // Fallback: old RPC without message_type, then update the row
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.rpc as any)('insert_chat_message', {
     p_user_id: userId,
@@ -40,7 +56,16 @@ export async function saveChatMessage(
     throw error;
   }
 
-  return data as string;
+  // Update message_type after insert (for old RPC that doesn't accept it)
+  const messageId = data as string;
+  try {
+    await (supabase as any)
+      .from('chat_messages')
+      .update({ message_type: messageType })
+      .eq('id', messageId);
+  } catch {}
+
+  return messageId;
 }
 
 /** Save multiple messages in bulk */
