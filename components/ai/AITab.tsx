@@ -34,6 +34,34 @@ const GAIN = '#10b981';
 const WARNING = '#f59e0b';
 const BACKDROP_BLUR = 'blur(20px)';
 
+// ── Inline-only markdown components for history preview ──
+// Renders all markdown as inline spans so it fits within line-clamp.
+const INLINE_MARKDOWN_COMPONENTS = {
+  p: ({ children }: any) => <span>{children} </span>,
+  strong: ({ children }: any) => <strong style={{ color: '#ffffff', fontWeight: 700 }}>{children}</strong>,
+  em: ({ children }: any) => <em style={{ color: '#cbd5e1' }}>{children}</em>,
+  code: ({ children }: any) => <code style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '3px', padding: '0 4px', fontSize: '11px', color: '#22d3ee' }}>{children}</code>,
+  h1: ({ children }: any) => <span style={{ fontWeight: 700, color: '#ffffff' }}>{children} </span>,
+  h2: ({ children }: any) => <span style={{ fontWeight: 700, color: '#ffffff' }}>{children} </span>,
+  h3: ({ children }: any) => <span style={{ fontWeight: 700, color: '#22d3ee', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.03em' }}>{children} </span>,
+  h4: ({ children }: any) => <span style={{ fontWeight: 600, color: '#ffffff' }}>{children} </span>,
+  h5: ({ children }: any) => <span style={{ fontWeight: 600, color: '#ffffff' }}>{children} </span>,
+  h6: ({ children }: any) => <span style={{ fontWeight: 600, color: '#ffffff' }}>{children} </span>,
+  ul: ({ children }: any) => <span>{children}</span>,
+  ol: ({ children }: any) => <span>{children}</span>,
+  li: ({ children }: any) => <span>• {children} </span>,
+  hr: () => <span style={{ color: 'rgba(255,255,255,0.2)' }}> · </span>,
+  blockquote: ({ children }: any) => <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>"{children}" </span>,
+  a: ({ children }: any) => <span style={{ color: '#22d3ee', textDecoration: 'underline' }}>{children}</span>,
+  table: ({ children }: any) => <span>[table] </span>,
+  thead: ({ children }: any) => <span>{children}</span>,
+  tbody: ({ children }: any) => <span>{children}</span>,
+  tr: ({ children }: any) => <span>{children}</span>,
+  th: ({ children }: any) => <strong style={{ color: '#22d3ee', fontSize: '11px' }}>{children} </strong>,
+  td: ({ children }: any) => <span>{children} </span>,
+  img: ({ alt }: any) => <span>[image: {alt}]</span>,
+};
+
 // ── Message counter (localStorage, per-day, UTC date = server-aligned) ──
 const getCountKey = () => {
   const today = new Date().toISOString().split('T')[0];
@@ -1677,18 +1705,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 return sessions.map((session, i) => {
                   const aiMsg = session.messages.find((m: any) => m.role === 'ai' || m.role === 'assistant');
                   const rawPreview = aiMsg ? aiMsg.content : (session.messages[0]?.content || 'Empty chat');
-                  // Strip markdown for clean preview: remove **bold**, ## headers, *italics*, ---, etc.
-                  const cleanPreview = rawPreview
-                    .replace(/^#{1,6}\s+/gm, '')     // strip markdown headers
-                    .replace(/\*\*(.+?)\*\*/g, '$1')  // strip bold
-                    .replace(/\*(.+?)\*/g, '$1')       // strip italic
-                    .replace(/`(.+?)`/g, '$1')         // strip inline code
-                    .replace(/^---+/gm, '')            // strip horizontal rules
-                    .replace(/\n{3,}/g, '\n\n')       // collapse multiple newlines
-                    .trim();
-                  const displayPreview = cleanPreview.length > 120 ? cleanPreview.slice(0, 117) + '...' : cleanPreview;
                   const firstUser = session.messages.find((m: any) => m.role === 'user');
-                  const finalPreview = firstUser ? `"${firstUser.content.slice(0, 60)}${firstUser.content.length > 60 ? '...' : ''}"` : displayPreview;
                   const date = new Date(session.updatedAt);
                   const now = new Date();
                   const isToday = date.toDateString() === now.toDateString();
@@ -1701,7 +1718,18 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       <div onClick={() => { const msgs = loadSessionMessages(session.id); if (msgs) { setMessages(msgs); setCurrentSessionId(session.id); } setShowHistory(false); wasAtBottomRef.current = true; scrollToBottom(false); }}
                         style={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: i < sessions.length - 1 ? '10px' : '0', cursor: 'pointer', transition: 'border-color 0.15s' }}>
                         <p style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '500', margin: '0 0 6px 0' }}>{dateLabel}</p>
-                        <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{finalPreview}</p>
+                        {firstUser ? (
+                          <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>💬 "{firstUser.content.slice(0, 80)}{firstUser.content.length > 80 ? '...' : ''}"</p>
+                        ) : (
+                          <div className="markdown-body" style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={INLINE_MARKDOWN_COMPONENTS}
+                            >
+                              {rawPreview.slice(0, 250)}
+                            </ReactMarkdown>
+                          </div>
+                        )}
                         <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{session.messages.length} message{session.messages.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
