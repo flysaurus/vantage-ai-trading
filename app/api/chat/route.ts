@@ -354,7 +354,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
 
     const stream = await client.messages.stream({
       model,
-      max_tokens: 4096,
+      max_tokens: mode === 'deep' ? 8192 : 4096,
       system: systemBlocks as any,
       messages: messages.map((m: any) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
@@ -362,17 +362,23 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       }))
     })
 
-    // ── Increment usage (non-blocking, after check passes) ──
-    if (userId && userId !== 'anonymous') {
-      incrementUsage(userId, 'message').catch(() => {});
-    }
-
     // Return streaming response (accumulate for deviation detection)
     const encoder = new TextEncoder()
     const fullResponse: string[] = []
     const readable = new ReadableStream({
       async start(controller) {
+        let inputTokens = 0;
+        let outputTokens = 0;
+
         for await (const chunk of stream) {
+          // Capture token usage from streaming events
+          if (chunk.type === 'message_start') {
+            inputTokens = (chunk as any).message?.usage?.input_tokens || 0;
+          }
+          if (chunk.type === 'message_delta') {
+            outputTokens = (chunk as any).usage?.output_tokens || 0;
+          }
+
           if (
             chunk.type === 'content_block_delta' &&
             chunk.delta.type === 'text_delta'
@@ -385,6 +391,20 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         controller.close()
+
+        // ── Post-stream: log actual token usage & cost ──
+        if (userId && userId !== 'anonymous') {
+          const totalTokens = inputTokens + outputTokens;
+          const isDeep = mode === 'deep';
+          // Claude 4.5 Haiku: $1/MTok input, $5/MTok output
+          // Claude 4.6 Sonnet: $3/MTok input, $15/MTok output
+          const cost = isDeep
+            ? (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15
+            : (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5;
+          incrementUsage(userId, 'message', totalTokens, cost).catch((e) =>
+            console.error('[chat] incrementUsage failed:', e),
+          );
+        }
 
         // ── Post-stream: detect style deviation & write fact ──
         try {

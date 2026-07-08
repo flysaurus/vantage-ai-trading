@@ -18,6 +18,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { writeFact } from '@/lib/ai/facts';
 import { beginGenLog } from '@/lib/ai/generation-log';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
+import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -214,6 +215,17 @@ export async function POST(req: NextRequest) {
     // ── Auth: get userId for facts read/write ──────────────
     const userId = await getOptionalUserId();
 
+    // ── Usage limit check ──
+    if (userId) {
+      const usageCheck = await checkUsageLimit(userId, 'greeting');
+      if (!usageCheck.allowed) {
+        return NextResponse.json(
+          { error: 'Greeting limit reached', reason: usageCheck.reason },
+          { status: 429 },
+        );
+      }
+    }
+
     // ── Fetch AI facts for grounding context (with audit logging) ──
     const genLog = await beginGenLog(userId, 'greeting');
     const factsContext = genLog.factsPrompt;
@@ -351,6 +363,7 @@ Your new hook MUST be genuinely different. Do NOT rephrase the same observation 
 Opener to use: "${market.opener}"
 `;
 
+    // ── Call Anthropic for greeting generation ──
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
@@ -390,6 +403,16 @@ Opener to use: "${market.opener}"
     const hook = parts[1] || null;
 
     console.log('[Greeting] Parsed:', { opener, hook });
+
+    // ── Track token usage ──
+    if (userId) {
+      const usage = response.usage;
+      const totalTokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
+      const cost = (totalTokens / 1_000_000) * 1; // Haiku pricing
+      incrementUsage(userId, 'greeting', totalTokens, cost).catch((e) =>
+        console.error('[greeting] incrementUsage failed:', e),
+      );
+    }
 
     // ── Step 4: Write greeting observation back as a fact ────
     if (userId && hook) {

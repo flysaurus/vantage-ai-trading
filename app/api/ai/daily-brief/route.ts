@@ -15,6 +15,7 @@ import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
+import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard';
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
@@ -97,6 +98,15 @@ export async function GET(req: NextRequest) {
     const userId = await getOptionalUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // 1.5 Usage limit check
+    const usageCheck = await checkUsageLimit(userId, 'dailyBrief');
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Daily brief limit reached', reason: usageCheck.reason },
+        { status: 429 },
+      );
     }
 
     // 2. Check cache
@@ -378,6 +388,13 @@ export async function GET(req: NextRequest) {
     });
 
     const content = aiResponse.content.trim();
+
+    // Track usage
+    const totalTokens = aiResponse.tokensUsed || 0;
+    const cost = (totalTokens / 1_000_000) * 1; // Haiku pricing
+    incrementUsage(userId, 'dailyBrief', totalTokens, cost).catch((e) =>
+      console.error('[daily-brief] incrementUsage failed:', e),
+    );
     const generatedAt = new Date().toISOString();
 
     // 9. Save to cache

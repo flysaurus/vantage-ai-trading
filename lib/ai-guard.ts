@@ -1,11 +1,35 @@
 // ─── AI Usage Guard ───────────────────────────────────────────
-// Daily usage limits per user + finance-only query filter.
+// Multi-dimensional usage limits with daily + monthly caps,
+// demo trial deep-analysis pool, and per-surface counters.
 // Server-side only — uses createServerClient for Supabase access.
 // Limits are tier-aware: read from tier_feature_values via get_tier_limit RPC.
 
 import { createServerClient } from '@/lib/supabase';
 
-// ─── Tier-Aware Limit Resolution ──────────────────────────
+export type UsageType = 'message' | 'deepAnalysis' | 'dailyBrief' | 'weeklySnapshot' | 'greeting';
+
+export interface LimitCheck {
+  allowed: boolean;
+  remaining: number;
+  resetsIn: string;
+  reason?: string;
+}
+
+// ─── Tier resolution ────────────────────────────────────
+
+async function getUserTier(userId: string): Promise<string> {
+  const supabase = createServerClient();
+  try {
+    const { data } = await (supabase as any)
+      .from('users')
+      .select('tier')
+      .eq('id', userId)
+      .single();
+    return data?.tier || 'demo';
+  } catch {
+    return 'demo';
+  }
+}
 
 async function getUserTierLimit(
   userId: string,
@@ -19,74 +43,188 @@ async function getUserTierLimit(
     if (!error && typeof data === 'number') return data;
   } catch { /* throw below */ }
 
-  // DB unavailable — throw so callers decide (fail-open for chat)
   throw new Error('get_tier_limit RPC unavailable');
 }
 
-// ─── Usage Check ──────────────────────────────────────────
+// ─── Usage Check (multi-dimensional) ─────────────────────
 
 export async function checkUsageLimit(
   userId: string,
-  type: 'message' | 'deepAnalysis'
-): Promise<{
-  allowed: boolean;
-  remaining: number;
-  resetsIn: string;
-}> {
+  type: UsageType,
+): Promise<LimitCheck> {
+  const tier = await getUserTier(userId);
   const today = new Date().toISOString().split('T')[0];
   const supabase = createServerClient();
 
-  const [{ data }, featureKey] = await Promise.all([
-    (supabase as any)
-      .from('ai_usage')
-      .select('message_count, deep_analysis_count')
-      .eq('user_id', userId)
-      .eq('date', today)
-      .single(),
-    Promise.resolve(type === 'message' ? 'ai_message_limit' : 'deep_analysis_limit'),
-  ]);
+  // Map type to feature keys and DB field
+  const configMap: Record<UsageType, {
+    dailyFeature: string;
+    monthlyFeature: string | null;
+    poolFeature?: string;
+    dbField: string;
+  }> = {
+    message: {
+      dailyFeature: 'ai_message_limit',
+      monthlyFeature: 'monthly_chat_limit',
+      dbField: 'message_count',
+    },
+    deepAnalysis: {
+      dailyFeature: 'deep_analysis_limit',
+      monthlyFeature: 'monthly_deep_limit',
+      poolFeature: 'demo_deep_pool',
+      dbField: 'deep_analysis_count',
+    },
+    dailyBrief: {
+      dailyFeature: 'daily_brief_limit',
+      monthlyFeature: null,
+      dbField: 'message_count',
+    },
+    weeklySnapshot: {
+      dailyFeature: 'weekly_snapshot_limit',
+      monthlyFeature: null,
+      dbField: 'message_count',
+    },
+    greeting: {
+      dailyFeature: 'greeting_limit',
+      monthlyFeature: null,
+      dbField: 'message_count',
+    },
+  };
 
-  // Calculate time until midnight UTC
+  const config = configMap[type];
+
+  // Get daily usage
+  const { data } = await (supabase as any)
+    .from('ai_usage')
+    .select(config.dbField)
+    .eq('user_id', userId)
+    .eq('date', today)
+    .single();
+
+  const dailyUsed = data?.[config.dbField] || 0;
+
+  // Get daily limit from DB
+  let dailyLimit = 25; // fallback default
+  try {
+    const limit = await getUserTierLimit(userId, config.dailyFeature);
+    if (typeof limit === 'number' && limit > 0) dailyLimit = limit;
+  } catch { /* fail open */ }
+
+  // Calculate hours until midnight UTC
   const now = new Date();
   const midnight = new Date();
   midnight.setUTCHours(24, 0, 0, 0);
   const hoursLeft = Math.ceil((midnight.getTime() - now.getTime()) / 3600000);
 
-  let limit: number;
-  try {
-    limit = await getUserTierLimit(userId, featureKey);
-  } catch {
-    // RPC unavailable — fail open, don't block user
-    return { allowed: true, remaining: 999, resetsIn: `${hoursLeft}h` };
+  // Check daily limit
+  if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetsIn: `${hoursLeft}h`,
+      reason: `Daily ${type} limit (${dailyLimit}) reached`,
+    };
   }
-  const used = type === 'message' ? (data?.message_count || 0) : (data?.deep_analysis_count || 0);
-  const remaining = Math.max(0, limit - used);
 
-  return { allowed: remaining > 0, remaining, resetsIn: `${hoursLeft}h` };
+  // For message/deepAnalysis: check monthly limit
+  if (config.monthlyFeature) {
+    try {
+      const monthlyLimit = await getUserTierLimit(userId, config.monthlyFeature);
+      if (typeof monthlyLimit === 'number' && monthlyLimit > 0) {
+        // Get user's monthly counters
+        const { data: userData } = await (supabase as any)
+          .from('users')
+          .select('monthly_chat_used, monthly_deep_used')
+          .eq('id', userId)
+          .single();
+
+        const monthlyUsed =
+          type === 'message'
+            ? (userData?.monthly_chat_used || 0)
+            : (userData?.monthly_deep_used || 0);
+
+        if (monthlyUsed >= monthlyLimit) {
+          const daysInMonth = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            0
+          ).getDate();
+          const daysLeft = daysInMonth - new Date().getDate();
+          return {
+            allowed: false,
+            remaining: 0,
+            resetsIn: `${daysLeft}d`,
+            reason: `Monthly ${type} limit (${monthlyLimit}) reached`,
+          };
+        }
+      }
+    } catch { /* fail open */ }
+  }
+
+  // For deepAnalysis: check demo trial pool
+  if (type === 'deepAnalysis' && tier === 'demo') {
+    try {
+      const poolLimit = await getUserTierLimit(userId, 'demo_deep_pool');
+      if (typeof poolLimit === 'number' && poolLimit > 0) {
+        const { data: userData } = await (supabase as any)
+          .from('users')
+          .select('demo_deep_pool_used, demo_expires_at')
+          .eq('id', userId)
+          .single();
+
+        const poolUsed = userData?.demo_deep_pool_used || 0;
+        if (poolUsed >= poolLimit) {
+          const expiresAt = userData?.demo_expires_at
+            ? new Date(userData.demo_expires_at)
+            : null;
+          const resetMsg =
+            expiresAt && expiresAt > new Date()
+              ? `Trial pool of ${poolLimit} deep analyses exhausted${expiresAt ? ` (resets ${expiresAt.toLocaleDateString()} with upgrade)` : ''}`
+              : `Trial pool exhausted. Upgrade to Silver/Gold for more deep analyses.`;
+          return { allowed: false, remaining: 0, resetsIn: 'upgrade', reason: resetMsg };
+        }
+      }
+    } catch { /* fail open */ }
+  }
+
+  const remaining = dailyLimit > 0 ? Math.max(0, dailyLimit - dailyUsed) : 999;
+  return { allowed: true, remaining, resetsIn: `${hoursLeft}h` };
 }
+
+// ─── Increment Usage (with monthly/pool counters) ────────
 
 export async function incrementUsage(
   userId: string,
-  type: 'message' | 'deepAnalysis',
+  type: UsageType,
   tokens?: number,
-  cost?: number
+  cost?: number,
 ) {
   const today = new Date().toISOString().split('T')[0];
+  const tier = await getUserTier(userId);
   const supabase = createServerClient();
+
+  // Map type to increment values
+  const isMessage =
+    type === 'message' ||
+    type === 'dailyBrief' ||
+    type === 'weeklySnapshot' ||
+    type === 'greeting';
+  const isDeep = type === 'deepAnalysis';
 
   // Try RPC first
   const { error: rpcError } = await (supabase as any).rpc('increment_ai_usage', {
     p_user_id: userId,
     p_date: today,
-    p_message_increment: type === 'message' ? 1 : 0,
-    p_analysis_increment: type === 'deepAnalysis' ? 1 : 0,
+    p_message_increment: isMessage ? 1 : 0,
+    p_analysis_increment: isDeep ? 1 : 0,
     p_tokens: tokens || 0,
-    p_cost: cost || 0
+    p_cost: cost || 0,
   });
 
   if (rpcError) {
+    console.error('[ai-guard] RPC increment_ai_usage failed:', rpcError);
     // Fallback: direct upsert
-    const field = type === 'message' ? 'message_count' : 'deep_analysis_count';
+    const field = isDeep ? 'deep_analysis_count' : 'message_count';
 
     const { data: existing } = await (supabase as any)
       .from('ai_usage')
@@ -101,7 +239,7 @@ export async function incrementUsage(
         .update({
           [field]: (existing[field] || 0) + 1,
           tokens_used: (existing.tokens_used || 0) + (tokens || 0),
-          cost_usd: (existing.cost_usd || 0) + (cost || 0)
+          cost_usd: (existing.cost_usd || 0) + (cost || 0),
         })
         .eq('user_id', userId)
         .eq('date', today);
@@ -111,16 +249,32 @@ export async function incrementUsage(
         .insert({
           user_id: userId,
           date: today,
-          message_count: type === 'message' ? 1 : 0,
-          deep_analysis_count: type === 'deepAnalysis' ? 1 : 0,
+          message_count: isMessage ? 1 : 0,
+          deep_analysis_count: isDeep ? 1 : 0,
           tokens_used: tokens || 0,
-          cost_usd: cost || 0
+          cost_usd: cost || 0,
         });
     }
+  } else {
+    console.log(
+      `[ai-guard] incrementUsage OK: user=${userId.slice(0, 8)} type=${type} tokens=${tokens || 0} cost=$${(cost || 0).toFixed(6)}`,
+    );
+  }
+
+  // Increment monthly/pool counters via RPC
+  try {
+    await (supabase as any).rpc('increment_user_counters', {
+      p_user_id: userId,
+      p_chat_delta: type === 'message' ? 1 : 0,
+      p_deep_delta: type === 'deepAnalysis' ? 1 : 0,
+      p_deep_pool_delta: type === 'deepAnalysis' && tier === 'demo' ? 1 : 0,
+    });
+  } catch (e) {
+    console.error('[ai-guard] RPC increment_user_counters failed:', e);
   }
 }
 
-// ─── Finance-Only Guard ──────────────────────────────────────
+// ─── Finance-Only Guard ───────────────────────────────────
 
 const FINANCE_KEYWORDS = [
   'portfolio', 'position', 'holding', 'allocation',

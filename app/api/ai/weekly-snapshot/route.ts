@@ -13,6 +13,7 @@ import type { SystemBlock } from '@/lib/ai-provider';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
+import { checkUsageLimit } from '@/lib/ai-guard';
 import { writeFact } from '@/lib/ai/facts';
 import { beginGenLog } from '@/lib/ai/generation-log';
 
@@ -167,6 +168,17 @@ export async function GET(req: NextRequest) {
     const forceRegen = searchParams.get('forceRegen') === 'true';
     const weekStartStr = getWeekStart();
     const supabase = createServerClient();
+
+    // Usage limit check (before cache lookup to prevent bypass)
+    if (forceRegen) {
+      const usageCheck = await checkUsageLimit(userId, 'weeklySnapshot');
+      if (!usageCheck.allowed) {
+        return NextResponse.json(
+          { error: 'Weekly snapshot limit reached', reason: usageCheck.reason },
+          { status: 429 },
+        );
+      }
+    }
 
     // Check cache
     const { data: existing } = await (supabase as any)
