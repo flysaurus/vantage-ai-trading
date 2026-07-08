@@ -34,7 +34,15 @@ const NOT_TICKERS = new Set([
 function extractTickers(text: string): string[] {
   // Match: $SPCX, SPCX (2-5 uppercase letters, standalone)
   const matches = text.match(/\$?\b([A-Z]{2,5})\b/g);
-  if (!matches) return [];
+  if (!matches) {
+    // Try single-letter tickers: only when explicitly in stock context
+    // e.g., "F stock", "C price quote", "T shares"
+    const singleLetter = text.match(/\$?\b([A-Z])\b\s*(?:stocks|shares|stock|share|price|quote|trading|ticker)\b/gi);
+    if (singleLetter) {
+      return [...new Set(singleLetter.map(t => t.replace(/[$\s]+.*$/g, '').toUpperCase()).filter(t => t.length === 1 && /^[A-Z]$/.test(t) && !NOT_TICKERS.has(t)))];
+    }
+    return [];
+  }
   const tickers = matches
     .map(t => t.replace('$', '').toUpperCase())
     .filter(t => !NOT_TICKERS.has(t));
@@ -59,31 +67,39 @@ function hasStockPriceIntent(text: string): boolean {
   return PRICE_QUERY_PATTERNS.some(p => p.test(text));
 }
 
-// ─── Company name extraction for Finnhub search ──
 function extractSearchTerm(text: string): string | null {
   // Strategy: extract proper nouns (capitalized words) and known company suffixes
   // Remove question marks, strip ticker symbols
   const cleaned = text
-    .replace(/\$[A-Z]{2,5}/g, '')  // remove $TICKER
+    .replace(/\$[A-Z]{1,5}/g, '')  // remove $TICKER
     .replace(/\b[A-Z]{2,5}\b/g, '') // remove bare TICKER
     .replace(/[?.!,]/g, '')
     .trim();
   
-  // Try: multi-word capitalized phrases (e.g., "Berkshire Hathaway")
-  const multiWord = cleaned.match(/\b([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
-  if (multiWord) return multiWord[1];
+  // Try: multi-word capitalized phrases (e.g., "Berkshire Hathaway", "Procter & Gamble")
+  const multiWord = cleaned.match(/\b([A-Z][a-z]+(?:\s+(?:of|the|de|van|von|del|&|and)\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g);
+  if (multiWord) {
+    // Pick the longest match — most likely to be a company name
+    const longest = multiWord.reduce((a, b) => b.length > a.length ? b : a);
+    if (!isFilteredWord(longest)) return longest;
+  }
   
-  // Try: single capitalized word (e.g., "SpaceX", "Tesla", "Apple")
-  const singleWord = cleaned.match(/\b([A-Z][a-z]{2,})\b/);
-  if (singleWord) {
-    // Filter out common non-company words
-    const word = singleWord[1];
-    if (!/^(This|That|What|When|Where|Which|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never)$/.test(word)) {
-      return word;
+  // Try: ALL capitalized words, skip filtered ones, pick the first real name
+  const allCapWords = cleaned.match(/\b([A-Z][a-z]{2,})\b/g);
+  if (allCapWords) {
+    for (const word of allCapWords) {
+      if (!isFilteredWord(word)) return word;
     }
   }
   
   return null;
+}
+
+// ─── Common non-company capitalized words ──
+const FILTERED_PROPER_NOUNS = /^(This|That|What|When|Where|Why|Which|Whose|How|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never|Tell|Show|Find|Look|Check|Search|Give|Make|Take|Know|Think|Want|Need|Like|Love|Can|Will|Just|Also|Only|Even|Then|Than|Its|His|Her|Our|Been|Being|Having|Doing|Going|Getting)$/;
+
+function isFilteredWord(word: string): boolean {
+  return FILTERED_PROPER_NOUNS.test(word);
 }
 
 // ─── Stage 0: DeepSeek Screening ───
