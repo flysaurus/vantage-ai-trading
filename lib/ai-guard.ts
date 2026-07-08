@@ -17,10 +17,10 @@ async function getUserTierLimit(
       .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: featureKey });
 
     if (!error && typeof data === 'number') return data;
-  } catch { /* fall through to defaults */ }
+  } catch { /* throw below */ }
 
-  // Hardcoded fallback if RPC unavailable
-  return featureKey === 'ai_message_limit' ? 25 : 20;
+  // DB unavailable — throw so callers decide (fail-open for chat)
+  throw new Error('get_tier_limit RPC unavailable');
 }
 
 // ─── Usage Check ──────────────────────────────────────────
@@ -46,15 +46,21 @@ export async function checkUsageLimit(
     Promise.resolve(type === 'message' ? 'ai_message_limit' : 'deep_analysis_limit'),
   ]);
 
-  const limit = await getUserTierLimit(userId, featureKey);
-  const used = type === 'message' ? (data?.message_count || 0) : (data?.deep_analysis_count || 0);
-  const remaining = Math.max(0, limit - used);
-
   // Calculate time until midnight UTC
   const now = new Date();
   const midnight = new Date();
   midnight.setUTCHours(24, 0, 0, 0);
   const hoursLeft = Math.ceil((midnight.getTime() - now.getTime()) / 3600000);
+
+  let limit: number;
+  try {
+    limit = await getUserTierLimit(userId, featureKey);
+  } catch {
+    // RPC unavailable — fail open, don't block user
+    return { allowed: true, remaining: 999, resetsIn: `${hoursLeft}h` };
+  }
+  const used = type === 'message' ? (data?.message_count || 0) : (data?.deep_analysis_count || 0);
+  const remaining = Math.max(0, limit - used);
 
   return { allowed: remaining > 0, remaining, resetsIn: `${hoursLeft}h` };
 }

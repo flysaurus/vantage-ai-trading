@@ -1,4 +1,4 @@
--- 023: Tier-based limits & feature gating
+-- 023: Tier-based limits & feature gating (v2 — zero hardcoded values)
 -- Adds ai_message_limit and deep_analysis_limit to tier_features
 -- Populates per-tier values: demo=25, silver=25, gold=50
 -- Run in Supabase SQL Editor.
@@ -45,7 +45,7 @@ BEGIN
 END;
 $$;
 
--- Function: get the numeric limit for a user's tier and feature key
+-- Function: get tier limit from DB — NO hardcoded defaults
 CREATE OR REPLACE FUNCTION get_tier_limit(
   p_user_id UUID,
   p_feature_key TEXT
@@ -66,6 +66,8 @@ BEGIN
   JOIN tier_features f ON f.id = fv.feature_id AND f.key = p_feature_key
   WHERE u.id = p_user_id;
 
-  RETURN COALESCE(v_limit, 25); -- fallback
+  -- If no row found (user or feature missing), return NULL
+  -- Caller handles the NULL case
+  RETURN v_limit;
 END;
 $$;
