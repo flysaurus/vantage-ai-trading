@@ -201,10 +201,15 @@ export async function POST(req: Request) {
     // ── Usage limit check ──
     const userId = await getOptionalUserId();
     if (userId && userId !== 'anonymous') {
-      const { allowed, remaining } = await checkUsageLimit(userId, 'message');
-      if (!allowed) {
+      const usageCheck = await checkUsageLimit(userId, 'message');
+      if (!usageCheck.allowed) {
         return Response.json(
-          { error: 'Daily limit reached', remaining: 0 },
+          {
+            error: usageCheck.reason || 'Daily limit reached',
+            remaining: usageCheck.remaining,
+            resetsIn: usageCheck.resetsIn,
+            type: 'message',
+          },
           { status: 429 }
         );
       }

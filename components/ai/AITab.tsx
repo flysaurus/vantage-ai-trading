@@ -313,26 +313,40 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── portfolio context for AI ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
 
-  // ── Remaining messages ──
-  const [localRemaining, setLocalRemaining] = useState(() => getLocalRemaining());
-  const [serverLimit, setServerLimit] = useState(25);
+  // ── Usage tracking (chat + deep) ──
+  const [chatRemaining, setChatRemaining] = useState(() => getLocalRemaining());
+  const [deepRemaining, setDeepRemaining] = useState(5);
+  const [tier, setTier] = useState('demo');
+  const [usageStats, setUsageStats] = useState<any>(null); // full stats for settings panel
 
   const refreshRemaining = useCallback(async () => {
     try {
       const res = await fetch('/api/usage/remaining');
       if (res.ok) {
         const data = await res.json();
-        setLocalRemaining(data.remaining);
-        setServerLimit(data.limit || 75);
+        setChatRemaining(data.chatRemaining ?? getLocalRemaining());
+        setDeepRemaining(data.deepRemaining ?? 5);
         return;
       }
     } catch { /* fall through */ }
-    setLocalRemaining(getLocalRemaining());
+    setChatRemaining(getLocalRemaining());
+  }, []);
+
+  const refreshUsageStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/usage/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setUsageStats(data);
+        setTier(data.tier || 'demo');
+      }
+    } catch { /* fail silently */ }
   }, []);
 
   useEffect(() => {
     refreshRemaining();
-  }, [refreshRemaining]);
+    refreshUsageStats();
+  }, [refreshRemaining, refreshUsageStats]);
 
   // ── DB hydration: load recent sessions from Supabase on mount ──
   useEffect(() => {
@@ -706,10 +720,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat', additionalContext?: string) => {
     if (!content.trim() || loading) return;
 
-    if (localRemaining <= 0) {
+    if (chatRemaining <= 0) {
+      const resetMsg = usageStats?.chat?.monthly
+        ? `Monthly chat limit reached — resets on the 1st. Upgrade to Gold for more messages.`
+        : `Daily chat limit reached — resets tomorrow.`;
       setMessages(prev => [...prev, {
         role: 'ai',
-        content: `📊 You've used all ${serverLimit} messages today. Your daily limit resets at midnight (local time).\n\nWant unlimited messages? Check the **Upgrade** tab in Settings — paid plans get 500+ messages/day with priority AI access.`
+        content: `📊 ${resetMsg}`
       }]);
       return;
     }
@@ -748,7 +765,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
       });
 
-      if (!res.ok) throw new Error('API error');
+      if (!res.ok) {
+        if (res.status === 429) {
+          const errData = await res.json().catch(() => ({}));
+          throw { status: 429, ...errData };
+        }
+        throw new Error('API error');
+      }
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
@@ -797,10 +820,33 @@ export function AITab({ messages, setMessages }: AITabProps) {
         return updated;
       });
       // Scroll suppressed — user controls position
-    } catch (error) {
+    } catch (error: any) {
       console.error('Chat error:', error);
       setToast(null);
-      setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
+      if (error?.status === 429) {
+        // Limit reached — build a clear system message
+        const reason = error?.reason || error?.error || 'Usage limit reached';
+        const resetsIn = error?.resetsIn || '';
+        const isPool = reason.includes('trial') || reason.includes('pool');
+        const isMonthly = reason.includes('Monthly') || reason.includes('monthly');
+
+        let msg = `📊 ${reason}`;
+        if (resetsIn === 'upgrade' || isPool) {
+          msg += `\n\nUpgrade to Silver or Gold for more deep analyses.`;
+        } else if (isMonthly) {
+          msg += `\n\nResets on the 1st of next month.`;
+        } else {
+          msg += `\n\nResets tomorrow.`;
+        }
+        // Only show upgrade mention for Demo/Silver
+        if (tier !== 'gold') {
+          const upgradeTarget = tier === 'demo' ? 'Silver' : 'Gold';
+          msg += ` Upgrade to ${upgradeTarget} on the [Plans &amp; Pricing](/plans) page.`;
+        }
+        setMessages(prev => [...prev, { role: 'ai', content: msg }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
+      }
     } finally {
       setLoading(false);
       incrementMessageCount();
@@ -1091,7 +1137,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             Clear Conversation
           </button>
           <button
-            onClick={() => { setShowMenu(false); setShowSettings(true); }}
+            onClick={() => { setShowMenu(false); setShowSettings(true); refreshUsageStats(); }}
             style={{
               display: 'block',
               width: '100%',
@@ -1329,14 +1375,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
-        {/* Usage + disclaimer — single combined line per spec */}
+        {/* Usage counter — chat + deep */}
         <div style={{
           fontSize: '11px',
-          color: 'rgba(255,255,255,0.35)',
+          color: (chatRemaining <= 3 || deepRemaining <= 3) ? WARNING : TEXT_MUTED,
           textAlign: 'center',
           marginBottom: '10px',
+          transition: 'color 0.3s ease',
         }}>
-          <b style={{ color: ACCENT }}>{localRemaining}</b> messages remaining today · AI-generated, not financial advice
+          <b style={{ color: chatRemaining <= 3 ? WARNING : ACCENT }}>
+            {chatRemaining}
+          </b> messages ·{' '}
+          <b style={{ color: deepRemaining <= 3 ? WARNING : ACCENT }}>
+            {deepRemaining}
+          </b> deep analyses remaining today
         </div>
 
         {/* Input bar — with Explore button */}
@@ -1399,12 +1451,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  if (localRemaining > 0) sendMessage(input);
+                  if (chatRemaining > 0) sendMessage(input);
                 }
               }}
               placeholder={chatPlaceholder}
               maxLength={500}
-              disabled={localRemaining <= 0}
+              disabled={chatRemaining <= 0}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -1417,19 +1469,19 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               }}
             />
             <div
-              onClick={() => { if (localRemaining > 0 && input.trim()) sendMessage(input); }}
+              onClick={() => { if (chatRemaining > 0 && input.trim()) sendMessage(input); }}
               style={{
                 width: '34px',
                 height: '34px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: input.trim() && localRemaining > 0 ? ACCENT : 'rgba(255,255,255,0.12)',
+                background: input.trim() && chatRemaining > 0 ? ACCENT : 'rgba(255,255,255,0.12)',
                 borderRadius: '50%',
                 fontSize: '15px',
-                color: input.trim() && localRemaining > 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
+                color: input.trim() && chatRemaining > 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
                 flexShrink: 0,
-                cursor: input.trim() && localRemaining > 0 ? 'pointer' : 'default',
+                cursor: input.trim() && chatRemaining > 0 ? 'pointer' : 'default',
                 fontWeight: 700,
               }}
             >
@@ -1473,6 +1525,90 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               AI Settings
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Usage section — full breakdown */}
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+              }}>
+                <div style={{ fontSize: '10.5px', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '12px' }}>
+                  Usage
+                </div>
+                {usageStats ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
+                    {/* Chat messages */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.65)' }}>Today&apos;s chat messages</span>
+                      <span style={{ color: usageStats.chat.daily.used >= usageStats.chat.daily.limit ? WARNING : '#e2e8f0', fontWeight: 600 }}>
+                        {usageStats.chat.daily.used} / {usageStats.chat.daily.limit}
+                      </span>
+                    </div>
+                    {/* Deep analyses */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.65)' }}>Today&apos;s deep analyses</span>
+                      <span style={{ color: usageStats.deepAnalysis.daily.used >= usageStats.deepAnalysis.daily.limit ? WARNING : '#e2e8f0', fontWeight: 600 }}>
+                        {usageStats.deepAnalysis.daily.used} / {usageStats.deepAnalysis.daily.limit}
+                      </span>
+                    </div>
+                    {/* Monthly deep (Silver/Gold) */}
+                    {usageStats.deepAnalysis.monthly && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>This month&apos;s deep</span>
+                        <span style={{ color: usageStats.deepAnalysis.monthly.used >= usageStats.deepAnalysis.monthly.limit ? WARNING : 'rgba(255,255,255,0.6)', fontWeight: 500 }}>
+                          {usageStats.deepAnalysis.monthly.used} / {usageStats.deepAnalysis.monthly.limit}
+                        </span>
+                      </div>
+                    )}
+                    {/* Monthly chat (Silver/Gold) */}
+                    {usageStats.chat.monthly && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>This month&apos;s chat</span>
+                        <span style={{ color: usageStats.chat.monthly.used >= usageStats.chat.monthly.limit ? WARNING : 'rgba(255,255,255,0.6)', fontWeight: 500 }}>
+                          {usageStats.chat.monthly.used} / {usageStats.chat.monthly.limit}
+                        </span>
+                      </div>
+                    )}
+                    {/* Demo pool */}
+                    {usageStats.deepAnalysis.demoPool && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>Trial deep analyses</span>
+                        <span style={{ color: usageStats.deepAnalysis.demoPool.used >= usageStats.deepAnalysis.demoPool.limit ? WARNING : 'rgba(255,255,255,0.6)', fontWeight: 500 }}>
+                          {usageStats.deepAnalysis.demoPool.used} / {usageStats.deepAnalysis.demoPool.limit}
+                        </span>
+                      </div>
+                    )}
+                    {/* Demo pool explanation */}
+                    {usageStats.deepAnalysis.demoPool && (
+                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', lineHeight: '1.4', marginTop: '2px' }}>
+                        Up to {usageStats.deepAnalysis.daily.limit} per day, {usageStats.deepAnalysis.demoPool.limit} total for your 30‑day trial.
+                      </div>
+                    )}
+                    {/* Upgrade nudge for Demo/Silver */}
+                    {tier !== 'gold' && (
+                      (() => {
+                        const ds = usageStats.deepAnalysis;
+                        const nearPoolLimit = ds.demoPool && (ds.demoPool.limit - ds.demoPool.used) <= 3;
+                        const nearMonthlyLimit = ds.monthly && (ds.monthly.limit - ds.monthly.used) <= 3;
+                        if (nearPoolLimit || nearMonthlyLimit) {
+                          return (
+                            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: '1.4', marginTop: '4px' }}>
+                              Frequently hitting your limit?{' '}
+                              <a href="/plans" style={{ color: ACCENT, textDecoration: 'underline' }}>
+                                {tier === 'demo' ? 'Silver includes more daily analysis.' : 'Gold includes more daily analysis.'}
+                              </a>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>Loading usage data…</div>
+                )}
+              </div>
+
               <div style={{
                 background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.08)',
