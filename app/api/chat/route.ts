@@ -354,7 +354,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
 
     const stream = await client.messages.stream({
       model,
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: systemBlocks as any,
       messages: messages.map((m: any) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
