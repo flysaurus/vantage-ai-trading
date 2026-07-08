@@ -9,7 +9,7 @@ import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
-import { saveCurrentSession, generateSessionId } from '@/lib/chat-history';
+import { saveCurrentSession, generateSessionId, getRecentSessions, loadSessionMessages } from '@/lib/chat-history';
 import { fetchRecentSessions, fetchSessionMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
@@ -338,12 +338,37 @@ export function AITab({ messages, setMessages }: AITabProps) {
   useEffect(() => {
     if (!userId) return;
     fetchRecentSessions(userId, 10).then(sessions => {
-      setDbSessions(sessions);
-      // If chat is empty and there's a session from today, hydrate it
-      if (messages.length === 0 && sessions.length > 0) {
+      let allSessions: DBSession[] = sessions;
+
+      if (sessions.length > 0) {
+        setDbSessions(sessions);
+      } else {
+        // Fallback: no DB sessions yet — check device localStorage
+        const local = getRecentSessions(10).map(s => ({
+          id: s.id,
+          label: s.date,
+          date: new Date(s.updatedAt).toISOString().slice(0, 10),
+          timestamp: s.updatedAt,
+          preview: s.preview,
+          messageCount: s.messageCount,
+          messages: s.messages.map((m: any) => ({
+            id: '',
+            role: m.role as 'user' | 'ai',
+            content: m.content,
+            createdAt: new Date(s.updatedAt).toISOString(),
+          })),
+        }));
+        if (local.length > 0) {
+          setDbSessions(local as DBSession[]);
+          allSessions = local as DBSession[];
+        }
+      }
+
+      // If chat is empty, hydrate from available sessions
+      if (messages.length === 0 && allSessions.length > 0) {
         const today = new Date().toISOString().slice(0, 10);
-        const todaySession = sessions.find(s => s.date === today);
-        const targetSession = todaySession || sessions[0];
+        const todaySession = allSessions.find(s => s.date === today);
+        const targetSession = todaySession || allSessions[0];
         if (targetSession.messages.length > 0) {
           setMessages(targetSession.messages.map(m => ({
             role: m.role as 'user' | 'ai',
@@ -358,7 +383,35 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── Refresh sessions when opening history modal ──
   useEffect(() => {
     if (showHistory && userId) {
-      fetchRecentSessions(userId, 10).then(setDbSessions).catch(() => {});
+      fetchRecentSessions(userId, 10).then(s => {
+        if (s.length > 0) {
+          setDbSessions(s);
+        } else {
+          // Fallback to device localStorage
+          const local = getRecentSessions(10).map(session => ({
+            id: session.id,
+            label: session.date,
+            date: new Date(session.updatedAt).toISOString().slice(0, 10),
+            timestamp: session.updatedAt,
+            preview: session.preview,
+            messageCount: session.messageCount,
+            messages: session.messages.map((m: any) => ({ id: '', role: m.role as 'user' | 'ai', content: m.content, createdAt: new Date(session.updatedAt).toISOString() })),
+          }));
+          if (local.length > 0) setDbSessions(local as DBSession[]);
+        }
+      }).catch(() => {
+        // Network error — fall back to localStorage
+        const local = getRecentSessions(10).map(session => ({
+          id: session.id,
+          label: session.date,
+          date: new Date(session.updatedAt).toISOString().slice(0, 10),
+          timestamp: session.updatedAt,
+          preview: session.preview,
+          messageCount: session.messageCount,
+          messages: session.messages.map((m: any) => ({ id: '', role: m.role as 'user' | 'ai', content: m.content, createdAt: new Date(session.updatedAt).toISOString() })),
+        }));
+        if (local.length > 0) setDbSessions(local as DBSession[]);
+      });
     }
   }, [showHistory, userId]);
 
@@ -753,13 +806,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
       incrementMessageCount();
       refreshRemaining();
       if (userId) {
-        saveChatMessage(userId, 'user', content).catch(() => {});
+        saveChatMessage(userId, 'user', content).catch((e) => { console.error('[AITab] save user msg failed:', e); });
         if (lastAiResponseRef.current) {
-          saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch(() => {});
+          saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch((e) => { console.error('[AITab] save ai msg failed:', e); });
           setLastAIResponse(lastAiResponseRef.current);
           lastAiResponseRef.current = '';
           // Refresh session list after saving to DB
-          fetchRecentSessions(userId, 10).then(setDbSessions).catch(() => {});
+          fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); setDbSessions(s); }).catch((e) => { console.error('[AITab] fetch sessions failed:', e); });
         }
       } else if (lastAiResponseRef.current) {
         setLastAIResponse(lastAiResponseRef.current);
