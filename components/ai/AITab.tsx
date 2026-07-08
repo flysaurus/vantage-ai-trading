@@ -855,13 +855,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
       incrementMessageCount();
       refreshRemaining();
       if (userId) {
-        saveChatMessage(userId, 'user', content).catch((e) => { console.error('[AITab] save user msg failed:', e); });
-        if (lastAiResponseRef.current) {
-          saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch((e) => { console.error('[AITab] save ai msg failed:', e); });
-          setLastAIResponse(lastAiResponseRef.current);
-          lastAiResponseRef.current = '';
-          // Refresh session list after saving to DB
-          fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); setDbSessions(s); }).catch((e) => { console.error('[AITab] fetch sessions failed:', e); });
+        try {
+          // Await both saves before anything else — prevents losing the last message on refresh
+          await saveChatMessage(userId, 'user', content);
+          if (lastAiResponseRef.current) {
+            await saveChatMessage(userId, 'assistant', lastAiResponseRef.current);
+            setLastAIResponse(lastAiResponseRef.current);
+            lastAiResponseRef.current = '';
+            // Refresh session list after saving to DB
+            fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); setDbSessions(s); }).catch(() => {});
+          }
+        } catch (e) {
+          console.error('[AITab] save message failed:', e);
+          // Still clear refs so we don't leak stale data
+          if (lastAiResponseRef.current) {
+            setLastAIResponse(lastAiResponseRef.current);
+            lastAiResponseRef.current = '';
+          }
         }
       } else if (lastAiResponseRef.current) {
         setLastAIResponse(lastAiResponseRef.current);
