@@ -13,6 +13,8 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
+import { InlineTradeButtons, parseSuggestions } from '@/components/ai/InlineTradeButton';
+import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
 import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
@@ -145,7 +147,7 @@ const PLACEHOLDERS = [
 ];
 
 export function AITab({ messages, setMessages }: AITabProps) {
-  const { account: liveAccount } = useLivePortfolio();
+  const { account: liveAccount, executeTrade } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : null;
@@ -193,6 +195,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
+
+  // ── Inline trade buttons — TradeTicket state ──
+  const [tradeTicket, setTradeTicket] = useState<{
+    symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
+    sharesHeld: number; availableCash: number;
+  } | null>(null);
+  // Track tickers the user asked about in their last message (for deviation scenarios)
+  const userAskedTickersRef = useRef<string[]>([]);
   const toggleTLDR = useCallback((index: number) => {
     setCollapsedTLDRs(prev => {
       const next = new Set(prev);
@@ -200,6 +210,27 @@ export function AITab({ messages, setMessages }: AITabProps) {
       return next;
     });
   }, []);
+
+  // ── Trade button handler: fetch live price → open TradeTicket ──
+  const handleTradeAction = useCallback(async (symbol: string, side: 'BUY' | 'SELL') => {
+    // Fetch live price
+    let currentPrice = 0;
+    try {
+      const res = await fetch(`/api/finnhub/quote?symbol=${symbol}`);
+      if (res.ok) {
+        const data = await res.json();
+        currentPrice = data.c || 0;
+      }
+    } catch { /* use 0 on error — TradeTicket handles validation */ }
+
+    // Get position data for this symbol
+    const positions = liveAccount?.positions || [];
+    const pos = positions.find((p: any) => p.symbol?.toUpperCase() === symbol.toUpperCase());
+    const sharesHeld = pos?.qty || 0;
+    const availableCash = liveAccount?.cash || 0;
+
+    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash });
+  }, [liveAccount]);
   const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
@@ -689,6 +720,17 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat', additionalContext?: string) => {
     if (!content.trim() || loading) return;
+
+    // Extract tickers the user asked about (for deviation scenario: AI suggests alternatives)
+    const tickerPattern = /\b([A-Z]{1,5}(?:\.[A-Z])?)\b/g;
+    const userTickers: string[] = [];
+    for (const m of content.matchAll(tickerPattern)) {
+      const t = m[1].toUpperCase();
+      if (!['ETF','IPO','SPAC','CEO','GDP','CPI','FOMC','SEC','EPS','PE','USD','EUR','VIX','SPX','NDX','AI','OK','BUY','SELL','ALL'].includes(t)) {
+        userTickers.push(t);
+      }
+    }
+    userAskedTickersRef.current = userTickers;
 
     if (chatRemaining <= 0) {
       const resetMsg = usageStats?.chat?.monthly
@@ -1333,6 +1375,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   </>
                 );
               })()}
+              {/* Inline trade buttons (Demo/Gold only) */}
+              {(() => {
+                if (tier === 'silver') return null;
+                const holdings = (liveAccount?.positions || []).map((p: any) => p.symbol?.toUpperCase());
+                const suggestions = parseSuggestions(msg.content, holdings, userAskedTickersRef.current);
+                if (suggestions.length === 0) return null;
+                return (
+                  <InlineTradeButtons
+                    suggestions={suggestions}
+                    enabled={tier !== 'silver'}
+                    onTrade={handleTradeAction}
+                  />
+                );
+              })()}
                 {loading && i === messages.length - 1 && (
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
@@ -1918,6 +1974,22 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </div>
         </div>
       )}
+
+      {/* ─── TradeTicket (inline chat entry) ─── */}
+      <TradeTicket
+        isOpen={tradeTicket !== null}
+        onClose={() => setTradeTicket(null)}
+        symbol={tradeTicket?.symbol || ''}
+        side={tradeTicket?.side || 'BUY'}
+        currentPrice={tradeTicket?.currentPrice || 0}
+        sharesHeld={tradeTicket?.sharesHeld || 0}
+        availableCash={tradeTicket?.availableCash || 0}
+        onConfirm={async (params) => {
+          if (!tradeTicket) return;
+          const price = params.type === 'limit' && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;
+          await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type);
+        }}
+      />
 
       {/* ── Learning Moment Card ── */}
       {learningCard && (
