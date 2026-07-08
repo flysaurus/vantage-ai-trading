@@ -1,11 +1,29 @@
 // ─── AI Usage Guard ───────────────────────────────────────────
 // Daily usage limits per user + finance-only query filter.
 // Server-side only — uses createServerClient for Supabase access.
+// Limits are tier-aware: read from tier_feature_values via get_tier_limit RPC.
 
 import { createServerClient } from '@/lib/supabase';
 
-// ─── Daily Limits ────────────────────────────────────────────
-// (limits are defined inline in checkUsageLimit — 75 messages, 20 deepAnalysis)
+// ─── Tier-Aware Limit Resolution ──────────────────────────
+
+async function getUserTierLimit(
+  userId: string,
+  featureKey: string
+): Promise<number> {
+  const supabase = createServerClient();
+  try {
+    const { data, error } = await (supabase as any)
+      .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: featureKey });
+
+    if (!error && typeof data === 'number') return data;
+  } catch { /* fall through to defaults */ }
+
+  // Hardcoded fallback if RPC unavailable
+  return featureKey === 'ai_message_limit' ? 25 : 20;
+}
+
+// ─── Usage Check ──────────────────────────────────────────
 
 export async function checkUsageLimit(
   userId: string,
@@ -18,18 +36,17 @@ export async function checkUsageLimit(
   const today = new Date().toISOString().split('T')[0];
   const supabase = createServerClient();
 
-  const { data, error } = await (supabase as any)
-    .from('ai_usage')
-    .select('message_count, deep_analysis_count')
-    .eq('user_id', userId)
-    .eq('date', today)
-    .single();
+  const [{ data }, featureKey] = await Promise.all([
+    (supabase as any)
+      .from('ai_usage')
+      .select('message_count, deep_analysis_count')
+      .eq('user_id', userId)
+      .eq('date', today)
+      .single(),
+    Promise.resolve(type === 'message' ? 'ai_message_limit' : 'deep_analysis_limit'),
+  ]);
 
-  console.log('checkUsageLimit:', { userId, type, today, data, error });
-
-  const LIMITS = { message: 25, deepAnalysis: 20 };
-
-  const limit = LIMITS[type];
+  const limit = await getUserTierLimit(userId, featureKey);
   const used = type === 'message' ? (data?.message_count || 0) : (data?.deep_analysis_count || 0);
   const remaining = Math.max(0, limit - used);
 
@@ -49,9 +66,6 @@ export async function incrementUsage(
   cost?: number
 ) {
   const today = new Date().toISOString().split('T')[0];
-
-  console.log('incrementUsage called:', { userId, type, today });
-
   const supabase = createServerClient();
 
   // Try RPC first
@@ -65,8 +79,6 @@ export async function incrementUsage(
   });
 
   if (rpcError) {
-    console.error('RPC increment failed:', rpcError);
-
     // Fallback: direct upsert
     const field = type === 'message' ? 'message_count' : 'deep_analysis_count';
 

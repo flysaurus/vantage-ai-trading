@@ -9,5 +9,5 @@ export async function GET(req: NextRequest) {
   }
 
   const { remaining } = await checkUsageLimit(userId, 'message');
-  return NextResponse.json({ remaining, limit: 25 });
+  return NextResponse.json({ remaining });
 }
