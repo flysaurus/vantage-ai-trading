@@ -41,6 +41,51 @@ function extractTickers(text: string): string[] {
   return [...new Set(tickers)]; // deduplicate
 }
 
+// ─── Stock price intent detection ──
+const PRICE_QUERY_PATTERNS = [
+  /\b(?:stock|share|price|trading|quote|ticker|IPO|valuation)\s+(?:price|of|for|at|is|now|today|right|currently)/i,
+  /\b(?:how\s+much|what(?:'s|\s+is)\s+the)\s+(?:price|stock|share|value|valuation|quote|worth)/i,
+  /\b(?:current|live|real.time|latest)\s+(?:price|stock|share|quote)/i,
+  /\b(?:is|are)\s+\w+\s+(?:public|listed|trading|IPO)/i,
+  /\b(?:what|how)\s+\w+\s+(?:trading|worth|cost|priced)\s*(?:at|right|now|today|\?)/i,
+  /\b(?:market\s+cap|marketcap|mkt\s+cap)\b/i,
+  /\b(?:what|how)(?:'s|\s+is|\s+are)\s+\w+\s*(?:at|going for|priced|now|right now|today)\b/i,
+  /\$(?:[A-Z]{2,5})\b/,  // $SPCX pattern — almost certainly asking about a stock
+  /\bprice\s+(?:of|for|on|check|target)\b/i,
+  /\b(?:buy|sell|invest\s+in)\s+\w+\s+(?:stock|share)/i,
+];
+
+function hasStockPriceIntent(text: string): boolean {
+  return PRICE_QUERY_PATTERNS.some(p => p.test(text));
+}
+
+// ─── Company name extraction for Finnhub search ──
+function extractSearchTerm(text: string): string | null {
+  // Strategy: extract proper nouns (capitalized words) and known company suffixes
+  // Remove question marks, strip ticker symbols
+  const cleaned = text
+    .replace(/\$[A-Z]{2,5}/g, '')  // remove $TICKER
+    .replace(/\b[A-Z]{2,5}\b/g, '') // remove bare TICKER
+    .replace(/[?.!,]/g, '')
+    .trim();
+  
+  // Try: multi-word capitalized phrases (e.g., "Berkshire Hathaway")
+  const multiWord = cleaned.match(/\b([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+  if (multiWord) return multiWord[1];
+  
+  // Try: single capitalized word (e.g., "SpaceX", "Tesla", "Apple")
+  const singleWord = cleaned.match(/\b([A-Z][a-z]{2,})\b/);
+  if (singleWord) {
+    // Filter out common non-company words
+    const word = singleWord[1];
+    if (!/^(This|That|What|When|Where|Which|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never)$/.test(word)) {
+      return word;
+    }
+  }
+  
+  return null;
+}
+
 // ─── Stage 0: DeepSeek Screening ───
 async function screenMessage(userMessage: string): Promise<{
   needsSearch: boolean
@@ -209,6 +254,26 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
     if (searchContext) {
       const searchTickers = extractTickers(searchContext)
       tickers = [...new Set([...tickers, ...searchTickers])]
+    }
+    // Tertiary: Finnhub search to resolve company names (e.g., "Tesla" → TSLA)
+    if (tickers.length === 0 && hasStockPriceIntent(lastMessage)) {
+      const searchTerm = extractSearchTerm(lastMessage)
+      if (searchTerm) {
+        try {
+          const fRes = await fetch(
+            `https://finnhub.io/api/v1/search?q=${encodeURIComponent(searchTerm)}&token=${process.env.FINNHUB_IO_API_KEY}`
+          )
+          if (fRes.ok) {
+            const fData = await fRes.json()
+            if (fData.result?.length > 0) {
+              tickers = fData.result.slice(0, 2).map((r: any) => r.symbol)
+              console.log('[chat] Finnhub search resolved:', searchTerm, '→', tickers)
+            }
+          }
+        } catch (e) {
+          console.error('[chat] Finnhub search error:', e)
+        }
+      }
     }
     if (tickers.length > 0) {
       try {

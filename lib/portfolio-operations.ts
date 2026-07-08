@@ -56,6 +56,92 @@ export async function clearPortfolio(userId: string): Promise<void> {
   ]);
 }
 
+// ─── activateLivePortfolio ──────────────────────────────────
+
+/**
+ * Switch from demo to live: clear all demo data, insert real broker
+ * positions and orders with is_demo = false.
+ * Updates user's portfolio_mode to 'live'.
+ */
+export async function activateLivePortfolio(
+  userId: string,
+  brokerPositions: Array<{
+    symbol: string;
+    qty: number;
+    avg_cost?: number;
+    current_price?: number;
+    market_value?: number;
+    unrealized_pnl?: number;
+    unrealized_pnl_pct?: number;
+    sector?: string | null;
+    industry?: string | null;
+    name?: string;
+  }>,
+  brokerOrders: Array<{
+    symbol: string;
+    qty: number;
+    filled_qty?: number;
+    side: string;
+    order_type?: string;
+    status: string;
+    filled_price?: number;
+    filled_at?: string;
+    time_in_force?: string;
+  }>,
+): Promise<void> {
+  const db = createServerClient();
+
+  // Clear existing (demo or stale live)
+  await clearPortfolio(userId);
+
+  // Insert live positions
+  const positionRows = brokerPositions.map((p) => ({
+    user_id: userId,
+    symbol: p.symbol,
+    qty: p.qty,
+    avg_cost: p.avg_cost ?? null,
+    current_price: p.current_price ?? null,
+    market_value: p.market_value ?? null,
+    unrealized_pnl: p.unrealized_pnl ?? null,
+    unrealized_pnl_pct: p.unrealized_pnl_pct ?? null,
+    sector: p.sector ?? null,
+    industry: p.industry ?? null,
+    name: p.name ?? null,
+    is_demo: false,
+  }));
+
+  if (positionRows.length > 0) {
+    await db.from('positions').insert(positionRows);
+  }
+
+  // Insert live orders
+  const orderRows = brokerOrders.map((o) => ({
+    user_id: userId,
+    symbol: o.symbol,
+    qty: o.qty,
+    filled_qty: o.filled_qty ?? o.qty,
+    side: o.side,
+    order_type: o.order_type || 'market',
+    status: o.status,
+    filled_price: o.filled_price ?? null,
+    filled_at: o.filled_at ?? new Date().toISOString(),
+    time_in_force: o.time_in_force || 'day',
+    is_demo: false,
+  }));
+
+  if (orderRows.length > 0) {
+    await db.from('orders').insert(orderRows);
+  }
+
+  // Update user
+  await db
+    .from('users')
+    .update({
+      portfolio_mode: 'live',
+    })
+    .eq('id', userId);
+}
+
 // ─── seedDemoPortfolio ───────────────────────────────────────
 
 /**
@@ -271,8 +357,6 @@ async function seedHistoricalSnapshots(
     // Non-fatal
   }
 }
-
-// ─── activateLivePortfolio ──────────────────────────────────
 
 // ─── switchDemoStyle ─────────────────────────────────────────
 
