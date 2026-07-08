@@ -30,7 +30,7 @@ export async function saveChatMessage(
   const supabase = createClient();
   const messageType = role === 'user' ? 'user_message' : 'ai_response';
 
-  // Try updated RPC first (with message_type support), fall back to original
+  // Try updated RPC with message_type
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase.rpc as any)('insert_chat_message', {
@@ -39,33 +39,36 @@ export async function saveChatMessage(
       p_content: content,
       p_message_type: messageType,
     });
-    if (!error) return data as string;
-    console.warn('[chat-service] insert_chat_message with message_type failed, trying fallback:', error?.message);
-  } catch {}
-
-  // Fallback: old RPC without message_type, then update the row
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase.rpc as any)('insert_chat_message', {
-    p_user_id: userId,
-    p_role: role,
-    p_content: content,
-  });
-
-  if (error) {
-    console.error('[chat-service] Failed to save message:', error);
-    throw error;
+    if (!error && data) return data as string;
+    if (error) {
+      console.warn('[chat-service] RPC insert failed:', error?.message, error?.code, error?.details);
+    }
+  } catch (e: any) {
+    console.error('[chat-service] RPC call threw:', e?.message, e?.code);
   }
 
-  // Update message_type after insert (for old RPC that doesn't accept it)
-  const messageId = data as string;
+  // Fallback: insert directly into chat_messages table
   try {
-    await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from('chat_messages')
-      .update({ message_type: messageType })
-      .eq('id', messageId);
-  } catch {}
+      .insert({
+        user_id: userId,
+        role,
+        content,
+        message_type: messageType,
+      })
+      .select('id')
+      .single();
 
-  return messageId;
+    if (error) {
+      console.error('[chat-service] Direct insert failed:', error?.message, error?.code, error?.details);
+      throw new Error(`Chat save failed: ${error?.message || 'unknown'}`);
+    }
+    return data?.id || '';
+  } catch (e: any) {
+    console.error('[chat-service] All save attempts failed:', e?.message);
+    throw e;
+  }
 }
 
 /** Save multiple messages in bulk */
