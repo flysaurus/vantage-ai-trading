@@ -255,8 +255,9 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       const searchTickers = extractTickers(searchContext)
       tickers = [...new Set([...tickers, ...searchTickers])]
     }
-    // Tertiary: Finnhub search to resolve company names (e.g., "Tesla" → TSLA)
-    if (tickers.length === 0 && hasStockPriceIntent(lastMessage)) {
+    // Tertiary: Finnhub search to resolve company names (e.g., "Tesla" → TSLA, "Google" → GOOGL)
+    // No intent gate — if extractSearchTerm() found a proper noun, it's worth a lookup.
+    if (tickers.length === 0) {
       const searchTerm = extractSearchTerm(lastMessage)
       if (searchTerm) {
         try {
