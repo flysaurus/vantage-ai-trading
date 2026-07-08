@@ -358,11 +358,14 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       ? 'claude-sonnet-4-6'
       : 'claude-haiku-4-5'
 
+    // Safety: cap messages to prevent context abuse (UI sends max 5)
+    const cappedMessages = messages.slice(-20);
+
     const stream = await client.messages.stream({
       model,
       max_tokens: mode === 'deep' ? 8192 : 4096,
       system: systemBlocks as any,
-      messages: messages.map((m: any) => ({
+      messages: cappedMessages.map((m: any) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content
       }))
