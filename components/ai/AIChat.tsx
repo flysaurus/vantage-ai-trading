@@ -242,15 +242,8 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     }
   }, []); // Only on mount
 
-  // Auto-scroll to bottom when new messages arrive (only if already near bottom)
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    if (isNearBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
+  // No auto-scroll during streaming. User controls scroll position.
+  // Scroll only when user sends a message (see handleSend / handleQuickPrompt).
 
   // Show cost info briefly after each response
   useEffect(() => {
@@ -307,6 +300,11 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     sendingRef.current = true;
     setInput('');
     sendMessage(trimmed, 'detailed', currentMode);
+
+    // Scroll to bottom when user sends — one-time, not during streaming
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
   }, [input, isLoading, sendMessage, currentMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -321,6 +319,11 @@ export function AIChat({ children }: { children?: React.ReactNode }) {
     sendingRef.current = true;
     setCurrentMode(mode);
     sendMessage(message, 'detailed', mode);
+
+    // Scroll to bottom when user triggers a quick prompt
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
   }, [isLoading, sendMessage]);
 
   const handlePushToRebalance = async (content: string) => {
