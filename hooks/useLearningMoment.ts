@@ -62,14 +62,14 @@ export function useLearningMoment(
   // ── Award XP + dismiss ─────────────────────────────────
   async function dismissLearning(gotIt: boolean) {
     if (gotIt && learningCard) {
-      const userId = user?.id || '';
-      if (userId) {
+      const anonymousId = user?.id || '';
+      if (anonymousId) {
         try {
           const res = await fetch('/api/gamification/increment-learning', { credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              userId,
+              anonymousId,
               xpAmount: learningCard.xp,
             }),
           });
@@ -85,6 +85,8 @@ export function useLearningMoment(
                 },
               })
             );
+          } else {
+            console.error('[useLearningMoment] XP award rejected:', res.status);
           }
         } catch (err) {
           console.error('[useLearningMoment] XP award failed:', err);

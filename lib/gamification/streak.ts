@@ -12,10 +12,11 @@ export interface StreakData {
 
 /**
  * Record a daily login and return the updated streak.
- * Uses user_id now (was anonymous_id pre-cleanup).
+ * Sends localDate to avoid server-timezone vs user-timezone bugs.
  */
-export async function recordDailyOpen(userId: string): Promise<StreakData> {
-  const res = await apiPost('/api/session/streak', { userId });
+export async function recordDailyOpen(anonymousId: string): Promise<StreakData> {
+  const localDate = new Date().toISOString().split('T')[0];
+  const res = await apiPost('/api/session/streak', { anonymousId, localDate });
 
   if (!res.ok) {
     throw new Error(`[streak] recordDailyOpen failed: ${res.status}`);
@@ -28,8 +29,8 @@ export async function recordDailyOpen(userId: string): Promise<StreakData> {
 /**
  * Fetch streak data from Supabase (read-only).
  */
-export async function getStreakData(userId: string): Promise<StreakData | null> {
-  const res = await fetch(`/api/session/streak?userId=${encodeURIComponent(userId)}`);
+export async function getStreakData(anonymousId: string): Promise<StreakData | null> {
+  const res = await fetch(`/api/session/streak?anonymousId=${encodeURIComponent(anonymousId)}`);
 
   if (!res.ok) {
     if (res.status === 404) return null;

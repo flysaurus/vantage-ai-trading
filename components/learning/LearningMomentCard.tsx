@@ -48,7 +48,7 @@ export function LearningMomentCard({
 
   const levelColor = getLevelColor(card.level);
   const investopediaUrl = card.investopediaSlug
-    ? `https://www.investopedia.com/terms/${card.investopediaSlug}`
+    ? `https://www.investopedia.com/terms/${card.investopediaSlug}.asp`
     : `https://www.investopedia.com/search?q=${encodeURIComponent(card.term)}`;
 
   // ── Enter animation ────────────────────────────────────

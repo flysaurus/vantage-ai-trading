@@ -23,6 +23,7 @@ import { SettingsTab } from '@/components/settings/SettingsTab';
 import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
+import { onDailyOpen } from '@/lib/gamification/events';
 import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { BrokerGate } from '@/components/onboarding/BrokerGate';
@@ -57,6 +58,7 @@ function AppShell() {
   const [showGreeting, setShowGreeting] = useState(false);
   const [showWelcomeToast, setShowWelcomeToast] = useState(false);
   const greetingShown = useRef(false);
+  const dailyOpenSent = useRef(false);
 
   const demoStatus = useMemo(() =>
     getDemoStatus(
@@ -115,6 +117,13 @@ function AppShell() {
       setTimeout(() => setShowGreeting(true), 300);
     }
   }, [effectiveUser, isDataLoaded, showOnboarding, showBrokerGate, isAuthenticated]);
+
+  // ── Daily streak sync ──
+  useEffect(() => {
+    if (!effectiveUser?.id || !isAuthenticated || dailyOpenSent.current) return;
+    dailyOpenSent.current = true;
+    onDailyOpen(effectiveUser.id).catch(() => {});
+  }, [effectiveUser?.id, isAuthenticated]);
 
   // ── Cross-component navigation ──
   useEffect(() => {

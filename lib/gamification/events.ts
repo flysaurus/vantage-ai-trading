@@ -210,8 +210,9 @@ export async function onDailyOpen(anonymousId: string): Promise<void> {
   if (!anonymousId) return;
 
   try {
-    // 1. Sync streak
-    const streakRes = await apiPost('/api/session/streak', { anonymousId });
+    // 1. Sync streak (send localDate to avoid server-timezone bugs)
+    const localDate = new Date().toISOString().split('T')[0];
+    const streakRes = await apiPost('/api/session/streak', { anonymousId, localDate });
 
     if (!streakRes.ok) return;
 

@@ -10,6 +10,8 @@
 // Client components call API routes instead.
 
 import { createServerClient } from '@/lib/supabase';
+import { calculateInvestorScore } from '@/lib/investor-score/calculate';
+import type { ScoreMetrics } from '@/lib/investor-score/calculate';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -25,14 +27,14 @@ export interface UpdateScoreResult {
   milestonesEarned: number;
 }
 
-// ─── Scoring Constants ───────────────────────────────────────
+// ─── Style Consistency / Risk Adherence Defaults ──────────────
 
-const POINTS_PER_BASKET = 10;
-const POINTS_PER_TRADE = 5;
-const POINTS_PER_AI_SESSION = 3;
-const STYLE_CONSISTENCY_SCORE = 20;
-const POINTS_PER_MILESTONE = 25;
-const MAX_STREAK_BONUS = 35; // 5 per day × 7 max days
+/** 0-100: % of trades matching investor style. 100 = fully consistent. */
+const STYLE_CONSISTENCY_MATCH = 100;
+/** Default when no data yet (neutral). */
+const STYLE_CONSISTENCY_DEFAULT = 50;
+/** Default risk adherence (moderate). */
+const RISK_ADHERENCE_DEFAULT = 70;
 
 // ─── Milestone Awarding ──────────────────────────────────────
 
@@ -154,6 +156,55 @@ async function getOrCreateScore(anonymousId: string): Promise<any> {
   return created;
 }
 
+// ─── Unified Score Computation ───────────────────────────────
+
+/**
+ * Compute the canonical investor score using calculateInvestorScore.
+ * This is the SINGLE source of truth — all score writes go through this.
+ */
+async function computeAndWriteScore(
+  supabase: any,
+  anonymousId: string,
+  row: any,
+  extraUpdates: Record<string, any> = {}
+): Promise<number> {
+  // Fetch current streak from streaks table
+  let currentStreak = 0;
+  try {
+    const { data: streak } = await supabase
+      .from('streaks')
+      .select('current_streak')
+      .eq('anonymous_id', anonymousId)
+      .maybeSingle();
+    currentStreak = streak?.current_streak || 0;
+  } catch {
+    // Non-fatal: just use 0
+  }
+
+  const metrics: ScoreMetrics = {
+    baskets_created: row.baskets_created || 0,
+    trades_executed: row.trades_executed || 0,
+    ai_sessions: row.ai_sessions || 0,
+    current_streak: currentStreak,
+    style_consistency: row.style_consistency ?? STYLE_CONSISTENCY_DEFAULT,
+    risk_adherence: RISK_ADHERENCE_DEFAULT,
+  };
+
+  const result = calculateInvestorScore(metrics);
+
+  await supabase
+    .from('investor_scores')
+    .update({
+      total_score: result.score,
+      last_activity: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...extraUpdates,
+    })
+    .eq('anonymous_id', anonymousId);
+
+  return result.score;
+}
+
 /**
  * Increment baskets_created and recalculate total score.
  */
@@ -165,21 +216,12 @@ export async function incrementBasketsCreated(
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
   const newBaskets = row.baskets_created + 1;
-  const basketPoints = newBaskets * POINTS_PER_BASKET;
-  const tradePoints = row.trades_executed * POINTS_PER_TRADE;
-  const aiPoints = row.ai_sessions * POINTS_PER_AI_SESSION;
-  const milestonePoints = row.milestones_earned * POINTS_PER_MILESTONE;
-  const totalScore = basketPoints + tradePoints + aiPoints + milestonePoints + row.style_consistency + row.streak_bonus;
 
-  await (supabase as any)
-    .from('investor_scores')
-    .update({
-      baskets_created: newBaskets,
-      total_score: totalScore,
-      last_activity: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('anonymous_id', anonymousId);
+  // Apply the increment to a cloned row so computeAndWriteScore sees it
+  const updatedRow = { ...row, baskets_created: newBaskets };
+  const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
+    baskets_created: newBaskets,
+  });
 
   return { success: true, totalScore, milestonesEarned: row.milestones_earned };
 }
@@ -197,29 +239,23 @@ export async function incrementTradesExecuted(
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
   const newTrades = row.trades_executed + 1;
-  const tradePoints = newTrades * POINTS_PER_TRADE;
-  const basketPoints = row.baskets_created * POINTS_PER_BASKET;
-  const aiPoints = row.ai_sessions * POINTS_PER_AI_SESSION;
-  const milestonePoints = row.milestones_earned * POINTS_PER_MILESTONE;
 
-  // Style consistency check
-  let styleConsistency = row.style_consistency;
+  // Style consistency: 0-100 scale (100 = fully consistent with declared style)
+  let styleConsistency = row.style_consistency ?? STYLE_CONSISTENCY_DEFAULT;
   if (tradeStyle && investorStyle && tradeStyle === investorStyle) {
-    styleConsistency = STYLE_CONSISTENCY_SCORE;
+    // If all trades so far matched the declared style, score as fully consistent
+    styleConsistency = STYLE_CONSISTENCY_MATCH;
   }
 
-  const totalScore = basketPoints + tradePoints + aiPoints + milestonePoints + styleConsistency + row.streak_bonus;
-
-  await (supabase as any)
-    .from('investor_scores')
-    .update({
-      trades_executed: newTrades,
-      style_consistency: styleConsistency,
-      total_score: totalScore,
-      last_activity: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('anonymous_id', anonymousId);
+  const updatedRow = {
+    ...row,
+    trades_executed: newTrades,
+    style_consistency: styleConsistency,
+  };
+  const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
+    trades_executed: newTrades,
+    style_consistency: styleConsistency,
+  });
 
   return { success: true, totalScore, milestonesEarned: row.milestones_earned };
 }
@@ -235,21 +271,11 @@ export async function incrementAISessions(
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
   const newSessions = row.ai_sessions + 1;
-  const aiPoints = newSessions * POINTS_PER_AI_SESSION;
-  const basketPoints = row.baskets_created * POINTS_PER_BASKET;
-  const tradePoints = row.trades_executed * POINTS_PER_TRADE;
-  const milestonePoints = row.milestones_earned * POINTS_PER_MILESTONE;
-  const totalScore = basketPoints + tradePoints + aiPoints + milestonePoints + row.style_consistency + row.streak_bonus;
 
-  await (supabase as any)
-    .from('investor_scores')
-    .update({
-      ai_sessions: newSessions,
-      total_score: totalScore,
-      last_activity: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('anonymous_id', anonymousId);
+  const updatedRow = { ...row, ai_sessions: newSessions };
+  const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
+    ai_sessions: newSessions,
+  });
 
   return { success: true, totalScore, milestonesEarned: row.milestones_earned };
 }
@@ -271,37 +297,10 @@ export async function recalculateScore(
     .eq('anonymous_id', anonymousId);
 
   const newMilestones = milestoneCount || 0;
-  const basketPoints = row.baskets_created * POINTS_PER_BASKET;
-  const tradePoints = row.trades_executed * POINTS_PER_TRADE;
-  const aiPoints = row.ai_sessions * POINTS_PER_AI_SESSION;
-  const milestonePoints = newMilestones * POINTS_PER_MILESTONE;
 
-  // Fetch streak for bonus
-  let streakBonus = row.streak_bonus;
-  try {
-    const { data: streak } = await (supabase as any)
-      .from('streaks')
-      .select('current_streak')
-      .eq('anonymous_id', anonymousId)
-      .maybeSingle();
-    if (streak) {
-      streakBonus = Math.min(streak.current_streak * 5, MAX_STREAK_BONUS);
-    }
-  } catch {
-    // Keep existing streak bonus on error
-  }
-
-  const totalScore = basketPoints + tradePoints + aiPoints + milestonePoints + row.style_consistency + streakBonus;
-
-  await (supabase as any)
-    .from('investor_scores')
-    .update({
-      milestones_earned: newMilestones,
-      streak_bonus: streakBonus,
-      total_score: totalScore,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('anonymous_id', anonymousId);
+  const totalScore = await computeAndWriteScore(supabase, anonymousId, row, {
+    milestones_earned: newMilestones,
+  });
 
   return { success: true, totalScore, milestonesEarned: newMilestones };
 }
@@ -351,27 +350,43 @@ export async function addLearningXP(
   const supabase = createServerClient();
 
   try {
-    // Ensure row exists
-    await (supabase as any)
-      .from('investor_scores')
-      .upsert(
-        { anonymous_id: anonymousId, total_score: 0 },
-        { onConflict: 'anonymous_id' }
-      );
+    // Ensure a score row exists
+    const row = await getOrCreateScore(anonymousId);
+    if (!row) return { success: false };
 
-    // Fetch current score
-    const { data: current, error: fetchErr } = await (supabase as any)
-      .from('investor_scores')
-      .select('total_score')
-      .eq('anonymous_id', anonymousId)
-      .maybeSingle();
+    // Compute the canonical score as baseline, then add learning XP on top.
+    // Learning XP is additive: conceptual understanding earns bonus points
+    // that stack on top of activity-based scoring.
+    const baseScore = row.total_score > 0
+      ? row.total_score
+      : (await (async () => {
+          // If total_score is 0, compute it fresh (first time)
+          let s = 0;
+          try {
+            let currentStreak = 0;
+            const { data: streak } = await (supabase as any)
+              .from('streaks')
+              .select('current_streak')
+              .eq('anonymous_id', anonymousId)
+              .maybeSingle();
+            currentStreak = streak?.current_streak || 0;
 
-    if (fetchErr) {
-      console.error('[gamification] addLearningXP fetch error:', fetchErr.message);
-      return { success: false };
-    }
+            const metrics: ScoreMetrics = {
+              baskets_created: row.baskets_created || 0,
+              trades_executed: row.trades_executed || 0,
+              ai_sessions: row.ai_sessions || 0,
+              current_streak: currentStreak,
+              style_consistency: row.style_consistency ?? STYLE_CONSISTENCY_DEFAULT,
+              risk_adherence: RISK_ADHERENCE_DEFAULT,
+            };
+            s = calculateInvestorScore(metrics).score;
+          } catch {
+            s = 0;
+          }
+          return s;
+        }))();
 
-    const newScore = (current?.total_score || 0) + xpAmount;
+    const newScore = baseScore + xpAmount;
 
     const { error: updateErr } = await (supabase as any)
       .from('investor_scores')
