@@ -142,6 +142,44 @@ export function extractHeuristicSuggestions(
     }
   }
 
+  // ── Cross-sentence proximity fallback ──────────────────────
+  // If sentence-level found nothing, try broader matching:
+  // a ticker in sentence A paired with a buy/sell signal in nearby sentences
+  // catches patterns like "I'd go with TSLA here" then "Buy on weakness"
+  if (suggestions.length === 0) {
+    const allTickers = extractTickers(cleanText);
+    const hasRecSignal = RECOMMENDATION_SIGNALS.some(p => p.test(cleanText));
+
+    if (allTickers.length > 0 && hasRecSignal) {
+      const hasSellSignal = SELL_SIGNALS.test(cleanText);
+      for (const symbol of allTickers) {
+        if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) continue;
+        // Find this ticker's position in the text
+        const idx = cleanText.toUpperCase().indexOf(symbol);
+        if (idx < 0) continue;
+        // Check for a recommendation signal within 300 chars on either side
+        const windowStart = Math.max(0, idx - 300);
+        const windowEnd = Math.min(cleanText.length, idx + symbol.length + 300);
+        const window = cleanText.slice(windowStart, windowEnd);
+        if (!isRecommendationSentence(window)) continue;
+
+        let side: 'BUY' | 'SELL' = 'BUY';
+        if (hasSellSignal && holdingsSymbols.includes(symbol)) {
+          const tickerIdxInWindow = window.toUpperCase().indexOf(symbol);
+          if (tickerIdxInWindow >= 0) {
+            const ctx = window.slice(Math.max(0, tickerIdxInWindow - 25), tickerIdxInWindow + symbol.length + 25);
+            if (SELL_SIGNALS.test(ctx)) side = 'SELL';
+          }
+        }
+        const key = `${symbol}:${side}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          suggestions.push({ symbol, side, source: 'heuristic' });
+        }
+      }
+    }
+  }
+
   return suggestions;
 }
 

@@ -116,17 +116,24 @@ CRITICAL: Place the marker AFTER the visible ticker name, not instead of it. The
 - ✅ "Top picks: MSFT [RECOMMEND:MSFT:BUY], NVDA [RECOMMEND:NVDA:BUY]" → user sees clean list
 - ❌ "Go with [RECOMMEND:MSFT:BUY] or [RECOMMEND:NVDA:BUY]" → user sees "Go with or " (tickers invisible!)
 
-CRITICAL RULES — NEVER emit a marker in these situations:
-- When asking a clarifying question (even if you mention stocks you might recommend later)
-- When a recommendation is conditional/deferred pending more information from the user
-- When mentioning a symbol only as context or reference (e.g. "you already own BRK.B" or "your portfolio holds AAPL")
-- When listing stocks you'll need to research first
-- When saying "Once I know this, I'll give you specific stocks" — this is a clarifying question, NOT a recommendation
-- ANY time you haven't actually made a clear, unconditional recommendation
+WHAT COUNTS AS A REAL RECOMMENDATION — this is the key test:
+A recommendation DOES warrant a marker if you're telling the user a specific stock is worth acting on — even if you attach entry strategy, timing, or sizing conditions. Strategic guidance IS a recommendation:
+- "Buy TSLA on weakness" + sizing + entry plan → YES, this is a real recommendation — use [RECOMMEND:TSLA:BUY]
+- "Start a position in NVDA, scale in over 2-3 weeks" → YES — mark it [RECOMMEND:NVDA:BUY]
+- "Add MSFT on any pullback to $380" → YES — mark it [RECOMMEND:MSFT:BUY]
+- "Wait for 3-5% dip before buying, then grab ~30 shares" → YES if tied to a specific stock — mark the ticker
+
+The ONLY time you should NOT emit a marker is when you haven't actually made any recommendation yet:
+- Asking a clarifying question ("What's your risk tolerance? Then I'll give you picks")
+- Truly deferring pending user input ("Once I know your sector preference, I'll have specific names")
+- Mentioning a symbol only as context ("you already own BRK.B" or "your portfolio holds AAPL")
+- Listing stocks you'll need to research first before recommending
+- Saying "Once I know this, I'll give you specific stocks" — no recommendation has been made yet
 
 When to USE markers:
-- You've made a clear buy/sell recommendation: "I'd go with MSFT [RECOMMEND:MSFT:BUY] for cloud AI exposure"
-- Multi-stock picks: mark EACH one — "Top picks: MSFT [RECOMMEND:MSFT:BUY], NVDA [RECOMMEND:NVDA:BUY], LLY [RECOMMEND:LLY:BUY]"
+- Direct buy/sell: "I'd go with MSFT [RECOMMEND:MSFT:BUY] for cloud AI exposure"
+- Strategic/conditional entries: "TSLA [RECOMMEND:TSLA:BUY] looks compelling — buy on weakness, scale in over 2-3 weeks, target ~30 shares (10-12% of portfolio)"
+- Multi-stock picks: mark EACH one — "Top picks: MSFT [RECOMMEND:MSFT:BUY], NVDA [RECOMMEND:NVDA:BUY]"
 - Alternative suggestions: "Skip SNDK — go with MSFT [RECOMMEND:MSFT:BUY] or NVDA [RECOMMEND:NVDA:BUY] instead"
 - Sell recommendations on held positions: "Time to trim AAPL [RECOMMEND:AAPL:SELL] at these levels"
 
