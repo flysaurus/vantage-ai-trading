@@ -126,12 +126,23 @@ export async function checkUsageLimit(
     dailyUsed = data?.[config.dbField] || 0;
   }
 
-  // Get daily limit from DB
-  let dailyLimit = 25; // fallback default
+  // Get daily limit from DB tier tables — never hardcoded
+  let dailyLimit = 0;
   try {
     const limit = await getUserTierLimit(userId, config.dailyFeature);
-    if (typeof limit === 'number' && limit > 0) dailyLimit = limit;
-  } catch { /* fail open */ }
+    if (typeof limit === 'number') dailyLimit = limit;
+    else console.warn(`[ai-guard] get_tier_limit(${config.dailyFeature}) returned non-number:`, limit);
+  } catch (err: any) {
+    console.error(`[ai-guard] get_tier_limit(${config.dailyFeature}) RPC failed:`, err.message);
+    // If we can't read the limit, fail closed (block usage) rather than
+    // silently allowing with a wrong hardcoded number.
+    return {
+      allowed: false,
+      remaining: 0,
+      resetsIn: 'unknown',
+      reason: `Unable to verify ${type} limit — tier system unavailable`,
+    };
+  }
 
   // Calculate hours until midnight UTC
   const now = new Date();

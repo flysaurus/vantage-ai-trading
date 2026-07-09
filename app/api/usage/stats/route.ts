@@ -6,7 +6,6 @@
 // - Tier + upgrade context
 
 import { NextRequest, NextResponse } from 'next/server';
-import { checkUsageLimit } from '@/lib/ai-guard';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
 
@@ -17,10 +16,6 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createServerClient();
-
-  // Get both usage checks from ai-guard
-  const chatCheck = await checkUsageLimit(userId, 'message');
-  const deepCheck = await checkUsageLimit(userId, 'deepAnalysis');
 
   // Get user tier + monthly/pool counters
   let tier = 'demo';
@@ -65,14 +60,11 @@ export async function GET(req: NextRequest) {
     if (typeof dpLimit === 'number') demoPoolLimit = dpLimit;
   } catch { /* fail open */ }
 
-  // Daily limits come from the check results
+  // ── Daily usage counts ──
   const today = new Date().toISOString().split('T')[0];
 
-  // Get actual daily usage counts
   let dailyChatUsed = 0;
   let dailyDeepUsed = 0;
-  let dailyChatLimit = chatCheck.allowed ? (chatCheck as any).remaining + 0 : 0; // approximate
-  let dailyDeepLimit = deepCheck.allowed ? (deepCheck as any).remaining + 0 : 0;
 
   try {
     const { data: usageData } = await (supabase as any)
@@ -86,18 +78,27 @@ export async function GET(req: NextRequest) {
     dailyDeepUsed = usageData?.deep_analysis_count || 0;
   } catch { /* fail open */ }
 
-  // Recompute daily limits from tier check for accuracy
+  // ── Daily limits — always from the DB tier tables, never hardcoded ──
+  let dailyChatLimit = 0;
+  let dailyDeepLimit = 0;
+
   try {
     const { data: chatLimit } = await (supabase as any)
       .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: 'ai_message_limit' });
-    if (typeof chatLimit === 'number' && chatLimit > 0) dailyChatLimit = chatLimit;
-  } catch { /* fail open */ }
+    if (typeof chatLimit === 'number') dailyChatLimit = chatLimit;
+    else console.warn('[usage/stats] get_tier_limit(ai_message_limit) returned non-number:', chatLimit);
+  } catch (err: any) {
+    console.error('[usage/stats] get_tier_limit(ai_message_limit) RPC failed:', err.message);
+  }
 
   try {
     const { data: deepLimit } = await (supabase as any)
       .rpc('get_tier_limit', { p_user_id: userId, p_feature_key: 'deep_analysis_limit' });
-    if (typeof deepLimit === 'number' && deepLimit > 0) dailyDeepLimit = deepLimit;
-  } catch { /* fail open */ }
+    if (typeof deepLimit === 'number') dailyDeepLimit = deepLimit;
+    else console.warn('[usage/stats] get_tier_limit(deep_analysis_limit) returned non-number:', deepLimit);
+  } catch (err: any) {
+    console.error('[usage/stats] get_tier_limit(deep_analysis_limit) RPC failed:', err.message);
+  }
 
   return NextResponse.json({
     tier,
