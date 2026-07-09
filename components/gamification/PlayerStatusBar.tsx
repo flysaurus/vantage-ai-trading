@@ -20,12 +20,36 @@ export function PlayerStatusBar() {
   const prevScoreRef = useRef(0);
   const animTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const styleId = user?.investorStyle || 'buffett';
+  const styleId = (user?.investorStyle as string) || 'buffett';
   const styleData = getStyleContent(styleId);
   const levelColor = getLevelColor(level);
 
-  const streakDays = 0;
+  const [streakDays, setStreakDays] = useState(0);
   const showWarning = false;
+
+  // Fetch streak data on mount and listen for updates
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+
+    // Fetch initial streak
+    fetch(`/api/session/streak?anonymousId=${encodeURIComponent(String(userId))}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.streak?.current_streak) setStreakDays(d.streak.current_streak);
+      })
+      .catch(() => {});
+
+    // Listen for streak updates from onDailyOpen
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.type === 'streak_updated' && detail?.payload?.currentStreak) {
+        setStreakDays(detail.payload.currentStreak);
+      }
+    };
+    window.addEventListener('vantage-gamification', handler);
+    return () => window.removeEventListener('vantage-gamification', handler);
+  }, [user?.id]);
 
   // ── Score count-up animation ──────────────────────────
   useEffect(() => {
@@ -184,7 +208,7 @@ export function PlayerStatusBar() {
                 onClick={() => setShowStylePicker(false)}
                 style={{
                   background: 'none', border: 'none',
-                  color: 'var(--text-muted)', fontSize: 18,
+                  color: 'var(--text-primary)', fontSize: 18,
                   cursor: 'pointer', padding: 4, lineHeight: 1,
                 }}
               >
@@ -192,7 +216,7 @@ export function PlayerStatusBar() {
               </button>
             </div>
 
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.5 }}>
               Choose your investing style. Your AI advisor tailors its responses to match.
             </p>
 
@@ -217,7 +241,7 @@ export function PlayerStatusBar() {
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
                       {s.shortLabel}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-primary)' }}>
                       {s.tag}
                     </div>
                   </div>

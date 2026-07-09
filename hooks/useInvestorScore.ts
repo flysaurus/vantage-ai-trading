@@ -53,6 +53,7 @@ export function useInvestorScore(): UseInvestorScoreReturn {
       const userId = user?.id || '';
       if (!userId) {
         setResult(EMPTY_RESULT);
+        setLoading(false);
         return;
       }
 
@@ -74,15 +75,14 @@ export function useInvestorScore(): UseInvestorScoreReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
-  // Fetch on mount
+  // Fetch on mount / when user ID becomes available
   useEffect(() => {
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchScore();
-    }
-  }, [fetchScore]);
+    const userId = user?.id || '';
+    if (!userId) return;
+    fetchScore();
+  }, [fetchScore, user?.id]);
 
   // Listen for gamification events to refresh
   useEffect(() => {

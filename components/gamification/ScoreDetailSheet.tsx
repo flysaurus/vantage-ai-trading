@@ -279,7 +279,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
             right: 'var(--space-4)',
             background: 'none',
             border: 'none',
-            color: 'var(--text-muted)',
+            color: 'var(--text-primary)',
             fontSize: '18px',
             cursor: 'pointer',
             padding: '4px 8px',
@@ -366,7 +366,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                     }}>
                       <span style={{
                         fontSize: '12px',
-                        color: 'var(--text-secondary)',
+                        color: 'var(--text-primary)',
                         fontWeight: 500,
                       }}>
                         {score} / {nextThreshold} to next level
@@ -397,7 +397,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                     <p style={{
                       marginTop: 'var(--space-2)',
                       fontSize: '12px',
-                      color: 'var(--text-muted)',
+                      color: 'var(--text-primary)',
                       textAlign: 'center',
                     }}>
                       +{xpNeeded} to next level
@@ -409,7 +409,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                 {isLegend && (
                   <p style={{
                     fontSize: '13px',
-                    color: 'var(--text-secondary)',
+                    color: 'var(--text-primary)',
                     textAlign: 'center',
                     lineHeight: 1.5,
                     maxWidth: '280px',
@@ -450,7 +450,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                   </span>
                   <span style={{
                     fontSize: '10px',
-                    color: 'var(--text-secondary)',
+                    color: 'var(--text-primary)',
                     fontWeight: 500,
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
@@ -480,7 +480,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                   </span>
                   <span style={{
                     fontSize: '10px',
-                    color: 'var(--text-secondary)',
+                    color: 'var(--text-primary)',
                     fontWeight: 500,
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
@@ -510,7 +510,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                   </span>
                   <span style={{
                     fontSize: '10px',
-                    color: 'var(--text-secondary)',
+                    color: 'var(--text-primary)',
                     fontWeight: 500,
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
@@ -540,7 +540,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                   </span>
                   <span style={{
                     fontSize: '10px',
-                    color: 'var(--text-secondary)',
+                    color: 'var(--text-primary)',
                     fontWeight: 500,
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
@@ -622,7 +622,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                           {m.awardedAt && (
                             <div style={{
                               fontSize: '10px',
-                              color: 'var(--text-muted)',
+                              color: 'var(--text-primary)',
                             }}>
                               Earned {new Date(m.awardedAt).toLocaleDateString('en-US', {
                                 month: 'short',
@@ -666,7 +666,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                     </span>
                     <p style={{
                       fontSize: '12px',
-                      color: 'var(--text-muted)',
+                      color: 'var(--text-primary)',
                       lineHeight: 1.5,
                       margin: 0,
                     }}>
@@ -682,7 +682,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                     <span style={{
                       fontSize: '11px',
                       fontWeight: 600,
-                      color: 'var(--text-muted)',
+                      color: 'var(--text-primary)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
                       display: 'block',
@@ -727,13 +727,13 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                             <div style={{
                               fontSize: '13px',
                               fontWeight: 500,
-                              color: 'var(--text-muted)',
+                              color: 'var(--text-primary)',
                             }}>
                               {m.label}
                             </div>
                             <div style={{
                               fontSize: '10px',
-                              color: 'var(--text-muted)',
+                              color: 'var(--text-primary)',
                             }}>
                               Keep investing to unlock
                             </div>
@@ -742,7 +742,7 @@ export function ScoreDetailSheet({ open, onClose }: ScoreDetailSheetProps) {
                           {/* Lock icon */}
                           <span style={{
                             fontSize: '14px',
-                            color: 'var(--text-muted)',
+                            color: 'var(--text-primary)',
                             flexShrink: 0,
                           }}>
                             🔒

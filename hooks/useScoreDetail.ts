@@ -75,6 +75,7 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
       fetchedRef.current = false;
       return;
     }
+    if (!user?.id) return; // Wait for auth to resolve
     if (fetchedRef.current) return;
     fetchedRef.current = true;
 
@@ -85,7 +86,7 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
       setError(null);
 
       try {
-        const userId = user?.id || '';
+        const userId = String(user?.id || '');
         if (!userId) {
           if (!cancelled) setData(EMPTY_DATA);
           return;
@@ -183,7 +184,7 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, user?.id]);
 
   return { data, loading, error };
 }
