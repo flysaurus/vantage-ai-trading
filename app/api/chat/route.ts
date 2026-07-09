@@ -3,7 +3,7 @@ import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-pro
 import type { SystemBlock } from '@/lib/ai-provider'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
-import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard'
+import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
@@ -203,8 +203,10 @@ export async function POST(req: Request) {
     // ── Usage limit check (type depends on mode) ──
     const userId = await getOptionalUserId();
     const usageType = mode === 'deep' ? 'deepAnalysis' : 'message';
+    // Compute user's local date from their timezone (not server UTC)
+    const localDate = getLocalDateFromTimezone(timezone);
     if (userId && userId !== 'anonymous') {
-      const usageCheck = await checkUsageLimit(userId, usageType);
+      const usageCheck = await checkUsageLimit(userId, usageType, localDate);
       if (!usageCheck.allowed) {
         return Response.json(
           {
@@ -414,7 +416,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
             ? (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15
             : (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5;
           try {
-            await incrementUsage(userId, usageType, totalTokens, cost);
+            await incrementUsage(userId, usageType, totalTokens, cost, localDate);
           } catch (e) {
             console.error('[chat] incrementUsage failed:', e);
           }

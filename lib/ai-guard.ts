@@ -3,10 +3,29 @@
 // demo trial deep-analysis pool, and per-surface counters.
 // Server-side only — uses createServerClient for Supabase access.
 // Limits are tier-aware: read from tier_feature_values via get_tier_limit RPC.
+//
+// Timezone-aware: all daily counters use the user's LOCAL date,
+// not server UTC. Callers pass a YYYY-MM-DD localDate string.
 
 import { createServerClient } from '@/lib/supabase';
 
 export type UsageType = 'message' | 'deepAnalysis' | 'dailyBrief' | 'weeklySnapshot' | 'greeting';
+
+// ─── Timezone helpers ────────────────────────────────────
+
+/** Compute the user's local YYYY-MM-DD from an IANA timezone. */
+export function getLocalDateFromTimezone(timezone?: string): string {
+  try {
+    return new Date().toLocaleDateString('en-CA', {
+      timeZone: timezone || 'America/New_York',
+    });
+  } catch {
+    // If timezone is invalid, fall back to America/New_York
+    return new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/New_York',
+    });
+  }
+}
 
 export interface LimitCheck {
   allowed: boolean;
@@ -58,9 +77,11 @@ const SURFACE_LOG_MAP: Record<string, string> = {
 export async function checkUsageLimit(
   userId: string,
   type: UsageType,
+  localDate?: string,
 ): Promise<LimitCheck> {
   const tier = await getUserTier(userId);
-  const today = new Date().toISOString().split('T')[0];
+  // Use user's local date (browser timezone), not server UTC
+  const today = localDate || getLocalDateFromTimezone();
   const supabase = createServerClient();
 
   // Map type to feature keys and DB field
@@ -232,8 +253,10 @@ export async function incrementUsage(
   type: UsageType,
   tokens?: number,
   cost?: number,
+  localDate?: string,
 ) {
-  const today = new Date().toISOString().split('T')[0];
+  // Use user's local date (browser timezone), not server UTC
+  const today = localDate || getLocalDateFromTimezone();
   const tier = await getUserTier(userId);
   const supabase = createServerClient();
 

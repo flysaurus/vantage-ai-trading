@@ -377,9 +377,16 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [tier, setTier] = useState('demo');
   const [usageStats, setUsageStats] = useState<any>(null); // full stats for settings panel
 
+  // Compute the user's local date in browser timezone (not UTC)
+  const getLocalDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const refreshRemaining = useCallback(async () => {
     try {
-      const res = await fetch('/api/usage/remaining');
+      const localDate = getLocalDate();
+      const res = await fetch(`/api/usage/remaining?localDate=${encodeURIComponent(localDate)}`);
       if (res.ok) {
         const data = await res.json();
         setChatRemaining(data.chatRemaining ?? getLocalRemaining());
@@ -392,7 +399,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const refreshUsageStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/usage/stats');
+      const localDate = getLocalDate();
+      const res = await fetch(`/api/usage/stats?localDate=${encodeURIComponent(localDate)}`);
       if (res.ok) {
         const data = await res.json();
         setUsageStats(data);

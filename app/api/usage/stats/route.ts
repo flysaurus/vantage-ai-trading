@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
+import { getLocalDateFromTimezone } from '@/lib/ai-guard';
 import { createServerClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
@@ -14,6 +15,10 @@ export async function GET(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const { searchParams } = new URL(req.url);
+  // Use user's local date (browser timezone), not server UTC
+  const localDate = searchParams.get('localDate') || getLocalDateFromTimezone();
 
   const supabase = createServerClient();
 
@@ -60,9 +65,7 @@ export async function GET(req: NextRequest) {
     if (typeof dpLimit === 'number') demoPoolLimit = dpLimit;
   } catch { /* fail open */ }
 
-  // ── Daily usage counts ──
-  const today = new Date().toISOString().split('T')[0];
-
+  // ── Daily usage counts (user's local date, not server UTC) ──
   let dailyChatUsed = 0;
   let dailyDeepUsed = 0;
 
@@ -71,7 +74,7 @@ export async function GET(req: NextRequest) {
       .from('ai_usage')
       .select('message_count, deep_analysis_count')
       .eq('user_id', userId)
-      .eq('date', today)
+      .eq('date', localDate)
       .single();
 
     dailyChatUsed = usageData?.message_count || 0;
