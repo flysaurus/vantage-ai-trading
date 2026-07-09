@@ -48,6 +48,13 @@ async function getUserTierLimit(
 
 // ─── Usage Check (multi-dimensional) ─────────────────────
 
+// Surface → generation_log mapping (for greeting/brief/snapshot daily limits)
+const SURFACE_LOG_MAP: Record<string, string> = {
+  greeting: 'greeting',
+  dailyBrief: 'daily_brief',
+  weeklySnapshot: 'weekly_snapshot',
+};
+
 export async function checkUsageLimit(
   userId: string,
   type: UsageType,
@@ -77,31 +84,47 @@ export async function checkUsageLimit(
     dailyBrief: {
       dailyFeature: 'daily_brief_limit',
       monthlyFeature: null,
-      dbField: 'message_count',
+      dbField: '', // checked via ai_generation_log, not ai_usage
     },
     weeklySnapshot: {
       dailyFeature: 'weekly_snapshot_limit',
       monthlyFeature: null,
-      dbField: 'message_count',
+      dbField: '', // checked via ai_generation_log, not ai_usage
     },
     greeting: {
       dailyFeature: 'greeting_limit',
       monthlyFeature: null,
-      dbField: 'message_count',
+      dbField: '', // checked via ai_generation_log, not ai_usage
     },
   };
 
   const config = configMap[type];
 
-  // Get daily usage
-  const { data } = await (supabase as any)
-    .from('ai_usage')
-    .select(config.dbField)
-    .eq('user_id', userId)
-    .eq('date', today)
-    .single();
+  // ── Get daily usage ──
+  // Chat (message/deepAnalysis): read from ai_usage table
+  // Surface (greeting/brief/snapshot): read from ai_generation_log to avoid
+  //   contaminating the chat message_count with non-chat activity
+  let dailyUsed = 0;
 
-  const dailyUsed = data?.[config.dbField] || 0;
+  if (type === 'greeting' || type === 'dailyBrief' || type === 'weeklySnapshot') {
+    const logSurface = SURFACE_LOG_MAP[type];
+    const { count } = await (supabase as any)
+      .from('ai_generation_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('surface', logSurface)
+      .gte('created_at', `${today}T00:00:00Z`)
+      .lte('created_at', `${today}T23:59:59Z`);
+    dailyUsed = count || 0;
+  } else {
+    const { data } = await (supabase as any)
+      .from('ai_usage')
+      .select(config.dbField)
+      .eq('user_id', userId)
+      .eq('date', today)
+      .single();
+    dailyUsed = data?.[config.dbField] || 0;
+  }
 
   // Get daily limit from DB
   let dailyLimit = 25; // fallback default
@@ -203,12 +226,11 @@ export async function incrementUsage(
   const tier = await getUserTier(userId);
   const supabase = createServerClient();
 
-  // Map type to increment values
-  const isMessage =
-    type === 'message' ||
-    type === 'dailyBrief' ||
-    type === 'weeklySnapshot' ||
-    type === 'greeting';
+  // Map type to increment values.
+  // CRITICAL: Only actual chat messages increment message_count.
+  // Greeting/brief/snapshot track tokens/cost but do NOT contaminate the
+  // chat counter — their daily limits are checked via ai_generation_log.
+  const isMessage = type === 'message';
   const isDeep = type === 'deepAnalysis';
 
   // Try RPC first
