@@ -204,7 +204,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     sharesHeld: number; availableCash: number;
   } | null>(null);
   // Track tickers the user asked about in their last message (for deviation scenarios)
-  const userAskedTickersRef = useRef<string[]>([]);
+
 
   // ── Real ticker validation: load US stock symbol list once on mount ──
   // Passed to parseSuggestions to filter false positives ("I", "A", common words)
@@ -744,17 +744,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat', additionalContext?: string) => {
     if (!content.trim() || loading) return;
-
-    // Extract tickers the user asked about (for deviation scenario: AI suggests alternatives)
-    const tickerPattern = /\b([A-Z]{1,5}(?:\.[A-Z])?)\b/g;
-    const userTickers: string[] = [];
-    for (const m of content.matchAll(tickerPattern)) {
-      const t = m[1].toUpperCase();
-      if (!['ETF','IPO','SPAC','CEO','GDP','CPI','FOMC','SEC','EPS','PE','USD','EUR','VIX','SPX','NDX','AI','OK','BUY','SELL','ALL'].includes(t)) {
-        userTickers.push(t);
-      }
-    }
-    userAskedTickersRef.current = userTickers;
 
     if (chatRemaining <= 0) {
       const resetMsg = usageStats?.chat?.monthly
@@ -1421,8 +1410,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;
-                const holdings = (liveAccount?.positions || []).map((p: any) => p.symbol?.toUpperCase());
-                const { suggestions } = parseSuggestions(msg.content, holdings, userAskedTickersRef.current, validSymbols);
+                const suggestions = parseSuggestions(msg.content, validSymbols);
                 if (suggestions.length === 0) return null;
                 return (
                   <InlineTradeButtons

@@ -1,12 +1,12 @@
 'use client';
 // ─── InlineTradeButton — Renders BUY/SELL buttons next to AI stock mentions ───
-// PRIMARY DETECTION: [RECOMMEND:SYMBOL:BUY] / [RECOMMEND:SYMBOL:SELL] markers
-//   → These are the system-prompt-instructed structured markers. Claude only emits
-//     them when making genuine, unconditional recommendations. Zero false positives.
-// FALLBACK: Heuristic sentence-level detection (for older cached responses without markers)
-//   → Only fires if NO markers found. All candidates must pass real-ticker validation.
-// VALIDATION: All candidates (marker + heuristic) are validated against a cached
-//   Set of real US stock symbols loaded once from Finnhub on AITab mount.
+// DETECTION: [RECOMMEND:SYMBOL:BUY] / [RECOMMEND:SYMBOL:SELL] markers ONLY.
+//   → Claude emits these structured markers when making genuine recommendations.
+//   → No heuristic/word-proximity fallback — markers are the sole detection mechanism.
+//   → This eliminates false positives on common words that happen to be valid tickers
+//     (e.g. "AI" meaning artificial intelligence, not C3.ai stock; "A" as article).
+// VALIDATION: All marker suggestions are validated against a cached Set of real
+//   US stock symbols loaded from Finnhub on mount (catches hallucinated tickers).
 
 import { useState, useCallback } from 'react';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -16,8 +16,6 @@ import TradeTicket from '@/components/portfolio/TradeTicket';
 export interface Suggestion {
   symbol: string;
   side: 'BUY' | 'SELL';
-  /** How this was detected: 'marker' (primary, reliable), 'heuristic' (fallback, less reliable) */
-  source: 'marker' | 'heuristic';
 }
 
 // ─── PRIMARY: Structured marker detection ─────────────────────
@@ -26,8 +24,14 @@ export interface Suggestion {
 
 const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)\]/g;
 
-/** Extract suggestions from [RECOMMEND:SYMBOL:BUY/SELL] markers (primary detection). */
-export function extractMarkerSuggestions(markdownContent: string): Suggestion[] {
+/**
+ * Extract suggestions from [RECOMMEND:SYMBOL:BUY/SELL] markers.
+ * Validates each against the real-ticker list if validSymbols is provided.
+ */
+export function parseSuggestions(
+  markdownContent: string,
+  validSymbols?: Set<string> | null,
+): Suggestion[] {
   const suggestions: Suggestion[] = [];
   const seen = new Set<string>();
 
@@ -37,10 +41,14 @@ export function extractMarkerSuggestions(markdownContent: string): Suggestion[] 
   for (const match of markdownContent.matchAll(MARKER_PATTERN)) {
     const symbol = match[1].toUpperCase();
     const side = match[2] as 'BUY' | 'SELL';
+
+    // Validate against real ticker list if available (catches hallucinated symbols)
+    if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) continue;
+
     const key = `${symbol}:${side}`;
     if (!seen.has(key)) {
       seen.add(key);
-      suggestions.push({ symbol, side, source: 'marker' });
+      suggestions.push({ symbol, side });
     }
   }
 
@@ -57,194 +65,6 @@ export function stripRecommendationMarkers(text: string): string {
     .trim();
 }
 
-// ─── FALLBACK: Heuristic sentence-level detection ──────────────
-// Only used for responses that lack marker annotations (e.g. older cached responses).
-// Requires real-ticker validation via validSymbols Set.
-
-/** Recommendation language patterns — sentences matching these are scanned for ALL tickers */
-const RECOMMENDATION_SIGNALS = [
-  /\b(?:buy|sell|add|start|initiate|accumulate|pick\s*up|get\s*into|load\s*up|go\s*long|open\s*a\s*position|trim(?:ming)?|exit|reduce|lighten|pare\s*(?:back|down)|cut\s*(?:loose|back))\b/i,
-  /\b(?:consider|recommend|suggest|worth\s*(?:looking|a\s*look)|look\s*(?:at|into)|check\s*out)\b/i,
-  /\b(?:instead|rather|better\s*(?:off|bet|play|choice)|prefer(?:able)?|alternative|swap|switch)\b/i,
-  /\b(?:go\s*with|pick|choose|grab|try|put\s*money\s*(?:in|into)|allocate|deploy)\b/i,
-  /\b(?:opportunity|upside|entry\s*point|good\s*(?:time|price|level|entry))\b/i,
-  /\b(?:skip|avoid|stay\s*away|pass\s*on|steer\s*clear)\b/i,
-];
-
-const SELL_SIGNALS = /\b(?:sell|trim(?:ming)?|exit|reduce|dump|unload|get\s*out|cash\s*out|close\s*out|cut\s*loose|lighten|pare\s*(?:back|down))\b/i;
-
-/** Extract all potential tickers from text (uppercase 1-5 char words, with .X suffix support). */
-function extractTickers(text: string): string[] {
-  const tickers: string[] = [];
-  const seen = new Set<string>();
-  for (const m of text.matchAll(/\b([A-Z]{1,5}(?:\.[A-Z])?)\b/g)) {
-    const t = m[1].toUpperCase();
-    if (!seen.has(t)) {
-      seen.add(t);
-      tickers.push(t);
-    }
-  }
-  return tickers;
-}
-
-function isRecommendationSentence(sentence: string): boolean {
-  return RECOMMENDATION_SIGNALS.some(p => p.test(sentence));
-}
-
-/** Fallback heuristic: sentence-level ticker extraction from recommendation sentences.
- *  Requires validSymbols (real ticker list) for filtering — no blacklist needed. */
-export function extractHeuristicSuggestions(
-  markdownContent: string,
-  holdingsSymbols: string[],
-  validSymbols?: Set<string> | null,
-): Suggestion[] {
-  const suggestions: Suggestion[] = [];
-  const seen = new Set<string>();
-
-  // Strip markdown for cleaner text matching
-  const cleanText = markdownContent
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1');
-
-  const sentences = cleanText.split(/(?<=[.!?])\s+|\n/);
-
-  for (const sentence of sentences) {
-    const trimmed = sentence.trim();
-    if (!trimmed || trimmed.length < 5) continue;
-
-    if (isRecommendationSentence(trimmed)) {
-      const tickers = extractTickers(trimmed);
-      const hasSellSignal = SELL_SIGNALS.test(trimmed);
-
-      for (const symbol of tickers) {
-        // Skip if we have a valid symbol set and this symbol isn't in it
-        if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) continue;
-
-        // Proximity-based sell detection: ticker marked SELL only if a sell word
-        // appears within 25 chars of it AND the user holds it
-        let side: 'BUY' | 'SELL' = 'BUY';
-        if (hasSellSignal && holdingsSymbols.includes(symbol)) {
-          const tickerIdx = trimmed.toUpperCase().indexOf(symbol);
-          if (tickerIdx >= 0) {
-            const context = trimmed.slice(Math.max(0, tickerIdx - 25), tickerIdx + symbol.length + 25);
-            if (SELL_SIGNALS.test(context)) {
-              side = 'SELL';
-            }
-          }
-        }
-
-        const key = `${symbol}:${side}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          suggestions.push({ symbol, side, source: 'heuristic' });
-        }
-      }
-    }
-  }
-
-  // ── Cross-sentence proximity fallback ──────────────────────
-  // If sentence-level found nothing, try broader matching:
-  // a ticker in sentence A paired with a buy/sell signal in nearby sentences
-  // catches patterns like "I'd go with TSLA here" then "Buy on weakness"
-  if (suggestions.length === 0) {
-    const allTickers = extractTickers(cleanText);
-    const hasRecSignal = RECOMMENDATION_SIGNALS.some(p => p.test(cleanText));
-
-    if (allTickers.length > 0 && hasRecSignal) {
-      const hasSellSignal = SELL_SIGNALS.test(cleanText);
-      for (const symbol of allTickers) {
-        if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) continue;
-        // Find this ticker's position in the text
-        const idx = cleanText.toUpperCase().indexOf(symbol);
-        if (idx < 0) continue;
-        // Check for a recommendation signal within 300 chars on either side
-        const windowStart = Math.max(0, idx - 300);
-        const windowEnd = Math.min(cleanText.length, idx + symbol.length + 300);
-        const window = cleanText.slice(windowStart, windowEnd);
-        if (!isRecommendationSentence(window)) continue;
-
-        let side: 'BUY' | 'SELL' = 'BUY';
-        if (hasSellSignal && holdingsSymbols.includes(symbol)) {
-          const tickerIdxInWindow = window.toUpperCase().indexOf(symbol);
-          if (tickerIdxInWindow >= 0) {
-            const ctx = window.slice(Math.max(0, tickerIdxInWindow - 25), tickerIdxInWindow + symbol.length + 25);
-            if (SELL_SIGNALS.test(ctx)) side = 'SELL';
-          }
-        }
-        const key = `${symbol}:${side}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          suggestions.push({ symbol, side, source: 'heuristic' });
-        }
-      }
-    }
-  }
-
-  return suggestions;
-}
-
-// ─── Combined parser ─────────────────────────────────────────
-
-export interface ParseResult {
-  suggestions: Suggestion[];
-  /** Whether markers were found in the response (used to decide primary vs fallback) */
-  hasMarkers: boolean;
-}
-
-/** Parse all suggestions from an AI response:
- *  1. Primary: [RECOMMEND:SYMBOL:BUY/SELL] markers (if present)
- *  2. Fallback: Heuristic detection (only if no markers found)
- *  3. Always: Validate against real ticker list (if validSymbols provided)
- *  4. Always: Include user-asked tickers as optional buttons
- */
-export function parseSuggestions(
-  markdownContent: string,
-  holdingsSymbols: string[],
-  userAskedTickers: string[],
-  validSymbols?: Set<string> | null,
-): ParseResult {
-  const result: Suggestion[] = [];
-  const seen = new Set<string>();
-
-  // 1. PRIMARY: Structured markers
-  const markers = extractMarkerSuggestions(markdownContent);
-  const hasMarkers = markers.length > 0;
-
-  for (const s of markers) {
-    // Validate against real ticker list if available
-    if (validSymbols && validSymbols.size > 0 && !validSymbols.has(s.symbol)) continue;
-    const key = `${s.symbol}:${s.side}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(s);
-    }
-  }
-
-  // 2. User-asked tickers (always include as optional, validates against real ticker list)
-  for (const ticker of userAskedTickers) {
-    const key = `${ticker}:BUY`;
-    if (!seen.has(key)) {
-      if (validSymbols && validSymbols.size > 0 && !validSymbols.has(ticker.toUpperCase())) continue;
-      seen.add(key);
-      result.push({ symbol: ticker.toUpperCase(), side: 'BUY', source: 'heuristic' });
-    }
-  }
-
-  // 3. FALLBACK: Heuristic (only if no markers found — older cached responses)
-  if (!hasMarkers) {
-    const heuristic = extractHeuristicSuggestions(markdownContent, holdingsSymbols, validSymbols);
-    for (const s of heuristic) {
-      const key = `${s.symbol}:${s.side}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        result.push(s);
-      }
-    }
-  }
-
-  return { suggestions: result, hasMarkers };
-}
-
 // ── Component ────────────────────────────────────────────────
 
 interface InlineTradeButtonProps {
@@ -254,12 +74,10 @@ interface InlineTradeButtonProps {
   enabled: boolean;
   /** Callback to open TradeTicket */
   onTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
-  /** Whether this is a heuristic fallback detection (subtler styling) */
-  dimmed?: boolean;
 }
 
 export function InlineTradeButton({
-  symbol, side, enabled, onTrade, dimmed,
+  symbol, side, enabled, onTrade,
 }: InlineTradeButtonProps) {
   const [tapped, setTapped] = useState(false);
 
@@ -298,7 +116,6 @@ export function InlineTradeButton({
         padding: '3px 8px',
         cursor: enabled ? 'pointer' : 'default',
         fontFamily: 'inherit',
-        opacity: dimmed ? 0.7 : 1,
         transition: 'all 0.15s ease',
         letterSpacing: '0.03em',
       }}
@@ -337,7 +154,6 @@ export function InlineTradeButtons({ suggestions, enabled, onTrade }: InlineTrad
           side={s.side}
           enabled={enabled}
           onTrade={onTrade}
-          dimmed={s.source === 'heuristic'}
         />
       ))}
     </div>
@@ -358,6 +174,7 @@ interface ChatTradeTicketProps {
     shares: number;
     type: 'market' | 'limit';
     limitPrice?: number;
+    timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   }) => Promise<void>;
 }
 
