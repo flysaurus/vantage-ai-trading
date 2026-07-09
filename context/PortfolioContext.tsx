@@ -155,6 +155,7 @@ interface PortfolioContextValue {
     shares: number,
     price: number,
     orderType?: 'market' | 'limit',
+    timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok',
   ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
@@ -197,7 +198,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   loading: true,
   error: null,
   refresh: () => {},
-  executeTrade: async () => ({ success: false, error: 'Not initialized' }),
+  executeTrade: async () => ({ success: false, error: 'Not initialized' } as TradeResult),
   demoOrders: [],
   toast: null,
   dismissToast: () => {},
@@ -536,10 +537,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit'): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit', timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok'): Promise<TradeResult> => {
       const b = brokerRef.current;
       if (!b) return { success: false, error: 'Broker not initialized' };
-      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice: orderType === 'limit' ? price : undefined });
+      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice: orderType === 'limit' ? price : undefined, timeInForce });
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);

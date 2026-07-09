@@ -11,6 +11,15 @@ import { createPortal } from 'react-dom';
 import { getMarketStatus } from '@/lib/market-hours';
 import { X } from 'lucide-react';
 
+export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
+
+export const TIF_LABELS: Record<TimeInForce, { label: string; desc: string }> = {
+  day:  { label: 'Day',   desc: 'Expires at market close if not filled' },
+  gtc:  { label: 'GTC',   desc: 'Good-til-cancelled — stays open until filled or cancelled' },
+  ioc:  { label: 'IOC',   desc: 'Immediate-or-cancel — fill any part now, cancel the rest' },
+  fok:  { label: 'FOK',   desc: 'Fill-or-kill — all shares must fill immediately or cancel' },
+};
+
 interface TradeTicketProps {
   isOpen: boolean;
   onClose: () => void;
@@ -23,6 +32,7 @@ interface TradeTicketProps {
     shares: number;
     type: 'market' | 'limit';
     limitPrice?: number;
+    timeInForce?: TimeInForce;
   }) => Promise<void>;
 }
 
@@ -32,6 +42,7 @@ export default function TradeTicket({
 }: TradeTicketProps) {
   console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash });
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
+  const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
   const [quantity, setQuantity] = useState<string>('');
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +59,7 @@ export default function TradeTicket({
     setNextOpenLabel(ms.nextOpenLabel);
     // Reset state
     setOrderType('market');
+    setTimeInForce('day');
     setQuantity('');
     setLimitPrice('');
     setSubmitting(false);
@@ -84,6 +96,7 @@ export default function TradeTicket({
         shares: qty,
         type: orderType,
         limitPrice: orderType === 'limit' ? limit : undefined,
+        timeInForce,
       });
       onClose();
     } catch {
@@ -169,6 +182,39 @@ export default function TradeTicket({
               }}
             >
               {t === 'market' ? 'Market' : 'Limit'}
+            </button>
+          ))}
+        </div>
+
+        {/* Time in Force */}
+        <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Time in Force</div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px',
+          marginBottom: 16,
+        }}>
+          {(Object.entries(TIF_LABELS) as [TimeInForce, { label: string; desc: string }][]) .map(([tif, { label, desc }]) => (
+            <button
+              key={tif}
+              onClick={() => setTimeInForce(tif)}
+              title={desc}
+              style={{
+                padding: '8px 4px',
+                border: timeInForce === tif
+                  ? '1px solid rgba(34,211,238,0.4)'
+                  : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8,
+                background: timeInForce === tif
+                  ? 'rgba(34,211,238,0.12)'
+                  : 'rgba(255,255,255,0.02)',
+                color: timeInForce === tif ? '#22d3ee' : 'rgba(255,255,255,0.5)',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {label}
             </button>
           ))}
         </div>

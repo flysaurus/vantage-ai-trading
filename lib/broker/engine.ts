@@ -14,6 +14,7 @@ export interface OrderRequest {
   shares?: number;
   dollarAmount?: number;
   limitPrice?: number;
+  timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   basketId?: string;
   basketName?: string;
   basketEmoji?: string;

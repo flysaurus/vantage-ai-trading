@@ -1255,10 +1255,10 @@ export function PortfolioTab() {
         currentPrice={tradeTicket?.currentPrice || 0}
         sharesHeld={tradeTicket?.sharesHeld || 0}
         availableCash={tradeTicket?.availableCash || 0}
-        onConfirm={async ({ shares, type, limitPrice }) => {
+        onConfirm={async ({ shares, type, limitPrice, timeInForce }) => {
           if (!tradeTicket) return;
           const price = type === 'limit' && limitPrice ? limitPrice : tradeTicket.currentPrice;
-          await executeTrade(tradeTicket.symbol, tradeTicket.side, shares, price, type);
+          await executeTrade(tradeTicket.symbol, tradeTicket.side, shares, price, type, timeInForce);
         }}
       />
 

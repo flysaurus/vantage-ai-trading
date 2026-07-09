@@ -253,6 +253,7 @@ export class DemoBroker implements BrokerEngine {
     const limitMet = !isLimit || (req.side === 'BUY' ? price <= limitPrice : price >= limitPrice);
     const canFillNow = isOpen && (req.type === 'market' || limitMet);
     const submitPrice = isLimit ? limitPrice : price;
+    const tif = req.timeInForce || 'day';
 
     // ── BUY ──
     if (req.side === 'BUY') {
@@ -280,8 +281,8 @@ export class DemoBroker implements BrokerEngine {
         basketDisplayName: req.basketDisplayName,
         reservedCost: canFillNow ? undefined : cost,
         note: canFillNow ? undefined : isLimit && !limitMet
-          ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)}`
-          : `Pending · ${this.getNextOpenLabel()}`,
+          ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)} · ${tif.toUpperCase()}`
+          : `Pending · ${this.getNextOpenLabel()} · ${tif.toUpperCase()}`,
       };
 
       this.state.orders.unshift(order);
@@ -324,8 +325,8 @@ export class DemoBroker implements BrokerEngine {
       submittedAt: new Date().toISOString(),
       filledAt: canFillNow ? new Date().toISOString() : undefined,
       note: canFillNow ? undefined : isLimit && !limitMet
-        ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)}`
-        : `Pending · ${this.getNextOpenLabel()}`,
+        ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)} · ${tif.toUpperCase()}`
+        : `Pending · ${this.getNextOpenLabel()} · ${tif.toUpperCase()}`,
     };
 
     if (canFillNow) {
