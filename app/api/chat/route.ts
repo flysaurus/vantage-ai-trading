@@ -4,7 +4,7 @@ import type { SystemBlock } from '@/lib/ai-provider'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard'
-import { cleanupOldMessages } from '@/lib/chat-service'
+import { createServerClient } from '@/lib/supabase'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
@@ -205,9 +205,11 @@ export async function POST(req: Request) {
     const userId = await getOptionalUserId();
     const usageType = mode === 'deep' ? 'deepAnalysis' : 'message';
 
-    // 7-day cleanup — fire-and-forget, no impact on response latency
+    // 7-day cleanup — fire-and-forget using server client
     if (userId && userId !== 'anonymous') {
-      cleanupOldMessages(userId).catch(() => {});
+      const supabase = createServerClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.rpc as any)('cleanup_old_chat_messages', { p_user_id: userId }).catch(() => {});
     }
 
     if (userId && userId !== 'anonymous') {
