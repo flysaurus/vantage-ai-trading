@@ -13,7 +13,7 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, stripRecommendationMarkers } from '@/components/ai/InlineTradeButton';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
@@ -203,6 +203,28 @@ export function AITab({ messages, setMessages }: AITabProps) {
   } | null>(null);
   // Track tickers the user asked about in their last message (for deviation scenarios)
   const userAskedTickersRef = useRef<string[]>([]);
+
+  // ── Real ticker validation: load US stock symbol list once on mount ──
+  // Passed to parseSuggestions to filter false positives ("I", "A", common words)
+  // Finnhub source → server-side 24h cache → client fetches once per session
+  const [validSymbols, setValidSymbols] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch('/api/symbols/all');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.symbols && Array.isArray(data.symbols) && !cancelled) {
+          setValidSymbols(new Set(data.symbols));
+        }
+      } catch {
+        // Silent — symbol validation degrades gracefully (allows all if unavailable)
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleTLDR = useCallback((index: number) => {
     setCollapsedTLDRs(prev => {
       const next = new Set(prev);
@@ -1369,7 +1391,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                           hr: () => (<hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '12px 0' }} />),
                         }}
                       >
-                        {msg.content}
+                        {stripRecommendationMarkers(msg.content)}
                       </ReactMarkdown>
                     )}
                   </>
@@ -1379,7 +1401,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {(() => {
                 if (tier === 'silver') return null;
                 const holdings = (liveAccount?.positions || []).map((p: any) => p.symbol?.toUpperCase());
-                const suggestions = parseSuggestions(msg.content, holdings, userAskedTickersRef.current);
+                const { suggestions } = parseSuggestions(msg.content, holdings, userAskedTickersRef.current, validSymbols);
                 if (suggestions.length === 0) return null;
                 return (
                   <InlineTradeButtons
