@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { MILESTONE_DEFINITIONS } from '@/lib/gamification/milestones';
+import { MILESTONE_DEFINITIONS, checkAndAwardMilestone } from '@/lib/gamification/milestones';
 import type { ScoreSnapshot } from '@/lib/investor-score/snapshot';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -92,6 +92,10 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
           return;
         }
 
+        // Award first_login milestone as fallback — idempotent,
+        // ensures it's awarded even if MainApp DailyOpen didn't fire.
+        checkAndAwardMilestone(userId, 'first_login').catch(() => {});
+
         // Fire all fetches in parallel
         const [scoreRes, milestonesRes] = await Promise.all([
           fetch('/api/investor-score', { credentials: 'include',
@@ -108,9 +112,11 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
 
         // Parse score data
         let scoreData: any = null;
+        let rawMetrics: any = null;
         if (scoreRes.ok) {
           const scoreJson = await scoreRes.json();
           scoreData = scoreJson.score;
+          rawMetrics = scoreJson.metrics;
         }
 
         // Parse milestones
@@ -147,12 +153,13 @@ export function useScoreDetail(open: boolean): UseScoreDetailReturn {
             icon: def.icon,
           }));
 
-        // Stats
+        // Stats: read raw activity counts from the metrics object
+        // (ScoreResult only has point breakdowns, not raw counts)
         const stats: ScoreStats = {
-          baskets: scoreData?.baskets_created || 0,
-          trades: scoreData?.trades_executed || 0,
-          aiChats: scoreData?.ai_sessions || 0,
-          days: scoreData?.current_streak || 0,
+          baskets: rawMetrics?.baskets_created ?? 0,
+          trades: rawMetrics?.trades_executed ?? 0,
+          aiChats: rawMetrics?.ai_sessions ?? 0,
+          days: rawMetrics?.current_streak ?? 0,
         };
 
         const result: ScoreDetailData = {

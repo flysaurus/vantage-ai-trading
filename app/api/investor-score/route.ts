@@ -6,7 +6,7 @@
 // Response: { score: ScoreResult } | { error: string }
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getMyScore } from '@/app/actions/investor-score';
+import { getMyScoreWithMetrics } from '@/app/actions/investor-score';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -15,13 +15,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing anonymousId' }, { status: 400 });
     }
 
-    const score = await getMyScore(body.anonymousId);
+    const result = await getMyScoreWithMetrics(body.anonymousId);
 
-    if (!score) {
+    if (!result) {
       return NextResponse.json({ error: 'Failed to compute score' }, { status: 500 });
     }
 
-    return NextResponse.json({ score });
+    return NextResponse.json({ score: result.score, metrics: result.metrics });
   } catch (err: any) {
     console.error('[api/investor-score] Error:', err.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

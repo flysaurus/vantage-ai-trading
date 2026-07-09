@@ -8,6 +8,21 @@ import { createServerClient } from '@/lib/supabase';
 import { calculateInvestorScore, getLevel, getLevelProgress, getNextLevelThreshold } from '@/lib/investor-score/calculate';
 import type { ScoreMetrics, ScoreResult } from '@/lib/investor-score/calculate';
 
+// ─── Types ────────────────────────────────────────────────────
+
+/** Raw activity counts stored in DB, exposed for stat displays. */
+export interface RawScoreMetrics {
+  baskets_created: number;
+  trades_executed: number;
+  ai_sessions: number;
+  current_streak: number;
+}
+
+export interface ScoreWithMetrics {
+  score: ScoreResult;
+  metrics: RawScoreMetrics;
+}
+
 // ─── Get Current Score ───────────────────────────────────────
 
 /**
@@ -15,12 +30,20 @@ import type { ScoreMetrics, ScoreResult } from '@/lib/investor-score/calculate';
  * Combines data from investor_scores + streaks + anonymous_profiles.
  */
 export async function getMyScore(anonymousId: string): Promise<ScoreResult | null> {
+  const result = await getMyScoreWithMetrics(anonymousId);
+  return result?.score ?? null;
+}
+
+/**
+ * Same as getMyScore but also returns raw activity counts
+ * for stat displays (baskets, trades, AI chats, days).
+ */
+export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreWithMetrics | null> {
   if (!anonymousId) return null;
 
   const supabase = createServerClient();
 
   try {
-    // Fetch all needed data in parallel
     const [scoresRes, streakRes, profileRes] = await Promise.all([
       (supabase as any)
         .from('investor_scores')
@@ -43,30 +66,25 @@ export async function getMyScore(anonymousId: string): Promise<ScoreResult | nul
     const streak = streakRes.data;
     const profile = profileRes.data;
 
-    if (!scores) {
-      // No scores row yet — return minimal result
-      return calculateInvestorScore({
-        baskets_created: 0,
-        trades_executed: 0,
-        ai_sessions: 0,
-        current_streak: 0,
-        style_consistency: 50,
-        risk_adherence: 50,
-      });
-    }
+    const rawMetrics: RawScoreMetrics = {
+      baskets_created: scores?.baskets_created || 0,
+      trades_executed: scores?.trades_executed || 0,
+      ai_sessions: scores?.ai_sessions || 0,
+      current_streak: streak?.current_streak || 0,
+    };
 
     const metrics: ScoreMetrics = {
-      baskets_created: scores.baskets_created || 0,
-      trades_executed: scores.trades_executed || 0,
-      ai_sessions: scores.ai_sessions || 0,
-      current_streak: streak?.current_streak || 0,
-      style_consistency: scores.style_consistency || 50,
+      baskets_created: rawMetrics.baskets_created,
+      trades_executed: rawMetrics.trades_executed,
+      ai_sessions: rawMetrics.ai_sessions,
+      current_streak: rawMetrics.current_streak,
+      style_consistency: scores?.style_consistency || 50,
       risk_adherence: estimateRiskAdherence(profile?.risk_tolerance, scores),
     };
 
-    return calculateInvestorScore(metrics);
+    return { score: calculateInvestorScore(metrics), metrics: rawMetrics };
   } catch (err: any) {
-    console.error('[investor-score] getMyScore error:', err.message);
+    console.error('[investor-score] getMyScoreWithMetrics error:', err.message);
     return null;
   }
 }

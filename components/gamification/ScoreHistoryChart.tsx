@@ -124,7 +124,7 @@ export function ScoreHistoryChart({ history, loading }: ScoreHistoryChartProps) 
         }}>
           <span style={{
             fontSize: '12px',
-            color: 'var(--text-muted)',
+            color: 'var(--text-primary)',
             textAlign: 'center',
             lineHeight: 1.5,
           }}>
