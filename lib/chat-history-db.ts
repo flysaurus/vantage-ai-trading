@@ -38,14 +38,21 @@ const MAX_SESSIONS = 10;
 export async function fetchRecentSessions(
   userId: string,
   limit: number = MAX_SESSIONS,
+  retentionDays: number = 7,
 ): Promise<DBSession[]> {
   const supabase = createClient();
 
-  // Fetch recent messages (up to 500 — enough to find 10+ days)
+  // 7-day rolling window cutoff
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - retentionDays);
+  cutoff.setHours(0, 0, 0, 0);
+
+  // Fetch recent messages within retention window (up to 500 — enough to find 10+ days)
   const { data, error } = await (supabase as any)
     .from('chat_messages')
     .select('id, user_id, role, content, created_at')
     .eq('user_id', userId)
+    .gte('created_at', cutoff.toISOString())
     .order('created_at', { ascending: false })
     .limit(500);
 

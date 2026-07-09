@@ -19,6 +19,7 @@ import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
 import { LearningMomentCard } from '@/components/learning/LearningMomentCard';
 import { LearningLibrary } from '@/components/learning/LearningLibrary';
+import { ChatHistory } from '@/components/ai/ChatHistory';
 
 
 // ── Design tokens (vantage-ai-tab-redesign.html) ──
@@ -192,6 +193,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [exploreSeenCount, setExploreSeenCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -1147,6 +1149,25 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           overflow: 'hidden',
         }}>
           <button
+            onClick={() => { setShowMenu(false); setShowHistory(true); }}
+            style={{
+              display: 'block',
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              color: '#e2e8f0',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              padding: '12px 16px',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+            }}
+          >
+            History
+          </button>
+          <button
             onClick={() => { setShowMenu(false); setShowClearConfirm(true); }}
             style={{
               display: 'block',
@@ -2020,6 +2041,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ── Learning Library Overlay ── */}
       <LearningLibrary open={showLibrary} onClose={() => setShowLibrary(false)} />
+      <ChatHistory open={showHistory} onClose={() => setShowHistory(false)} />
 
     </div>
   );
