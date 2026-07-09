@@ -61,10 +61,15 @@ export async function fetchRecentSessions(
     return [];
   }
 
-  // Group messages by date (YYYY-MM-DD)
+  // Helper: format a Date as YYYY-MM-DD in the browser's local timezone
+  // (NOT UTC — Supabase stores UTC but the user sees dates in their timezone)
+  const localDateStr = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  // Group messages by date (YYYY-MM-DD) in BROWSER LOCAL timezone
   const dayMap = new Map<string, DBChatMessage[]>();
   for (const msg of data) {
-    const date = new Date(msg.created_at).toISOString().slice(0, 10);
+    const date = localDateStr(new Date(msg.created_at));
     if (!dayMap.has(date)) dayMap.set(date, []);
     dayMap.get(date)!.push({
       id: msg.id,
@@ -92,17 +97,14 @@ export async function fetchRecentSessions(
       .find(l => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('|') && l.trim().length > 10)
       || rawPreview.slice(0, 80);
 
-    const now = new Date();
+    // Format the session date label in the user's local timezone
+    // Always show the actual date (no relative "Today"/"Yesterday" labels)
     const sessionDate = new Date(date + 'T12:00:00');
-    const isToday = date === now.toISOString().slice(0, 10);
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = date === yesterday.toISOString().slice(0, 10);
-
-    let label: string;
-    if (isToday) label = 'Today';
-    else if (isYesterday) label = 'Yesterday';
-    else label = sessionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const label = sessionDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
 
     sessions.push({
       id: date,

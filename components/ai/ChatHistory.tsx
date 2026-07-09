@@ -276,14 +276,14 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
     try {
       const data = await fetchRecentSessions(userId, 10);
       setSessions(data);
-      // Expand "Today" by default, collapse rest
+      // Expand most recent day by default (browser local timezone)
       if (data.length > 0) {
-        const today = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const todaySession = data.find(s => s.date === today);
         if (todaySession) {
           setExpandedDates(new Set([today]));
         } else {
-          // Expand most recent day
           setExpandedDates(new Set([data[0].date]));
         }
       }
