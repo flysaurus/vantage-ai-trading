@@ -787,8 +787,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     setInput('');
     setLoading(true);
 
-    // Send only last 5 messages (user+ai) to cap context window
-    const contextMessages = newMessages.slice(-5);
+    // Send only last 10 messages (user+ai) to cap context window
+    const contextMessages = newMessages.slice(-10);
 
     try {
       const res = await apiPost('/api/chat', {
