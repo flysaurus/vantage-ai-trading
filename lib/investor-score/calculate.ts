@@ -2,6 +2,10 @@
 // Four-pillar scoring (0-1000). New accounts start near 0.
 // No generous defaults — score comes from real, verified activity.
 //
+// All weights, caps, and thresholds are configurable via the
+// gamification_config DB table. Pass a GamificationConfig to
+// calculateInvestorScore(); if omitted, hardcoded defaults are used.
+//
 // Pillars:
 //   Discipline  (40%, 400 pts) — style consistency, drawdown resilience
 //   Understanding (25%, 250 pts) — deep learning engagement
@@ -10,6 +14,8 @@
 //
 // Style-specific level ladders (4 stages each, 250-point bands).
 // Tier-aware: Silver cannot observe trade execution → lower ceiling.
+
+import type { PillarWeights, PointCaps } from '@/lib/gamification/config';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -104,17 +110,6 @@ const LEVEL_THRESHOLDS = [250, 500, 750] as const;
 
 export const MAX_SCORE = 1000;
 
-// ─── Pillar Constants ─────────────────────────────────────────
-
-const DISCIPLINE_MAX = 400;
-const UNDERSTANDING_MAX = 250;
-const CONSTRUCTION_MAX = 200;
-const ENGAGEMENT_MAX = 150;
-
-// Engagement sub-caps
-const STREAK_MAX = 90;   // 3pts/day, 30 days
-const AI_MAX = 60;       // diminishing: 3pts × first 10, 2pts × next 10, 0.5pts thereafter
-
 // ─── Public API ───────────────────────────────────────────────
 
 /**
@@ -130,32 +125,41 @@ const AI_MAX = 60;       // diminishing: 3pts × first 10, 2pts × next 10, 0.5p
 export function calculateInvestorScore(
   metrics: ScoreMetrics,
   investorStyle?: string,
+  config?: { weights: PillarWeights; caps: PointCaps },
 ): ScoreResult {
+  const w = config?.weights ?? { discipline: 40, understanding: 25, construction: 20, engagement: 15 };
+  const c = config?.caps;
+
+  // Compute max point ceilings from weights (weight × 10 = max points)
+  const DISCIPLINE_MAX = w.discipline * 10;
+  const UNDERSTANDING_MAX = w.understanding * 10;
+  const CONSTRUCTION_MAX = w.construction * 10;
+  const ENGAGEMENT_MAX = w.engagement * 10;
   // ═══════════════════════════════════════════════════════════
-  // PILLAR 1: DISCIPLINE (40% = 400 points)
+  // PILLAR 1: DISCIPLINE
   // ═══════════════════════════════════════════════════════════
-  const styleConsistency = computeStyleConsistency(metrics);
-  const drawdownBonus = computeDrawdownBonus(metrics);
+  const styleConsistency = computeStyleConsistency(metrics, c);
+  const drawdownBonus = computeDrawdownBonus(metrics, c);
   const discipline = Math.min(DISCIPLINE_MAX, styleConsistency + drawdownBonus);
 
   // ═══════════════════════════════════════════════════════════
-  // PILLAR 2: UNDERSTANDING (25% = 250 points)
+  // PILLAR 2: UNDERSTANDING
   // ═══════════════════════════════════════════════════════════
-  const learningDepth = computeLearningDepth(metrics);
+  const learningDepth = computeLearningDepth(metrics, c);
   const understanding = Math.min(UNDERSTANDING_MAX, learningDepth);
 
   // ═══════════════════════════════════════════════════════════
-  // PILLAR 3: CONSTRUCTION (20% = 200 points)
+  // PILLAR 3: CONSTRUCTION
   // ═══════════════════════════════════════════════════════════
-  const diversification = computeDiversificationScore(metrics);
-  const positionSizing = computePositionSizing(metrics);
+  const diversification = computeDiversificationScore(metrics, c);
+  const positionSizing = computePositionSizing(metrics, c);
   const construction = Math.min(CONSTRUCTION_MAX, diversification + positionSizing);
 
   // ═══════════════════════════════════════════════════════════
-  // PILLAR 4: ENGAGEMENT (15% = 150 points)
+  // PILLAR 4: ENGAGEMENT
   // ═══════════════════════════════════════════════════════════
-  const streakPoints = computeStreakScore(metrics);
-  const aiSessionPoints = computeAISessionScore(metrics);
+  const streakPoints = computeStreakScore(metrics, c);
+  const aiSessionPoints = computeAISessionScore(metrics, c);
   const engagement = Math.min(ENGAGEMENT_MAX, streakPoints + aiSessionPoints);
 
   // ── Total ──────────────────────────────────────────────────
@@ -232,82 +236,90 @@ export function getLadderForStyle(investorStyle?: string): readonly string[] {
 // ─── Pillar Calculators ──────────────────────────────────────
 
 /**
- * Style consistency: 0-300 points from matching_trades / trades_executed ratio.
- * No default — 0 until real trade history exists.
+ * Style consistency: points from matching_trades / trades_executed ratio.
+ * Configurable max (default 300). No default — 0 until real trade history exists.
  */
-function computeStyleConsistency(metrics: ScoreMetrics): number {
+function computeStyleConsistency(metrics: ScoreMetrics, caps?: PointCaps): number {
+  const max = caps?.style_consistency_max ?? 300;
   if (metrics.trades_executed === 0) return 0;
   const rate = metrics.matching_trades / metrics.trades_executed;
-  return Math.round(rate * 300);
+  return Math.round(rate * max);
 }
 
 /**
- * Drawdown bonus: 100 points for holding through a ≥10% dip.
- * Binary — either you've done it or you haven't.
- *
- * LIMITATION: Only detects currently-held positions with ≥10% unrealized loss
- * (computed at call time by comparing entry price → current market price).
- * The historical case — bought, dipped ≥10% intra-hold, then sold at/above entry —
- * is NOT computable from trade_history alone and requires per-position price-history
- * data. This is flagged as a future enhancement.
+ * Drawdown bonus: configurable bonus points for holding through a dip.
  */
-function computeDrawdownBonus(metrics: ScoreMetrics): number {
-  return metrics.held_through_drawdown ? 100 : 0;
+function computeDrawdownBonus(metrics: ScoreMetrics, caps?: PointCaps): number {
+  const bonus = caps?.drawdown_bonus ?? 100;
+  return metrics.held_through_drawdown ? bonus : 0;
 }
 
 /**
- * Learning depth: 50 points per deep engagement, capped at 5 (250 points).
- * Shallow/click-through learning moments contribute 0.
+ * Learning depth: points per deep engagement, with configurable cap and per-unit value.
+ * Default: 50 points × up to 5 deep engagements = 250 max.
  */
-function computeLearningDepth(metrics: ScoreMetrics): number {
-  return Math.min(250, metrics.deep_engagement_count * 50);
+function computeLearningDepth(metrics: ScoreMetrics, caps?: PointCaps): number {
+  const cap = caps?.learning_depth_max ?? 5;
+  const points = caps?.learning_depth_points ?? 50;
+  return Math.min(cap * points, metrics.deep_engagement_count * points);
 }
 
 /**
- * Diversification: 0-150 points from Herfindahl-based diversification_score.
- * No default — 0 until a real portfolio exists.
+ * Diversification: configurable points from Herfindahl-based diversification_score.
+ * Default: 0-150 points (diversification_score × 1.5).
  */
-function computeDiversificationScore(metrics: ScoreMetrics): number {
+function computeDiversificationScore(metrics: ScoreMetrics, caps?: PointCaps): number {
   if (metrics.position_count === 0) return 0;
-  return Math.min(150, Math.round(metrics.diversification_score * 1.5));
+  const max = caps?.diversification_max ?? 150;
+  const mult = caps?.diversification_multiplier ?? 1.5;
+  return Math.min(max, Math.round(metrics.diversification_score * mult));
 }
 
 /**
- * Position sizing sanity: 0-50 points.
- * Ideal: max position ≤ 25% of portfolio. Penalizes concentration beyond that.
- * 0 until portfolio exists.
+ * Position sizing sanity: configurable points.
+ * Default: ideal ≤25% → 50 points, worst 50%+ → 0 points.
  */
-function computePositionSizing(metrics: ScoreMetrics): number {
+function computePositionSizing(metrics: ScoreMetrics, caps?: PointCaps): number {
   if (metrics.position_count === 0) return 0;
-  // 25% per position is the sweet spot → 50 points
-  // 50% per position → 0 points
-  // Linear interpolation between 25% and 50%
-  const idealMax = 25;
-  const worstMax = 50;
+  const idealMax = caps?.position_sizing_ideal_pct ?? 25;
+  const worstMax = caps?.position_sizing_worst_pct ?? 50;
+  const maxPts = caps?.position_sizing_max ?? 50;
   const clamped = Math.max(idealMax, Math.min(worstMax, metrics.max_position_pct));
-  const score = Math.round(50 * (1 - (clamped - idealMax) / (worstMax - idealMax)));
+  const score = Math.round(maxPts * (1 - (clamped - idealMax) / (worstMax - idealMax)));
   return Math.max(0, score);
 }
 
 /**
- * Streak score: 3 points per consecutive day, capped at 90 (30 days).
+ * Streak score: configurable points per day, with a configurable cap.
+ * Default: 3 pts/day, capped at 90 (30 days).
  */
-function computeStreakScore(metrics: ScoreMetrics): number {
-  return Math.min(STREAK_MAX, metrics.current_streak * 3);
+function computeStreakScore(metrics: ScoreMetrics, caps?: PointCaps): number {
+  const max = caps?.streak_max ?? 90;
+  const perDay = caps?.streak_points_per_day ?? 3;
+  return Math.min(max, metrics.current_streak * perDay);
 }
 
 /**
- * AI session score: diminishing returns.
- * Sessions 1-10:  3pts each → max 30
- * Sessions 11-20: 2pts each → max 20
- * Sessions 21+:   0.5pts each (asymptotically negligible)
- * Hard cap: 60
+ * AI session score: diminishing returns with configurable tiers.
+ * Default: tier1=10×3pts, tier2=10×2pts, tier3=0.5pts, hard cap 60.
  */
-function computeAISessionScore(metrics: ScoreMetrics): number {
+function computeAISessionScore(metrics: ScoreMetrics, caps?: PointCaps): number {
   const s = metrics.ai_sessions;
-  if (s <= 10) return s * 3;
-  if (s <= 20) return 30 + (s - 10) * 2;
-  return Math.min(AI_MAX, 50 + (s - 20) * 0.5);
+  const max = caps?.ai_max ?? 60;
+  const t1Count = caps?.ai_session_tier1_count ?? 10;
+  const t1Pts = caps?.ai_session_tier1_points ?? 3;
+  const t2Count = caps?.ai_session_tier2_count ?? 10;
+  const t2Pts = caps?.ai_session_tier2_points ?? 2;
+  const t3Pts = caps?.ai_session_tier3_points ?? 0.5;
+
+  const t1End = t1Count;
+  const t2End = t1Count + t2Count;
+  const t1Total = t1Count * t1Pts;
+  const t2Total = t2Count * t2Pts;
+
+  if (s <= t1End) return s * t1Pts;
+  if (s <= t2End) return t1Total + (s - t1End) * t2Pts;
+  return Math.min(max, t1Total + t2Total + (s - t2End) * t3Pts);
 }
 
 // ─── Level Determination ─────────────────────────────────────

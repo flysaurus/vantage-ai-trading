@@ -18,6 +18,7 @@ import {
 } from '@/lib/investor-score/calculate';
 import type { ScoreMetrics } from '@/lib/investor-score/calculate';
 import { updateDrawdownTracking } from '@/lib/gamification/drawdown';
+import { getGamificationConfig } from '@/lib/gamification/config';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -255,7 +256,11 @@ async function computeAndWriteScore(
     ai_sessions: row.ai_sessions || 0,
   };
 
-  const result = calculateInvestorScore(metrics, overrides.investorStyle);
+  const result = calculateInvestorScore(
+    metrics,
+    overrides.investorStyle,
+    await getGamificationConfig(),
+  );
 
   const { error: updateErr } = await supabase
     .from('investor_scores')
@@ -358,11 +363,13 @@ async function checkAndAwardTrueToStyle(
   supabase: any,
   anonymousId: string,
   row: any,
+  thresholds?: { trades: number; matchRate: number },
 ): Promise<boolean> {
+  const t = thresholds ?? { trades: 10, matchRate: 0.7 };
   const trades = row.trades_executed || 0;
   const matches = row.matching_trades || 0;
-  if (trades < 10) return false;
-  if (trades === 0 || matches / trades < 0.7) return false;
+  if (trades < t.trades) return false;
+  if (trades === 0 || matches / trades < t.matchRate) return false;
 
   const already = await hasMilestone(supabase, anonymousId, MILESTONE.TRUE_TO_STYLE);
   if (already) return false;
@@ -381,10 +388,12 @@ async function checkAndAwardWellBuilt(
   positionCount: number,
   diversificationScore: number,
   maxPositionPct: number,
+  thresholds?: { positions: number; diversification: number; maxPosition: number },
 ): Promise<boolean> {
-  if (positionCount < 5) return false;
-  if (diversificationScore < 70) return false;
-  if (maxPositionPct >= 35) return false;
+  const t = thresholds ?? { positions: 5, diversification: 70, maxPosition: 35 };
+  if (positionCount < t.positions) return false;
+  if (diversificationScore < t.diversification) return false;
+  if (maxPositionPct >= t.maxPosition) return false;
 
   const already = await hasMilestone(supabase, anonymousId, MILESTONE.WELL_BUILT);
   if (already) return false;
@@ -402,9 +411,11 @@ async function checkAndAwardStudentOfTheGame(
   anonymousId: string,
   learningCount: number,
   deepEngagementCount: number,
+  thresholds?: { learning: number; deep: number },
 ): Promise<boolean> {
-  if (learningCount < 5) return false;
-  if (deepEngagementCount < 3) return false;
+  const t = thresholds ?? { learning: 5, deep: 3 };
+  if (learningCount < t.learning) return false;
+  if (deepEngagementCount < t.deep) return false;
 
   const already = await hasMilestone(supabase, anonymousId, MILESTONE.STUDENT_OF_THE_GAME);
   if (already) return false;
@@ -428,6 +439,7 @@ export async function incrementBasketsCreated(
   maxPositionPct?: number,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
+  const config = await getGamificationConfig();
   const row = await getOrCreateScore(anonymousId);
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
@@ -468,6 +480,7 @@ export async function incrementTradesExecuted(
   currentEquity?: number,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
+  const config = await getGamificationConfig();
   const row = await getOrCreateScore(anonymousId);
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
@@ -520,7 +533,10 @@ export async function incrementTradesExecuted(
   const updatedRow = { ...row, trades_executed: newTrades, matching_trades: newMatches };
 
   // True to Style
-  const styleMilestone = await checkAndAwardTrueToStyle(supabase, anonymousId, updatedRow);
+  const styleMilestone = await checkAndAwardTrueToStyle(supabase, anonymousId, updatedRow, {
+    trades: config.milestones.true_to_style_trades,
+    matchRate: config.milestones.true_to_style_match_rate,
+  });
   if (styleMilestone) milestoneAwarded = true;
 
   // Steady Hands (if caller reports drawdown hold)
@@ -535,6 +551,11 @@ export async function incrementTradesExecuted(
   if (positionCount !== undefined && maxPositionPct !== undefined) {
     const builtMilestone = await checkAndAwardWellBuilt(
       supabase, anonymousId, positionCount, newDiversification, maxPositionPct,
+      {
+        positions: config.milestones.well_built_positions,
+        diversification: config.milestones.well_built_diversification,
+        maxPosition: config.milestones.well_built_max_position_pct,
+      },
     );
     if (builtMilestone) milestoneAwarded = true;
   }
@@ -615,6 +636,7 @@ export async function recalculateScore(
   heldThroughDrawdown?: boolean,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
+  const config = await getGamificationConfig();
   const row = await getOrCreateScore(anonymousId);
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
@@ -664,6 +686,11 @@ export async function recalculateScore(
   ) {
     const builtMilestone = await checkAndAwardWellBuilt(
       supabase, anonymousId, positionCount, newDiversification, maxPositionPct,
+      {
+        positions: config.milestones.well_built_positions,
+        diversification: config.milestones.well_built_diversification,
+        maxPosition: config.milestones.well_built_max_position_pct,
+      },
     );
     if (builtMilestone) milestoneAwarded = true;
   }
@@ -725,6 +752,7 @@ export async function addLearningXP(
   const supabase = createServerClient();
 
   try {
+    const config = await getGamificationConfig();
     const row = await getOrCreateScore(anonymousId);
     if (!row) return { success: false };
 
@@ -755,6 +783,10 @@ export async function addLearningXP(
     let milestoneAwarded: string | undefined;
     const studentMilestone = await checkAndAwardStudentOfTheGame(
       supabase, anonymousId, newLearningCount, newDeepCount,
+      {
+        learning: config.milestones.student_learning_count,
+        deep: config.milestones.student_deep_count,
+      },
     );
     if (studentMilestone) {
       milestoneAwarded = MILESTONE.STUDENT_OF_THE_GAME;
