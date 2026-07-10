@@ -69,8 +69,10 @@ export async function takeWeeklySnapshot(anonymousId: string): Promise<void> {
       current_streak: streak?.current_streak || 0,
       // Use stored consistency or default
       style_consistency: scores.style_consistency || 50,
-      // Estimate risk adherence from available data
-      risk_adherence: estimateRiskAdherence(profile?.risk_tolerance, scores),
+      // Use real risk adherence if available, else estimate
+      risk_adherence: scores.risk_adherence || estimateRiskAdherence(profile?.risk_tolerance, scores),
+      diversification_score: scores.diversification_score || 50,
+      learning_count: scores.learning_count || 0,
     };
 
     const result = calculateInvestorScore(metrics);
@@ -164,18 +166,15 @@ function estimateRiskAdherence(
   riskTolerance: string | undefined,
   scores: any
 ): number {
-  // Without full portfolio data in the scores table, provide a baseline
-  // based on available signal: if user has style_consistency score, they're
-  // likely aligned. Otherwise estimate from activity patterns.
+  // Fallback estimate when no real portfolio data is available
+  // (snapshot cron runs without portfolio context).
+  // Real risk_adherence is stored at trade time from calculateRiskAdherence().
 
   if (scores.style_consistency && scores.style_consistency > 0) {
-    // User has style data — assume risk adherence correlates with activity
     const activityBonus = Math.min(50, (scores.trades_executed || 0) * 3);
     return Math.min(100, 50 + activityBonus);
   }
 
-  // Conservative users with fewer trades are considered more risk-adherent
-  // (they're deliberate, not impulsive)
   if (riskTolerance === 'conservative') {
     return scores.trades_executed > 10 ? 70 : 85;
   }
@@ -183,6 +182,5 @@ function estimateRiskAdherence(
     return scores.trades_executed > 5 ? 80 : 60;
   }
 
-  // Default moderate
   return 70;
 }

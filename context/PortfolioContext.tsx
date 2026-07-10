@@ -22,6 +22,8 @@ import React, {
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { onTradeExecuted } from '@/lib/gamification/events';
+import { calculateRiskAdherence } from '@/lib/investor-score/calculate';
+import { scoreDiversification } from '@/lib/confidence';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
@@ -566,12 +568,91 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             b.getAccount(),
             b.getPositions(),
           ]);
-          const positionsCost = positions.reduce((s, p) => s + (p.totalCost || 0), 0);
+          const positionsCost = positions.reduce((s: number, p: any) => s + (p.totalCost || 0), 0);
           const pv = (account?.totalValue || 0);
           const pc = positionsCost + (account?.cashBalance || 0);
-          onTradeExecuted(user.id, user?.investorStyle, user?.investorStyle, pv, pc).catch(() => {});
+
+          // ── Compute real trade characteristics for style inference ──
+          const existingPos = positions.find((p: any) => p.symbol === symbol);
+          const tradeSector = existingPos?.sector || undefined;
+          const tradeAssetType = existingPos?.type || (orderType === 'market' ? 'Stock' : 'ETF');
+          let tradeHoldingDays: number | undefined;
+          if (existingPos?.buyDate) {
+            try {
+              tradeHoldingDays = Math.round(
+                (Date.now() - new Date(existingPos.buyDate).getTime()) / (1000 * 60 * 60 * 24)
+              );
+            } catch { /* leave undefined */ }
+          }
+
+          // ── Compute portfolio skill metrics ──
+          // BrokerPosition from engine.ts: shares, avgCost, totalCost, buyDate, sector, type
+          // (does NOT have marketValue or dayChangePercent — compute from available fields)
+          const cashRatio = account?.totalValue > 0
+            ? ((account?.cashBalance || 0) / account.totalValue) * 100
+            : 10;
+          const growthSectors = ['Technology', 'Communication Services', 'Consumer Cyclical'];
+          let growthValue = 0;
+          let totalMarketValue = 0;
+          for (const p of positions) {
+            const mv = (p.shares || 0) * (p.avgCost || 0);
+            totalMarketValue += mv;
+            if (p.sector && growthSectors.includes(p.sector)) {
+              growthValue += mv;
+            }
+          }
+          const growthExposure = totalMarketValue > 0
+            ? (growthValue / totalMarketValue) * 100
+            : 50;
+
+          // Volatility: rough proxy from portfolio breadth (0.15-0.40 range)
+          const volatility = positions.length <= 3 ? 0.35
+            : positions.length <= 8 ? 0.25
+            : 0.18;
+
+          // Map BrokerPosition[] → minimal Position shape for scoreDiversification()
+          const minimalPositions = positions.map((p: any) => ({
+            symbol: p.symbol,
+            sector: p.sector,
+            marketValue: (p.shares || 0) * (p.avgCost || 0),
+            profitLossPct: 0,
+            dayChangePercent: 0,
+          }));
+          const diversScore = scoreDiversification(minimalPositions as any).score;
+
+          const riskTolerance = (user as any)?.riskTolerance || 'Moderate';
+          const riskScore = calculateRiskAdherence(riskTolerance, {
+            volatility,
+            growthExposure,
+            cashRatio,
+            diversification: diversScore,
+          });
+
+          onTradeExecuted(
+            user.id as string,
+            tradeAssetType,
+            tradeSector,
+            tradeHoldingDays,
+            undefined, // basketStrategy (not from basket)
+            user?.investorStyle as string | undefined,
+            riskScore,
+            diversScore,
+            pv,
+            pc
+          ).catch(() => {});
         } else {
-          onTradeExecuted(user.id, user?.investorStyle, user?.investorStyle).catch(() => {});
+          onTradeExecuted(
+            user.id as string,
+            undefined, // assetType
+            undefined, // sector
+            undefined, // holdingDays
+            undefined, // basketStrategy
+            user?.investorStyle as string | undefined,
+            undefined, // riskAdherence (no portfolio data available)
+            undefined, // diversificationScore (no portfolio data available)
+            undefined, // portfolioValue
+            undefined  // portfolioCost
+          ).catch(() => {});
         }
       }
 

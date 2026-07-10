@@ -1,5 +1,8 @@
 // ─── Gamification: Increment Trades ─────────────────────────
 // POST /api/gamification/increment-trades
+//
+// Accepts trade characteristic data for real style inference,
+// plus portfolio-derived skill metrics (risk adherence, diversification).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { incrementTradesExecuted } from '@/app/actions/gamification';
@@ -13,8 +16,13 @@ export async function POST(request: NextRequest) {
 
     const result = await incrementTradesExecuted(
       body.anonymousId,
-      body.tradeStyle,
-      body.investorStyle
+      body.tradeAssetType,
+      body.tradeSector,
+      body.tradeHoldingDays,
+      body.basketStrategy,
+      body.investorStyle,
+      body.riskAdherence,
+      body.diversificationScore
     );
 
     return NextResponse.json(result);

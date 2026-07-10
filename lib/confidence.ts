@@ -41,7 +41,7 @@ function inferSector(_symbol: string): string {
 }
 
 // ─── Factor 1: Diversification (25%) ───
-function scoreDiversification(positions: Position[]): FactorResult {
+export function scoreDiversification(positions: Position[]): FactorResult {
   if (positions.length === 0) {
     return { score: 0, explanation: 'No active positions. Build a diversified portfolio to reduce risk.', detail: '0 positions across 0 sectors.' };
   }

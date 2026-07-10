@@ -85,14 +85,29 @@ export async function onBasketCreated(anonymousId: string): Promise<void> {
 /**
  * Call after a trade is executed.
  *
+ * FIX 1: Accepts real trade characteristics for inferTradeStyle()
+ * instead of passing the user's declared style as both arguments.
+ *
+ * FIX 2 & 3: Accepts portfolio-derived risk_adherence and
+ * diversification_score computed at trade time from positions data.
+ *
  * - Increments trades_executed in investor_scores
- * - Compares tradeStyle to investor_style for consistency
+ * - Compares inferred trade style to declared investor_style
  * - Checks: first_trade, portfolio_green milestones
  */
 export async function onTradeExecuted(
   anonymousId: string,
-  tradeStyle?: string,
+  /** Actual trade characteristics for inferTradeStyle() */
+  tradeAssetType?: string,
+  tradeSector?: string,
+  tradeHoldingDays?: number,
+  basketStrategy?: string,
+  /** User's declared investor style */
   investorStyle?: string,
+  /** Portfolio-derived risk adherence (0-100) */
+  riskAdherence?: number,
+  /** Portfolio-derived diversification score (0-100) */
+  diversificationScore?: number,
   /** Optional: current portfolio value (for portfolio_green check) */
   portfolioValue?: number,
   /** Optional: total cost basis (for portfolio_green check) */
@@ -101,8 +116,17 @@ export async function onTradeExecuted(
   if (!anonymousId) return;
 
   try {
-    // 1. Increment score with style info
-    const scoreRes = await apiPost('/api/gamification/increment-trades', { anonymousId, tradeStyle, investorStyle });
+    // 1. Increment score with real trade data + portfolio metrics
+    const scoreRes = await apiPost('/api/gamification/increment-trades', {
+      anonymousId,
+      tradeAssetType,
+      tradeSector,
+      tradeHoldingDays,
+      basketStrategy,
+      investorStyle,
+      riskAdherence,
+      diversificationScore,
+    });
 
     if (scoreRes.ok) {
       const { totalScore } = await scoreRes.json();
@@ -136,14 +160,17 @@ export async function onTradeExecuted(
       }
     }
 
-    // Check style_master: if tradeStyle matches investorStyle and we've done 5+ trades
-    if (tradeStyle && investorStyle && tradeStyle === investorStyle) {
+    // Check style_master: style_consistency >= 80% after 5+ trades
+    // (was: tradeStyle === investorStyle tautology — now real check)
+    if (investorStyle) {
       const countRes = await fetch(
         `/api/gamification/score?anonymousId=${encodeURIComponent(anonymousId)}`
       );
       if (countRes.ok) {
         const { score } = await countRes.json();
-        if (score?.trades_executed >= 5) {
+        const trades = score?.trades_executed || 0;
+        const consistency = score?.style_consistency || 0;
+        if (trades >= 5 && consistency >= 80) {
           const styleMaster = await checkAndAwardMilestone(anonymousId, 'style_master');
           if (styleMaster) {
             emitEvent({

@@ -23,6 +23,8 @@ const EMPTY_RESULT: ScoreResult = {
     streak: 0,
     styleConsistency: 150,
     riskAdherence: 100,
+    diversification: 100,
+    learning: 0,
   },
 };
 

@@ -16,6 +16,7 @@ export interface RawScoreMetrics {
   trades_executed: number;
   ai_sessions: number;
   current_streak: number;
+  learning_count: number;
 }
 
 export interface ScoreWithMetrics {
@@ -27,7 +28,9 @@ export interface ScoreWithMetrics {
 
 /**
  * Fetch and compute the current investor score for a user.
- * Combines data from investor_scores + streaks + anonymous_profiles.
+ * Combines data from investor_scores + streaks.
+ * Now uses real risk_adherence and diversification_score from the DB
+ * (computed at trade time from portfolio data), not trade-count proxies.
  */
 export async function getMyScore(anonymousId: string): Promise<ScoreResult | null> {
   const result = await getMyScoreWithMetrics(anonymousId);
@@ -36,7 +39,7 @@ export async function getMyScore(anonymousId: string): Promise<ScoreResult | nul
 
 /**
  * Same as getMyScore but also returns raw activity counts
- * for stat displays (baskets, trades, AI chats, days).
+ * for stat displays (baskets, trades, AI chats, learning, streak days).
  */
 export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreWithMetrics | null> {
   if (!anonymousId) return null;
@@ -44,7 +47,7 @@ export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreW
   const supabase = createServerClient();
 
   try {
-    const [scoresRes, streakRes, profileRes] = await Promise.all([
+    const [scoresRes, streakRes] = await Promise.all([
       (supabase as any)
         .from('investor_scores')
         .select('*')
@@ -55,31 +58,32 @@ export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreW
         .select('current_streak')
         .eq('anonymous_id', anonymousId)
         .maybeSingle(),
-      (supabase as any)
-        .from('anonymous_profiles')
-        .select('investor_style, risk_tolerance')
-        .eq('anonymous_id', anonymousId)
-        .maybeSingle(),
     ]);
 
     const scores = scoresRes.data;
     const streak = streakRes.data;
-    const profile = profileRes.data;
 
     const rawMetrics: RawScoreMetrics = {
       baskets_created: scores?.baskets_created || 0,
       trades_executed: scores?.trades_executed || 0,
       ai_sessions: scores?.ai_sessions || 0,
       current_streak: streak?.current_streak || 0,
+      learning_count: scores?.learning_count || 0,
     };
 
+    // FIX 2: Use real risk_adherence from DB (computed at trade time
+    // from portfolio volatility, growth exposure, cash ratio, diversification).
+    // Falls back to default (70) if no trades have been made yet.
+    // FIX 3 & 4: diversification_score and learning_count also from DB.
     const metrics: ScoreMetrics = {
       baskets_created: rawMetrics.baskets_created,
       trades_executed: rawMetrics.trades_executed,
       ai_sessions: rawMetrics.ai_sessions,
       current_streak: rawMetrics.current_streak,
       style_consistency: scores?.style_consistency || 50,
-      risk_adherence: estimateRiskAdherence(profile?.risk_tolerance, scores),
+      risk_adherence: scores?.risk_adherence || 70,
+      diversification_score: scores?.diversification_score || 50,
+      learning_count: scores?.learning_count || 0,
     };
 
     return { score: calculateInvestorScore(metrics), metrics: rawMetrics };
@@ -112,11 +116,13 @@ export async function updateScoreMetric(
     current_streak: 'current_streak',
     style_consistency: 'style_consistency',
     risk_adherence: 'risk_adherence',
+    diversification_score: 'diversification_score',
+    learning_count: 'learning_count',
   };
 
   const column = columnMap[metric];
-  if (!column || column === 'current_streak' || column === 'risk_adherence') {
-    // These are computed, not stored directly — skip
+  if (!column || column === 'current_streak') {
+    // Computed from other tables, not stored directly
     return;
   }
 
@@ -149,25 +155,12 @@ export async function updateScoreMetric(
           trades_executed: column === 'trades_executed' ? increment : 0,
           ai_sessions: column === 'ai_sessions' ? increment : 0,
           style_consistency: column === 'style_consistency' ? increment : 50,
+          risk_adherence: column === 'risk_adherence' ? increment : 70,
+          diversification_score: column === 'diversification_score' ? increment : 50,
+          learning_count: column === 'learning_count' ? increment : 0,
         });
     }
   } catch (err: any) {
     console.error('[investor-score] updateScoreMetric error:', err.message);
   }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────
-
-function estimateRiskAdherence(
-  riskTolerance: string | undefined,
-  scores: any
-): number {
-  if (scores.style_consistency && scores.style_consistency > 0) {
-    const activityBonus = Math.min(50, (scores.trades_executed || 0) * 3);
-    return Math.min(100, 50 + activityBonus);
-  }
-
-  if (riskTolerance === 'conservative') return scores.trades_executed > 10 ? 70 : 85;
-  if (riskTolerance === 'aggressive') return scores.trades_executed > 5 ? 80 : 60;
-  return 70;
 }

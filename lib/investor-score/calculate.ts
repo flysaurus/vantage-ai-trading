@@ -1,10 +1,12 @@
 // ─── Investor Score: Calculation Engine ──────────────────────
 // Computes the Vantage Investor Score (0-1000) from activity
-// metrics, style consistency, and risk adherence.
+// metrics, style consistency, risk adherence, diversification,
+// and learning engagement.
 //
 // Formula:
 //   score = baskets*5 + trades*3 + ai_sessions*1 + streak*2
 //         + style_consistency*3 + risk_adherence*2
+//         + diversification*2 + learning_count*3
 // Cap: 1000
 //
 // Levels: Apprentice → Trader → Investor → Master → Legend
@@ -20,6 +22,10 @@ export interface ScoreMetrics {
   style_consistency: number;
   /** 0-100: portfolio volatility alignment with risk tolerance */
   risk_adherence: number;
+  /** 0-100: Herfindahl sector/position diversification score */
+  diversification_score: number;
+  /** Number of Learning Moments completed */
+  learning_count: number;
 }
 
 export interface ScoreResult {
@@ -35,6 +41,8 @@ export interface ScoreResult {
     streak: number;
     styleConsistency: number;
     riskAdherence: number;
+    diversification: number;
+    learning: number;
   };
 }
 
@@ -71,6 +79,8 @@ export function calculateInvestorScore(metrics: ScoreMetrics): ScoreResult {
     streak: metrics.current_streak * 2,
     styleConsistency: Math.min(100, Math.max(0, metrics.style_consistency)) * 3,
     riskAdherence: Math.min(100, Math.max(0, metrics.risk_adherence)) * 2,
+    diversification: Math.min(100, Math.max(0, metrics.diversification_score)) * 2,
+    learning: metrics.learning_count * 3,
   };
 
   const raw = Object.values(breakdown).reduce((sum, v) => sum + v, 0);
