@@ -1,17 +1,21 @@
-// ─── Gamification: Server Actions ────────────────────────────
+// ─── Gamification: Server Actions v2 ────────────────────────
+// Four-pillar scoring + milestone detection.
 // ALL gamification writes go through these server actions.
 // Uses SUPABASE_SERVICE_ROLE_KEY — never reaches the browser.
 //
-// This file must ONLY be imported in:
-//   - API routes (app/api/gamification/*)
-//   - Server components
-//
-// NEVER import this in client components directly.
-// Client components call API routes instead.
+// Milestones detected in this pass:
+//   Steady Hands     — held through ≥10% position drawdown
+//   True to Style    — ≥10 trades with ≥70% style match rate
+//   Well-Built       — ≥5 positions, diversification ≥70, max position <35%
+//   Student of the Game — ≥5 learning moments, ≥3 with depth engagement
+//   Weathered a Storm — deferred (needs separate migration)
 
 import { createServerClient } from '@/lib/supabase';
-import { calculateInvestorScore } from '@/lib/investor-score/calculate';
-import { inferTradeStyle } from '@/lib/investor-score/calculate';
+import {
+  calculateInvestorScore,
+  inferTradeStyle,
+  MAX_SCORE,
+} from '@/lib/investor-score/calculate';
 import type { ScoreMetrics } from '@/lib/investor-score/calculate';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -28,26 +32,41 @@ export interface UpdateScoreResult {
   milestonesEarned: number;
 }
 
-// ─── Defaults ─────────────────────────────────────────────────
-// These are used ONLY when no real data exists yet.
-// Once a trade provides real portfolio data, these get replaced.
+export interface ScoreWithBreakdown extends UpdateScoreResult {
+  breakdown: {
+    discipline: number;
+    understanding: number;
+    construction: number;
+    engagement: number;
+    styleConsistency: number;
+    drawdownBonus: number;
+    learningDepth: number;
+    diversification: number;
+    positionSizing: number;
+    streakPoints: number;
+    aiSessionPoints: number;
+  };
+}
 
-const STYLE_CONSISTENCY_DEFAULT = 50;
-const RISK_ADHERENCE_DEFAULT = 70;
-const DIVERSIFICATION_DEFAULT = 50;
-const LEARNING_COUNT_DEFAULT = 0;
+// ─── Milestone Keys ──────────────────────────────────────────
+
+const MILESTONE = {
+  STEADY_HANDS: 'steady_hands',
+  TRUE_TO_STYLE: 'true_to_style',
+  WELL_BUILT: 'well_built',
+  STUDENT_OF_THE_GAME: 'student_of_the_game',
+  WEATHERED_A_STORM: 'weathered_a_storm',
+} as const;
 
 // ─── Milestone Awarding ──────────────────────────────────────
 
 /**
  * Award a milestone to an anonymous user.
- *
- * Idempotent — if the milestone is already awarded for this
- * anonymous_id, returns `{ awarded: false }` (409 Conflict).
+ * Idempotent — if already awarded, returns { awarded: false }.
  */
 export async function awardMilestone(
   anonymousId: string,
-  milestoneKey: string
+  milestoneKey: string,
 ): Promise<AwardMilestoneResult> {
   if (!anonymousId || !milestoneKey) {
     return { awarded: false, milestoneKey, reason: 'Missing params' };
@@ -56,7 +75,7 @@ export async function awardMilestone(
   const supabase = createServerClient();
 
   try {
-    const { error } = await (supabase as any)
+    const { error, count } = await (supabase as any)
       .from('milestones')
       .upsert(
         {
@@ -65,11 +84,10 @@ export async function awardMilestone(
           milestone_label: milestoneKey,
           awarded_at: new Date().toISOString(),
         },
-        { onConflict: 'anonymous_id,milestone_key', ignoreDuplicates: true }
+        { onConflict: 'anonymous_id,milestone_key', ignoreDuplicates: true },
       );
 
     if (error) {
-      // 23505 = unique violation (already awarded)
       if (error.code === '23505') {
         return { awarded: false, milestoneKey, reason: 'Already awarded' };
       }
@@ -77,8 +95,14 @@ export async function awardMilestone(
       return { awarded: false, milestoneKey, reason: error.message };
     }
 
-    console.log(`[gamification] Awarded ${milestoneKey} to ${anonymousId.slice(0, 8)}...`);
-    return { awarded: true, milestoneKey };
+    // ignoreDuplicates: true returns count=0 when row already exists
+    const wasAwarded = count !== 0;
+    if (wasAwarded) {
+      console.log(
+        `[gamification] 🏆 ${milestoneKey} awarded to ${anonymousId.slice(0, 8)}...`,
+      );
+    }
+    return { awarded: wasAwarded, milestoneKey };
   } catch (err: any) {
     console.error('[gamification] Award exception:', err.message);
     return { awarded: false, milestoneKey, reason: err.message };
@@ -86,10 +110,31 @@ export async function awardMilestone(
 }
 
 /**
+ * Check if a milestone has already been awarded.
+ */
+async function hasMilestone(
+  supabase: any,
+  anonymousId: string,
+  milestoneKey: string,
+): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('milestones')
+      .select('id')
+      .eq('anonymous_id', anonymousId)
+      .eq('milestone_key', milestoneKey)
+      .maybeSingle();
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch all milestones for an anonymous user.
  */
 export async function getMilestones(
-  anonymousId: string
+  anonymousId: string,
 ): Promise<{ key: string; awarded_at: string }[]> {
   if (!anonymousId) return [];
 
@@ -120,7 +165,8 @@ export async function getMilestones(
 // ─── Score Management ────────────────────────────────────────
 
 /**
- * Get or create an investor score row for an anonymous user.
+ * Get or create an investor score row.
+ * New rows start at 0 for all counters — no generous defaults.
  */
 async function getOrCreateScore(anonymousId: string): Promise<any> {
   const supabase = createServerClient();
@@ -133,7 +179,6 @@ async function getOrCreateScore(anonymousId: string): Promise<any> {
 
   if (existing) return existing;
 
-  // Create new score row with all skill-signal columns
   const { data: created, error } = await (supabase as any)
     .from('investor_scores')
     .insert({
@@ -143,10 +188,10 @@ async function getOrCreateScore(anonymousId: string): Promise<any> {
       ai_sessions: 0,
       milestones_earned: 0,
       total_score: 0,
-      style_consistency: STYLE_CONSISTENCY_DEFAULT,
-      risk_adherence: RISK_ADHERENCE_DEFAULT,
-      diversification_score: DIVERSIFICATION_DEFAULT,
-      learning_count: LEARNING_COUNT_DEFAULT,
+      style_consistency: 0,
+      risk_adherence: 0,
+      diversification_score: 0,
+      learning_count: 0,
       matching_trades: 0,
       streak_bonus: 0,
     })
@@ -163,18 +208,24 @@ async function getOrCreateScore(anonymousId: string): Promise<any> {
 
 // ─── Unified Score Computation ───────────────────────────────
 
+interface ComputeOverrides {
+  heldThroughDrawdown?: boolean;
+  positionCount?: number;
+  maxPositionPct?: number;
+  deepEngagementCount?: number;
+  investorStyle?: string;
+}
+
 /**
- * Compute the canonical investor score using calculateInvestorScore.
- * This is the SINGLE source of truth — all score writes go through this.
- *
- * Now includes: diversification_score and learning_count from the DB row
- * (populated by real portfolio analysis at trade time).
+ * Compute the investor score using the four-pillar formula and write to DB.
+ * This is the SINGLE source of truth — all score writes go through here.
  */
 async function computeAndWriteScore(
   supabase: any,
   anonymousId: string,
   row: any,
-  extraUpdates: Record<string, any> = {}
+  extraUpdates: Record<string, any> = {},
+  overrides: ComputeOverrides = {},
 ): Promise<number> {
   // Fetch current streak from streaks table
   let currentStreak = 0;
@@ -186,164 +237,361 @@ async function computeAndWriteScore(
       .maybeSingle();
     currentStreak = streak?.current_streak || 0;
   } catch {
-    // Non-fatal: just use 0
+    // Non-fatal
   }
 
   const metrics: ScoreMetrics = {
-    baskets_created: row.baskets_created || 0,
     trades_executed: row.trades_executed || 0,
-    ai_sessions: row.ai_sessions || 0,
+    matching_trades: row.matching_trades || 0,
+    held_through_drawdown: overrides.heldThroughDrawdown ?? false,
+    learning_count: row.learning_count || 0,
+    deep_engagement_count: overrides.deepEngagementCount ?? (row.deep_engagement_count || 0),
+    diversification_score: row.diversification_score || 0,
+    position_count: overrides.positionCount ?? 0,
+    max_position_pct: overrides.maxPositionPct ?? 0,
     current_streak: currentStreak,
-    style_consistency: row.style_consistency ?? STYLE_CONSISTENCY_DEFAULT,
-    risk_adherence: row.risk_adherence ?? RISK_ADHERENCE_DEFAULT,
-    diversification_score: row.diversification_score ?? DIVERSIFICATION_DEFAULT,
-    learning_count: row.learning_count ?? LEARNING_COUNT_DEFAULT,
+    ai_sessions: row.ai_sessions || 0,
   };
 
-  const result = calculateInvestorScore(metrics);
+  const result = calculateInvestorScore(metrics, overrides.investorStyle);
 
-  await supabase
+  const { error: updateErr } = await supabase
     .from('investor_scores')
     .update({
       total_score: result.score,
       last_activity: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      level: result.level,
+      level_index: result.levelIndex,
       ...extraUpdates,
     })
     .eq('anonymous_id', anonymousId);
 
+  if (updateErr) {
+    // If the error is about a missing column (likely deep_engagement_count
+    // before migration), strip unrecognized keys and retry once.
+    // Error message formats vary:
+    //   - SDK: "Could not find the 'col' column of 'table' in the schema cache"
+    //   - REST: "column table.col does not exist"
+    const isMissingColumn = /column/i.test(updateErr.message || '');
+    if (isMissingColumn) {
+      const knownColumns = new Set([
+        'baskets_created', 'trades_executed', 'ai_sessions',
+        'milestones_earned', 'total_score', 'style_consistency',
+        'risk_adherence', 'diversification_score', 'learning_count',
+        'matching_trades', 'streak_bonus', 'last_activity', 'updated_at',
+        'level', 'level_index', 'max_position_pct', 'held_through_drawdown',
+        'position_count',
+      ]);
+      const cleaned = Object.fromEntries(
+        Object.entries(extraUpdates).filter(([k]) => knownColumns.has(k)),
+      );
+      console.warn(
+        `[gamification] Stripped unknown columns, retrying with: ${Object.keys(cleaned).join(', ')}`,
+      );
+      const { error: retryErr } = await (supabase as any)
+        .from('investor_scores')
+        .update({
+          total_score: result.score,
+          last_activity: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          level: result.level,
+          level_index: result.levelIndex,
+          ...cleaned,
+        })
+        .eq('anonymous_id', anonymousId);
+
+      if (retryErr) {
+        console.error(
+          '[gamification] Retry update also failed:',
+          retryErr.message,
+        );
+        throw new Error(`Score persist failed: ${retryErr.message}`);
+      }
+    } else {
+      console.error(
+        '[gamification] Score update failed for',
+        anonymousId.slice(0, 8) + '...',
+        ':',
+        updateErr.message,
+      );
+      throw new Error(`Score persist failed: ${updateErr.message}`);
+    }
+  }
+
   return result.score;
 }
 
+// ─── Milestone Detection ─────────────────────────────────────
+
 /**
- * Increment baskets_created and recalculate total score.
+ * Check Steady Hands: held through ≥10% position drawdown.
+ * Computed statelessly from current position data — no new DB columns.
+ *
+ * Caller provides whether any position is ≥10% underwater from entry.
+ * This is determined at the application layer by comparing entry prices
+ * to current market prices.
+ *
+ * LIMITATION: Only detects currently-held underwater positions.
+ * The historical case — bought, dipped ≥10% intra-hold, then sold at/above entry —
+ * is NOT computable from trade_history alone (requires per-position price history).
+ */
+async function checkAndAwardSteadyHands(
+  supabase: any,
+  anonymousId: string,
+  heldThroughDrawdown: boolean,
+): Promise<boolean> {
+  if (!heldThroughDrawdown) return false;
+  const already = await hasMilestone(supabase, anonymousId, MILESTONE.STEADY_HANDS);
+  if (already) return false;
+  const result = await awardMilestone(anonymousId, MILESTONE.STEADY_HANDS);
+  return result.awarded;
+}
+
+/**
+ * Check True to Style: ≥10 trades with ≥70% style match rate.
+ * Called after each trade execution.
+ */
+async function checkAndAwardTrueToStyle(
+  supabase: any,
+  anonymousId: string,
+  row: any,
+): Promise<boolean> {
+  const trades = row.trades_executed || 0;
+  const matches = row.matching_trades || 0;
+  if (trades < 10) return false;
+  if (trades === 0 || matches / trades < 0.7) return false;
+
+  const already = await hasMilestone(supabase, anonymousId, MILESTONE.TRUE_TO_STYLE);
+  if (already) return false;
+
+  const result = await awardMilestone(anonymousId, MILESTONE.TRUE_TO_STYLE);
+  return result.awarded;
+}
+
+/**
+ * Check Well-Built: ≥5 positions, diversification ≥70, max position <35%.
+ * Called when portfolio data is available.
+ */
+async function checkAndAwardWellBuilt(
+  supabase: any,
+  anonymousId: string,
+  positionCount: number,
+  diversificationScore: number,
+  maxPositionPct: number,
+): Promise<boolean> {
+  if (positionCount < 5) return false;
+  if (diversificationScore < 70) return false;
+  if (maxPositionPct >= 35) return false;
+
+  const already = await hasMilestone(supabase, anonymousId, MILESTONE.WELL_BUILT);
+  if (already) return false;
+
+  const result = await awardMilestone(anonymousId, MILESTONE.WELL_BUILT);
+  return result.awarded;
+}
+
+/**
+ * Check Student of the Game: ≥5 learning moments, ≥3 with depth.
+ * Called after each Learning Moment completion.
+ */
+async function checkAndAwardStudentOfTheGame(
+  supabase: any,
+  anonymousId: string,
+  learningCount: number,
+  deepEngagementCount: number,
+): Promise<boolean> {
+  if (learningCount < 5) return false;
+  if (deepEngagementCount < 3) return false;
+
+  const already = await hasMilestone(supabase, anonymousId, MILESTONE.STUDENT_OF_THE_GAME);
+  if (already) return false;
+
+  const result = await awardMilestone(anonymousId, MILESTONE.STUDENT_OF_THE_GAME);
+  return result.awarded;
+}
+
+// ─── Activity Increment Functions ────────────────────────────
+
+/**
+ * Increment baskets_created and recalculate.
+ * NOTE: baskets_created is no longer part of the score formula,
+ * but we keep the counter for activity tracking.
  */
 export async function incrementBasketsCreated(
-  anonymousId: string
+  anonymousId: string,
+  investorStyle?: string,
+  /** Optional portfolio data for Construction pillar */
+  positionCount?: number,
+  maxPositionPct?: number,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
   const row = await getOrCreateScore(anonymousId);
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
-  const newBaskets = row.baskets_created + 1;
+  const newBaskets = (row.baskets_created || 0) + 1;
 
-  // Apply the increment to a cloned row so computeAndWriteScore sees it
-  const updatedRow = { ...row, baskets_created: newBaskets };
-  const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
-    baskets_created: newBaskets,
-  });
+  const totalScore = await computeAndWriteScore(
+    supabase,
+    anonymousId,
+    { ...row, baskets_created: newBaskets },
+    { baskets_created: newBaskets },
+    {
+      investorStyle,
+      positionCount,
+      maxPositionPct,
+    },
+  );
 
-  return { success: true, totalScore, milestonesEarned: row.milestones_earned };
+  return { success: true, totalScore, milestonesEarned: row.milestones_earned || 0 };
 }
 
 /**
- * Increment trades_executed and recalculate total score.
- *
- * FIX 1: Real style consistency via inferTradeStyle() + running average.
- * The client passes actual trade characteristics (not the declared style),
- * and we infer the trade's real style, then compute a running average
- * of (matching trades) / (total trades) × 100.
- *
- * FIX 2: Accepts portfolio-derived risk_adherence and diversification_score
- * from the client (computed at trade time when portfolio data is available).
+ * Increment trades_executed, update style matching, and recalculate.
+ * Also checks True to Style milestone.
  */
 export async function incrementTradesExecuted(
   anonymousId: string,
-  /** Actual trade characteristics for inferTradeStyle() */
   tradeAssetType?: string,
   tradeSector?: string,
   tradeHoldingDays?: number,
   basketStrategy?: string,
-  /** User's declared investor style for comparison */
   investorStyle?: string,
-  /** Portfolio-derived skill metrics (computed client-side from positions) */
-  riskAdherence?: number,
-  diversificationScore?: number
+  /** Portfolio-derived metrics (computed client-side from positions) */
+  diversificationScore?: number,
+  positionCount?: number,
+  maxPositionPct?: number,
+  heldThroughDrawdown?: boolean,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
   const row = await getOrCreateScore(anonymousId);
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
-  const newTrades = row.trades_executed + 1;
-  const prevTrades = row.trades_executed || 0;
+  const newTrades = (row.trades_executed || 0) + 1;
 
-  // ── FIX 1: Real style consistency ────────────────────────
-  // Infer the trade's actual style from its characteristics
+  // Style matching via inferTradeStyle()
   const inferredStyle = inferTradeStyle({
     assetType: tradeAssetType,
     holdingDays: tradeHoldingDays,
     basketStrategy,
     sector: tradeSector,
   });
-
-  // Compare inferred style to declared investor style
-  const thisTradeMatches = investorStyle && inferredStyle === investorStyle;
+  const thisTradeMatches =
+    investorStyle && inferredStyle === investorStyle;
   const prevMatches = row.matching_trades || 0;
   const newMatches = prevMatches + (thisTradeMatches ? 1 : 0);
 
-  // Running average: (matching / total) × 100
-  const styleConsistency = prevTrades > 0 || thisTradeMatches
-    ? Math.round((newMatches / newTrades) * 100)
-    : STYLE_CONSISTENCY_DEFAULT;
+  // Store running style consistency % for backwards compat
+  const styleConsistency =
+    newTrades > 0 ? Math.round((newMatches / newTrades) * 100) : 0;
 
-  // ── FIX 2 & 3: Skill metrics from portfolio data ─────────
-  // These are computed client-side at trade time (when we have positions/account data)
-  // and passed through. If not provided, keep existing values.
-  const newRiskAdherence = riskAdherence ?? row.risk_adherence ?? RISK_ADHERENCE_DEFAULT;
-  const newDiversification = diversificationScore ?? row.diversification_score ?? DIVERSIFICATION_DEFAULT;
+  const newDiversification =
+    diversificationScore ?? row.diversification_score ?? 0;
 
-  const updatedRow = {
-    ...row,
-    trades_executed: newTrades,
-    style_consistency: styleConsistency,
-    matching_trades: newMatches,
-    risk_adherence: newRiskAdherence,
-    diversification_score: newDiversification,
-  };
+  const totalScore = await computeAndWriteScore(
+    supabase,
+    anonymousId,
+    {
+      ...row,
+      trades_executed: newTrades,
+      matching_trades: newMatches,
+      diversification_score: newDiversification,
+    },
+    {
+      trades_executed: newTrades,
+      matching_trades: newMatches,
+      style_consistency: styleConsistency,
+      diversification_score: newDiversification,
+    },
+    {
+      investorStyle,
+      positionCount,
+      maxPositionPct,
+      heldThroughDrawdown,
+    },
+  );
 
-  const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
-    trades_executed: newTrades,
-    style_consistency: styleConsistency,
-    matching_trades: newMatches,
-    risk_adherence: newRiskAdherence,
-    diversification_score: newDiversification,
-  });
+  // ── Milestone checks ─────────────────────────────────────
+  let milestoneAwarded = false;
+  const updatedRow = { ...row, trades_executed: newTrades, matching_trades: newMatches };
+
+  // True to Style
+  const styleMilestone = await checkAndAwardTrueToStyle(supabase, anonymousId, updatedRow);
+  if (styleMilestone) milestoneAwarded = true;
+
+  // Steady Hands (if caller reports drawdown hold)
+  if (heldThroughDrawdown) {
+    const steadyMilestone = await checkAndAwardSteadyHands(
+      supabase, anonymousId, heldThroughDrawdown,
+    );
+    if (steadyMilestone) milestoneAwarded = true;
+  }
+
+  // Well-Built (if caller provides portfolio data)
+  if (positionCount !== undefined && maxPositionPct !== undefined) {
+    const builtMilestone = await checkAndAwardWellBuilt(
+      supabase, anonymousId, positionCount, newDiversification, maxPositionPct,
+    );
+    if (builtMilestone) milestoneAwarded = true;
+  }
 
   console.log(
     `[gamification] Trade #${newTrades}: inferred=${inferredStyle}` +
-    ` declared=${investorStyle} match=${thisTradeMatches}` +
-    ` consistency=${styleConsistency}% risk=${newRiskAdherence} divers=${newDiversification}` +
-    ` score=${totalScore}`
+      ` declared=${investorStyle} match=${thisTradeMatches}` +
+      ` consistency=${styleConsistency}%` +
+      ` score=${totalScore}` +
+      (milestoneAwarded ? ' 🏆' : ''),
   );
 
-  return { success: true, totalScore, milestonesEarned: row.milestones_earned };
+  return {
+    success: true,
+    totalScore,
+    milestonesEarned: (row.milestones_earned || 0) + (milestoneAwarded ? 1 : 0),
+  };
 }
 
 /**
- * Increment ai_sessions and recalculate total score.
+ * Increment ai_sessions and recalculate.
+ * Engagement pillar only — AI sessions capped at 60 points.
  */
 export async function incrementAISessions(
-  anonymousId: string
+  anonymousId: string,
+  investorStyle?: string,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
   const row = await getOrCreateScore(anonymousId);
   if (!row) return { success: false, totalScore: 0, milestonesEarned: 0 };
 
-  const newSessions = row.ai_sessions + 1;
+  const newSessions = (row.ai_sessions || 0) + 1;
 
-  const updatedRow = { ...row, ai_sessions: newSessions };
-  const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
-    ai_sessions: newSessions,
-  });
+  const totalScore = await computeAndWriteScore(
+    supabase,
+    anonymousId,
+    { ...row, ai_sessions: newSessions },
+    { ai_sessions: newSessions },
+    { investorStyle },
+  );
 
-  return { success: true, totalScore, milestonesEarned: row.milestones_earned };
+  console.log(
+    `[gamification] AI session #${newSessions} → score=${totalScore}`,
+  );
+
+  return { success: true, totalScore, milestonesEarned: row.milestones_earned || 0 };
 }
 
 /**
- * Recalculate investor score after milestone awarded or streak sync.
+ * Recalculate score after streak sync or portfolio update.
+ * Also checks Steady Hands milestone if heldThroughDrawdown is provided.
  */
 export async function recalculateScore(
-  anonymousId: string
+  anonymousId: string,
+  investorStyle?: string,
+  /** Optional: portfolio data for Construction pillar */
+  positionCount?: number,
+  maxPositionPct?: number,
+  diversificationScore?: number,
+  /** Optional: drawdown resilience check */
+  heldThroughDrawdown?: boolean,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
   const row = await getOrCreateScore(anonymousId);
@@ -356,19 +604,61 @@ export async function recalculateScore(
     .eq('anonymous_id', anonymousId);
 
   const newMilestones = milestoneCount || 0;
+  const newDiversification =
+    diversificationScore ?? row.diversification_score ?? 0;
 
-  const totalScore = await computeAndWriteScore(supabase, anonymousId, row, {
-    milestones_earned: newMilestones,
-  });
+  const totalScore = await computeAndWriteScore(
+    supabase,
+    anonymousId,
+    {
+      ...row,
+      diversification_score: newDiversification,
+    },
+    {
+      milestones_earned: newMilestones,
+      diversification_score: newDiversification,
+    },
+    {
+      investorStyle,
+      positionCount,
+      maxPositionPct,
+      heldThroughDrawdown,
+    },
+  );
 
-  return { success: true, totalScore, milestonesEarned: newMilestones };
+  // ── Milestone checks ─────────────────────────────────────
+  let milestoneAwarded = false;
+
+  if (heldThroughDrawdown) {
+    const steadyMilestone = await checkAndAwardSteadyHands(
+      supabase, anonymousId, heldThroughDrawdown,
+    );
+    if (steadyMilestone) milestoneAwarded = true;
+  }
+
+  if (
+    positionCount !== undefined &&
+    maxPositionPct !== undefined &&
+    positionCount >= 5
+  ) {
+    const builtMilestone = await checkAndAwardWellBuilt(
+      supabase, anonymousId, positionCount, newDiversification, maxPositionPct,
+    );
+    if (builtMilestone) milestoneAwarded = true;
+  }
+
+  return {
+    success: true,
+    totalScore,
+    milestonesEarned: newMilestones + (milestoneAwarded ? 1 : 0),
+  };
 }
 
 /**
- * Fetch investor score for an anonymous user.
+ * Fetch investor score (raw DB row) for an anonymous user.
  */
 export async function getInvestorScore(
-  anonymousId: string
+  anonymousId: string,
 ): Promise<any | null> {
   if (!anonymousId) return null;
 
@@ -393,30 +683,22 @@ export async function getInvestorScore(
   }
 }
 
-// ─── Learning XP → Formula Integration (FIX 4) ──────────────
+// ─── Learning XP ─────────────────────────────────────────────
 
 /**
  * Award learning engagement when user completes a Learning Moment.
+ * Now uses deep_engagement_count for the Understanding pillar.
  *
- * FIX 4: Instead of adding flat XP on top of the formula score,
- * this now increments a learning_count counter and recalculates
- * the score via the formula (learning_count × 3 points).
- * This gives consistent write semantics — all components flow
- * through computeAndWriteScore.
- *
- * Existing accounts: any previously-awarded flat XP is preserved
- * in total_score. The first post-migration learning completion
- * will recalculate via the formula, which reads learning_count
- * (starting at 0 or whatever was migrated). The existing total_score
- * may DIP slightly after the first recalculation (since flat XP
- * bonuses are removed), but subsequent activity will push it back
- * up via the formula. This is acceptable: the old flat-XP approach
- * was disconnected from the formula; the new approach is correct.
+ * @param anonymousId  The anonymous session ID
+ * @param _xpAmount    Kept for API compatibility, unused in new formula
+ * @param isDeep       Whether the engagement had depth (time/follow-up)
  */
 export async function addLearningXP(
   anonymousId: string,
-  _xpAmount: number // kept for API compatibility, unused in new formula
-): Promise<{ success: boolean; newScore?: number }> {
+  _xpAmount: number = 0,
+  isDeep: boolean = false,
+  investorStyle?: string,
+): Promise<{ success: boolean; newScore?: number; milestoneAwarded?: string }> {
   if (!anonymousId) return { success: false };
 
   const supabase = createServerClient();
@@ -425,20 +707,46 @@ export async function addLearningXP(
     const row = await getOrCreateScore(anonymousId);
     if (!row) return { success: false };
 
-    // FIX 4: Increment learning_count and recompute via formula.
-    // No more flat XP addition — learning is a weighted formula input.
-    const newCount = (row.learning_count || 0) + 1;
+    const newLearningCount = (row.learning_count || 0) + 1;
+    const newDeepCount = (row.deep_engagement_count || 0) + (isDeep ? 1 : 0);
 
-    const updatedRow = { ...row, learning_count: newCount };
-    const totalScore = await computeAndWriteScore(supabase, anonymousId, updatedRow, {
-      learning_count: newCount,
-    });
+    const extraUpdates: Record<string, any> = {
+      learning_count: newLearningCount,
+      deep_engagement_count: newDeepCount,
+    };
 
-    console.log(
-      `[gamification] Learning #${newCount} → formula score=${totalScore}`
+    const totalScore = await computeAndWriteScore(
+      supabase,
+      anonymousId,
+      {
+        ...row,
+        learning_count: newLearningCount,
+        deep_engagement_count: newDeepCount,
+      },
+      extraUpdates,
+      {
+        investorStyle,
+        deepEngagementCount: newDeepCount,
+      },
     );
 
-    return { success: true, newScore: totalScore };
+    // ── Milestone: Student of the Game ────────────────────
+    let milestoneAwarded: string | undefined;
+    const studentMilestone = await checkAndAwardStudentOfTheGame(
+      supabase, anonymousId, newLearningCount, newDeepCount,
+    );
+    if (studentMilestone) {
+      milestoneAwarded = MILESTONE.STUDENT_OF_THE_GAME;
+    }
+
+    console.log(
+      `[gamification] Learning #${newLearningCount}` +
+        ` (deep=${newDeepCount})` +
+        ` → score=${totalScore}` +
+        (milestoneAwarded ? ` 🏆 ${milestoneAwarded}` : ''),
+    );
+
+    return { success: true, newScore: totalScore, milestoneAwarded };
   } catch (err: any) {
     console.error('[gamification] addLearningXP exception:', err.message);
     return { success: false };

@@ -21,8 +21,10 @@ export async function POST(request: NextRequest) {
       body.tradeHoldingDays,
       body.basketStrategy,
       body.investorStyle,
-      body.riskAdherence,
-      body.diversificationScore
+      body.diversificationScore,
+      body.positionCount,
+      body.maxPositionPct,
+      body.heldThroughDrawdown
     );
 
     return NextResponse.json(result);

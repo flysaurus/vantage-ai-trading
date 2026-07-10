@@ -22,7 +22,6 @@ import React, {
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { onTradeExecuted } from '@/lib/gamification/events';
-import { calculateRiskAdherence } from '@/lib/investor-score/calculate';
 import { scoreDiversification } from '@/lib/confidence';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
@@ -620,13 +619,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           }));
           const diversScore = scoreDiversification(minimalPositions as any).score;
 
-          const riskTolerance = (user as any)?.riskTolerance || 'Moderate';
-          const riskScore = calculateRiskAdherence(riskTolerance, {
-            volatility,
-            growthExposure,
-            cashRatio,
-            diversification: diversScore,
-          });
+          const positionCount = positions.length;
+          const maxPositionPct = positions.length > 0 && totalMarketValue > 0
+            ? Math.max(...positions.map(p =>
+                ((p.shares || 0) * (p.avgCost || 0)) / totalMarketValue * 100
+              ))
+            : 0;
 
           onTradeExecuted(
             user.id as string,
@@ -635,8 +633,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             tradeHoldingDays,
             undefined, // basketStrategy (not from basket)
             user?.investorStyle as string | undefined,
-            riskScore,
             diversScore,
+            positionCount,
+            maxPositionPct,
+            undefined, // heldThroughDrawdown (requires current prices)
             pv,
             pc
           ).catch(() => {});
@@ -648,8 +648,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             undefined, // holdingDays
             undefined, // basketStrategy
             user?.investorStyle as string | undefined,
-            undefined, // riskAdherence (no portfolio data available)
-            undefined, // diversificationScore (no portfolio data available)
+            undefined, // diversificationScore
+            undefined, // positionCount
+            undefined, // maxPositionPct
+            undefined, // heldThroughDrawdown
             undefined, // portfolioValue
             undefined  // portfolioCost
           ).catch(() => {});

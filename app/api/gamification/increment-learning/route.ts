@@ -9,7 +9,8 @@ import { addLearningXP } from '@/app/actions/gamification';
 
 export async function POST(request: NextRequest) {
   try {
-    const { anonymousId, xpAmount } = await request.json();
+    const body = await request.json();
+    const { anonymousId, xpAmount, isDeep, investorStyle } = body || {};
 
     if (!anonymousId) {
       return NextResponse.json(
@@ -18,7 +19,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await addLearningXP(anonymousId, Number(xpAmount) || 2);
+    const result = await addLearningXP(
+      anonymousId,
+      Number(xpAmount) || 2,
+      isDeep || false,
+      investorStyle
+    );
 
     if (!result.success) {
       return NextResponse.json(

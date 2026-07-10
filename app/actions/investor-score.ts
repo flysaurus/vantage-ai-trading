@@ -12,11 +12,13 @@ import type { ScoreMetrics, ScoreResult } from '@/lib/investor-score/calculate';
 
 /** Raw activity counts stored in DB, exposed for stat displays. */
 export interface RawScoreMetrics {
-  baskets_created: number;
   trades_executed: number;
+  matching_trades: number;
   ai_sessions: number;
   current_streak: number;
   learning_count: number;
+  deep_engagement_count: number;
+  diversification_score: number;
 }
 
 export interface ScoreWithMetrics {
@@ -64,29 +66,40 @@ export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreW
     const streak = streakRes.data;
 
     const rawMetrics: RawScoreMetrics = {
-      baskets_created: scores?.baskets_created || 0,
       trades_executed: scores?.trades_executed || 0,
+      matching_trades: scores?.matching_trades || 0,
       ai_sessions: scores?.ai_sessions || 0,
       current_streak: streak?.current_streak || 0,
       learning_count: scores?.learning_count || 0,
+      deep_engagement_count: scores?.deep_engagement_count || 0,
+      diversification_score: scores?.diversification_score || 0,
     };
 
-    // FIX 2: Use real risk_adherence from DB (computed at trade time
-    // from portfolio volatility, growth exposure, cash ratio, diversification).
-    // Falls back to default (70) if no trades have been made yet.
-    // FIX 3 & 4: diversification_score and learning_count also from DB.
+    // Four-pillar ScoreMetrics (no generous defaults — new accounts score 0)
     const metrics: ScoreMetrics = {
-      baskets_created: rawMetrics.baskets_created,
       trades_executed: rawMetrics.trades_executed,
-      ai_sessions: rawMetrics.ai_sessions,
+      matching_trades: rawMetrics.matching_trades,
+      held_through_drawdown: false, // computed at check-time
+      learning_count: rawMetrics.learning_count,
+      deep_engagement_count: rawMetrics.deep_engagement_count,
+      diversification_score: rawMetrics.diversification_score,
+      position_count: 0, // requires portfolio data
+      max_position_pct: 0,
       current_streak: rawMetrics.current_streak,
-      style_consistency: scores?.style_consistency || 50,
-      risk_adherence: scores?.risk_adherence || 70,
-      diversification_score: scores?.diversification_score || 50,
-      learning_count: scores?.learning_count || 0,
+      ai_sessions: rawMetrics.ai_sessions,
     };
 
-    return { score: calculateInvestorScore(metrics), metrics: rawMetrics };
+    const { data: profile } = await (supabase as any)
+      .from('anonymous_profiles')
+      .select('investor_style')
+      .eq('anonymous_id', anonymousId)
+      .maybeSingle()
+      .catch(() => ({ data: null }));
+
+    return {
+      score: calculateInvestorScore(metrics, profile?.investor_style),
+      metrics: rawMetrics,
+    };
   } catch (err: any) {
     console.error('[investor-score] getMyScoreWithMetrics error:', err.message);
     return null;
@@ -99,7 +112,8 @@ type ScoreMetricKey = keyof ScoreMetrics;
 
 /**
  * Increment a single score metric atomically.
- * Handles upsert of investor_scores row.
+ * NOTE: prefer gamification.ts actions for standard updates.
+ * This is a low-level helper for legacy/edge cases.
  */
 export async function updateScoreMetric(
   anonymousId: string,
@@ -110,14 +124,16 @@ export async function updateScoreMetric(
 
   // Map ScoreMetricKey to actual column name
   const columnMap: Record<string, string> = {
-    baskets_created: 'baskets_created',
     trades_executed: 'trades_executed',
+    matching_trades: 'matching_trades',
     ai_sessions: 'ai_sessions',
     current_streak: 'current_streak',
-    style_consistency: 'style_consistency',
-    risk_adherence: 'risk_adherence',
-    diversification_score: 'diversification_score',
     learning_count: 'learning_count',
+    deep_engagement_count: 'deep_engagement_count',
+    diversification_score: 'diversification_score',
+    position_count: 'position_count',
+    max_position_pct: 'max_position_pct',
+    held_through_drawdown: 'held_through_drawdown',
   };
 
   const column = columnMap[metric];
@@ -129,7 +145,6 @@ export async function updateScoreMetric(
   const supabase = createServerClient();
 
   try {
-    // Check if row exists
     const { data: existing } = await (supabase as any)
       .from('investor_scores')
       .select(column)
@@ -151,13 +166,6 @@ export async function updateScoreMetric(
         .insert({
           anonymous_id: anonymousId,
           [column]: Math.max(0, increment),
-          baskets_created: column === 'baskets_created' ? increment : 0,
-          trades_executed: column === 'trades_executed' ? increment : 0,
-          ai_sessions: column === 'ai_sessions' ? increment : 0,
-          style_consistency: column === 'style_consistency' ? increment : 50,
-          risk_adherence: column === 'risk_adherence' ? increment : 70,
-          diversification_score: column === 'diversification_score' ? increment : 50,
-          learning_count: column === 'learning_count' ? increment : 0,
         });
     }
   } catch (err: any) {

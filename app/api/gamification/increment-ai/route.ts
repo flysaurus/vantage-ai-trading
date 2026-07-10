@@ -11,7 +11,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing anonymousId' }, { status: 400 });
     }
 
-    const result = await incrementAISessions(body.anonymousId);
+    const result = await incrementAISessions(
+      body.anonymousId,
+      body.investorStyle
+    );
 
     return NextResponse.json(result);
   } catch (err: any) {

@@ -11,7 +11,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing anonymousId' }, { status: 400 });
     }
 
-    const result = await incrementBasketsCreated(body.anonymousId);
+    const result = await incrementBasketsCreated(
+      body.anonymousId,
+      body.investorStyle,
+      body.positionCount,
+      body.maxPositionPct
+    );
 
     return NextResponse.json(result);
   } catch (err: any) {

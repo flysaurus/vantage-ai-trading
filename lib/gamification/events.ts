@@ -104,10 +104,14 @@ export async function onTradeExecuted(
   basketStrategy?: string,
   /** User's declared investor style */
   investorStyle?: string,
-  /** Portfolio-derived risk adherence (0-100) */
-  riskAdherence?: number,
   /** Portfolio-derived diversification score (0-100) */
   diversificationScore?: number,
+  /** Portfolio position count (for Construction pillar) */
+  positionCount?: number,
+  /** Largest position as % of portfolio (0-100) */
+  maxPositionPct?: number,
+  /** Any position ≥10% underwater from entry */
+  heldThroughDrawdown?: boolean,
   /** Optional: current portfolio value (for portfolio_green check) */
   portfolioValue?: number,
   /** Optional: total cost basis (for portfolio_green check) */
@@ -124,8 +128,10 @@ export async function onTradeExecuted(
       tradeHoldingDays,
       basketStrategy,
       investorStyle,
-      riskAdherence,
       diversificationScore,
+      positionCount,
+      maxPositionPct,
+      heldThroughDrawdown,
     });
 
     if (scoreRes.ok) {

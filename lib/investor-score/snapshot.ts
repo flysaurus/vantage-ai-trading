@@ -5,7 +5,7 @@
 // Called by the weekly cron job (/api/cron/investor-score).
 
 import { createServerClient } from '@/lib/supabase';
-import { calculateInvestorScore, getLevel } from './calculate';
+import { calculateInvestorScore } from './calculate';
 import type { ScoreMetrics } from './calculate';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -61,21 +61,22 @@ export async function takeWeeklySnapshot(anonymousId: string): Promise<void> {
       return;
     }
 
-    // Calculate score
+    // Calculate score with four-pillar formula
     const metrics: ScoreMetrics = {
-      baskets_created: scores.baskets_created || 0,
       trades_executed: scores.trades_executed || 0,
-      ai_sessions: scores.ai_sessions || 0,
-      current_streak: streak?.current_streak || 0,
-      // Use stored consistency or default
-      style_consistency: scores.style_consistency || 50,
-      // Use real risk adherence if available, else estimate
-      risk_adherence: scores.risk_adherence || estimateRiskAdherence(profile?.risk_tolerance, scores),
-      diversification_score: scores.diversification_score || 50,
+      matching_trades: scores.matching_trades || 0,
+      held_through_drawdown: false, // computed at check-time, not stored in DB
       learning_count: scores.learning_count || 0,
+      deep_engagement_count: scores.deep_engagement_count || 0,
+      diversification_score: scores.diversification_score || 0,
+      position_count: 0, // requires portfolio data — omitted for weekly snapshot
+      max_position_pct: 0,
+      current_streak: streak?.current_streak || 0,
+      ai_sessions: scores.ai_sessions || 0,
     };
 
-    const result = calculateInvestorScore(metrics);
+    const investorStyle = profile?.investor_style;
+    const result = calculateInvestorScore(metrics, investorStyle);
 
     // Build snapshot
     const snapshot: ScoreSnapshot = {
