@@ -132,6 +132,7 @@ export async function onTradeExecuted(
       positionCount,
       maxPositionPct,
       heldThroughDrawdown,
+      currentEquity: portfolioValue,
     });
 
     if (scoreRes.ok) {

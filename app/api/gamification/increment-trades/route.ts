@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
       body.diversificationScore,
       body.positionCount,
       body.maxPositionPct,
-      body.heldThroughDrawdown
+      body.heldThroughDrawdown,
+      body.currentEquity
     );
 
     return NextResponse.json(result);

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/investor-score",
       "schedule": "0 0 * * 0"
+    },
+    {
+      "path": "/api/cron/drawdown-check",
+      "schedule": "15 14 * * 1-5"
     }
   ],
   "functions": {
@@ -52,6 +56,9 @@
     },
     "app/api/admin/generation-log/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/cron/drawdown-check/route.ts": {
+      "maxDuration": 55
     }
   }
 }

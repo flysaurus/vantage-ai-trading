@@ -8,7 +8,7 @@
 //   True to Style    — ≥10 trades with ≥70% style match rate
 //   Well-Built       — ≥5 positions, diversification ≥70, max position <35%
 //   Student of the Game — ≥5 learning moments, ≥3 with depth engagement
-//   Weathered a Storm — deferred (needs separate migration)
+//   Weathered a Storm — drawdown tracking (lib/gamification/drawdown.ts)
 
 import { createServerClient } from '@/lib/supabase';
 import {
@@ -17,6 +17,7 @@ import {
   MAX_SCORE,
 } from '@/lib/investor-score/calculate';
 import type { ScoreMetrics } from '@/lib/investor-score/calculate';
+import { updateDrawdownTracking } from '@/lib/gamification/drawdown';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ export interface UpdateScoreResult {
   success: boolean;
   totalScore: number;
   milestonesEarned: number;
+  weatheredStormAwarded?: boolean;
 }
 
 export interface ScoreWithBreakdown extends UpdateScoreResult {
@@ -462,6 +464,8 @@ export async function incrementTradesExecuted(
   positionCount?: number,
   maxPositionPct?: number,
   heldThroughDrawdown?: boolean,
+  /** Current portfolio equity (for drawdown tracking) */
+  currentEquity?: number,
 ): Promise<UpdateScoreResult> {
   const supabase = createServerClient();
   const row = await getOrCreateScore(anonymousId);
@@ -543,10 +547,27 @@ export async function incrementTradesExecuted(
       (milestoneAwarded ? ' 🏆' : ''),
   );
 
+  // ── Drawdown tracking (Weathered a Storm) ────────────────
+  let weatheredStormAwarded = false;
+  if (currentEquity != null && currentEquity > 0) {
+    try {
+      const drawdownResult = await updateDrawdownTracking(
+        anonymousId, currentEquity, supabase,
+      );
+      if (drawdownResult.milestoneAwarded) {
+        weatheredStormAwarded = true;
+        milestoneAwarded = true;
+      }
+    } catch (err: any) {
+      console.warn('[gamification] Drawdown tracking failed (non-fatal):', err.message);
+    }
+  }
+
   return {
     success: true,
     totalScore,
     milestonesEarned: (row.milestones_earned || 0) + (milestoneAwarded ? 1 : 0),
+    weatheredStormAwarded,
   };
 }
 
