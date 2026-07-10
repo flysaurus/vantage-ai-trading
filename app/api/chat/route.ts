@@ -206,7 +206,7 @@ export async function POST(req: Request) {
     // Compute user's local date from their timezone (not server UTC)
     const localDate = getLocalDateFromTimezone(timezone);
     if (userId && userId !== 'anonymous') {
-      const usageCheck = await checkUsageLimit(userId, usageType, localDate);
+      const usageCheck = await checkUsageLimit(userId, usageType, localDate, timezone);
       if (!usageCheck.allowed) {
         return Response.json(
           {

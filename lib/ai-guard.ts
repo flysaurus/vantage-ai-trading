@@ -27,6 +27,35 @@ export function getLocalDateFromTimezone(timezone?: string): string {
   }
 }
 
+/** Compute hours remaining until the user's local midnight (0-24). */
+export function getHoursUntilLocalMidnight(timezone?: string): number {
+  try {
+    const tz = timezone || 'America/New_York';
+    const now = Date.now();
+
+    // Extract local hour/minute/second in the user's timezone
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date(now));
+    const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value || '0');
+
+    const msSinceMidnight = (get('hour') * 3600 + get('minute') * 60 + get('second')) * 1000;
+    const msRemaining = 86400000 - msSinceMidnight;
+
+    return Math.max(0, Math.ceil(msRemaining / 3600000));
+  } catch {
+    // Fallback: UTC midnight (original behavior)
+    const midnight = new Date();
+    midnight.setUTCHours(24, 0, 0, 0);
+    return Math.ceil((midnight.getTime() - Date.now()) / 3600000);
+  }
+}
+
 export interface LimitCheck {
   allowed: boolean;
   remaining: number;
@@ -78,10 +107,11 @@ export async function checkUsageLimit(
   userId: string,
   type: UsageType,
   localDate?: string,
+  timezone?: string,
 ): Promise<LimitCheck> {
   const tier = await getUserTier(userId);
   // Use user's local date (browser timezone), not server UTC
-  const today = localDate || getLocalDateFromTimezone();
+  const today = localDate || getLocalDateFromTimezone(timezone);
   const supabase = createServerClient();
 
   // Map type to feature keys and DB field
@@ -165,11 +195,10 @@ export async function checkUsageLimit(
     };
   }
 
-  // Calculate hours until midnight UTC
-  const now = new Date();
-  const midnight = new Date();
-  midnight.setUTCHours(24, 0, 0, 0);
-  const hoursLeft = Math.ceil((midnight.getTime() - now.getTime()) / 3600000);
+  // Calculate hours until user's LOCAL midnight (not UTC)
+  // Uses Intl.DateTimeFormat to extract local time components
+  // so the countdown reflects actual timezone, not server UTC
+  const hoursLeft = getHoursUntilLocalMidnight(timezone);
 
   // Check daily limit
   if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
