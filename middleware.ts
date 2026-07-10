@@ -37,6 +37,7 @@ const PUBLIC_ROUTES = [
   '/api/gamification/milestones', // anonymous-friendly (uses anonymousId query param)
   '/api/gamification/recalculate', // anonymous-friendly (uses anonymousId body)
   '/api/session/streak', // anonymous-friendly (uses anonymousId query param / body)
+  '/api/auth/is-admin', // admin status check — returns {isAdmin:true/false} without auth redirect
 ];
 
 export async function middleware(request: NextRequest) {

@@ -38,6 +38,14 @@ export default function PreferencesPage() {
   const router = useRouter();
   const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
   const [investorStyle, setInvestorStyle] = useState(loadStyle);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/is-admin')
+      .then((r) => r.json())
+      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     savePrefs(prefs);
@@ -231,6 +239,49 @@ export default function PreferencesPage() {
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Set your investor style</div>
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>Discover your approach in 2 minutes</div>
+                  </div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Admin — visible only to allowlisted emails */}
+          {isAdmin && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                Admin
+              </div>
+              <div
+                onClick={() => router.push('/admin/tiers')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, marginBottom: 8,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14 }}>📊</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Tier Limits</div>
+                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>AI usage limits and model access per tier</div>
+                  </div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+              </div>
+              <div
+                onClick={() => router.push('/admin/gamification')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14 }}>⚙️</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Gamification Config</div>
+                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>Pillar weights, milestones, and point caps</div>
                   </div>
                 </div>
                 <ChevronRight size={14} style={{ color: '#94a3b8' }} />
