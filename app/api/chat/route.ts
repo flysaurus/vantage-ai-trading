@@ -7,6 +7,7 @@ import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
+import { createServerClient } from '@/lib/supabase'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -357,10 +358,47 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       },
     ];
 
-    // Use Haiku for chat, Sonnet for deep analysis
-    const model = mode === 'deep'
-      ? 'claude-sonnet-4-6'
-      : 'claude-haiku-4-5'
+    // ── Model selection with tier-based access control ──────
+    // Default: Haiku for chat, Sonnet for deep analysis.
+    // Tier override: if model_access='haiku', Sonnet is blocked —
+    // deep analysis falls back to Haiku (slower but still functional).
+    let modelAccess = 'haiku+sonnet'; // safe default for anonymous / on-error
+    if (userId && userId !== 'anonymous') {
+      try {
+        const supabase = createServerClient();
+        // Resolve user's tier, then look up model_access for that tier.
+        // (We don't use get_tier_limit() RPC — it returns INTEGER and
+        // model_access is a string like 'haiku' or 'haiku+sonnet'.)
+        const { data: userRow } = await (supabase as any)
+          .from('users').select('tier').eq('id', userId).single();
+        if (userRow?.tier) {
+          const { data: tierRow } = await (supabase as any)
+            .from('subscription_tiers').select('id').eq('key', userRow.tier).single();
+          if (tierRow?.id) {
+            const { data: featRow } = await (supabase as any)
+              .from('tier_features').select('id').eq('key', 'model_access').single();
+            if (featRow?.id) {
+              const { data: valRow } = await (supabase as any)
+                .from('tier_feature_values')
+                .select('value')
+                .eq('tier_id', tierRow.id)
+                .eq('feature_id', featRow.id)
+                .single();
+              if (valRow?.value && typeof valRow.value === 'string') {
+                modelAccess = valRow.value;
+              }
+            }
+          }
+        }
+      } catch { /* use default — sonnet allowed */ }
+    }
+
+    let model: string;
+    if (mode === 'deep') {
+      model = modelAccess === 'haiku' ? 'claude-haiku-4-5' : 'claude-sonnet-4-6';
+    } else {
+      model = 'claude-haiku-4-5';
+    }
 
     // Safety: cap messages to prevent context abuse (UI sends max 5)
     const cappedMessages = messages.slice(-20);
