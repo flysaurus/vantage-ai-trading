@@ -30,7 +30,7 @@ export interface PreviousSession {
 export function useChatStorage() {
   const [previousSession, setPreviousSession] = useState<PreviousSession | null>(null);
   const [recentSessions, setRecentSessions] = useState<ChatSessionRecord[]>([]);
-  const [remainingMessages, setRemainingMessages] = useState(25);
+  const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   // ── load sessions on mount ──

@@ -372,8 +372,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const portfolioContext = buildLivePortfolioContext(liveAccount);
 
   // ── Usage tracking (chat + deep) ──
-  const [chatRemaining, setChatRemaining] = useState(() => getLocalRemaining());
-  const [deepRemaining, setDeepRemaining] = useState(5);
+  const [chatRemaining, setChatRemaining] = useState<number | null>(null);
+  const [deepRemaining, setDeepRemaining] = useState<number | null>(null);
   const [tier, setTier] = useState('demo');
   const [usageStats, setUsageStats] = useState<any>(null); // full stats for settings panel
 
@@ -753,7 +753,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat', additionalContext?: string) => {
     if (!content.trim() || loading) return;
 
-    if (chatRemaining <= 0) {
+    if ((chatRemaining ?? 0) <= 0) {
       const resetMsg = usageStats?.chat?.monthly
         ? `Monthly chat limit reached — resets on the 1st. Upgrade to Gold for more messages.`
         : `Daily chat limit reached — resets tomorrow.`;
@@ -1471,21 +1471,23 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
-        {/* Usage counter — chat + deep */}
+        {/* Usage counter — chat + deep (only shown after real data loads, never flashes defaults) */}
+        {chatRemaining !== null && deepRemaining !== null && (
         <div style={{
           fontSize: '11px',
-          color: (chatRemaining <= 3 || deepRemaining <= 3) ? WARNING : TEXT_MUTED,
+          color: (chatRemaining! <= 3 || deepRemaining <= 3) ? WARNING : TEXT_MUTED,
           textAlign: 'center',
           marginBottom: '10px',
           transition: 'color 0.3s ease',
         }}>
-          <b style={{ color: chatRemaining <= 3 ? WARNING : ACCENT }}>
+          <b style={{ color: chatRemaining! <= 3 ? WARNING : ACCENT }}>
             {chatRemaining}
           </b> messages ·{' '}
-          <b style={{ color: deepRemaining <= 3 ? WARNING : ACCENT }}>
-            {deepRemaining}
+          <b style={{ color: deepRemaining! <= 3 ? WARNING : ACCENT }}>
+            {deepRemaining!}
           </b> deep analyses remaining today
         </div>
+        )}
 
         {/* Input bar — with Explore button */}
         <div>
@@ -1547,12 +1549,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  if (chatRemaining > 0) sendMessage(input);
+                  if ((chatRemaining ?? 0) > 0) sendMessage(input);
                 }
               }}
               placeholder={chatPlaceholder}
               maxLength={500}
-              disabled={chatRemaining <= 0}
+              disabled={(chatRemaining ?? 0) <= 0}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -1565,19 +1567,19 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               }}
             />
             <div
-              onClick={() => { if (chatRemaining > 0 && input.trim()) sendMessage(input); }}
+              onClick={() => { if ((chatRemaining ?? 0) > 0 && input.trim()) sendMessage(input); }}
               style={{
                 width: '34px',
                 height: '34px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: input.trim() && chatRemaining > 0 ? ACCENT : 'rgba(255,255,255,0.12)',
+                background: input.trim() && (chatRemaining ?? 0) > 0 ? ACCENT : 'rgba(255,255,255,0.12)',
                 borderRadius: '50%',
                 fontSize: '15px',
-                color: input.trim() && chatRemaining > 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
+                color: input.trim() && (chatRemaining ?? 0) > 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
                 flexShrink: 0,
-                cursor: input.trim() && chatRemaining > 0 ? 'pointer' : 'default',
+                cursor: input.trim() && (chatRemaining ?? 0) > 0 ? 'pointer' : 'default',
                 fontWeight: 700,
               }}
             >
