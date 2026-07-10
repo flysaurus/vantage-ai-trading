@@ -28,6 +28,15 @@ const PUBLIC_ROUTES = [
   '/admin', // admin debug view (self-gated via ADMIN_ACCESS_CODE)
   '/api/admin/facts', // admin facts API (self-gated)
   '/api/admin/generation-log', // admin generation log API (self-gated)
+  '/api/gamification/score', // anonymous-friendly (uses anonymousId query param)
+  '/api/gamification/increment-baskets', // anonymous-friendly (uses anonymousId body)
+  '/api/gamification/increment-ai', // anonymous-friendly (uses anonymousId body)
+  '/api/gamification/increment-trades', // anonymous-friendly (uses anonymousId body)
+  '/api/gamification/increment-learning', // anonymous-friendly (uses anonymousId body)
+  '/api/gamification/award-milestone', // anonymous-friendly (uses anonymousId body)
+  '/api/gamification/milestones', // anonymous-friendly (uses anonymousId query param)
+  '/api/gamification/recalculate', // anonymous-friendly (uses anonymousId body)
+  '/api/session/streak', // anonymous-friendly (uses anonymousId query param / body)
 ];
 
 export async function middleware(request: NextRequest) {
