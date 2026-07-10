@@ -13,7 +13,10 @@ import type { NextRequest } from 'next/server';
 // ─── Resolve Allowlist ────────────────────────────────────────
 
 function getAdminEmails(): Set<string> {
-  const raw = process.env.ADMIN_EMAILS || 'mparikh01@gmail.com';
+  // Use ?? (nullish coalescing) so an explicitly empty ADMIN_EMAILS=""
+  // results in an empty set (fail-closed — no one is admin).
+  // Unset/undefined falls back to the hardcoded default.
+  const raw = process.env.ADMIN_EMAILS ?? 'mparikh01@gmail.com';
   return new Set(
     raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
   );
