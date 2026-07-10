@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS streaks (
   current_streak INTEGER NOT NULL DEFAULT 0,
   longest_streak INTEGER NOT NULL DEFAULT 0,
   last_open_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  total_opens INTEGER NOT NULL DEFAULT 0,
+  total_days_active INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   -- One streak per anonymous_id (prevents duplicates)

@@ -39,23 +39,6 @@ CREATE INDEX IF NOT EXISTS idx_milestones_key
 -- anonymous AND authenticated users.
 -- ============================================================
 
--- If table exists from a prior partial run, ensure all columns exist
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'investor_scores') THEN
-    ALTER TABLE investor_scores
-      ADD COLUMN IF NOT EXISTS baskets_created INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS trades_executed INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS ai_sessions INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS milestones_earned INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS total_score INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS style_consistency INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS streak_bonus INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ DEFAULT NOW();
-  END IF;
-END;
-$$;
-
 CREATE TABLE IF NOT EXISTS investor_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   anonymous_id TEXT NOT NULL,
@@ -87,6 +70,23 @@ CREATE INDEX IF NOT EXISTS idx_investor_scores_user_id
   ON investor_scores(user_id);
 CREATE INDEX IF NOT EXISTS idx_investor_scores_total 
   ON investor_scores(total_score DESC);
+
+-- If table existed from a prior partial run, ensure all columns exist
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'investor_scores') THEN
+    ALTER TABLE investor_scores
+      ADD COLUMN IF NOT EXISTS baskets_created INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS trades_executed INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS ai_sessions INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS milestones_earned INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS total_score INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS style_consistency INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS streak_bonus INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ DEFAULT NOW();
+  END IF;
+END;
+$$;
 
 -- ============================================================
 -- RLS: Enable on new tables
