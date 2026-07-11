@@ -41,10 +41,33 @@ export default function PreferencesPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/is-admin')
-      .then((r) => r.json())
-      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
-      .catch(() => {});
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout>;
+
+    const check = () => {
+      fetch('/api/auth/is-admin')
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.isAdmin) {
+            setIsAdmin(true);
+          } else {
+            console.warn('[preferences] /api/auth/is-admin returned false');
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.warn('[preferences] admin check fetch failed, retrying in 1.5s:', err);
+          retryTimer = setTimeout(check, 1500);
+        });
+    };
+
+    check();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, []);
 
   useEffect(() => {
