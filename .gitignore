@@ -40,3 +40,6 @@ pnpm-debug.log*
 .env.production
 .env.vercel-prod
 supabase/.temp/
+
+# Test env (Vercel CLI auto-generates this in preview builds)
+.env.test
