@@ -336,6 +336,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const isDrainingRef = useRef(false);
   const displayedContentRef = useRef('');
   const streamDoneRef = useRef(false);
+  const correctedTextRef = useRef<string | null>(null);
 
   const startDrainer = useCallback(() => {
     if (isDrainingRef.current) return;
@@ -815,6 +816,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       charQueueRef.current = [];
       displayedContentRef.current = '';
       streamDoneRef.current = false;
+      correctedTextRef.current = null;
 
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
@@ -836,6 +838,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 startDrainer();
                 // Auto-scroll handled by the streaming useEffect above (pin-to-bottom)
               }
+              if (data.corrections) {
+                // Server-side marker validation caught a hallucinated ticker
+                // Store corrected text; applied after drainer finishes
+                correctedTextRef.current = data.correctedText;
+                console.log('[chat] Marker corrections applied:', data.corrections);
+              }
             } catch (e) {}
           }
         }
@@ -847,7 +855,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
         await new Promise(r => setTimeout(r, 50));
       }
 
-      const finalContent = displayedContentRef.current;
+      // If server-side marker validation corrected hallucinated tickers,
+      // use the corrected text instead of the streamed version
+      const finalContent = correctedTextRef.current || displayedContentRef.current;
+      correctedTextRef.current = null;
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
