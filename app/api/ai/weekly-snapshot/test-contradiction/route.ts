@@ -320,7 +320,7 @@ export async function GET() {
 
   } catch (err: any) {
     if (seedIds.length > 0) {
-      await (supabase as any).from('ai_facts').delete().in('id', seedIds).catch(() => {});
+      try { await (supabase as any).from('ai_facts').delete().in('id', seedIds); } catch { /* non-critical cleanup */ }
     }
     return NextResponse.json({
       passed: false,
