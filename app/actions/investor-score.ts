@@ -102,12 +102,17 @@ export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreW
       ai_sessions: rawMetrics.ai_sessions,
     };
 
-    const { data: profile } = await (supabase as any)
-      .from('anonymous_profiles')
-      .select('investor_style')
-      .eq('anonymous_id', anonymousId)
-      .maybeSingle()
-      .catch(() => ({ data: null }));
+    let profile: any = null;
+    try {
+      const profileRes = await (supabase as any)
+        .from('anonymous_profiles')
+        .select('investor_style')
+        .eq('anonymous_id', anonymousId)
+        .maybeSingle();
+      profile = profileRes.data;
+    } catch {
+      // anonymous_profiles table may not exist — non-fatal
+    }
 
     return {
       score: calculateInvestorScore(metrics, profile?.investor_style),
