@@ -13,7 +13,7 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions, stripRecommendationMarkers } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, stripRecommendationMarkers, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
@@ -337,6 +337,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const displayedContentRef = useRef('');
   const streamDoneRef = useRef(false);
   const correctedTextRef = useRef<string | null>(null);
+  // Symbols corrected by server-side validator — force-allow in client validation
+  const correctedSymbolsRef = useRef<Set<string>>(new Set());
 
   const startDrainer = useCallback(() => {
     if (isDrainingRef.current) return;
@@ -817,6 +819,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       displayedContentRef.current = '';
       streamDoneRef.current = false;
       correctedTextRef.current = null;
+      correctedSymbolsRef.current = new Set();
 
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
@@ -842,6 +845,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 // Server-side marker validation caught a hallucinated ticker
                 // Store corrected text; applied after drainer finishes
                 correctedTextRef.current = data.correctedText;
+                // Also collect corrected symbols so they bypass client-side validSymbols filtering
+                // (OTC ADRs like SKHYV aren't in the exchange=US symbol list)
+                for (const issue of data.corrections) {
+                  if (issue.correction) {
+                    const syms = Array.isArray(issue.correction) ? issue.correction : [issue.correction];
+                    for (const s of syms) correctedSymbolsRef.current.add(s);
+                  }
+                }
                 console.log('[chat] Marker corrections applied:', data.corrections);
               }
             } catch (e) {}
@@ -856,9 +867,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
 
       // If server-side marker validation corrected hallucinated tickers,
-      // use the corrected text instead of the streamed version
+      // use the corrected text instead of the streamed version.
+      // Also add corrected symbols to validSymbols so OTC/ADR tickers (like SKHYV)
+      // pass client-side validation — they aren't in the exchange=US symbol cache.
       const finalContent = correctedTextRef.current || displayedContentRef.current;
+      const hasCorrectedSymbols = correctedSymbolsRef.current.size > 0;
+      if (hasCorrectedSymbols) {
+        setValidSymbols(prev => {
+          const next = new Set(prev || []);
+          for (const s of correctedSymbolsRef.current) next.add(s);
+          return next;
+        });
+      }
       correctedTextRef.current = null;
+      correctedSymbolsRef.current = new Set();
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
@@ -1430,10 +1452,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {(() => {
                 if (tier === 'silver') return null;
                 const suggestions = parseSuggestions(msg.content, validSymbols);
-                if (suggestions.length === 0) return null;
+                const choices = parseChoiceSuggestions(msg.content);
+                if (suggestions.length === 0 && choices.length === 0) return null;
                 return (
                   <InlineTradeButtons
                     suggestions={suggestions}
+                    choiceSuggestions={choices}
                     enabled={tier !== 'silver'}
                     onTrade={handleTradeAction}
                   />

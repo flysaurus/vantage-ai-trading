@@ -3,10 +3,13 @@
 // for 24 hours. Used to validate candidate symbols before rendering trade
 // buttons — eliminates false positives from "I", "A", common words, etc.
 //
-// Finnhub endpoint: GET /stock/symbol?exchange=US
-// Returns ~18,000 symbols. Cache size: ~2MB raw, ~0.5MB as Set<string>.
+// Finnhub endpoints: GET /stock/symbol?exchange=US (+ OTC fallback)
+// Returns ~18,000+ symbols. Cache size: ~2MB raw, ~0.5MB as Set<string>.
 //
 // Refresh schedule: every 24 hours (or on first request after cold start).
+//
+// Exchange coverage: 'US' (NYSE/NASDAQ/AMEX/BATS/IEX) + 'OTC' (OTC Markets)
+// This ensures ADR tickers like SKHYV are included in the client-side validSymbols set.
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
@@ -42,45 +45,51 @@ export async function loadSymbolCache(): Promise<Set<string>> {
 
   try {
     console.log('[symbol-validator] Fetching US stock symbol list from Finnhub...');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    const res = await fetch(
-      `${FINNHUB_BASE}/stock/symbol?exchange=US&token=${key}`,
-      { signal: controller.signal },
-    );
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      console.error(`[symbol-validator] Finnhub returned ${res.status}: ${res.statusText}`);
-      return _symbolCache || new Set(); // Return stale cache if available
-    }
-
-    const data: FinnhubSymbol[] = await res.json();
-    if (!Array.isArray(data)) {
-      console.error('[symbol-validator] Unexpected response format:', typeof data);
-      return _symbolCache || new Set();
-    }
-
-    // Build Set from symbols — filter to common stock + ETF for relevance
+    // Fetch from multiple exchange codes to cover both major exchanges and OTC
+    // (OTC ensures ADR tickers like SKHYV are included in the client-side validSymbols)
+    const exchangeCodes = ['US', 'OTC'];
     const symbols = new Set<string>();
-    for (const item of data) {
-      const sym = (item.symbol || '').toUpperCase().trim();
-      // Include: common stock, ETF, ADR. Exclude: warrants, indices, mutual funds
-      const type = (item.type || '').toLowerCase();
-      if (sym && (type === 'common stock' || type === 'etf' || type === 'adr' || type === 'reit')) {
-        symbols.add(sym);
-      }
-    }
-
-    // Also allow all common types (some exchanges use different type strings)
-    // Second pass: include anything that looks like a real ticker
     const allowedTypes = new Set(['common stock', 'etf', 'adr', 'reit', 'unit', 'closed-end fund']);
-    for (const item of data) {
-      const sym = (item.symbol || '').toUpperCase().trim();
-      const type = (item.type || '').toLowerCase();
-      if (sym && allowedTypes.has(type) && !symbols.has(sym)) {
-        symbols.add(sym);
+
+    for (const exchange of exchangeCodes) {
+      try {
+        console.log(`[symbol-validator] Fetching symbols from exchange=${exchange}...`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+        const res = await fetch(
+          `${FINNHUB_BASE}/stock/symbol?exchange=${exchange}&token=${key}`,
+          { signal: controller.signal },
+        );
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+          console.warn(`[symbol-validator] exchange=${exchange} returned ${res.status} — skipping`);
+          continue;
+        }
+
+        const data: FinnhubSymbol[] = await res.json();
+        if (!Array.isArray(data)) {
+          console.warn(`[symbol-validator] exchange=${exchange} unexpected response — skipping`);
+          continue;
+        }
+
+        let added = 0;
+        for (const item of data) {
+          const sym = (item.symbol || '').toUpperCase().trim();
+          const type = (item.type || '').toLowerCase();
+          if (sym && allowedTypes.has(type) && !symbols.has(sym)) {
+            symbols.add(sym);
+            added++;
+          }
+        }
+        console.log(`[symbol-validator] exchange=${exchange}: +${added} symbols (total: ${symbols.size.toLocaleString()})`);
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.warn(`[symbol-validator] exchange=${exchange} timed out — skipping`);
+        } else {
+          console.warn(`[symbol-validator] exchange=${exchange} fetch error: ${err.message || err} — skipping`);
+        }
       }
     }
 

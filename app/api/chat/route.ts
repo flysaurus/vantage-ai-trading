@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
 import { validateRecommendationMarkers } from '@/lib/validate-markers'
+import { resolveSymbol } from '@/lib/tools/resolve-symbol'
 import type { SystemBlock } from '@/lib/ai-provider'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
@@ -404,46 +405,142 @@ CRITICAL: Use these live prices for any current-price questions. They override b
     // Safety: cap messages to prevent context abuse (UI sends max 5)
     const cappedMessages = messages.slice(-20);
 
+    // ── Tool definition: resolveSymbol ────────────────────────
+    const resolveSymbolTool: Anthropic.Tool = {
+      name: 'resolveSymbol',
+      description:
+        'Resolve a company name to its authoritative stock ticker symbol(s). ' +
+        'Use this BEFORE recommending any stock to verify the correct ticker.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          companyName: {
+            type: 'string',
+            description: 'The company name to look up (e.g., "SK Hynix", "Apple")',
+          },
+        },
+        required: ['companyName'],
+      },
+    };
+
+    // ── Build initial conversation ────────────────────────────
+    const initialMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
+      cappedMessages.map((m: any) => ({
+        role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: m.content,
+      }));
+
     const stream = await client.messages.stream({
       model,
       max_tokens: mode === 'deep' ? 8192 : 4096,
       system: systemBlocks as any,
-      messages: cappedMessages.map((m: any) => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content
-      }))
+      messages: initialMessages,
+      tools: [resolveSymbolTool],
+      tool_choice: { type: 'auto' },
     })
 
-    // Return streaming response (accumulate for deviation detection)
-    const encoder = new TextEncoder()
-    const fullResponse: string[] = []
+    const encoder = new TextEncoder();
+    const fullResponse: string[] = []; // ALL text from ALL tool-call turns
     const readable = new ReadableStream({
       async start(controller) {
-        let inputTokens = 0;
-        let outputTokens = 0;
+        let totalInputTokens = 0;
+        let totalOutputTokens = 0;
+        let turn = 0;
+        const MAX_TOOL_TURNS = 3;
+        const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
+          [...initialMessages];
 
-        for await (const chunk of stream) {
-          // Capture token usage from streaming events
-          if (chunk.type === 'message_start') {
-            inputTokens = (chunk as any).message?.usage?.input_tokens || 0;
-          }
-          if (chunk.type === 'message_delta') {
-            outputTokens = (chunk as any).usage?.output_tokens || 0;
+        // ── Multi-turn tool-calling loop ──────────────────────
+        do {
+          const turnStream = turn === 0
+            ? stream // reuse initial stream for first turn
+            : await client.messages.stream({
+                model,
+                max_tokens: mode === 'deep' ? 8192 : 4096,
+                system: systemBlocks as any,
+                messages: convMessages,
+                tools: [resolveSymbolTool],
+                tool_choice: { type: 'auto' },
+              });
+
+          let turnText = '';
+          const turnToolBlocks: Array<{ id: string; name: string; input: any }> = [];
+          let currentToolBlock: { id?: string; name?: string; inputJson: string } | null = null;
+          let hadToolCalls = false;
+
+          for await (const chunk of turnStream) {
+            if (chunk.type === 'message_start') {
+              totalInputTokens += (chunk as any).message?.usage?.input_tokens || 0;
+            }
+            if (chunk.type === 'message_delta') {
+              totalOutputTokens += (chunk as any).usage?.output_tokens || 0;
+              if ((chunk as any).delta?.stop_reason === 'tool_use') hadToolCalls = true;
+            }
+
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+              const text = chunk.delta.text;
+              turnText += text;
+              fullResponse.push(text);
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+            }
+
+            if (chunk.type === 'content_block_start') {
+              const block = (chunk as any).content_block;
+              if (block?.type === 'tool_use') {
+                hadToolCalls = true;
+                currentToolBlock = { id: block.id, name: block.name, inputJson: '' };
+              }
+            }
+
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'input_json_delta') {
+              if (currentToolBlock) currentToolBlock.inputJson += (chunk.delta as any).partial_json;
+            }
+
+            if (chunk.type === 'content_block_stop') {
+              if (currentToolBlock && currentToolBlock.id) {
+                try {
+                  turnToolBlocks.push({
+                    id: currentToolBlock.id,
+                    name: currentToolBlock.name || 'unknown',
+                    input: JSON.parse(currentToolBlock.inputJson),
+                  });
+                } catch (e) { console.warn('[chat] Tool input parse error:', e); }
+                currentToolBlock = null;
+              }
+            }
           }
 
-          if (
-            chunk.type === 'content_block_delta' &&
-            chunk.delta.type === 'text_delta'
-          ) {
-            fullResponse.push(chunk.delta.text)
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
-            )
-          }
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          if (!hadToolCalls || turnToolBlocks.length === 0) break;
 
-        // ── Post-stream: collect full response once ──
+          // ── Inject assistant + tool results into conversation ───
+          console.log(`[chat] Turn ${turn + 1}: ${turnToolBlocks.length} tool call(s)`);
+          convMessages.push({
+            role: 'assistant',
+            content: [
+              ...(turnText ? [{ type: 'text' as const, text: turnText }] : []),
+              ...turnToolBlocks.map((tb) => ({
+                type: 'tool_use' as const, id: tb.id, name: tb.name, input: tb.input,
+              })),
+            ],
+          });
+          for (const tb of turnToolBlocks) {
+            let result: string;
+            if (tb.name === 'resolveSymbol') {
+              const t0 = Date.now();
+              result = await resolveSymbol(tb.input.companyName || '');
+              console.log(`[chat] resolveSymbol("${tb.input.companyName}") → ${Date.now() - t0}ms`);
+            } else {
+              result = JSON.stringify({ error: `Unknown tool: ${tb.name}` });
+            }
+            convMessages.push({
+              role: 'user' as const,
+              content: [{ type: 'tool_result' as const, tool_use_id: tb.id, content: result }],
+            });
+          }
+          turn++;
+        } while (turn < MAX_TOOL_TURNS);
+
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         const responseText = fullResponse.join('');
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
@@ -463,13 +560,13 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // Must complete before controller.close() so the client's
         // refreshRemaining() reads the updated count, not the old one.
         if (userId && userId !== 'anonymous') {
-          const totalTokens = inputTokens + outputTokens;
+          const totalTokens = totalInputTokens + totalOutputTokens;
           const isDeep = mode === 'deep';
           // Claude 4.5 Haiku: $1/MTok input, $5/MTok output
           // Claude 4.6 Sonnet: $3/MTok input, $15/MTok output
           const cost = isDeep
-            ? (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15
-            : (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5;
+            ? (totalInputTokens / 1_000_000) * 3 + (totalOutputTokens / 1_000_000) * 15
+            : (totalInputTokens / 1_000_000) * 1 + (totalOutputTokens / 1_000_000) * 5;
           try {
             await incrementUsage(userId, usageType, totalTokens, cost, localDate);
           } catch (e) {

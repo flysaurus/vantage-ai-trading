@@ -18,11 +18,29 @@ export interface Suggestion {
   side: 'BUY' | 'SELL';
 }
 
+// ─── Disambiguation: multiple ticker candidates ────────────────
+// When resolveSymbol returns multiple matches, the model emits
+// [RECOMMEND_CHOICE:CompanyName:BUY/SELL] + a JSON block with candidates.
+export interface ChoiceCandidate {
+  symbol: string;
+  name: string;
+  exchange: string;
+  type: string;
+}
+
+export interface ChoiceSuggestion {
+  companyName: string;
+  side: 'BUY' | 'SELL';
+  candidates: ChoiceCandidate[];
+}
+
 // ─── PRIMARY: Structured marker detection ─────────────────────
-// Matches: [RECOMMEND:SYMBOL:BUY] or [RECOMMEND:SYMBOL:SELL]
+// Matches: [RECOMMEND:SYMBOL:BUY/SELL] — single confident match
+// Matches: [RECOMMEND_CHOICE:CompanyName:BUY/SELL] — multiple candidates
 // These are stripped from visible text by AITab's rendering layer.
 
 const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)\]/g;
+const CHOICE_MARKER_PATTERN = /\[RECOMMEND_CHOICE:(.+?):(BUY|SELL)\]/g;
 
 /**
  * Extract suggestions from [RECOMMEND:SYMBOL:BUY/SELL] markers.
@@ -55,14 +73,65 @@ export function parseSuggestions(
   return suggestions;
 }
 
-/** Strip [RECOMMEND:...] markers from visible text — users never see raw markers. */
+/**
+ * Extract choice suggestions from [RECOMMEND_CHOICE:CompanyName:BUY/SELL] markers
+ * and their adjacent JSON candidate blocks.
+ *
+ * Expected format:
+ *   [RECOMMEND_CHOICE:SK Hynix:BUY]
+ *   ```json
+ *   {"candidates":[{"symbol":"SKHYV","name":"SK hynix Inc.","exchange":"OTC","type":"ADR"}]}
+ *   ```
+ */
+export function parseChoiceSuggestions(markdownContent: string): ChoiceSuggestion[] {
+  const results: ChoiceSuggestion[] = [];
+  CHOICE_MARKER_PATTERN.lastIndex = 0;
+
+  for (const match of markdownContent.matchAll(CHOICE_MARKER_PATTERN)) {
+    const companyName = match[1].trim();
+    const side = match[2] as 'BUY' | 'SELL';
+    const markerEnd = match.index! + match[0].length;
+
+    // Look for the JSON block immediately after this marker
+    const afterMarker = markdownContent.slice(markerEnd, markerEnd + 5000);
+    const jsonBlockMatch = afterMarker.match(/```json\s*\n?([\s\S]*?)```/);
+
+    if (!jsonBlockMatch) continue;
+
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+      if (parsed.candidates && Array.isArray(parsed.candidates) && parsed.candidates.length > 0) {
+        results.push({
+          companyName,
+          side,
+          candidates: parsed.candidates.map((c: any) => ({
+            symbol: c.symbol || '',
+            name: c.name || '',
+            exchange: c.exchange || '',
+            type: c.type || '',
+          })),
+        });
+      }
+    } catch {
+      // Invalid JSON — skip this marker
+    }
+  }
+
+  return results;
+}
+
+/** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
-  return text
+  let result = text
     .replace(MARKER_PATTERN, '')
+    .replace(CHOICE_MARKER_PATTERN, '')
+    // Remove JSON candidate blocks that follow choice markers
+    .replace(/```json\s*\n?\{[\s\S]*?"candidates"[\s\S]*?\}\s*\n?```/g, '')
     .replace(/\s+,/g, ',')  // fix "MSFT , NVDA" → "MSFT, NVDA"
     .replace(/\s+\./g, '.')  // fix trailing space before period
     .replace(/\s{2,}/g, ' ')  // collapse multiple spaces
     .trim();
+  return result;
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -132,30 +201,151 @@ export function InlineTradeButton({
 
 interface InlineTradeButtonsProps {
   suggestions: Suggestion[];
+  choiceSuggestions?: ChoiceSuggestion[];
   enabled: boolean;
   onTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
 }
 
-export function InlineTradeButtons({ suggestions, enabled, onTrade }: InlineTradeButtonsProps) {
-  if (!enabled || suggestions.length === 0) return null;
+export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, onTrade }: InlineTradeButtonsProps) {
+  if (!enabled) return null;
+  if (suggestions.length === 0 && (!choiceSuggestions || choiceSuggestions.length === 0)) return null;
 
   return (
     <div style={{
       display: 'flex',
-      flexWrap: 'wrap',
-      gap: '6px',
+      flexDirection: 'column',
+      gap: '8px',
       marginTop: '8px',
       paddingTop: '6px',
     }}>
-      {suggestions.map((s) => (
-        <InlineTradeButton
-          key={`${s.symbol}:${s.side}`}
-          symbol={s.symbol}
-          side={s.side}
-          enabled={enabled}
-          onTrade={onTrade}
-        />
+      {choiceSuggestions && choiceSuggestions.length > 0 && choiceSuggestions.map((cs, i) => (
+        <DisambiguationPicker key={`choice-${i}`} suggestion={cs} onTrade={onTrade} />
       ))}
+      {suggestions.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {suggestions.map((s) => (
+            <InlineTradeButton
+              key={`${s.symbol}:${s.side}`}
+              symbol={s.symbol}
+              side={s.side}
+              enabled={enabled}
+              onTrade={onTrade}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Disambiguation picker ────────────────────────────────────
+
+interface DisambiguationPickerProps {
+  suggestion: ChoiceSuggestion;
+  onTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
+}
+
+function DisambiguationPicker({ suggestion, onTrade }: DisambiguationPickerProps) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [tapped, setTapped] = useState(false);
+  const isBuy = suggestion.side === 'BUY';
+
+  const handleSelect = useCallback((symbol: string) => {
+    setSelected(symbol);
+  }, []);
+
+  const handleConfirm = useCallback(() => {
+    if (!selected) return;
+    setTapped(true);
+    onTrade(selected, suggestion.side);
+    setTimeout(() => setTapped(false), 600);
+  }, [selected, suggestion.side, onTrade]);
+
+  if (suggestion.candidates.length === 0) return null;
+
+  return (
+    <div style={{
+      background: 'rgba(14,22,36,0.8)',
+      border: '1px solid rgba(34,211,238,0.2)',
+      borderRadius: '8px',
+      padding: '12px',
+      fontSize: '12px',
+    }}>
+      <div style={{
+        color: '#94a3b8',
+        marginBottom: '8px',
+        fontSize: '11px',
+        fontWeight: 600,
+        letterSpacing: '0.03em',
+      }}>
+        ⚡ Multiple tickers found for <strong style={{ color: '#e2e8f0' }}>{suggestion.companyName}</strong> — pick one:
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+        {suggestion.candidates.map((c) => (
+          <button
+            key={c.symbol}
+            onClick={() => handleSelect(c.symbol)}
+            disabled={tapped}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 10px',
+              background: selected === c.symbol
+                ? (isBuy ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)')
+                : 'rgba(30,41,59,0.5)',
+              border: `1px solid ${selected === c.symbol
+                ? (isBuy ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.35)')
+                : 'rgba(71,85,105,0.2)'}`,
+              borderRadius: '6px',
+              cursor: tapped ? 'default' : 'pointer',
+              color: '#e2e8f0',
+              fontSize: '11px',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s ease',
+              textAlign: 'left',
+            }}
+          >
+            <div>
+              <span style={{ fontWeight: 700, fontSize: '12px', letterSpacing: '0.03em' }}>{c.symbol}</span>
+              <span style={{ color: '#64748b', marginLeft: '8px' }}>{c.name}</span>
+            </div>
+            <span style={{
+              color: '#475569',
+              fontSize: '10px',
+              background: 'rgba(71,85,105,0.15)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+            }}>
+              {c.exchange}{c.type ? ` · ${c.type}` : ''}
+            </span>
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={handleConfirm}
+        disabled={!selected || tapped}
+        style={{
+          width: '100%',
+          padding: '6px 12px',
+          background: selected
+            ? (isBuy ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.18)')
+            : 'rgba(71,85,105,0.1)',
+          border: `1px solid ${selected
+            ? (isBuy ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.4)')
+            : 'rgba(71,85,105,0.15)'}`,
+          borderRadius: '6px',
+          color: selected ? (isBuy ? '#10b981' : '#ef4444') : '#475569',
+          fontSize: '11px',
+          fontWeight: 700,
+          cursor: selected && !tapped ? 'pointer' : 'default',
+          fontFamily: 'inherit',
+          transition: 'all 0.15s ease',
+          letterSpacing: '0.03em',
+        }}
+      >
+        {tapped ? '⏳ Opening…' : selected ? `${suggestion.side} ${selected}` : 'Select a ticker first'}
+      </button>
     </div>
   );
 }

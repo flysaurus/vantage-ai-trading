@@ -85,9 +85,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     for (const r of rawResults) {
       const sym = r.symbol || r.displaySymbol || '';
       if (!sym || seen.has(sym)) continue;
-      // Only Common Stock + ETFs, US-listed
+      // Common Stock, ETF, ADR, REIT — US-listed (aligns with validate-markers.ts resolveCompanyTicker)
       const t = r.type || '';
-      if (t !== 'Common Stock' && t !== 'ETF') continue;
+      if (t !== 'Common Stock' && t !== 'ETF' && t !== 'ADR' && t !== 'REIT') continue;
       if (!isUSStock(sym)) continue;
       seen.add(sym);
       filtered.push({
