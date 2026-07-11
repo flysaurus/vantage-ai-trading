@@ -15,10 +15,6 @@
     {
       "path": "/api/cron/drawdown-check",
       "schedule": "15 14 * * 1-5"
-    },
-    {
-      "path": "/api/cron/execute-pending-orders",
-      "schedule": "*/5 13-20 * * 1-5"
     }
   ],
   "functions": {

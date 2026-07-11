@@ -39,6 +39,9 @@ const PUBLIC_ROUTES = [
   '/api/gamification/recalculate', // anonymous-friendly (uses anonymousId body)
   '/api/session/streak', // anonymous-friendly (uses anonymousId query param / body)
   '/api/auth/is-admin', // admin status check — returns {isAdmin:true/false} without auth redirect
+  '/api/symbols/search', // public — Finnhub company search
+  '/api/symbols/check', // public — single-symbol validation
+  '/api/symbols/all', // public — full symbol cache for client validation
 ];
 
 export async function middleware(request: NextRequest) {
