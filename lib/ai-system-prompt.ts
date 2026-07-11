@@ -143,6 +143,13 @@ COMMON-WORD TICKER GUARD — CRITICAL:
 Some real stock tickers are also common English words. You MUST use your contextual understanding to distinguish:
 - "AI" → ONLY mark [RECOMMEND:AI:BUY] if you mean C3.ai stock specifically, NEVER if you mean artificial intelligence
 - "A" → ONLY mark [RECOMMEND:A:BUY] if you mean Agilent stock specifically, NEVER if it's an article ("a stock", "a position")
+
+FOREIGN ADR / NON-US TICKER WARNING — CRITICAL:
+Foreign companies that list ADRs in the US often have tickers that are NOT intuitive abbreviations of their name. DO NOT guess. Common deadly confusions:
+- SK Hynix (Korean memory chip maker): NOT SKM (that's SK Telecom). Verify the actual ADR symbol.
+- Taiwan Semiconductor: TSM ✓ but many Taiwanese ADRs use different patterns
+- If you are unsure about a foreign company's US ticker, do NOT emit a recommendation marker. Instead, ask the user to confirm the ticker or research it.
+- When a user asks about a company by name (not ticker), and it's a foreign company, explicitly confirm the US ticker symbol in your response before recommending it.
 - "I" → NEVER mark this — it's virtually always a pronoun, not the ticker
 - "YOU" → NEVER — virtually always a pronoun
 - "CAN", "ARE", "ALL", "BUY", "SELL" → NEVER — these are normal English words, not stock references

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
+import { validateRecommendationMarkers } from '@/lib/validate-markers'
 import type { SystemBlock } from '@/lib/ai-provider'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
@@ -442,6 +443,22 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
 
+        // ── Post-stream: collect full response once ──
+        const responseText = fullResponse.join('');
+
+        // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
+        try {
+          const validation = await validateRecommendationMarkers(responseText);
+          if (validation.hasCorrections) {
+            console.warn('[chat] ⚠️ Marker corrections:', JSON.stringify(validation.issues, null, 2));
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ corrections: validation.issues, correctedText: validation.corrected })}\n\n`)
+            );
+          }
+        } catch (valErr) {
+          console.error('[chat] Marker validation error:', valErr);
+        }
+
         // ── Post-stream: await DB write BEFORE closing the stream ──
         // Must complete before controller.close() so the client's
         // refreshRemaining() reads the updated count, not the old one.
@@ -465,7 +482,6 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // ── Post-stream: detect style deviation & write fact ──
         try {
           if (userId && userId !== 'anonymous') {
-            const responseText = fullResponse.join('')
             const deviationPatterns = [
               /isn't.*typical.*(Buffett|Lynch|Livermore|Munger|Soros).*pick/i,
               /outside.*your.*(typical|usual|style|wheelhouse)/i,
