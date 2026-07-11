@@ -58,14 +58,6 @@ export default function PreferencesPage() {
     return () => { cancelled = true; clearTimeout(retryId); };
   }, []);
 
-    check();
-
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, []);
-
   useEffect(() => {
     savePrefs(prefs);
   }, [prefs]);
