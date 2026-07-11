@@ -98,9 +98,15 @@ export function ShareCardModal({
   // ── Native Share ──────────────────────────────────────
   async function handleNativeShare() {
     const fullHeadline = getStyleTrait(styleId);
+    const STYLE_NAMES: Record<string, string> = {
+      lynch: 'Peter Lynch', buffett: 'Warren Buffett',
+      livermore: 'Jesse Livermore', munger: 'Charlie Munger',
+      soros: 'George Soros',
+    };
+    const styleName = STYLE_NAMES[styleId] || fullHeadline;
     const shareData: ShareData = {
-      title: `I'm ${fullHeadline} on Vantage`,
-      text: 'Take the quiz and find out yours →',
+      title: `I'm a ${fullHeadline} on Vantage 📈`,
+      text: `Vantage matched my investing personality to ${styleName}. An AI advisor that thinks like you — your strategy, your style. 2-min quiz →`,
       url: shareUrl,
     };
 

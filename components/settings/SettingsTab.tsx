@@ -58,6 +58,13 @@ export function SettingsTab() {
   const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
   const [demoStartAt, setDemoStartAt] = useState<string | null>(null);
 
+  // ── Confirmation dialog state ─────────────────────────
+  const [confirmDialog, setConfirmDialog] = useState<{
+    type: 'style' | 'risk';
+    value: string;
+    label: string;
+  } | null>(null);
+
   useEffect(() => {
     fetch('/api/auth/is-admin')
       .then(r => r.json())
@@ -100,18 +107,30 @@ export function SettingsTab() {
   }
 
   async function handleRiskChange(level: 'conservative' | 'moderate' | 'aggressive') {
+    const labels: Record<string, string> = { conservative: 'Conservative', moderate: 'Moderate', aggressive: 'Aggressive' };
+    setConfirmDialog({ type: 'risk', value: level, label: labels[level] });
+  }
+
+  function confirmRiskChange() {
+    if (!confirmDialog || confirmDialog.type !== 'risk') return;
+    const level = confirmDialog.value as 'conservative' | 'moderate' | 'aggressive';
+    setConfirmDialog(null);
     setRiskLevel(level);
     if (user?.id) {
-      try {
-        await fetch('/api/user/preferences', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ risk_tolerance: level }),
-        });
-        await refreshUser();
-      } catch {}
+      fetch('/api/user/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ risk_tolerance: level }),
+      }).then(() => refreshUser()).catch(() => {});
     }
+  }
+
+  function confirmStyleChange() {
+    if (!confirmDialog || confirmDialog.type !== 'style') return;
+    const styleId = confirmDialog.value;
+    setConfirmDialog(null);
+    selectStyle(styleId);
   }
 
   const sectionHeader = (label: string) => (
@@ -924,7 +943,12 @@ export function SettingsTab() {
             paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
           }}>
             <button
-              onClick={() => selectStyle(selectedStyle)}
+              onClick={() => {
+                const style = INVESTOR_STYLES.find(s => s.id === selectedStyle);
+                if (style) {
+                  setConfirmDialog({ type: 'style', value: selectedStyle, label: `${style.emoji} ${style.name} · ${style.subtitle}` });
+                }
+              }}
               disabled={saving}
               style={{
                 width: '100%',
@@ -978,6 +1002,89 @@ export function SettingsTab() {
           to { opacity: 1; transform: translateY(0); }
         }
       ` }} />
+
+      {/* Confirmation Dialog */}
+      {confirmDialog && (
+        <>
+          <div
+            onClick={() => setConfirmDialog(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10050,
+              background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            }}
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 10051, width: 'calc(100% - 48px)', maxWidth: '360px',
+            background: '#1a2235', border: '1px solid #334155',
+            borderRadius: '16px', padding: '24px',
+            animation: 'slideDown 0.2s ease',
+          }}>
+            {confirmDialog.type === 'style' && (
+              <>
+                <p style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', margin: '0 0 8px' }}>
+                  Switch to {confirmDialog.label}?
+                </p>
+                <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.5, margin: '0 0 20px' }}>
+                  Your AI Advisor will now think like{' '}
+                  {INVESTOR_STYLES.find(s => s.id === confirmDialog.value)?.name} —{' '}
+                  {INVESTOR_STYLES.find(s => s.id === confirmDialog.value)?.description}.
+                  {' '}All stock picks, daily briefs, and recommendations will reflect this lens.
+                </p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4, margin: '0 0 20px' }}>
+                  Your portfolio and positions are not affected.
+                </p>
+              </>
+            )}
+            {confirmDialog.type === 'risk' && (
+              <>
+                <p style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', margin: '0 0 8px' }}>
+                  Change risk tolerance to {confirmDialog.label}?
+                </p>
+                <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.5, margin: '0 0 20px' }}>
+                  {confirmDialog.value === 'conservative'
+                    ? 'AI will recommend smaller positions, lower volatility, and value-focused picks.'
+                    : confirmDialog.value === 'aggressive'
+                      ? 'AI will recommend larger positions, wider stop losses, and higher-growth opportunities.'
+                      : 'AI will recommend a balanced mix of growth and value with moderate position sizing.'
+                  }
+                  {' '}All future trades, baskets, and portfolio alerts will reflect this risk profile.
+                </p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4, margin: '0 0 20px' }}>
+                  Existing positions are not affected.
+                </p>
+              </>
+            )}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setConfirmDialog(null)}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: '10px',
+                  border: '1px solid #334155', background: 'transparent',
+                  color: '#e2e8f0', fontSize: '14px', fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDialog.type === 'style' ? confirmStyleChange : confirmRiskChange}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: '10px',
+                  border: 'none', background: '#22d3ee',
+                  color: '#0a0f1e', fontSize: '14px', fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {confirmDialog.type === 'style'
+                  ? `Switch to ${INVESTOR_STYLES.find(s => s.id === confirmDialog.value)?.name || ''}`
+                  : `Change to ${confirmDialog.label}`
+                }
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Share Card Modal */}
       <ShareCardModal
