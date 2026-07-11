@@ -19,22 +19,8 @@ function getAdminEmails(): Set<string> {
 }
 
 export async function GET() {
-  const { authUser, authError } = await requireAuth();
+  const { authUser } = await requireAuth();
   const email = authUser?.email?.toLowerCase();
-  const adminSet = getAdminEmails();
-  const isAdmin = email ? adminSet.has(email) : false;
-
-  // Diagnostic info (safe to include — only reveals if caller is already authenticated)
-  const diag = {
-    isAdmin,
-    hasSession: !!authUser,
-    email: authUser?.email || null,
-    adminEmails: [...adminSet],
-    envSet: !!process.env.ADMIN_EMAILS,
-    envRaw: process.env.ADMIN_EMAILS || '(unset, using default)',
-  };
-
-  console.log('[is-admin]', JSON.stringify(diag));
-
-  return NextResponse.json({ isAdmin, _diag: diag });
+  const isAdmin = email ? getAdminEmails().has(email) : false;
+  return NextResponse.json({ isAdmin });
 }
