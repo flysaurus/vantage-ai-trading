@@ -125,11 +125,10 @@ export default function PlansPage() {
 
   return (
     <div style={{
-      height: '100dvh', background: '#0b1120', color: '#fff',
+      minHeight: '100dvh', background: '#0b1120', color: '#fff',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
       paddingBottom: 'env(safe-area-inset-bottom)',
-      overflow: 'hidden',
     }}>
       {/* ── Header ── */}
       <div style={{
