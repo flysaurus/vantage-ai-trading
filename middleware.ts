@@ -42,6 +42,7 @@ const PUBLIC_ROUTES = [
   '/api/symbols/search', // public — Finnhub company search
   '/api/symbols/check', // public — single-symbol validation
   '/api/symbols/all', // public — full symbol cache for client validation
+  '/api/chat/diag', // public deployment diagnostic — returns tool-calling config status only
 ];
 
 export async function middleware(request: NextRequest) {
