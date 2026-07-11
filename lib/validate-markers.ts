@@ -45,47 +45,48 @@ function getApiKey(): string | null {
  * Looks for patterns like "SK Hynix", "Nvidia (NVDA)", "$TICKER (NAME)", etc.
  */
 function extractContextName(text: string, symbol: string): string | null {
-  // Look for patterns near the symbol in the text
-  const idx = text.indexOf(symbol);
-  if (idx < 0) return null;
+  // Find the marker containing this symbol
+  const markerPattern = new RegExp(`\\[RECOMMEND:${symbol.replace(/\./g, '\\.')}:(BUY|SELL)\\]`, 'g');
+  const markerMatch = markerPattern.exec(text);
+  if (!markerMatch) return null;
 
-  // Get surrounding context (±200 chars around the symbol occurrence)
-  const start = Math.max(0, idx - 200);
-  const end = Math.min(text.length, idx + 200);
-  const context = text.slice(start, end);
+  const markerStart = markerMatch.index;
 
-  // Pattern 1: "Company Name [RECOMMEND:..." — company name before marker
-  // The marker is [RECOMMEND:SYMBOL:BUY/SELL]
-  // The text around it might be "...SK Hynix [RECOMMEND:SKM:BUY]..."
-  const beforeMarker = text.slice(0, idx).split(/\n/).pop() || '';
-  // Extract proper noun phrase before the symbol (2-4 capitalized words)
-  const nameMatch = beforeMarker.match(
-    /((?:[A-Z][a-zÀ-ÿ]+(?:\s+(?:[A-Z][a-zÀ-ÿ]+|&|and|of|in|at|the)\s*)*){1,4})\s*$/,
-  );
-  if (nameMatch) {
-    const candidate = nameMatch[1].trim();
-    // Filter out common non-company words
-    if (!/^(?:The|A|An|This|That|Buy|Sell|Hold|Get|For|With|Your|My|I|We|You|It|At|In|On|By|To|Or|And|But|So|If|As|Is|Be|Are|Was|Were|Will|Can|Should|Would|Could|Do|Does|Did|Has|Have|Had|Go|Going|Like|Just|Also|Still|Now|Then|Here|There|Some|Any|All|Each|Every|Both|Few|More|Most|Other|Such|Only|Very|Really|About|Above|After|Again|From|Into|Over|Under|Up|Out|Off|Down|Back|Way|Time|Make|Made|Take|Look|See|Know|Think|Want|Need|Let|Put|Set|Use|Said|Done|Come)\b/i.test(candidate)) {
-      return candidate;
+  // Get text before the marker
+  const beforeText = text.slice(0, markerStart).trim();
+  if (!beforeText) return null;
+
+  // Strip trailing punctuation / symbols / "Done." prefixes
+  const sanitized = beforeText.replace(/[\[\](){}*_~`]/g, ' ').trim();
+
+  // Extract the last 1-4 words that look like a company name
+  // Company name = capitalized words (title-case or all-caps)
+  const words = sanitized.split(/\s+/);
+  const isCapitalized = (w: string) =>
+    /^[A-Z]{2,5}(?:[.&]?[A-Z]{0,5})*$/.test(w) ||  // all-caps acronyms (SK, IBM, AT&T)
+    /^[A-Z][a-zÀ-ÿ]{2,}$/.test(w);                    // title-case (Hynix, Nvidia)
+
+  // Walk backwards collecting capitalized words
+  const nameWords: string[] = [];
+  for (let i = words.length - 1; i >= 0 && nameWords.length < 4; i--) {
+    const w = words[i];
+    if (isCapitalized(w)) {
+      nameWords.unshift(w);
+    } else if (nameWords.length > 0) {
+      // Hit a non-capitalized word after finding some — stop
+      break;
     }
   }
 
-  // Pattern 2: Scan for proper noun phrases mentioning the company in the context window
-  // Look for "SK Hynix", "Nvidia Corp", etc.
-  const properNounPattern = /\b([A-Z]{2,5}(?:\s+[A-Z][a-zÀ-ÿ]{2,}){0,3})\b/g;
-  const matches = [...context.matchAll(properNounPattern)];
-  for (const m of matches) {
-    const phrase = m[1].trim();
-    // Skip if it's the symbol itself
-    if (phrase.toUpperCase() === symbol.toUpperCase()) continue;
-    // Skip common non-company abbreviations
-    if (/^(?:NYSE|NASDAQ|OTC|ADR|ETF|IPO|EPS|P\/E|EV|FOMC|CPI|GDP|CEO|CFO|CTO|COO|USD|EUR|GBP|YTD|Q[1-4]|H[1-2]|FY|AI|ML|API|UI|UX|ROI|KPI|OKR|SaaS|B2B|B2C|TAM|SAM|SOM|CAGR|DCF|IRR|ROE|ROA|EBIT|EBITDA|YoY|MoM|QoQ|USD|AM|PM)\b$/i.test(phrase)) continue;
-    // Skip if it looks like a ticker (2-5 all-caps chars)
-    if (/^[A-Z]{2,5}$/.test(phrase)) continue;
-    return phrase;
+  if (nameWords.length === 0) return null;
+  const candidate = nameWords.join(' ');
+
+  // Filter out common non-company words
+  if (/^(?:The|A|An|This|That|Buy|Sell|Hold|Get|For|With|Your|My|I|We|You|It|At|In|On|By|To|Or|And|But|So|If|As|Is|Be|Are|Was|Were|Will|Can|Should|Would|Could|Do|Does|Did|Has|Have|Had|Go|Going|Like|Just|Also|Still|Now|Then|Here|There|Some|Any|All|Each|Every|Both|Few|More|Most|Other|Such|Only|Very|Really|About|Above|After|Again|From|Into|Over|Under|Up|Out|Off|Down|Back|Way|Time|Make|Made|Take|Look|See|Know|Think|Want|Need|Let|Put|Set|Use|Said|Done|Come|Recommend|Done)$/i.test(candidate)) {
+    return null;
   }
 
-  return null;
+  return candidate;
 }
 
 /**
@@ -159,7 +160,7 @@ async function validateMarker(
       const overlap = [...ctxWords].filter(w => profileWords.has(w)).length;
       const minWords = Math.min(ctxWords.size, profileWords.size);
 
-      if (overlap === 0 || (minWords > 0 && overlap / minWords < 0.5)) {
+      if (overlap === 0 || (minWords > 0 && overlap / minWords <= 0.5)) {
         // Mismatch! Try to find the correct ticker
         const correction = await resolveCompanyTicker(apiKey, contextName);
         return {
