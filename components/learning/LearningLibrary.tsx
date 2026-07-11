@@ -31,8 +31,11 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
   const { user } = useAuth() as any;
 
   // isDeep is always true — every Learning Moment completion counts as deep engagement.
-  // (30s time-gate removed intentionally: low user volume, no alternate detection signals.
-  // Revisit if abuse becomes a real issue.)
+  //
+  // Intentionally not gating on follow-up questions or applied-insight detection:
+  // Understanding is earned through completion, not forced friction on the user.
+  // (The 30s time-gate was also removed; anti-farming is unnecessary at current scale.
+  //  Revisit if abuse becomes a real issue.)
 
   if (!open) return null;
 

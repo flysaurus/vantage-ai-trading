@@ -64,9 +64,13 @@ export function useLearningMoment(
     if (gotIt && learningCard) {
       const anonymousId = user?.id || '';
       if (anonymousId) {
-        // Every completion is deep engagement (30s time-gate removed).
-        // Intentionally removes anti-farming protection: low user volume, no alternate
-        // detection signals built yet. Revisit if abuse becomes a real issue.
+        // Every completion is deep engagement.
+        //
+        // Previous design considered follow-up questions and applied-insight detection
+        // as additional gates for isDeep. Both were intentionally dropped: the
+        // Understanding pillar is earned through completion, not forced friction.
+        // No anti-farming protection is needed at current scale — revisit if abuse
+        // becomes a real issue.
 
         try {
           const res = await fetch('/api/gamification/increment-learning', { credentials: 'include',

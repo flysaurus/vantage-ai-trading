@@ -739,7 +739,9 @@ export async function getInvestorScore(
  *
  * @param anonymousId  The anonymous session ID
  * @param _xpAmount    Kept for API compatibility, unused in new formula
- * @param isDeep       Whether the engagement had depth (time/follow-up)
+ * @param isDeep       Whether the engagement was deep — unconditional true for all
+ *                     Learning Moments (time-gate, follow-up, and applied-insight
+ *                     gating all intentionally removed)
  */
 export async function addLearningXP(
   anonymousId: string,
