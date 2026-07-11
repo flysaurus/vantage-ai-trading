@@ -166,6 +166,8 @@ export function ShareCardModal({
           maxWidth: '480px',
           margin: '0 auto',
           maxHeight: '90vh',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
           background: 'var(--bg-sheet)',
           borderTopLeftRadius: 'var(--radius-lg)',
           borderTopRightRadius: 'var(--radius-lg)',

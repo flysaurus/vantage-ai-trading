@@ -35,9 +35,11 @@ async function saveInvestorStyle(userId: string, style: string): Promise<boolean
 }
 
 export function SettingsTab() {
-  const { user } = useAuth() as any;
+  const { user, refreshUser } = useAuth() as any;
   const router = useRouter();
-  const [riskLevel, setRiskLevel] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  const [riskLevel, setRiskLevel] = useState<'conservative' | 'moderate' | 'aggressive'>(
+    (user?.riskTolerance as 'conservative' | 'moderate' | 'aggressive') || 'moderate'
+  );
   const [brokerConnected, setBrokerConnected] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [showStylePicker, setShowStylePicker] = useState(false);
@@ -76,19 +78,39 @@ export function SettingsTab() {
 
   async function selectStyle(styleId: string) {
     setSaving(true);
-    const success = user?.id ? await saveInvestorStyle(user.id, styleId) : false;
+    const userId = user?.id as string | undefined;
+    const success = userId ? await saveInvestorStyle(userId, styleId) : false;
     setSelectedStyle(styleId);
     // Clear greeting cache so new style is reflected
     try {
       const today = new Date().toDateString().replace(/\s/g, '_');
       localStorage.removeItem(`vantage_greeting_${today}`);
     } catch {}
+    // Refresh AuthContext user so all components pick up the new style
+    if (userId) {
+      try { await refreshUser(); } catch {}
+    }
     setSaving(false);
     setShowStylePicker(false);
     if (success) {
       const styleName = INVESTOR_STYLES.find(s => s.id === styleId)?.name || styleId;
       setToast(`Style updated to ${styleName} · AI will now think like ${styleName}`);
       setTimeout(() => setToast(null), 3500);
+    }
+  }
+
+  async function handleRiskChange(level: 'conservative' | 'moderate' | 'aggressive') {
+    setRiskLevel(level);
+    if (user?.id) {
+      try {
+        await fetch('/api/user/preferences', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ risk_tolerance: level }),
+        });
+        await refreshUser();
+      } catch {}
     }
   }
 
@@ -112,7 +134,7 @@ export function SettingsTab() {
     return (
       <button
         key={level}
-        onClick={() => setRiskLevel(level)}
+        onClick={() => handleRiskChange(level)}
         style={{
           borderRadius: '6px',
           padding: '4px 8px',
