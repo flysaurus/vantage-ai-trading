@@ -108,6 +108,37 @@ export default function PreferencesPage() {
           }}>
             🔴 DEBUG: isAdmin={String(isAdmin)} | API={_dbg}
           </div>
+
+          {/* ⚠️ ADMIN AT TOP — moved here for visibility testing */}
+          {isAdmin && (
+            <div style={{ marginBottom: 16, background: '#002200', border: '3px solid #22c55e', borderRadius: 12, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e', marginBottom: 10 }}>
+                ✅ ADMIN SECTION — YOU SHOULD SEE THIS
+              </div>
+              <div onClick={() => router.push('/admin/tiers')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14 }}>📊</span>
+                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>Tier Limits</div></div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+              </div>
+              <div onClick={() => router.push('/admin/gamification')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14 }}>⚙️</span>
+                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>Gamification Config</div></div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+              </div>
+              <div onClick={() => router.push('/admin/users')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14 }}>👥</span>
+                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>Manage Users</div></div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+              </div>
+            </div>
+          )}
+
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -285,11 +316,12 @@ export default function PreferencesPage() {
             </div>
           )}
 
+          {/* ⚠️ MOVED TO TOP for debug — normally after Investor Profile */}
           {/* Admin — visible only to admins */}
           {isAdmin && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-                Admin
+            <div style={{ marginBottom: 20, background: '#001a00', border: '2px solid #22c55e', borderRadius: 12, padding: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#22c55e', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                ✅ ADMIN SECTION ACTIVE — isAdmin=true confirmed
               </div>
               <div
                 onClick={() => router.push('/admin/tiers')}
