@@ -155,7 +155,9 @@ interface PortfolioContextValue {
     side: 'BUY' | 'SELL',
     shares: number,
     price: number,
-    orderType?: 'market' | 'limit',
+    orderType?: 'market' | 'limit' | 'stop' | 'stop_limit',
+    stopPrice?: number,
+    limitPrice?: number,
     timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok',
   ) => Promise<TradeResult>;
   /** Demo order history */
@@ -518,7 +520,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── Broker initialization ──
   useEffect(() => {
-    brokerRef.current = getBroker('demo', user?.id);
+    brokerRef.current = getBroker('demo', user?.id, undefined, user?.email);
     // Always sync broker state to React — even with no positions (e.g. pending basket orders)
     brokerRef.current.getPositions().then(() => {
       refreshStateFromBroker();
@@ -538,10 +540,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit', timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok'): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok'): Promise<TradeResult> => {
       const b = brokerRef.current;
       if (!b) return { success: false, error: 'Broker not initialized' };
-      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice: orderType === 'limit' ? price : undefined, timeInForce });
+      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce });
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);
@@ -550,11 +552,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       await refreshStateFromBroker();
       const fillPx = result.fillPrice ?? price;
       if (result.status === 'OPEN') {
-        const limitNote = orderType === 'limit' ? ` (limit $${price.toFixed(2)})` : '';
-        setToast({ message: `⏳ ${side} ${shares} ${symbol}${limitNote} queued — ${result.nextOpenLabel || 'pending'}`, type: 'success' });
+        let orderNote = '';
+        if (orderType === 'stop') orderNote = ` (stop $${(stopPrice || price).toFixed(2)})`;
+        else if (orderType === 'stop_limit') orderNote = ` (stop $${(stopPrice || price).toFixed(2)} limit $${(limitPrice || price).toFixed(2)})`;
+        else if (orderType === 'limit') orderNote = ` (limit $${price.toFixed(2)})`;
+        setToast({ message: `⏳ ${side} ${shares} ${symbol}${orderNote} queued — ${result.nextOpenLabel || 'pending'}`, type: 'success' });
       } else {
         const sideLabel = side === 'BUY' ? 'Bought' : 'Sold';
-        const typeLabel = orderType === 'limit' ? 'limit' : '';
+        const typeLabel = orderType === 'limit' ? 'limit' : orderType === 'stop' ? 'stop' : orderType === 'stop_limit' ? 'stop-limit' : '';
         setToast({ message: `✅ ${sideLabel} ${result.filledShares || shares} ${symbol} ${typeLabel} at $${fillPx.toFixed(2)}`, type: 'success' });
       }
       setTimeout(() => setToast(null), result.status === 'FILLED' ? 3000 : 4000);
@@ -626,7 +631,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
               ))
             : 0;
 
-          onTradeExecuted(
+          try {
+            await onTradeExecuted(
             user.id as string,
             tradeAssetType,
             tradeSector,
@@ -639,9 +645,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             undefined, // heldThroughDrawdown (requires current prices)
             pv,
             pc
-          ).catch(() => {});
+          );
+          } catch (scoreErr: any) {
+            console.error('[PortfolioContext] onTradeExecuted error:', scoreErr?.message || scoreErr);
+          }
         } else {
-          onTradeExecuted(
+          try {
+            await onTradeExecuted(
             user.id as string,
             undefined, // assetType
             undefined, // sector
@@ -654,7 +664,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             undefined, // heldThroughDrawdown
             undefined, // portfolioValue
             undefined  // portfolioCost
-          ).catch(() => {});
+          );
+          } catch (scoreErr: any) {
+            console.error('[PortfolioContext] onTradeExecuted error:', scoreErr?.message || scoreErr);
+          }
         }
       }
 

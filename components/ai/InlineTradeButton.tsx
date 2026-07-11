@@ -172,8 +172,9 @@ interface ChatTradeTicketProps {
   availableCash: number;
   onConfirm: (params: {
     shares: number;
-    type: 'market' | 'limit';
+    type: 'market' | 'limit' | 'stop' | 'stop_limit';
     limitPrice?: number;
+    stopPrice?: number;
     timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   }) => Promise<void>;
 }

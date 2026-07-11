@@ -30,8 +30,9 @@ interface TradeTicketProps {
   availableCash: number;
   onConfirm: (params: {
     shares: number;
-    type: 'market' | 'limit';
+    type: 'market' | 'limit' | 'stop' | 'stop_limit';
     limitPrice?: number;
+    stopPrice?: number;
     timeInForce?: TimeInForce;
   }) => Promise<void>;
 }
@@ -41,10 +42,11 @@ export default function TradeTicket({
   sharesHeld, availableCash, onConfirm,
 }: TradeTicketProps) {
   console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash });
-  const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
+  const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
   const [quantity, setQuantity] = useState<string>('');
   const [limitPrice, setLimitPrice] = useState<string>('');
+  const [stopPrice, setStopPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [marketOpen, setMarketOpen] = useState(true);
   const [nextOpenLabel, setNextOpenLabel] = useState('');
@@ -62,21 +64,28 @@ export default function TradeTicket({
     setTimeInForce('day');
     setQuantity('');
     setLimitPrice('');
+    setStopPrice('');
     setSubmitting(false);
     return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
   const qty = parseFloat(quantity) || 0;
   const limit = parseFloat(limitPrice) || 0;
-  const effectivePrice = orderType === 'limit' && limit > 0 ? limit : currentPrice;
+  const stop = parseFloat(stopPrice) || 0;
+  const effectivePrice = (orderType === 'limit' || orderType === 'stop_limit') && limit > 0
+    ? limit : currentPrice;
   const estimatedTotal = qty * effectivePrice;
 
   // Validation
   const isValidQty = qty > 0 && Number.isFinite(qty);
-  const isValidLimit = orderType === 'market' || (limit > 0 && Number.isFinite(limit));
+  const hasStop = orderType === 'stop' || orderType === 'stop_limit';
+  const hasLimit = orderType === 'limit' || orderType === 'stop_limit';
+  const isValidStopPrice = !hasStop || (stop > 0 && Number.isFinite(stop));
+  const isValidLimitPrice = !hasLimit || (limit > 0 && Number.isFinite(limit));
+  const pricesValid = isValidStopPrice && isValidLimitPrice;
   const canAfford = side === 'SELL' || estimatedTotal <= availableCash;
   const hasEnoughShares = side === 'BUY' || qty <= sharesHeld;
-  const canSubmit = isValidQty && isValidLimit && canAfford && hasEnoughShares && !submitting;
+  const canSubmit = isValidQty && pricesValid && canAfford && hasEnoughShares && !submitting;
 
   const setMax = useCallback(() => {
     if (side === 'SELL') {
@@ -95,14 +104,15 @@ export default function TradeTicket({
       await onConfirm({
         shares: qty,
         type: orderType,
-        limitPrice: orderType === 'limit' ? limit : undefined,
+        limitPrice: (orderType === 'limit' || orderType === 'stop_limit') && limit > 0 ? limit : undefined,
+        stopPrice: (orderType === 'stop' || orderType === 'stop_limit') && stop > 0 ? stop : undefined,
         timeInForce,
       });
       onClose();
     } catch {
       setSubmitting(false);
     }
-  }, [canSubmit, qty, orderType, limit, onConfirm, onClose]);
+  }, [canSubmit, qty, orderType, limit, stop, onConfirm, onClose]);
 
   if (!isOpen) return null;
 
@@ -168,7 +178,7 @@ export default function TradeTicket({
           display: 'flex', background: 'rgba(255,255,255,0.04)',
           borderRadius: 10, padding: 3, marginBottom: 16,
         }}>
-          {(['market', 'limit'] as const).map((t) => (
+          {(['market', 'limit', 'stop', 'stop_limit'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setOrderType(t)}
@@ -181,7 +191,7 @@ export default function TradeTicket({
                 fontFamily: 'var(--font-sans)',
               }}
             >
-              {t === 'market' ? 'Market' : 'Limit'}
+              {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : t === 'stop' ? 'Stop' : 'StopLimit'}
             </button>
           ))}
         </div>
@@ -252,10 +262,36 @@ export default function TradeTicket({
             : `≈ $${(qty * currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at market price`}
         </div>
 
-        {/* Limit price */}
-        {orderType === 'limit' && (
+        {/* Stop price */}
+        {(orderType === 'stop' || orderType === 'stop_limit') && (
           <>
-            <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Limit Price</div>
+            <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Stop Price</div>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={stopPrice}
+              onChange={(e) => setStopPrice(e.target.value)}
+              placeholder={currentPrice.toFixed(2)}
+              min="0"
+              step="0.01"
+              style={{
+                width: '100%', padding: '12px 14px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10, fontSize: 18, fontWeight: 600,
+                color: '#ffffff', fontFamily: 'var(--font-mono, monospace)',
+                outline: 'none', marginBottom: 14,
+              }}
+            />
+          </>
+        )}
+
+        {/* Limit price (limit and stop-limit types) */}
+        {(orderType === 'limit' || orderType === 'stop_limit') && (
+          <>
+            <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>
+              {orderType === 'stop_limit' ? 'Limit Price' : 'Limit Price'}
+            </div>
             <input
               type="number"
               inputMode="decimal"

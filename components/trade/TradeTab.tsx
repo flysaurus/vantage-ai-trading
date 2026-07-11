@@ -56,10 +56,11 @@ export function TradeTab() {
   const { user } = useAuth();
   const { setTab: setActiveTab } = useTabStore();
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
-  const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>('market');
+  const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [qtyType, setQtyType] = useState<'shares' | 'dollars'>('shares');
   const [qty, setQty] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
+  const [stopPrice, setStopPrice] = useState('');
   const [tif, setTif] = useState<'day' | 'gtc'>('day');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
   const [showBuildBasket, setShowBuildBasket] = useState(false);
@@ -552,7 +553,7 @@ export function TradeTab() {
           ORDER TYPE
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {(['market', 'limit', 'stop'] as const).map(t => (
+          {(['market', 'limit', 'stop', 'stop_limit'] as const).map(t => (
             <button
               key={t}
               onClick={() => setOrderType(t)}
@@ -568,7 +569,7 @@ export function TradeTab() {
                 cursor: 'pointer'
               }}
             >
-              {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : 'Stop'}
+              {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : t === 'stop' ? 'Stop' : 'Stop Limit'}
             </button>
           ))}
         </div>
@@ -618,8 +619,36 @@ export function TradeTab() {
           }}
         />
 
+        {/* STOP PRICE */}
+        {(orderType === 'stop' || orderType === 'stop_limit') && (
+          <>
+            <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+              STOP PRICE
+            </div>
+            <input
+              type="number"
+              placeholder="0.00"
+              value={stopPrice}
+              onChange={e => setStopPrice(e.target.value)}
+              style={{
+                width: '100%',
+                background: '#0f1829',
+                border: '1px solid #2a3448',
+                borderRadius: '8px',
+                padding: '14px 16px',
+                color: '#ffffff',
+                fontSize: '18px',
+                fontWeight: '600',
+                outline: 'none',
+                marginBottom: '12px',
+                boxSizing: 'border-box'
+              }}
+            />
+          </>
+        )}
+
         {/* LIMIT PRICE */}
-        {(orderType === 'limit' || orderType === 'stop') && (
+        {(orderType === 'limit' || orderType === 'stop_limit') && (
           <>
             <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
               LIMIT PRICE
@@ -677,7 +706,7 @@ export function TradeTab() {
           <span style={{ color: '#e2e8f0', fontSize: '13px' }}>Est. value</span>
           <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600' }}>
             {(() => {
-              const price = orderType === 'limit' && limitPrice
+              const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
                 ? parseFloat(limitPrice)
                 : symbolQuote?.price;
               if (!price || !qty || isNaN(price)) return '$0.00';
@@ -695,7 +724,7 @@ export function TradeTab() {
           <span style={{ color: '#e2e8f0', fontSize: '13px' }}>Buying Power</span>
           <span style={{
             color: (() => {
-              const price = orderType === 'limit' && limitPrice
+              const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
                 ? parseFloat(limitPrice)
                 : symbolQuote?.price;
               if (!price || !qty || isNaN(price)) return '#94a3b8';
@@ -715,7 +744,7 @@ export function TradeTab() {
 
         {/* Insufficient funds warning */}
         {side === 'buy' && (() => {
-          const price = orderType === 'limit' && limitPrice
+          const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
             ? parseFloat(limitPrice)
             : symbolQuote?.price;
           if (!price || !qty || isNaN(price)) return null;
@@ -744,7 +773,7 @@ export function TradeTab() {
         })()}
 
         {/* Limit/Stop advisory */}
-        {(orderType === 'limit' || orderType === 'stop') && (
+        {(orderType === 'limit' || orderType === 'stop' || orderType === 'stop_limit') && (
           <div style={{
             background: 'rgba(34,211,238,0.08)',
             border: '1px solid rgba(34,211,238,0.2)',
@@ -762,7 +791,7 @@ export function TradeTab() {
         <button
           onClick={async () => {
             if (!selectedSymbol) return;
-            const price = orderType === 'limit' && limitPrice
+            const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
               ? parseFloat(limitPrice)
               : symbolQuote?.price;
             if (!price || isNaN(price) || price <= 0) return;
@@ -771,13 +800,20 @@ export function TradeTab() {
               : parseInt(qty || '0');
             if (!shares || shares <= 0) return;
 
+            const stopPx = (orderType === 'stop' || orderType === 'stop_limit') && stopPrice
+              ? parseFloat(stopPrice)
+              : undefined;
+            const limitPx = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
+              ? parseFloat(limitPrice)
+              : undefined;
+
             // Pre-check buying power for BUY orders
             if (side === 'buy') {
               const estCost = shares * price;
               const bp = account?.buyingPower ?? 0;
               if (estCost > bp) {
                 // Error will be shown by executeTrade toast
-                await executeTrade(selectedSymbol, 'BUY', shares, price);
+                await executeTrade(selectedSymbol, 'BUY', shares, price, orderType, stopPx, limitPx, tif);
                 return;
               }
             }
@@ -787,10 +823,15 @@ export function TradeTab() {
               side === 'buy' ? 'BUY' : 'SELL',
               shares,
               price,
+              orderType,
+              stopPx,
+              limitPx,
+              tif,
             );
             if (result.success) {
               setQty('');
               setLimitPrice('');
+              setStopPrice('');
               // Switch to the correct order history tab
               setHistoryTab(result.status === 'FILLED' ? 'filled' : 'open');
               // Scroll to order history

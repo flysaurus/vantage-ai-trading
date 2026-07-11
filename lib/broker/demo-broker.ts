@@ -13,6 +13,8 @@ import {
   BrokerAccountSummary, OrderStatus,
   DemoStateInternal,
 } from './engine';
+import { evaluateOpenOrder } from './fill-engine';
+import { sendOrderNotification } from '@/lib/notifications';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
@@ -30,10 +32,12 @@ export class DemoBroker implements BrokerEngine {
   private state: DemoStateInternal;
   private supabase: any;
   private userId: string;
+  private userEmail?: string;
 
-  constructor(userId: string = 'demo_user', supabaseClient?: any) {
+  constructor(userId: string = 'demo_user', supabaseClient?: any, userEmail?: string) {
     this.userId = userId;
     this.supabase = supabaseClient;
+    this.userEmail = userEmail;
     this.state = this.loadState();
   }
 
@@ -101,7 +105,9 @@ export class DemoBroker implements BrokerEngine {
             basket_orders: this.state.basketOrders,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });
-        } catch { /* offline / no table yet */ }
+        } catch (err: any) {
+          console.error('[DemoBroker] Supabase sync failed:', err?.message || err);
+        }
       }
     } catch (e) {
       console.error('[DemoBroker] Save error:', e);
@@ -175,7 +181,7 @@ export class DemoBroker implements BrokerEngine {
 
     this.state.basketOrders = [];
     this.state.savedAt = Date.now();
-    this.saveState().catch(() => {});
+    this.saveState(); // fire-and-forget; errors logged inside saveState()
     console.log('[DemoBroker] Seeded from demo-data:', {
       positions: this.state.positions.length,
       cash: this.state.cashBalance,
@@ -246,14 +252,35 @@ export class DemoBroker implements BrokerEngine {
     const shares = req.shares || (req.dollarAmount ? req.dollarAmount / price : 0);
     const cost = shares * price;
 
-    // Limit order enforcement
-    const isLimit = req.type === 'limit' && req.limitPrice != null && req.limitPrice > 0;
-    const limitPrice = isLimit ? req.limitPrice! : price;
-    // A limit BUY fills if price <= limit; a limit SELL fills if price >= limit
-    const limitMet = !isLimit || (req.side === 'BUY' ? price <= limitPrice : price >= limitPrice);
-    const canFillNow = isOpen && (req.type === 'market' || limitMet);
-    const submitPrice = isLimit ? limitPrice : price;
+    // Order type handling — supports market, limit, stop, stop_limit
+    const isStopType = req.type === 'stop' || req.type === 'stop_limit';
+    const hasLimit = req.type === 'limit' || req.type === 'stop_limit';
+    const limitPriceVal = hasLimit && req.limitPrice != null && req.limitPrice > 0 ? req.limitPrice : undefined;
+    const stopPriceVal = isStopType && req.stopPrice != null && req.stopPrice > 0 ? req.stopPrice : undefined;
+    const submitPrice = hasLimit ? (limitPriceVal || price) : (isStopType ? (stopPriceVal || price) : price);
     const tif = req.timeInForce || 'day';
+
+    // Stop orders: check if stop is already triggered at current price
+    let stopTriggered = false;
+    if (isStopType && stopPriceVal) {
+      stopTriggered = req.side === 'BUY'
+        ? price >= stopPriceVal   // stop-buy triggers when price rises to stop
+        : price <= stopPriceVal;  // stop-sell triggers when price falls to stop
+    }
+
+    // Can fill now?
+    let canFillNow = false;
+    if (isOpen) {
+      if (req.type === 'market') {
+        canFillNow = true;
+      } else if (req.type === 'limit') {
+        canFillNow = req.side === 'BUY' ? price <= (limitPriceVal || price) : price >= (limitPriceVal || price);
+      } else if (req.type === 'stop' && stopTriggered) {
+        canFillNow = true; // triggered stop → market fill
+      } else if (req.type === 'stop_limit' && stopTriggered) {
+        canFillNow = req.side === 'BUY' ? price <= (limitPriceVal || price) : price >= (limitPriceVal || price);
+      }
+    }
 
     // ── BUY ──
     if (req.side === 'BUY') {
@@ -263,6 +290,19 @@ export class DemoBroker implements BrokerEngine {
 
       this.state.cashBalance -= cost;
 
+      let buyNote: string | undefined;
+      if (!canFillNow) {
+        if (isStopType && !stopTriggered) {
+          buyNote = `Stop $${(stopPriceVal || price).toFixed(2)} · last $${price.toFixed(2)} · ${tif.toUpperCase()}`;
+        } else if (req.type === 'limit' && limitPriceVal) {
+          buyNote = `Limit $${limitPriceVal.toFixed(2)} not met · last $${price.toFixed(2)} · ${tif.toUpperCase()}`;
+        } else if (req.type === 'stop_limit' && stopTriggered && limitPriceVal) {
+          buyNote = `Stop triggered, limit $${limitPriceVal.toFixed(2)} not met · last $${price.toFixed(2)}`;
+        } else {
+          buyNote = `Pending · ${this.getNextOpenLabel()} · ${tif.toUpperCase()}`;
+        }
+      }
+
       const order: BrokerOrder = {
         id: orderId,
         symbol: req.symbol,
@@ -271,6 +311,9 @@ export class DemoBroker implements BrokerEngine {
         status: canFillNow ? 'FILLED' : 'OPEN',
         shares,
         submittedPrice: submitPrice,
+        limitPrice: limitPriceVal,
+        stopPrice: stopPriceVal,
+        timeInForce: tif,
         fillPrice: canFillNow ? price : undefined,
         totalCost: cost,
         submittedAt: new Date().toISOString(),
@@ -280,12 +323,27 @@ export class DemoBroker implements BrokerEngine {
         basketEmoji: req.basketEmoji,
         basketDisplayName: req.basketDisplayName,
         reservedCost: canFillNow ? undefined : cost,
-        note: canFillNow ? undefined : isLimit && !limitMet
-          ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)} · ${tif.toUpperCase()}`
-          : `Pending · ${this.getNextOpenLabel()} · ${tif.toUpperCase()}`,
+        note: buyNote,
       };
 
       this.state.orders.unshift(order);
+
+      // ── Notify: order acknowledged ──
+      if (this.userEmail) {
+        sendOrderNotification(this.userEmail, {
+          type: order.status === 'FILLED' ? 'order_filled' : 'order_acknowledged',
+          orderId: order.id,
+          symbol: order.symbol,
+          side: order.side,
+          orderType: order.type,
+          shares: order.shares,
+          fillPrice: order.status === 'FILLED' ? order.fillPrice : undefined,
+          submittedPrice: submitPrice,
+          limitPrice: limitPriceVal,
+          stopPrice: stopPriceVal,
+          details: order.note,
+        }).catch(() => {}); // fire-and-forget
+      }
 
       if (canFillNow) {
         this.upsertPosition({ symbol: req.symbol, shares, price, cost, basketId: req.basketId, basketName: req.basketName, basketEmoji: req.basketEmoji });
@@ -312,6 +370,19 @@ export class DemoBroker implements BrokerEngine {
 
     const proceeds = shares * price;
 
+    let sellNote: string | undefined;
+    if (!canFillNow) {
+      if (isStopType && !stopTriggered) {
+        sellNote = `Stop $${(stopPriceVal || price).toFixed(2)} · last $${price.toFixed(2)} · ${tif.toUpperCase()}`;
+      } else if (req.type === 'limit' && limitPriceVal) {
+        sellNote = `Limit $${limitPriceVal.toFixed(2)} not met · last $${price.toFixed(2)} · ${tif.toUpperCase()}`;
+      } else if (req.type === 'stop_limit' && stopTriggered && limitPriceVal) {
+        sellNote = `Stop triggered, limit $${limitPriceVal.toFixed(2)} not met · last $${price.toFixed(2)}`;
+      } else {
+        sellNote = `Pending · ${this.getNextOpenLabel()} · ${tif.toUpperCase()}`;
+      }
+    }
+
     const order: BrokerOrder = {
       id: orderId,
       symbol: req.symbol,
@@ -320,13 +391,14 @@ export class DemoBroker implements BrokerEngine {
       status: canFillNow ? 'FILLED' : 'OPEN',
       shares,
       submittedPrice: submitPrice,
+      limitPrice: limitPriceVal,
+      stopPrice: stopPriceVal,
+      timeInForce: tif,
       fillPrice: canFillNow ? price : undefined,
       totalCost: proceeds,
       submittedAt: new Date().toISOString(),
       filledAt: canFillNow ? new Date().toISOString() : undefined,
-      note: canFillNow ? undefined : isLimit && !limitMet
-        ? `Limit $${limitPrice.toFixed(2)} not met · last $${price.toFixed(2)} · ${tif.toUpperCase()}`
-        : `Pending · ${this.getNextOpenLabel()} · ${tif.toUpperCase()}`,
+      note: sellNote,
     };
 
     if (canFillNow) {
@@ -335,6 +407,24 @@ export class DemoBroker implements BrokerEngine {
     }
 
     this.state.orders.unshift(order);
+
+    // ── Notify: order acknowledged ──
+    if (this.userEmail) {
+      sendOrderNotification(this.userEmail, {
+        type: order.status === 'FILLED' ? 'order_filled' : 'order_acknowledged',
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        orderType: order.type,
+        shares: order.shares,
+        fillPrice: order.status === 'FILLED' ? order.fillPrice : undefined,
+        submittedPrice: submitPrice,
+        limitPrice: limitPriceVal,
+        stopPrice: stopPriceVal,
+        details: order.note,
+      }).catch(() => {});
+    }
+
     await this.saveState();
 
     return {
@@ -516,6 +606,20 @@ export class DemoBroker implements BrokerEngine {
     order.status = 'CANCELLED';
     order.cancelledAt = new Date().toISOString();
     await this.saveState();
+
+    // ── Notify: user cancelled ──
+    if (this.userEmail) {
+      sendOrderNotification(this.userEmail, {
+        type: 'order_cancelled',
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        orderType: order.type,
+        shares: order.shares,
+        cancelReason: 'user_cancelled',
+      }).catch(() => {});
+    }
+
     return { success: true };
   }
 
@@ -566,90 +670,59 @@ export class DemoBroker implements BrokerEngine {
   // ─── EXECUTE PENDING ORDERS (market opens) ───
 
   async executePendingOrders(): Promise<number> {
-    if (!this.isMarketOpen()) return 0;
+    const marketOpen = this.isMarketOpen();
+    const now = new Date();
 
     let filled = 0;
-    const pendingBaskets = this.state.basketOrders.filter(b => b.status === 'OPEN');
+    let expired = 0;
 
-    for (const basket of pendingBaskets) {
-      const pendingOrders = this.state.orders.filter(
-        o => o.basketOrderId === basket.id && o.status === 'OPEN'
-      );
-      let basketFilled = 0;
+    // Collect all symbols that need quotes
+    const openOrders = this.state.orders.filter(o => o.status === 'OPEN');
+    if (openOrders.length === 0) return 0;
 
-      for (const order of pendingOrders) {
-        try {
-          const quote = await this.fetchQuote(order.symbol);
-          const fillPrice = quote?.price || order.submittedPrice;
-          const shares = order.reservedCost ? order.reservedCost / fillPrice : order.totalCost / fillPrice;
+    const symbols = [...new Set(openOrders.map(o => o.symbol))];
+    const quotes = new Map<string, number>();
+    for (const sym of symbols) {
+      const q = await this.fetchQuote(sym);
+      if (q && q.price > 0) quotes.set(sym.toUpperCase(), q.price);
+    }
 
-          order.status = 'FILLED';
-          order.fillPrice = fillPrice;
-          order.shares = shares;
-          order.filledAt = new Date().toISOString();
-          order.note = undefined;
+    // Process each order using the shared fill-engine
+    for (const order of openOrders) {
+      try {
+        const quotePrice = quotes.get(order.symbol.toUpperCase());
+        if (quotePrice == null || quotePrice <= 0) continue;
 
-          this.upsertPosition({
-            symbol: order.symbol,
-            shares,
-            price: fillPrice,
-            cost: order.reservedCost || order.totalCost,
-            basketId: basket.basketId,
-            basketName: basket.basketName,
-            basketEmoji: basket.basketEmoji,
-          });
+        const decision = evaluateOpenOrder(order, quotePrice, now, marketOpen);
+
+        if (decision.action === 'fill') {
+          const fillPx = decision.fillPrice || quotePrice;
+          this.applyFillToOrder(order, fillPx);
           filled++;
-          basketFilled++;
-        } catch (e) {
-          console.error(`[DemoBroker] Failed to fill ${order.symbol}:`, e);
+        } else if (decision.action === 'expire') {
+          this.expireOrder(order);
+          expired++;
         }
+      } catch (e) {
+        console.error(`[DemoBroker] Failed to process order ${order.id}:`, e);
       }
+    }
 
-      if (basketFilled > 0) {
+    // Update basket orders that have all their orders filled
+    for (const basket of this.state.basketOrders.filter(b => b.status === 'OPEN')) {
+      const basketOrders = this.state.orders.filter(o => o.basketOrderId === basket.id);
+      if (basketOrders.length > 0 && basketOrders.every(o => o.status !== 'OPEN')) {
         basket.status = 'FILLED';
         basket.filledAt = new Date().toISOString();
       }
     }
 
-    // Execute individual pending orders
-    const pendingOrders = this.state.orders.filter(
-      o => o.status === 'OPEN' && !o.basketOrderId
-    );
-    for (const order of pendingOrders) {
-      try {
-        const quote = await this.fetchQuote(order.symbol);
-        const fillPrice = quote?.price || order.submittedPrice;
-
-        // Check limit price for limit orders
-        if (order.type === 'limit') {
-          if (order.side === 'BUY' && fillPrice > order.submittedPrice) continue; // limit not met
-          if (order.side === 'SELL' && fillPrice < order.submittedPrice) continue; // limit not met
-        }
-
-        if (order.side === 'BUY') {
-          const shares = order.reservedCost ? order.reservedCost / fillPrice : order.totalCost / fillPrice;
-          order.status = 'FILLED';
-          order.fillPrice = fillPrice;
-          order.shares = shares;
-          order.filledAt = new Date().toISOString();
-          order.note = undefined;
-          this.upsertPosition({
-            symbol: order.symbol, shares,
-            price: fillPrice, cost: order.reservedCost || order.totalCost,
-          });
-          filled++;
-        }
-      } catch (e) {
-        console.error(`[DemoBroker] Failed to fill ${order.symbol}:`, e);
-      }
-    }
-
-    if (filled > 0) {
+    if (filled > 0 || expired > 0) {
       await this.saveState();
 
       // Update basket_positions: pending → active with real fill data
       const executedBasketIds = new Set(
-        pendingBaskets.filter(b => b.status === 'FILLED').map(b => b.basketId)
+        this.state.basketOrders.filter(b => b.status === 'FILLED').map(b => b.basketId)
       );
       try {
         if (typeof window !== 'undefined' && executedBasketIds.size > 0) {
@@ -691,12 +764,79 @@ export class DemoBroker implements BrokerEngine {
         }
       } catch { /* ignore */ }
 
-      console.log(`[DemoBroker] Executed ${filled} pending orders`);
+      console.log(`[DemoBroker] Filled ${filled}, expired ${expired} pending orders`);
     }
-    return filled;
+    return filled + expired;
   }
 
   // ─── PRIVATE HELPERS ───
+
+  /** Apply a fill to a BUY or SELL order — updates order, upserts/removes position, adjusts cash */
+  private applyFillToOrder(order: BrokerOrder, fillPrice: number): void {
+    order.status = 'FILLED';
+    order.fillPrice = fillPrice;
+    order.filledAt = new Date().toISOString();
+    order.note = undefined;
+
+    if (order.side === 'BUY') {
+      const cost = order.reservedCost || order.totalCost;
+      const shares = cost / fillPrice;
+      order.shares = shares;
+      order.totalCost = cost;
+      this.upsertPosition({
+        symbol: order.symbol,
+        shares,
+        price: fillPrice,
+        cost,
+        basketId: order.basketId,
+        basketName: order.basketName,
+        basketEmoji: order.basketEmoji,
+      });
+    } else {
+      // SELL: remove shares from position, add proceeds to cash
+      const shares = order.shares;
+      const proceeds = shares * fillPrice;
+      order.totalCost = proceeds;
+      this.removePosition(order.symbol, shares);
+      this.state.cashBalance += proceeds;
+    }
+
+    // ── Notify: order filled ──
+    if (this.userEmail) {
+      sendOrderNotification(this.userEmail, {
+        type: 'order_filled',
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        orderType: order.type,
+        shares: order.shares,
+        fillPrice,
+      }).catch(() => {});
+    }
+  }
+
+  /** Expire a DAY order — cancel it and release reserved cash */
+  private expireOrder(order: BrokerOrder): void {
+    order.status = 'CANCELLED';
+    order.cancelledAt = new Date().toISOString();
+    order.note = 'DAY order expired at market close';
+    if (order.side === 'BUY' && order.reservedCost) {
+      this.state.cashBalance += order.reservedCost;
+    }
+
+    // ── Notify: order expired ──
+    if (this.userEmail) {
+      sendOrderNotification(this.userEmail, {
+        type: 'order_cancelled',
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        orderType: order.type,
+        shares: order.shares,
+        cancelReason: 'day_expired',
+      }).catch(() => {});
+    }
+  }
 
   private upsertPosition(params: {
     symbol: string;

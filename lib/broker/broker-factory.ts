@@ -14,6 +14,7 @@ export function getBroker(
   type: string = 'demo',
   userId?: string,
   supabaseClient?: any,
+  userEmail?: string,
 ): BrokerEngine {
   if (activeBroker) {
     // If broker type changed, reset
@@ -23,7 +24,7 @@ export function getBroker(
   }
 
   if (!activeBroker) {
-    activeBroker = new DemoBroker(userId, supabaseClient);
+    activeBroker = new DemoBroker(userId, supabaseClient, userEmail);
   }
 
   return activeBroker;

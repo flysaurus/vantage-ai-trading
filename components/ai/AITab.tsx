@@ -2027,8 +2027,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         availableCash={tradeTicket?.availableCash || 0}
         onConfirm={async (params) => {
           if (!tradeTicket) return;
-          const price = params.type === 'limit' && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;
-          await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.timeInForce);
+          const price = (params.type === 'limit' || params.type === 'stop_limit') && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;
+          await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce);
         }}
       />
 

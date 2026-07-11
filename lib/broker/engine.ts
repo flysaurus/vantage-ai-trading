@@ -4,7 +4,7 @@
 // This sits ABOVE the existing BrokerAdapter layer (lib/broker/index.ts).
 
 export type OrderSide = 'BUY' | 'SELL';
-export type OrderType = 'market' | 'limit';
+export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit';
 export type OrderStatus = 'OPEN' | 'FILLED' | 'CANCELLED' | 'REJECTED';
 
 export interface OrderRequest {
@@ -14,6 +14,7 @@ export interface OrderRequest {
   shares?: number;
   dollarAmount?: number;
   limitPrice?: number;
+  stopPrice?: number;
   timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   basketId?: string;
   basketName?: string;
@@ -95,6 +96,12 @@ export interface BrokerOrder {
   status: OrderStatus;
   shares: number;
   submittedPrice: number;
+  /** Limit price for limit/stop_limit orders */
+  limitPrice?: number;
+  /** Stop trigger price for stop/stop_limit orders */
+  stopPrice?: number;
+  /** Time in force: DAY expires at market close, GTC/IOC/FOK orders persist */
+  timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
   fillPrice?: number;
   totalCost: number;
   submittedAt: string;

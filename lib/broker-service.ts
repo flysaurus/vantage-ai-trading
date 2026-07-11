@@ -560,9 +560,12 @@ export async function storeBrokerCredentials(
       );
 
     if (credsErr) {
-      await supabase()
-        .rpc('delete_broker_secret', { p_secret_id: secretId })
-        .catch(() => {}); // Best-effort cleanup
+      try {
+        await supabase()
+          .rpc('delete_broker_secret', { p_secret_id: secretId });
+      } catch (cleanupErr: any) {
+        console.error('[broker-service] Best-effort cleanup failed:', cleanupErr?.message || cleanupErr);
+      }
       throw new Error(`Failed to store API credentials: ${credsErr.message}`);
     }
   } else {
