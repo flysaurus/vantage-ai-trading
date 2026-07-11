@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { VANTAGE_SYSTEM_PROMPT } from '@/lib/ai-system-prompt';
-import { resolveSymbol } from '@/lib/tools/resolve-symbol';
 
 export async function GET() {
   const client = new Anthropic({
@@ -22,30 +21,46 @@ export async function GET() {
   };
 
   const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York' });
-  const dateContext = `\nAUTHORITATIVE CURRENT DATE: ${currentDate} (in user's timezone).`;
+  const dateContext = `\nAUTHORITATIVE CURRENT DATE: ${currentDate} (in user's timezone). Treat this as ground truth.`;
+
+  // Simulate the EXACT context the chat route would build
+  // 1. Finnhub search for "SK Hynix" → returns 000660.KS
+  const searchContext = '';
+  const liveMarketContext = `
+📡 LIVE MARKET DATA (real-time via Finnhub — AUTHORITATIVE):
+000660.KS: $168.01 | +$3.20 (+1.9%) | Day: $165.00–$169.50 | Prev close: $164.81 | Source: finnhub
+
+CRITICAL: Use these live prices for any current-price questions. They override both training data AND web search results for current stock prices.
+`;
+
+  // Simulate portfolio context (has existing SKX position)
+  const portfolioContext = `
+PORTFOLIO:
+Cash: $45,230.00
+Positions:
+- SKX: 200 shares @ $159.20 avg, current $161.85, total value $32,370.00, P&L +$530.00
+- AAPL: 50 shares @ $195.50 avg, current $232.75, total value $11,637.50, P&L +$1,862.50
+
+PENDING ORDERS:
+- SKX: BUY 74 shares limit $162.00 (Monday 9:30 AM ET)
+`;
 
   const systemBlocks = [
     { type: 'text' as const, text: VANTAGE_SYSTEM_PROMPT },
-    { type: 'text' as const, text: dateContext },
+    { type: 'text' as const, text: [dateContext, portfolioContext, liveMarketContext].join('\n\n') },
   ];
 
-  // Test 1: Non-streaming create() — baseline
-  const create = await client.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 1024,
-    system: systemBlocks as any,
-    messages: [{ role: 'user' as const, content: "Let's buy some more so Hynix" }],
-    tools: [resolveSymbolTool],
-    tool_choice: { type: 'auto' },
-  });
-  const createBlocks = create.content.map((b: any) => b.type === 'tool_use' ? { type: 'tool_use', name: b.name, input: b.input } : { type: 'text', text: b.text?.slice(0, 200) });
+  const messages = [
+    { role: 'assistant' as const, content: "Your existing SKX (SK Hynix ADR) position is up nicely. What's your next move — adding more, trimming, or holding?" },
+    { role: 'user' as const, content: "Let's buy some more so Hynix" },
+  ];
 
-  // Test 2: Streaming — same as chat route
+  // Test with streaming (exact chat route simulation)
   const stream = client.messages.stream({
     model: 'claude-haiku-4-5',
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: systemBlocks as any,
-    messages: [{ role: 'user' as const, content: "Let's buy some more so Hynix" }],
+    messages: messages,
     tools: [resolveSymbolTool],
     tool_choice: { type: 'auto' },
   });
@@ -54,8 +69,10 @@ export async function GET() {
   const streamToolBlocks: any[] = [];
   let currentTool: any = null;
   let hadToolCalls = false;
+  let allEvents: string[] = [];
 
   for await (const chunk of stream) {
+    allEvents.push(chunk.type);
     if (chunk.type === 'message_delta') {
       if ((chunk as any).delta?.stop_reason === 'tool_use') hadToolCalls = true;
     }
@@ -68,6 +85,7 @@ export async function GET() {
         hadToolCalls = true;
         currentTool = { id: block.id, name: block.name, inputJson: '' };
       }
+      allEvents.push('content_block_start:' + block?.type);
     }
     if (chunk.type === 'content_block_delta' && chunk.delta.type === 'input_json_delta') {
       if (currentTool) currentTool.inputJson += (chunk.delta as any).partial_json;
@@ -76,22 +94,25 @@ export async function GET() {
       if (currentTool?.id) {
         try {
           streamToolBlocks.push({ id: currentTool.id, name: currentTool.name, input: JSON.parse(currentTool.inputJson) });
-        } catch (e) { streamToolBlocks.push({ error: (e as Error).message, raw: currentTool.inputJson }); }
+        } catch (e: any) { streamToolBlocks.push({ error: e.message }); }
         currentTool = null;
       }
     }
   }
 
-  // Test 3: Full 2-turn simulation via streaming
+  // If tool called, do turn 2
   let turn2Text = '';
   if (streamToolBlocks.length > 0) {
+    const { resolveSymbol } = await import('@/lib/tools/resolve-symbol');
     const toolResult = await resolveSymbol(streamToolBlocks[0].input.companyName || '');
+    const r = JSON.parse(toolResult);
+    
     const stream2 = client.messages.stream({
       model: 'claude-haiku-4-5',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: systemBlocks as any,
       messages: [
-        { role: 'user' as const, content: "Let's buy some more so Hynix" },
+        ...messages,
         { role: 'assistant' as const, content: [
           ...(streamText ? [{ type: 'text' as const, text: streamText }] : []),
           { type: 'tool_use' as const, id: streamToolBlocks[0].id, name: streamToolBlocks[0].name, input: streamToolBlocks[0].input },
@@ -107,11 +128,14 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    nonStreaming_blocks: createBlocks,
-    streaming_hadToolCalls: hadToolCalls,
-    streaming_toolBlocks: streamToolBlocks.map((t: any) => ({ name: t.name, input: t.input })),
-    streaming_text: streamText.slice(0, 200),
-    streaming_turn2_hasMarker: turn2Text.includes('[RECOMMEND:'),
-    streaming_turn2_text: turn2Text.slice(0, 300),
+    hadToolCalls,
+    toolCalls: streamToolBlocks.map((t: any) => ({ name: t.name, input: t.input })),
+    turn1_text: streamText.slice(0, 200),
+    turn1_mentionsSKX: streamText.includes('SKX'),
+    turn1_mentionsSKHYV: streamText.includes('SKHYV'),
+    turn2_text: turn2Text.slice(0, 500),
+    turn2_hasMarker: turn2Text.includes('[RECOMMEND:'),
+    turn2_hasSKHYV: turn2Text.includes('SKHYV'),
+    turn2_hasSKX: turn2Text.includes('SKX'),
   });
 }
