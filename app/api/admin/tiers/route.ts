@@ -161,19 +161,32 @@ export async function PUT(request: NextRequest) {
 
   // ── Validation ────────────────────────────────────────────
 
-  // Build a lookup for cross-tier validation
-  const byTierFeature: Record<string, Record<string, string>> = {};
   const supabase = createServerClient();
 
-  // Get all current values first (so we validate against DB state + updates)
-  const { data: currentValues } = await (supabase as any)
-    .from('tier_feature_values')
-    .select('tier_id, feature_id, value, tier_features!inner(key)')
-    .in('tier_features.key', EDITABLE_FEATURES);
+  // Step 1: Get feature IDs (same bulletproof approach as GET handler)
+  const { data: featureDefs } = await (supabase as any)
+    .from('tier_features')
+    .select('id, key')
+    .in('key', EDITABLE_FEATURES);
+
+  const featureIdToKey: Record<string, string> = {};
+  for (const f of featureDefs || []) featureIdToKey[f.id] = f.key;
+  const featureIds = Object.keys(featureIdToKey);
+
+  // Step 2: Get current values using feature IDs (no inner join)
+  let currentValues: any[] = [];
+  if (featureIds.length > 0) {
+    const { data: cv } = await (supabase as any)
+      .from('tier_feature_values')
+      .select('tier_id, feature_id, value')
+      .in('feature_id', featureIds);
+    currentValues = cv || [];
+  }
 
   const currentLookup: Record<string, Record<string, string>> = {};
-  for (const v of currentValues || []) {
-    const key = v.tier_features.key;
+  for (const v of currentValues) {
+    const key = featureIdToKey[v.feature_id];
+    if (!key) continue;
     if (!currentLookup[key]) currentLookup[key] = {};
     currentLookup[key][v.tier_id] = v.value;
   }
