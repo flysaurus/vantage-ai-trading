@@ -43,13 +43,8 @@ export default function PreferencesPage() {
   useEffect(() => {
     fetch('/api/auth/is-admin')
       .then((r) => r.json())
-      .then((d) => {
-        console.log('[preferences] is-admin response:', JSON.stringify(d));
-        if (d.isAdmin) setIsAdmin(true);
-      })
-      .catch((err) => {
-        console.error('[preferences] is-admin fetch failed:', err);
-      });
+      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -278,7 +273,7 @@ export default function PreferencesPage() {
                 onClick={() => router.push('/admin/gamification')}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, marginBottom: 8,
                   cursor: 'pointer',
                 }}
               >
@@ -287,6 +282,23 @@ export default function PreferencesPage() {
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>Gamification Config</div>
                     <div style={{ fontSize: 10, color: '#e2e8f0' }}>Pillar weights, milestones, and point caps</div>
+                  </div>
+                </div>
+                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+              </div>
+              <div
+                onClick={() => router.push('/admin/users')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14 }}>👥</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Manage Users</div>
+                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>User management and tier overrides</div>
                   </div>
                 </div>
                 <ChevronRight size={14} style={{ color: '#94a3b8' }} />

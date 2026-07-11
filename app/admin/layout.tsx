@@ -47,6 +47,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }}>
           Gamification
         </a>
+        <a href="/admin/users" style={{
+          color: '#58a6ff',
+          textDecoration: 'none',
+          fontSize: '0.875rem',
+          padding: '0.25rem 0.5rem',
+          borderRadius: 4,
+        }}>
+          Users
+        </a>
       </nav>
       {/* Scrollable content area */}
       <main style={{
