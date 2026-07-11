@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings2, Bell, Shield, Eye, X, ChevronRight, RefreshCw, User } from 'lucide-react';
+import { Settings2, Bell, Shield, Eye, ArrowLeft, ChevronRight, RefreshCw, User } from 'lucide-react';
 
 // ─── localStorage keys ───────────────────────────────────────
 const PREFS_KEY = 'vantage:preferences';
@@ -38,45 +38,7 @@ export default function PreferencesPage() {
   const router = useRouter();
   const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
   const [investorStyle, setInvestorStyle] = useState(loadStyle);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [_dbg, setDbg] = useState<string>('WAITING');
 
-  // TEMPORARY DEBUG — ALWAYS visible banner at top of page
-  // Shows raw /api/auth/is-admin response plus fetch errors
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/auth/is-admin', { credentials: 'include' })
-      .then(r => {
-        setDbg(prev => prev + ' | status=' + r.status);
-        return r.json();
-      })
-      .then(d => {
-        if (!cancelled) {
-          setDbg(JSON.stringify(d, null, 2));
-          if (d.isAdmin) setIsAdmin(true);
-        }
-      })
-      .catch(e => { if (!cancelled) setDbg('FETCH_ERROR: ' + String(e)); });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const check = () => {
-      fetch('/api/auth/is-admin')
-        .then((r) => r.json())
-        .then((d) => {
-          if (!cancelled && d.isAdmin) setIsAdmin(true);
-        });
-    };
-
-    // Retry once after 1.5s if first attempt fails silently
-    const retryId = setTimeout(() => { if (!cancelled) check(); }, 1500);
-
-    check();
-    return () => { cancelled = true; clearTimeout(retryId); };
-  }, []);
 
   useEffect(() => {
     savePrefs(prefs);
@@ -100,45 +62,6 @@ export default function PreferencesPage() {
           background: '#0f172a', border: '1px solid #334155',
           borderRadius: 16, padding: '32px 24px',
         }}>
-          {/* ⚠️ TEMP DEBUG — remove after confirming admin check */}
-          <div style={{
-            marginBottom: 16, padding: 10, background: '#1a0000', border: '2px solid #ff0000',
-            borderRadius: 8, fontFamily: 'monospace', fontSize: 10, color: '#ff6666',
-            whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-          }}>
-            🔴 DEBUG: isAdmin={String(isAdmin)} | API={_dbg}
-          </div>
-
-          {/* ⚠️ ADMIN AT TOP — moved here for visibility testing */}
-          {isAdmin && (
-            <div style={{ marginBottom: 16, background: '#002200', border: '3px solid #22c55e', borderRadius: 12, padding: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e', marginBottom: 10 }}>
-                ✅ ADMIN SECTION — YOU SHOULD SEE THIS
-              </div>
-              <div onClick={() => router.push('/admin/tiers')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>📊</span>
-                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>Tier Limits</div></div>
-                </div>
-                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-              </div>
-              <div onClick={() => router.push('/admin/gamification')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>⚙️</span>
-                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>Gamification Config</div></div>
-                </div>
-                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-              </div>
-              <div onClick={() => router.push('/admin/users')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>👥</span>
-                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>Manage Users</div></div>
-                </div>
-                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-              </div>
-            </div>
-          )}
-
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -147,8 +70,13 @@ export default function PreferencesPage() {
               </div>
               <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Preferences</h1>
             </div>
-            <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 4 }}>
-              <X size={20} />
+            <button onClick={() => router.back()} style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px 8px',
+              fontSize: 12, fontWeight: 500,
+            }}>
+              <ArrowLeft size={14} />
+              Back to Settings
             </button>
           </div>
 
@@ -309,67 +237,6 @@ export default function PreferencesPage() {
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Set your investor style</div>
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>Discover your approach in 2 minutes</div>
-                  </div>
-                </div>
-                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-              </div>
-            </div>
-          )}
-
-          {/* ⚠️ MOVED TO TOP for debug — normally after Investor Profile */}
-          {/* Admin — visible only to admins */}
-          {isAdmin && (
-            <div style={{ marginBottom: 20, background: '#001a00', border: '2px solid #22c55e', borderRadius: 12, padding: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#22c55e', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-                ✅ ADMIN SECTION ACTIVE — isAdmin=true confirmed
-              </div>
-              <div
-                onClick={() => router.push('/admin/tiers')}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, marginBottom: 8,
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>📊</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Tier Limits</div>
-                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>AI usage limits and model access per tier</div>
-                  </div>
-                </div>
-                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-              </div>
-              <div
-                onClick={() => router.push('/admin/gamification')}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, marginBottom: 8,
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>⚙️</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Gamification Config</div>
-                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>Pillar weights, milestones, and point caps</div>
-                  </div>
-                </div>
-                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-              </div>
-              <div
-                onClick={() => router.push('/admin/users')}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>👥</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Manage Users</div>
-                    <div style={{ fontSize: 10, color: '#e2e8f0' }}>User management and tier overrides</div>
                   </div>
                 </div>
                 <ChevronRight size={14} style={{ color: '#94a3b8' }} />
