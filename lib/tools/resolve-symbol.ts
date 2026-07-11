@@ -83,7 +83,19 @@ function generateTickers(name: string): string[] {
     add(base + 'F');
   }
 
-  // Prioritize: acronym-based first, then ADR-suffixed, then rest
+  // ── Prioritization ──────────────────────────────────────
+  // Build sets for different priority tiers:
+  //   Tier 3: ADR-suffixed composite prefixes (SKHYV, TSMY — most likely ADR matches)
+  //   Tier 2: Composite prefixes (SKHY, TSM) + acronym-based (SH, SHM)
+  //   Tier 1: Other ADR-suffixed (SKV, HYNIXV)
+  //   Tier 0: Everything else (SK, HYNIX, SKH)
+
+  // Tier 2 baseline: composite (1st-word + last-word prefix) patterns
+  const compositeSet = new Set<string>();
+  for (let i = 1; i <= Math.min(4, last.length); i++) {
+    compositeSet.add(first + last.slice(0, i));
+  }
+  // Tier 2: acronym-based expansions
   const acroSet = new Set<string>();
   if (clean.length >= 2 && acronym.length >= 2) {
     for (const trail of ['M', 'C', 'I', 'N', 'S', 'A']) {
@@ -93,12 +105,23 @@ function generateTickers(name: string): string[] {
   }
   for (let i = 2; i <= Math.min(5, acronym.length); i++) acroSet.add(acronym.slice(0, i));
 
+  // Tier 3: ADR-suffixed composite patterns (top priority — these are the best ADR matches)
+  const compositeAdrSet = new Set<string>();
+  for (const base of compositeSet) {
+    for (const suffix of ['V', 'Y', 'F']) {
+      const candidate = base + suffix;
+      if (candidate.length <= 5) compositeAdrSet.add(candidate);
+    }
+  }
+
   return [...set].sort((a, b) => {
-    const aAcro = acroSet.has(a) ? 2 : 0;
-    const bAcro = acroSet.has(b) ? 2 : 0;
-    const aADR = !aAcro && a.length >= 3 && /[VYF]$/.test(a) ? 1 : 0;
-    const bADR = !bAcro && b.length >= 3 && /[VYF]$/.test(b) ? 1 : 0;
-    return (bAcro + bADR) - (aAcro + aADR);
+    const score = (s: string) => {
+      if (compositeAdrSet.has(s)) return 3;  // composite ADR (SKHYV, TSMY)
+      if (compositeSet.has(s) || acroSet.has(s)) return 2;  // composite/acronym base
+      if (s.length >= 3 && /[VYF]$/.test(s)) return 1;  // other ADR
+      return 0;
+    };
+    return score(b) - score(a);
   });
 }
 
@@ -160,7 +183,7 @@ export async function resolveSymbol(companyName: string): Promise<string> {
 
     // Phase 2: Ticker-generation fallback (catches OTC ADRs)
     if (results.length === 0) {
-      const tickers = generateTickers(companyName).slice(0, 12);
+      const tickers = generateTickers(companyName).slice(0, 15);
       if (tickers.length > 0) {
         const seen = new Set<string>();
         for (let ti = 0; ti < tickers.length; ti++) {
