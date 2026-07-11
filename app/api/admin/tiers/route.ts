@@ -58,25 +58,78 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load tiers', details: tiersError.message }, { status: 500 });
   }
 
-  // Fetch all feature values for editable features
-  const { data: values, error: valuesError } = await (supabase as any)
-    .from('tier_feature_values')
-    .select('tier_id, feature_id, value, tier_features!inner(key)')
-    .in('tier_features.key', EDITABLE_FEATURES);
+  // ── Step 1: Fetch feature definitions (no join — direct query) ──
+  const { data: featureDefs, error: featureDefsError } = await (supabase as any)
+    .from('tier_features')
+    .select('id, key')
+    .in('key', EDITABLE_FEATURES);
 
-  if (valuesError) {
-    console.error('[admin/tiers] Failed to fetch tier_feature_values:', valuesError.message);
+  if (featureDefsError) {
+    console.error('[admin/tiers] tier_features query failed:', featureDefsError.message);
     return NextResponse.json(
-      { error: 'Database query failed. Has migration 024 been run? Run it in Supabase SQL Editor.', details: valuesError.message },
+      { error: 'Failed to query tier_features. Does the table exist?', details: featureDefsError.message },
       { status: 500 }
     );
   }
 
-  const features = (values || []).map((v: any) => ({
+  console.log('[admin/tiers] tier_features found:', (featureDefs || []).map((f: any) => f.key).join(', '));
+
+  // Build feature ID → key lookup
+  const featureIdToKey: Record<string, string> = {};
+  for (const f of featureDefs || []) {
+    featureIdToKey[f.id] = f.key;
+  }
+
+  // ── Step 2: Fetch values using the feature IDs (no join) ──
+  const featureIds = Object.keys(featureIdToKey);
+
+  let values: any[] = [];
+  if (featureIds.length > 0) {
+    const { data: rawValues, error: valuesError } = await (supabase as any)
+      .from('tier_feature_values')
+      .select('tier_id, feature_id, value')
+      .in('feature_id', featureIds);
+
+    if (valuesError) {
+      console.error('[admin/tiers] tier_feature_values query failed:', valuesError.message);
+      return NextResponse.json(
+        { error: 'Failed to query tier_feature_values. Has migration 024 been run?', details: valuesError.message },
+        { status: 500 }
+      );
+    }
+    values = rawValues || [];
+  }
+
+  console.log('[admin/tiers] tier_feature_values rows:', values.length);
+
+  // ── Step 3: Join in code (bulletproof) ──
+  const features = values.map((v: any) => ({
     tier_id: v.tier_id,
-    feature_key: v.tier_features.key,
+    feature_key: featureIdToKey[v.feature_id] || 'UNKNOWN',
     value: v.value,
   }));
+
+  // ── Step 4: Fill in any missing feature×tier combos with empty strings ──
+  // This ensures the editor shows all cells (even if DB hasn't been populated)
+  const existingKeys = new Set(features.map((f: any) => `${f.tier_id}:${f.feature_key}`));
+  for (const tier of tiers || []) {
+    for (const featureDef of featureDefs || []) {
+      const comboKey = `${tier.id}:${featureDef.key}`;
+      if (!existingKeys.has(comboKey)) {
+        features.push({
+          tier_id: tier.id,
+          feature_key: featureDef.key,
+          value: '',
+        });
+      }
+    }
+  }
+
+  // Missing feature keys (in EDITABLE_FEATURES but not in tier_features)
+  const missingKeys = EDITABLE_FEATURES.filter(k => !featureDefs?.some((f: any) => f.key === k));
+  if (missingKeys.length > 0) {
+    console.warn('[admin/tiers] Missing tier_features keys:', missingKeys.join(', '));
+  }
 
   return NextResponse.json({ tiers: tiers || [], features });
 }
