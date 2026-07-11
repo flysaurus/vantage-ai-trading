@@ -43,8 +43,13 @@ export default function PreferencesPage() {
   useEffect(() => {
     fetch('/api/auth/is-admin')
       .then((r) => r.json())
-      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
-      .catch(() => {});
+      .then((d) => {
+        console.log('[preferences] is-admin response:', JSON.stringify(d));
+        if (d.isAdmin) setIsAdmin(true);
+      })
+      .catch((err) => {
+        console.error('[preferences] is-admin fetch failed:', err);
+      });
   }, []);
 
   useEffect(() => {
