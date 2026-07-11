@@ -33,6 +33,7 @@ const PUBLIC_ROUTES = [
   '/api/gamification/increment-ai', // anonymous-friendly (uses anonymousId body)
   '/api/gamification/increment-trades', // anonymous-friendly (uses anonymousId body)
   '/api/gamification/increment-learning', // anonymous-friendly (uses anonymousId body)
+  '/api/investor-score', // anonymous-friendly (uses anonymousId body, read-only)
   '/api/gamification/award-milestone', // anonymous-friendly (uses anonymousId body)
   '/api/gamification/milestones', // anonymous-friendly (uses anonymousId query param)
   '/api/gamification/recalculate', // anonymous-friendly (uses anonymousId body)

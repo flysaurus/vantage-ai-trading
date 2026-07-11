@@ -54,9 +54,15 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
             window.dispatchEvent(new CustomEvent('vantage-gamification', {
               detail: { type: 'score_updated', payload: { totalScore: newScore, source: 'learning' } },
             }));
+          }).catch((err: any) => {
+            console.error('[LearningLibrary] Parse error:', err);
           });
+        } else {
+          console.error('[LearningLibrary] XP award rejected:', res.status);
         }
-      }).catch(() => {});
+      }).catch((err: any) => {
+        console.error('[LearningLibrary] XP award failed:', err);
+      });
     }
   }
 
