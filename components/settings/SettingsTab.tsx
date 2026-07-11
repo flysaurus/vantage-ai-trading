@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { apiPost } from '@/lib/api-client';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ShareCardModal } from '@/components/sharing/ShareCardModal';
 import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
@@ -52,6 +52,13 @@ export function SettingsTab() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const { score, level } = useInvestorScore();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/is-admin')
+      .then(r => r.json())
+      .then(d => { if (d.isAdmin) setIsAdmin(true); });
+  }, []);
 
   async function selectStyle(styleId: string) {
     setSaving(true);
@@ -497,6 +504,57 @@ export function SettingsTab() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
+          ADMIN (visible only to admins)
+          ═══════════════════════════════════════════════════════ */}
+      {isAdmin && sectionHeader('Admin')}
+      {isAdmin && (
+        <div style={{ margin: '0 16px 12px 16px' }}>
+          <div
+            onClick={() => router.push('/admin/tiers')}
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '14px 16px', background: '#1a2235', borderBottom: '1px solid #0f1829',
+              borderRadius: '10px 10px 0 0', minHeight: '52px', cursor: 'pointer',
+            }}
+          >
+            <div>
+              <p style={{ fontSize: '15px', color: '#ffffff' }}>📊 Tier Limits</p>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>AI usage limits and model access per tier</p>
+            </div>
+            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          </div>
+          <div
+            onClick={() => router.push('/admin/gamification')}
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '14px 16px', background: '#1a2235', borderBottom: '1px solid #0f1829',
+              minHeight: '52px', cursor: 'pointer',
+            }}
+          >
+            <div>
+              <p style={{ fontSize: '15px', color: '#ffffff' }}>⚙️ Gamification Config</p>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Pillar weights, milestones, and point caps</p>
+            </div>
+            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          </div>
+          <div
+            onClick={() => router.push('/admin/users')}
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '14px 16px', background: '#1a2235',
+              borderRadius: '0 0 10px 10px', minHeight: '52px', cursor: 'pointer',
+            }}
+          >
+            <div>
+              <p style={{ fontSize: '15px', color: '#ffffff' }}>👥 Manage Users</p>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>User management and tier overrides</p>
+            </div>
+            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
           3. TOOLS
           ═══════════════════════════════════════════════════════ */}
       {sectionHeader('Tools')}
@@ -545,6 +603,7 @@ export function SettingsTab() {
       <div style={{ margin: '0 16px' }}>
         {/* Preferences */}
         <div
+          onClick={() => router.push('/preferences')}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
