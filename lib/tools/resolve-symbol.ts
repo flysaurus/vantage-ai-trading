@@ -1,20 +1,31 @@
 // ─── resolveSymbol Tool — Company Name → Ticker Resolution ──────────────
 // Called by Claude via the Anthropic tool-use protocol during chat streaming.
-// Resolves a company name to one or more ticker symbols using Finnhub's
-// /search endpoint (same source as validate-markers.ts's resolveCompanyTicker).
+//
+// Two-phase strategy:
+//   1. Finnhub /search by company name (works for US stocks, ETFs).
+//   2. If Phase 1 returns nothing, generate plausible US ticker patterns
+//      from the company name and search each pattern on Finnhub.
+//      This catches OTC ADRs (e.g., SKHYV for "SK Hynix") that Finnhub
+//      misses in company-name searches.
+//
+// Every result is filtered to US-format tickers only: 1-5 uppercase letters,
+// optional 1-letter suffix (e.g., AAPL, BRK.B, SKHYV).
+// Foreign tickers like 000660.KS, 9988.HK are rejected.
 //
 // Result format:
-//   match_type: 'single' → one definitive US-listed match
-//   match_type: 'multiple' → several candidates, requires user disambiguation
-//   match_type: 'none' → no match found, model should tell user to search manually
+//   match_type: 'single'  → one definitive US-listed match
+//   match_type: 'multiple' → several candidates, needs disambiguation
+//   match_type: 'none'     → no US match found
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+const US_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z])?$/;
+const ALLOWED_TYPES = new Set(['common stock', 'adr', 'etf', 'reit']);
 
 function getApiKey(): string | null {
   return process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY || null;
 }
 
-interface FinnhubSearchResult {
+interface RawResult {
   symbol: string;
   description: string;
   type: string;
@@ -28,144 +39,174 @@ interface Candidate {
   type: string;
 }
 
-interface ResolveResult {
-  match_type: 'single' | 'multiple' | 'none';
-  candidates: Candidate[];
-  primary_symbol: string | null;
-  query: string;
+/** Generate plausible US ticker patterns from a company name. */
+function generateTickers(name: string): string[] {
+  const clean = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 2 && w !== 'THE' && w !== 'AND' && w !== 'INC');
+
+  if (clean.length === 0) return [];
+
+  const set = new Set<string>();
+  const add = (s: string) => { if (s.length >= 2 && s.length <= 5) set.add(s); };
+  const first = clean[0];
+  const last = clean[clean.length - 1];
+
+  // Single words as-is
+  for (const w of clean) add(w);
+
+  // First word + first chars of last word: SK+H=SKH, SK+HY=SKHY, SK+HYN=SKHYN
+  for (let i = 1; i <= Math.min(4, last.length); i++) add(first + last.slice(0, i));
+
+  // First N chars of combined name: SK, SKH, SKHY, SKHYN
+  const combined = clean.join('');
+  for (let i = 2; i <= Math.min(5, combined.length); i++) add(combined.slice(0, i));
+
+  // Acronym from first letters: Taiwan Semiconductor → TS, TSM, TSMC
+  const acronym = clean.map(w => w[0]).join('');
+  for (let i = 2; i <= Math.min(5, acronym.length); i++) add(acronym.slice(0, i));
+
+  // Extended acronym for partial names: "Taiwan Semiconductor" → TSM
+  if (clean.length >= 2 && acronym.length >= 2) {
+    for (const trail of ['M', 'C', 'I', 'N', 'S', 'A']) {
+      const ext = acronym + trail;
+      if (ext.length <= 5) add(ext);
+    }
+  }
+
+  // ADR suffixes (V, Y, F)
+  for (const base of [...set]) {
+    add(base + 'V');
+    add(base + 'Y');
+    add(base + 'F');
+  }
+
+  // Prioritize: acronym-based first, then ADR-suffixed, then rest
+  const acroSet = new Set<string>();
+  if (clean.length >= 2 && acronym.length >= 2) {
+    for (const trail of ['M', 'C', 'I', 'N', 'S', 'A']) {
+      const ext = acronym + trail;
+      if (ext.length <= 5) acroSet.add(ext);
+    }
+  }
+  for (let i = 2; i <= Math.min(5, acronym.length); i++) acroSet.add(acronym.slice(0, i));
+
+  return [...set].sort((a, b) => {
+    const aAcro = acroSet.has(a) ? 2 : 0;
+    const bAcro = acroSet.has(b) ? 2 : 0;
+    const aADR = !aAcro && a.length >= 3 && /[VYF]$/.test(a) ? 1 : 0;
+    const bADR = !bAcro && b.length >= 3 && /[VYF]$/.test(b) ? 1 : 0;
+    return (bAcro + bADR) - (aAcro + aADR);
+  });
 }
 
-/**
- * Resolve a company name to ticker symbol(s).
- * Returns structured result for Claude to use in building recommendation markers.
- */
+/** Search Finnhub and return US-format results only. */
+async function searchFinnhub(query: string, key: string): Promise<RawResult[]> {
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/search?q=${encodeURIComponent(query)}&token=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.result || []).filter((r: RawResult) =>
+      US_TICKER_RE.test(r.symbol || '') && ALLOWED_TYPES.has((r.type || '').toLowerCase()),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Check if search result description overlaps company name query. */
+function nameOverlaps(result: RawResult, companyName: string): boolean {
+  const desc = (result.description || '').toLowerCase();
+  const query = companyName.toLowerCase();
+  const queryWords = new Set(query.split(/\s+/).filter(w => w.length > 1));
+  const descWords = new Set(desc.split(/\s+/).filter(w => w.length > 1));
+  return [...queryWords].filter(w => descWords.has(w)).length > 0;
+}
+
+/** Enrich a result with profile2 data; falls back to search data for OTC. */
+async function enrich(r: RawResult, key: string): Promise<Candidate | null> {
+  try {
+    const res = await fetch(
+      `${FINNHUB_BASE}/stock/profile2?symbol=${encodeURIComponent(r.symbol)}&token=${key}`,
+      { signal: AbortSignal.timeout(3000) },
+    );
+    if (res.ok) {
+      const p = await res.json();
+      if (p.name && p.ticker && US_TICKER_RE.test(p.ticker || '')) {
+        return { symbol: p.ticker, name: p.name, exchange: p.exchange || 'Unknown', type: r.type };
+      }
+    }
+  } catch { /* fall through */ }
+  return { symbol: r.symbol, name: r.description || '', exchange: 'Unknown', type: r.type };
+}
+
 export async function resolveSymbol(companyName: string): Promise<string> {
   const key = getApiKey();
   if (!key) {
     return JSON.stringify({
-      match_type: 'none',
-      candidates: [],
-      primary_symbol: null,
-      query: companyName,
-      error: 'API key not configured',
+      match_type: 'none', candidates: [], primary_symbol: null,
+      query: companyName, error: 'API key not configured',
     });
   }
 
   try {
-    // Step 1: Search Finnhub for the company name
-    const searchRes = await fetch(
-      `${FINNHUB_BASE}/search?q=${encodeURIComponent(companyName)}&token=${key}`,
-    );
-    if (!searchRes.ok) {
-      return JSON.stringify({
-        match_type: 'none',
-        candidates: [],
-        primary_symbol: null,
-        query: companyName,
-        error: `Finnhub search failed: ${searchRes.status}`,
-      });
-    }
+    // Phase 1: Direct company-name search (works for US stocks, ETFs)
+    let results = await searchFinnhub(companyName, key);
 
-    const searchData = await searchRes.json();
-    const rawResults: FinnhubSearchResult[] = searchData.result || [];
-
-    if (rawResults.length === 0) {
-      return JSON.stringify({
-        match_type: 'none',
-        candidates: [],
-        primary_symbol: null,
-        query: companyName,
-      });
-    }
-
-    // Step 2: Filter to relevant types (US-listed: Common Stock, ETF, ADR, REIT)
-    const allowedTypes = new Set(['common stock', 'adr', 'etf', 'reit']);
-    const relevant = rawResults.filter((r) => {
-      const type = (r.type || '').toLowerCase();
-      return allowedTypes.has(type);
-    });
-
-    if (relevant.length === 0) {
-      return JSON.stringify({
-        match_type: 'none',
-        candidates: [],
-        primary_symbol: null,
-        query: companyName,
-        note: 'No US-listed ticker found. Consider checking foreign exchanges.',
-      });
-    }
-
-    // Step 3: Validate top candidates against profile2 for definitive info
-    const topResults = relevant.slice(0, 5);
-    const candidates: Candidate[] = [];
-
-    for (const r of topResults) {
-      try {
-        const profileRes = await fetch(
-          `${FINNHUB_BASE}/stock/profile2?symbol=${encodeURIComponent(r.symbol)}&token=${key}`,
-        );
-        if (profileRes.ok) {
-          const profile = await profileRes.json();
-          if (profile.name && profile.ticker) {
-            candidates.push({
-              symbol: profile.ticker,
-              name: profile.name,
-              exchange: profile.exchange || 'Unknown',
-              type: r.type,
-            });
+    // Phase 2: Ticker-generation fallback (catches OTC ADRs)
+    if (results.length === 0) {
+      const tickers = generateTickers(companyName).slice(0, 12);
+      if (tickers.length > 0) {
+        const seen = new Set<string>();
+        for (let ti = 0; ti < tickers.length; ti++) {
+          if (ti > 0) await new Promise(r => setTimeout(r, 300));
+          const batch = await searchFinnhub(tickers[ti], key);
+          for (const r of batch) {
+            if (!seen.has(r.symbol) && nameOverlaps(r, companyName)) {
+              seen.add(r.symbol);
+              results.push(r);
+            }
           }
         }
-      } catch {
-        // Fall back to search result data if profile fails
-        candidates.push({
-          symbol: r.symbol,
-          name: r.description || companyName,
-          exchange: 'Unknown',
-          type: r.type,
-        });
       }
     }
 
-    // Deduplicate by symbol
-    const seen = new Set<string>();
-    const unique = candidates.filter((c) => {
-      if (seen.has(c.symbol)) return false;
-      seen.add(c.symbol);
-      return true;
-    });
-
-    if (unique.length === 0) {
+    if (results.length === 0) {
       return JSON.stringify({
-        match_type: 'none',
-        candidates: [],
-        primary_symbol: null,
+        match_type: 'none', candidates: [], primary_symbol: null,
         query: companyName,
       });
     }
 
-    if (unique.length === 1) {
+    // Phase 3: Enrich with profile data
+    const top = results.slice(0, 5);
+    const enriched = (await Promise.all(top.map(r => enrich(r, key))))
+      .filter((c): c is Candidate => c !== null);
+
+    if (enriched.length === 1) {
       return JSON.stringify({
         match_type: 'single',
-        candidates: unique,
-        primary_symbol: unique[0].symbol,
+        candidates: enriched,
+        primary_symbol: enriched[0].symbol,
         query: companyName,
       });
     }
 
     return JSON.stringify({
       match_type: 'multiple',
-      candidates: unique,
+      candidates: enriched,
       primary_symbol: null,
       query: companyName,
     });
   } catch (err: any) {
-    console.error('[resolveSymbol] Error:', err.message || err);
     return JSON.stringify({
-      match_type: 'none',
-      candidates: [],
-      primary_symbol: null,
-      query: companyName,
-      error: err.message || 'Unknown error',
+      match_type: 'none', candidates: [], primary_symbol: null,
+      query: companyName, error: err.message || 'Unknown error',
     });
   }
 }
