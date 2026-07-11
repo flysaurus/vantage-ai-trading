@@ -28,7 +28,6 @@ export function useLearningMoment(
   const [learningCard, setLearningCard] = useState<LearningCard | null>(null);
   const shownThisConversation = useRef<Set<string>>(new Set());
   const lastConversationId = useRef<string | null>(null);
-  const cardShownAt = useRef<number>(0);
   const { user } = useAuth();
 
   // Reset shown-concepts when conversation changes
@@ -50,7 +49,6 @@ export function useLearningMoment(
       const card = detectLearningMoment(aiResponse, shownThisConversation.current);
       if (card) {
         shownThisConversation.current.add(card.term);
-        cardShownAt.current = Date.now();
         setLearningCard(card);
       }
     }, SHOW_DELAY);
@@ -66,11 +64,9 @@ export function useLearningMoment(
     if (gotIt && learningCard) {
       const anonymousId = user?.id || '';
       if (anonymousId) {
-        // isDeep = true when user spent >30s reading before clicking Got It.
-        // 📋 Only 1 of 3 planned deep-engagement triggers is live:
-        // (1) time-on-page >30s ✅  (2) follow-up question ❌  (3) applied insight ❌
-        const timeOnCard = cardShownAt.current ? Date.now() - cardShownAt.current : 0;
-        const isDeep = timeOnCard > 30_000;
+        // Every completion is deep engagement (30s time-gate removed).
+        // Intentionally removes anti-farming protection: low user volume, no alternate
+        // detection signals built yet. Revisit if abuse becomes a real issue.
 
         try {
           const res = await fetch('/api/gamification/increment-learning', { credentials: 'include',
@@ -79,7 +75,7 @@ export function useLearningMoment(
             body: JSON.stringify({
               anonymousId,
               xpAmount: learningCard.xp,
-              isDeep,
+              isDeep: true,
             }),
           });
 
@@ -103,7 +99,6 @@ export function useLearningMoment(
       }
     }
 
-    cardShownAt.current = 0;
     setLearningCard(null);
   }
 

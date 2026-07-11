@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LEARNING_CARDS, LEARNING_CATEGORIES } from '@/lib/learning/triggers';
 import { isConceptShown, markConceptShown } from '@/lib/learning/detector';
@@ -28,15 +28,11 @@ const LEVEL_COLORS: Record<string, string> = {
 export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
   const [selectedCard, setSelectedCard] = useState<LearningCard | null>(null);
   const [justMarked, setJustMarked] = useState<Set<string>>(new Set());
-  const cardOpenTime = useRef<number>(0);
   const { user } = useAuth() as any;
 
-  // Track when card was opened for deep engagement detection
-  useEffect(() => {
-    if (selectedCard) {
-      cardOpenTime.current = Date.now();
-    }
-  }, [selectedCard]);
+  // isDeep is always true — every Learning Moment completion counts as deep engagement.
+  // (30s time-gate removed intentionally: low user volume, no alternate detection signals.
+  // Revisit if abuse becomes a real issue.)
 
   if (!open) return null;
 
@@ -45,19 +41,13 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
     markConceptShown(selectedCard.term);
     setJustMarked(prev => new Set([...prev, selectedCard.term]));
 
-    // Award XP with deep engagement detection
+    // Award XP — every completion is deep engagement (time-gate removed).
     const anonymousId = user?.id || '';
     if (anonymousId) {
-      // isDeep = true when user spent >30s on the card.
-      // 📋 Only 1 of 3 planned deep-engagement triggers is live:
-      // (1) time-on-page >30s ✅  (2) follow-up question ❌  (3) applied insight ❌
-      const timeOnCard = cardOpenTime.current ? Date.now() - cardOpenTime.current : 0;
-      const isDeep = timeOnCard > 30_000;
-
       fetch('/api/gamification/increment-learning', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anonymousId, xpAmount: selectedCard.xp, isDeep }),
+        body: JSON.stringify({ anonymousId, xpAmount: selectedCard.xp, isDeep: true }),
       }).then(res => {
         if (res.ok) {
           res.json().then(({ newScore }) => {
