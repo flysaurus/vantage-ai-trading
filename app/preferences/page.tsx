@@ -39,29 +39,24 @@ export default function PreferencesPage() {
   const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
   const [investorStyle, setInvestorStyle] = useState(loadStyle);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminDiag, setAdminDiag] = useState<string>('checking...');
 
   useEffect(() => {
     let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout>;
 
     const check = () => {
-      setAdminDiag('fetching...');
       fetch('/api/auth/is-admin')
         .then((r) => r.json())
         .then((d) => {
-          if (cancelled) return;
-          setAdminDiag(JSON.stringify(d, null, 2));
-          if (d.isAdmin) {
-            setIsAdmin(true);
-          }
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          setAdminDiag(`fetch ERROR: ${String(err)}`);
-          retryTimer = setTimeout(check, 1500);
+          if (!cancelled && d.isAdmin) setIsAdmin(true);
         });
     };
+
+    // Retry once after 1.5s if first attempt fails silently
+    const retryId = setTimeout(() => { if (!cancelled) check(); }, 1500);
+
+    check();
+    return () => { cancelled = true; clearTimeout(retryId); };
+  }, []);
 
     check();
 
@@ -270,19 +265,7 @@ export default function PreferencesPage() {
             </div>
           )}
 
-          {/* DEBUG — remove after admin rendering is confirmed */}
-          {!isAdmin && (
-            <div style={{
-              marginBottom: 20, padding: 12, background: '#1a0a0a', border: '1px solid #ff4444',
-              borderRadius: 8, fontSize: 10, fontFamily: 'monospace', color: '#ff8888',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflow: 'auto',
-            }}>
-              <div style={{ fontWeight: 600, marginBottom: 4, color: '#ff4444' }}>⚠️ Admin check (isAdmin=false)</div>
-              API response: {adminDiag}
-            </div>
-          )}
-
-          {/* Admin — visible only to allowlisted emails */}
+          {/* Admin — visible only to admins */}
           {isAdmin && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
