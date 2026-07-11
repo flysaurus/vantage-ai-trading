@@ -16,6 +16,10 @@ import TradeTicket from '@/components/portfolio/TradeTicket';
 export interface Suggestion {
   symbol: string;
   side: 'BUY' | 'SELL';
+  /** Pre-populated share count if user specified one (e.g. "buy 10 shares") */
+  suggestedShares?: number;
+  /** Pre-populated dollar amount if user specified one (e.g. "buy $500 worth") */
+  suggestedAmount?: number;
 }
 
 // ─── Disambiguation: multiple ticker candidates ────────────────
@@ -36,10 +40,12 @@ export interface ChoiceSuggestion {
 
 // ─── PRIMARY: Structured marker detection ─────────────────────
 // Matches: [RECOMMEND:SYMBOL:BUY/SELL] — single confident match
+// Matches: [RECOMMEND:SYMBOL:BUY/SELL:10] — with share count
+// Matches: [RECOMMEND:SYMBOL:BUY/SELL:$500] — with dollar amount
 // Matches: [RECOMMEND_CHOICE:CompanyName:BUY/SELL] — multiple candidates
 // These are stripped from visible text by AITab's rendering layer.
 
-const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)\]/g;
+const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
 const CHOICE_MARKER_PATTERN = /\[RECOMMEND_CHOICE:(.+?):(BUY|SELL)\]/g;
 
 /**
@@ -59,6 +65,18 @@ export function parseSuggestions(
   for (const match of markdownContent.matchAll(MARKER_PATTERN)) {
     const symbol = match[1].toUpperCase();
     const side = match[2] as 'BUY' | 'SELL';
+    const quantityStr = match[3] || '';
+
+    // Parse optional quantity: "10" = shares, "$500" = dollar amount
+    let suggestedShares: number | undefined;
+    let suggestedAmount: number | undefined;
+    if (quantityStr) {
+      if (quantityStr.startsWith('$')) {
+        suggestedAmount = parseFloat(quantityStr.slice(1));
+      } else {
+        suggestedShares = parseFloat(quantityStr);
+      }
+    }
 
     // Validate against real ticker list if available (catches hallucinated symbols)
     if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) continue;
@@ -66,7 +84,7 @@ export function parseSuggestions(
     const key = `${symbol}:${side}`;
     if (!seen.has(key)) {
       seen.add(key);
-      suggestions.push({ symbol, side });
+      suggestions.push({ symbol, side, suggestedShares, suggestedAmount });
     }
   }
 
@@ -139,23 +157,27 @@ export function stripRecommendationMarkers(text: string): string {
 interface InlineTradeButtonProps {
   symbol: string;
   side: 'BUY' | 'SELL';
+  /** Pre-populated share count (from user's message) */
+  suggestedShares?: number;
+  /** Pre-populated dollar amount (from user's message) */
+  suggestedAmount?: number;
   /** Tier check — pass false for Silver to hide buttons */
   enabled: boolean;
   /** Callback to open TradeTicket */
-  onTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
+  onTrade: (symbol: string, side: 'BUY' | 'SELL', suggestedShares?: number, suggestedAmount?: number) => void;
 }
 
 export function InlineTradeButton({
-  symbol, side, enabled, onTrade,
+  symbol, side, suggestedShares, suggestedAmount, enabled, onTrade,
 }: InlineTradeButtonProps) {
   const [tapped, setTapped] = useState(false);
 
   const handleClick = useCallback(() => {
     if (!enabled) return;
     setTapped(true);
-    onTrade(symbol, side);
+    onTrade(symbol, side, suggestedShares, suggestedAmount);
     setTimeout(() => setTapped(false), 600);
-  }, [enabled, symbol, side, onTrade]);
+  }, [enabled, symbol, side, suggestedShares, suggestedAmount, onTrade]);
 
   if (!enabled) return null;
 
@@ -203,7 +225,7 @@ interface InlineTradeButtonsProps {
   suggestions: Suggestion[];
   choiceSuggestions?: ChoiceSuggestion[];
   enabled: boolean;
-  onTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
+  onTrade: (symbol: string, side: 'BUY' | 'SELL', suggestedShares?: number, suggestedAmount?: number) => void;
 }
 
 export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, onTrade }: InlineTradeButtonsProps) {
@@ -228,6 +250,8 @@ export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, on
               key={`${s.symbol}:${s.side}`}
               symbol={s.symbol}
               side={s.side}
+              suggestedShares={s.suggestedShares}
+              suggestedAmount={s.suggestedAmount}
               enabled={enabled}
               onTrade={onTrade}
             />
@@ -242,7 +266,7 @@ export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, on
 
 interface DisambiguationPickerProps {
   suggestion: ChoiceSuggestion;
-  onTrade: (symbol: string, side: 'BUY' | 'SELL') => void;
+  onTrade: (symbol: string, side: 'BUY' | 'SELL', suggestedShares?: number, suggestedAmount?: number) => void;
 }
 
 function DisambiguationPicker({ suggestion, onTrade }: DisambiguationPickerProps) {
@@ -360,6 +384,7 @@ interface ChatTradeTicketProps {
   currentPrice: number;
   sharesHeld: number;
   availableCash: number;
+  initialShares?: number;
   onConfirm: (params: {
     shares: number;
     type: 'market' | 'limit' | 'stop' | 'stop_limit';

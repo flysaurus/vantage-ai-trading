@@ -28,6 +28,8 @@ interface TradeTicketProps {
   currentPrice: number;
   sharesHeld: number;
   availableCash: number;
+  /** Pre-populated share count (e.g. from AI chat "buy 10 shares") */
+  initialShares?: number;
   onConfirm: (params: {
     shares: number;
     type: 'market' | 'limit' | 'stop' | 'stop_limit';
@@ -39,12 +41,12 @@ interface TradeTicketProps {
 
 export default function TradeTicket({
   isOpen, onClose, symbol, side, currentPrice,
-  sharesHeld, availableCash, onConfirm,
+  sharesHeld, availableCash, initialShares, onConfirm,
 }: TradeTicketProps) {
-  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash });
+  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares });
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
-  const [quantity, setQuantity] = useState<string>('');
+  const [quantity, setQuantity] = useState<string>(() => initialShares && initialShares > 0 ? String(initialShares) : '');
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [stopPrice, setStopPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +64,7 @@ export default function TradeTicket({
     // Reset state
     setOrderType('market');
     setTimeInForce('day');
-    setQuantity('');
+    setQuantity(initialShares && initialShares > 0 ? String(initialShares) : '');
     setLimitPrice('');
     setStopPrice('');
     setSubmitting(false);

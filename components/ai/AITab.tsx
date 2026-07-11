@@ -202,6 +202,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
+    initialShares?: number;
   } | null>(null);
   // Track tickers the user asked about in their last message (for deviation scenarios)
 
@@ -236,7 +237,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
   }, []);
 
   // ── Trade button handler: fetch live price → open TradeTicket ──
-  const handleTradeAction = useCallback(async (symbol: string, side: 'BUY' | 'SELL') => {
+  const handleTradeAction = useCallback(async (
+    symbol: string, side: 'BUY' | 'SELL',
+    suggestedShares?: number, suggestedAmount?: number,
+  ) => {
     // Fetch live price
     let currentPrice = 0;
     try {
@@ -253,7 +257,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const sharesHeld = pos?.qty || 0;
     const availableCash = liveAccount?.cash || 0;
 
-    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash });
+    // Convert dollar amount to approximate shares if needed
+    let initialShares = suggestedShares;
+    if (!initialShares && suggestedAmount && currentPrice > 0) {
+      initialShares = Math.floor(suggestedAmount / currentPrice);
+    }
+
+    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares });
   }, [liveAccount]);
   const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -2060,6 +2070,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         currentPrice={tradeTicket?.currentPrice || 0}
         sharesHeld={tradeTicket?.sharesHeld || 0}
         availableCash={tradeTicket?.availableCash || 0}
+        initialShares={tradeTicket?.initialShares}
         onConfirm={async (params) => {
           if (!tradeTicket) return;
           const price = (params.type === 'limit' || params.type === 'stop_limit') && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;
