@@ -25,6 +25,10 @@ export function getBroker(
 
   if (!activeBroker) {
     activeBroker = new DemoBroker(userId, supabaseClient, userEmail);
+  } else if (userEmail && activeBroker instanceof DemoBroker) {
+    // Update email on cached broker — user may not have been
+    // available when broker was first created (e.g. auth still loading)
+    (activeBroker as DemoBroker).setUserEmail(userEmail);
   }
 
   return activeBroker;

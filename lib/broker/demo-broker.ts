@@ -41,6 +41,11 @@ export class DemoBroker implements BrokerEngine {
     this.state = this.loadState();
   }
 
+  /** Update cached broker's email — user may not be available on first construction */
+  setUserEmail(email: string): void {
+    this.userEmail = email;
+  }
+
   // ─── MARKET HOURS (delegate to lib/market-hours) ───
 
   isMarketOpen(): boolean {
