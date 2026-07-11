@@ -41,7 +41,7 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
     markConceptShown(selectedCard.term);
     setJustMarked(prev => new Set([...prev, selectedCard.term]));
 
-    // Award XP — every completion is deep engagement (time-gate removed).
+    // Award score points — every completion is deep engagement (time-gate removed).
     const anonymousId = user?.id || '';
     if (anonymousId) {
       fetch('/api/gamification/increment-learning', {
@@ -58,10 +58,10 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
             console.error('[LearningLibrary] Parse error:', err);
           });
         } else {
-          console.error('[LearningLibrary] XP award rejected:', res.status);
+          console.error('[LearningLibrary] Score award rejected:', res.status);
         }
       }).catch((err: any) => {
-        console.error('[LearningLibrary] XP award failed:', err);
+        console.error('[LearningLibrary] Score award failed:', err);
       });
     }
   }
@@ -130,11 +130,11 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
             }}>{selectedCard.example}</p>
           </div>
 
-          {/* XP info */}
+          {/* Score info */}
           <p style={{
             fontSize: '13px', color: '#e2e8f0', marginBottom: '8px',
           }}>
-            +{selectedCard.xp} XP when learned
+            +50 Investor Score points when learned
           </p>
 
           {/* Investopedia link */}
@@ -176,7 +176,7 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
               border: 'none', borderRadius: '10px',
               color: '#0a0f1e', fontSize: '14px', fontWeight: '700',
               cursor: 'pointer',
-            }}>Got it! (+{selectedCard.xp})</button>
+            }}>Got it! (+50 pts)</button>
           )}
         </div>
       </div>
@@ -248,7 +248,7 @@ export function LearningLibrary({ open, onClose }: LearningLibraryProps) {
                       <span style={{
                         fontSize: '10px', fontWeight: '600',
                         color: LEVEL_COLORS[card.level] || '#22d3ee',
-                      }}>{card.level} · +{card.xp} XP</span>
+                      }}>{card.level} · +50 pts</span>
                     </button>
                   );
                 })}

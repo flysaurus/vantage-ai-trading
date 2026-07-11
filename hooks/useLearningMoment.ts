@@ -59,7 +59,7 @@ export function useLearningMoment(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiResponse]);
 
-  // ── Award XP + dismiss ─────────────────────────────────
+  // ── Award score points + dismiss ────────────────────────
   async function dismissLearning(gotIt: boolean) {
     if (gotIt && learningCard) {
       const anonymousId = user?.id || '';
@@ -74,7 +74,7 @@ export function useLearningMoment(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               anonymousId,
-              xpAmount: learningCard.xp,
+              xpAmount: learningCard.xp, // kept for API compat, actual scoring uses isDeep
               isDeep: true,
             }),
           });
@@ -91,10 +91,10 @@ export function useLearningMoment(
               })
             );
           } else {
-            console.error('[useLearningMoment] XP award rejected:', res.status);
+            console.error('[useLearningMoment] Score award rejected:', res.status);
           }
         } catch (err) {
-          console.error('[useLearningMoment] XP award failed:', err);
+          console.error('[useLearningMoment] Score award failed:', err);
         }
       }
     }

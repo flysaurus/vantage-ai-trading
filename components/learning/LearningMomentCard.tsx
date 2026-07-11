@@ -5,7 +5,7 @@
 // Design:
 // - 280px max height, slides up from bottom of screen
 // - Handle bar at top (drag indicator)
-// - Level pill + XP gain header
+// - Level pill + score gain header
 // - Term headline + body + example box
 // - "Learn more →" + "Got it" footer
 // - Dismiss via: "Got it", swipe down, or backdrop tap
@@ -23,9 +23,9 @@ import { markConceptShown } from '@/lib/learning/detector';
 
 interface LearningMomentCardProps {
   card: LearningCard;
-  /** Called after "Got it" — card dismisses + XP awarded */
+  /** Called after "Got it" — card dismisses + score points awarded */
   onGotIt: () => void;
-  /** Called on dismiss without XP (swipe, backdrop, etc.) */
+  /** Called on dismiss without score (swipe, backdrop, etc.) */
   onDismiss: () => void;
 }
 
@@ -170,7 +170,7 @@ export function LearningMomentCard({
           }} />
         </div>
 
-        {/* Header: Level pill + XP */}
+        {/* Header: Level pill + Score */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -193,7 +193,7 @@ export function LearningMomentCard({
             fontWeight: 700,
             color: 'var(--accent-primary)',
           }}>
-            +{card.xp} XP
+            +50 pts
           </span>
         </div>
 
