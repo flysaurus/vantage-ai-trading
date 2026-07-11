@@ -39,6 +39,26 @@ export default function PreferencesPage() {
   const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
   const [investorStyle, setInvestorStyle] = useState(loadStyle);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [_dbg, setDbg] = useState<string>('WAITING');
+
+  // TEMPORARY DEBUG — ALWAYS visible banner at top of page
+  // Shows raw /api/auth/is-admin response plus fetch errors
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/is-admin', { credentials: 'include' })
+      .then(r => {
+        setDbg(prev => prev + ' | status=' + r.status);
+        return r.json();
+      })
+      .then(d => {
+        if (!cancelled) {
+          setDbg(JSON.stringify(d, null, 2));
+          if (d.isAdmin) setIsAdmin(true);
+        }
+      })
+      .catch(e => { if (!cancelled) setDbg('FETCH_ERROR: ' + String(e)); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +100,14 @@ export default function PreferencesPage() {
           background: '#0f172a', border: '1px solid #334155',
           borderRadius: 16, padding: '32px 24px',
         }}>
+          {/* ⚠️ TEMP DEBUG — remove after confirming admin check */}
+          <div style={{
+            marginBottom: 16, padding: 10, background: '#1a0000', border: '2px solid #ff0000',
+            borderRadius: 8, fontFamily: 'monospace', fontSize: 10, color: '#ff6666',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          }}>
+            🔴 DEBUG: isAdmin={String(isAdmin)} | API={_dbg}
+          </div>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

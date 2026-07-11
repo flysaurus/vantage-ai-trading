@@ -26,7 +26,7 @@ export async function GET() {
   const email = authUser?.email?.toLowerCase();
 
   if (!email || !authUser) {
-    return NextResponse.json({ isAdmin: false });
+    return NextResponse.json({ isAdmin: false, _diag: { reason: 'no auth user / no email', email: email || null } });
   }
 
   // ── Primary: DB is_admin field ──
@@ -39,11 +39,11 @@ export async function GET() {
       .maybeSingle();
 
     if (!error && data?.is_admin === true) {
-      return NextResponse.json({ isAdmin: true });
+      return NextResponse.json({ isAdmin: true, _diag: { email, dbCheck: 'DB is_admin = true', envFallback: false } });
     }
   } catch { /* column may not exist yet — fall through to env var */ }
 
   // ── TRANSITIONAL FALLBACK ──
   const isAdmin = getAdminEmails().has(email);
-  return NextResponse.json({ isAdmin });
+  return NextResponse.json({ isAdmin, _diag: { email, dbCheck: 'completed (is_admin column may not exist yet)', envFallback: isAdmin } });
 }
