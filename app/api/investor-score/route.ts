@@ -18,12 +18,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await getMyScoreWithMetrics(body.anonymousId);
 
     if (!result) {
-      return NextResponse.json({ error: 'Failed to compute score' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to compute score', hint: 'getMyScoreWithMetrics returned null — check Vercel function logs' },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ score: result.score, metrics: result.metrics });
   } catch (err: any) {
-    console.error('[api/investor-score] Error:', err.message);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[api/investor-score] Uncaught error:', err?.message || err, err?.stack || '');
+    return NextResponse.json(
+      { error: 'Internal server error', detail: err?.message || String(err) },
+      { status: 500 },
+    );
   }
 }

@@ -49,18 +49,31 @@ export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreW
   const supabase = createServerClient();
 
   try {
-    const [scoresRes, streakRes] = await Promise.all([
-      (supabase as any)
+    const supabase = createServerClient();
+
+    let scoresRes;
+    try {
+      scoresRes = await (supabase as any)
         .from('investor_scores')
         .select('*')
         .eq('anonymous_id', anonymousId)
-        .maybeSingle(),
-      (supabase as any)
+        .maybeSingle();
+    } catch (e: any) {
+      console.error('[investor-score] investor_scores query failed:', e.message);
+      throw new Error('investor_scores_query: ' + e.message);
+    }
+
+    let streakRes;
+    try {
+      streakRes = await (supabase as any)
         .from('streaks')
         .select('current_streak')
         .eq('anonymous_id', anonymousId)
-        .maybeSingle(),
-    ]);
+        .maybeSingle();
+    } catch (e: any) {
+      console.error('[investor-score] streaks query failed:', e.message);
+      throw new Error('streaks_query: ' + e.message);
+    }
 
     const scores = scoresRes.data;
     const streak = streakRes.data;
@@ -102,7 +115,7 @@ export async function getMyScoreWithMetrics(anonymousId: string): Promise<ScoreW
     };
   } catch (err: any) {
     console.error('[investor-score] getMyScoreWithMetrics error:', err.message);
-    return null;
+    throw err; // Propagate to route handler for detailed error response
   }
 }
 
