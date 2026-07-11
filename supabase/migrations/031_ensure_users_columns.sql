@@ -11,7 +11,9 @@
 -- ============================================================
 
 -- Identity / profile
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS investor_style TEXT DEFAULT 'buffett';
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS investor_style_onboarded BOOLEAN DEFAULT FALSE;
 
 -- Admin
