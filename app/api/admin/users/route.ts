@@ -16,7 +16,6 @@ import { requireAdmin } from '@/lib/auth/admin-check';
 interface UserRow {
   id: string;
   email: string | null;
-  display_name?: string | null;
   avatar_url?: string | null;
   investor_style?: string | null;
   investor_style_onboarded?: boolean | null;
@@ -83,10 +82,13 @@ export async function GET(request: NextRequest) {
     // The users table is our primary source; we LEFT JOIN everything else.
 
     // Step 1: Get users
+    // Note: display_name may not exist on older Supabase instances —
+    // we coalesce it to NULL client-side if the column is missing.
+    // Migration 030 adds the column if missing.
     let userQuery = sb
       .from('users')
       .select(`
-        id, email, display_name, avatar_url,
+        id, email, avatar_url,
         investor_style, investor_style_onboarded, tier,
         created_at, updated_at,
         monthly_chat_used, monthly_deep_used,
@@ -188,7 +190,7 @@ export async function GET(request: NextRequest) {
       return {
         id: u.id,
         email: u.email,
-        display_name: u.display_name || null,
+        display_name: null, // display_name column may not exist yet (migration 030)
         avatar_url: u.avatar_url || null,
         investor_style: u.investor_style || null,
         investor_style_onboarded: u.investor_style_onboarded ?? null,
