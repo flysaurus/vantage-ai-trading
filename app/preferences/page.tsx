@@ -39,25 +39,26 @@ export default function PreferencesPage() {
   const [prefs, setPrefs] = useState<PrefsData>(loadPrefs);
   const [investorStyle, setInvestorStyle] = useState(loadStyle);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminDiag, setAdminDiag] = useState<string>('checking...');
 
   useEffect(() => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout>;
 
     const check = () => {
+      setAdminDiag('fetching...');
       fetch('/api/auth/is-admin')
         .then((r) => r.json())
         .then((d) => {
           if (cancelled) return;
+          setAdminDiag(JSON.stringify(d, null, 2));
           if (d.isAdmin) {
             setIsAdmin(true);
-          } else {
-            console.warn('[preferences] /api/auth/is-admin returned false');
           }
         })
         .catch((err) => {
           if (cancelled) return;
-          console.warn('[preferences] admin check fetch failed, retrying in 1.5s:', err);
+          setAdminDiag(`fetch ERROR: ${String(err)}`);
           retryTimer = setTimeout(check, 1500);
         });
     };
@@ -266,6 +267,18 @@ export default function PreferencesPage() {
                 </div>
                 <ChevronRight size={14} style={{ color: '#94a3b8' }} />
               </div>
+            </div>
+          )}
+
+          {/* DEBUG — remove after admin rendering is confirmed */}
+          {!isAdmin && (
+            <div style={{
+              marginBottom: 20, padding: 12, background: '#1a0a0a', border: '1px solid #ff4444',
+              borderRadius: 8, fontSize: 10, fontFamily: 'monospace', color: '#ff8888',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflow: 'auto',
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: '#ff4444' }}>⚠️ Admin check (isAdmin=false)</div>
+              API response: {adminDiag}
             </div>
           )}
 
