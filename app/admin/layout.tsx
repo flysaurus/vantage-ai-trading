@@ -29,6 +29,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }}>
           ⚙️ Admin
         </a>
+        <a href="/?tab=settings" style={{
+          color: '#f0f6fc',
+          textDecoration: 'none',
+          fontSize: '0.75rem',
+          fontWeight: 500,
+          padding: '0.25rem 0.5rem',
+          borderRadius: 4,
+          background: 'rgba(255,255,255,0.06)',
+        }}>
+          ← Back to App
+        </a>
         <a href="/admin/tiers" style={{
           color: '#58a6ff',
           textDecoration: 'none',

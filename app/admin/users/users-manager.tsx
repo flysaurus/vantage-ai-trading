@@ -12,6 +12,8 @@ interface AggregatedUser {
   investor_style: string | null;
   investor_style_onboarded: boolean | null;
   tier: string | null;
+  is_admin: boolean | null;
+  suspended: boolean | null;
   subscription_tier_key: string | null;
   subscription_tier_name: string | null;
   subscription_status: string | null;
@@ -31,6 +33,17 @@ interface AggregatedUser {
   demo_expires_at: string | null;
   created_at: string;
   updated_at: string | null;
+}
+
+interface AuditEntry {
+  id: string;
+  admin_email: string;
+  target_user_id: string;
+  action: string;
+  old_value: any;
+  new_value: any;
+  reason: string | null;
+  created_at: string;
 }
 
 interface ToastState {
@@ -312,9 +325,12 @@ export function UsersManager() {
 
   // Modal state
   const [modalUser, setModalUser] = useState<AggregatedUser | null>(null);
+  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity'>('tier');
   const [selectedTier, setSelectedTier] = useState<string>('demo');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [activityEntries, setActivityEntries] = useState<AuditEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   // ── Fetch users ─────────────────────────────────────────────
 
@@ -362,28 +378,45 @@ export function UsersManager() {
     return sortOrder === 'asc' ? ' ▲' : ' ▼';
   };
 
-  // ── Tier override ───────────────────────────────────────────
+  // ── Action launchers ──────────────────────────────────────
 
-  const openTierModal = (user: AggregatedUser) => {
+  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity') => {
     setModalUser(user);
+    setModalType(type);
     setSelectedTier(user.tier || 'demo');
     setReason('');
     setSaving(false);
+    setActivityEntries([]);
+    if (type === 'activity') {
+      loadActivity(user.id);
+    }
   };
 
-  const closeTierModal = () => {
+  const closeModal = () => {
     setModalUser(null);
     setReason('');
+    setActivityEntries([]);
   };
 
-  const handleTierOverride = async () => {
-    if (!modalUser) return;
-    if (!reason.trim()) {
-      setToast({ message: 'Please provide a reason for the tier override.', type: 'error' });
-      setTimeout(() => setToast(null), 4000);
-      return;
-    }
+  // ── Activity log fetch ───────────────────────────────────
 
+  const loadActivity = async (userId: string) => {
+    setActivityLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/activity?userId=${encodeURIComponent(userId)}`);
+      const data = await res.json();
+      if (data.entries) setActivityEntries(data.entries);
+    } catch {
+      // silently fail
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  // ── Generic action handler ────────────────────────────────
+
+  const handleAction = async (action: string, extraBody?: Record<string, any>) => {
+    if (!modalUser) return;
     setSaving(true);
     try {
       const res = await fetch('/api/admin/users', {
@@ -391,22 +424,17 @@ export function UsersManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: modalUser.id,
-          tier: selectedTier,
-          reason: reason.trim(),
+          action,
+          ...extraBody,
         }),
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-
-      setToast({ message: data.message || 'Tier updated successfully', type: 'success' });
-      closeTierModal();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setToast({ message: data.message || 'Action completed', type: 'success' });
+      closeModal();
       fetchUsers();
     } catch (e: any) {
-      setToast({ message: e.message || 'Failed to update tier', type: 'error' });
+      setToast({ message: e.message || 'Action failed', type: 'error' });
     } finally {
       setSaving(false);
       setTimeout(() => setToast(null), 4000);
@@ -590,12 +618,43 @@ export function UsersManager() {
                       </span>
                     </td>
                     <td style={{ ...styles.td, textAlign: 'center' }}>
-                      <button
-                        onClick={() => openTierModal(u)}
-                        style={styles.actionBtn}
-                      >
-                        Edit Tier
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={() => openModal(u, 'tier')} style={styles.actionBtn} title="Edit Tier">
+                          Tier
+                        </button>
+                        <button
+                          onClick={() => openModal(u, 'admin')}
+                          style={{
+                            ...styles.actionBtn,
+                            background: u.is_admin ? 'rgba(35,134,54,0.2)' : 'rgba(218,54,51,0.1)',
+                            border: u.is_admin ? '1px solid #238636' : '1px solid #30363d',
+                            color: u.is_admin ? '#3fb950' : '#f85149',
+                          }}
+                          title={u.is_admin ? 'Revoke admin' : 'Grant admin'}
+                        >
+                          {u.is_admin ? 'Admin ✓' : 'Admin ✗'}
+                        </button>
+                        <button
+                          onClick={() => openModal(u, 'suspend')}
+                          style={{
+                            ...styles.actionBtn,
+                            background: u.suspended ? 'rgba(218,54,51,0.2)' : 'transparent',
+                            border: u.suspended ? '1px solid #da3633' : '1px solid #30363d',
+                            color: u.suspended ? '#f85149' : '#8b949e',
+                          }}
+                          title={u.suspended ? 'Unsuspend user' : 'Suspend user'}
+                        >
+                          {u.suspended ? '⚫ Susp' : 'Suspend'}
+                        </button>
+                        {u.tier === 'demo' && (
+                          <button onClick={() => openModal(u, 'reset_demo')} style={styles.actionBtn} title="Reset demo trial">
+                            🔄 Demo
+                          </button>
+                        )}
+                        <button onClick={() => openModal(u, 'activity')} style={{ ...styles.actionBtn, color: '#8b949e' }} title="View activity">
+                          📋
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -669,97 +728,286 @@ export function UsersManager() {
                 <span style={styles.cardLabel}>Created</span>
                 <span>{formatDate(u.created_at)}</span>
               </div>
-              <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
-                <button onClick={() => openTierModal(u)} style={styles.actionBtn}>
-                  Edit Tier
+              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                <button onClick={() => openModal(u, 'tier')} style={styles.actionBtn}>Tier</button>
+                <button
+                  onClick={() => openModal(u, 'admin')}
+                  style={{
+                    ...styles.actionBtn,
+                    background: u.is_admin ? 'rgba(35,134,54,0.2)' : 'rgba(218,54,51,0.1)',
+                    border: u.is_admin ? '1px solid #238636' : '1px solid #30363d',
+                    color: u.is_admin ? '#3fb950' : '#f85149',
+                  }}
+                >
+                  {u.is_admin ? 'Admin ✓' : 'Admin ✗'}
                 </button>
+                <button
+                  onClick={() => openModal(u, 'suspend')}
+                  style={{
+                    ...styles.actionBtn,
+                    background: u.suspended ? 'rgba(218,54,51,0.2)' : 'transparent',
+                    border: u.suspended ? '1px solid #da3633' : '1px solid #30363d',
+                    color: u.suspended ? '#f85149' : '#8b949e',
+                  }}
+                >
+                  {u.suspended ? '⚫ Unsusp' : 'Suspend'}
+                </button>
+                {u.tier === 'demo' && (
+                  <button onClick={() => openModal(u, 'reset_demo')} style={styles.actionBtn}>🔄 Demo</button>
+                )}
+                <button onClick={() => openModal(u, 'activity')} style={{ ...styles.actionBtn, color: '#8b949e' }}>📋</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Tier Override Modal ── */}
-      {modalUser && (
-        <div style={styles.modalOverlay} onClick={closeTierModal}>
+      {/* ── Action Modal ── */}
+      {modalUser && modalType !== 'activity' && (
+        <div style={styles.modalOverlay} onClick={closeModal}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2 style={styles.modalTitle}>Edit Tier</h2>
+            <h2 style={styles.modalTitle}>
+              {modalType === 'tier' && 'Edit Tier'}
+              {modalType === 'admin' && (modalUser.is_admin ? 'Revoke Admin Access' : 'Grant Admin Access')}
+              {modalType === 'suspend' && (modalUser.suspended ? 'Unsuspend User' : 'Suspend User')}
+              {modalType === 'reset_demo' && 'Reset Demo Trial'}
+            </h2>
             <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
               User:{' '}
               <strong style={{ color: '#e6edf3' }}>
                 {modalUser.display_name || modalUser.email}
               </strong>
             </p>
-            <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              Current tier:{' '}
-              <span style={styles.tierBadge(modalUser.tier)}>
-                {modalUser.tier || 'unknown'}
-              </span>
-            </p>
 
-            {/* Radio Buttons */}
-            <div style={styles.radioGroup}>
-              {(['demo', 'silver', 'gold'] as const).map((tierOption) => (
+            {/* Tier: radio buttons */}
+            {modalType === 'tier' && (
+              <>
+                <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                  Current tier:{' '}
+                  <span style={styles.tierBadge(modalUser.tier)}>
+                    {modalUser.tier || 'unknown'}
+                  </span>
+                </p>
+                <div style={styles.radioGroup}>
+                  {(['demo', 'silver', 'gold'] as const).map((tierOption) => (
+                    <label
+                      key={tierOption}
+                      style={{
+                        ...styles.radioLabel,
+                        borderColor:
+                          selectedTier === tierOption ? tierColor(tierOption).text : '#30363d',
+                        background:
+                          selectedTier === tierOption ? tierColor(tierOption).bg : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="tier"
+                        value={tierOption}
+                        checked={selectedTier === tierOption}
+                        onChange={(e) => setSelectedTier(e.target.value)}
+                        style={{ accentColor: tierColor(tierOption).text }}
+                      />
+                      <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                        {tierOption}
+                      </span>
+                    </label>
+                  ))}
+                </div>
                 <label
-                  key={tierOption}
                   style={{
-                    ...styles.radioLabel,
-                    borderColor:
-                      selectedTier === tierOption ? tierColor(tierOption).text : '#30363d',
-                    background:
-                      selectedTier === tierOption ? tierColor(tierOption).bg : 'transparent',
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    color: '#8b949e',
+                    marginBottom: '0.25rem',
+                    fontWeight: 600,
                   }}
                 >
-                  <input
-                    type="radio"
-                    name="tier"
-                    value={tierOption}
-                    checked={selectedTier === tierOption}
-                    onChange={(e) => setSelectedTier(e.target.value)}
-                    style={{ accentColor: tierColor(tierOption).text }}
-                  />
-                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
-                    {tierOption}
-                  </span>
+                  Reason (required for audit log)
                 </label>
-              ))}
-            </div>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Why is this tier being changed?"
+                  style={styles.textareaInput}
+                  disabled={saving}
+                />
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('tier_override', { tier: selectedTier, reason: reason.trim() })}
+                    style={{ ...styles.confirmBtn, opacity: saving || !reason.trim() ? 0.6 : 1 }}
+                    disabled={saving || !reason.trim()}
+                  >
+                    {saving ? 'Saving...' : 'Confirm Override'}
+                  </button>
+                </div>
+              </>
+            )}
 
-            {/* Reason */}
-            <label
-              style={{
-                display: 'block',
-                fontSize: '0.75rem',
-                color: '#8b949e',
-                marginBottom: '0.25rem',
-                fontWeight: 600,
-              }}
-            >
-              Reason (required for audit log)
-            </label>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is this tier being changed?"
-              style={styles.textareaInput}
-              disabled={saving}
-            />
+            {/* Admin: confirm toggle */}
+            {modalType === 'admin' && (
+              <>
+                <p style={{ color: '#e6edf3', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                  {modalUser.is_admin
+                    ? 'This will remove admin privileges from this user. They will no longer be able to access admin pages.'
+                    : 'This will grant full admin access to this user. They will be able to manage tiers, users, and configuration.'}
+                </p>
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('toggle_admin')}
+                    style={{
+                      ...styles.confirmBtn,
+                      background: modalUser.is_admin ? '#da3633' : '#238636',
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : modalUser.is_admin ? 'Revoke Admin' : 'Grant Admin'}
+                  </button>
+                </div>
+              </>
+            )}
 
-            {/* Actions */}
-            <div style={styles.modalActions}>
-              <button onClick={closeTierModal} style={styles.cancelBtn} disabled={saving}>
-                Cancel
-              </button>
-              <button
-                onClick={handleTierOverride}
-                style={{
-                  ...styles.confirmBtn,
-                  opacity: saving ? 0.6 : 1,
-                }}
-                disabled={saving}
-              >
-                {saving ? 'Saving...' : 'Confirm Override'}
-              </button>
+            {/* Suspend: confirm toggle */}
+            {modalType === 'suspend' && (
+              <>
+                <p style={{ color: '#e6edf3', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                  {modalUser.suspended
+                    ? 'This will reactivate the user. They will be able to log in again.'
+                    : 'This will immediately sign out the user, block all future login attempts, and preserve their data. All active sessions will be invalidated.'}
+                </p>
+                {!modalUser.suspended && (
+                  <textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="Reason for suspension (recorded in audit log, not shown to user)"
+                    style={styles.textareaInput}
+                    disabled={saving}
+                  />
+                )}
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('toggle_suspension', { reason: reason.trim() || undefined })}
+                    style={{
+                      ...styles.confirmBtn,
+                      background: modalUser.suspended ? '#238636' : '#da3633',
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : modalUser.suspended ? 'Unsuspend User' : 'Suspend User'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Reset Demo: confirm */}
+            {modalType === 'reset_demo' && (
+              <>
+                <p style={{ color: '#e6edf3', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
+                  Reset the 30-day demo trial for this user:
+                </p>
+                <ul style={{ color: '#8b949e', fontSize: '0.8125rem', marginBottom: '1rem', paddingLeft: '1.25rem' }}>
+                  <li>Extends demo expiry to 30 days from now</li>
+                  <li>Resets deep analysis pool usage to 0</li>
+                  <li>Keeps tier at «demo» (if currently demo)</li>
+                </ul>
+                {modalUser.demo_expires_at && (
+                  <p style={{ color: '#8b949e', fontSize: '0.75rem', marginBottom: '1rem' }}>
+                    Current expiry: {formatDate(modalUser.demo_expires_at)}
+                  </p>
+                )}
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('reset_demo')}
+                    style={{ ...styles.confirmBtn, opacity: saving ? 0.6 : 1 }}
+                    disabled={saving}
+                  >
+                    {saving ? 'Resetting...' : 'Reset Demo Trial'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Activity Modal ── */}
+      {modalUser && modalType === 'activity' && (
+        <div style={styles.modalOverlay} onClick={closeModal}>
+          <div style={{ ...styles.modal, maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>📋 Activity Log</h2>
+            <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              User:{' '}
+              <strong style={{ color: '#e6edf3' }}>
+                {modalUser.display_name || modalUser.email}
+              </strong>
+            </p>
+            {activityLoading ? (
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '2rem' }}>Loading...</p>
+            ) : activityEntries.length === 0 ? (
+              <p style={{ color: '#484f58', textAlign: 'center', padding: '1rem', fontSize: '0.875rem' }}>
+                No activity recorded yet.
+              </p>
+            ) : (
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #30363d' }}>
+                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Date</th>
+                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Action</th>
+                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>By</th>
+                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityEntries.map((entry) => (
+                      <tr key={entry.id} style={{ borderBottom: '1px solid #21262d' }}>
+                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem', color: '#8b949e' }}>
+                          {formatDate(entry.created_at)}
+                        </td>
+                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '0.0625rem 0.375rem',
+                            borderRadius: 3,
+                            fontSize: '0.625rem',
+                            fontWeight: 600,
+                            background: entry.action.includes('suspend') ? 'rgba(218,54,51,0.15)'
+                              : entry.action.includes('admin') ? 'rgba(234,179,8,0.15)'
+                              : 'rgba(88,166,255,0.15)',
+                            color: entry.action.includes('suspend') ? '#f85149'
+                              : entry.action.includes('admin') ? '#facc15'
+                              : '#58a6ff',
+                          }}>
+                            {entry.action}
+                          </span>
+                        </td>
+                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem', color: '#8b949e' }}>
+                          {entry.admin_email}
+                        </td>
+                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>
+                          {entry.reason && (
+                            <span style={{ color: '#e6edf3' }}>{entry.reason}</span>
+                          )}
+                          {entry.new_value && (
+                            <span style={{ color: '#8b949e', marginLeft: 4 }}>
+                              {JSON.stringify(entry.new_value).slice(0, 60)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div style={{ ...styles.modalActions, marginTop: '1rem' }}>
+              <button onClick={closeModal} style={styles.cancelBtn}>Close</button>
             </div>
           </div>
         </div>

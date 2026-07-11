@@ -98,6 +98,44 @@ export async function requireAuth(
     }
   }
 
+  // ── Suspended user check ──
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          }
+        }
+      }
+    )
+
+    const { data: userRow, error: queryErr } = await supabase
+      .from('users')
+      .select('suspended')
+      .eq('id', authUser.id)
+      .maybeSingle()
+
+    if (!queryErr && userRow?.suspended) {
+      return {
+        authUser: null,
+        authError: NextResponse.json(
+          { error: 'Account suspended', message: 'Your account has been suspended. Contact support for assistance.' },
+          { status: 403 }
+        )
+      }
+    }
+  } catch {
+    // If the query fails (table doesn't exist, etc.), allow access
+    console.warn('[requireAuth] Suspended check failed — allowing access')
+  }
+
   return { authUser, authError: null }
 }
 

@@ -1,9 +1,11 @@
 // ─── Admin Users Page ────────────────────────────────────────
 // Server component — checks admin access server-side, then renders
-// the user management client component.
+// the user management + invite management client component.
 
 import { requireAdmin } from '@/lib/auth/admin-check';
 import { UsersManager } from './users-manager';
+import InviteManager from './invite-manager';
+import { UsersPageClient } from './users-page-client';
 
 export default async function UsersAdminPage() {
   const { adminUser, adminError } = await requireAdmin();
@@ -50,5 +52,5 @@ export default async function UsersAdminPage() {
     );
   }
 
-  return <UsersManager />;
+  return <UsersPageClient usersContent={<UsersManager />} invitesContent={<InviteManager />} />;
 }

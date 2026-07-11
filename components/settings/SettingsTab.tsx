@@ -53,11 +53,25 @@ export function SettingsTab() {
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const { score, level } = useInvestorScore();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
+  const [demoStartAt, setDemoStartAt] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/is-admin')
       .then(r => r.json())
-      .then(d => { if (d.isAdmin) setIsAdmin(true); });
+      .then(d => { if (d.isAdmin) setIsAdmin(true); })
+      .catch(() => {});
+
+    // Fetch demo expiry from DB (not localStorage — unreliable across devices/browsers)
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        if (d.user) {
+          setDemoExpiresAt(d.user.demo_expires_at || null);
+          setDemoStartAt(d.user.demo_start_at || null);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   async function selectStyle(styleId: string) {
@@ -274,18 +288,23 @@ export function SettingsTab() {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '10px' }}>
           <span style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', lineHeight: 1 }}>
             {(() => {
+              // Use DB demo_expires_at (source of truth) — fallback to localStorage
               try {
+                if (demoExpiresAt) {
+                  const expires = new Date(demoExpiresAt);
+                  const today = new Date();
+                  const daysLeft = Math.ceil((expires.getTime() - today.getTime()) / 86_400_000);
+                  return Math.max(0, daysLeft);
+                }
+
+                // Fallback to localStorage (legacy)
                 const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
                 if (!fo) return 30;
 
                 const start = estDateOnly(new Date(fo));
                 const today = estDateOnly(new Date());
-
-                const DAY_MS = 86_400_000;
-                const totalDays = 30;
-                const daysSinceStart = Math.round((today.getTime() - start.getTime()) / DAY_MS);
-
-                return Math.max(0, totalDays - daysSinceStart);
+                const daysSinceStart = Math.round((today.getTime() - start.getTime()) / 86_400_000);
+                return Math.max(0, 30 - daysSinceStart);
               } catch { return 30; }
             })()}
           </span>
@@ -295,13 +314,21 @@ export function SettingsTab() {
         {/* Progress bar */}
         {(() => {
           try {
-            const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
             let pct = 0;
-            if (fo) {
-              const first = new Date(fo).getTime();
-              const elapsed = Date.now() - first;
-              const total = 30 * 86_400_000;
-              pct = Math.min(100, Math.round((elapsed / total) * 100));
+            if (demoStartAt && demoExpiresAt) {
+              const start = new Date(demoStartAt).getTime();
+              const expires = new Date(demoExpiresAt).getTime();
+              const total = expires - start;
+              const elapsed = Date.now() - start;
+              pct = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+            } else {
+              const fo = typeof window !== 'undefined' ? localStorage.getItem('vantage_first_open') : null;
+              if (fo) {
+                const first = new Date(fo).getTime();
+                const elapsed = Date.now() - first;
+                const total = 30 * 86_400_000;
+                pct = Math.min(100, Math.round((elapsed / total) * 100));
+              }
             }
             return (
               <div

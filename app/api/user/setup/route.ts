@@ -92,5 +92,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Accept pending invite (invite-only gate) ──
+  if (authUser.email) {
+    try {
+      const { error: acceptErr } = await (adminSupabase as any)
+        .from('invites')
+        .update({ status: 'accepted', accepted_at: now })
+        .eq('email', authUser.email.toLowerCase().trim())
+        .eq('status', 'pending');
+
+      if (acceptErr && !acceptErr.message?.includes('does not exist')) {
+        console.warn('[user/setup] Invite acceptance failed:', acceptErr.message);
+      }
+    } catch (e: any) {
+      // Invites table might not exist — non-blocking
+      console.warn('[user/setup] Invite accept error (non-blocking):', e.message);
+    }
+  }
+
   return NextResponse.json({ success: true });
 }

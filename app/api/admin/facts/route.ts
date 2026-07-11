@@ -1,27 +1,20 @@
 // ─── Admin Facts API ─────────────────────────────────────────────
-// GET /api/admin/facts?userId=xxx&code=ADMIN_ACCESS_CODE
+// GET /api/admin/facts?userId=xxx
 //
 // Returns ALL facts (active, superseded, resolved, stale) for a user
 // with based_on resolved to show actual referenced claims.
-// Admin-only — gated behind ADMIN_ACCESS_CODE env var.
+// Gated behind requireAdmin() (JWT-based, not shared ADMIN_ACCESS_CODE).
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth/admin-check';
 import { createServerClient } from '@/lib/supabase';
 
-function checkAdmin(code: string | null): boolean {
-  const adminCode = process.env.ADMIN_ACCESS_CODE;
-  if (!adminCode) return false;
-  return code === adminCode;
-}
-
 export async function GET(request: NextRequest) {
+  const { adminError } = await requireAdmin(request);
+  if (adminError) return adminError;
+
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
-  const code = searchParams.get('code');
-
-  if (!checkAdmin(code)) {
-    return NextResponse.json({ error: 'Unauthorized — admin access required' }, { status: 401 });
-  }
 
   if (!userId) {
     return NextResponse.json({ error: 'Missing userId parameter' }, { status: 400 });

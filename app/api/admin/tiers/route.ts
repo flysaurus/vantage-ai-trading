@@ -48,16 +48,29 @@ export async function GET(request: NextRequest) {
   const supabase = createServerClient();
 
   // Fetch tiers
-  const { data: tiers } = await (supabase as any)
+  const { data: tiers, error: tiersError } = await (supabase as any)
     .from('subscription_tiers')
     .select('id, key, name')
     .order('sort_order', { ascending: true });
 
+  if (tiersError) {
+    console.error('[admin/tiers] Failed to fetch subscription_tiers:', tiersError.message);
+    return NextResponse.json({ error: 'Failed to load tiers', details: tiersError.message }, { status: 500 });
+  }
+
   // Fetch all feature values for editable features
-  const { data: values } = await (supabase as any)
+  const { data: values, error: valuesError } = await (supabase as any)
     .from('tier_feature_values')
     .select('tier_id, feature_id, value, tier_features!inner(key)')
     .in('tier_features.key', EDITABLE_FEATURES);
+
+  if (valuesError) {
+    console.error('[admin/tiers] Failed to fetch tier_feature_values:', valuesError.message);
+    return NextResponse.json(
+      { error: 'Database query failed. Has migration 024 been run? Run it in Supabase SQL Editor.', details: valuesError.message },
+      { status: 500 }
+    );
+  }
 
   const features = (values || []).map((v: any) => ({
     tier_id: v.tier_id,

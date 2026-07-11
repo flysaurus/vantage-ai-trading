@@ -20,6 +20,8 @@ interface UserRow {
   investor_style?: string | null;
   investor_style_onboarded?: boolean | null;
   tier?: string | null;
+  is_admin?: boolean | null;
+  suspended?: boolean | null;
   created_at: string;
   updated_at?: string | null;
   monthly_chat_used?: number | null;
@@ -36,6 +38,8 @@ interface AggregatedUser {
   investor_style: string | null;
   investor_style_onboarded: boolean | null;
   tier: string | null;
+  is_admin: boolean | null;
+  suspended: boolean | null;
   subscription_tier_key: string | null;
   subscription_tier_name: string | null;
   subscription_status: string | null;
@@ -90,6 +94,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id, email, avatar_url,
         investor_style, investor_style_onboarded, tier,
+        is_admin, suspended,
         created_at, updated_at,
         monthly_chat_used, monthly_deep_used,
         demo_deep_pool_used, demo_expires_at
@@ -195,6 +200,8 @@ export async function GET(request: NextRequest) {
         investor_style: u.investor_style || null,
         investor_style_onboarded: u.investor_style_onboarded ?? null,
         tier: effectiveTier,
+        is_admin: u.is_admin ?? null,
+        suspended: u.suspended ?? null,
         subscription_tier_key: subscriptionTierKey,
         subscription_tier_name: subscriptionTierName,
         subscription_status: subscriptionStatus,
@@ -227,6 +234,12 @@ export async function GET(request: NextRequest) {
 }
 
 // ─── PUT ──────────────────────────────────────────────────────
+// Supports multiple actions via the "action" field:
+//   tier_override      — change subscription tier
+//   toggle_admin       — grant or revoke is_admin
+//   toggle_suspension  — suspend or unsuspend user
+//   reset_demo         — reset demo trial (expiry + deep pool counter)
+// All actions are audit-logged with old_value / new_value JSONB.
 
 export async function PUT(request: NextRequest) {
   try {
@@ -236,9 +249,9 @@ export async function PUT(request: NextRequest) {
     const adminEmail = authUser.email || 'unknown';
     const body = await request.json();
 
-    const { userId, tier, reason } = body;
+    const { userId, action, tier, reason } = body;
 
-    // ── Validate ──────────────────────────────────────────────
+    // ── Common validation ────────────────────────────────────
     if (!userId || typeof userId !== 'string') {
       return NextResponse.json(
         { error: 'Missing or invalid userId' },
@@ -246,17 +259,9 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const validTiers = ['demo', 'silver', 'gold'];
-    if (!tier || !validTiers.includes(tier)) {
+    if (!action || typeof action !== 'string') {
       return NextResponse.json(
-        { error: `Invalid tier. Must be one of: ${validTiers.join(', ')}` },
-        { status: 400 }
-      );
-    }
-
-    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
-      return NextResponse.json(
-        { error: 'Reason is required for tier override audit trail' },
+        { error: 'Missing action field. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo' },
         { status: 400 }
       );
     }
@@ -264,72 +269,190 @@ export async function PUT(request: NextRequest) {
     const supabase = createServerClient();
     const sb = supabase as any;
 
-    // Step 1: Read current tier
-    const { data: currentUser, error: fetchErr } = await sb
-      .from('users')
-      .select('tier')
-      .eq('id', userId)
-      .single();
-
-    if (fetchErr) {
-      return NextResponse.json(
-        { error: `User not found: ${fetchErr.message}` },
-        { status: 404 }
-      );
+    switch (action) {
+      case 'tier_override':
+        return handleTierOverride(sb, userId, tier, reason, adminEmail);
+      case 'toggle_admin':
+        return handleToggleAdmin(sb, userId, adminEmail);
+      case 'toggle_suspension':
+        return handleToggleSuspension(sb, userId, reason, adminEmail);
+      case 'reset_demo':
+        return handleResetDemo(sb, userId, adminEmail);
+      default:
+        return NextResponse.json(
+          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo` },
+          { status: 400 }
+        );
     }
-
-    const oldTier = currentUser.tier || null;
-
-    // No-op check
-    if (oldTier === tier) {
-      return NextResponse.json({
-        success: true,
-        message: `User already has tier '${tier}'. No change made.`,
-        tier,
-      });
-    }
-
-    // Step 2: Update tier
-    const { error: updateErr } = await sb
-      .from('users')
-      .update({ tier, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-
-    if (updateErr) {
-      return NextResponse.json(
-        { error: `Failed to update tier: ${updateErr.message}` },
-        { status: 500 }
-      );
-    }
-
-    // Step 3: Write audit log
-    const auditEntry = {
-      admin_email: adminEmail,
-      target_user_id: userId,
-      action: 'tier_override',
-      old_value: JSON.parse(JSON.stringify({ tier: oldTier })),
-      new_value: JSON.parse(JSON.stringify({ tier })),
-      reason: reason.trim(),
-      created_at: new Date().toISOString(),
-    };
-
-    const { error: auditErr } = await sb
-      .from('admin_audit_log')
-      .insert(auditEntry);
-
-    if (auditErr) {
-      console.error('[admin/users] Audit log write failed:', auditErr.message);
-      // Non-fatal — tier was updated, log the failure
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Tier changed from '${oldTier || 'none'}' to '${tier}'`,
-      userId,
-      tier,
-      oldTier,
-    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
+}
+
+// ─── Action Handlers ─────────────────────────────────────────
+
+async function fetchUser(sb: any, userId: string) {
+  const { data: user, error } = await sb
+    .from('users')
+    .select('id, tier, is_admin, suspended, demo_expires_at, demo_deep_pool_used')
+    .eq('id', userId)
+    .single();
+  if (error) return { error: `User not found: ${error.message}`, status: 404 };
+  return { user };
+}
+
+async function writeAudit(
+  sb: any,
+  adminEmail: string,
+  targetUserId: string,
+  action: string,
+  oldValue: any,
+  newValue: any,
+  reason?: string,
+) {
+  const { error } = await sb.from('admin_audit_log').insert({
+    admin_email: adminEmail,
+    target_user_id: targetUserId,
+    action,
+    old_value: oldValue,
+    new_value: newValue,
+    reason: reason || null,
+    created_at: new Date().toISOString(),
+  });
+  if (error) {
+    console.error(`[admin/users] Audit log write failed (${action}):`, error.message);
+  }
+}
+
+// ── Tier Override ───────────────────────────────────────────
+
+async function handleTierOverride(
+  sb: any,
+  userId: string,
+  tier: string | undefined,
+  reason: string | undefined,
+  adminEmail: string,
+) {
+  const validTiers = ['demo', 'silver', 'gold'];
+  if (!tier || !validTiers.includes(tier)) {
+    return NextResponse.json(
+      { error: `Invalid tier. Must be one of: ${validTiers.join(', ')}` },
+      { status: 400 },
+    );
+  }
+  if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+    return NextResponse.json(
+      { error: 'Reason is required for tier override audit trail' },
+      { status: 400 },
+    );
+  }
+
+  const result = await fetchUser(sb, userId);
+  if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status as any });
+  const { user } = result;
+  const oldTier = user.tier || null;
+
+  if (oldTier === tier) {
+    return NextResponse.json({ success: true, message: `User already has tier '${tier}'. No change made.`, tier });
+  }
+
+  await sb.from('users').update({ tier, updated_at: new Date().toISOString() }).eq('id', userId);
+  await writeAudit(sb, adminEmail, userId, 'tier_override', { tier: oldTier }, { tier }, reason.trim());
+
+  return NextResponse.json({
+    success: true,
+    message: `Tier changed from '${oldTier || 'none'}' to '${tier}'`,
+    userId, tier, oldTier,
+  });
+}
+
+// ── Toggle Admin ────────────────────────────────────────────
+
+async function handleToggleAdmin(sb: any, userId: string, adminEmail: string) {
+  const result = await fetchUser(sb, userId);
+  if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status as any });
+  const { user } = result;
+
+  const newValue = !user.is_admin;
+  const actionLabel = newValue ? 'grant_admin' : 'revoke_admin';
+
+  await sb.from('users').update({ is_admin: newValue, updated_at: new Date().toISOString() }).eq('id', userId);
+  await writeAudit(sb, adminEmail, userId, actionLabel, { is_admin: user.is_admin || false }, { is_admin: newValue });
+
+  return NextResponse.json({
+    success: true,
+    message: newValue ? 'Admin access granted' : 'Admin access revoked',
+    userId, is_admin: newValue,
+  });
+}
+
+// ── Toggle Suspension ───────────────────────────────────────
+
+async function handleToggleSuspension(
+  sb: any,
+  userId: string,
+  reason: string | undefined,
+  adminEmail: string,
+) {
+  const result = await fetchUser(sb, userId);
+  if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status as any });
+  const { user } = result;
+
+  const newValue = !user.suspended;
+  const actionLabel = newValue ? 'suspend_user' : 'unsuspend_user';
+
+  await sb.from('users').update({ suspended: newValue, updated_at: new Date().toISOString() }).eq('id', userId);
+  await writeAudit(sb, adminEmail, userId, actionLabel, { suspended: user.suspended || false }, { suspended: newValue }, reason || undefined);
+
+  // If suspending, invalidate all active sessions via Supabase Auth admin API
+  if (newValue) {
+    try {
+      const { error: sessionErr } = await sb.auth.admin.signOut(userId);
+      if (sessionErr) {
+        console.error('[admin/users] Failed to sign out user:', sessionErr.message);
+      }
+    } catch (e: any) {
+      console.error('[admin/users] Session invalidation error:', e.message);
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    message: newValue ? 'User suspended — all active sessions invalidated' : 'User reactivated',
+    userId, suspended: newValue,
+  });
+}
+
+// ── Reset Demo Trial ────────────────────────────────────────
+
+async function handleResetDemo(sb: any, userId: string, adminEmail: string) {
+  const result = await fetchUser(sb, userId);
+  if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status as any });
+  const { user } = result;
+
+  const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const oldValues = {
+    demo_expires_at: user.demo_expires_at,
+    demo_deep_pool_used: user.demo_deep_pool_used,
+  };
+
+  await sb.from('users').update({
+    demo_expires_at: thirtyDays,
+    demo_deep_pool_used: 0,
+    tier: user.tier || 'demo',
+    updated_at: new Date().toISOString(),
+  }).eq('id', userId);
+
+  await writeAudit(sb, adminEmail, userId, 'reset_demo',
+    oldValues,
+    { demo_expires_at: thirtyDays, demo_deep_pool_used: 0 },
+  );
+
+  return NextResponse.json({
+    success: true,
+    message: `Demo trial reset — expires ${new Date(thirtyDays).toLocaleDateString()}`,
+    userId,
+    demo_expires_at: thirtyDays,
+    demo_deep_pool_used: 0,
+  });
 }

@@ -137,6 +137,12 @@ export default function CreateAccountPage() {
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
 
+  // ── Invite gate state ────────────────────────────────────
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteChecking, setInviteChecking] = useState(false);
+
   // ── Computed ─────────────────────────────────────────────
   const style = onboardingData?.style || 'buffett';
   const risk = onboardingData?.risk || 'moderate';
@@ -170,7 +176,9 @@ export default function CreateAccountPage() {
     allPasswordReqsMet &&
     password === confirmPassword &&
     confirmPassword.length > 0 &&
-    !submitting;
+    !submitting &&
+    inviteError === null &&
+    !inviteChecking;
 
   // ── Redirect if no onboarding data ──────────────────────
   useEffect(() => {
@@ -178,6 +186,34 @@ export default function CreateAccountPage() {
       router.replace('/onboarding');
     }
   }, [onboardingData, router]);
+
+  // ── Parse invite token from URL ─────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('invite');
+    if (!token) return;
+
+    setInviteToken(token);
+    setInviteChecking(true);
+
+    fetch('/api/invites/validate?token=' + encodeURIComponent(token))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.valid && data.email) {
+          setInviteEmail(data.email);
+          setEmail(data.email); // Pre-fill email from invite
+          setInviteError(null);
+        } else {
+          setInviteEmail(null);
+          setInviteError('This invite link is invalid, expired, or has already been used.');
+        }
+      })
+      .catch(() => {
+        // Endpoint down — let signup proceed (fail-open)
+        setInviteError(null);
+      })
+      .finally(() => setInviteChecking(false));
+  }, []);
 
   if (!onboardingData) {
     return (
@@ -314,6 +350,20 @@ export default function CreateAccountPage() {
       // Fail open — proceed with signUp if check-email is down
     }
 
+    // ── Invite gate: verify user has a valid pending invite ────
+    try {
+      const inviteRes = await fetch('/api/invites/validate?email=' + encodeURIComponent(email.trim()));
+      const { valid: hasInvite } = await inviteRes.json();
+      if (!hasInvite) {
+        setApiError('Vantage is currently invite-only. Request an invite from the admin or use an invite link to sign up.');
+        setSubmitting(false);
+        return;
+      }
+    } catch {
+      // Fail open — proceed if invite check endpoint is unavailable
+      console.warn('[signup] Invite check failed, allowing signup');
+    }
+
     // Browser-side signup — correct pattern for OTP flow.
     // The anon key is public by Supabase design.
     // Security comes from RLS + service role on server.
@@ -439,6 +489,25 @@ export default function CreateAccountPage() {
   };
 
   // ── Render error banner ──────────────────────────────────
+
+  const inviteErrorBanner = inviteError ? (
+    <div
+      style={{
+        background: 'rgba(218,54,51,0.1)',
+        border: '1px solid #da3633',
+        borderRadius: '12px',
+        padding: '12px 16px',
+        display: 'flex',
+        gap: '10px',
+        marginBottom: '16px',
+      }}
+    >
+      <XCircle size={16} color="#da3633" style={{ flexShrink: 0, marginTop: '1px' }} />
+      <p style={{ fontSize: '14px', color: '#e6edf3', margin: 0, lineHeight: 1.5 }}>
+        {inviteError} Vantage is invite-only — request an invite link from an admin.
+      </p>
+    </div>
+  ) : null;
 
   const errorBanner = apiError ? (
     <div
@@ -657,7 +726,8 @@ export default function CreateAccountPage() {
         </button>
       </div>
 
-      {/* ═══ ERROR BANNER ═══ */}
+      {/* ═══ ERROR BANNERS ═══ */}
+      {inviteErrorBanner}
       {errorBanner}
 
       {/* ═══ GOOGLE SIGN-IN ═══ */}
