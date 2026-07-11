@@ -126,8 +126,8 @@ export function ShareCardModal({
           type: 'image/png',
         });
         const fileShareData: ShareData = {
-          title: `I'm ${fullHeadline} on Vantage`,
-          text: 'Take the quiz and find out yours →',
+          title: `I'm a ${fullHeadline} on Vantage 📈`,
+          text: `Vantage matched my investing personality to ${styleName}. An AI advisor that thinks like you — your strategy, your style. 2-min quiz →`,
           files: [file],
         };
         if (navigator.canShare?.(fileShareData)) {
@@ -177,11 +177,8 @@ export function ShareCardModal({
           background: 'var(--bg-sheet)',
           borderTopLeftRadius: 'var(--radius-lg)',
           borderTopRightRadius: 'var(--radius-lg)',
-          padding: 'var(--space-3) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px))',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 'var(--space-4)',
+          padding: '12px 16px calc(24px + env(safe-area-inset-bottom, 0px))',
+          textAlign: 'center',
           animation: 'vantageSheetSlideUp 350ms cubic-bezier(0.22, 0.61, 0.36, 1)',
         }}
       >
@@ -191,24 +188,25 @@ export function ShareCardModal({
           height: '4px',
           borderRadius: '2px',
           background: 'var(--border-card)',
-          flexShrink: 0,
+          margin: '0 auto 12px',
         }} />
 
         {/* Title */}
-        <span style={{
+        <div style={{
           fontSize: '16px',
           fontWeight: 700,
           color: 'var(--text-primary)',
+          marginBottom: '4px',
         }}>
           Your Investor Style Card
-        </span>
-        <span style={{
+        </div>
+        <div style={{
           fontSize: '12px',
           color: 'var(--text-muted)',
-          marginTop: '-12px',
+          marginBottom: '16px',
         }}>
           Share your investing identity
-        </span>
+        </div>
 
         {/* Card preview (scaled) */}
         <div style={{
@@ -216,13 +214,14 @@ export function ShareCardModal({
           display: 'flex',
           justifyContent: 'center',
           overflow: 'hidden',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: '12px',
           background: 'var(--bg-primary)',
+          marginBottom: '12px',
         }}>
           <div style={{
             transform: 'scale(0.6)',
             transformOrigin: 'top center',
-            height: '312px', // 520 * 0.6
+            height: '312px',
           }}>
             <StyleShareCard
               ref={cardRef}
@@ -236,29 +235,32 @@ export function ShareCardModal({
 
         {/* Toast */}
         {toast && (
-          <span style={{
+          <div style={{
             fontSize: '13px',
             color: 'var(--accent-primary)',
             fontWeight: 600,
+            marginBottom: '12px',
           }}>
             {toast}
-          </span>
+          </div>
         )}
 
         {/* Buttons */}
         <div style={{
           display: 'flex',
-          gap: 'var(--space-2)',
+          gap: '8px',
           width: '100%',
           maxWidth: '360px',
+          margin: '0 auto',
+          paddingBottom: '8px',
         }}>
           <button
             onClick={handleDownload}
             disabled={capturing}
             style={{
               flex: 1,
-              padding: '12px 0',
-              borderRadius: 'var(--radius-sm)',
+              padding: '12px 4px',
+              borderRadius: '10px',
               border: '1px solid var(--border-card)',
               background: 'var(--bg-card)',
               color: 'var(--text-primary)',
@@ -268,14 +270,14 @@ export function ShareCardModal({
               opacity: capturing ? 0.5 : 1,
             }}
           >
-            {capturing ? 'Rendering…' : 'Download PNG'}
+            {capturing ? 'Rendering…' : 'Download'}
           </button>
           <button
             onClick={handleCopyLink}
             style={{
               flex: 1,
-              padding: '12px 0',
-              borderRadius: 'var(--radius-sm)',
+              padding: '12px 4px',
+              borderRadius: '10px',
               border: '1px solid var(--border-card)',
               background: 'var(--bg-card)',
               color: 'var(--text-primary)',
@@ -291,8 +293,8 @@ export function ShareCardModal({
             disabled={capturing}
             style={{
               flex: 1,
-              padding: '12px 0',
-              borderRadius: 'var(--radius-sm)',
+              padding: '12px 4px',
+              borderRadius: '10px',
               border: 'none',
               background: 'var(--accent-primary)',
               color: '#0a0f1e',
