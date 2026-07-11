@@ -114,6 +114,8 @@ export interface BrokerOrder {
   basketDisplayName?: string;
   note?: string;
   reservedCost?: number;
+  /** For OPEN sell orders: shares reserved to prevent double-selling */
+  reservedShares?: number;
 }
 
 export interface BrokerBasketOrder {

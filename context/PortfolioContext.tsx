@@ -503,6 +503,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       portfolioPercent: 0, type: bp.type,
       basketId: bp.basketId, basketName: bp.basketName, basketEmoji: bp.basketEmoji,
     }));
+    // Compute reserved shares from OPEN sell orders for each position
+    const reservedBySymbol = new Map<string, number>();
+    for (const o of bOrders) {
+      if (o.side === 'SELL' && o.status === 'OPEN' && o.reservedShares) {
+        reservedBySymbol.set(o.symbol.toUpperCase(), (reservedBySymbol.get(o.symbol.toUpperCase()) || 0) + o.reservedShares);
+      }
+    }
+    for (const pos of ctxPositions) {
+      pos.reservedShares = reservedBySymbol.get(pos.symbol.toUpperCase()) || 0;
+    }
     const ctxOrders: DemoOrder[] = bOrders.map((bo: any) => ({
       id: bo.id, symbol: bo.symbol, side: bo.side, shares: bo.shares, type: bo.type,
       fillPrice: bo.fillPrice || bo.submittedPrice, totalCost: bo.totalCost,
@@ -1092,13 +1102,14 @@ export function buildLivePortfolioContext(account: AccountSummary | null): strin
     .join(' | ');
 
   const positionsSummary = account.positions
-    .map(p =>
-      `${p.symbol} (${p.name || p.symbol}): ${p.qty} shares @ $${p.currentPrice.toFixed(2)} | ` +
-      `Value: $${p.marketValue.toFixed(0)} | ` +
-      `Total P&L: ${p.totalPnl >= 0 ? '+' : ''}$${p.totalPnl.toFixed(0)} (${p.totalPnlPercent.toFixed(1)}%) | ` +
-      `Today: ${p.dayChange >= 0 ? '+' : ''}$${p.dayChange.toFixed(0)} (${p.dayChangePercent.toFixed(1)}%) | ` +
-      `Avg Cost: $${p.avgCost.toFixed(2)}`
-    )
+    .map(p => {
+      const reservedInfo = (p as any).reservedShares > 0 ? ` | ⚠️ ${(p as any).reservedShares} shares reserved by open sell orders (available: ${Math.max(0, p.qty - (p as any).reservedShares)})` : '';
+      return `${p.symbol} (${p.name || p.symbol}): ${p.qty} shares @ ${p.currentPrice.toFixed(2)} | ` +
+        `Value: ${p.marketValue.toFixed(0)} | ` +
+        `Total P&L: ${p.totalPnl >= 0 ? '+' : ''}${p.totalPnl.toFixed(0)} (${p.totalPnlPercent.toFixed(1)}%) | ` +
+        `Today: ${p.dayChange >= 0 ? '+' : ''}${p.dayChange.toFixed(0)} (${p.dayChangePercent.toFixed(1)}%) | ` +
+        `Avg Cost: ${p.avgCost.toFixed(2)}${reservedInfo}`;
+    })
     .join('\n');
 
   const daySign = account.dayPnl >= 0 ? '+' : '';

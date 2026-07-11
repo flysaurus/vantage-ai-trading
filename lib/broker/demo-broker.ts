@@ -369,8 +369,16 @@ export class DemoBroker implements BrokerEngine {
 
     // ── SELL ──
     const position = this.state.positions.find(p => p.symbol === req.symbol);
-    if (!position || position.shares < shares) {
-      return { success: false, orderId, status: 'REJECTED', message: `Insufficient shares of ${req.symbol}` };
+    // Account for shares already reserved by other OPEN sell orders
+    const reservedSellShares = this.state.orders
+      .filter(o => o.symbol === req.symbol && o.side === 'SELL' && o.status === 'OPEN')
+      .reduce((sum, o) => sum + (o.reservedShares || 0), 0);
+    const availableShares = (position?.shares || 0) - reservedSellShares;
+    if (!position || availableShares < shares) {
+      return { success: false, orderId, status: 'REJECTED',
+        message: reservedSellShares > 0
+          ? `Insufficient shares of ${req.symbol}. Hold ${position?.shares || 0}, ${reservedSellShares} reserved by pending orders, ${availableShares} available`
+          : `Insufficient shares of ${req.symbol}` };
     }
 
     const proceeds = shares * price;
@@ -404,6 +412,7 @@ export class DemoBroker implements BrokerEngine {
       submittedAt: new Date().toISOString(),
       filledAt: canFillNow ? new Date().toISOString() : undefined,
       note: sellNote,
+      reservedShares: canFillNow ? undefined : shares,
     };
 
     if (canFillNow) {

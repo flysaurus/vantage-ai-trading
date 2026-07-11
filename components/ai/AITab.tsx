@@ -254,7 +254,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
     // Get position data for this symbol
     const positions = liveAccount?.positions || [];
     const pos = positions.find((p: any) => p.symbol?.toUpperCase() === symbol.toUpperCase());
-    const sharesHeld = pos?.qty || 0;
+    const rawShares = pos?.qty || 0;
+    const reservedSell = pos?.reservedShares || 0;
+    const sharesHeld = Math.max(0, rawShares - reservedSell);
     const availableCash = liveAccount?.cash || 0;
 
     // Convert dollar amount to approximate shares if needed

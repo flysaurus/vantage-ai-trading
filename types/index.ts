@@ -54,6 +54,8 @@ export interface Position extends BasketInfo {
   weekHigh52?: number;
   weekLow52?: number;
   type?: 'Stock' | 'ETF';
+  /** Shares reserved by OPEN sell orders (not available to sell) */
+  reservedShares?: number;
   totalCost?: number;
   buyDate?: string;
   exchange?: string;
