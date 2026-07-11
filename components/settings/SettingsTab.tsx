@@ -383,6 +383,7 @@ export function SettingsTab() {
       <div style={{ margin: '0 16px 12px 16px' }}>
         {/* Style + Score row */}
         <div
+          onClick={() => setShowShareModal(true)}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -391,6 +392,7 @@ export function SettingsTab() {
             background: '#1a2235',
             borderRadius: '10px',
             marginBottom: '8px',
+            cursor: 'pointer',
           }}
         >
           <div>
@@ -588,24 +590,25 @@ export function SettingsTab() {
 
       <div style={{ margin: '0 16px' }}>
         {[
-          { label: 'Price Alerts', sub: '2 active' },
-          { label: 'Earnings Calendar', sub: '10 holdings tracked' },
-          { label: 'News Feed', sub: 'AI-curated' },
-          { label: 'Trade History', sub: 'All time activity' },
+          { label: 'Price Alerts', sub: '2 active', route: '/alerts' },
+          { label: 'Earnings Calendar', sub: '10 holdings tracked', route: '/earnings' },
         ].map((row, i, arr) => (
           <div
             key={row.label}
+            onClick={() => router.push(row.route)}
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '14px 16px',
               background: '#1a2235',
-              borderBottom: '1px solid #0f1829',
+              borderBottom: i < arr.length - 1 ? '1px solid #0f1829' : 'none',
               borderRadius:
                 i === 0
                   ? '10px 10px 0 0'
-                  : 0,
+                  : i === arr.length - 1
+                    ? '0 0 10px 10px'
+                    : 0,
               minHeight: '52px',
               cursor: 'pointer',
             }}
@@ -651,25 +654,27 @@ export function SettingsTab() {
         </div>
 
         {/* Help & Support */}
-        <div
+        <a
+          href="mailto:hello@vantage-ai.app?subject=Vantage%20Support"
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '14px 16px',
             background: '#1a2235',
-            borderBottom: '1px solid #0f1829',
+            borderBottom: 'none',
             borderRadius: '0 0 10px 10px',
             minHeight: '52px',
             cursor: 'pointer',
+            textDecoration: 'none',
           }}
         >
           <div>
             <p style={{ fontSize: '15px', color: '#ffffff' }}>Help & Support</p>
-            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Docs · Contact</p>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>Email us · We reply within 24h</p>
           </div>
           <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
-        </div>
+        </a>
       </div>
 
       {/* Sign Out — standalone, no card styling */}
