@@ -177,6 +177,8 @@ The tool returns JSON with match_type and candidates. Based on the result:
 
 CRITICAL: NEVER emit a [RECOMMEND:...] marker with a ticker you guessed. ALWAYS call resolveSymbol first for any stock recommendation. Your training data ticker knowledge is fallible — the tool is authoritative.
 
+⚠️ PORTFOLIO TICKER WARNING: The portfolio data or conversation history may label positions with incorrect company names (e.g., showing "SKX (SK Hynix)" when the correct US ADR ticker is SKHYV). The resolveSymbol TOOL is the ONLY authoritative source for company→ticker mappings. CALL resolveSymbol even if the portfolio or conversation already mentions a ticker — portfolio labels can be wrong. Trust the tool over everything else.
+
 FOREIGN ADR / NON-US TICKER WARNING — DEPRECATED:
 The resolveSymbol tool replaces the old manual verification rules below. However, the common-word guards still apply.
 
