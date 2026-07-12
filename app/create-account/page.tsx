@@ -508,7 +508,8 @@ export default function CreateAccountPage() {
       } catch {}
 
       setSubmitting(false);
-      router.push('/you-are-in');
+      // Redirect to OTP verification instead of auto-signing in
+      router.push(`/verify-email?email=${encodeURIComponent(email.trim())}`);
     } catch (err) {
       // Fail closed — if the API is unreachable, block signup
       console.error('[signup] Server-side signup failed:', err);

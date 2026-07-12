@@ -48,7 +48,10 @@ const PUBLIC_ROUTES = [
   '/api/access-requests/resend', // public POST (resend invite for approved users)
   '/api/auth/signup', // public — server-side signup with hard invite gate
   '/api/auth/reset-password', // public — set new password via reset token
+  '/api/auth/send-otp', // public — generate/resend OTP for email verification
+  '/api/auth/verify-otp', // public — validate OTP code, mark email verified
   '/reset-password', // public — password reset page (token-based auth)
+  '/verify-email', // public — email verification page (OTP entry)
 ];
 
 export async function middleware(request: NextRequest) {

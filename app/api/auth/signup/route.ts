@@ -14,13 +14,13 @@
 //
 // POST body: { email, password, firstName, lastName, inviteToken, style, risk }
 // Responses:
-//   200 { success, userId, email }
+//   200 { success, userId, email, needsVerification: true }
 //   403 { error, code: 'NO_INVITE' | 'INVITE_EXPIRED' | 'INVITE_USED' }
 //   409 { error, code: 'EMAIL_EXISTS' }
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import { sendOtpEmail } from '@/lib/otp-email';
 
 // Service role client — bypasses RLS, full admin access
 function getServiceClient() {
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     const { data: newUser, error: createErr } = await supabase.auth.admin.createUser({
       email: normalizedEmail,
       password,
-      email_confirm: true, // Auto-confirm — invite IS the verification
+      email_confirm: true, // Auth system sees as confirmed; our users.email_verified tracks app-level OTP
       user_metadata: {
         first_name: firstName || '',
         last_name: lastName || '',
@@ -218,10 +218,30 @@ export async function POST(req: NextRequest) {
 
     console.log('[auth/signup] ✅ Created user', userId, 'with invite', inviteToken.slice(0, 12) + '...');
 
+    // ── 7. Generate OTP and send verification email ─────
+    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+    const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+    try {
+      await sb.from('users').update({
+        otp_code: otpCode,
+        otp_expires_at: otpExpiresAt,
+        wrong_otp_attempts: 0,
+      }).eq('id', userId);
+    } catch (otpErr: any) {
+      console.warn('[auth/signup] Failed to store OTP:', otpErr.message);
+    }
+
+    // Fire-and-forget email (don't block response on SMTP)
+    sendOtpEmail(normalizedEmail, otpCode).catch((e: any) =>
+      console.error('[auth/signup] OTP email failed:', e.message),
+    );
+
     return NextResponse.json({
       success: true,
       userId,
       email: normalizedEmail,
+      needsVerification: true,
     });
   } catch (err: any) {
     console.error('[auth/signup] Unexpected error:', err.message);
