@@ -16,8 +16,10 @@ function getServiceClient() {
   });
 }
 
-// Rate limit: max 1 send per 30s per email
+// Rate limit: max 1 send per 15s per email
 const cooldown = new Map<string, number>();
+
+const COOLDOWN_MS = 15_000; // 15s — short enough to not block locked-out resends
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     // Rate limit
     const last = cooldown.get(normalizedEmail);
-    if (last && Date.now() - last < 30_000) {
+    if (last && Date.now() - last < COOLDOWN_MS) {
       return NextResponse.json({ error: 'Please wait before requesting again' }, { status: 429 });
     }
     cooldown.set(normalizedEmail, Date.now());
