@@ -43,6 +43,7 @@ const PUBLIC_ROUTES = [
   '/api/symbols/check', // public — single-symbol validation
   '/api/symbols/all', // public — full symbol cache for client validation
   '/api/invites/validate', // public — invite token/email validation (pre-auth signup gate)
+  '/api/access-requests', // public POST (waitlist submit), GET is admin-gated internally
 ];
 
 export async function middleware(request: NextRequest) {
