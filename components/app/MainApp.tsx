@@ -210,6 +210,16 @@ function AppShell() {
     }
   }, [setTab]);
 
+  // ── Tab from query param (e.g. ?tab=settings from price-alerts back button) ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['portfolio', 'invest', 'ai', 'watchlist', 'settings'].includes(tabParam)) {
+      setTab(tabParam as TabId);
+      window.history.replaceState({}, '', '/');
+    }
+  }, [setTab]);
+
   // ── Render guards ─────────────────────────────────────
 
   if (!isDataLoaded || !effectiveUser) return null;

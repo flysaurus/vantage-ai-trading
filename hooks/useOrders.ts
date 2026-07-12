@@ -28,6 +28,7 @@ export function useOrders() {
 
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const demoOrdersInitialized = useRef(false);
 
   // Map broker OrderStatus to app OrderStatus
   const statusMap: Record<string, Order['status']> = {
@@ -160,12 +161,14 @@ export function useOrders() {
   );
 
   // Initial load — live data or demo fallback
+  // Only seed demo orders once; subsequent user changes (e.g. style switch)
+  // must NOT re-seed, which would overwrite the user's actual orders.
   useEffect(() => {
     mountedRef.current = true;
     if (isConnected) {
       refresh();
-    } else if (user) {
-      // Load demo orders based on investor style
+    } else if (user && !demoOrdersInitialized.current) {
+      // Load demo orders based on investor style (first-load seed only)
       const demoOrders = getDemoOrders(user.investorStyle || 'buffett');
       // Merge in any user-placed pending demo orders from localStorage
       const pendingOrders = getPendingDemoOrders();
@@ -173,6 +176,7 @@ export function useOrders() {
       setOrders(merged);
       setLoading(false);
       setError(null);
+      demoOrdersInitialized.current = true;
     }
     return () => {
       mountedRef.current = false;

@@ -9,7 +9,8 @@
 
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { StyleShareCard } from './StyleShareCard';
 import type { ShareStyleId } from './StyleShareCard';
 import type { Level } from '@/lib/theme/tokens';
@@ -41,6 +42,17 @@ export function ShareCardModal({
   const [capturing, setCapturing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // ── Lock body scroll when modal is open ───────────────
+  useEffect(() => {
+    if (open) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [open]);
 
   // ── Capture card as PNG blob ──────────────────────────
   const capturePNG = useCallback(async (): Promise<Blob | null> => {
@@ -146,7 +158,7 @@ export function ShareCardModal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -154,30 +166,30 @@ export function ShareCardModal({
         style={{
           position: 'fixed',
           inset: 0,
-          zIndex: 10000,
+          zIndex: 99998,
           background: 'rgba(0,0,0,0.6)',
           backdropFilter: 'blur(4px)',
           animation: 'vantageFadeIn 0.2s ease-out',
         }}
       />
 
-      {/* Sheet */}
+      {/* Sheet — sits ABOVE the bottom nav (64px) + safe-area, not at bottom:0 */}
       <div
         style={{
           position: 'fixed',
-          bottom: 0,
+          bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
           left: 0,
           right: 0,
-          zIndex: 10001,
+          zIndex: 99999,
           maxWidth: '480px',
           margin: '0 auto',
-          maxHeight: '90vh',
+          maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px) - 16px)',
           overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
           background: 'var(--bg-sheet)',
           borderTopLeftRadius: 'var(--radius-lg)',
           borderTopRightRadius: 'var(--radius-lg)',
-          padding: '12px 16px calc(24px + env(safe-area-inset-bottom, 0px))',
+          padding: '12px 16px calc(16px + env(safe-area-inset-bottom, 0px))',
           textAlign: 'center',
           animation: 'vantageSheetSlideUp 350ms cubic-bezier(0.22, 0.61, 0.36, 1)',
         }}
@@ -320,6 +332,7 @@ export function ShareCardModal({
           to { transform: translateY(0); }
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }

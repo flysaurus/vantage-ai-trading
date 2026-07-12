@@ -298,6 +298,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const demoStateRef = useRef(demoState);
   const basketPositionsRef = useRef<BasketPosition[]>([]);
   const brokerRef = useRef<BrokerEngine | null>(null);
+  const demoSeededRef = useRef(false);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
   // ── Clear stale demo portfolio cache on mount ──
@@ -538,9 +539,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   }, [refreshStateFromBroker, user?.id]);
 
   // ── Seed fallback: use broker.seedFromDemoData() ──
+  // Only fires ONCE when there's no persisted state and broker has no data.
+  // Must NOT re-fire on style changes (that would wipe user's actual orders).
   useEffect(() => {
-    if (isConnected || initialPersistedState) return;
+    if (isConnected || initialPersistedState || demoSeededRef.current) return;
     const style = (user?.investorStyle || 'buffett') as InvestorStyle;
+    demoSeededRef.current = true;
     (brokerRef.current as any)?.seedFromDemoData(style);
     // Sync after seeding
     setTimeout(async () => {
