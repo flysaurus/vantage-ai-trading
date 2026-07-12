@@ -4,6 +4,11 @@
 // Seeds style-specific starter positions ($15K-$25K invested).
 // Total account value: $100,000 (positions + cash).
 //
+// ⚠️ CRITICAL: This endpoint DESTROYS existing demo positions and
+// orders via seedDemoPortfolio → clearPortfolio. It filters to
+// is_demo=true only (never touches live broker data), but it WILL
+// reset an active demo. Only full-seed on first activation.
+//
 // Auth: cookies only (session refreshed by middleware).
 
 import { requireAuth } from '@/lib/auth/get-server-user';
@@ -30,6 +35,42 @@ export async function POST() {
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  // Check if demo is already active — if so, skip destructive re-seed
+  const { data: existing } = await (adminSupabase as any)
+    .from('users')
+    .select('demo_start_at, investor_style')
+    .eq('id', authUser.id)
+    .single();
+
+  const alreadyActive = existing?.demo_start_at != null;
+
+  if (alreadyActive) {
+    // Demo already running — only update timer if expired/extended,
+    // NEVER re-seed portfolio (would destroy user's positions/orders)
+    console.log('[demo/start] demo already active, skipping seed for', authUser.id);
+    const { error: updateError } = await (adminSupabase as any)
+      .from('users')
+      .update({
+        demo_expires_at: expiresAt.toISOString(),
+      })
+      .eq('id', authUser.id);
+
+    if (updateError) {
+      console.error('[demo/start] users update error:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update demo timer' },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      alreadyActive: true,
+      demo_start_at: existing.demo_start_at,
+      demo_expires_at: expiresAt.toISOString(),
+    });
+  }
 
   // 1. Set demo timer in users table
   const { error: updateError } = await (adminSupabase as any)

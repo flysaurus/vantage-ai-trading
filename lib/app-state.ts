@@ -247,35 +247,6 @@ export function useAppState(): AppStateResult {
         const nextState = resolveStateFromUsers(
           userData as Record<string, unknown> | null
         );
-        // ── Broker-selection auto-heal ────────────────
-        // If user has completed onboarding (name + style) but
-        // has no demo/connection started, auto-start demo.
-        // This handles edge case where pending_choice was missing
-        // from user_metadata during signup.
-        if (nextState === 'broker-selection' && userData.investor_style_onboarded) {
-          console.log('[app-state] auto-heal: broker-selection → starting demo');
-          try {
-            const res = await fetch('/api/demo/start', {
-              method: 'POST',
-              credentials: 'include',
-            });
-            if (res.ok) {
-              // Re-fetch the updated record via server API
-              const refreshRes = await fetch('/api/auth/me', { credentials: 'include' });
-              if (refreshRes.ok) {
-                const { user: updated } = await refreshRes.json();
-                if (updated) {
-                  setProfile(updated as UserProfile);
-                  setState(resolveStateFromUsers(updated as Record<string, unknown> | null));
-                  return;
-                }
-              }
-            }
-            console.warn('[app-state] demo auto-start failed, falling through to broker-selection');
-          } catch (err) {
-            console.warn('[app-state] demo auto-start error:', err);
-          }
-        }
 
         setState(nextState);
 

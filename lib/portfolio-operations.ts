@@ -43,14 +43,19 @@ function supabase() {
 // ─── clearPortfolio ──────────────────────────────────────────
 
 /**
- * Delete ALL portfolio data for a user: positions, orders, daily briefs,
- * weekly snapshots. Does NOT touch user profile settings.
+ * Delete ONLY demo portfolio data for a user: positions, orders,
+ * daily briefs, weekly snapshots.
+ *
+ * ⚠️ CRITICAL: FILTERED to `is_demo = true` — this must NEVER touch live
+ * broker data. Live positions and live orders are preserved.
+ *
+ * Does NOT touch user profile settings or demo_portfolio_state.
  */
 export async function clearPortfolio(userId: string): Promise<void> {
   const db = supabase();
   await Promise.all([
-    db.from('positions').delete().eq('user_id', userId),
-    db.from('orders').delete().eq('user_id', userId),
+    db.from('positions').delete().eq('user_id', userId).eq('is_demo', true),
+    db.from('orders').delete().eq('user_id', userId).eq('is_demo', true),
     db.from('daily_briefs').delete().eq('user_id', userId),
     db.from('weekly_snapshots').delete().eq('user_id', userId),
   ]);
@@ -145,9 +150,16 @@ export async function activateLivePortfolio(
 // ─── seedDemoPortfolio ───────────────────────────────────────
 
 /**
- * Clear existing portfolio then seed with a specific investor style's
+ * Clear existing demo portfolio then seed with a specific investor style's
  * demo data. All records get is_demo = true.
  * Updates user's demo_style + portfolio_mode in the users table.
+ *
+ * ⚠️ CRITICAL: Only clears is_demo=true data via clearPortfolio().
+ * Live broker positions/orders are NEVER touched by this function.
+ *
+ * ⚠️ This is a DESTRUCTIVE reset of demo state — only call on first
+ * activation or explicit user/admin reset. Never call from onboarding
+ * or style-change flows.
  */
 export async function seedDemoPortfolio(
   userId: string,
