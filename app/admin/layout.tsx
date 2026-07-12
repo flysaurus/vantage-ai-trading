@@ -58,6 +58,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }}>
           Gamification
         </a>
+        <a href="/admin/requests" style={{
+          color: '#58a6ff',
+          textDecoration: 'none',
+          fontSize: '0.875rem',
+          padding: '0.25rem 0.5rem',
+          borderRadius: 4,
+        }}>
+          Requests
+        </a>
         <a href="/admin/users" style={{
           color: '#58a6ff',
           textDecoration: 'none',

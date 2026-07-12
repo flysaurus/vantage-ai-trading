@@ -136,6 +136,8 @@ export default function CreateAccountPage() {
   // ── API state ────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [showWaitlist, setShowWaitlist] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState<string | null>(null);
 
   // ── Invite gate state ────────────────────────────────────
   const [inviteToken, setInviteToken] = useState<string | null>(null);
@@ -355,7 +357,19 @@ export default function CreateAccountPage() {
       const inviteRes = await fetch('/api/invites/validate?email=' + encodeURIComponent(email.trim()));
       const { valid: hasInvite } = await inviteRes.json();
       if (!hasInvite) {
-        setApiError('Vantage is currently invite-only. Request an invite from the admin or use an invite link to sign up.');
+        // Auto-capture: add to waitlist and show custom message
+        const cleanEmail = email.trim();
+        fetch('/api/access-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            name: `${firstName || ''} ${lastName || ''}`.trim() || null,
+          }),
+        }).catch(() => {}); // Fire-and-forget — best effort
+
+        setWaitlistEmail(cleanEmail);
+        setShowWaitlist(true);
         setSubmitting(false);
         return;
       }
@@ -505,6 +519,38 @@ export default function CreateAccountPage() {
       <XCircle size={16} color="#da3633" style={{ flexShrink: 0, marginTop: '1px' }} />
       <p style={{ fontSize: '14px', color: '#e6edf3', margin: 0, lineHeight: 1.5 }}>
         {inviteError} Vantage is invite-only — request an invite link from an admin.
+      </p>
+    </div>
+  ) : null;
+
+  const waitlistBanner = showWaitlist ? (
+    <div
+      style={{
+        background: 'rgba(6,182,212,0.08)',
+        border: '1px solid #06b6d4',
+        borderRadius: '16px',
+        padding: '28px 24px',
+        marginBottom: '16px',
+        color: '#cbd5e1',
+        fontSize: '14px',
+        lineHeight: 1.7,
+      }}
+    >
+      <p style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 20px 0', color: '#f8fafc' }}>
+        You&apos;re on the list.
+      </p>
+      <p style={{ margin: '0 0 16px 0' }}>
+        Vantage is invite-only. We&apos;ve added you to the queue — you&apos;ll hear from us when your spot opens.
+      </p>
+      <ul style={{ paddingLeft: '20px', margin: '0 0 16px 0' }}>
+        <li>An AI Advisor that trades with you — bounce ideas off it, run real strategies like dollar-cost averaging and mean reversion</li>
+        <li>Real execution underneath — market, limit, and stop orders that behave exactly like the real thing</li>
+        <li>$100k in demo capital to trade with real conviction and zero real risk</li>
+        <li>Sync your real brokerage — Fidelity, Schwab, and more — for live portfolio visibility</li>
+        <li>A scoring system that rewards being a good investor, not just an active one</li>
+      </ul>
+      <p style={{ margin: 0, color: '#94a3b8' }}>
+        We&apos;ll be in touch soon.
       </p>
     </div>
   ) : null;
@@ -728,6 +774,7 @@ export default function CreateAccountPage() {
 
       {/* ═══ ERROR BANNERS ═══ */}
       {inviteErrorBanner}
+      {waitlistBanner}
       {errorBanner}
 
       {/* ═══ GOOGLE SIGN-IN ═══ */}
