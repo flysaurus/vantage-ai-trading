@@ -68,8 +68,8 @@ export default function SetupMfaPage() {
       if (res.ok) {
         // Generate QR code data URL
         const qrUrl = await QRCode.toDataURL(data.otpauthUrl, {
-          width: 240,
-          margin: 2,
+          width: 200,
+          margin: 1,
           color: { dark: '#000000', light: '#ffffff' },
         });
         setQrDataUrl(qrUrl);
@@ -125,6 +125,39 @@ export default function SetupMfaPage() {
     router.push('/you-are-in');
   };
 
+  // ── Go back to method selection ─────────────────────
+  const handleBack = () => {
+    setStep('choose');
+    setQrDataUrl(null);
+    setManualKey(null);
+    setTotpCode('');
+    setError(null);
+  };
+
+  // ── Back button component ───────────────────────────
+  const backButton = step !== 'choose' && step !== 'done' ? (
+    <button
+      onClick={handleBack}
+      style={{
+        position: 'absolute',
+        top: '16px',
+        left: '16px',
+        background: 'rgba(255,255,255,0.06)',
+        border: '1px solid #2d3550',
+        borderRadius: '8px',
+        color: '#94a3b8',
+        padding: '8px 14px',
+        fontSize: '13px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+      }}
+    >
+      ← Back
+    </button>
+  ) : null;
+
   // ── Styles ───────────────────────────────────────────
   const pageStyle: React.CSSProperties = {
     minHeight: '100dvh',
@@ -134,7 +167,9 @@ export default function SetupMfaPage() {
     alignItems: 'center',
     color: '#e2e8f0',
     fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
-    padding: '60px 24px 40px',
+    padding: '40px 24px 40px',
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
   };
 
   const cardStyle: React.CSSProperties = {
@@ -266,6 +301,7 @@ export default function SetupMfaPage() {
   if (step === 'totp-scan') {
     return (
       <div style={pageStyle}>
+        {backButton}
         <QrCode size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
         <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
           Scan the QR code
@@ -279,10 +315,10 @@ export default function SetupMfaPage() {
           <div style={{
             background: '#ffffff',
             borderRadius: '14px',
-            padding: '20px',
-            marginBottom: '24px',
+            padding: '16px',
+            marginBottom: '20px',
           }}>
-            <img src={qrDataUrl} alt="TOTP QR Code" style={{ display: 'block', width: '240px', height: '240px' }} />
+            <img src={qrDataUrl} alt="TOTP QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
           </div>
         )}
 
@@ -320,7 +356,7 @@ export default function SetupMfaPage() {
           </button>
         </div>
 
-        <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', margin: '24px 0 8px' }}>
+        <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', margin: '16px 0 8px' }}>
           After scanning, enter the 6-digit code from your app to confirm:
         </p>
 
@@ -380,6 +416,7 @@ export default function SetupMfaPage() {
   if (step === 'backup-codes') {
     return (
       <div style={pageStyle}>
+        {backButton}
         <Shield size={48} color="#22c55e" style={{ marginBottom: '24px' }} />
         <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
           Save your backup codes
