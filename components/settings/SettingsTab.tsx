@@ -630,6 +630,38 @@ export function SettingsTab() {
       {sectionHeader('Tools')}
 
       <div style={{ margin: '0 16px' }}>
+        {[
+          { label: 'Price Alerts', sub: 'Set price trigger alerts', route: '/price-alerts' },
+          { label: 'Earnings Calendar', sub: 'Upcoming & past results', route: '/earnings-calendar' },
+        ].map((row, i, arr) => (
+          <div
+            key={row.label}
+            onClick={() => router.push(row.route)}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '14px 16px',
+              background: '#1a2235',
+              borderBottom: i < arr.length - 1 ? '1px solid #0f1829' : 'none',
+              borderRadius:
+                i === 0
+                  ? '10px 10px 0 0'
+                  : i === arr.length - 1
+                    ? '0 0 10px 10px'
+                    : 0,
+              minHeight: '52px',
+              cursor: 'pointer',
+            }}
+          >
+            <div>
+              <p style={{ fontSize: '15px', color: '#ffffff' }}>{row.label}</p>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>{row.sub}</p>
+            </div>
+            <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+          </div>
+        ))}
+
         <LearningToggle />
       </div>
 
