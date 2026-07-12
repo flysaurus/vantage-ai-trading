@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/admin-check';
 import { createServerClient } from '@/lib/supabase';
+import { sendInviteEmail } from '@/lib/notifications';
 import crypto from 'crypto';
 
 function generateToken(): string {
@@ -112,6 +113,10 @@ export async function POST(request: NextRequest) {
           errors.push(`${email}: ${insertErr.message}`);
         } else {
           created.push({ email, token });
+          // Fire-and-forget: send invite email in background
+          sendInviteEmail(email, token).catch((e) =>
+            console.error('[invites] Email send failed for', email, ':', e.message)
+          );
         }
       } catch (e: any) {
         errors.push(`${email}: ${e.message}`);
@@ -166,7 +171,17 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Invite revoked' });
     }
 
-    // Resend: generate a new token and extend expiry
+    // Resend: fetch the invite to get the email, generate a new token, extend expiry
+    const { data: invite } = await sb
+      .from('invites')
+      .select('email')
+      .eq('id', inviteId)
+      .single();
+
+    if (!invite || !invite.email) {
+      return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
+    }
+
     const newToken = generateToken();
     const newExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -183,6 +198,11 @@ export async function PUT(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Fire-and-forget: send the updated invite email in background
+    sendInviteEmail(invite.email, newToken).catch((e) =>
+      console.error('[invites] Resend email failed for', invite.email, ':', e.message)
+    );
 
     return NextResponse.json({
       success: true,
