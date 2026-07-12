@@ -359,7 +359,6 @@ export function SettingsTab() {
                 />
               </div>
             );
-          } catch { return null; }
         })()}
 
         {/* Upgrade CTA */}
