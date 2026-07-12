@@ -150,6 +150,13 @@ export default function LoginPage() {
       });
       const mfaData = await mfaRes.json();
 
+      if (mfaData.needs_setup) {
+        // User hasn't set up MFA yet — force setup
+        setSubmitting(false);
+        window.location.href = '/setup-mfa';
+        return;
+      }
+
       if (!mfaData.mfa_not_required) {
         // User has MFA enabled — redirect to verification
         setSubmitting(false);

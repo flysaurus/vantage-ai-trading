@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const user = userRows[0];
 
     if (!user.mfa_enabled) {
-      return NextResponse.json({ success: true, mfa_not_required: true });
+      return NextResponse.json({ success: true, needs_setup: true });
     }
 
     // Check lockout

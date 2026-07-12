@@ -40,6 +40,12 @@ export default function VerifyMfaPage() {
         });
         const data = await res.json();
 
+        if (data.needs_setup) {
+          // User hasn't set up MFA — redirect to setup
+          router.push('/setup-mfa');
+          return;
+        }
+
         if (data.mfa_not_required) {
           // MFA not enabled — shouldn't be on this page, redirect
           router.push('/you-are-in');
