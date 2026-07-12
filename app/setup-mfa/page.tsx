@@ -302,12 +302,12 @@ export default function SetupMfaPage() {
     return (
       <div style={pageStyle}>
         {backButton}
-        <Smartphone size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
+        <Smartphone size={36} color="#06b6d4" style={{ marginBottom: '16px' }} />
+        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', color: '#f8fafc', textAlign: 'center' }}>
           Set up your authenticator
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 20px', lineHeight: 1.6, maxWidth: '360px' }}>
-          Scan this QR code with Google Authenticator, Authy, or any authenticator app.
+        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5, maxWidth: '320px' }}>
+          Scan this QR code with your authenticator app.
         </p>
 
         {/* QR Code */}
@@ -315,8 +315,8 @@ export default function SetupMfaPage() {
           <div style={{
             background: '#ffffff',
             borderRadius: '14px',
-            padding: '14px',
-            marginBottom: '16px',
+            padding: '12px',
+            marginBottom: '12px',
           }}>
             <img src={qrDataUrl} alt="TOTP QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
           </div>
@@ -379,29 +379,29 @@ export default function SetupMfaPage() {
     return (
       <div style={pageStyle}>
         {backButton}
-        <Shield size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#f8fafc', textAlign: 'center' }}>
+        <Shield size={36} color="#06b6d4" style={{ marginBottom: '16px' }} />
+        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', color: '#f8fafc', textAlign: 'center' }}>
           Verify your authenticator
         </h1>
-        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 28px', lineHeight: 1.6, maxWidth: '340px' }}>
-          Open your authenticator app, find the Vantage entry, and enter the 6-digit code below.
+        <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5, maxWidth: '320px' }}>
+          Enter the 6-digit code from your authenticator app.
         </p>
 
-        {/* Code input — prominent */}
+        {/* Code card */}
         <div style={{
           background: '#1a1f35',
           border: '1px solid #2d3550',
           borderRadius: '14px',
-          padding: '24px',
+          padding: '20px',
           width: '100%',
           maxWidth: '340px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '14px',
+          gap: '12px',
         }}>
-          <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>
-            Authentication code
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            6-digit code
           </label>
           <input
             type="text"
@@ -412,9 +412,21 @@ export default function SetupMfaPage() {
               setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
               if (error) setError(null);
             }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && totpCode.length === 6) handleConfirmTotp(); }}
             placeholder="000000"
             style={{
-              ...codeInputStyle,
+              width: '100%',
+              background: '#0f1324',
+              border: '1px solid #2d3550',
+              borderRadius: '10px',
+              padding: '16px',
+              color: '#f8fafc',
+              fontSize: '28px',
+              fontFamily: "'SF Mono', 'Fira Code', monospace",
+              letterSpacing: '10px',
+              textAlign: 'center',
+              outline: 'none',
+              boxSizing: 'border-box',
               maxWidth: '220px',
             }}
             disabled={loading}
@@ -423,10 +435,17 @@ export default function SetupMfaPage() {
 
           <button
             style={{
-              ...buttonStyle,
+              width: '100%',
               maxWidth: '220px',
-              opacity: totpCode.length === 6 && !loading ? 1 : 0.5,
+              background: '#06b6d4',
+              color: '#0a0f1e',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '14px 24px',
+              fontSize: '16px',
+              fontWeight: 700,
               cursor: totpCode.length === 6 && !loading ? 'pointer' : 'not-allowed',
+              opacity: totpCode.length === 6 && !loading ? 1 : 0.5,
             }}
             disabled={totpCode.length !== 6 || loading}
             onClick={handleConfirmTotp}
@@ -436,17 +455,17 @@ export default function SetupMfaPage() {
                 <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
                 Verifying...
               </span>
-            ) : 'Verify MFA'}
+            ) : '✓ Verify &nbsp;Activate MFA'}
           </button>
         </div>
 
         {error && (
           <div style={{
-            marginTop: '16px',
+            marginTop: '12px',
             background: 'rgba(218,54,51,0.1)',
             border: '1px solid #da3633',
             borderRadius: '10px',
-            padding: '12px 16px',
+            padding: '10px 14px',
             color: '#e6edf3',
             fontSize: '13px',
             textAlign: 'center',
