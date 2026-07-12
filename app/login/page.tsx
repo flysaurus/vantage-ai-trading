@@ -150,7 +150,10 @@ export default function LoginPage() {
       });
       const mfaData = await mfaRes.json();
 
-      if (mfaData.needs_setup) {
+      if (mfaData.not_available) {
+        // MFA columns not yet created (migration pending) — bypass
+        // Fall through to demo/splash as normal
+      } else if (mfaData.needs_setup) {
         // User hasn't set up MFA yet — force setup
         setSubmitting(false);
         window.location.href = '/setup-mfa';

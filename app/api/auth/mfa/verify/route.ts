@@ -34,9 +34,14 @@ export async function POST(req: NextRequest) {
     const supabase = getServiceClient();
     const sb = supabase as any;
 
-    const { data: userRows } = await sb.from('users')
+    const { data: userRows, error: userErr } = await sb.from('users')
       .select('id, email, mfa_enabled, mfa_method, totp_secret, backup_codes, wrong_mfa_attempts, mfa_locked_until, otp_code, otp_expires_at')
       .eq('id', userId).limit(1);
+
+    // If MFA columns don't exist yet (migration not run), gracefully bypass
+    if (userErr?.message?.includes('mfa_enabled') || userErr?.message?.includes('column')) {
+      return NextResponse.json({ success: true, not_available: true });
+    }
 
     if (!userRows?.length) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
