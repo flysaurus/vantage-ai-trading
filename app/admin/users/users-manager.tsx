@@ -666,13 +666,13 @@ export function UsersManager() {
                           onClick={() => openModal(u, 'delete')}
                           style={{
                             ...styles.actionBtn,
-                            background: 'rgba(218,54,51,0.1)',
-                            border: '1px solid #da3633',
-                            color: '#f85149',
+                            background: u.deleted ? 'rgba(35,134,54,0.15)' : 'rgba(218,54,51,0.1)',
+                            border: u.deleted ? '1px solid #238636' : '1px solid #da3633',
+                            color: u.deleted ? '#3fb950' : '#f85149',
                           }}
-                          title="Delete user"
+                          title={u.deleted ? 'Restore user' : 'Delete user'}
                         >
-                          🗑️
+                          {u.deleted ? '♻️' : '🗑️'}
                         </button>
                         <button onClick={() => openModal(u, 'activity')} style={{ ...styles.actionBtn, color: '#8b949e' }} title="View activity">
                           📋
@@ -784,12 +784,12 @@ export function UsersManager() {
                   onClick={() => openModal(u, 'delete')}
                   style={{
                     ...styles.actionBtn,
-                    background: 'rgba(218,54,51,0.1)',
-                    border: '1px solid #da3633',
-                    color: '#f85149',
+                    background: u.deleted ? 'rgba(35,134,54,0.15)' : 'rgba(218,54,51,0.1)',
+                    border: u.deleted ? '1px solid #238636' : '1px solid #da3633',
+                    color: u.deleted ? '#3fb950' : '#f85149',
                   }}
                 >
-                  🗑️
+                  {u.deleted ? '♻️' : '🗑️'}
                 </button>
                 <button onClick={() => openModal(u, 'activity')} style={{ ...styles.actionBtn, color: '#8b949e' }}>📋</button>
               </div>
@@ -807,7 +807,7 @@ export function UsersManager() {
               {modalType === 'admin' && (modalUser.is_admin ? 'Revoke Admin Access' : 'Grant Admin Access')}
               {modalType === 'suspend' && (modalUser.suspended ? 'Unsuspend User' : 'Suspend User')}
               {modalType === 'reset_demo' && 'Reset Demo Trial'}
-              {modalType === 'delete' && 'Delete User'}
+              {modalType === 'delete' && (modalUser.deleted ? 'Restore User' : 'Delete User')}
               {modalType === 'reset_password' && 'Reset Password'}
             </h2>
             <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
@@ -974,49 +974,84 @@ export function UsersManager() {
             {/* Delete User: confirmation dialog — HIGH STAKES */}
             {modalType === 'delete' && (
               <>
-                <div
-                  style={{
-                    background: 'rgba(218,54,51,0.1)',
-                    border: '1px solid #da3633',
-                    borderRadius: '8px',
-                    padding: '12px 16px',
-                    marginBottom: '1rem',
-                  }}
-                >
-                  <p style={{ color: '#f85149', fontSize: '0.875rem', fontWeight: 600, marginBottom: '4px' }}>
-                    ⚠️ High-Stakes Action
-                  </p>
-                  <p style={{ color: '#e6edf3', fontSize: '0.8125rem', margin: 0 }}>
-                    This will <strong>permanently delete {modalUser.email || modalUser.display_name}&apos;s account</strong>. All data is preserved for audit.
-                    The user will be immediately signed out and blocked from logging in.
-                  </p>
-                </div>
-                {modalUser.deleted && (
-                  <p style={{ color: '#f85149', fontSize: '0.8125rem', marginBottom: '1rem' }}>
-                    This user is already marked as deleted.
-                  </p>
+                {modalUser.deleted ? (
+                  /* ── RESTORE ── */
+                  <>
+                    <div
+                      style={{
+                        background: 'rgba(35,134,54,0.1)',
+                        border: '1px solid #238636',
+                        borderRadius: '8px',
+                        padding: '12px 16px',
+                        marginBottom: '1rem',
+                      }}
+                    >
+                      <p style={{ color: '#3fb950', fontSize: '0.875rem', fontWeight: 600, marginBottom: '4px' }}>
+                        ♻️ Restore Account
+                      </p>
+                      <p style={{ color: '#e6edf3', fontSize: '0.8125rem', margin: 0 }}>
+                        This will reactivate <strong>{modalUser.email || modalUser.display_name}</strong>&apos;s account.
+                        They will be able to log in again. All their data is intact.
+                      </p>
+                    </div>
+                    <div style={styles.modalActions}>
+                      <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                      <button
+                        onClick={() => handleAction('restore_user', { reason: reason.trim() || undefined })}
+                        style={{
+                          ...styles.confirmBtn,
+                          background: '#238636',
+                          opacity: saving ? 0.6 : 1,
+                        }}
+                        disabled={saving}
+                      >
+                        {saving ? 'Restoring...' : 'Restore User'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* ── DELETE ── */
+                  <>
+                    <div
+                      style={{
+                        background: 'rgba(218,54,51,0.1)',
+                        border: '1px solid #da3633',
+                        borderRadius: '8px',
+                        padding: '12px 16px',
+                        marginBottom: '1rem',
+                      }}
+                    >
+                      <p style={{ color: '#f85149', fontSize: '0.875rem', fontWeight: 600, marginBottom: '4px' }}>
+                        ⚠️ High-Stakes Action
+                      </p>
+                      <p style={{ color: '#e6edf3', fontSize: '0.8125rem', margin: 0 }}>
+                        This will <strong>permanently delete {modalUser.email || modalUser.display_name}&apos;s account</strong>. All data is preserved for audit.
+                        The user will be immediately signed out and blocked from logging in.
+                      </p>
+                    </div>
+                    <textarea
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      placeholder="Reason for deletion (recorded in audit log)"
+                      style={styles.textareaInput}
+                      disabled={saving}
+                    />
+                    <div style={styles.modalActions}>
+                      <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                      <button
+                        onClick={() => handleAction('delete_user', { reason: reason.trim() || undefined })}
+                        style={{
+                          ...styles.confirmBtn,
+                          background: '#da3633',
+                          opacity: saving ? 0.6 : 1,
+                        }}
+                        disabled={saving}
+                      >
+                        {saving ? 'Deleting...' : 'Delete User'}
+                      </button>
+                    </div>
+                  </>
                 )}
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="Reason for deletion (recorded in audit log)"
-                  style={styles.textareaInput}
-                  disabled={saving || modalUser.deleted}
-                />
-                <div style={styles.modalActions}>
-                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
-                  <button
-                    onClick={() => handleAction('delete_user', { reason: reason.trim() || undefined })}
-                    style={{
-                      ...styles.confirmBtn,
-                      background: '#da3633',
-                      opacity: saving || modalUser.deleted ? 0.6 : 1,
-                    }}
-                    disabled={saving || modalUser.deleted}
-                  >
-                    {saving ? 'Deleting...' : modalUser.deleted ? 'Already Deleted' : 'Delete User'}
-                  </button>
-                </div>
               </>
             )}
 

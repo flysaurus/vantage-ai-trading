@@ -283,6 +283,8 @@ export async function PUT(request: NextRequest) {
         return handleResetDemo(sb, userId, adminEmail);
       case 'delete_user':
         return handleSoftDelete(sb, userId, reason, adminEmail);
+      case 'restore_user':
+        return handleRestoreUser(sb, userId, reason, adminEmail);
       case 'reset_password':
         return handleResetPassword(sb, userId, adminEmail);
       default:
@@ -510,6 +512,53 @@ async function handleSoftDelete(
     message: 'User soft-deleted. All data preserved for audit.',
     userId,
     deleted: true,
+  });
+}
+
+// ── Restore (Undelete) User ──────────────────────────────
+
+async function handleRestoreUser(
+  sb: any,
+  userId: string,
+  reason: string | undefined,
+  adminEmail: string,
+) {
+  const { user, error: userErr } = await fetchUser(sb, userId);
+  if (userErr) {
+    return NextResponse.json(
+      { error: userErr.error || 'User not found' },
+      { status: userErr.status || 404 },
+    );
+  }
+
+  if (!(user as any).deleted) {
+    return NextResponse.json({
+      success: true,
+      message: 'User is not deleted — nothing to restore',
+      userId,
+    });
+  }
+
+  const oldValue = { deleted: true, suspended: (user as any).suspended };
+  const newValue = { deleted: false, suspended: false, restored_at: new Date().toISOString() };
+
+  const { error: updateErr } = await sb
+    .from('users')
+    .update({ deleted: false, suspended: false, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+
+  if (updateErr) {
+    console.error('[admin/users] Restore failed:', updateErr.message);
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  await writeAudit(sb, adminEmail, userId, 'restore_user', oldValue, newValue, reason);
+
+  return NextResponse.json({
+    success: true,
+    message: 'User restored. They can now log in again.',
+    userId,
+    deleted: false,
   });
 }
 
