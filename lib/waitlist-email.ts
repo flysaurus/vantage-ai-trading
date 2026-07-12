@@ -14,7 +14,7 @@ function buildWaitlistHtml(email: string): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <div style="background: linear-gradient(135deg, #06b6d4, #3b82f6); padding: 32px 24px; border-radius: 12px 12px 0 0; text-align: center;">
-        <h1 style="color: #fff; font-size: 28px; margin: 0 0 8px 0;">🎯 Vantage</h1>
+        <h1 style="color: #fff; font-size: 28px; margin: 0 0 8px 0;">Vantage</h1>
         <p style="color: rgba(255,255,255,0.9); font-size: 16px; margin: 0;">Your AI investing co-pilot</p>
       </div>
       <div style="background: #1e293b; border-radius: 0 0 12px 12px; padding: 24px; color: #cbd5e1;">
@@ -31,10 +31,10 @@ function buildWaitlistHtml(email: string): string {
           <li>Sync your real brokerage — Fidelity, Schwab, and more — for live portfolio visibility</li>
           <li>A scoring system that rewards being a good investor, not just an active one</li>
         </ul>
-        <p style="font-size: 14px; margin: 0; color: #94a3b8;">
+        <p style="font-size: 14px; margin: 0; color: #e2e8f0;">
           We'll reach out as soon as your spot is ready.
         </p>
-        <p style="font-size: 12px; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">
+        <p style="font-size: 12px; color: #e2e8f0; margin: 24px 0 0 0; text-align: center;">
           This email was sent to <strong>${email}</strong>. If you didn't request this, you can ignore it.
         </p>
       </div>

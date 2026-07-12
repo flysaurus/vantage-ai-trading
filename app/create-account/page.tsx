@@ -147,6 +147,7 @@ export default function CreateAccountPage() {
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<'valid' | 'used' | 'expired' | 'invalid' | null>(null);
   const [inviteChecking, setInviteChecking] = useState(false);
 
   // ── Computed ─────────────────────────────────────────────
@@ -209,9 +210,19 @@ export default function CreateAccountPage() {
           setInviteEmail(data.email);
           setEmail(data.email); // Pre-fill email from invite
           setInviteError(null);
+          setInviteStatus('valid');
         } else {
           setInviteEmail(null);
-          setInviteError('This invite link is invalid, expired, or has already been used.');
+          if (data.reason === 'already_used') {
+            setInviteError('This invite has already been used.');
+            setInviteStatus('used');
+          } else if (data.reason === 'expired') {
+            setInviteError('This invite has expired. Request access again or contact support.');
+            setInviteStatus('expired');
+          } else {
+            setInviteError("We couldn't recognize this invite. Make sure you're using the link from your email.");
+            setInviteStatus('invalid');
+          }
         }
       })
       .catch(() => {
@@ -603,8 +614,15 @@ export default function CreateAccountPage() {
   const inviteErrorBanner = inviteError ? (
     <div
       style={{
-        background: 'rgba(218,54,51,0.1)',
-        border: '1px solid #da3633',
+        background:
+          inviteStatus === 'expired'
+            ? 'rgba(210,153,34,0.1)'
+            : inviteStatus === 'used'
+            ? 'rgba(139,148,158,0.1)'
+            : 'rgba(218,54,51,0.1)',
+        border: `1px solid ${
+          inviteStatus === 'expired' ? '#d29922' : inviteStatus === 'used' ? '#8b949e' : '#da3633'
+        }`,
         borderRadius: '12px',
         padding: '12px 16px',
         display: 'flex',
@@ -612,7 +630,13 @@ export default function CreateAccountPage() {
         marginBottom: '16px',
       }}
     >
-      <XCircle size={16} color="#da3633" style={{ flexShrink: 0, marginTop: '1px' }} />
+      <XCircle
+        size={16}
+        color={
+          inviteStatus === 'expired' ? '#d29922' : inviteStatus === 'used' ? '#8b949e' : '#da3633'
+        }
+        style={{ flexShrink: 0, marginTop: '1px' }}
+      />
       <p style={{ fontSize: '14px', color: '#e6edf3', margin: 0, lineHeight: 1.5 }}>
         {inviteError}
       </p>
@@ -623,7 +647,7 @@ export default function CreateAccountPage() {
   const handleResendInvite = useCallback(async () => {
     setResendingInvite(true);
     try {
-      const res = await fetch('/api/admin/invites', {
+      const res = await fetch('/api/access-requests/resend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: waitlistEmail }),

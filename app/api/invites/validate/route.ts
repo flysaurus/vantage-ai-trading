@@ -17,21 +17,45 @@ export async function GET(request: NextRequest) {
 
     // Token-based validation (more secure — direct invite link)
     if (token) {
-      const { data: result, error } = await sb.rpc('validate_invite_token', {
-        p_token: token,
-      });
+      // Query the invite in ANY status to differentiate reasons
+      const { data: inviteRows, error: queryErr } = await sb
+        .from('invites')
+        .select('id, email, status, expires_at, accepted_at')
+        .eq('invite_token', token)
+        .limit(1);
 
-      if (error) {
-        // RPC might not exist yet — fail open to not break signups
-        console.error('[invites/validate] RPC error:', error.message);
-        return NextResponse.json({ valid: false, error: 'Invite validation unavailable' }, { status: 500 });
+      if (queryErr) {
+        if (queryErr.message?.includes('does not exist')) {
+          return NextResponse.json({ valid: false, reason: 'invalid' });
+        }
+        console.error('[invites/validate] Query error:', queryErr.message);
+        return NextResponse.json({ valid: false, reason: 'invalid', error: 'Validation unavailable' }, { status: 500 });
       }
 
-      const row = result?.[0];
-      if (row && row.is_valid) {
-        return NextResponse.json({ valid: true, email: row.invite_email });
+      const invite = inviteRows?.[0];
+
+      // Token not found at all
+      if (!invite) {
+        return NextResponse.json({ valid: false, reason: 'invalid' });
       }
-      return NextResponse.json({ valid: false });
+
+      // Token already used
+      if (invite.status === 'accepted' || invite.accepted_at) {
+        return NextResponse.json({ valid: false, reason: 'already_used' });
+      }
+
+      // Token expired
+      if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+        return NextResponse.json({ valid: false, reason: 'expired' });
+      }
+
+      // Token is valid and pending
+      if (invite.status === 'pending') {
+        return NextResponse.json({ valid: true, email: invite.email });
+      }
+
+      // Any other status (e.g. revoked)
+      return NextResponse.json({ valid: false, reason: 'invalid' });
     }
 
     // Email-based check (during signup form)

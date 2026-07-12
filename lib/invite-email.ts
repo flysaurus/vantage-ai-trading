@@ -7,7 +7,7 @@ import { sendEmail } from './email';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
 
 function buildInviteSubject(): string {
-  return '🎯 You\'re invited to Vantage';
+  return 'You\'re invited to Vantage';
 }
 
 function buildInviteHtml(inviteToken: string, invitedEmail: string): string {
@@ -16,7 +16,7 @@ function buildInviteHtml(inviteToken: string, invitedEmail: string): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <div style="background: linear-gradient(135deg, #06b6d4, #3b82f6); padding: 32px 24px; border-radius: 12px 12px 0 0; text-align: center;">
-        <h1 style="color: #fff; font-size: 28px; margin: 0 0 8px 0;">🎯 Vantage</h1>
+        <h1 style="color: #fff; font-size: 28px; margin: 0 0 8px 0;">Vantage</h1>
         <p style="color: rgba(255,255,255,0.9); font-size: 16px; margin: 0;">Your AI investing co-pilot</p>
       </div>
       <div style="background: #1e293b; border-radius: 0 0 12px 12px; padding: 24px; color: #cbd5e1;">
@@ -25,10 +25,10 @@ function buildInviteHtml(inviteToken: string, invitedEmail: string): string {
         <div style="text-align: center; margin: 24px 0;">
           <a href="${signupUrl}" style="display: inline-block; background: #06b6d4; color: #0a0f1e; padding: 14px 36px; border-radius: 8px; font-weight: 700; font-size: 16px; text-decoration: none;">Accept Invite →</a>
         </div>
-        <p style="font-size: 13px; color: #94a3b8; margin: 24px 0 8px 0; text-align: center;">
+        <p style="font-size: 13px; color: #e2e8f0; margin: 24px 0 8px 0; text-align: center;">
           This invite was sent to <strong>${invitedEmail}</strong>.
         </p>
-        <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+        <p style="font-size: 12px; color: #e2e8f0; margin: 0; text-align: center;">
           Link expires in 30 days. If you didn't expect this, you can ignore it.
         </p>
       </div>

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       .from('access_requests')
       .select('id, email, status, reviewed_at')
       .eq('email', email)
-      .order('created_at', { ascending: false })
+      .order('requested_at', { ascending: false })
       .limit(1);
 
     // Table might not exist yet
