@@ -99,6 +99,26 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       if (filtered.length >= 12) break;
     }
 
+    // ─── 2b. Fallback: description-based search ────────────
+    // Finnhub /search is symbol-prefix driven — it misses ADRs and ETFs
+    // when searching by company name (e.g. "SK Hynix" → no results).
+    // Fall back to the cached symbol→name map for substring matches.
+    if (filtered.length === 0 && q.length >= 2) {
+      const { searchSymbolsByName } = await import('@/lib/symbol-validator');
+      const nameMatches = await searchSymbolsByName(q, 10);
+      for (const m of nameMatches) {
+        if (seen.has(m.symbol)) continue;
+        seen.add(m.symbol);
+        filtered.push({
+          symbol: m.symbol,
+          name: m.name,
+          exchange: '',
+          type: '',
+        });
+        if (filtered.length >= 10) break;
+      }
+    }
+
     if (filtered.length === 0) {
       return NextResponse.json({ results: [] });
     }

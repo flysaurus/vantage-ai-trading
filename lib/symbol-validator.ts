@@ -21,6 +21,7 @@ interface FinnhubSymbol {
 }
 
 let _symbolCache: Set<string> | null = null;
+let _symbolNameMap: Map<string, string> | null = null; // symbol → description
 let _lastFetchTime = 0;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FETCH_TIMEOUT_MS = 15000; // Finnhub symbol list is large
@@ -49,6 +50,7 @@ export async function loadSymbolCache(): Promise<Set<string>> {
     // (OTC ensures ADR tickers like SKHYV are included in the client-side validSymbols)
     const exchangeCodes = ['US', 'OTC'];
     const symbols = new Set<string>();
+    const symbolNameMap = new Map<string, string>(); // symbol → description
     const allowedTypes = new Set(['common stock', 'etf', 'adr', 'reit', 'unit', 'closed-end fund']);
 
     for (const exchange of exchangeCodes) {
@@ -80,6 +82,10 @@ export async function loadSymbolCache(): Promise<Set<string>> {
           const type = (item.type || '').toLowerCase();
           if (sym && allowedTypes.has(type) && !symbols.has(sym)) {
             symbols.add(sym);
+            // Store description for company name search fallback
+            if (item.description) {
+              symbolNameMap.set(sym, item.description);
+            }
             added++;
           }
         }
@@ -94,8 +100,9 @@ export async function loadSymbolCache(): Promise<Set<string>> {
     }
 
     _symbolCache = symbols;
+    _symbolNameMap = symbolNameMap;
     _lastFetchTime = now;
-    console.log(`[symbol-validator] Cached ${symbols.size.toLocaleString()} valid US symbols (24h TTL)`);
+    console.log(`[symbol-validator] Cached ${symbols.size.toLocaleString()} valid US symbols (24h TTL) with ${symbolNameMap.size.toLocaleString()} name mappings`);
     return symbols;
   } catch (err: any) {
     console.error('[symbol-validator] Failed to load symbol cache:', err.message || err);
@@ -127,4 +134,58 @@ export async function getCachedSymbols(): Promise<string[]> {
 export async function refreshSymbolCache(): Promise<Set<string>> {
   _lastFetchTime = 0; // Force re-fetch
   return loadSymbolCache();
+}
+
+/**
+ * Search the cached symbol list by company name / description substring.
+ * Used as fallback when Finnhub /search returns empty for company names
+ * (e.g. "SK Hynix" → SKHYV, "Taiwan Semiconductor" → TSM).
+ *
+ * Returns up to `limit` results, scored by substring match quality.
+ */
+export async function searchSymbolsByName(
+  query: string,
+  limit: number = 10,
+): Promise<Array<{ symbol: string; name: string; score: number }>> {
+  await loadSymbolCache(); // ensure cache is loaded
+  if (!_symbolNameMap || _symbolNameMap.size === 0) return [];
+
+  const q = query.toLowerCase().trim();
+  const words = q.split(/\s+/).filter(w => w.length >= 2);
+  if (words.length === 0) return [];
+
+  const results: Array<{ symbol: string; name: string; score: number }> = [];
+
+  for (const [symbol, name] of _symbolNameMap) {
+    const nameLower = name.toLowerCase();
+    let score = 0;
+
+    // Exact match on full query
+    if (nameLower === q) {
+      score = 100;
+    } else if (nameLower.startsWith(q)) {
+      score = 80;
+    } else if (nameLower.includes(q)) {
+      score = 60;
+    } else {
+      // Match individual words — each matched word adds points
+      let matchedWords = 0;
+      for (const word of words) {
+        if (nameLower.includes(word)) matchedWords++;
+      }
+      if (matchedWords === 0) continue;
+      score = matchedWords * 15; // 15-45 points depending on word match count
+    }
+
+    // Bonus: symbol starts with query prefix (e.g. query "TSM" matches symbol "TSM")
+    if (symbol.toLowerCase().startsWith(q)) {
+      score += 10;
+    }
+
+    results.push({ symbol, name, score });
+  }
+
+  // Sort by score descending, take top results
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit);
 }
