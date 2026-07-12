@@ -13,7 +13,7 @@ export default function BrokerSetupPage() {
 
   return (
     <ConnectionOptionsPage
-      onStateChanged={() => router.push('/?tab=settings')
+      onStateChanged={() => router.push('/?tab=settings')}
     />
   );
 }

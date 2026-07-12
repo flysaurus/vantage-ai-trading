@@ -103,7 +103,7 @@ export default function InvestorStylePage() {
       {/* Header */}
       <div style={{ marginBottom: 14 }}>
         <button
-          onClick={() => router.push('/?tab=settings')
+          onClick={() => router.push('/?tab=settings')}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             background: 'none', border: 'none',
