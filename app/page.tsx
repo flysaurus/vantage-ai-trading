@@ -23,10 +23,19 @@ export default function Page() {
   // Guard against repeated redirects — only run once per mount
   const redirectedToSetup = useRef(false);
 
-  // Dismiss state for demo-counter (transient, not persisted)
-  const [showDemoCounter, setShowDemoCounter] = useState(true);
+  // Dismiss state for demo-counter — persists across remounts within the same
+  // browser session. Without this, navigating back from any sub-page (e.g.
+  // /price-alerts → /) causes the page to remount and re-show the counter,
+  // intercepting query-param navigation like ?tab=settings.
+  const [showDemoCounter, setShowDemoCounter] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return sessionStorage.getItem('vantage_demo_counter_dismissed') !== 'true';
+  });
   useEffect(() => {
-    if (state === 'demo-counter') setShowDemoCounter(true);
+    if (state === 'demo-counter') {
+      const dismissed = sessionStorage.getItem('vantage_demo_counter_dismissed');
+      setShowDemoCounter(dismissed !== 'true');
+    }
   }, [state]);
 
   // Manual override: show connection-options page (from demo counter button)
@@ -150,7 +159,7 @@ export default function Page() {
         {debugBanner}
         <DemoCounterPage
           profile={profile}
-          onEnter={() => setShowDemoCounter(false)}
+          onEnter={() => { sessionStorage.setItem('vantage_demo_counter_dismissed', 'true'); setShowDemoCounter(false); }}
           onConnectBroker={() => setConnectionView(true)}
         />
       </>
