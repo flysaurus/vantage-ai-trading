@@ -33,35 +33,32 @@ export default function VerifyMfaPage() {
   useEffect(() => {
     const checkMfa = async () => {
       try {
-        const res = await fetch('/api/auth/mfa/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: '' }),
-        });
-        const data = await res.json();
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!res.ok) {
+          router.push('/login');
+          return;
+        }
+        const { user } = await res.json();
 
-        if (data.needs_setup) {
-          // User hasn't set up MFA — redirect to setup
+        if (user.mfa_enabled === false || user.mfa_enabled === undefined) {
+          // Not set up yet or columns missing — redirect to setup
           router.push('/setup-mfa');
           return;
         }
 
-        if (data.mfa_not_required) {
-          // MFA not enabled — shouldn't be on this page, redirect
-          router.push('/you-are-in');
+        if (!user.mfa_method) {
+          setError('MFA method not configured. Please set up 2FA again.');
           return;
         }
 
-        // User has MFA — determine method
-        // Need to call status endpoint
-        const statusRes = await fetch('/api/auth/me', { credentials: 'include' });
-        if (statusRes.ok) {
-          // We can't get mfa_method from /me since it may not be exposed
-          // For email users, auto-send the OTP
-        }
-
-        // Default: show code entry (we'll determine method from the verify response)
+        // Got the real method from the DB
+        setMfaMethod(user.mfa_method);
         setStep('code-entry');
+
+        // Auto-send email OTP if email method
+        if (user.mfa_method === 'email') {
+          handleSendEmailOtp();
+        }
       } catch {
         setError('Network error. Please refresh.');
       }
@@ -69,43 +66,6 @@ export default function VerifyMfaPage() {
     checkMfa();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ── Determine method from error responses ─────────────
-  // (We don't expose method to unauthenticated MFA state)
-  useEffect(() => {
-    // Try to detect method from the response
-    // If email OTP was already sent, there'll be a code in the DB
-    const detectMethod = async () => {
-      try {
-        const res = await fetch('/api/auth/mfa/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: '000000' }),
-        });
-        const data = await res.json();
-
-        if (data.code === 'NO_OTP') {
-          // Email method: auto-send
-          setMfaMethod('email');
-          handleSendEmailOtp();
-        } else if (data.code === 'WRONG_CODE' || data.code === 'LOCKED_OUT' || data.code === 'EXPIRED') {
-          setMfaMethod('email');
-        } else if (data.code === 'INVALID_FORMAT') {
-          // Could be either — default to TOTP
-          setMfaMethod('totp');
-        } else {
-          // Default to TOTP
-          setMfaMethod('totp');
-        }
-      } catch {
-        setMfaMethod('totp'); // fallback
-      }
-    };
-
-    if (step === 'code-entry' && !mfaMethod) {
-      detectMethod();
-    }
-  }, [step, mfaMethod]);
 
   // ── Send email OTP ────────────────────────────────────
   const handleSendEmailOtp = useCallback(async () => {
