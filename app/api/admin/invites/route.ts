@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/admin-check';
 import { createServerClient } from '@/lib/supabase';
-import { sendInviteEmail } from '@/lib/notifications';
+import { sendInviteEmail } from '@/lib/invite-email';
 import crypto from 'crypto';
 
 function generateToken(): string {
