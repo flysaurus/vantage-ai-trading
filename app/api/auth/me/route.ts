@@ -54,6 +54,10 @@ export async function GET() {
         userData?.investor_style_onboarded ?? false,
       connection_initiated_at:
         userData?.connection_initiated_at ?? null,
+
+      // MFA status
+      mfa_enabled: userData?.mfa_enabled ?? false,
+      mfa_method: userData?.mfa_method ?? null,
     },
   });
 }

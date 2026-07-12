@@ -141,34 +141,32 @@ export default function LoginPage() {
       return;
     }
 
-    // ── Check MFA requirement ──────────────────────────
+    // ── Check MFA requirement via /api/auth/me ────────
+    // Uses same cookie auth as the rest of the app (proven path)
+    // rather than the separate /api/auth/mfa/verify endpoint
     try {
-      const mfaRes = await fetch('/api/auth/mfa/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: '' }),
-      });
-      const mfaData = await mfaRes.json();
+      const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+      if (meRes.ok) {
+        const { user } = await meRes.json();
 
-      if (mfaData.not_available) {
-        // MFA columns not yet created (migration pending) — bypass
-        // Fall through to demo/splash as normal
-      } else if (mfaData.needs_setup) {
-        // User hasn't set up MFA yet — force setup
-        setSubmitting(false);
-        window.location.href = '/setup-mfa';
-        return;
-      }
+        if (user.mfa_enabled === true) {
+          // User has MFA enabled — redirect to verification
+          setSubmitting(false);
+          window.sessionStorage.setItem('vantage_mfa_pending', 'true');
+          window.location.href = '/verify-mfa';
+          return;
+        }
 
-      if (!mfaData.mfa_not_required) {
-        // User has MFA enabled — redirect to verification
-        setSubmitting(false);
-        window.sessionStorage.setItem('vantage_mfa_pending', 'true');
-        window.location.href = '/verify-mfa';
-        return;
+        if (user.mfa_enabled === false) {
+          // Not set up yet — force setup
+          setSubmitting(false);
+          window.location.href = '/setup-mfa';
+          return;
+        }
+        // If mfa_enabled is absent (undefined), columns don't exist — bypass
       }
     } catch {
-      // If check fails, proceed (don't block login on network error)
+      // If check fails (network error), proceed normally
     }
 
     // Fetch user profile to determine splash mode
