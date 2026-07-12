@@ -84,6 +84,72 @@ function formatNumber(n: number | null): string {
   return n.toLocaleString();
 }
 
+// ─── Activity Modal Helpers ────────────────────────────────────
+
+const sectionStyle: React.CSSProperties = {
+  background: '#161b22',
+  border: '1px solid #21262d',
+  borderRadius: '8px',
+  padding: '12px 16px',
+  marginBottom: '0.75rem',
+};
+
+const sectionTitle: React.CSSProperties = {
+  color: '#8b949e',
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.05em',
+  marginBottom: '10px',
+  paddingBottom: '6px',
+  borderBottom: '1px solid #21262d',
+};
+
+const grid2Col: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '8px 16px',
+};
+
+const grid3Col: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr 1fr',
+  gap: '8px 16px',
+};
+
+function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div>
+      <div style={{ color: '#8b949e', fontSize: '0.625rem', marginBottom: '2px' }}>{label}</div>
+      <div style={{
+        color: highlight ? '#e6edf3' : '#c9d1d9',
+        fontSize: '0.8125rem',
+        fontWeight: highlight ? 600 : 400,
+      }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function auditBadge(action: string): React.CSSProperties {
+  return {
+    display: 'inline-block',
+    padding: '0.0625rem 0.375rem',
+    borderRadius: 3,
+    fontSize: '0.625rem',
+    fontWeight: 600,
+    background: action.includes('suspend') || action.includes('delete') ? 'rgba(218,54,51,0.15)'
+      : action.includes('admin') ? 'rgba(234,179,8,0.15)'
+      : action.includes('restore') ? 'rgba(35,134,54,0.15)'
+      : 'rgba(88,166,255,0.15)',
+    color: action.includes('suspend') || action.includes('delete') ? '#f85149'
+      : action.includes('admin') ? '#facc15'
+      : action.includes('restore') ? '#3fb950'
+      : '#58a6ff',
+  };
+}
+
 // ─── Styles ─────────────────────────────────────────────────────
 
 const styles = {
@@ -1087,73 +1153,108 @@ export function UsersManager() {
       {/* ── Activity Modal ── */}
       {modalUser && modalType === 'activity' && (
         <div style={styles.modalOverlay} onClick={closeModal}>
-          <div style={{ ...styles.modal, maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={styles.modalTitle}>📋 Activity Log</h2>
-            <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              User:{' '}
-              <strong style={{ color: '#e6edf3' }}>
-                {modalUser.display_name || modalUser.email}
-              </strong>
+          <div style={{ ...styles.modal, maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>
+              {modalUser.display_name || modalUser.email?.split('@')[0] || 'User'} Activity
+            </h2>
+            <p style={{ color: '#8b949e', fontSize: '0.8125rem', marginBottom: '1rem' }}>
+              {modalUser.email}
             </p>
-            {activityLoading ? (
-              <p style={{ color: '#8b949e', textAlign: 'center', padding: '2rem' }}>Loading...</p>
-            ) : activityEntries.length === 0 ? (
-              <p style={{ color: '#484f58', textAlign: 'center', padding: '1rem', fontSize: '0.875rem' }}>
-                No activity recorded yet.
-              </p>
-            ) : (
-              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #30363d' }}>
-                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Date</th>
-                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Action</th>
-                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>By</th>
-                      <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activityEntries.map((entry) => (
-                      <tr key={entry.id} style={{ borderBottom: '1px solid #21262d' }}>
-                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem', color: '#8b949e' }}>
-                          {formatDate(entry.created_at)}
-                        </td>
-                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '0.0625rem 0.375rem',
-                            borderRadius: 3,
-                            fontSize: '0.625rem',
-                            fontWeight: 600,
-                            background: entry.action.includes('suspend') ? 'rgba(218,54,51,0.15)'
-                              : entry.action.includes('admin') ? 'rgba(234,179,8,0.15)'
-                              : 'rgba(88,166,255,0.15)',
-                            color: entry.action.includes('suspend') ? '#f85149'
-                              : entry.action.includes('admin') ? '#facc15'
-                              : '#58a6ff',
-                          }}>
-                            {entry.action}
-                          </span>
-                        </td>
-                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem', color: '#8b949e' }}>
-                          {entry.admin_email}
-                        </td>
-                        <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>
-                          {entry.reason && (
-                            <span style={{ color: '#e6edf3' }}>{entry.reason}</span>
-                          )}
-                          {entry.new_value && (
-                            <span style={{ color: '#8b949e', marginLeft: 4 }}>
-                              {JSON.stringify(entry.new_value).slice(0, 60)}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+            {/* ── Account Overview ── */}
+            <div style={sectionStyle}>
+              <h4 style={sectionTitle}>Account Overview</h4>
+              <div style={grid2Col}>
+                <Stat label="Tier" value={modalUser.tier || '—'} highlight />
+                <Stat label="Style" value={modalUser.investor_style || '—'} />
+                <Stat label="Joined" value={formatDate(modalUser.created_at)} />
+                <Stat label="Subscription" value={modalUser.subscription_status || 'none'} />
+                {modalUser.tier === 'demo' && (
+                  <>
+                    <Stat label="Demo Expires" value={formatDate(modalUser.demo_expires_at)} />
+                    <Stat label="Deep Pool Used" value={String(modalUser.demo_deep_pool_used ?? 0)} />
+                  </>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* ── Gamification ── */}
+            <div style={sectionStyle}>
+              <h4 style={sectionTitle}>Gamification</h4>
+              <div style={grid3Col}>
+                <Stat label="Level" value={String(modalUser.last_level ?? '—')} highlight />
+                <Stat label="Total Score" value={String(modalUser.total_score ?? 0)} />
+                <Stat label="Milestones" value={String(modalUser.milestones_earned ?? 0)} />
+                <Stat label="Current Streak" value={`${modalUser.current_streak ?? 0}d`} />
+                <Stat label="Longest Streak" value={`${modalUser.longest_streak ?? 0}d`} />
+                <Stat label="Days Active" value={String(modalUser.total_days_active ?? 0)} />
+              </div>
+            </div>
+
+            {/* ── Activity Metrics ── */}
+            <div style={sectionStyle}>
+              <h4 style={sectionTitle}>Activity Metrics</h4>
+              <div style={grid3Col}>
+                <Stat label="Trades" value={String(modalUser.trades_executed ?? 0)} highlight />
+                <Stat label="Baskets Created" value={String(modalUser.baskets_created ?? 0)} />
+                <Stat label="AI Sessions" value={String(modalUser.ai_sessions ?? 0)} />
+                <Stat label="Chat Used" value={String(modalUser.monthly_chat_used ?? 0)} />
+                <Stat label="Deep Used" value={String(modalUser.monthly_deep_used ?? 0)} />
+              </div>
+            </div>
+
+            {/* ── Admin Audit Log ── */}
+            <div style={sectionStyle}>
+              <h4 style={sectionTitle}>Admin Actions</h4>
+              {activityLoading ? (
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '1rem', fontSize: '0.8125rem' }}>Loading...</p>
+              ) : activityEntries.length === 0 ? (
+                <p style={{ color: '#484f58', textAlign: 'center', padding: '0.75rem', fontSize: '0.8125rem' }}>
+                  No admin actions recorded for this user.
+                </p>
+              ) : (
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #30363d' }}>
+                        <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Date</th>
+                        <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Action</th>
+                        <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>By</th>
+                        <th style={{ ...styles.th, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activityEntries.map((entry) => (
+                        <tr key={entry.id} style={{ borderBottom: '1px solid #21262d' }}>
+                          <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem', color: '#8b949e' }}>
+                            {formatDate(entry.created_at)}
+                          </td>
+                          <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>
+                            <span style={auditBadge(entry.action)}>
+                              {entry.action}
+                            </span>
+                          </td>
+                          <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem', color: '#8b949e' }}>
+                            {entry.admin_email}
+                          </td>
+                          <td style={{ ...styles.td, fontSize: '0.6875rem', padding: '0.375rem 0.5rem' }}>
+                            {entry.reason && (
+                              <span style={{ color: '#e6edf3' }}>{entry.reason}</span>
+                            )}
+                            {entry.new_value && (
+                              <span style={{ color: '#8b949e', marginLeft: 4 }}>
+                                {JSON.stringify(entry.new_value).slice(0, 60)}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             <div style={{ ...styles.modalActions, marginTop: '1rem' }}>
               <button onClick={closeModal} style={styles.cancelBtn}>Close</button>
             </div>
