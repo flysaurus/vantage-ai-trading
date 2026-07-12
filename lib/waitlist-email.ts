@@ -34,7 +34,7 @@ function buildWaitlistHtml(email: string): string {
         <p style="font-size: 14px; margin: 0; color: #94a3b8;">
           We'll reach out as soon as your spot is ready.
         </p>
-        <p style="font-size: 12px; color: #475569; margin: 24px 0 0 0; text-align: center;">
+        <p style="font-size: 12px; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">
           This email was sent to <strong>${email}</strong>. If you didn't request this, you can ignore it.
         </p>
       </div>

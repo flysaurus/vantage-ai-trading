@@ -352,63 +352,117 @@ export default function CreateAccountPage() {
       // Fail open — proceed with signUp if check-email is down
     }
 
-    // ── Invite gate: verify user has a valid pending invite ────
+    // ── Server-side signup with hard invite gate ────────
+    // Replaces client-side supabase.auth.signUp().
+    // The invite is validated server-side BEFORE user creation.
+    // Cannot be bypassed by calling the Supabase Auth API directly.
     try {
-      const inviteRes = await fetch('/api/invites/validate?email=' + encodeURIComponent(email.trim()));
-      const { valid: hasInvite } = await inviteRes.json();
-      if (!hasInvite) {
-        // Auto-capture: add to waitlist and show custom message
-        const cleanEmail = email.trim();
-        fetch('/api/access-requests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: cleanEmail,
-            name: `${firstName || ''} ${lastName || ''}`.trim() || null,
-          }),
-        }).catch(() => {}); // Fire-and-forget — best effort
+      const signupRes = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          inviteToken,
+          style,
+          risk,
+        }),
+      });
 
-        setWaitlistEmail(cleanEmail);
-        setShowWaitlist(true);
+      const signupData = await signupRes.json();
+
+      if (!signupRes.ok) {
         setSubmitting(false);
+
+        // No invite or invite expired/used → show waitlist
+        if (signupData.code === 'NO_INVITE' || signupData.code === 'INVITE_EXPIRED' || signupData.code === 'INVITE_USED') {
+          const cleanEmail = email.trim();
+          // Auto-capture to waitlist (fire-and-forget)
+          fetch('/api/access-requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: cleanEmail,
+              name: `${firstName || ''} ${lastName || ''}`.trim() || null,
+            }),
+          }).catch(() => {});
+
+          setWaitlistEmail(cleanEmail);
+          setShowWaitlist(true);
+          return;
+        }
+
+        // Email exists → show sign-in link
+        if (signupData.code === 'EMAIL_EXISTS') {
+          setEmailDuplicate(true);
+          return;
+        }
+
+        // Other errors
+        setApiError(signupData.error || 'Signup failed. Please try again.');
         return;
       }
-    } catch {
-      // Fail open — proceed if invite check endpoint is unavailable
-      console.warn('[signup] Invite check failed, allowing signup');
-    }
 
-    // Browser-side signup — correct pattern for OTP flow.
-    // The anon key is public by Supabase design.
-    // Security comes from RLS + service role on server.
-    const supabase = getSupabaseBrowserClient();
+      // ✅ User created server-side, invite validated & marked accepted
+      // Sign in to get a session, then proceed to post-setup
+      const supabase = getSupabaseBrowserClient();
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
+      if (signInErr) {
+        // Fallback: user exists but sign-in failed — redirect to login
+        console.error('[signup] Post-create sign-in failed:', signInErr.message);
+        setSubmitting(false);
+        router.push('/login?signup=success');
+        return;
+      }
+
+      // Run post-signup setup (same as handleOTPSuccess)
+      await fetch('/api/user/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           investor_style: style,
           risk_tolerance: risk,
-          pending_choice: pendingChoice,
-          pending_connection_type: pendingConnectionType ?? null,
-        },
-        // NO emailRedirectTo — OTP flow does not need redirect URLs
-      },
-    });
+        }),
+      });
 
-    if (error) {
+      if (pendingChoice === 'demo') {
+        await fetch('/api/demo/start', {
+          method: 'POST',
+          credentials: 'include',
+        });
+      } else if (pendingChoice === 'broker') {
+        await fetch('/api/connections/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ connection_type: pendingConnectionType }),
+        });
+      }
+
+      // Clear onboarding sessionStorage
+      try {
+        sessionStorage.removeItem('vantage_onboarding_data');
+        sessionStorage.removeItem('vantage_onboarding');
+      } catch {}
+
       setSubmitting(false);
-      setApiError(error.message ?? 'Signup failed. Please try again.');
-      return;
+      router.push('/you-are-in');
+    } catch (err) {
+      // Fail closed — if the API is unreachable, block signup
+      console.error('[signup] Server-side signup failed:', err);
+      setSubmitting(false);
+      setApiError('Unable to verify your invite. Please try again.');
     }
-
-    // Success → OTP verification screen
-    setSubmitting(false);
-    setStep('verify-otp');
-  }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType]);
+  }, [canSubmit, email, password, firstName, lastName, style, risk, pendingChoice, pendingConnectionType, inviteToken, router]);
 
   // ── OTP verification success ────────────────────────────
   const handleOTPSuccess = useCallback(async () => {

@@ -25,10 +25,10 @@ function buildInviteHtml(inviteToken: string, invitedEmail: string): string {
         <div style="text-align: center; margin: 24px 0;">
           <a href="${signupUrl}" style="display: inline-block; background: #06b6d4; color: #0a0f1e; padding: 14px 36px; border-radius: 8px; font-weight: 700; font-size: 16px; text-decoration: none;">Accept Invite →</a>
         </div>
-        <p style="font-size: 13px; color: #64748b; margin: 24px 0 8px 0; text-align: center;">
+        <p style="font-size: 13px; color: #94a3b8; margin: 24px 0 8px 0; text-align: center;">
           This invite was sent to <strong>${invitedEmail}</strong>.
         </p>
-        <p style="font-size: 12px; color: #475569; margin: 0; text-align: center;">
+        <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
           Link expires in 30 days. If you didn't expect this, you can ignore it.
         </p>
       </div>
