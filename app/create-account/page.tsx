@@ -138,6 +138,10 @@ export default function CreateAccountPage() {
   const [apiError, setApiError] = useState('');
   const [showWaitlist, setShowWaitlist] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState<string | null>(null);
+  const [waitlistStatus, setWaitlistStatus] = useState<'not_found' | 'pending' | 'rejected' | 'approved'>('not_found');
+  const [waitlistHasInvite, setWaitlistHasInvite] = useState(false);
+  const [resendingInvite, setResendingInvite] = useState(false);
+  const [toast, setToastState] = useState<string | null>(null);
 
   // ── Invite gate state ────────────────────────────────────
   const [inviteToken, setInviteToken] = useState<string | null>(null);
@@ -376,18 +380,56 @@ export default function CreateAccountPage() {
       if (!signupRes.ok) {
         setSubmitting(false);
 
-        // No invite or invite expired/used → show waitlist
-        if (signupData.code === 'NO_INVITE' || signupData.code === 'INVITE_EXPIRED' || signupData.code === 'INVITE_USED') {
+        // Specific invite errors — show in-app, don't route to waitlist
+        if (signupData.code === 'INVITE_USED') {
+          setInviteError('This invite has already been used. Request a new one or contact support.');
+          setSubmitting(false);
+          return;
+        }
+
+        if (signupData.code === 'INVITE_EXPIRED') {
+          setInviteError("This invite has expired. Request access again or reach out to hello@vantageai.app.");
+          setSubmitting(false);
+          return;
+        }
+
+        // No invite → check waitlist state machine
+        if (signupData.code === 'NO_INVITE') {
           const cleanEmail = email.trim();
-          // Auto-capture to waitlist (fire-and-forget)
-          fetch('/api/access-requests', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: cleanEmail,
-              name: `${firstName || ''} ${lastName || ''}`.trim() || null,
-            }),
-          }).catch(() => {});
+
+          // Step 1: Check existing waitlist status
+          try {
+            const checkRes = await fetch(`/api/access-requests/check?email=${encodeURIComponent(cleanEmail)}`);
+            const checkData = await checkRes.json();
+            const status: string = checkData.status || 'not_found';
+
+            if (status === 'not_found') {
+              // State 1: New user — register to waitlist
+              fetch('/api/access-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: cleanEmail,
+                  name: `${firstName || ''} ${lastName || ''}`.trim() || null,
+                }),
+              }).catch(() => {});
+            }
+
+            // State 2 (pending), 3 (rejected), 6 (approved+invite) — no API call needed
+            setWaitlistStatus(status as any);
+            setWaitlistHasInvite(!!checkData.hasWaitingInvite);
+          } catch {
+            // Fail open: show generic State 1 message
+            setWaitlistStatus('not_found');
+            fetch('/api/access-requests', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: cleanEmail,
+                name: `${firstName || ''} ${lastName || ''}`.trim() || null,
+              }),
+            }).catch(() => {});
+          }
 
           setWaitlistEmail(cleanEmail);
           setShowWaitlist(true);
@@ -572,41 +614,117 @@ export default function CreateAccountPage() {
     >
       <XCircle size={16} color="#da3633" style={{ flexShrink: 0, marginTop: '1px' }} />
       <p style={{ fontSize: '14px', color: '#e6edf3', margin: 0, lineHeight: 1.5 }}>
-        {inviteError} Vantage is invite-only — request an invite link from an admin.
+        {inviteError}
       </p>
     </div>
   ) : null;
 
+  // ── Resend invite handler ──────────────────────────────
+  const handleResendInvite = useCallback(async () => {
+    setResendingInvite(true);
+    try {
+      const res = await fetch('/api/admin/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: waitlistEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to resend');
+      setToastState('Invite resent! Check your email.');
+    } catch (e: any) {
+      setToastState(e.message || 'Failed to resend invite');
+    } finally {
+      setResendingInvite(false);
+      setTimeout(() => setToastState(null), 4000);
+    }
+  }, [waitlistEmail]);
+
+  // ── Waitlist banner style helpers ────────────────────────
+  const wlBanner = (borderColor: string): React.CSSProperties => ({
+    background: 'rgba(6,182,212,0.06)',
+    border: `1px solid ${borderColor}`,
+    borderRadius: '16px',
+    padding: '28px 24px',
+    marginBottom: '16px',
+    color: '#cbd5e1',
+    fontSize: '14px',
+    lineHeight: 1.7,
+  });
+  const wlTitle: React.CSSProperties = { fontSize: '18px', fontWeight: 700, margin: '0 0 20px 0', color: '#f8fafc' };
+  const wlText: React.CSSProperties = { margin: '0 0 16px 0' };
+  const wlSmall: React.CSSProperties = { margin: 0, color: '#94a3b8' };
+
   const waitlistBanner = showWaitlist ? (
-    <div
-      style={{
-        background: 'rgba(6,182,212,0.08)',
-        border: '1px solid #06b6d4',
-        borderRadius: '16px',
-        padding: '28px 24px',
-        marginBottom: '16px',
-        color: '#cbd5e1',
-        fontSize: '14px',
-        lineHeight: 1.7,
-      }}
-    >
-      <p style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 20px 0', color: '#f8fafc' }}>
-        You&apos;re on the list.
-      </p>
-      <p style={{ margin: '0 0 16px 0' }}>
-        Vantage is invite-only. We&apos;ve added you to the queue — you&apos;ll hear from us when your spot opens.
-      </p>
-      <ul style={{ paddingLeft: '20px', margin: '0 0 16px 0' }}>
-        <li>An AI Advisor that trades with you — bounce ideas off it, run real strategies like dollar-cost averaging and mean reversion</li>
-        <li>Real execution underneath — market, limit, and stop orders that behave exactly like the real thing</li>
-        <li>$100k in demo capital to trade with real conviction and zero real risk</li>
-        <li>Sync your real brokerage — Fidelity, Schwab, and more — for live portfolio visibility</li>
-        <li>A scoring system that rewards being a good investor, not just an active one</li>
-      </ul>
-      <p style={{ margin: 0, color: '#94a3b8' }}>
-        We&apos;ll be in touch soon.
-      </p>
-    </div>
+    waitlistStatus === 'pending' ? (
+      /* ── State 2: Already requested ── */
+      <div style={wlBanner('#7c3aed')}>
+        <p style={wlTitle}>You&apos;ve already requested access.</p>
+        <p style={wlText}>
+          We&apos;re reviewing your request — you&apos;ll get an email the moment we make a decision.
+        </p>
+        <p style={wlSmall}>
+          Hang tight. We review every application.
+        </p>
+      </div>
+    ) : waitlistStatus === 'rejected' ? (
+      /* ── State 3: Rejected ── */
+      <div style={wlBanner('#8b949e')}>
+        <p style={wlTitle}>Access not approved.</p>
+        <p style={wlText}>
+          We reviewed your request and aren&apos;t able to let you in right now.
+        </p>
+        <p style={{ ...wlText, marginBottom: '12px' }}>
+          Reach out to{' '}
+          <a href="mailto:hello@vantageai.app" style={{ color: '#06b6d4', textDecoration: 'underline' }}>
+            hello@vantageai.app
+          </a>{' '}
+          if you have questions.
+        </p>
+      </div>
+    ) : waitlistStatus === 'approved' && waitlistHasInvite ? (
+      /* ── State 6: Approved + invite waiting ── */
+      <div style={wlBanner('#06b6d4')}>
+        <p style={wlTitle}>You&apos;re invited to Vantage!</p>
+        <p style={wlText}>
+          An invite link was sent to{' '}
+          <strong style={{ color: '#f8fafc' }}>{waitlistEmail}</strong>.
+          Click the link in your email to get started.
+        </p>
+        <button
+          onClick={handleResendInvite}
+          disabled={resendingInvite}
+          style={{
+            marginTop: '8px',
+            background: 'transparent',
+            border: '1px solid #06b6d4',
+            color: '#06b6d4',
+            borderRadius: '8px',
+            padding: '8px 16px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: resendingInvite ? 'wait' : 'pointer',
+          }}
+        >
+          {resendingInvite ? 'Resending...' : "Didn't receive it? Resend invite"}
+        </button>
+      </div>
+    ) : (
+      /* ── State 1: New waitlist signup (default) ── */
+      <div style={wlBanner('#06b6d4')}>
+        <p style={wlTitle}>You&apos;re on the list.</p>
+        <p style={wlText}>
+          Vantage is invite-only. We&apos;ve added you to the queue — you&apos;ll hear from us when your spot opens.
+        </p>
+        <ul style={{ paddingLeft: '20px', margin: '0 0 16px 0' }}>
+          <li>An AI Advisor that trades with you — bounce ideas off it, run real strategies like dollar-cost averaging and mean reversion</li>
+          <li>Real execution underneath — market, limit, and stop orders that behave exactly like the real thing</li>
+          <li>$100k in demo capital to trade with real conviction and zero real risk</li>
+          <li>Sync your real brokerage — Fidelity, Schwab, and more — for live portfolio visibility</li>
+          <li>A scoring system that rewards being a good investor, not just an active one</li>
+        </ul>
+        <p style={wlSmall}>We&apos;ll be in touch soon.</p>
+      </div>
+    )
   ) : null;
 
   const errorBanner = apiError ? (
@@ -1420,6 +1538,29 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
       >
         Already have an account? Sign in
       </button>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '80px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#161b22',
+            border: '1px solid #30363d',
+            borderRadius: '12px',
+            padding: '12px 24px',
+            color: '#e6edf3',
+            fontSize: '14px',
+            fontWeight: 600,
+            zIndex: 99999,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
