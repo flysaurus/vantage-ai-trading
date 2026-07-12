@@ -287,9 +287,11 @@ export async function PUT(request: NextRequest) {
         return handleRestoreUser(sb, userId, reason, adminEmail);
       case 'reset_password':
         return handleResetPassword(sb, userId, adminEmail);
+      case 'reset_mfa':
+        return handleResetMfa(sb, userId, adminEmail);
       default:
         return NextResponse.json(
-          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo, delete_user, reset_password` },
+          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo, delete_user, restore_user, reset_password, reset_mfa` },
           { status: 400 }
         );
     }
@@ -630,4 +632,45 @@ async function handleResetPassword(
     message: `Password reset link sent to ${user.email}`,
     userId,
   });
+}
+
+async function handleResetMfa(
+  sb: any,
+  userId: string,
+  adminEmail: string,
+) {
+  const user = await fetchUserForReset(sb, userId);
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  await sb.from('users').update({
+    mfa_enabled: false,
+    mfa_method: null,
+    totp_secret: null,
+    backup_codes: null,
+    wrong_mfa_attempts: 0,
+    mfa_locked_until: null,
+  }).eq('id', userId);
+
+  // Audit log
+  await writeAudit(sb, adminEmail, userId, 'reset_mfa', null, {
+    previous_mfa_method: user.mfa_method || 'none',
+  });
+
+  console.log('[admin/users] Admin', adminEmail, 'reset MFA for user', userId);
+
+  return NextResponse.json({
+    success: true,
+    message: `2FA reset for ${user.email}. They will be prompted to set up 2FA on next login.`,
+    userId,
+  });
+}
+
+async function fetchUserForReset(sb: any, userId: string) {
+  const { data: user } = await sb.from('users')
+    .select('id, email, mfa_enabled, mfa_method')
+    .eq('id', userId)
+    .limit(1);
+  return user?.[0] || null;
 }

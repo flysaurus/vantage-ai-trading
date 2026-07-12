@@ -141,6 +141,26 @@ export default function LoginPage() {
       return;
     }
 
+    // ── Check MFA requirement ──────────────────────────
+    try {
+      const mfaRes = await fetch('/api/auth/mfa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: '' }),
+      });
+      const mfaData = await mfaRes.json();
+
+      if (!mfaData.mfa_not_required) {
+        // User has MFA enabled — redirect to verification
+        setSubmitting(false);
+        window.sessionStorage.setItem('vantage_mfa_pending', 'true');
+        window.location.href = '/verify-mfa';
+        return;
+      }
+    } catch {
+      // If check fails, proceed (don't block login on network error)
+    }
+
     // Fetch user profile to determine splash mode
     try {
       const res = await fetch('/api/auth/me', { credentials: 'include' });

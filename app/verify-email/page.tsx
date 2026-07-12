@@ -228,7 +228,7 @@ export default function VerifyEmailPage() {
             </p>
             <button
               style={buttonStyle}
-              onClick={() => router.push('/you-are-in')}
+              onClick={() => router.push('/setup-mfa')}
             >
               Continue to Vantage
             </button>

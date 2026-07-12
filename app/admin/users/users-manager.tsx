@@ -392,7 +392,7 @@ export function UsersManager() {
 
   // Modal state
   const [modalUser, setModalUser] = useState<AggregatedUser | null>(null);
-  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password'>('tier');
+  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password' | 'reset_mfa'>('tier');
   const [selectedTier, setSelectedTier] = useState<string>('demo');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -447,7 +447,7 @@ export function UsersManager() {
 
   // ── Action launchers ──────────────────────────────────────
 
-  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password') => {
+  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password' | 'reset_mfa') => {
     setModalUser(user);
     setModalType(type);
     setSelectedTier(user.tier || 'demo');
@@ -727,6 +727,13 @@ export function UsersManager() {
                           title="Reset password"
                         >
                           🔑 PW
+                        </button>
+                        <button
+                          onClick={() => openModal(u, 'reset_mfa')}
+                          style={{ ...styles.actionBtn, color: '#f0883e' }}
+                          title="Reset 2FA"
+                        >
+                          🔐 2FA
                         </button>
                         <button
                           onClick={() => openModal(u, 'delete')}
@@ -1118,6 +1125,36 @@ export function UsersManager() {
                     </div>
                   </>
                 )}
+              </>
+            )}
+
+            {/* Reset 2FA: no confirmation needed, just execute */}
+            {modalType === 'reset_mfa' && (
+              <>
+                <p style={{ color: '#e6edf3', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                  This will disable 2FA for{' '}
+                  <strong style={{ color: '#f0883e' }}>{modalUser.email}</strong>.
+                  They will be prompted to set up 2FA again on their next login.
+                </p>
+                <p style={{ color: '#f0883e', marginBottom: '1.5rem', fontSize: '0.8rem', background: 'rgba(240,136,62,0.08)', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(240,136,62,0.2)' }}>
+                  ⚠️ Only do this if the user has lost their 2FA device AND backup codes.
+                  This action is audit-logged.
+                </p>
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('reset_mfa')}
+                    style={{
+                      ...styles.confirmBtn,
+                      background: '#f0883e',
+                      color: '#0a0f1e',
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                    disabled={saving}
+                  >
+                    {saving ? 'Resetting...' : 'Reset 2FA'}
+                  </button>
+                </div>
               </>
             )}
 
