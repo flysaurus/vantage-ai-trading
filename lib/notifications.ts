@@ -16,6 +16,8 @@
 // If desired, add a `channel: 'sms'` option and `TWILIO_*` env vars.
 // Flag as separate decision point — do not silently pick a provider.
 
+import { sendEmail } from './email';
+
 interface OrderNotification {
   type: 'order_acknowledged' | 'order_filled' | 'order_cancelled';
   orderId: string;
@@ -144,6 +146,8 @@ export async function sendOrderNotification(
 }
 
 // ─── Invite Emails ────────────────────────────────────────────
+// Uses lib/email.ts for SMTP transport (same Gmail SMTP as Supabase Auth).
+// Falls back to console.log if no SMTP is configured.
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
 
@@ -178,9 +182,9 @@ function buildInviteHtml(inviteToken: string, invitedEmail: string): string {
 }
 
 /**
- * Send an invite email to a user.
- * Uses the same Resend integration as order notifications.
- * Returns true if sent successfully (or logged in dev mode).
+ * Send an invite email via the SMTP transport in lib/email.ts
+ * (same Gmail SMTP Supabase Auth uses for magic links).
+ * Returns true if sent successfully.
  */
 export async function sendInviteEmail(
   email: string,
@@ -191,41 +195,16 @@ export async function sendInviteEmail(
     return false;
   }
 
-  const subject = buildInviteSubject();
-  const html = buildInviteHtml(inviteToken, email);
-
-  if (RESEND_API_KEY) {
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
-        },
-        body: JSON.stringify({
-          from: NOTIFICATION_FROM,
-          to: [email],
-          subject,
-          html,
-        }),
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        console.error(`[notifications] Resend error for invite to ${email}:`, err);
-        return false;
-      }
-
-      console.log(`[notifications] Sent invite to ${email}`);
-      return true;
-    } catch (err: any) {
-      console.error(`[notifications] Resend send failed for invite to ${email}:`, err.message);
-      return false;
-    }
+  try {
+    await sendEmail({
+      to: email,
+      subject: buildInviteSubject(),
+      html: buildInviteHtml(inviteToken, email),
+    });
+    console.log(`[notifications] Sent invite to ${email}`);
+    return true;
+  } catch (err: any) {
+    console.error(`[notifications] Invite email failed for ${email}:`, err.message);
+    return false;
   }
-
-  // Dev mode: log instead of sending
-  console.log(`[notifications] (dev) Would send invite to ${email}: ${subject}`);
-  console.log(`[notifications] (dev) Token: ${inviteToken.substring(0, 8)}...`);
-  return true;
 }
