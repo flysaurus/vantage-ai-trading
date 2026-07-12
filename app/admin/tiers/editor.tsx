@@ -131,7 +131,7 @@ export function TiersEditor() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
-          <a href="/" className="text-blue-600 hover:underline text-sm">← Back to Vantage</a>
+          <a href="/?tab=settings" className="text-blue-600 hover:underline text-sm">← Back to Settings</a>
         </div>
       </div>
     );

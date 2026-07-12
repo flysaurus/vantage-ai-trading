@@ -38,14 +38,14 @@ export default async function UsersAdminPage() {
             Your account is not in the admin allowlist.
           </p>
           <a
-            href="/"
+            href="/?tab=settings"
             style={{
               color: '#58a6ff',
               textDecoration: 'none',
               fontSize: '0.875rem',
             }}
           >
-            ← Back to Vantage
+            ← Back to Settings
           </a>
         </div>
       </div>

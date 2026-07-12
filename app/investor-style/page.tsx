@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTabStore } from '@/store';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { getUserProfile, updateInvestorStyle } from '@/lib/supabase/user';
@@ -20,7 +19,7 @@ import {
 export default function InvestorStylePage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
-  const { setTab } = useTabStore();
+
   const { account } = usePortfolio();
   const [profile, setProfile] = useState<User | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -104,7 +103,7 @@ export default function InvestorStylePage() {
       {/* Header */}
       <div style={{ marginBottom: 14 }}>
         <button
-          onClick={() => { setTab('ai'); router.push('/'); }}
+          onClick={() => router.push('/?tab=settings')
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             background: 'none', border: 'none',

@@ -12,6 +12,7 @@ export default async function GamificationConfigPage() {
           This page is restricted to authorized administrators.
           If you believe this is an error, contact your system admin.
         </p>
+        <a href="/?tab=settings" style={{ color: '#58a6ff', textDecoration: 'none', fontSize: '0.875rem' }}>← Back to Settings</a>
       </div>
     );
   }

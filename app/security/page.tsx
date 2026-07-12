@@ -29,7 +29,7 @@ export default function SecurityPage() {
         }}>
           {/* Close Button */}
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?tab=settings')
             style={{
               display: 'inline-flex',
               alignItems: 'center',

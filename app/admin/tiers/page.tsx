@@ -21,10 +21,10 @@ export default async function TiersAdminPage() {
             Your account is not in the admin allowlist.
           </p>
           <a
-            href="/"
+            href="/?tab=settings"
             className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
           >
-            ← Back to Vantage
+            ← Back to Settings
           </a>
         </div>
       </div>

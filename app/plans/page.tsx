@@ -135,7 +135,7 @@ export default function PlansPage() {
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 12px 4px', flexShrink: 0,
       }}>
-        <button onClick={() => router.back()} aria-label="Back" style={{
+        <button onClick={() => router.push('/?tab=settings')} aria-label="Back" style={{
           width: 28, height: 28, borderRadius: 6,
           border: 'none', background: 'rgba(255,255,255,0.05)',
           color: '#94a3b8', cursor: 'pointer',

@@ -70,7 +70,7 @@ export default function PreferencesPage() {
               </div>
               <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Preferences</h1>
             </div>
-            <button onClick={() => router.back()} style={{
+            <button onClick={() => router.push('/?tab=settings')} style={{
               display: 'flex', alignItems: 'center', gap: 4,
               background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px 8px',
               fontSize: 12, fontWeight: 500,
