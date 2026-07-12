@@ -33,6 +33,7 @@ interface AggregatedUser {
   demo_expires_at: string | null;
   created_at: string;
   updated_at: string | null;
+  deleted: boolean | null;
 }
 
 interface AuditEntry {
@@ -325,7 +326,7 @@ export function UsersManager() {
 
   // Modal state
   const [modalUser, setModalUser] = useState<AggregatedUser | null>(null);
-  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity'>('tier');
+  const [modalType, setModalType] = useState<'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password'>('tier');
   const [selectedTier, setSelectedTier] = useState<string>('demo');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -380,7 +381,7 @@ export function UsersManager() {
 
   // ── Action launchers ──────────────────────────────────────
 
-  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity') => {
+  const openModal = (user: AggregatedUser, type: 'tier' | 'admin' | 'suspend' | 'reset_demo' | 'activity' | 'delete' | 'reset_password') => {
     setModalUser(user);
     setModalType(type);
     setSelectedTier(user.tier || 'demo');
@@ -549,6 +550,9 @@ export function UsersManager() {
                       <span style={styles.tierBadge(u.tier)}>
                         {u.tier || 'unknown'}
                       </span>
+                      {u.deleted && (
+                        <span style={{ marginLeft: '4px', background: 'rgba(218,54,51,0.15)', color: '#f85149', padding: '1px 6px', borderRadius: '4px', fontSize: '0.625rem', fontWeight: 700 }}>DELETED</span>
+                      )}
                     </td>
                     <td style={styles.td}>
                       {u.total_score !== null ? (
@@ -651,6 +655,25 @@ export function UsersManager() {
                             🔄 Demo
                           </button>
                         )}
+                        <button
+                          onClick={() => openModal(u, 'reset_password')}
+                          style={{ ...styles.actionBtn, color: '#06b6d4' }}
+                          title="Reset password"
+                        >
+                          🔑 PW
+                        </button>
+                        <button
+                          onClick={() => openModal(u, 'delete')}
+                          style={{
+                            ...styles.actionBtn,
+                            background: 'rgba(218,54,51,0.1)',
+                            border: '1px solid #da3633',
+                            color: '#f85149',
+                          }}
+                          title="Delete user"
+                        >
+                          🗑️
+                        </button>
                         <button onClick={() => openModal(u, 'activity')} style={{ ...styles.actionBtn, color: '#8b949e' }} title="View activity">
                           📋
                         </button>
@@ -680,6 +703,7 @@ export function UsersManager() {
                   </div>
                 </div>
                 <span style={styles.tierBadge(u.tier)}>{u.tier || 'unknown'}</span>
+                {u.deleted && <span style={{ marginLeft: '4px', background: 'rgba(218,54,51,0.15)', color: '#f85149', padding: '1px 6px', borderRadius: '4px', fontSize: '0.625rem', fontWeight: 700 }}>DELETED</span>}
               </div>
 
               {/* Fields as label-value pairs */}
@@ -755,6 +779,18 @@ export function UsersManager() {
                 {u.tier === 'demo' && (
                   <button onClick={() => openModal(u, 'reset_demo')} style={styles.actionBtn}>🔄 Demo</button>
                 )}
+                <button onClick={() => openModal(u, 'reset_password')} style={{ ...styles.actionBtn, color: '#06b6d4' }}>🔑 PW</button>
+                <button
+                  onClick={() => openModal(u, 'delete')}
+                  style={{
+                    ...styles.actionBtn,
+                    background: 'rgba(218,54,51,0.1)',
+                    border: '1px solid #da3633',
+                    color: '#f85149',
+                  }}
+                >
+                  🗑️
+                </button>
                 <button onClick={() => openModal(u, 'activity')} style={{ ...styles.actionBtn, color: '#8b949e' }}>📋</button>
               </div>
             </div>
@@ -771,6 +807,8 @@ export function UsersManager() {
               {modalType === 'admin' && (modalUser.is_admin ? 'Revoke Admin Access' : 'Grant Admin Access')}
               {modalType === 'suspend' && (modalUser.suspended ? 'Unsuspend User' : 'Suspend User')}
               {modalType === 'reset_demo' && 'Reset Demo Trial'}
+              {modalType === 'delete' && 'Delete User'}
+              {modalType === 'reset_password' && 'Reset Password'}
             </h2>
             <p style={{ color: '#8b949e', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
               User:{' '}
@@ -928,6 +966,81 @@ export function UsersManager() {
                     disabled={saving}
                   >
                     {saving ? 'Resetting...' : 'Reset Demo Trial'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Delete User: confirmation dialog — HIGH STAKES */}
+            {modalType === 'delete' && (
+              <>
+                <div
+                  style={{
+                    background: 'rgba(218,54,51,0.1)',
+                    border: '1px solid #da3633',
+                    borderRadius: '8px',
+                    padding: '12px 16px',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <p style={{ color: '#f85149', fontSize: '0.875rem', fontWeight: 600, marginBottom: '4px' }}>
+                    ⚠️ High-Stakes Action
+                  </p>
+                  <p style={{ color: '#e6edf3', fontSize: '0.8125rem', margin: 0 }}>
+                    This will <strong>permanently delete {modalUser.email || modalUser.display_name}&apos;s account</strong>. All data is preserved for audit.
+                    The user will be immediately signed out and blocked from logging in.
+                  </p>
+                </div>
+                {modalUser.deleted && (
+                  <p style={{ color: '#f85149', fontSize: '0.8125rem', marginBottom: '1rem' }}>
+                    This user is already marked as deleted.
+                  </p>
+                )}
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Reason for deletion (recorded in audit log)"
+                  style={styles.textareaInput}
+                  disabled={saving || modalUser.deleted}
+                />
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('delete_user', { reason: reason.trim() || undefined })}
+                    style={{
+                      ...styles.confirmBtn,
+                      background: '#da3633',
+                      opacity: saving || modalUser.deleted ? 0.6 : 1,
+                    }}
+                    disabled={saving || modalUser.deleted}
+                  >
+                    {saving ? 'Deleting...' : modalUser.deleted ? 'Already Deleted' : 'Delete User'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Reset Password: no confirmation needed, just execute */}
+            {modalType === 'reset_password' && (
+              <>
+                <p style={{ color: '#e6edf3', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                  This will send a password reset link to{' '}
+                  <strong style={{ color: '#06b6d4' }}>{modalUser.email}</strong>.
+                  The link expires in 24 hours.
+                </p>
+                <div style={styles.modalActions}>
+                  <button onClick={closeModal} style={styles.cancelBtn} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={() => handleAction('reset_password')}
+                    style={{
+                      ...styles.confirmBtn,
+                      background: '#06b6d4',
+                      color: '#0a0f1e',
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                    disabled={saving}
+                  >
+                    {saving ? 'Sending...' : 'Send Reset Link'}
                   </button>
                 </div>
               </>

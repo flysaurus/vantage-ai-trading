@@ -45,6 +45,8 @@ const PUBLIC_ROUTES = [
   '/api/invites/validate', // public — invite token/email validation (pre-auth signup gate)
   '/api/access-requests', // public POST (waitlist submit), GET is admin-gated internally
   '/api/auth/signup', // public — server-side signup with hard invite gate
+  '/api/auth/reset-password', // public — set new password via reset token
+  '/reset-password', // public — password reset page (token-based auth)
 ];
 
 export async function middleware(request: NextRequest) {

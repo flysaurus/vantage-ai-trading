@@ -118,17 +118,28 @@ export async function requireAuth(
 
     const { data: userRow, error: queryErr } = await supabase
       .from('users')
-      .select('suspended')
+      .select('suspended, deleted')
       .eq('id', authUser.id)
       .maybeSingle()
 
-    if (!queryErr && userRow?.suspended) {
-      return {
-        authUser: null,
-        authError: NextResponse.json(
-          { error: 'Account suspended', message: 'Your account has been suspended. Contact support for assistance.' },
-          { status: 403 }
-        )
+    if (!queryErr) {
+      if (userRow?.suspended) {
+        return {
+          authUser: null,
+          authError: NextResponse.json(
+            { error: 'Account suspended', message: 'Your account has been suspended. Contact support for assistance.' },
+            { status: 403 }
+          )
+        }
+      }
+      if (userRow?.deleted) {
+        return {
+          authUser: null,
+          authError: NextResponse.json(
+            { error: 'Account deleted', message: 'This account has been permanently deleted.' },
+            { status: 403 }
+          )
+        }
       }
     }
   } catch {

@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { requireAdmin } from '@/lib/auth/admin-check';
+import { sendResetEmail } from '@/lib/reset-email';
+import crypto from 'crypto';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -94,7 +96,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id, email, avatar_url,
         investor_style, investor_style_onboarded, tier,
-        is_admin, suspended,
+        is_admin, suspended, deleted,
         created_at, updated_at,
         monthly_chat_used, monthly_deep_used,
         demo_deep_pool_used, demo_expires_at
@@ -202,6 +204,7 @@ export async function GET(request: NextRequest) {
         tier: effectiveTier,
         is_admin: u.is_admin ?? null,
         suspended: u.suspended ?? null,
+        deleted: u.deleted ?? null,
         subscription_tier_key: subscriptionTierKey,
         subscription_tier_name: subscriptionTierName,
         subscription_status: subscriptionStatus,
@@ -278,9 +281,13 @@ export async function PUT(request: NextRequest) {
         return handleToggleSuspension(sb, userId, reason, adminEmail);
       case 'reset_demo':
         return handleResetDemo(sb, userId, adminEmail);
+      case 'delete_user':
+        return handleSoftDelete(sb, userId, reason, adminEmail);
+      case 'reset_password':
+        return handleResetPassword(sb, userId, adminEmail);
       default:
         return NextResponse.json(
-          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo` },
+          { error: `Unknown action: ${action}. Must be: tier_override, toggle_admin, toggle_suspension, reset_demo, delete_user, reset_password` },
           { status: 400 }
         );
     }
@@ -454,5 +461,124 @@ async function handleResetDemo(sb: any, userId: string, adminEmail: string) {
     userId,
     demo_expires_at: thirtyDays,
     demo_deep_pool_used: 0,
+  });
+}
+
+// ── Soft Delete User ──────────────────────────────────────
+
+async function handleSoftDelete(
+  sb: any,
+  userId: string,
+  reason: string | undefined,
+  adminEmail: string,
+) {
+  const { user, error: userErr } = await fetchUser(sb, userId);
+  if (userErr) {
+    return NextResponse.json(
+      { error: userErr.error || 'User not found' },
+      { status: userErr.status || 404 },
+    );
+  }
+
+  // Already deleted — no-op
+  if ((user as any).deleted) {
+    return NextResponse.json({
+      success: true,
+      message: 'User is already marked as deleted',
+      userId,
+      deleted: true,
+    });
+  }
+
+  const oldValue = { deleted: (user as any).deleted ?? false };
+  const newValue = { deleted: true, deleted_at: new Date().toISOString() };
+
+  const { error: updateErr } = await sb
+    .from('users')
+    .update({ deleted: true, suspended: true, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+
+  if (updateErr) {
+    console.error('[admin/users] Soft delete failed:', updateErr.message);
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  await writeAudit(sb, adminEmail, userId, 'delete_user', oldValue, newValue, reason);
+
+  return NextResponse.json({
+    success: true,
+    message: 'User soft-deleted. All data preserved for audit.',
+    userId,
+    deleted: true,
+  });
+}
+
+// ── Admin-Initiated Password Reset ─────────────────────────
+
+function generateResetToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+async function handleResetPassword(
+  sb: any,
+  userId: string,
+  adminEmail: string,
+) {
+  // Fetch the user to get their email
+  const { data: user, error: userErr } = await sb
+    .from('users')
+    .select('id, email')
+    .eq('id', userId)
+    .single();
+
+  if (userErr || !user?.email) {
+    return NextResponse.json(
+      { error: 'User not found or has no email' },
+      { status: 404 },
+    );
+  }
+
+  const resetToken = generateResetToken();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  // Store the reset token
+  try {
+    const { error: insertErr } = await sb.from('password_resets').insert({
+      user_id: userId,
+      email: user.email,
+      reset_token: resetToken,
+      expires_at: expiresAt,
+      created_by: adminEmail,
+    });
+
+    if (insertErr) {
+      if (insertErr.message?.includes('does not exist')) {
+        return NextResponse.json(
+          { error: 'password_resets table not created yet. Run migration 036.' },
+          { status: 500 },
+        );
+      }
+      console.error('[admin/users] Reset token insert failed:', insertErr.message);
+      return NextResponse.json({ error: insertErr.message }, { status: 500 });
+    }
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+
+  // Send the email (fire-and-forget)
+  sendResetEmail(user.email, resetToken).catch((e) =>
+    console.error('[admin/users] Reset email failed for', user.email, e.message)
+  );
+
+  // Audit log
+  await writeAudit(sb, adminEmail, userId, 'reset_password', null, {
+    reset_token_sent: true,
+    expires_at: expiresAt,
+  });
+
+  return NextResponse.json({
+    success: true,
+    message: `Password reset link sent to ${user.email}`,
+    userId,
   });
 }
