@@ -52,6 +52,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/verify-otp', // public — validate OTP code, mark email verified
   '/reset-password', // public — password reset page (token-based auth)
   '/verify-email', // public — email verification page (OTP entry)
+  '/share', // public — investor style share page (no auth, static sharing)
 ];
 
 export async function middleware(request: NextRequest) {

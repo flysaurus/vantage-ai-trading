@@ -232,60 +232,7 @@ export function SettingsTab() {
     <>
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* ═══════════════════════════════════════════════════════
-          1. PROFILE
-          ═══════════════════════════════════════════════════════ */}
-      {sectionHeader('Profile')}
-
-      <div style={{ margin: '0 16px' }}>
-        {/* Investor Style */}
-        <div
-          onClick={() => setShowStylePicker(true)}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '14px 16px',
-            background: '#1a2235',
-            borderBottom: '1px solid #0f1829',
-            borderRadius: '10px 10px 0 0',
-            minHeight: '52px',
-            cursor: 'pointer',
-          }}
-        >
-          <div>
-            <p style={{ fontSize: '15px', color: '#ffffff' }}>Investor Style</p>
-            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
-              {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.name || 'Peter Lynch'} ·{' '}
-              {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.subtitle || 'Growth Focus'} ·{' '}
-              shapes all AI responses
-            </p>
-          </div>
-          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
-        </div>
-
-        {/* Risk Tolerance */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '14px 16px',
-            background: '#1a2235',
-            borderRadius: '0 0 10px 10px',
-            minHeight: '52px',
-          }}
-        >
-          <p style={{ fontSize: '15px', color: '#ffffff' }}>Risk Tolerance</p>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            {riskPill('conservative', 'Conservative')}
-            {riskPill('moderate', 'Moderate')}
-            {riskPill('aggressive', 'Aggressive')}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════
-          ACCOUNT
+          ACCOUNT (demo status)
           ═══════════════════════════════════════════════════════ */}
       {sectionHeader('Account')}
 
@@ -306,7 +253,7 @@ export function SettingsTab() {
               Demo Status
             </p>
             <p style={{ fontSize: '11px', color: '#e2e8f0', marginTop: '2px' }}>
-              30-day free trial
+              {demoStartAt && demoExpiresAt ? `${getDemoStatus(demoStartAt, demoExpiresAt).daysRemaining}-day free trial` : '30-day free trial'}
             </p>
           </div>
           {/* Tier badge */}
@@ -327,15 +274,22 @@ export function SettingsTab() {
 
         {/* Days remaining */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '10px' }}>
-          <span style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', lineHeight: 1 }}>
-            {getDemoStatus(demoStartAt, demoExpiresAt).daysRemaining}
-          </span>
-          <span style={{ fontSize: '13px', color: '#e2e8f0' }}>days left</span>
+          {(demoStartAt && demoExpiresAt) ? (
+            <>
+              <span style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', lineHeight: 1 }}>
+                {getDemoStatus(demoStartAt, demoExpiresAt).daysRemaining}
+              </span>
+              <span style={{ fontSize: '13px', color: '#e2e8f0' }}>days left</span>
+            </>
+          ) : (
+            <span style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>Loading...</span>
+          )}
         </div>
 
         {/* Progress bar */}
         {(() => {
-          const pct = getDemoStatus(demoStartAt, demoExpiresAt).percentUsed;
+          const status = getDemoStatus(demoStartAt, demoExpiresAt);
+          const pct = (demoStartAt && demoExpiresAt) ? status.percentUsed : 0;
           return (
               <div
                 style={{
@@ -381,11 +335,57 @@ export function SettingsTab() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          INVESTOR IDENTITY
+          PROFILE & IDENTITY
           ═══════════════════════════════════════════════════════ */}
-      {sectionHeader('Investor Identity')}
+      {sectionHeader('Profile & Identity')}
 
       <div style={{ margin: '0 16px 12px 16px' }}>
+        {/* Investor Style */}
+        <div
+          onClick={() => setShowStylePicker(true)}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderBottom: '1px solid #0f1829',
+            borderRadius: '10px 10px 0 0',
+            minHeight: '52px',
+            cursor: 'pointer',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: '15px', color: '#ffffff' }}>Investor Style</p>
+            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
+              {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.name || 'Peter Lynch'} ·{' '}
+              {INVESTOR_STYLES.find(s => s.id === selectedStyle)?.subtitle || 'Growth Focus'}
+            </p>
+          </div>
+          <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
+        </div>
+
+        {/* Risk Tolerance */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#1a2235',
+            borderBottom: '1px solid #0f1829',
+            borderRadius: 0,
+            minHeight: '52px',
+          }}
+        >
+          <p style={{ fontSize: '15px', color: '#ffffff' }}>Risk Tolerance</p>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {riskPill('conservative', 'Conservative')}
+            {riskPill('moderate', 'Moderate')}
+            {riskPill('aggressive', 'Aggressive')}
+          </div>
+        </div>
+
         {/* Style + Score row */}
         <div
           onClick={() => setShowShareModal(true)}
@@ -395,8 +395,8 @@ export function SettingsTab() {
             alignItems: 'center',
             padding: '14px 16px',
             background: '#1a2235',
-            borderRadius: '10px',
-            marginBottom: '8px',
+            borderRadius: '0 0 10px 10px',
+            minHeight: '52px',
             cursor: 'pointer',
           }}
         >
@@ -427,6 +427,7 @@ export function SettingsTab() {
             fontSize: '14px',
             fontWeight: 700,
             cursor: 'pointer',
+            marginTop: '8px',
             marginBottom: '8px',
           }}
         >

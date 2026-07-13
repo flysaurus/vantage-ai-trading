@@ -6,6 +6,7 @@
 
 import { VantageMark } from '@/components/brand/VantageMark';
 import { INVESTOR_STYLES, type InvestorStyleKey } from '@/lib/content/investor-styles';
+import { useState } from 'react';
 
 // ─── Props ────────────────────────────────────────────────────
 
@@ -19,6 +20,30 @@ interface SharePageClientProps {
 export function SharePageClient({ styleKey, name }: SharePageClientProps) {
   const content = INVESTOR_STYLES[styleKey];
   const displayName = name.trim();
+  const [copied, setCopied] = useState(false);
+
+  const shareUrl = `https://vantage-ai-trading.vercel.app/share?style=${styleKey}${displayName ? `&name=${encodeURIComponent(displayName)}` : ''}`;
+  const shareText = displayName
+    ? `${displayName} invests like ${content.name} — ${content.fullHeadline}. Discover your investing style at`
+    : `${content.fullHeadline}. I found my investing style — find yours at`;
+  const emailSubject = displayName
+    ? `${displayName}'s investing style: ${content.name}`
+    : `My investing style: ${content.name}`;
+  const emailBody = `${shareText} ${shareUrl}`;
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShareEmail = () => {
+    window.open(`mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`, '_blank');
+  };
+
+  const handleShareTwitter = () => {
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
+  };
 
   const sharedStyle: React.CSSProperties = {
     position: 'fixed',
@@ -144,6 +169,84 @@ export function SharePageClient({ styleKey, name }: SharePageClientProps) {
 
       {/* Divider */}
       <div style={dividerStyle} />
+
+      {/* Share buttons */}
+      <div style={{
+        display: 'flex',
+        gap: '10px',
+        width: '100%',
+        maxWidth: '280px',
+        marginTop: '8px',
+      }}>
+        {/* Copy Link */}
+        <button
+          onClick={handleCopyLink}
+          style={{
+            flex: 1,
+            padding: '10px 0',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.05)',
+            color: '#e2e8f0',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+          }}
+        >
+          {copied ? '✓ Copied' : '🔗 Copy Link'}
+        </button>
+
+        {/* Email */}
+        <button
+          onClick={handleShareEmail}
+          style={{
+            flex: 1,
+            padding: '10px 0',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.05)',
+            color: '#e2e8f0',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+          }}
+        >
+          ✉️ Email
+        </button>
+
+        {/* Twitter/X */}
+        <button
+          onClick={handleShareTwitter}
+          style={{
+            flex: 1,
+            padding: '10px 0',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.05)',
+            color: '#e2e8f0',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+          }}
+        >
+          𝕏 Tweet
+        </button>
+      </div>
+
+      {/* Divider 2 */}
+      <div style={{ ...dividerStyle, margin: '20px 0 8px' }} />
 
       {/* Prompt */}
       <p style={promptStyle}>What&apos;s your investing style?</p>
