@@ -113,7 +113,7 @@ export default function VerifyMfaPage() {
         setStep('success');
         // Redirect after brief delay
         setTimeout(() => {
-          window.location.href = '/you-are-in';
+          window.location.href = '/';
         }, 800);
       } else {
         setError(data.error || 'Verification failed');

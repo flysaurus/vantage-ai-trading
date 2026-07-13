@@ -46,7 +46,7 @@ export default function SetupMfaPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        router.push('/you-are-in');
+        router.push('/');
       } else {
         setError(data.error || 'Failed to set up email verification');
       }
@@ -122,7 +122,7 @@ export default function SetupMfaPage() {
 
   // ── Done ─────────────────────────────────────────────
   const handleDone = () => {
-    router.push('/you-are-in');
+    router.push('/');
   };
 
   // ── Go back to method selection ─────────────────────
