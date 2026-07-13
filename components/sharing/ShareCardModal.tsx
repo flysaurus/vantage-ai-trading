@@ -107,18 +107,34 @@ export function ShareCardModal({
     });
   }
 
+  // ── Share text helpers ───────────────────────────────
+  const fullHeadline = getStyleTrait(styleId);
+  const STYLE_NAMES: Record<string, string> = {
+    lynch: 'Peter Lynch', buffett: 'Warren Buffett',
+    livermore: 'Jesse Livermore', munger: 'Charlie Munger',
+    soros: 'George Soros',
+  };
+  const styleName = STYLE_NAMES[styleId] || fullHeadline;
+  const shareText = `Vantage matched my investing personality to ${styleName}. An AI advisor that thinks like you — your strategy, your style. 2-min quiz →`;
+  const emailSubject = `My investing style: ${styleName}`;
+  const emailBody = `${shareText} ${shareUrl}`;
+  const tweetText = `I'm a ${fullHeadline} on Vantage 📈 ${shareUrl}`;
+
+  // ── Share Email ─────────────────────────────────────
+  function handleShareEmail() {
+    window.open(`mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`, '_blank');
+  }
+
+  // ── Share Twitter/X ────────────────────────────────
+  function handleShareTwitter() {
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`, '_blank');
+  }
+
   // ── Native Share ──────────────────────────────────────
   async function handleNativeShare() {
-    const fullHeadline = getStyleTrait(styleId);
-    const STYLE_NAMES: Record<string, string> = {
-      lynch: 'Peter Lynch', buffett: 'Warren Buffett',
-      livermore: 'Jesse Livermore', munger: 'Charlie Munger',
-      soros: 'George Soros',
-    };
-    const styleName = STYLE_NAMES[styleId] || fullHeadline;
     const shareData: ShareData = {
       title: `I'm a ${fullHeadline} on Vantage 📈`,
-      text: `Vantage matched my investing personality to ${styleName}. An AI advisor that thinks like you — your strategy, your style. 2-min quiz →`,
+      text: shareText,
       url: shareUrl,
     };
 
@@ -139,7 +155,7 @@ export function ShareCardModal({
         });
         const fileShareData: ShareData = {
           title: `I'm a ${fullHeadline} on Vantage 📈`,
-          text: `Vantage matched my investing personality to ${styleName}. An AI advisor that thinks like you — your strategy, your style. 2-min quiz →`,
+          text: shareText,
           files: [file],
         };
         if (navigator.canShare?.(fileShareData)) {
@@ -257,14 +273,13 @@ export function ShareCardModal({
           </div>
         )}
 
-        {/* Buttons */}
+        {/* Share Buttons — Row 1: Download + Copy */}
         <div style={{
           display: 'flex',
           gap: '8px',
           width: '100%',
           maxWidth: '360px',
           margin: '0 auto',
-          paddingBottom: '8px',
         }}>
           <button
             onClick={handleDownload}
@@ -282,7 +297,7 @@ export function ShareCardModal({
               opacity: capturing ? 0.5 : 1,
             }}
           >
-            {capturing ? 'Rendering…' : 'Download'}
+            {capturing ? 'Rendering…' : '📥 Download'}
           </button>
           <button
             onClick={handleCopyLink}
@@ -298,7 +313,50 @@ export function ShareCardModal({
               cursor: 'pointer',
             }}
           >
-            Copy Link
+            🔗 Copy Link
+          </button>
+        </div>
+
+        {/* Share Buttons — Row 2: Email + Twitter + Native Share */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          width: '100%',
+          maxWidth: '360px',
+          margin: '8px auto 0',
+          paddingBottom: '8px',
+        }}>
+          <button
+            onClick={handleShareEmail}
+            style={{
+              flex: 1,
+              padding: '12px 4px',
+              borderRadius: '10px',
+              border: '1px solid var(--border-card)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            ✉️ Email
+          </button>
+          <button
+            onClick={handleShareTwitter}
+            style={{
+              flex: 1,
+              padding: '12px 4px',
+              borderRadius: '10px',
+              border: '1px solid var(--border-card)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            𝕏 Tweet
           </button>
           <button
             onClick={handleNativeShare}
@@ -316,7 +374,7 @@ export function ShareCardModal({
               opacity: capturing ? 0.5 : 1,
             }}
           >
-            Share
+            📤 Share
           </button>
         </div>
       </div>
