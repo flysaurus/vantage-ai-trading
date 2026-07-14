@@ -50,6 +50,8 @@ const PUBLIC_ROUTES = [
   '/api/auth/reset-password', // public — set new password via reset token
   '/api/auth/send-otp', // public — generate/resend OTP for email verification
   '/api/auth/verify-otp', // public — validate OTP code, mark email verified
+  '/api/auth/send-login-otp', // public — send OTP for passwordless login
+  '/api/auth/verify-login-otp', // public — verify OTP for passwordless login
   '/reset-password', // public — password reset page (token-based auth)
   '/verify-email', // public — email verification page (OTP entry)
   '/share', // public — investor style share page (no auth, static sharing)

@@ -1,13 +1,17 @@
-// ─── Login Screen ─────────────────────────────────────────
-// Email/password sign-in + forgot password flow.
-// Redirects already-authenticated users to /.
-// Handles ?error=expired and ?error=invalid URL params.
+// ─── Login Screen (OTP) ────────────────────────────────────
+// 6-digit OTP sign-in via Supabase Auth.
+// Flow: email → send code → enter 6 digits → verify → session created in cookies.
+//
+// Uses Supabase's native signInWithOtp + verifyOtp.
+// OTP email is sent by Supabase (customize template in Supabase Dashboard →
+//   Authentication → Email Templates → Magic Link).
+// Middleware, requireAuth, and session management remain unchanged.
 
 'use client';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, ArrowLeft, Mail, CheckCircle } from 'lucide-react';
 import { VantageOrb } from '@/components/brand/VantageOrb';
 import Input from '@/components/ui/Input';
 import { LoadingSplash } from '@/components/app/LoadingSplash';
@@ -25,7 +29,6 @@ function getSafeRedirect(): string {
   if (typeof window === 'undefined') return '/';
   const params = new URLSearchParams(window.location.search);
   const raw = params.get('redirectTo');
-  // Prevent open redirect attacks — only allow same-site paths
   if (raw && raw.startsWith('/') && !raw.startsWith('//')) return raw;
   return '/';
 }
@@ -33,6 +36,10 @@ function getSafeRedirect(): string {
 // ── Gradient ───────────────────────────────────────────────
 
 const GRADIENT = `radial-gradient(ellipse 150% 65% at 50% -15%, rgba(34,211,238,0.40) 0%, rgba(14,116,144,0.22) 35%, transparent 65%), radial-gradient(ellipse 70% 45% at 90% 100%, rgba(99,102,241,0.15) 0%, transparent 70%), #0a0f1e`;
+
+// ── Login stages ───────────────────────────────────────────
+
+type Stage = 'email' | 'code' | 'verifying' | 'splash';
 
 // ── Component ──────────────────────────────────────────────
 
@@ -43,28 +50,16 @@ export default function LoginPage() {
     return getSupabaseBrowserClient();
   }, []);
 
+  // ── State ──────────────────────────────────────────────
+  const [stage, setStage] = useState<Stage>('email');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [inlineError, setInlineError] = useState('');
-  const [bannerError, setBannerError] = useState<{ text: string; tone: 'warning' | 'error' } | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [sendingCode, setSendingCode] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [splashMode, setSplashMode] = useState<SplashMode | null>(null);
   const [splashDays, setSplashDays] = useState(0);
-
-  // ── Forgot password flow ────────────────────────────
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetSent, setResetSent] = useState(false);
-  const [resetSending, setResetSending] = useState(false);
-  const [resetError, setResetError] = useState('');
-
-  // ── Email not confirmed ─────────────────────────────
-  const [showEmailNotConfirmed, setShowEmailNotConfirmed] = useState(false);
-  const [resendConfirmState, setResendConfirmState] = useState<'idle' | 'loading' | 'sent'>('idle');
-  const [resendConfirmCooldown, setResendConfirmCooldown] = useState(0);
-
-  const canSubmit = isValidEmail(email) && password.length > 0 && !submitting;
+  const [checkingSession, setCheckingSession] = useState(true);
 
   // ── Already authenticated? Redirect instantly ───────────
   useEffect(() => {
@@ -78,98 +73,124 @@ export default function LoginPage() {
     });
   }, [supabase, router]);
 
-  // ── Resend confirmation countdown ────────────────────
+  // ── Resend countdown ────────────────────────────────────
   useEffect(() => {
-    if (resendConfirmCooldown <= 0) return;
+    if (resendCooldown <= 0) return;
     const t = setInterval(() => {
-      setResendConfirmCooldown((prev) => {
-        if (prev <= 1) { setResendConfirmState('idle'); return 0; }
+      setResendCooldown((prev) => {
+        if (prev <= 1) return 0;
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [resendConfirmCooldown]);
+  }, [resendCooldown]);
 
-  // ── Handle URL error params (browser-only, avoids useSearchParams SSR crash) ─
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const err = params.get('error');
-    if (err === 'expired') {
-      setBannerError({
-        text: 'That link has expired. Request a new magic link.',
-        tone: 'warning',
-      });
-    } else if (err === 'invalid') {
-      setBannerError({
-        text: 'Incorrect email or password.',
-        tone: 'error',
-      });
-    }
-    if (err) {
-      window.history.replaceState({}, '', '/login');
-    }
-  }, []);
+  // ── Send OTP ────────────────────────────────────────────
+  const handleSendCode = useCallback(async () => {
+    if (!isValidEmail(email) || !supabase || sendingCode) return;
+    setSendingCode(true);
+    setError('');
 
-  // ── Sign in handler ─────────────────────────────────────
-  const handleLogin = useCallback(async () => {
-    if (!canSubmit || !supabase) return;
-    setSubmitting(true);
-    setInlineError('');
-
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error: sendError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      password,
+      options: {
+        // No emailRedirectTo → sends 6-digit OTP, not magic link
+        shouldCreateUser: false, // existing users only
+      },
     });
 
-    if (error) {
-      // Unconfirmed email — show resend UI instead of generic error
-      if (
-        error.message.includes('Email not confirmed') ||
-        error.message.includes('email_not_confirmed')
-      ) {
-        setInlineError('');
-        setShowEmailNotConfirmed(true);
-        setPassword('');
-        setSubmitting(false);
+    setSendingCode(false);
+
+    if (sendError) {
+      // Rate limiting
+      if (sendError.message?.includes('rate') || sendError.status === 429) {
+        setError('Too many attempts. Please wait before requesting another code.');
         return;
       }
-
-      setInlineError(error.message);
-      setPassword('');
-      setSubmitting(false);
+      // Email not found? Supabase won't reveal this, but if it happens:
+      setError(sendError.message || 'Failed to send code. Try again.');
       return;
     }
 
-    // ── Check MFA requirement via /api/auth/me ────────
-    // Uses same cookie auth as the rest of the app (proven path)
-    // rather than the separate /api/auth/mfa/verify endpoint
+    // Success — switch to code input
+    setStage('code');
+    setResendCooldown(30);
+  }, [email, supabase, sendingCode]);
+
+  // ── Resend OTP ──────────────────────────────────────────
+  const handleResend = useCallback(async () => {
+    if (!isValidEmail(email) || !supabase || resendCooldown > 0) return;
+    setSendingCode(true);
+    setError('');
+
+    const { error: sendError } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: false },
+    });
+
+    setSendingCode(false);
+
+    if (sendError) {
+      if (sendError.message?.includes('rate') || sendError.status === 429) {
+        setError('Please wait before requesting another code.');
+      } else {
+        setError(sendError.message || 'Failed to resend. Try again.');
+      }
+      return;
+    }
+
+    setCode(''); // Clear old code
+    setResendCooldown(30);
+  }, [email, supabase, resendCooldown]);
+
+  // ── Verify OTP + handle post-login ──────────────────────
+  const handleVerify = useCallback(async () => {
+    if (!isValidEmail(email) || code.length !== 6 || !supabase) return;
+    setStage('verifying');
+    setError('');
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code,
+      type: 'email',
+    });
+
+    if (verifyError) {
+      setStage('code');
+      if (verifyError.message?.includes('expired')) {
+        setError('This code has expired. Request a new one.');
+      } else if (verifyError.message?.includes('invalid')) {
+        setError('Incorrect code. Check your email and try again.');
+      } else {
+        setError(verifyError.message);
+      }
+      return;
+    }
+
+    if (!data.session) {
+      setStage('code');
+      setError('Verification failed. Please try again.');
+      return;
+    }
+
+    // ── Session created → check MFA ───────────────────────
     try {
       const meRes = await fetch('/api/auth/me', { credentials: 'include' });
       if (meRes.ok) {
         const { user } = await meRes.json();
-
         if (user.mfa_enabled === true) {
-          // User has MFA enabled — redirect to verification
-          setSubmitting(false);
           window.sessionStorage.setItem('vantage_mfa_pending', 'true');
-          window.location.href = '/verify-mfa';
+          router.replace('/verify-mfa');
           return;
         }
-
         if (user.mfa_enabled === false) {
-          // Not set up yet — force setup
-          setSubmitting(false);
-          window.location.href = '/setup-mfa';
+          router.replace('/setup-mfa');
           return;
         }
-        // If mfa_enabled is absent (undefined), columns don't exist — bypass
       }
-    } catch {
-      // If check fails (network error), proceed normally
-    }
+    } catch { /* fall through */ }
 
-    // Fetch user profile to determine splash mode
+    // ── Check demo status for splash ──────────────────────
     try {
       const res = await fetch('/api/auth/me', { credentials: 'include' });
       if (res.ok) {
@@ -178,66 +199,49 @@ export default function LoginPage() {
           const status = getDemoStatus(user.demoStartAt, user.demoExpiresAt);
           setSplashMode('demo');
           setSplashDays(status.daysRemaining);
-          setSubmitting(false);
           return;
         }
-        // No demo started — skip splash, go directly to app
       }
-    } catch {
-      // Fall through
-    }
+    } catch { /* fall through */ }
 
-    // No demo: skip splash, go directly to app
-    // Use hard navigation to go through middleware (session-only cookie)
+    // No splash needed — go to app
     window.location.href = getSafeRedirect();
-  }, [canSubmit, email, password, supabase, router]);
+  }, [email, code, supabase, router]);
 
-  // ── Forgot password handler ───────────────────────────
-  const handleForgotPassword = useCallback(async () => {
-    if (!isValidEmail(resetEmail) || !supabase) return;
-    setResetSending(true);
-    setResetError('');
-
-    try {
-      const appUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '');
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        resetEmail.trim(),
-        {
-          redirectTo: `${appUrl}/auth/callback?next=/reset-password`,
-        },
-      );
-
-      if (error) {
-        // Rate limit or other server error
-        if (error.message?.includes('rate') || error.status === 429) {
-          setResetError('Too many requests. Please wait a minute and try again.');
-        } else {
-          setResetError(error.message);
-        }
-        setResetSending(false);
-      } else {
-        setResetSent(true);
-        setResetSending(false);
-      }
-    } catch {
-      setResetError('Something went wrong. Please try again.');
-      setResetSending(false);
-    }
-  }, [resetEmail, supabase]);
+  // ── Handle code input (digits only, max 6) ──────────────
+  const handleCodeChange = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 6);
+    setCode(digits);
+    if (error) setError('');
+  };
 
   // ── Enter key ────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && canSubmit) handleLogin();
+    if (stage === 'email' && e.key === 'Enter') {
+      handleSendCode();
+    } else if (stage === 'code' && e.key === 'Enter' && code.length === 6) {
+      handleVerify();
+    }
   };
 
   // ── Splash complete → navigate to app ────────────────────
   const handleSplashComplete = useCallback(() => {
-    // Hard navigation to go through middleware (session-only cookie)
     window.location.href = getSafeRedirect();
   }, []);
 
   // ── Spinner while checking session ─────────────────────
-  if (checkingSession) {
+  if (checkingSession || stage === 'splash') {
+    if (stage === 'splash' && splashMode) {
+      return (
+        <div style={{ position: 'relative', height: '100dvh', background: GRADIENT, overflow: 'hidden' }}>
+          <LoadingSplash
+            mode={splashMode}
+            daysRemaining={splashMode === 'demo' ? splashDays : undefined}
+            onComplete={handleSplashComplete}
+          />
+        </div>
+      );
+    }
     return (
       <div
         style={{
@@ -250,19 +254,6 @@ export default function LoginPage() {
       >
         <Loader2 size={32} color="var(--accent)" style={{ animation: 'spin 0.7s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
-
-  // ── Splash (after successful sign-in) ────────────────────
-  if (splashMode) {
-    return (
-      <div style={{ position: 'relative', height: '100dvh', background: GRADIENT, overflow: 'hidden' }}>
-        <LoadingSplash
-          mode={splashMode}
-          daysRemaining={splashMode === 'demo' ? splashDays : undefined}
-          onComplete={handleSplashComplete}
-        />
       </div>
     );
   }
@@ -293,6 +284,32 @@ export default function LoginPage() {
           position: 'relative',
         }}
       >
+        {stage === 'code' && (
+          <button
+            onClick={() => {
+              setStage('email');
+              setCode('');
+              setError('');
+            }}
+            style={{
+              position: 'absolute',
+              left: '16px',
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.60)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '14px',
+              fontFamily: 'var(--font-sans)',
+              padding: 0,
+            }}
+          >
+            <ArrowLeft size={18} />
+            Back
+          </button>
+        )}
         <VantageOrb size={44} animate showEntrance={false} />
       </div>
 
@@ -337,367 +354,75 @@ export default function LoginPage() {
           </span>
         </h1>
 
-        {/* ── Banner error (URL param based) ── */}
-        {bannerError && (
-          <div
-            style={{
-              marginBottom: '16px',
-              padding: '12px 16px',
-              borderRadius: '12px',
-              display: 'flex',
-              gap: '10px',
-              background:
-                bannerError.tone === 'warning'
-                  ? 'var(--warning-10)'
-                  : 'var(--loss-10)',
-              border: `1px solid ${
-                bannerError.tone === 'warning'
-                  ? 'var(--warning)'
-                  : 'var(--loss)'
-              }`,
-            }}
-          >
-            <AlertTriangle
-              size={16}
-              color={
-                bannerError.tone === 'warning'
-                  ? 'var(--warning)'
-                  : 'var(--loss)'
-              }
-              style={{ flexShrink: 0, marginTop: '1px' }}
-            />
-            <span
-              style={{
-                fontSize: '14px',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-sans)',
-                lineHeight: 1.5,
-              }}
-            >
-              {bannerError.text}
-            </span>
-          </div>
-        )}
-
-        {/* ── Form ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Email */}
-          <Input
-            label="EMAIL"
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={(v) => {
-              setEmail(v);
-              setInlineError('');
-            }}
-            disabled={submitting}
-            autoFocus
-          />
-
-          {/* Password */}
-          <div>
-            <Input
-              label="PASSWORD"
-              type="password"
-              placeholder="Your password"
-              value={password}
-              onChange={(v) => {
-                setPassword(v);
-                setInlineError('');
-              }}
-              showToggle
-              disabled={submitting}
-            />
-
-            {/* Email not confirmed UI */}
-            {showEmailNotConfirmed && (
-              <div style={{ marginTop: '6px' }}>
-                <p
-                  style={{
-                    color: 'var(--warning)',
-                    fontSize: '13px',
-                    fontFamily: 'var(--font-sans)',
-                    margin: '0 0 4px',
-                    fontWeight: 500,
-                  }}
-                >
-                  Email not confirmed yet.
-                </p>
-                <p
-                  style={{
-                    color: 'rgba(255,255,255,0.50)',
-                    fontSize: '13px',
-                    fontFamily: 'var(--font-sans)',
-                    margin: '0 0 8px',
-                    lineHeight: 1.4,
-                  }}
-                >
-                  Please check your inbox for the confirmation link.
-                </p>
-                <span
-                  onClick={async () => {
-                    if (resendConfirmState !== 'idle' || !supabase) return;
-                    setResendConfirmState('loading');
-                    const { error: resendErr } = await supabase.auth.resend({
-                      type: 'signup',
-                      email: email.trim(),
-                      options: {
-                        emailRedirectTo: 'https://vantage-ai-trading.vercel.app/auth/callback',
-                      },
-                    });
-                    if (resendErr) {
-                      setResendConfirmState('idle');
-                      setInlineError('Could not resend. Try again.');
-                      return;
-                    }
-                    setResendConfirmState('sent');
-                    setResendConfirmCooldown(30);
-                  }}
-                  style={{
-                    color: resendConfirmState === 'sent' ? 'var(--gain)' : 'var(--accent)',
-                    fontSize: '13px',
-                    fontFamily: 'var(--font-sans)',
-                    cursor: resendConfirmState === 'idle' ? 'pointer' : 'default',
-                  }}
-                >
-                  {resendConfirmState === 'sent'
-                    ? `Email resent ✓ (${resendConfirmCooldown}s)`
-                    : resendConfirmState === 'loading'
-                      ? 'Sending…'
-                      : 'Resend confirmation email'}
-                </span>
-              </div>
-            )}
-
-            {/* Inline error */}
-            {inlineError && (
-              <p
-                style={{
-                  color: 'var(--loss)',
-                  fontSize: '13px',
-                  fontFamily: 'var(--font-sans)',
-                  margin: '6px 0 0',
-                }}
-              >
-                {inlineError}
-              </p>
-            )}
-
-            {/* Forgot password link */}
-            <div style={{ textAlign: 'right', marginTop: '6px' }}>
-              <span
-                onClick={() => {
-                  setShowForgotPassword(true);
-                  setResetSent(false);
-                  setResetError('');
-                  if (email) setResetEmail(email);
-                }}
-                style={{
-                  color: 'var(--accent)',
-                  fontSize: '13px',
-                  fontFamily: 'var(--font-sans)',
-                  cursor: 'pointer',
-                }}
-              >
-                Forgot password?
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ═══ FORGOT PASSWORD INLINE ═══ */}
-        {showForgotPassword && !resetSent && (
-          <div
-            style={{
-              marginTop: '24px',
-              padding: '24px',
-              borderRadius: '16px',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
-            <p
-              style={{
-                fontSize: '14px',
-                color: 'rgba(255,255,255,0.60)',
-                fontFamily: 'var(--font-sans)',
-                margin: '0 0 16px',
-                textAlign: 'center',
-                lineHeight: 1.5,
-              }}
-            >
-              Enter your email to reset your password.
-            </p>
-
-            <Input
-              label="EMAIL"
-              type="email"
-              placeholder="your@email.com"
-              value={resetEmail}
-              onChange={(v) => {
-                setResetEmail(v);
-                setResetError('');
-              }}
-              disabled={resetSending}
-              autoFocus
-            />
-
-            {resetError && (
-              <p
-                style={{
-                  color: 'var(--loss)',
-                  fontSize: '13px',
-                  fontFamily: 'var(--font-sans)',
-                  margin: '8px 0 0',
-                }}
-              >
-                {resetError}
-              </p>
-            )}
-
-            <button
-              onClick={handleForgotPassword}
-              disabled={resetSending || !isValidEmail(resetEmail)}
-              style={{
-                width: '100%',
-                height: '48px',
-                borderRadius: '999px',
-                border: 'none',
-                background:
-                  !resetSending && isValidEmail(resetEmail)
-                    ? 'var(--accent)'
-                    : 'rgba(255,255,255,0.15)',
-                color: !resetSending && isValidEmail(resetEmail) ? '#000' : 'rgba(255,255,255,0.30)',
-                fontSize: '15px',
-                fontWeight: 600,
-                fontFamily: 'var(--font-sans)',
-                cursor:
-                  !resetSending && isValidEmail(resetEmail)
-                    ? 'pointer'
-                    : 'default',
-                marginTop: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'background 200ms var(--ease-out)',
-              }}
-            >
-              {resetSending ? (
-                <>
-                  <Loader2 size={18} style={{ animation: 'spin-submit 0.7s linear infinite' }} />
-                  Sending…
-                </>
-              ) : (
-                'Send reset link'
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setShowForgotPassword(false);
-                setResetError('');
-              }}
-              style={{
-                width: '100%',
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255,255,255,0.40)',
-                fontSize: '13px',
-                fontFamily: 'var(--font-sans)',
-                cursor: 'pointer',
-                padding: '12px 0 0',
-                textAlign: 'center',
-              }}
-            >
-              Back to sign in
-            </button>
-          </div>
-        )}
-
-        {/* ═══ FORGOT PASSWORD — SENT ═══ */}
-        {showForgotPassword && resetSent && (
-          <div
-            style={{
-              marginTop: '24px',
-              padding: '24px',
-              borderRadius: '16px',
-              background: 'rgba(34,211,238,0.06)',
-              border: '1px solid rgba(34,211,238,0.15)',
-              textAlign: 'center',
-            }}
-          >
-            <p
-              style={{
-                fontSize: '15px',
-                color: 'rgba(255,255,255,0.80)',
-                fontFamily: 'var(--font-sans)',
-                margin: '0 0 8px',
-                fontWeight: 600,
-              }}
-            >
-              Check your email
-            </p>
-            <p
-              style={{
-                fontSize: '13px',
-                color: 'rgba(255,255,255,0.50)',
-                fontFamily: 'var(--font-sans)',
-                margin: '0 0 16px',
-                lineHeight: 1.5,
-              }}
-            >
-              If an account exists for{' '}
-              <span style={{ color: 'var(--accent)' }}>{resetEmail}</span>,
-              {' '}a reset link has been sent.
-            </p>
-            <button
-              onClick={() => {
-                setShowForgotPassword(false);
-                setResetSent(false);
-                setResetEmail('');
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--accent)',
-                fontSize: '13px',
-                fontFamily: 'var(--font-sans)',
-                cursor: 'pointer',
-              }}
-            >
-              Back to sign in
-            </button>
-          </div>
-        )}
-
-        {/* ── Sign In + CTA ── (hidden during forgot password) */}
-        {!showForgotPassword && (
+        {/* ═══ STAGE: Email input ═══ */}
+        {stage === 'email' && (
           <>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                marginTop: '24px',
-              }}
-            >
-              {/* Sign In */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <Input
+                label="EMAIL"
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(v) => {
+                  setEmail(v);
+                  setError('');
+                }}
+                disabled={sendingCode}
+                autoFocus
+              />
+
+              {error && (
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    gap: '10px',
+                    background: 'var(--loss-10)',
+                    border: '1px solid var(--loss)',
+                  }}
+                >
+                  <AlertTriangle
+                    size={16}
+                    color="var(--loss)"
+                    style={{ flexShrink: 0, marginTop: '1px' }}
+                  />
+                  <span
+                    style={{
+                      fontSize: '14px',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-sans)',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {error}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: '24px' }}>
               <button
-                onClick={handleLogin}
-                disabled={!canSubmit}
+                onClick={handleSendCode}
+                disabled={!isValidEmail(email) || sendingCode}
                 style={{
                   width: '100%',
                   height: '56px',
                   borderRadius: '999px',
                   border: 'none',
-                  background: canSubmit ? '#ffffff' : 'rgba(255,255,255,0.20)',
-                  color: canSubmit ? '#000000' : 'rgba(0,0,0,0.40)',
+                  background:
+                    isValidEmail(email) && !sendingCode
+                      ? '#ffffff'
+                      : 'rgba(255,255,255,0.20)',
+                  color:
+                    isValidEmail(email) && !sendingCode
+                      ? '#000000'
+                      : 'rgba(0,0,0,0.40)',
                   fontSize: '17px',
                   fontWeight: 700,
                   fontFamily: 'var(--font-sans)',
-                  cursor: canSubmit ? 'pointer' : 'default',
+                  cursor:
+                    isValidEmail(email) && !sendingCode ? 'pointer' : 'default',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -705,13 +430,13 @@ export default function LoginPage() {
                   transition: 'background 200ms var(--ease-out)',
                 }}
               >
-                {submitting ? (
+                {sendingCode ? (
                   <>
                     <Loader2 size={20} style={{ animation: 'spin-submit 0.7s linear infinite' }} />
-                    Signing in…
+                    Sending code…
                   </>
                 ) : (
-                  'Sign in'
+                  'Send sign-in code'
                 )}
               </button>
             </div>
@@ -738,6 +463,178 @@ export default function LoginPage() {
                 Find your investor style →
               </span>
             </p>
+          </>
+        )}
+
+        {/* ═══ STAGE: Code input ═══ */}
+        {(stage === 'code' || stage === 'verifying') && (
+          <>
+            {/* Email display (read-only) */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '8px',
+                padding: '10px 16px',
+                borderRadius: '12px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              <Mail size={16} color="var(--accent)" style={{ flexShrink: 0 }} />
+              <span
+                style={{
+                  fontSize: '14px',
+                  color: 'rgba(255,255,255,0.70)',
+                  fontFamily: 'var(--font-sans)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {email}
+              </span>
+            </div>
+
+            <p
+              style={{
+                fontSize: '13px',
+                color: 'rgba(255,255,255,0.45)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 20px',
+                textAlign: 'center',
+              }}
+            >
+              Enter the 6-digit code from your email
+            </p>
+
+            {/* OTP Code Input — large, centered, monospace */}
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => handleCodeChange(e.target.value)}
+                placeholder="000000"
+                disabled={stage === 'verifying'}
+                autoFocus
+                style={{
+                  width: '240px',
+                  height: '64px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${error ? 'var(--loss)' : 'rgba(255,255,255,0.15)'}`,
+                  borderRadius: '14px',
+                  padding: '0 16px',
+                  color: '#ffffff',
+                  fontSize: '32px',
+                  fontFamily: "'SF Mono', 'Fira Code', 'JetBrains Mono', monospace",
+                  letterSpacing: '14px',
+                  textAlign: 'center',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  gap: '10px',
+                  background: 'var(--loss-10)',
+                  border: '1px solid var(--loss)',
+                }}
+              >
+                <AlertTriangle
+                  size={16}
+                  color="var(--loss)"
+                  style={{ flexShrink: 0, marginTop: '1px' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <span
+                    style={{
+                      fontSize: '14px',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-sans)',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {error}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Verify button */}
+            <div style={{ marginTop: '24px' }}>
+              <button
+                onClick={handleVerify}
+                disabled={code.length !== 6 || stage === 'verifying'}
+                style={{
+                  width: '100%',
+                  height: '56px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  background:
+                    code.length === 6 && stage !== 'verifying'
+                      ? '#ffffff'
+                      : 'rgba(255,255,255,0.20)',
+                  color:
+                    code.length === 6 && stage !== 'verifying'
+                      ? '#000000'
+                      : 'rgba(0,0,0,0.40)',
+                  fontSize: '17px',
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-sans)',
+                  cursor:
+                    code.length === 6 && stage !== 'verifying'
+                      ? 'pointer'
+                      : 'default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'background 200ms var(--ease-out)',
+                }}
+              >
+                {stage === 'verifying' ? (
+                  <>
+                    <Loader2 size={20} style={{ animation: 'spin-submit 0.7s linear infinite' }} />
+                    Verifying…
+                  </>
+                ) : (
+                  'Verify code'
+                )}
+              </button>
+            </div>
+
+            {/* Resend */}
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <span
+                onClick={resendCooldown > 0 || sendingCode ? undefined : handleResend}
+                style={{
+                  fontSize: '14px',
+                  fontFamily: 'var(--font-sans)',
+                  color:
+                    resendCooldown > 0
+                      ? 'rgba(255,255,255,0.30)'
+                      : 'var(--accent)',
+                  cursor: resendCooldown > 0 ? 'default' : 'pointer',
+                }}
+              >
+                {sendingCode
+                  ? 'Sending…'
+                  : resendCooldown > 0
+                    ? `Resend code in ${resendCooldown}s`
+                    : "Didn't get it? Resend code"}
+              </span>
+            </div>
           </>
         )}
       </div>
