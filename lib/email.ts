@@ -57,10 +57,15 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
 
   // Production: SendGrid REST API (preferred)
   if (SENDGRID_API_KEY) {
-    return sendViaSendGrid({ to, subject, html, text });
+    try {
+      return await sendViaSendGrid({ to, subject, html, text });
+    } catch (sgErr: any) {
+      console.error('[email] SendGrid failed, falling back to SMTP:', sgErr.message);
+      // Fall through to SMTP instead of silently dropping the email
+    }
   }
 
-  // Dev: SMTP / Ethereal
+  // SMTP / Ethereal
   return sendViaSMTP({ to, subject, html, text });
 }
 

@@ -497,16 +497,49 @@ export default function LoginPage() {
               </span>
             </div>
 
+            {/* Context badge */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(99,102,241,0.12)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                borderRadius: '20px',
+                padding: '4px 14px',
+                margin: '0 auto 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#818cf8',
+                letterSpacing: '0.04em',
+              }}
+            >
+              🔑 SIGN IN
+            </div>
+
             <p
               style={{
                 fontSize: '13px',
-                color: 'rgba(255,255,255,0.45)',
+                color: 'rgba(255,255,255,0.60)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 8px',
+                textAlign: 'center',
+              }}
+            >
+              Enter the 6-digit sign-in code from your email
+            </p>
+
+            <p
+              style={{
+                fontSize: '11px',
+                color: 'rgba(255,255,255,0.30)',
                 fontFamily: 'var(--font-sans)',
                 margin: '0 0 20px',
                 textAlign: 'center',
               }}
             >
-              Enter the 6-digit code from your email
+              Not an account setup code?{' '}
+              <a href="/verify-email" style={{ color: '#818cf8', textDecoration: 'underline' }}>Verify your account here</a>
             </p>
 
             {/* OTP Code Input — large, centered, monospace */}

@@ -287,6 +287,26 @@ export default function VerifyEmailPage() {
         {/* Header */}
         <Mail size={48} color="#06b6d4" style={{ marginBottom: '24px' }} />
 
+        {/* Context badge */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'rgba(6,182,212,0.12)',
+            border: '1px solid rgba(6,182,212,0.25)',
+            borderRadius: '20px',
+            padding: '4px 14px',
+            marginBottom: '16px',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: '#06b6d4',
+            letterSpacing: '0.04em',
+          }}
+        >
+          🔐 ACCOUNT SETUP
+        </div>
+
         <h1
           style={{
             fontSize: '24px',
@@ -296,7 +316,7 @@ export default function VerifyEmailPage() {
             color: '#f8fafc',
           }}
         >
-          Verify your email
+          Verify your account
         </h1>
 
         <p
@@ -304,11 +324,24 @@ export default function VerifyEmailPage() {
             fontSize: '14px',
             color: '#94a3b8',
             textAlign: 'center',
-            margin: '0 0 32px',
+            margin: '0 0 8px',
             lineHeight: 1.6,
           }}
         >
-          Enter the 6-digit code sent to your email.
+          Enter the 6-digit code from your signup email.
+        </p>
+
+        <p
+          style={{
+            fontSize: '12px',
+            color: 'rgba(255,255,255,0.35)',
+            textAlign: 'center',
+            margin: '0 0 32px',
+            lineHeight: 1.5,
+          }}
+        >
+          This is <strong style={{ color: 'rgba(255,255,255,0.5)' }}>not</strong> a sign-in code. If you&apos;re trying to log in, go to the{' '}
+          <a href="/login" style={{ color: '#06b6d4', textDecoration: 'underline' }}>sign-in page</a>.
         </p>
 
         {/* Email field (editable if not pre-filled from URL) */}
@@ -353,7 +386,7 @@ export default function VerifyEmailPage() {
               display: 'block',
             }}
           >
-            Verification code
+            Code from signup email
           </label>
           <input
             type="text"
