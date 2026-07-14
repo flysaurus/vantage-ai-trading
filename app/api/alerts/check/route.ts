@@ -1,6 +1,6 @@
 // ─── GET /api/alerts/check ────────────────────────────────────
 // Evaluates all active alerts against current prices (Finnhub) and
-// sends notifications for triggered alerts via SendGrid.
+// sends notifications for triggered alerts via email.
 // Called by Vercel cron job.
 //
 // POST /api/alerts/check?symbol=AAPL
@@ -222,7 +222,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Send email notifications via SendGrid
+    // Send email notifications
     let emailsSent = 0;
     for (const t of triggered) {
       if (t.channels.includes('email')) {

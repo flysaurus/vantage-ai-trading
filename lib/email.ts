@@ -1,19 +1,16 @@
 // ─── Email Service ─────────────────────────────────────────────
-// Priority: SendGrid API → SMTP → Ethereal (dev fallback)
+// Priority: SMTP (Gmail) → Ethereal (dev fallback)
 //
-// SendGrid (production): SENDGRID_API_KEY + FROM_EMAIL
-//   - 100/day free forever, scales to paid plans
-//   - Setup: sendgrid.com → API Keys → create "Mail Send" key
-//   - Also verify a sender email: Settings → Sender Authentication
+// SMTP (production): SMTP_HOST/PORT/USER/PASS
+//   Gmail: host=smtp.gmail.com, port=587, secure=false
+//   Uses Gmail app password (not regular password)
 //
-// SMTP (any provider): SMTP_HOST/PORT/USER/PASS
 // Ethereal (dev): zero config, preview at ethereal.email
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@vantage.test';
+const FROM_EMAIL = process.env.FROM_EMAIL || process.env.SMTP_USER || 'noreply@vantage.test';
 const FROM_NAME = 'Vantage';
 
 // ── Transporter ──
@@ -52,63 +49,8 @@ async function getTransporter(): Promise<Transporter> {
 // ── Send ──
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  // Strip HTML tags for plain-text fallback (boosts deliverability)
   const text = html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
-  // Production: SendGrid REST API (preferred)
-  if (SENDGRID_API_KEY) {
-    try {
-      return await sendViaSendGrid({ to, subject, html, text });
-    } catch (sgErr: any) {
-      console.error('[email] SendGrid failed, falling back to SMTP:', sgErr.message);
-      // Fall through to SMTP instead of silently dropping the email
-    }
-  }
-
-  // SMTP / Ethereal
-  return sendViaSMTP({ to, subject, html, text });
-}
-
-async function sendViaSendGrid({ to, subject, html, text }: { to: string; subject: string; html: string; text: string }) {
-  const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      personalizations: [{
-        to: [{ email: to }],
-      }],
-      from: { name: FROM_NAME, email: FROM_EMAIL },
-      reply_to: { name: FROM_NAME, email: FROM_EMAIL },
-      subject,
-      content: [
-        { type: 'text/plain', value: text },
-        { type: 'text/html', value: html },
-      ],
-      mail_settings: {
-        bypass_list_management: { enable: false },
-      },
-      tracking_settings: {
-        click_tracking: { enable: false },
-        open_tracking: { enable: false },
-      },
-    }),
-  });
-
-  if (!resp.ok) {
-    const body = await resp.json();
-    const msg = body.errors?.[0]?.message || resp.statusText;
-    console.error('[email] SendGrid failed:', msg);
-    throw new Error(msg);
-  }
-
-  console.log('[email] ✅ SendGrid →', to);
-  return { success: true, previewUrl: undefined as string | undefined };
-}
-
-async function sendViaSMTP({ to, subject, html, text }: { to: string; subject: string; html: string; text: string }) {
   const transporter = await getTransporter();
   const info = await transporter.sendMail({
     from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
@@ -122,7 +64,7 @@ async function sendViaSMTP({ to, subject, html, text }: { to: string; subject: s
   if (previewUrl) {
     console.log('[email] 🔗 Preview:', previewUrl);
   }
-  console.log('[email] ✅ SMTP →', to, '(id:', info.messageId, ')');
+  console.log('[email] ✅ Sent →', to, '(id:', info.messageId, ')');
   return { success: true, id: info.messageId, previewUrl };
 }
 
