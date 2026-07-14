@@ -40,15 +40,56 @@ export async function POST(req: NextRequest) {
     const supabase = getServiceClient();
     const sb = supabase as any;
 
-    // Find user
-    const { data: userRows, error: userErr } = await sb
+    // Find user — fallback: create users row if auth user exists but no users row
+    let userRows: any; let userErr: any;
+    const result = await sb
       .from('users')
       .select('id, email, email_verified')
       .eq('email', normalizedEmail)
       .limit(1);
+    userRows = result.data; userErr = result.error;
 
     if (userErr || !userRows?.length) {
-      return NextResponse.json({ error: 'No account found with this email' }, { status: 404 });
+      // Check if auth user exists — create users row if so
+      const { data: authUsers, error: authErr } = await sb.auth.admin.listUsers({
+        filter: `email=="${normalizedEmail}"`,
+      });
+
+      if (authErr || !authUsers?.users?.length) {
+        return NextResponse.json({ error: 'No account found with this email' }, { status: 404 });
+      }
+
+      const authUser = authUsers.users[0];
+      // Auto-create missing users row
+      const { error: createErr } = await sb
+        .from('users')
+        .insert({
+          id: authUser.id,
+          email: normalizedEmail,
+          email_verified: false,
+          status: 'active',
+          tier: 'demo',
+          demo_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          first_open: new Date().toISOString(),
+          auth_provider: 'email',
+        });
+
+      if (createErr) {
+        console.error('[send-otp] Failed to create users row:', createErr.message);
+        return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+      }
+
+      // Re-query to get the full row
+      const { data: newRows } = await sb
+        .from('users')
+        .select('id, email, email_verified')
+        .eq('email', normalizedEmail)
+        .limit(1);
+
+      if (!newRows?.length) {
+        return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+      }
+      userRows = newRows;
     }
 
     // Skip if already verified

@@ -32,15 +32,46 @@ export async function POST(req: NextRequest) {
     const supabase = getServiceClient();
     const sb = supabase as any;
 
-    // Find user with OTP fields
-    const { data: userRows, error: userErr } = await sb
+    // Find user — fallback: create users row if auth user exists but no users row
+    let userRows: any; let userErr: any;
+    const result = await sb
       .from('users')
       .select('id, email, email_verified, otp_code, otp_expires_at, wrong_otp_attempts')
       .eq('email', normalizedEmail)
       .limit(1);
+    userRows = result.data; userErr = result.error;
 
     if (userErr || !userRows?.length) {
-      return NextResponse.json({ error: 'No account found with this email' }, { status: 404 });
+      // Check if auth user exists — create users row if so
+      const { data: authUsers, error: authErr } = await sb.auth.admin.listUsers({
+        filter: `email=="${normalizedEmail}"`,
+      });
+
+      if (authErr || !authUsers?.users?.length) {
+        return NextResponse.json({ error: 'No account found with this email' }, { status: 404 });
+      }
+
+      const authUser = authUsers.users[0];
+      const { error: createErr } = await sb
+        .from('users')
+        .insert({
+          id: authUser.id,
+          email: normalizedEmail,
+          email_verified: false,
+          status: 'active',
+          tier: 'demo',
+          demo_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          first_open: new Date().toISOString(),
+          auth_provider: 'email',
+        });
+
+      if (createErr) {
+        console.error('[verify-otp] Failed to create users row:', createErr.message);
+        return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+      }
+
+      // No OTP was requested yet since the row was just created
+      return NextResponse.json({ error: 'No verification code has been sent. Request one first.', code: 'NO_OTP' }, { status: 400 });
     }
 
     const user = userRows[0];
