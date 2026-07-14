@@ -42,7 +42,7 @@ export default function VerifyEmailPage() {
   const [resendToast, setResendToast] = useState<string | null>(null);
   const [successEmail, setSuccessEmail] = useState('');
 
-  // ── Parse URL params on mount ───────────────────────────
+  // ── Auto-verify on mount (if email + code in URL) ──────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const emailParam = params.get('email');
@@ -53,8 +53,37 @@ export default function VerifyEmailPage() {
 
     if (emailParam && codeParam) {
       setPrefilled(true);
-      // Auto-verify if pre-filled from email link
-      verifyOtp(decodeURIComponent(emailParam), codeParam);
+      const emailToVerify = decodeURIComponent(emailParam);
+      const codeToVerify = codeParam;
+
+      if (emailToVerify && codeToVerify.length === 6) {
+        setState('verifying');
+        setError(null);
+
+        // Inline the auto-verify logic (no external deps)
+        fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailToVerify, code: codeToVerify }),
+        })
+          .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+          .then(({ ok, data }) => {
+            if (ok && data.success) {
+              setSuccessEmail(emailToVerify);
+              setState('success');
+            } else {
+              setState('error');
+              setError({
+                message: data.error || 'Verification failed',
+                code: data.code,
+              });
+            }
+          })
+          .catch(() => {
+            setState('error');
+            setError({ message: 'Network error. Please try again.' });
+          });
+      }
     } else {
       setState('ready');
     }
@@ -364,12 +393,13 @@ export default function VerifyEmailPage() {
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
+              setPrefilled(false);
               if (error) setError(null);
             }}
             onKeyDown={handleKeyDown}
             placeholder="you@example.com"
             style={inputStyle}
-            disabled={prefilled || state === 'verifying'}
+            disabled={state === 'verifying'}
           />
         </div>
 
