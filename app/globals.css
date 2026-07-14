@@ -140,6 +140,13 @@ html, body {
   color: var(--text-primary);
 }
 
+/* Standalone pages (login, verify-email, etc.) need normal scrolling */
+html.standalone-page,
+html.standalone-page body {
+  position: relative;
+  overflow: auto;
+}
+
 input::placeholder, textarea::placeholder {
   line-height: 1.5;
 }

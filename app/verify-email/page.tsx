@@ -42,6 +42,14 @@ export default function VerifyEmailPage() {
   const [resendToast, setResendToast] = useState<string | null>(null);
   const [successEmail, setSuccessEmail] = useState('');
 
+  // ── Restore scrolling on standalone pages ──────────────────
+  // globals.css locks body for app-shell; standalone pages need normal scroll.
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.add('standalone-page');
+    return () => { html.classList.remove('standalone-page'); };
+  }, []);
+
   // ── Auto-verify on mount (if email + code in URL) ──────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
