@@ -261,13 +261,13 @@ export default function VerifyEmailPage() {
             </h1>
             <p style={{ fontSize: '14px', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 32px' }}>
               Your email <strong style={{ color: '#e2e8f0' }}>{successEmail}</strong> is verified.
-              You can now sign in.
+              Sign in to continue setting up your account.
             </p>
             <button
               style={buttonStyle}
-              onClick={() => router.push('/setup-mfa')}
+              onClick={() => router.push('/login')}
             >
-              Continue to Vantage
+              Continue to sign in
             </button>
           </div>
         </div>
