@@ -52,6 +52,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/verify-otp', // public — validate OTP code, mark email verified
   '/reset-password', // public — password reset page (token-based auth)
   '/verify-email', // public — email verification page (OTP entry)
+  '/verify-otp', // public — redirect alias for /verify-email (Supabase email template compat)
   '/setup-mfa', // public — MFA setup (API calls enforce auth internally)
   '/verify-mfa', // public — MFA verification (API calls enforce auth internally)
   '/share', // public — investor style share page (no auth, static sharing)
