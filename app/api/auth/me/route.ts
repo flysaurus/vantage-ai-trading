@@ -55,6 +55,9 @@ export async function GET() {
       connection_initiated_at:
         userData?.connection_initiated_at ?? null,
 
+      // Email verification
+      email_verified: userData?.email_verified ?? false,
+
       // MFA status
       mfa_enabled: userData?.mfa_enabled ?? false,
       mfa_method: userData?.mfa_method ?? null,

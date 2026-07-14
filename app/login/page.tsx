@@ -141,53 +141,56 @@ export default function LoginPage() {
       return;
     }
 
-    // ── Check MFA requirement via /api/auth/me ────────
-    // Uses same cookie auth as the rest of the app (proven path)
-    // rather than the separate /api/auth/mfa/verify endpoint
+    // ── Fetch user profile once ─────────────────────────
+    // Single /api/auth/me call for email_verified, MFA, and demo status
     try {
       const meRes = await fetch('/api/auth/me', { credentials: 'include' });
       if (meRes.ok) {
         const { user } = await meRes.json();
 
+        // ── 1. Email not yet verified (first login after signup) ──
+        // Send a fresh OTP and redirect to verify-email page
+        if (user.email_verified === false) {
+          setSubmitting(false);
+          await fetch('/api/auth/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: user.email }),
+          });
+          window.location.href = `/verify-email?email=${encodeURIComponent(user.email)}`;
+          return;
+        }
+
+        // ── 2. MFA enabled — redirect to MFA verification ──
         if (user.mfa_enabled === true) {
-          // User has MFA enabled — redirect to verification
           setSubmitting(false);
           window.sessionStorage.setItem('vantage_mfa_pending', 'true');
           window.location.href = '/verify-mfa';
           return;
         }
 
+        // ── 3. MFA not set up — force setup ──
         if (user.mfa_enabled === false) {
-          // Not set up yet — force setup
           setSubmitting(false);
           window.location.href = '/setup-mfa';
           return;
         }
         // If mfa_enabled is absent (undefined), columns don't exist — bypass
-      }
-    } catch {
-      // If check fails (network error), proceed normally
-    }
 
-    // Fetch user profile to determine splash mode
-    try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
-      if (res.ok) {
-        const { user } = await res.json();
-        if (user.demoStartAt) {
-          const status = getDemoStatus(user.demoStartAt, user.demoExpiresAt);
+        // ── 4. Demo splash check ──
+        if (user.demo_start_at) {
+          const status = getDemoStatus(user.demo_start_at, user.demo_expires_at);
           setSplashMode('demo');
           setSplashDays(status.daysRemaining);
           setSubmitting(false);
           return;
         }
-        // No demo started — skip splash, go directly to app
       }
     } catch {
-      // Fall through
+      // If check fails (network error), proceed normally
     }
 
-    // No demo: skip splash, go directly to app
+    // No verification needed, no MFA, no demo — go to app
     // Use hard navigation to go through middleware (session-only cookie)
     window.location.href = getSafeRedirect();
   }, [canSubmit, email, password, supabase, router]);
