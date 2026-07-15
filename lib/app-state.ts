@@ -187,40 +187,47 @@ export function useAppState(): AppStateResult {
           firstName: apiUser?.first_name
         });
 
-        // ── Auto-create: API returned no investor_style but auth metadata has it ──
-        // This means the public.users record doesn't exist yet (or RLS blocked write).
-        // Create it server-side via /api/user/setup.
+        // ── Auto-heal: fill missing users fields from auth metadata ──
+        // Triggered when public.users is missing any key field that auth metadata has.
         let userData = apiUser;
-        if (!userData.investor_style) {
-          const meta = session.user.user_metadata || {};
-          const hasMeta = meta.investor_style || meta.first_name;
-          if (hasMeta) {
-            console.log('[app-state] No users record — auto-creating via /api/user/setup');
-            try {
-              const setupRes = await fetch('/api/user/setup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                  first_name: meta.first_name || null,
-                  last_name: meta.last_name || null,
-                  investor_style: meta.investor_style || null,
-                  risk_tolerance: meta.risk_tolerance || null,
-                }),
-              });
-              if (setupRes.ok) {
-                // Re-fetch the now-created record
-                const refetchRes = await fetch('/api/auth/me', { credentials: 'include' });
-                if (refetchRes.ok) {
-                  const { user: fresh } = await refetchRes.json();
-                  if (fresh) userData = fresh;
-                }
-              } else {
-                console.warn('[app-state] auto-create via /api/user/setup failed:', setupRes.status);
+        const meta = session.user.user_metadata || {};
+
+        const missingStyle = !userData.investor_style && !!meta.investor_style;
+        const missingName = (!userData.first_name || !userData.last_name) && (!!meta.first_name || !!meta.last_name);
+        const missingDemoStart = !userData.demo_start_at && meta.pending_choice === 'demo';
+        const hasAuthMeta = missingStyle || missingName || missingDemoStart;
+
+        if (hasAuthMeta) {
+          console.log('[app-state] Missing fields — auto-patching via /api/user/setup:', {
+            missingStyle, missingName, missingDemoStart,
+            metaStyle: meta.investor_style,
+            metaName: `${meta.first_name || ''} ${meta.last_name || ''}`,
+          });
+          try {
+            const setupRes = await fetch('/api/user/setup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                first_name: userData.first_name || meta.first_name || null,
+                last_name: userData.last_name || meta.last_name || null,
+                investor_style: userData.investor_style || meta.investor_style || null,
+                risk_tolerance: userData.risk_tolerance || meta.risk_tolerance || null,
+                demo_start_at: true, // signal to set demo_start_at if pending_choice=demo
+              }),
+            });
+            if (setupRes.ok) {
+              // Re-fetch the now-patched record
+              const refetchRes = await fetch('/api/auth/me', { credentials: 'include' });
+              if (refetchRes.ok) {
+                const { user: fresh } = await refetchRes.json();
+                if (fresh) userData = fresh;
               }
-            } catch (err: any) {
-              console.error('[app-state] auto-create exception:', err.message);
+            } else {
+              console.warn('[app-state] auto-patch via /api/user/setup failed:', setupRes.status);
             }
+          } catch (err: any) {
+            console.error('[app-state] auto-patch exception:', err.message);
           }
         }
 

@@ -13,6 +13,7 @@ interface SetupBody {
   last_name?: string | null;
   investor_style?: string | null;
   risk_tolerance?: string | null;
+  demo_start_at?: boolean | null; // signal to set demo_start_at if null
 }
 
 export async function POST(req: NextRequest) {
@@ -47,14 +48,18 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // ── Returning user guard ─────────────────────────────────
+  // ── Returning user guard (relaxed) ──────────────────────
+  // Allow patch if the user is missing name fields or demo_start_at.
   const { data: existing } = await (adminSupabase as any)
     .from('users')
-    .select('demo_start_at, connection_type')
+    .select('demo_start_at, connection_type, first_name, last_name, investor_style')
     .eq('id', authUser.id)
     .maybeSingle();
 
-  if (existing?.demo_start_at || existing?.connection_type) {
+  const hasFullProfile = existing?.first_name && existing?.last_name && existing?.investor_style;
+  const hasDemoOrBroker = existing?.demo_start_at || existing?.connection_type;
+
+  if (hasFullProfile && hasDemoOrBroker) {
     return NextResponse.json({ success: true, returning: true });
   }
 
@@ -63,26 +68,37 @@ export async function POST(req: NextRequest) {
   const setupFirstName = body.first_name || '';
   const setupLastName = body.last_name || '';
 
+  // Set demo_start_at if signalled and not already set
+  const shouldSetDemoStart = body.demo_start_at === true && !existing?.demo_start_at;
+  const demoStartNow = shouldSetDemoStart ? now : undefined;
+
+  const upsertPayload: Record<string, any> = {
+    id: authUser.id,
+    email: authUser.email || undefined,
+    first_name: setupFirstName || undefined,
+    last_name: setupLastName || undefined,
+    investor_style: body.investor_style || undefined,
+    risk_tolerance: body.risk_tolerance || undefined,
+    investor_style_onboarded: true,
+    tier: 'demo',
+    first_open: now,
+    last_login_at: now,
+  };
+
+  if (demoStartNow) {
+    upsertPayload.demo_start_at = demoStartNow;
+    upsertPayload.demo_expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  console.log('[user/setup] upsert payload:', {
+    hasName: !!(setupFirstName || setupLastName),
+    hasStyle: !!body.investor_style,
+    setDemoStart: shouldSetDemoStart,
+  });
+
   const { error: upsertError } = await (adminSupabase as any)
     .from('users')
-    .upsert(
-      {
-        id: authUser.id,
-        email: authUser.email || undefined,
-        first_name: setupFirstName || undefined,
-        last_name: setupLastName || undefined,
-        investor_style: body.investor_style || undefined,
-        risk_tolerance: body.risk_tolerance || undefined,
-        investor_style_onboarded: true,
-        tier: 'demo',
-        first_open: now,
-        last_login_at: now,
-      },
-      {
-        onConflict: 'id',
-        ignoreDuplicates: false,
-      },
-    );
+    .upsert(upsertPayload, { onConflict: 'id', ignoreDuplicates: false });
 
   if (upsertError) {
     console.error('[user/setup] upsert error:', upsertError.message);
