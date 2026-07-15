@@ -6,6 +6,7 @@ import { useTabStore } from '@/store';
 import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { onBasketCreated } from '@/lib/gamification/events';
+import { getMarketStatus } from '@/lib/market-hours';
 
 const DEMO_ORDERS = [
   { id: '1', symbol: 'SPY', side: 'buy', status: 'filled', qty: 25, price: 480.00, date: 'Jan 8, 2024' },
@@ -173,9 +174,13 @@ export function TradeTab() {
   // Use live orders from PortfolioContext if available, fall back to demo seed
   const displayOrders = liveOrders.length > 0 ? liveOrders : DEMO_ORDERS;
   
-  // Execute pending orders on tab mount
+  // Execute pending orders on tab mount + periodic check while market is open
   useEffect(() => {
     executePendingOrders();
+    const interval = setInterval(() => {
+      if (getMarketStatus().isOpen) executePendingOrders();
+    }, 120000); // every 2 min while market is open
+    return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for sub-tab navigation (e.g. from basket success screen)
@@ -909,7 +914,7 @@ export function TradeTab() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}>
-                <span>⏳ Pending · {pb.nextOpenLabel || 'Opens at market open'}</span>
+                <span>⏳ Pending · {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : pb.nextOpenLabel || 'Opens at market open'}</span>
                 <span style={{ color: '#cbd5e1', fontSize: '10px', opacity: 0.6 }}>✏️ Tap to edit</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -1086,7 +1091,7 @@ export function TradeTab() {
                           ${(basket.totalReserved || 0).toFixed(2)}
                           {basket.status === 'OPEN' && (
                             <span style={{ color: '#f59e0b' }}>
-                              {' · '}⏳ {basket.nextOpenLabel || 'awaiting market open'}
+                              {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : basket.nextOpenLabel || 'awaiting market open'}
                             </span>
                           )}
                         </div>

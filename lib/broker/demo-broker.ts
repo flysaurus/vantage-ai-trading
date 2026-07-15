@@ -606,6 +606,7 @@ export class DemoBroker implements BrokerEngine {
         const pending = raw ? JSON.parse(raw) : [];
         pending.push({
           id: basketOrderId,
+          basketId: req.basketId,
           basketName: req.basketName,
           basketEmoji: req.basketEmoji,
           basketDisplayName: req.basketDisplayName,
@@ -835,13 +836,22 @@ export class DemoBroker implements BrokerEngine {
         }
       } catch { /* ignore */ }
 
-      // Clean up pending baskets key for executed baskets
+      // Clean up pending baskets key for executed baskets.
+      // Match on both basketId AND id (basketOrderId) to handle old records
+      // that were saved without basketId.
       try {
         if (typeof window !== 'undefined') {
           const raw = localStorage.getItem(PENDING_KEY);
           if (raw) {
+            const executedOrderIds = new Set(
+              this.state.basketOrders.filter(b => b.status === 'FILLED').map(b => b.id)
+            );
             const pending = JSON.parse(raw);
-            const kept = pending.filter((pb: any) => !executedBasketIds.has(pb.basketId || pb.id));
+            const kept = pending.filter((pb: any) =>
+              !executedBasketIds.has(pb.basketId) &&
+              !executedOrderIds.has(pb.id) &&
+              !executedBasketIds.has(pb.id)
+            );
             localStorage.setItem(PENDING_KEY, JSON.stringify(kept));
           }
         }

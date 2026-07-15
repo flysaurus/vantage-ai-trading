@@ -852,42 +852,6 @@ function PortfolioFooter({
   );
 }
 
-// ─── Pending Basket Card ─────────────────────────────────
-
-function PendingBasketCard({ basket }: { basket: Basket }) {
-  const positionCount = basket.activeCount || basket.positionCount || 0;
-  const reserved = basket.positions
-    ?.filter((p) => p.status === 'pending')
-    .reduce((acc: number, p) => acc + (p.reservedAmount || p.totalCost || 0), 0) || 0;
-  return (
-    <div className="card-frost" style={{ margin: '0 16px 10px', padding: '14px 18px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{
-          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15, color: '#ffffff',
-        }}>
-          {basket.emoji} {basket.name || 'Basket'}
-        </span>
-        <span className="pill" style={{
-          padding: '3px 8px',
-          background: 'rgba(245,158,11,0.15)',
-          color: '#f59e0b',
-          fontFamily: 'var(--font-sans)',
-          fontWeight: 700,
-          fontSize: 10,
-        }}>
-          PENDING
-        </span>
-      </div>
-      <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 4 }}>
-        ⏳ {basket.nextOpenLabel || 'awaiting market open'}
-      </div>
-      <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
-        {positionCount} positions · ${reserved.toFixed(2)} reserved
-      </div>
-    </div>
-  );
-}
-
 // ─── Main PortfolioTab ───────────────────────────────────
 
 export function PortfolioTab() {
@@ -908,7 +872,7 @@ export function PortfolioTab() {
   } | null>(null);
 
   const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -1126,16 +1090,6 @@ export function PortfolioTab() {
 
       {/* ── Market Overview ── */}
       <MarketOverview />
-
-      {/* ── Pending Baskets ── */}
-      {pendingBaskets.length > 0 && (
-        <div style={{ paddingBottom: 4 }}>
-          <h2 className="section-header">Ready to Execute</h2>
-          {pendingBaskets.map((pb) => (
-            <PendingBasketCard key={pb.id || pb.basketId} basket={pb} />
-          ))}
-        </div>
-      )}
 
       {/* ── Positions Header ── */}
       <div style={{
@@ -1431,7 +1385,7 @@ export function PortfolioTab() {
                   }}
                   onSell={() => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0 })}
                   showCheckbox={selectMode}
-                  baskets={pendingBaskets as Basket[]}
+                  baskets={[]}
                 />
               ))}
 

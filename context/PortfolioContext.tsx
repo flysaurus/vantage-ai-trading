@@ -832,17 +832,18 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     loadBaskets();
   }, [loadBaskets]);
 
-  // ── Auto-execute pending baskets on market open ──
+  // ── Auto-execute pending orders when market is open ──
+  // Triggers on mount and whenever pendingBaskets or market status changes
   useEffect(() => {
     if (pendingBaskets.length === 0) return;
     const market = getMarketStatus();
     if (!market.isOpen) return;
-    // Small delay to ensure all init is complete
+    console.log(`[PortfolioContext] Market open, ${pendingBaskets.length} pending baskets — executing`);
     const timer = setTimeout(() => {
       executePendingOrders();
     }, 2000);
     return () => clearTimeout(timer);
-  }, [pendingBaskets.length > 0]); // Only trigger when we have pending baskets
+  }, [pendingBaskets.length]); // Re-triggers when basket count changes
 
   // ── Market open watcher: detect closed→open transitions ──
   useMarketOpenWatcher(async () => {
