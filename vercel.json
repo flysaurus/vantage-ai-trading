@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/drawdown-check",
       "schedule": "15 14 * * 1-5"
+    },
+    {
+      "path": "/api/cron/execute-pending-orders",
+      "schedule": "*/5 13-21 * * 1-5"
     }
   ],
   "functions": {
@@ -58,6 +62,9 @@
       "maxDuration": 30
     },
     "app/api/cron/drawdown-check/route.ts": {
+      "maxDuration": 55
+    },
+    "app/api/cron/execute-pending-orders/route.ts": {
       "maxDuration": 55
     }
   }
