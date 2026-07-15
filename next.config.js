@@ -4,6 +4,23 @@ const nextConfig = {
   productionBrowserSourceMaps: true,
   typescript: { ignoreBuildErrors: true },
 
+  // nodemailer and friends are Node-only — prevent webpack from bundling them
+  // into client-side code via the import chain:
+  //   notifications.ts → email.ts → nodemailer (dns, fs, net)
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        dns: false,
+        fs: false,
+        net: false,
+        tls: false,
+        child_process: false,
+      };
+    }
+    return config;
+  },
+
   // Security headers for production
   async headers() {
     return [

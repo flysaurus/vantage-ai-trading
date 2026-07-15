@@ -14,7 +14,9 @@
 //   - basket_filled: all legs filled
 //   - basket_partial_fill: some legs filled, some failed
 
-import { sendEmail } from '@/lib/email';
+// sendEmail() is imported dynamically to avoid bundling nodemailer (Node-only)
+// into client-side code via the import chain:
+//   notifications.ts → email.ts → nodemailer (dns, fs, net)
 
 // ─── Order Notification Types ────────────────────────────────
 
@@ -171,7 +173,8 @@ function buildBasketHtml(n: BasketNotification): string {
 
 // ─── Send Functions ──────────────────────────────────────────
 
-const SMTP_CONFIGURED = !!(process.env.SMTP_HOST && process.env.SMTP_USER);
+const SMTP_CONFIGURED =
+  typeof process !== 'undefined' && !!(process.env?.SMTP_HOST && process.env?.SMTP_USER);
 
 /**
  * Send an order lifecycle notification via Gmail SMTP.
@@ -191,6 +194,8 @@ export async function sendOrderNotification(
 
   if (SMTP_CONFIGURED) {
     try {
+      // Dynamic import to keep nodemailer (Node-only) out of client bundles
+      const { sendEmail } = await import('@/lib/email');
       const result = await sendEmail({ to: userEmail, subject, html });
       console.log(`[notifications] ✅ Order email sent → ${userEmail}: ${subject}`);
       return result.success;
@@ -225,6 +230,8 @@ export async function sendBasketNotification(
 
   if (SMTP_CONFIGURED) {
     try {
+      // Dynamic import to keep nodemailer (Node-only) out of client bundles
+      const { sendEmail } = await import('@/lib/email');
       await sendEmail({ to: userEmail, subject, html });
       console.log(`[notifications] ✅ Basket email sent → ${userEmail}: ${subject}`);
     } catch (err: any) {
