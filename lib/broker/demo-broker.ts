@@ -14,7 +14,7 @@ import {
   DemoStateInternal,
 } from './engine';
 import { evaluateOpenOrder } from './fill-engine';
-import { sendOrderNotification } from '@/lib/notifications';
+import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
@@ -538,6 +538,27 @@ export class DemoBroker implements BrokerEngine {
       }
       await this.saveState();
 
+      // ── Notify: basket filled ──
+      if (this.userEmail) {
+        const failedCount = executionPlan.length - executed;
+        sendBasketNotification(this.userEmail, {
+          type: failedCount > 0 ? 'basket_partial_fill' : 'basket_filled',
+          basketId: req.basketId,
+          basketName: req.basketName,
+          basketEmoji: req.basketEmoji,
+          positions: executionPlan.map(s => ({
+            symbol: s.symbol,
+            shares: s.shares,
+            fillPrice: s.price,
+            totalCost: s.dollarAmount,
+            status: 'filled' as const,
+          })),
+          totalInvested: totalSpent,
+          filledCount: executed,
+          failedCount: failedCount,
+        }).catch(() => {});
+      }
+
       return {
         success: executed > 0, basketOrderId, status: 'FILLED',
         orders: orders.map(o => ({ success: true, orderId: o.id, status: 'FILLED' as OrderStatus, estimatedShares: o.shares, reservedAmount: o.totalCost, fillPrice: o.fillPrice, filledShares: o.shares, totalCost: o.totalCost, filledAt: o.filledAt })),
@@ -597,6 +618,26 @@ export class DemoBroker implements BrokerEngine {
         localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
       }
     } catch { /* ignore */ }
+
+    // ── Notify: basket submitted (pending) ──
+    if (this.userEmail) {
+      sendBasketNotification(this.userEmail, {
+        type: 'basket_submitted',
+        basketId: req.basketId,
+        basketName: req.basketName,
+        basketEmoji: req.basketEmoji,
+        positions: executionPlan.map(s => ({
+          symbol: s.symbol,
+          shares: s.shares,
+          fillPrice: s.price,
+          totalCost: s.dollarAmount,
+          status: 'filled' as const,
+        })),
+        totalInvested: totalCost,
+        filledCount: executionPlan.length,
+        failedCount: 0,
+      }).catch(() => {});
+    }
 
     return {
       success: true, basketOrderId, status: 'OPEN',
@@ -723,11 +764,39 @@ export class DemoBroker implements BrokerEngine {
     }
 
     // Update basket orders that have all their orders filled
+    const newlyFilledBaskets: typeof this.state.basketOrders = [];
     for (const basket of this.state.basketOrders.filter(b => b.status === 'OPEN')) {
       const basketOrders = this.state.orders.filter(o => o.basketOrderId === basket.id);
       if (basketOrders.length > 0 && basketOrders.every(o => o.status !== 'OPEN')) {
         basket.status = 'FILLED';
         basket.filledAt = new Date().toISOString();
+        newlyFilledBaskets.push(basket);
+      }
+    }
+
+    // ── Notify: baskets filled via cron ──
+    for (const basket of newlyFilledBaskets) {
+      if (this.userEmail) {
+        const orders = this.state.orders.filter(o => o.basketOrderId === basket.id);
+        const filledOrders = orders.filter(o => o.status === 'FILLED');
+        const failedOrders = orders.filter(o => o.status === 'CANCELLED');
+        const totalInvested = filledOrders.reduce((sum, o) => sum + (o.totalCost || 0), 0);
+        sendBasketNotification(this.userEmail, {
+          type: failedOrders.length > 0 ? 'basket_partial_fill' : 'basket_filled',
+          basketId: basket.basketId || basket.id,
+          basketName: basket.basketName || '',
+          basketEmoji: basket.basketEmoji || '',
+          positions: orders.map(o => ({
+            symbol: o.symbol,
+            shares: o.shares,
+            fillPrice: o.fillPrice || o.submittedPrice || 0,
+            totalCost: o.totalCost || 0,
+            status: (o.status === 'FILLED' ? 'filled' : 'failed') as 'filled' | 'failed',
+          })),
+          totalInvested,
+          filledCount: filledOrders.length,
+          failedCount: failedOrders.length,
+        }).catch(() => {});
       }
     }
 

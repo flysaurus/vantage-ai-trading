@@ -893,6 +893,8 @@ export function PortfolioTab() {
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  const [expandedBasketIds, setExpandedBasketIds] = useState<Set<string>>(new Set());
+  const [basketSellPositions, setBasketSellPositions] = useState<Array<{symbol: string; qty: number; currentPrice: number}> | null>(null);
   const briefsRef = useRef<HTMLDivElement>(null);
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
@@ -900,7 +902,7 @@ export function PortfolioTab() {
   } | null>(null);
 
   const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
-  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets, executeTrade } = useLivePortfolio();
+  const { account: liveAccount, loading: liveLoading, baskets, pendingBaskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
 
@@ -1154,131 +1156,269 @@ export function PortfolioTab() {
         </div>
       </div>
 
-      {/* ── Position Cards ── */}
-      {filteredPositions.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '40px 20px',
-          color: 'var(--text-muted)', fontSize: 14,
-        }}>
-          {filter !== 'all' ? 'No positions match this filter' : 'No positions yet'}
-        </div>
-      ) : (
-        filteredPositions.map((pos) => (
-          <PositionCard
-            key={pos.symbol}
-            pos={pos}
-            isSelected={selectedSymbols.has(pos.symbol)}
-            isExpanded={expandedSymbols.has(pos.symbol)}
-            onToggleSelect={() => toggleSelect(pos.symbol)}
-            onToggleExpand={() => toggleExpand(pos.symbol)}
-            onBuy={() => {
-              console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
-              setTradeTicket({
-                symbol: pos.symbol, side: 'BUY',
-                currentPrice: pos.currentPrice ?? pos.avgCost,
-                sharesHeld: pos.qty,
-                availableCash: displayAccount?.cash ?? 0,
-              });
-            }}
-            onSell={() => setTradeTicket({
-              symbol: pos.symbol, side: 'SELL',
-              currentPrice: pos.currentPrice ?? pos.avgCost,
-              sharesHeld: pos.qty,
-              availableCash: 0,
+      {/* ── Unified Holdings + Baskets ── */}
+      {(() => {
+        // Group filtered positions: which belong to baskets?
+        const basketSymbolMap = new Map<string, string>(); // symbol → basketId
+        baskets.forEach(b => b.positions.forEach(p => {
+          if (p.status === 'active') basketSymbolMap.set(p.symbol, b.id);
+        }));
+
+        const hasBasketsOrPositions = baskets.length > 0 || filteredPositions.length > 0;
+        if (!hasBasketsOrPositions) {
+          return (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 14 }}>
+              {filter !== 'all' ? 'No positions match this filter' : 'No positions yet'}
+            </div>
+          );
+        }
+
+        return (
+          <>
+            {/* Render baskets interleaved with positions */}
+            {baskets.map((basket: Basket) => {
+              const isExpanded = expandedBasketIds.has(basket.id);
+              const plColor = basket.totalPnL >= 0 ? '#10b981' : '#ef4444';
+              const plSign = basket.totalPnL >= 0 ? '+' : '';
+
+              return (
+                <div key={`basket-${basket.id}`} style={{
+                  margin: '0 14px 8px',
+                  background: '#1a2235',
+                  border: '1px solid rgba(34,211,238,0.12)',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                }}>
+                  {/* Basket Header Row */}
+                  <div
+                    onClick={() => {
+                      setExpandedBasketIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(basket.id)) next.delete(basket.id);
+                        else next.add(basket.id);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      padding: '14px 16px',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 20 }}>{basket.emoji || '🧺'}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: '#ffffff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {basket.name}
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                          {basket.activeCount} stock{basket.activeCount !== 1 ? 's' : ''}
+                          {basket.status === 'partial' && <span style={{ color: '#f59e0b', marginLeft: 4 }}>· Partial</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                      <div style={{ color: '#ffffff', fontWeight: 600, fontSize: 14 }}>
+                        ${basket.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+                      </div>
+                      <div style={{ color: plColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                        {plSign}${Math.abs(basket.totalPnL).toLocaleString('en-US', DOLLAR_FMT)} ({plSign}{basket.totalPnLPct.toFixed(1)}%)
+                      </div>
+                    </div>
+                    <span style={{
+                      marginLeft: 8, color: '#64748b', fontSize: 11,
+                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}>▼</span>
+                  </div>
+
+                  {/* Expanded Positions */}
+                  {isExpanded && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 0' }}>
+                      {/* Stats row */}
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                        gap: 10, padding: '8px 16px',
+                      }}>
+                        <div>
+                          <div className="section-label" style={{ fontSize: 9, marginBottom: 2 }}>INVESTED</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                            ${basket.totalCost.toLocaleString('en-US', DOLLAR_FMT)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="section-label" style={{ fontSize: 9, marginBottom: 2 }}>MARKET VALUE</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                            ${basket.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="section-label" style={{ fontSize: 9, marginBottom: 2 }}>TOTAL P&L</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: plColor }}>
+                            {plSign}${Math.abs(basket.totalPnL).toLocaleString('en-US', DOLLAR_FMT)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Individual stocks */}
+                      <div style={{ padding: '0 16px' }}>
+                        {basket.positions.filter(p => p.status === 'active').map((pos, i, arr) => {
+                          const posPl = (pos.totalPnL || 0);
+                          const posPlClr = posPl >= 0 ? '#10b981' : '#ef4444';
+                          const posPlSgn = posPl >= 0 ? '+' : '';
+                          return (
+                            <div key={pos.symbol} style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              padding: '8px 0',
+                              borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ color: '#ffffff', fontWeight: 600, fontSize: 13 }}>
+                                  {pos.symbol}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: 11 }}>
+                                  {pos.shares.toFixed(4)}sh · avg ${pos.avgCost.toFixed(2)}
+                                  {(pos.allocationPct || 0) > 0 && ` · ${(pos.allocationPct || 0).toFixed(0)}%`}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                                <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 500 }}>
+                                  ${((pos.currentPrice || pos.avgCost) * pos.shares).toLocaleString('en-US', DOLLAR_FMT)}
+                                </div>
+                                <div style={{ color: posPlClr, fontSize: 10, fontWeight: 500 }}>
+                                  {posPlSgn}{Math.abs(posPl).toFixed(2)}
+                                </div>
+                              </div>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setBasketSellPositions([{
+                                    symbol: pos.symbol, qty: pos.shares,
+                                    currentPrice: pos.currentPrice || pos.avgCost,
+                                  }]);
+                                }}
+                                style={{
+                                  marginLeft: 10, padding: '3px 8px', borderRadius: 5,
+                                  background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)',
+                                  color: '#ef4444', fontSize: 10, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                                }}
+                              >Sell</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Basket action buttons */}
+                      <div style={{
+                        padding: '10px 16px 12px',
+                        display: 'flex', gap: '8px', flexWrap: 'wrap',
+                      }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const active = basket.positions.filter(p => p.status === 'active');
+                            setBasketSellPositions(active.map(p => ({
+                              symbol: p.symbol, qty: p.shares,
+                              currentPrice: p.currentPrice || p.avgCost,
+                            })));
+                          }}
+                          style={{
+                            flex: 1, minWidth: 80, padding: '8px 0',
+                            borderRadius: 8, background: 'rgba(239,68,68,0.12)',
+                            border: '1px solid rgba(239,68,68,0.2)',
+                            color: '#ef4444', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >Sell Basket</button>
+                        {[25, 50, 75, 100].map(pct => (
+                          <button
+                            key={pct}
+                            onClick={e => {
+                              e.stopPropagation();
+                              const active = basket.positions.filter(p => p.status === 'active');
+                              setBasketSellPositions(active.map(p => ({
+                                symbol: p.symbol, qty: p.shares,
+                                currentPrice: p.currentPrice || p.avgCost,
+                              })));
+                              // Set initial sell percentage for the modal
+                              setTimeout(() => {
+                                // We pass initialPercent through a ref or the SellModal's showPercentOption mode
+                              }, 0);
+                            }}
+                            style={{
+                              padding: '8px 10px', borderRadius: 8,
+                              background: 'transparent',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                              color: '#94a3b8', fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >{pct}%</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
             })}
-            showCheckbox={selectMode}
-            baskets={pendingBaskets as Basket[]}
-          />
-        ))
-      )}
 
-      {/* ── Sell Selected Bar ── */}
-      {selectMode && selectedSymbols.size > 0 && (
-        <div style={{
-          position: 'fixed', bottom: 140, left: 16, right: 16, zIndex: 101,
-          background: 'rgba(19,25,41,0.98)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.10)',
-          borderRadius: 16, padding: '14px 16px',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
-        }}>
-          <div>
-            <div style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15, color: '#ffffff',
-            }}>
-              {selectedSymbols.size} selected
-            </div>
-            <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
-              ~$
-              {filteredPositions
-                .filter(p => selectedSymbols.has(p.symbol))
-                .reduce((acc, p) => acc + p.qty * (p.currentPrice || p.avgCost), 0)
-                .toLocaleString('en-US', DOLLAR_FMT)}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={cancelSelect}
-              style={{
-                padding: '8px 16px', borderRadius: 999,
-                background: 'transparent', border: '1px solid rgba(255,255,255,0.10)',
-                color: '#cbd5e1',
-                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => setSellModalOpen(true)}
-              style={{
-                padding: '8px 16px', borderRadius: 999,
-                background: '#ef4444', border: 'none',
-                color: '#ffffff',
-                fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Sell {selectedSymbols.size === 1 ? filteredPositions.find((p: Position) => selectedSymbols.has(p.symbol))?.symbol : `Selected (${selectedSymbols.size})`}
-            </button>
-          </div>
-        </div>
-      )}
+            {/* Individual stocks NOT in any basket */}
+            {filteredPositions
+              .filter((pos: any) => !basketSymbolMap.has(pos.symbol))
+              .map((pos: any) => (
+                <PositionCard
+                  key={pos.symbol}
+                  pos={pos}
+                  isSelected={selectedSymbols.has(pos.symbol)}
+                  isExpanded={expandedSymbols.has(pos.symbol)}
+                  onToggleSelect={() => toggleSelect(pos.symbol)}
+                  onToggleExpand={() => toggleExpand(pos.symbol)}
+                  onBuy={() => {
+                    console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
+                    setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: displayAccount?.cash ?? 0 });
+                  }}
+                  onSell={() => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0 })}
+                  showCheckbox={selectMode}
+                  baskets={pendingBaskets as Basket[]}
+                />
+              ))}
 
-      {/* ── Trade Ticket ── */}
-      <TradeTicket
-        isOpen={tradeTicket !== null}
-        onClose={() => setTradeTicket(null)}
-        symbol={tradeTicket?.symbol || ''}
-        side={tradeTicket?.side || 'BUY'}
-        currentPrice={tradeTicket?.currentPrice || 0}
-        sharesHeld={tradeTicket?.sharesHeld || 0}
-        availableCash={tradeTicket?.availableCash || 0}
-        onConfirm={async ({ shares, type, limitPrice, stopPrice, timeInForce }) => {
-          if (!tradeTicket) return;
-          const price = (type === 'limit' || type === 'stop_limit') && limitPrice ? limitPrice : tradeTicket.currentPrice;
-          await executeTrade(tradeTicket.symbol, tradeTicket.side, shares, price, type, stopPrice, limitPrice, timeInForce);
-        }}
-      />
+            {/* No items at all */}
+            {baskets.length === 0 && filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 14 }}>
+                No positions yet
+              </div>
+            )}
+          </>
+        );
+      })()}
 
-      {/* ── Sell Modal ── */}
-      {sellModalOpen && (
+      {/* ── Basket Sell Modal (with proportional % support) ── */}
+      {basketSellPositions && (
         <SellModal
-          positions={
-            filteredPositions
-              .filter((p: Position) => selectedSymbols.has(p.symbol))
-              .map((p: Position) => ({
-                symbol: p.symbol,
-                qty: p.qty,
-                currentPrice: p.currentPrice || p.avgCost,
-              }))
-          }
-          onClose={() => setSellModalOpen(false)}
+          positions={basketSellPositions}
+          showPercentOption={basketSellPositions.length > 1}
+          onClose={() => setBasketSellPositions(null)}
+          onConfirm={(percentSold?: number) => {
+            const symbolsToSell = basketSellPositions.map(p => p.symbol);
+            const targetBasket = baskets.find(b =>
+              b.positions.some(bp => symbolsToSell.includes(bp.symbol))
+            );
+            if (targetBasket) {
+              const sellPct = (percentSold ?? 100) / 100;
+              if (sellPct < 1 && basketSellPositions.length > 1) {
+                // Proportional sell: calculate shares map
+                const sharesMap: Record<string, number> = {};
+                basketSellPositions.forEach(p => {
+                  sharesMap[p.symbol] = p.qty * sellPct;
+                });
+                sellBasketPositions(targetBasket.id, symbolsToSell, sharesMap);
+              } else {
+                sellBasketPositions(targetBasket.id, symbolsToSell);
+              }
+            }
+            setBasketSellPositions(null);
+          }}
         />
       )}
 
-      {/* ── Sticky Portfolio Footer ── */}
       <PortfolioFooter
         totalMarketValue={totalMarketValue}
         totalTodayPnL={totalTodayPnL}

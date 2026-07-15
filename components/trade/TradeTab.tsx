@@ -157,7 +157,7 @@ export function TradeTab() {
         );
         const data = await res.json();
         const filtered = (data.result || [])
-          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP')
+          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF' || r.type === 'ADR' || r.type === 'REIT')
           .slice(0, 8);
         setSearchResults(filtered);
         setShowResults(true);

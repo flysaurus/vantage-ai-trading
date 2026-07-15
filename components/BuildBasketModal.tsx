@@ -183,7 +183,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         const res = await fetch(`/api/finnhub/search?q=${encodeURIComponent(addStockSymbol.trim())}`);
         const data = await res.json();
         const filtered = (data.result || [])
-          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF')
+          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF' || r.type === 'ADR' || r.type === 'REIT')
           .slice(0, 8);
         setStockSearchResults(filtered);
       } catch { setStockSearchResults([]); }
@@ -204,7 +204,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         const res = await fetch(`/api/finnhub/search?q=${encodeURIComponent(addSymbolInput.trim())}`);
         const data = await res.json();
         const filtered = (data.result || [])
-          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF')
+          .filter((r: any) => r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ETF' || r.type === 'ADR' || r.type === 'REIT')
           .slice(0, 8);
         setReviewSearchResults(filtered);
       } catch { setReviewSearchResults([]); }
@@ -2081,15 +2081,16 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       {step === 'basket_review' && basketReviewStep}
       {step === 'basket_confirm' && basketConfirmStep}
       {step === 'success' && basketResult && (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           {/* Scrollable content */}
           <div style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '32px 16px 200px',
+            padding: '32px 16px 24px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            WebkitOverflowScrolling: 'touch',
           }}>
             {/* Success icon — ⏳ for pending, ✓ for filled */}
             {(basketResult as any).status === 'OPEN' ? (
@@ -2227,17 +2228,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             )}
           </div>
 
-          {/* Fixed bottom buttons */}
+          {/* Bottom buttons */}
           <div style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 10000,
+            flexShrink: 0,
             background: '#0a0f1e',
             borderTop: '1px solid rgba(255,255,255,0.08)',
             padding: '12px 16px',
-            paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 90px), 100px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 24px) + 16px)',
             display: 'flex',
             flexDirection: 'column',
             gap: '10px',
@@ -2354,7 +2351,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               </>
             )}
           </div>
-        </>
+        </div>
       )}
 
       <style>{`

@@ -8,7 +8,7 @@
 import type { BrokerOrder, BrokerPosition, DemoStateInternal } from './engine';
 import { evaluateOpenOrder, isDayOrderExpiredAt, isMarketOpenNow, isAfterMarketClose } from './fill-engine';
 import type { FillDecision } from './fill-engine';
-import { sendOrderNotification } from '@/lib/notifications';
+import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 
 // ─── Finnhub quote batching ──────────────────────────────────
 
@@ -128,7 +128,7 @@ export function processUserOrders(
       switch (decision.action) {
         case 'fill': {
           const fillPx = decision.fillPrice || quotePrice;
-          applyFill(row, order, fillPx);
+          applyFill(row, order, fillPx, userEmail);
           filled++;
           // ── Notify: cron fill ──
           if (userEmail) {
@@ -197,6 +197,37 @@ export function processUserOrders(
     }
   }
 
+  // ── Notify: basket transitions (cron) ──
+  if (userEmail && filled > 0) {
+    const basketOrders = row.basket_orders || [];
+    for (const bo of basketOrders) {
+      if (bo.status === 'FILLED' && bo._justFilled !== false) {
+        const boOrders = row.orders.filter((o: BrokerOrder) => o.basketOrderId === bo.id);
+        if (boOrders.length > 0) {
+          const filledOrders = boOrders.filter((o: BrokerOrder) => o.status === 'FILLED');
+          const failedOrders = boOrders.filter((o: BrokerOrder) => o.status === 'CANCELLED');
+          const totalInvested = filledOrders.reduce((sum: number, o: BrokerOrder) => sum + (o.totalCost || 0), 0);
+          sendBasketNotification(userEmail, {
+            type: failedOrders.length > 0 ? 'basket_partial_fill' : 'basket_filled',
+            basketId: bo.basketId || bo.id,
+            basketName: bo.basketName || '',
+            basketEmoji: bo.basketEmoji || '',
+            positions: boOrders.map((o: BrokerOrder) => ({
+              symbol: o.symbol,
+              shares: o.shares,
+              fillPrice: o.fillPrice || o.submittedPrice || 0,
+              totalCost: o.totalCost || 0,
+              status: (o.status === 'FILLED' ? 'filled' : 'failed') as 'filled' | 'failed',
+            })),
+            totalInvested,
+            filledCount: filledOrders.length,
+            failedCount: failedOrders.length,
+          }).catch(() => {});
+        }
+      }
+    }
+  }
+
   return {
     result: { userId: row.user_id, filled, expired, skipped, errors, cashReleased },
     updated: filled > 0 || expired > 0,
@@ -205,7 +236,7 @@ export function processUserOrders(
 
 // ─── Fill application ────────────────────────────────────────
 
-function applyFill(row: PortfolioRow, order: BrokerOrder, fillPrice: number): void {
+function applyFill(row: PortfolioRow, order: BrokerOrder, fillPrice: number, userEmail?: string): void {
   order.status = 'FILLED';
   order.fillPrice = fillPrice;
   order.filledAt = new Date().toISOString();
@@ -243,9 +274,8 @@ function applyFill(row: PortfolioRow, order: BrokerOrder, fillPrice: number): vo
   if (order.basketOrderId) {
     const basketOrder = row.basket_orders?.find((b: any) => b.id === order.basketOrderId);
     if (basketOrder && basketOrder.status === 'OPEN') {
-      const allFilled = row.orders
-        .filter((o: BrokerOrder) => o.basketOrderId === order.basketOrderId)
-        .every((o: BrokerOrder) => o.status !== 'OPEN');
+      const basketOrders = row.orders.filter((o: BrokerOrder) => o.basketOrderId === order.basketOrderId);
+      const allFilled = basketOrders.every((o: BrokerOrder) => o.status !== 'OPEN');
       if (allFilled) {
         basketOrder.status = 'FILLED';
         basketOrder.filledAt = new Date().toISOString();

@@ -183,6 +183,7 @@ interface PortfolioContextValue {
   sellBasketPositions: (
     basketId: string,
     symbolsToSell: string[],
+    sharesOverride?: Record<string, number>,
   ) => Promise<BasketSellResult>;
   /** Cancel an OPEN order — releases reserved cash for BUY orders */
   cancelOrder: (orderId: string) => Promise<void>;
@@ -695,11 +696,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
               body: JSON.stringify({
                 portfolio: {
                   cash: acct?.cashBalance ?? 0,
-                  equity: acct?.portfolioValue ?? 0,
-                  totalPnl: acct?.totalPnl ?? 0,
-                  totalPnlPercent: acct?.totalPnlPercent ?? 0,
-                  dayPnl: acct?.dayPnl ?? 0,
-                  dayPnlPercent: acct?.dayPnlPercent ?? 0,
+                  equity: acct?.totalValue ?? 0,
+                  totalPnL: acct?.totalPnL ?? 0,
+                  totalPnLPct: acct?.totalPnLPct ?? 0,
+                  todayPnL: acct?.todayPnL ?? 0,
+                  todayPnLPct: acct?.todayPnLPct ?? 0,
                 },
                 positions: (pos || []).map((p: any) => ({
                   symbol: p.symbol,
@@ -815,7 +816,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
-      setBaskets(basketList);
+      // Exclude pending-only baskets — they appear only in the pending section, not as owned
+      const ownedBaskets = basketList.filter(b => b.status !== 'pending');
+      setBaskets(ownedBaskets);
     } catch {
       setBaskets([]);
     }
@@ -959,6 +962,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const sellBasketPositions = useCallback(async (
     basketId: string,
     symbolsToSell: string[],
+    sharesOverride?: Record<string, number>,  // optional: sell specific share amounts (proportional sell)
   ): Promise<BasketSellResult> => {
     const basket = baskets.find(b => b.id === basketId);
     if (!basket || !demoState) return { success: false, proceeds: 0, executed: [], failed: symbolsToSell };
@@ -987,13 +991,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       try {
         const quote = quoteMap[pos.symbol];
         const price = quote?.price || pos.avgCost;
-        const proceeds = pos.shares * price;
+        const sharesToSell = sharesOverride?.[pos.symbol] ?? pos.shares;
+        const isProportional = sharesOverride != null && sharesToSell < pos.shares;
+        const proceeds = sharesToSell * price;
 
         // Remove from individual positions (only basket share portion)
         const existingIdx = positions.findIndex(p => p.symbol === pos.symbol);
         if (existingIdx >= 0) {
           const existing = positions[existingIdx];
-          const remainingShares = existing.qty - pos.shares;
+          const remainingShares = existing.qty - sharesToSell;
           if (remainingShares <= 0.0001) {
             positions.splice(existingIdx, 1);
           } else {
@@ -1019,11 +1025,36 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       const saved: BasketPosition[] = savedRaw ? JSON.parse(savedRaw) : [];
       const updated = saved.map(p => {
         if (p.basketId === basketId && symbolsToSell.includes(p.symbol)) {
+          const sellQty = sharesOverride?.[p.symbol];
+          if (sellQty != null && sellQty < p.shares) {
+            // Partial sell: reduce shares, keep active
+            return { ...p, shares: p.shares - sellQty };
+          }
+          // Full sell: close
           return { ...p, status: 'closed' as const };
         }
         return p;
       });
-      localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(updated));
+      // Re-normalize remaining positions' allocation % to sum to 100%
+      const basketPositions = updated.filter(p => p.basketId === basketId);
+      const remainingActive = basketPositions.filter(p => p.status !== 'closed');
+      if (remainingActive.length > 0) {
+        const totalAlloc = remainingActive.reduce((sum, p) => sum + (p.allocationPct || 0), 0);
+        if (totalAlloc > 0) {
+          const scale = 100 / totalAlloc;
+          const reNormalized = updated.map(p => {
+            if (p.basketId === basketId && p.status !== 'closed') {
+              return { ...p, allocationPct: Math.round((p.allocationPct || 0) * scale * 100) / 100 };
+            }
+            return p;
+          });
+          localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(reNormalized));
+        } else {
+          localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(updated));
+        }
+      } else {
+        localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(updated));
+      }
     } catch { /* ignore */ }
 
     // Add sell orders to history
