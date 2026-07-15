@@ -1,0 +1,341 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import type { Position } from '@/types';
+
+// ── Types ─────────────────────────────────────────────────────
+
+interface RiskTrigger {
+  type: string;
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  metrics: Record<string, unknown>;
+}
+
+interface NarrativeResponse {
+  narrative: string | null;
+  triggers: RiskTrigger[];
+  cached: boolean;
+  sectorCount?: number;
+  limitReached?: boolean;
+  limitReason?: string;
+  aiError?: boolean;
+}
+
+// ── Props ─────────────────────────────────────────────────────
+
+export interface RiskNarrativeCardProps {
+  positions: Position[];
+  investorStyle?: string;
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+
+type SeverityLevel = 'safe' | 'warning' | 'critical';
+
+function overallSeverity(triggers: RiskTrigger[]): SeverityLevel {
+  if (triggers.length === 0) return 'safe';
+  if (triggers.some((t) => t.severity === 'critical')) return 'critical';
+  return 'warning';
+}
+
+const SEVERITY_COLORS: Record<SeverityLevel, { bg: string; border: string; text: string; dot: string }> = {
+  safe: {
+    bg: 'rgba(16,185,129,0.06)',
+    border: 'rgba(16,185,129,0.25)',
+    text: '#34d399',
+    dot: '#10b981',
+  },
+  warning: {
+    bg: 'rgba(245,158,11,0.06)',
+    border: 'rgba(245,158,11,0.25)',
+    text: '#fbbf24',
+    dot: '#f59e0b',
+  },
+  critical: {
+    bg: 'rgba(239,68,68,0.06)',
+    border: 'rgba(239,68,68,0.25)',
+    text: '#f87171',
+    dot: '#ef4444',
+  },
+};
+
+const SEVERITY_LABELS: Record<SeverityLevel, string> = {
+  safe: 'Well Diversified',
+  warning: 'Check Allocation',
+  critical: 'High Risk',
+};
+
+// ── Component ─────────────────────────────────────────────────
+
+export default function RiskNarrativeCard({
+  positions,
+  investorStyle,
+}: RiskNarrativeCardProps) {
+  const [data, setData] = useState<NarrativeResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!positions || positions.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    // Abort any in-flight request when positions change
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    async function fetchRisk() {
+      setLoading(true);
+      try {
+        const payload = {
+          positions: positions.map((p) => ({
+            symbol: p.symbol,
+            qty: p.qty,
+            currentPrice: p.currentPrice,
+            sector: p.sector,
+            avgCost: p.avgCost,
+          })),
+          investorStyle: investorStyle || undefined,
+        };
+
+        const res = await fetch('/api/risk-narrative', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          setData(null);
+          return;
+        }
+
+        const result: NarrativeResponse = await res.json();
+        setData(result);
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+        setData(null);
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchRisk();
+
+    return () => {
+      controller.abort();
+    };
+  }, [positions, investorStyle]);
+
+  // ── No positions → nothing to show ──
+  if (!positions || positions.length === 0) {
+    return null;
+  }
+
+  // ── Loading skeleton ──
+  if (loading) {
+    return (
+      <div
+        style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 12,
+          padding: '14px 16px',
+          marginBottom: 12,
+          opacity: 0.6,
+        }}
+      >
+        <div
+          style={{
+            height: 14,
+            width: '70%',
+            background: 'rgba(255,255,255,0.05)',
+            borderRadius: 4,
+            marginBottom: 8,
+          }}
+        />
+        <div
+          style={{
+            height: 10,
+            width: '50%',
+            background: 'rgba(255,255,255,0.03)',
+            borderRadius: 4,
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── Error / no data ──
+  if (!data) {
+    return null;
+  }
+
+  const severity = overallSeverity(data.triggers);
+  const colors = SEVERITY_COLORS[severity];
+  const sectorCount = data.sectorCount || 0;
+
+  // Build display text
+  let displayText: string;
+  if (data.narrative) {
+    displayText = data.narrative;
+  } else if (data.triggers.length === 0) {
+    displayText = `Well diversified across ${sectorCount} sector${sectorCount !== 1 ? 's' : ''}`;
+  } else if (data.limitReached) {
+    displayText = data.triggers[0]?.message || 'Portfolio has some concentration risks.';
+  } else if (data.aiError) {
+    displayText = data.triggers[0]?.message || 'Portfolio has some concentration risks.';
+  } else {
+    displayText = data.triggers[0]?.message || 'Check your portfolio allocation.';
+  }
+
+  const hasTriggers = data.triggers.length > 0;
+
+  return (
+    <div
+      style={{
+        background: colors.bg,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 12,
+        padding: '14px 16px',
+        marginBottom: 12,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        cursor: hasTriggers ? 'pointer' : 'default',
+        transition: 'all 0.2s ease',
+      }}
+      onClick={() => hasTriggers && setExpanded(!expanded)}
+      role={hasTriggers ? 'button' : undefined}
+      tabIndex={hasTriggers ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (hasTriggers && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          setExpanded(!expanded);
+        }
+      }}
+    >
+      {/* Header row */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {/* Severity dot */}
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: colors.dot,
+              flexShrink: 0,
+            }}
+          />
+          {/* Status label */}
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: colors.text,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {SEVERITY_LABELS[severity]}
+          </span>
+          {data.cached && (
+            <span
+              style={{
+                fontSize: 10,
+                color: 'rgba(255,255,255,0.3)',
+                fontStyle: 'italic',
+              }}
+            >
+              cached
+            </span>
+          )}
+        </div>
+
+        {hasTriggers && (
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            style={{
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+              flexShrink: 0,
+            }}
+          >
+            <path
+              d="M3.5 5.25L7 8.75L10.5 5.25"
+              stroke={colors.text}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </div>
+
+      {/* Narrative text */}
+      <p
+        style={{
+          margin: '8px 0 0 0',
+          fontSize: 13,
+          lineHeight: 1.5,
+          color: 'rgba(255,255,255,0.78)',
+          letterSpacing: '0.01em',
+        }}
+      >
+        {displayText}
+      </p>
+
+      {/* Expanded trigger details (only on mobile where we default-collapse) */}
+      {expanded && hasTriggers && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 10,
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          {data.triggers.map((t, i) => (
+            <div
+              key={i}
+              style={{
+                fontSize: 12,
+                color:
+                  t.severity === 'critical'
+                    ? '#f87171'
+                    : t.severity === 'warning'
+                      ? '#fbbf24'
+                      : 'rgba(255,255,255,0.6)',
+                lineHeight: 1.5,
+                padding: '4px 0',
+              }}
+            >
+              <span style={{ marginRight: 6 }}>
+                {t.severity === 'critical' ? '🔴' : t.severity === 'warning' ? '🟡' : 'ℹ️'}
+              </span>
+              {t.message}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

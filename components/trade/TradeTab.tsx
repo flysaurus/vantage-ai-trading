@@ -6,7 +6,6 @@ import { useTabStore } from '@/store';
 import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { onBasketCreated } from '@/lib/gamification/events';
-import MarketOverview from '../shared/MarketOverview';
 
 const DEMO_ORDERS = [
   { id: '1', symbol: 'SPY', side: 'buy', status: 'filled', qty: 25, price: 480.00, date: 'Jan 8, 2024' },
@@ -68,6 +67,7 @@ export function TradeTab() {
   const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
   const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; totalReserved: number } | null>(null);
   const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
+  const [editingBasket, setEditingBasket] = useState<any>(null);
 
   // ─── Symbol search state ───
   const [searchQuery, setSearchQuery] = useState('');
@@ -227,133 +227,77 @@ export function TradeTab() {
   return (
     <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
 
-      {/* ─── Market Overview ─── */}
-      <MarketOverview />
-
-      {/* ─── 2. STRATEGIES SECTION ─── */}
-      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
-          STRATEGIES
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', padding: '0 16px', marginBottom: '20px' }}>
-          {[
-            { id: 'build-basket', icon: '🧺', label: 'Build Basket', description: 'AI-curated themed portfolios', available: true, onClick: () => setShowBuildBasket(true) },
-            { id: 'dca', icon: '📊', label: 'DCA', description: 'Dollar cost averaging', available: false },
-            { id: 'rebalance', icon: '⚖️', label: 'Rebalance', description: 'Optimize allocations', available: false },
-            { id: 'tax-harvest', icon: '🌾', label: 'Tax Harvest', description: 'Offset gains with losses', available: false },
-            { id: 'momentum', icon: '📈', label: 'Momentum', description: 'Ride market leaders', available: false },
-            { id: 'mean-reversion', icon: '📉', label: 'Mean Rev.', description: 'Buy the dip', available: false },
-          ].map(strategy => (
-            <button
-              key={strategy.id}
-              onClick={strategy.available ? strategy.onClick : undefined}
-              style={{
-                background: '#1a2235',
-                border: strategy.id === 'build-basket'
-                  ? '1px solid rgba(34,211,238,0.3)'
-                  : '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '12px',
-                padding: '14px 8px',
-                cursor: strategy.available ? 'pointer' : 'default',
-                textAlign: 'center',
-                opacity: strategy.available ? 1 : 0.5,
-                position: 'relative',
-              }}
-            >
-              {!strategy.available && (
-                <div style={{
-                  position: 'absolute',
-                  top: '6px',
-                  right: '6px',
-                  background: 'rgba(34,211,238,0.15)',
-                  color: '#22d3ee',
-                  fontSize: '8px',
-                  fontWeight: '600',
-                  padding: '2px 5px',
-                  borderRadius: '4px',
-                  letterSpacing: '0.05em',
-                }}>
-                  SOON
-                </div>
-              )}
-              <div style={{ fontSize: '22px', marginBottom: '6px' }}>{strategy.icon}</div>
-              <div style={{ color: strategy.available ? '#ffffff' : '#6b7280', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>{strategy.label}</div>
-              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.3' }}>{strategy.description}</div>
-            </button>
-          ))}
-        </div>
+      {/* ─── Symbol Search ─── */}
+      <div style={{ margin: '0 16px 16px 16px', position: 'relative' }}>
+        <input
+          placeholder="Search symbol (e.g. AAPL)"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
+          style={{
+            width: '100%',
+            background: '#1a2235',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            color: '#ffffff',
+            fontSize: '14px',
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+        {/* Autocomplete dropdown */}
+        {showResults && searchResults.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            marginTop: '4px',
+            background: '#0a0f1e',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.08)',
+            zIndex: 10,
+          }}>
+            {searchResults.map((r, i) => (
+              <div
+                key={r.symbol}
+                onClick={() => {
+                  skipSearchRef.current = true;
+                  setSelectedSymbol(r.symbol);
+                  setSelectedResult({ description: r.description, type: r.type });
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setShowResults(false);
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
+                  {r.symbol}
+                </span>
+                <span style={{ color: '#cbd5e1', fontSize: '12px', marginLeft: '8px' }}>
+                  {r.description}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* ─── 1. ORDER CARD (search + order in one card) ─── */}
-      <div style={{
-        background: '#1a2235',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '16px',
-        overflow: 'hidden',
-        margin: '0 16px 16px',
-        position: 'relative',
-      }}>
-        {/* Symbol search at top of card */}
+      {/* ─── Quote + Order ─── */}
+      {selectedSymbol && selectedResult && symbolQuote && (
         <div style={{
-          padding: '14px 16px',
-          borderBottom: selectedSymbol && selectedResult ? '1px solid rgba(255,255,255,0.06)' : 'none',
+          background: '#1a2235',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          margin: '0 16px 16px',
         }}>
-          <input
-            placeholder="Search symbol (e.g. AAPL)"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
-            style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              color: '#ffffff',
-              fontSize: '14px',
-              outline: 'none',
-            }}
-          />
-          {/* Autocomplete dropdown */}
-          {showResults && searchResults.length > 0 && (
-            <div style={{
-              marginTop: '8px',
-              background: '#0a0f1e',
-              borderRadius: '10px',
-              overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}>
-              {searchResults.map((r, i) => (
-                <div
-                  key={r.symbol}
-                  onClick={() => {
-                    skipSearchRef.current = true;
-                    setSelectedSymbol(r.symbol);
-                    setSelectedResult({ description: r.description, type: r.type });
-                    setSearchQuery('');
-                    setSearchResults([]);
-                    setShowResults(false);
-                  }}
-                  style={{
-                    padding: '10px 14px',
-                    borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>
-                    {r.symbol}
-                  </span>
-                  <span style={{ color: '#cbd5e1', fontSize: '12px', marginLeft: '8px' }}>
-                    {r.description}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Order form below search — same card — when symbol is picked AND quote loaded */}
-        {selectedSymbol && selectedResult && symbolQuote && (
+          {/* Quote Info */}
           <div style={{ padding: '16px' }}>
           {/* Symbol name + type badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -431,47 +375,44 @@ export function TradeTab() {
           </div>
 
           {/* 52-Week Range */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: '10px'
-          }}>
-            <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              52-Wk Range
-            </span>
-            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
-              {symbolQuote.weekLow52 > 0
-                ? `$${symbolQuote.weekLow52.toFixed(2)} — $${symbolQuote.weekHigh52.toFixed(2)}`
-                : '—'
-              }
-            </span>
-          </div>
-
-          {/* 52-Week Range Bar */}
           {symbolQuote.weekLow52 > 0 && (
-            <div style={{ marginTop: '6px', marginBottom: '4px' }}>
+            <>
               <div style={{
-                position: 'relative',
-                height: '4px',
-                background: '#0f1829',
-                borderRadius: '2px'
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: '10px'
               }}>
-                <div style={{
-                  position: 'absolute',
-                  height: '8px',
-                  width: '8px',
-                  background: '#ffffff',
-                  borderRadius: '50%',
-                  top: '-2px',
-                  left: `${Math.min(98, Math.max(2,
-                    ((symbolQuote.price - symbolQuote.weekLow52) /
-                    (symbolQuote.weekHigh52 - symbolQuote.weekLow52 || 1)) * 100
-                  ))}%`,
-                  transform: 'translateX(-50%)'
-                }} />
+                <span style={{ fontSize: '11px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  52-Wk Range
+                </span>
+                <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '500' }}>
+                  ${symbolQuote.weekLow52.toFixed(2)} — ${symbolQuote.weekHigh52.toFixed(2)}
+                </span>
               </div>
-            </div>
+              <div style={{ marginTop: '6px', marginBottom: '4px' }}>
+                <div style={{
+                  position: 'relative',
+                  height: '4px',
+                  background: '#0f1829',
+                  borderRadius: '2px'
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    height: '8px',
+                    width: '8px',
+                    background: '#ffffff',
+                    borderRadius: '50%',
+                    top: '-2px',
+                    left: `${Math.min(98, Math.max(2,
+                      ((symbolQuote.price - symbolQuote.weekLow52) /
+                      (symbolQuote.weekHigh52 - symbolQuote.weekLow52 || 1)) * 100
+                    ))}%`,
+                    transform: 'translateX(-50%)'
+                  }} />
+                </div>
+              </div>
+            </>
           )}
 
           {/* Open */}
@@ -511,16 +452,11 @@ export function TradeTab() {
             </div>
           )}
         </div>
-      )}
 
-      {/* ─── 2. PLACE ORDER FORM ─── */}
-      <div style={{
-        margin: '16px',
-        background: '#1a2235',
-        border: '1px solid #2a3448',
-        borderRadius: '12px',
-        padding: '20px'
-      }}>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+
+        {/* Order Form */}
+        <div style={{ padding: '16px' }}>
         <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '16px' }}>
           PLACE ORDER
         </div>
@@ -857,8 +793,98 @@ export function TradeTab() {
         </button>
       </div>
       </div>
+      )}
+
+      {/* ─── 2. STRATEGIES SECTION ─── */}
+      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
+          STRATEGIES
+        </div>
+        {/* AVAILABLE */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
+            AVAILABLE
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '0 16px' }}>
+            <button
+              onClick={() => setShowBuildBasket(true)}
+              style={{
+                background: '#1a2235',
+                border: '1px solid rgba(34,211,238,0.3)',
+                borderRadius: '12px',
+                padding: '14px 10px',
+                cursor: 'pointer',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: '20px', marginBottom: '4px' }}>🧺</div>
+              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>Build Basket</div>
+              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.3' }}>AI-curated themed portfolios</div>
+            </button>
+            <button
+              onClick={() => setActiveTab('invest')}
+              style={{
+                background: '#1a2235',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '12px',
+                padding: '14px 10px',
+                cursor: 'pointer',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>DCA</div>
+              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.3' }}>Dollar cost averaging</div>
+            </button>
+          </div>
+        </div>
+        {/* COMING SOON */}
+        <div>
+          <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
+            COMING SOON
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '0 16px' }}>
+            {[
+              { id: 'rebalance', label: 'Rebalance', description: 'Optimize allocations' },
+              { id: 'tax-harvest', label: 'Tax Harvest', description: 'Offset gains with losses' },
+              { id: 'momentum', label: 'Momentum', description: 'Ride market leaders' },
+              { id: 'mean-reversion', label: 'Mean Rev.', description: 'Buy the dip' },
+            ].map(s => (
+              <div
+                key={s.id}
+                style={{
+                  background: '#1a2235',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '12px',
+                  padding: '14px 10px',
+                  textAlign: 'center',
+                  opacity: 0.45,
+                  position: 'relative',
+                }}
+              >
+                <div style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  background: 'rgba(34,211,238,0.15)',
+                  color: '#22d3ee',
+                  fontSize: '8px',
+                  fontWeight: '600',
+                  padding: '2px 5px',
+                  borderRadius: '4px',
+                  letterSpacing: '0.05em',
+                }}>
+                  SOON
+                </div>
+                <div style={{ color: '#6b7280', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>{s.label}</div>
+                <div style={{ color: '#64748b', fontSize: '10px', lineHeight: '1.3' }}>{s.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* ─── 3.5: MY BASKETS ─── */}
+
       {(baskets.length > 0 || pendingBaskets.length > 0) && (
         <div style={{ margin: '0 16px 16px 16px' }}>
           <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
@@ -867,19 +893,24 @@ export function TradeTab() {
 
           {/* Pending baskets (not yet executed) */}
           {pendingBaskets.map((pb: any) => (
-            <div key={pb.id} style={{
+            <div key={pb.id} onClick={() => { setEditingBasket(pb); setShowBuildBasket(true); }} style={{
               background: '#1a2235',
               border: '1px solid rgba(245,158,11,0.3)',
               borderRadius: '12px',
               padding: '14px 16px',
               marginBottom: '8px',
+              cursor: 'pointer',
             }}>
               <div style={{
                 color: '#f59e0b',
                 fontSize: '11px',
                 marginBottom: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
               }}>
-                ⏳ Pending · {pb.nextOpenLabel || 'Opens at market open'}
+                <span>⏳ Pending · {pb.nextOpenLabel || 'Opens at market open'}</span>
+                <span style={{ color: '#cbd5e1', fontSize: '10px', opacity: 0.6 }}>✏️ Tap to edit</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div>
@@ -896,7 +927,7 @@ export function TradeTab() {
                 {pb.stocks?.length || 0} stocks · Submitted {new Date(pb.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </div>
               <button
-                onClick={() => cancelBasketOrder(pb.id)}
+                onClick={(e) => { e.stopPropagation(); cancelBasketOrder(pb.id); }}
                 style={{
                   background: 'none',
                   border: '1px solid rgba(239,68,68,0.3)',
@@ -1484,12 +1515,13 @@ export function TradeTab() {
       {showBuildBasket && createPortal(
         <BuildBasketModal
           isOpen={showBuildBasket}
-          onClose={() => setShowBuildBasket(false)}
+          onClose={() => { setShowBuildBasket(false); setEditingBasket(null); }}
           onBasketGenerated={(msg, result) => {
             setShowBuildBasket(false);
+            setEditingBasket(null);
             if (result?.success) {
               // Fire gamification
-              const anonId = user?.id || 'unknown';
+              const anonId = (user as any)?.id || 'unknown';
               onBasketCreated(anonId).catch(() => {});
               // Navigate to Portfolio tab → baskets section
               window.dispatchEvent(new CustomEvent('vantage-navigate', {
@@ -1497,6 +1529,7 @@ export function TradeTab() {
               }));
             }
           }}
+          editBasket={editingBasket}
         />,
         document.body
       )}

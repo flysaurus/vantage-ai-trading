@@ -66,11 +66,13 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onBasketGenerated: (msg: string, data: any) => void;
+  editBasket?: { id: string; basketName: string; basketEmoji: string; basketDisplayName: string; stocks: Array<{ symbol: string; price: number; shares: number; dollarAmount: number; allocationPct: number }>; totalReserved: number; status: 'OPEN'; submittedAt: string; nextOpenLabel: string } | null;
 }
 
-export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }: Props) {
+export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, editBasket }: Props) {
   const { user } = useAuth();
-  const { account, executeBasketTrade } = useLivePortfolio();
+  const { account, executeBasketTrade, cancelBasketOrder } = useLivePortfolio();
+  const isBasketEditMode = !!editBasket;
 
   // ── Helper: derive fractional shares from dollar amount and price (4 decimal places) ──
   const calcShares = (dollarAmount: number, price: number) => {
@@ -278,6 +280,75 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   useEffect(() => {
     if (step === 'basket_review' && selectedCurated && budget) fetchReviewPrices();
   }, [step]);
+
+  // ── Edit mode: pre-fill on open ──
+  useEffect(() => {
+    if (!isOpen || !isBasketEditMode || !editBasket) return;
+    // Build selectedCurated placeholder so basket_review renders correctly
+    const curatedPlaceholder: CuratedBasket = {
+      id: editBasket.id,
+      name: editBasket.basketName,
+      emoji: editBasket.basketEmoji,
+      theme: editBasket.basketName,
+      thesis: '',
+      risk_note: '',
+      stocks: editBasket.stocks.map(s => ({
+        symbol: s.symbol,
+        name: s.symbol,
+        allocation: s.allocationPct,
+        rationale: 'Pending basket stock',
+        price: s.price,
+        shares: s.shares,
+        dollarAmount: s.dollarAmount,
+      })),
+      performance: { '3m': 0, ytd: 0, '1y': 0, best_timeframe: '1y' },
+      created_at: editBasket.submittedAt,
+    };
+    setSelectedCurated(curatedPlaceholder);
+    setBudget(editBasket.totalReserved.toString());
+    setStep('basket_review');
+    setBasketDisplayName(editBasket.basketDisplayName || editBasket.basketName);
+
+    // Pre-fill reviewStocks directly from editBasket stocks
+    const bNum = editBasket.totalReserved;
+    const effectiveBudget = bNum * 0.95;
+    const enriched: ReviewStock[] = editBasket.stocks.map(s => {
+      const dollarAmount = s.dollarAmount || (s.allocationPct / 100) * effectiveBudget;
+      return {
+        symbol: s.symbol,
+        name: s.symbol,
+        allocation: s.allocationPct,
+        price: s.price || 0,
+        dollarAmount: Math.round(dollarAmount * 100) / 100,
+        shares: s.price > 0 ? calcShares(dollarAmount, s.price) : (s.shares || 0),
+        rationale: 'Pending basket stock',
+        isCustomAdded: false,
+      };
+    });
+    setReviewStocks(enriched);
+    setLoadingPrices(false);
+
+    // Also fetch live prices to refresh them
+    Promise.allSettled(
+      editBasket.stocks.map(stock =>
+        fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(stock.symbol)}`).then(r => r.json())
+      )
+    ).then(results => {
+      const refreshed: ReviewStock[] = enriched.map((stock, i) => {
+        const result = results[i];
+        const livePrice = result.status === 'fulfilled' ? (result.value.c || stock.price) : stock.price;
+        const dAmount = (stock.allocation / 100) * effectiveBudget;
+        const sh = livePrice > 0 ? calcShares(dAmount, livePrice) : stock.shares;
+        return {
+          ...stock,
+          price: Math.round(livePrice * 100) / 100,
+          dollarAmount: Math.round(dAmount * 100) / 100,
+          shares: Math.round(sh * 1000000) / 1000000,
+        };
+      });
+      setReviewStocks(refreshed);
+    }).catch(() => {});
+  }, [isOpen, isBasketEditMode, editBasket]);
 
   async function fetchReviewPrices() {
     if (!selectedCurated) return;
@@ -573,7 +644,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
       case 'custom_theme': return <StepHeader title="Custom Basket" onBack={goBack} onClose={onClose} backLabel="← Back" />;
       case 'generating': return <StepHeader title="Generating..." onBack={goBack} onClose={onClose} backLabel="← Back" />;
       case 'review': return <StepHeader title="Review Order" onBack={goBack} onClose={onClose} backLabel="← Back" />;
-      case 'basket_review': return <StepHeader title="Review Order" onBack={() => setStep('budget')} onClose={onClose} backLabel="← Budget" />;
+      case 'basket_review': return <StepHeader title={isBasketEditMode ? `Editing: ${editBasket?.basketName || ''}` : 'Review Order'} onBack={isBasketEditMode ? onClose : () => setStep('budget')} onClose={onClose} backLabel={isBasketEditMode ? '← Cancel' : '← Budget'} />;
       case 'basket_confirm': return <StepHeader title="Confirm Order" onBack={() => setStep('basket_review')} onClose={onClose} backLabel="← Review" />;
       case 'success': return null;
       default: return null;
@@ -1338,16 +1409,58 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
   // (moved above early return — see useEffect block before if (!isOpen) return null)
 
   // ── Confirm and execute basket order ──
+  // ── Edit lock guardrail (5 min before market open) ──
+  const EDIT_LOCK_MINUTES = 5;
+  const [editLocked, setEditLocked] = useState(false);
+  const [editLockReason, setEditLockReason] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || !isBasketEditMode || !editBasket) { setEditLocked(false); setEditLockReason(''); return; }
+    const checkLock = () => {
+      const market = getMarketStatus();
+      if (market.nextOpenET) {
+        const minutesUntilOpen = Math.floor((market.nextOpenET.getTime() - Date.now()) / (1000 * 60));
+        if (minutesUntilOpen <= EDIT_LOCK_MINUTES) {
+          setEditLocked(true);
+          setEditLockReason(`Editing locked — order executes in ${minutesUntilOpen <= 0 ? 'under 1 minute' : `${minutesUntilOpen} minute${minutesUntilOpen === 1 ? '' : 's'}`}`);
+          return;
+        }
+      }
+      if (market.isOpen && editBasket.status === 'OPEN') {
+        setEditLocked(true);
+        setEditLockReason('Editing locked — market is open, order is executing');
+        return;
+      }
+      setEditLocked(false);
+      setEditLockReason('');
+    };
+    checkLock();
+    const interval = setInterval(checkLock, 30000);
+    return () => clearInterval(interval);
+  }, [isOpen, isBasketEditMode, editBasket]);
+
+  // ── Confirm and execute basket order ──
   async function handleConfirmOrder() {
     if (!selectedCurated || reviewStocks.length === 0) return;
+    if (editLocked) return;
     setExecuting(true);
     setExecutionResult(null);
+
+    // Edit mode: cancel old pending order first
+    if (isBasketEditMode && editBasket) {
+      try {
+        await cancelBasketOrder(editBasket.id);
+      } catch (e) {
+        console.warn('Failed to cancel old basket order:', e);
+      }
+    }
+
     const bNum = parseInt(budget) || 0;
     const result = await executeBasketTrade(
-      selectedCurated.id,
-      selectedCurated.name,
-      selectedCurated.emoji,
-      basketDisplayName || selectedCurated.name,
+      isBasketEditMode ? 'custom_' + Date.now() : selectedCurated.id,
+      isBasketEditMode ? (editBasket?.basketName || selectedCurated.name) : selectedCurated.name,
+      isBasketEditMode ? (editBasket?.basketEmoji || selectedCurated.emoji) : selectedCurated.emoji,
+      basketDisplayName || (isBasketEditMode ? (editBasket?.basketDisplayName || selectedCurated.name) : selectedCurated.name),
       reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
       bNum,
     );
@@ -1364,6 +1477,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         resultStatus: result.status,
         time: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }),
       });
+      const successMsg = isBasketEditMode
+        ? 'Basket updated — old order cancelled, new order submitted'
+        : undefined;
       setBasketResult({
         basketName: b.name,
         basketEmoji: b.emoji,
@@ -1379,6 +1495,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         failed: result.failed,
         status: result.status || 'FILLED',
         marketLabel: market.nextOpenLabel || '',
+        editModeSuccessMsg: successMsg,
       } as any);
       setStep('success');
     }
@@ -1843,19 +1960,33 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
         flexDirection: 'column',
         gap: '10px',
       }}>
+        {/* Edit lock warning */}
+        {editLocked && (
+          <div style={{
+            padding: '10px 12px',
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: '8px',
+            color: '#f87171',
+            fontSize: '12px',
+            textAlign: 'center',
+          }}>
+            🔒 {editLockReason}
+          </div>
+        )}
         <button
           onClick={() => setStep('basket_confirm')}
-          disabled={budgetStatus === 'over' || reviewStocks.length < 2 || loadingPrices}
+          disabled={editLocked || budgetStatus === 'over' || reviewStocks.length < 2 || loadingPrices}
           style={{
             width: '100%', padding: '16px',
-            background: budgetStatus === 'over' ? 'rgba(239,68,68,0.2)' : '#22d3ee',
-            color: budgetStatus === 'over' ? '#ef4444' : '#0a0f1e',
-            border: budgetStatus === 'over' ? '1px solid rgba(239,68,68,0.4)' : 'none',
+            background: editLocked ? 'rgba(239,68,68,0.15)' : budgetStatus === 'over' ? 'rgba(239,68,68,0.2)' : '#22d3ee',
+            color: editLocked ? '#ef4444' : budgetStatus === 'over' ? '#ef4444' : '#0a0f1e',
+            border: (editLocked || budgetStatus === 'over') ? '1px solid rgba(239,68,68,0.4)' : 'none',
             borderRadius: '12px', fontSize: '16px', fontWeight: '600',
-            cursor: budgetStatus === 'over' ? 'not-allowed' : 'pointer',
+            cursor: (editLocked || budgetStatus === 'over') ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s ease',
           }}
-        >{budgetStatus === 'over' ? '❌ Over budget — reduce amounts' : 'Review & Confirm →'}</button>
+        >{editLocked ? '🔒 Editing Locked' : budgetStatus === 'over' ? '❌ Over budget — reduce amounts' : isBasketEditMode ? 'Save Changes →' : 'Review & Confirm →'}</button>
 
         <button
           onClick={onClose}
@@ -1870,7 +2001,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
             cursor: 'pointer',
           }}
         >
-          Cancel
+          {isBasketEditMode ? 'Cancel Edit' : 'Cancel'}
         </button>
       </div>
     </>
@@ -2123,6 +2254,23 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated }:
               {(basketResult as any).status === 'OPEN' ? 'Order Submitted' : 'Basket Purchased'}
             </div>
             
+            {/* Edit mode success message */}
+            {(basketResult as any).editModeSuccessMsg && (
+              <div style={{
+                width: '100%',
+                padding: '10px 14px',
+                background: 'rgba(34,211,238,0.1)',
+                border: '1px solid rgba(34,211,238,0.2)',
+                borderRadius: '10px',
+                color: '#22d3ee',
+                fontSize: '13px',
+                textAlign: 'center',
+                marginBottom: '16px',
+              }}>
+                ✅ {(basketResult as any).editModeSuccessMsg}
+              </div>
+            )}
+
             {/* Subtitle */}
             {(basketResult as any).status === 'OPEN' ? (
               <div style={{ color: '#94a3b8', fontSize: '15px', marginBottom: '24px', textAlign: 'center' }}>

@@ -14,6 +14,12 @@ import MarketOverview from '../shared/MarketOverview';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
 
+// Dynamic import for RiskNarrativeCard (being built in parallel)
+let RiskNarrativeCard: any = null;
+try {
+  RiskNarrativeCard = require('./RiskNarrativeCard').default;
+} catch {}
+
 // ─── Helpers ──────────────────────────────────────────────
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
@@ -1035,7 +1041,72 @@ export function PortfolioTab() {
       {/* ── Account Hero ── */}
       <AccountHero account={accountData} isConnected={isConnected} />
 
-      {/* ── AI Curated Briefs ── */}
+      {/* ── AI Insight Line ── */}
+      {(() => {
+        const sectors = new Set<string>();
+        enrichedPositions.forEach(p => { if (p.sector) sectors.add(p.sector); });
+        const sectorCount = sectors.size;
+        const isDiversified = sectorCount >= 5;
+        const insightText = sectorCount > 0
+          ? `Your portfolio is diversified across ${sectorCount} sectors`
+          : 'Portfolio overview loading...';
+        const barColor = sectorCount > 0
+          ? (isDiversified ? '#10b981' : '#f59e0b')
+          : '#64748b';
+        return (
+          <div style={{
+            margin: '0 16px 12px',
+            padding: '10px 16px',
+            borderRadius: 12,
+            background: `${barColor}18`,
+            border: `1px solid ${barColor}30`,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ fontSize: 14 }}>💡</span>
+            <span style={{
+              color: barColor, fontSize: 13, fontWeight: 600,
+              fontFamily: 'var(--font-sans)',
+            }}>
+              {insightText}
+            </span>
+          </div>
+        );
+      })()}
+{/* ── Portfolio Chart ── */}
+      <div style={{ padding: '0 20px 16px' }}>
+        <PortfolioChart
+          positions={positions.map((p) => ({
+            symbol: p.symbol,
+            shares: p.qty,
+            buyDate: p.buyDate,
+            avgCost: p.avgCost,
+            totalCost: p.totalCost || p.qty * p.avgCost,
+          }))}
+          cashBalance={displayAccount?.cash ?? 0}
+        />
+      </div>
+
+      
+      {/* ── Risk Narrative Card ── */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <h2 className="section-header">Risk Exposure</h2>
+        {RiskNarrativeCard ? (
+          <RiskNarrativeCard positions={enrichedPositions} account={displayAccount} />
+        ) : (
+          <div style={{
+            padding: '20px 16px',
+            background: 'var(--card-bg)',
+            border: '1px solid var(--card-border)',
+            borderRadius: 16,
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 14,
+          }}>
+            Exposure analysis coming soon.
+          </div>
+        )}
+      </div>
+{/* ── AI Curated Briefs ── */}
       <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <div style={{ fontSize: '9px', fontWeight: 800, color: '#22d3ee', letterSpacing: '0.02em', marginBottom: '10px' }}>
           ✨ AI CURATED
@@ -1048,20 +1119,6 @@ export function PortfolioTab() {
           {dailyExpanded && <DailyBriefCard mode="content" onClick={() => setDailyExpanded(false)} />}
           {weeklyExpanded && <WeeklySnapshotCard mode="content" onClick={() => setWeeklyExpanded(false)} />}
         </div>
-      </div>
-
-      {/* ── Portfolio Chart ── */}
-      <div style={{ padding: '0 20px 16px' }}>
-        <PortfolioChart
-          positions={positions.map((p) => ({
-            symbol: p.symbol,
-            shares: p.qty,
-            buyDate: p.buyDate,
-            avgCost: p.avgCost,
-            totalCost: p.totalCost || p.qty * p.avgCost,
-          }))}
-          cashBalance={displayAccount?.cash ?? 0}
-        />
       </div>
 
       {/* ── Buying Power Card ── */}
@@ -1192,6 +1249,16 @@ export function PortfolioTab() {
                   {/* Basket Header Row */}
                   <div
                     onClick={() => {
+                      if (selectMode) {
+                        setSelectedSymbols(prev => {
+                          const next = new Set(prev);
+                          const key = `basket:${basket.id}`;
+                          if (next.has(key)) next.delete(key);
+                          else next.add(key);
+                          return next;
+                        });
+                        return;
+                      }
                       setExpandedBasketIds(prev => {
                         const next = new Set(prev);
                         if (next.has(basket.id)) next.delete(basket.id);
@@ -1206,11 +1273,38 @@ export function PortfolioTab() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                      {selectMode && (
+                        <div onClick={(e) => { e.stopPropagation();
+                          setSelectedSymbols(prev => {
+                            const next = new Set(prev);
+                            const key = `basket:${basket.id}`;
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            return next;
+                          });
+                        }} style={{ flexShrink: 0 }}>
+                          <div style={{
+                            width: 18, height: 18, borderRadius: 9,
+                            border: `2px solid ${selectedSymbols.has(`basket:${basket.id}`) ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
+                            background: selectedSymbols.has(`basket:${basket.id}`) ? '#22d3ee' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {selectedSymbols.has(`basket:${basket.id}`) && <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>}
+                          </div>
+                        </div>
+                      )}
+
+                      
                       <span style={{ fontSize: 20 }}>{basket.emoji || '🧺'}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ color: '#ffffff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {basket.name}
                         </div>
+                          <span style={{
+                            background: 'rgba(34,211,238,0.12)', color: '#22d3ee',
+                            fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 999,
+                            flexShrink: 0, lineHeight: 1.4,
+                          }}>BASKET</span>
                         <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
                           {basket.activeCount} stock{basket.activeCount !== 1 ? 's' : ''}
                           {basket.status === 'partial' && <span style={{ color: '#f59e0b', marginLeft: 4 }}>· Partial</span>}
@@ -1289,72 +1383,33 @@ export function PortfolioTab() {
                                   {posPlSgn}{Math.abs(posPl).toFixed(2)}
                                 </div>
                               </div>
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  setBasketSellPositions([{
-                                    symbol: pos.symbol, qty: pos.shares,
-                                    currentPrice: pos.currentPrice || pos.avgCost,
-                                  }]);
-                                }}
-                                style={{
-                                  marginLeft: 10, padding: '3px 8px', borderRadius: 5,
-                                  background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)',
-                                  color: '#ef4444', fontSize: 10, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                                }}
-                              >Sell</button>
                             </div>
                           );
                         })}
                       </div>
-
-                      {/* Basket action buttons */}
-                      <div style={{
-                        padding: '10px 16px 12px',
-                        display: 'flex', gap: '8px', flexWrap: 'wrap',
-                      }}>
+                    </div>
+                  )}
+                      {/* Manage in Invest */}
+                      <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const active = basket.positions.filter(p => p.status === 'active');
-                            setBasketSellPositions(active.map(p => ({
-                              symbol: p.symbol, qty: p.shares,
-                              currentPrice: p.currentPrice || p.avgCost,
-                            })));
+                            window.location.hash = '#trade';
                           }}
                           style={{
-                            flex: 1, minWidth: 80, padding: '8px 0',
-                            borderRadius: 8, background: 'rgba(239,68,68,0.12)',
-                            border: '1px solid rgba(239,68,68,0.2)',
-                            color: '#ef4444', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                            width: '100%', padding: '10px 0',
+                            borderRadius: 8,
+                            background: 'rgba(34,211,238,0.10)',
+                            border: '1px solid rgba(34,211,238,0.20)',
+                            color: '#22d3ee', fontSize: 13, fontWeight: 600,
+                            cursor: 'pointer',
+                            fontFamily: 'var(--font-sans)',
                           }}
-                        >Sell Basket</button>
-                        {[25, 50, 75, 100].map(pct => (
-                          <button
-                            key={pct}
-                            onClick={e => {
-                              e.stopPropagation();
-                              const active = basket.positions.filter(p => p.status === 'active');
-                              setBasketSellPositions(active.map(p => ({
-                                symbol: p.symbol, qty: p.shares,
-                                currentPrice: p.currentPrice || p.avgCost,
-                              })));
-                              // Set initial sell percentage for the modal
-                              setTimeout(() => {
-                                // We pass initialPercent through a ref or the SellModal's showPercentOption mode
-                              }, 0);
-                            }}
-                            style={{
-                              padding: '8px 10px', borderRadius: 8,
-                              background: 'transparent',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              color: '#94a3b8', fontSize: 11, fontWeight: 500, cursor: 'pointer',
-                            }}
-                          >{pct}%</button>
-                        ))}
+                        >
+                          Manage in Invest →
+                        </button>
                       </div>
-                    </div>
-                  )}
+
                 </div>
               );
             })}
@@ -1417,6 +1472,71 @@ export function PortfolioTab() {
             setBasketSellPositions(null);
           }}
         />
+      )}
+
+      {/* ── Select Mode Action Bar ── */}
+      {selectMode && selectedSymbols.size > 0 && (
+        <div style={{
+          padding: '12px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12,
+        }}>
+          <span style={{
+            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600,
+            fontFamily: 'var(--font-sans)',
+          }}>
+            {selectedSymbols.size} selected
+          </span>
+          <button
+            onClick={async () => {
+              const individualSymbols: string[] = [];
+              const basketIds: string[] = [];
+              selectedSymbols.forEach(s => {
+                if (s.startsWith('basket:')) {
+                  basketIds.push(s.replace('basket:', ''));
+                } else {
+                  individualSymbols.push(s);
+                }
+              });
+
+              for (const sym of individualSymbols) {
+                const pos = displayPositions.find((p: Position) => p.symbol === sym);
+                if (pos) {
+                  try {
+                    await executeTrade(sym, 'SELL', pos.qty, pos.currentPrice ?? pos.avgCost);
+                  } catch { /* continue */ }
+                }
+              }
+
+              for (const bid of basketIds) {
+                const basket = baskets.find(b => b.id === bid);
+                if (basket) {
+                  const activeSymbols = basket.positions
+                    .filter(p => p.status === 'active')
+                    .map(p => p.symbol);
+                  if (activeSymbols.length > 0) {
+                    try {
+                      await sellBasketPositions(bid, activeSymbols);
+                    } catch { /* continue */ }
+                  }
+                }
+              }
+
+              refreshContext?.();
+              cancelSelect();
+            }}
+            style={{
+              padding: '8px 20px', borderRadius: 10,
+              background: 'rgba(239,68,68,0.12)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              color: '#ef4444', fontSize: 13, fontWeight: 700,
+              fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
+            }}
+          >
+            Sell Selected
+          </button>
+        </div>
       )}
 
       <PortfolioFooter
