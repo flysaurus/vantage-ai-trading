@@ -9,51 +9,20 @@ import type { BrokerOrder, BrokerPosition, DemoStateInternal } from './engine';
 import { evaluateOpenOrder, isDayOrderExpiredAt, isMarketOpenNow, isAfterMarketClose } from './fill-engine';
 import type { FillDecision } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
+import { getBatchQuotes } from '@/lib/market-data';
 
-// ─── Finnhub quote batching ──────────────────────────────────
+// ─── Quote batching (multi-source: Finnhub → Alpaca → Yahoo) ──
 
-const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY;
-
-async function fetchQuote(symbol: string): Promise<number | null> {
-  if (!FINNHUB_KEY) return null;
-  try {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${FINNHUB_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.c && typeof data.c === 'number' && data.c > 0) {
-      return data.c;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Fetch quotes for a set of symbols, batched with delay to respect
- * Finnhub free-tier rate limit of 60 calls/minute.
- *
- * With 5-minute cron interval: 60/min × 5 = 300 calls available.
- * Typical load: 30-50 unique symbols → well within limits.
- * 50ms delay between calls = 2.5s for 50 symbols.
- */
 async function fetchQuotesBatch(symbols: string[]): Promise<Map<string, number>> {
   const quotes = new Map<string, number>();
-  const unique = [...new Set(symbols.map(s => s.toUpperCase()))];
-
-  for (const sym of unique) {
-    const px = await fetchQuote(sym);
-    if (px !== null) {
-      quotes.set(sym, px);
+  try {
+    const results = await getBatchQuotes(symbols);
+    for (const [sym, quote] of results) {
+      if (quote.price > 0) quotes.set(sym, quote.price);
     }
-    // 50ms throttle to stay well under 60/min (worst case: 20 calls/sec burst → 1200/min hypothetical, but
-    // with unique symbols typically 30-50, total run time <3s)
-    if (unique.length > 10) {
-      await new Promise(r => setTimeout(r, 50));
-    }
+  } catch (err: any) {
+    console.error('[fetchQuotesBatch] Error:', err?.message || err);
   }
-
   return quotes;
 }
 
@@ -247,6 +216,20 @@ function applyFill(row: PortfolioRow, order: BrokerOrder, fillPrice: number, use
     const shares = cost / fillPrice;
     order.shares = shares;
     order.totalCost = cost;
+
+    // Deduct actual fill cost from cash_balance.
+    // Client-side DemoBroker handles this via pre-reservation at order creation,
+    // but server-side cron operates directly on Supabase rows where cash may
+    // not have been pre-reserved (especially for orders synced pre-fix).
+    // When the row WAS pre-reserved (saveState writes to Supabase post-fix),
+    // the reservedCost is already reflected in cash_balance. The cron only
+    // processes OPEN orders — which by definition haven't been filled yet —
+    // so the pre-reservation deduction in cash_balance IS the correct state.
+    // We reconcile the difference between reservedCost and actual cost here.
+    if (order.totalCost !== order.reservedCost) {
+      const diff = order.reservedCost ? (order.reservedCost - order.totalCost) : 0;
+      row.cash_balance += diff; // adjust for price difference
+    }
 
     // Upsert position
     upsertPosition(row.positions, {
