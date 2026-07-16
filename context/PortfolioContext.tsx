@@ -310,6 +310,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const demoStateRef = useRef(demoState);
   const basketPositionsRef = useRef<BasketPosition[]>([]);
   const brokerRef = useRef<BrokerEngine | null>(null);
+  const brokerOrdersRef = useRef<any[]>([]); // raw BrokerOrder[] for Supabase sync
   const demoSeededRef = useRef(false);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
@@ -343,7 +344,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       syncPortfolioToSupabase(user.id, {
         positions: demoState.positions,
         cashBalance: demoState.cashBalance,
-        orderHistory: demoState.orders || [],
+        orderHistory: brokerOrdersRef.current,       // BrokerOrder[] — full metadata for cron
         basketPositions: basketPositionsRef.current,
       });
     }, 5000);
@@ -538,6 +539,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       limitPrice: bo.limitPrice, stopPrice: bo.stopPrice,
       timeInForce: bo.timeInForce,
     }));
+    // Keep raw BrokerOrder[] for Supabase sync (full metadata, no DemoOrder normalization)
+    brokerOrdersRef.current = bOrders;
     const newState: DemoState = { positions: ctxPositions, cashBalance: bAccount.cashBalance, orders: ctxOrders, savedAt: Date.now() };
     setDemoState(newState);
     setDemoOrders(ctxOrders);

@@ -124,13 +124,14 @@ export class DemoBroker implements BrokerEngine {
     try {
       const { data } = await this.supabase
         .from('demo_portfolio_state')
-        .select('*')
+        .select('order_history, positions, cash_balance, basket_orders, updated_at')
         .eq('user_id', this.userId)
         .single();
       if (data && (data.positions?.length > 0 || data.cash_balance != null)) {
-        // Canonical source: order_history. Fall back to orders for legacy data.
-        // Normalize createdAt → submittedAt for orders stored in DemoOrder format.
-        const canonicalOrders = (data.order_history || data.orders || []).map((o: any) => ({
+        // Single canonical column: order_history (BrokerOrder[] format).
+        // Normalize createdAt→submittedAt for legacy DemoOrder-format records.
+        const rawOrders: any[] = data.order_history || [];
+        const canonicalOrders = rawOrders.map((o: any) => ({
           ...o,
           submittedAt: o.submittedAt || o.createdAt || o.submitted_at,
         }));
@@ -144,7 +145,7 @@ export class DemoBroker implements BrokerEngine {
         if (typeof window !== 'undefined') {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...this.state, savedAt: Date.now() }));
         }
-        console.log('[DemoBroker] Restored from Supabase');
+        console.log('[DemoBroker] Restored from Supabase (order_history)');
         return true;
       }
     } catch (e) {

@@ -354,10 +354,10 @@ export async function processAllPendingOrders(
 ): Promise<BatchProcessResult> {
   const now = new Date();
 
-  // 1. Fetch all portfolio states. Canonical column: order_history.
+  // 1. Fetch all portfolio states. Single canonical column: order_history (BrokerOrder[]).
   const { data: rows, error } = await supabase
     .from('demo_portfolio_state')
-    .select('user_id, positions, cash_balance, order_history, orders, basket_orders');
+    .select('user_id, positions, cash_balance, order_history, basket_orders');
 
   if (error) {
     console.error('[processAllPendingOrders] Supabase query error:', error.message);
@@ -368,11 +368,11 @@ export async function processAllPendingOrders(
     };
   }
 
-  // Normalize: canonical = order_history, fallback = orders.
-  // Also handle orders stored in DemoOrder format (createdAt → submittedAt).
+  // Normalize: createdAt→submittedAt for legacy DemoOrder-format records.
+  // This is NOT dual-read — it is single-column format normalization.
   const normalized = (rows || []).map((r: any) => ({
     ...r,
-    orders: (r.order_history || r.orders || []).map((o: any) => ({
+    orders: (r.order_history || []).map((o: any) => ({
       ...o,
       submittedAt: o.submittedAt || o.createdAt || o.submitted_at,
     })),
