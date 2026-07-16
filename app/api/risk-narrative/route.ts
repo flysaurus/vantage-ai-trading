@@ -56,15 +56,34 @@ function buildPrompt(triggers: ReturnType<typeof evaluateRiskTriggers>, metrics:
     .map((d) => `  ${d.sector}: ${d.currentPct}% (target ${d.targetPct}%, diff ${d.deviation > 0 ? '+' : ''}${d.deviation}%)`)
     .join('\n');
 
+  const positionNames = metrics.top3Concentration.symbols.join(', ');
+  const topSector = metrics.sectorConcentration[0];
+  const topSectorLine = topSector
+    ? `Dominant sector: ${topSector.sector} at ${topSector.pct}%`
+    : '';
+
   return [
-    'Turn these portfolio risk metrics into ONE plain-language sentence.',
-    'No hedging. No disclaimers. No markdown. Be direct.',
+    'You are a portfolio risk advisor. Based on the metrics below, produce:',
     '',
-    `Top-3 concentration: ${metrics.top3Concentration.pct}% (${metrics.top3Concentration.symbols.join(', ')})`,
+    '1. DIAGNOSIS: ONE plain-language sentence describing the current risk situation.',
+    '   No hedging. No disclaimers. No markdown. Be direct.',
+    '',
+    '2. SUGGESTION: ONE concrete, actionable step the investor could take.',
+    `   Be specific — mention actual symbol names or sectors from the data.`,
+    '   Examples: "Trim NVDA to below 20% allocation" or "Add a healthcare position to balance tech-heavy portfolio"',
+    '   Do NOT repeat the diagnosis. Do NOT just say "review your allocation."',
+    '',
+    'Respond in exactly this format:',
+    'DIAGNOSIS: <sentence>',
+    'SUGGESTION: <suggestion>',
+    '',
+    'Metrics:',
+    `Top-3 concentration: ${metrics.top3Concentration.pct}% (${positionNames})`,
     `Top-5 concentration: ${metrics.top5Concentration.pct}%`,
     metrics.singlePositionRisk
       ? `Largest position: ${metrics.singlePositionRisk.symbol} at ${metrics.singlePositionRisk.pct}%`
       : 'No single position over 20%',
+    topSectorLine,
     '',
     'Sector breakdown:',
     sectorLines || '  (no sector data)',
@@ -73,7 +92,7 @@ function buildPrompt(triggers: ReturnType<typeof evaluateRiskTriggers>, metrics:
       ? ['Style drift vs benchmark:', driftLines].join('\n')
       : 'No style benchmark to compare.',
     '',
-    'Sentence:',
+    'Response:',
   ].join('\n');
 }
 
@@ -141,9 +160,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const fact = existingFacts[0];
       // Check if the stored hash matches current metrics
       if (fact.claim?.startsWith(hash + '|')) {
-        const narrative = fact.claim.slice(hash.length + 1);
+        const cached = fact.claim.slice(hash.length + 1);
+        const diagMatch = cached.match(/^DIAGNOSIS:\s*(.+?)(?:\n|$)/m);
+        const suggMatch = cached.match(/^SUGGESTION:\s*(.+?)(?:\n|$)/m);
+        const narrative = diagMatch?.[1]?.trim() || cached;
+        const suggestion = suggMatch?.[1]?.trim() || null;
         return NextResponse.json({
           narrative,
+          suggestion,
           triggers,
           cached: true,
         });
@@ -167,6 +191,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const prompt = buildPrompt(triggers, metrics);
 
     let narrative: string;
+    let suggestion: string | null = null;
     try {
       const aiResponse = await callChatAI({
         messages: [
@@ -179,7 +204,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         temperature: 0.3,
       });
 
-      narrative = aiResponse.content.trim();
+      const raw = aiResponse.content.trim();
+
+      // Parse DIAGNOSIS / SUGGESTION format
+      const diagMatch = raw.match(/^DIAGNOSIS:\s*(.+?)(?:\n|$)/m);
+      const suggMatch = raw.match(/^SUGGESTION:\s*(.+?)(?:\n|$)/m);
+      narrative = diagMatch?.[1]?.trim() || raw;
+      suggestion = suggMatch?.[1]?.trim() || null;
 
       // Track usage
       await incrementUsage(
@@ -193,6 +224,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Return triggers without narrative on AI failure
       return NextResponse.json({
         narrative: null,
+        suggestion: null,
         triggers,
         cached: false,
         aiError: true,
@@ -201,10 +233,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // ── Cache the narrative in ai_facts ──
     try {
+      const cachePayload = suggestion
+        ? `${hash}|DIAGNOSIS: ${narrative}\nSUGGESTION: ${suggestion}`
+        : `${hash}|${narrative}`;
       await writeFact(userId, {
         subject: 'risk_narrative',
         fact_type: 'observation',
-        claim: `${hash}|${narrative}`,
+        claim: cachePayload,
         source: 'risk-narrative',
         confidence: 'tentative',
       });
@@ -215,6 +250,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       narrative,
+      suggestion,
       triggers,
       cached: false,
     });

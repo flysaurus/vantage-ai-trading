@@ -1000,85 +1000,12 @@ export function PortfolioTab() {
     positions: displayPositions,
   };
 
-  // ── Hero insight from risk-narrative API ──
-  const [heroInsight, setHeroInsight] = useState<{
-    text: string;
-    color: string;
-    loading: boolean;
-  }>({ text: '', color: '#64748b', loading: true });
-  useEffect(() => {
-    if (!enrichedPositions || enrichedPositions.length === 0) {
-      setHeroInsight({ text: '', color: '#64748b', loading: false });
-      return;
-    }
-    let cancelled = false;
-    async function fetchInsight() {
-      try {
-        const payload = {
-          positions: enrichedPositions.map(p => ({
-            symbol: p.symbol,
-            qty: p.qty,
-            currentPrice: p.currentPrice,
-            sector: p.sector,
-            avgCost: p.avgCost,
-          })),
-        };
-        const res = await fetch('/api/risk-narrative', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        if (cancelled) return;
-        const hasTriggers = data.triggers?.length > 0;
-        const severity = !hasTriggers
-          ? 'safe'
-          : data.triggers.some((t: any) => t.severity === 'critical')
-            ? 'critical'
-            : 'warning';
-        const colors: Record<string, string> = { safe: '#10b981', warning: '#f59e0b', critical: '#ef4444' };
-        const text = data.narrative
-          || (severity === 'safe' && data.sectorCount
-            ? `Well diversified across ${data.sectorCount} sectors`
-            : data.triggers?.[0]?.message)
-          || 'Portfolio overview loaded';
-        setHeroInsight({ text, color: colors[severity] || '#64748b', loading: false });
-      } catch {
-        if (!cancelled) {
-          setHeroInsight({ text: 'Portfolio overview loaded', color: '#64748b', loading: false });
-        }
-      }
-    }
-    fetchInsight();
-    return () => { cancelled = true; };
-  }, [enrichedPositions]);
-
   return (
     <div style={{ paddingBottom: 120 }}>
-      {/* ── Account Hero ── */}
+      {/* ── 1. Account Hero ── */}
       <AccountHero account={accountData} isConnected={isConnected} />
 
-      {/* ── AI Insight Line ── */}
-      {heroInsight.text ? (
-        <div style={{
-          margin: '0 16px 12px',
-          padding: '10px 16px',
-          borderRadius: 12,
-          background: `${heroInsight.color}18`,
-          border: `1px solid ${heroInsight.color}30`,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <span style={{ fontSize: 14 }}>💡</span>
-          <span style={{
-            color: heroInsight.color, fontSize: 13, fontWeight: 600,
-            fontFamily: 'var(--font-sans)',
-          }}>
-            {heroInsight.text}
-          </span>
-        </div>
-      ) : null}
-{/* ── Portfolio Chart ── */}
+      {/* ── 2. Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>
         <PortfolioChart
           positions={positions.map((p) => ({
@@ -1092,48 +1019,68 @@ export function PortfolioTab() {
         />
       </div>
 
-      
-      {/* ── Risk Narrative Card ── */}
+      {/* ── 3. AI Curated Group ── */}
       <div style={{ padding: '0 16px 16px' }}>
-        <h2 className="section-header">Risk Exposure</h2>
-        {RiskNarrativeCard ? (
-          <RiskNarrativeCard positions={enrichedPositions} account={displayAccount} />
-        ) : (
-          <div style={{
-            padding: '20px 16px',
-            background: 'var(--card-bg)',
-            border: '1px solid var(--card-border)',
-            borderRadius: 16,
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-            fontSize: 14,
-          }}>
-            Exposure analysis coming soon.
-          </div>
-        )}
-      </div>
-{/* ── AI Curated Briefs ── */}
-      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-        <div style={{ fontSize: '9px', fontWeight: 800, color: '#22d3ee', letterSpacing: '0.02em', marginBottom: '10px' }}>
+        {/* Section label */}
+        <div style={{
+          fontSize: 9,
+          fontWeight: 800,
+          color: '#22d3ee',
+          letterSpacing: '0.02em',
+          marginBottom: 10,
+        }}>
           ✨ AI CURATED
         </div>
-        <div ref={briefsRef} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)', width: '100%' }}>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
-            <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
+
+        {/* Container — shared background/border */}
+        <div style={{
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 20,
+          padding: 14,
+          background: 'rgba(255,255,255,0.02)',
+        }}>
+          {/* Risk Exposure — collapsible, summary-line shown collapsed */}
+          {RiskNarrativeCard ? (
+            <RiskNarrativeCard positions={enrichedPositions} account={displayAccount} />
+          ) : (
+            <div style={{
+              padding: '20px 16px',
+              background: 'var(--card-bg)',
+              border: '1px solid var(--card-border)',
+              borderRadius: 16,
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              fontSize: 14,
+            }}>
+              Exposure analysis coming soon.
+            </div>
+          )}
+
+          {/* Divider */}
+          <div style={{
+            margin: '12px 0',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+          }} />
+
+          {/* Daily Brief / Weekly Snapshot buttons */}
+          <div ref={briefsRef}>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
+              <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
+            </div>
+            {dailyExpanded && <DailyBriefCard mode="content" onClick={() => setDailyExpanded(false)} />}
+            {weeklyExpanded && <WeeklySnapshotCard mode="content" onClick={() => setWeeklyExpanded(false)} />}
           </div>
-          {dailyExpanded && <DailyBriefCard mode="content" onClick={() => setDailyExpanded(false)} />}
-          {weeklyExpanded && <WeeklySnapshotCard mode="content" onClick={() => setWeeklyExpanded(false)} />}
         </div>
       </div>
 
-      {/* ── Buying Power Card ── */}
+      {/* ── 4. Cash / Invested Summary ── */}
       <BuyingPowerCard account={accountData} invested={totalMarketValue} />
 
-      {/* ── Market Overview ── */}
+      {/* ── 5. Market Overview ── */}
       <MarketOverview />
 
-      {/* ── Positions Header ── */}
+      {/* ── 6. Positions ── */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '20px 20px 12px',

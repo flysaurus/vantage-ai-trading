@@ -14,6 +14,7 @@ interface RiskTrigger {
 
 interface NarrativeResponse {
   narrative: string | null;
+  suggestion?: string | null;
   triggers: RiskTrigger[];
   cached: boolean;
   sectorCount?: number;
@@ -304,7 +305,7 @@ export default function RiskNarrativeCard({
         {displayText}
       </p>
 
-      {/* Expanded trigger details (only on mobile where we default-collapse) */}
+      {/* Expanded trigger details */}
       {expanded && hasTriggers && (
         <div
           style={{
@@ -334,6 +335,46 @@ export default function RiskNarrativeCard({
               {t.message}
             </div>
           ))}
+
+          {/* Mitigation suggestion — visually distinct from diagnostic bullets */}
+          {data.suggestion && (
+            <div
+              style={{
+                marginTop: 10,
+                paddingTop: 10,
+                borderTop: '1px solid rgba(34,211,238,0.12)',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+              }}
+            >
+              <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>💡</span>
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#22d3ee',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    marginBottom: 3,
+                  }}
+                >
+                  Suggestion
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: 'rgba(255,255,255,0.72)',
+                  }}
+                >
+                  {data.suggestion}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
