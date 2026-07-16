@@ -18,8 +18,7 @@
     },
     {
       "path": "/api/cron/execute-pending-orders",
-      "schedule": "0 14 * * 1-5",
-      "_comment": "Redundant backup — GitHub Actions runs */5 during market hours; this fires once daily as safety net"
+      "schedule": "0 14 * * 1-5"
     }
   ],
   "functions": {
