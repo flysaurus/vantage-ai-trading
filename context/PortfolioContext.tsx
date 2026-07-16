@@ -358,27 +358,24 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [demoState, user?.id]);
 
-  // ── Supabase: load on mount (overrides localStorage if newer) ──
+  // ── Supabase: primary source on mount (always wins over localStorage/seeds) ──
   useEffect(() => {
     if (!user?.id) return;
     const trySupabaseLoad = async () => {
       const supabaseState = await loadPortfolioFromSupabase(user.id);
       if (!supabaseState || !supabaseState.positions?.length) return;
-      // Compare timestamps — Supabase wins if newer
-      const localTs = initialPersistedState?.savedAt || demoState?.savedAt || 0;
-      if (supabaseState.savedAt > localTs) {
-        const merged: DemoState = {
-          positions: supabaseState.positions,
-          cashBalance: supabaseState.cashBalance,
-          orders: supabaseState.orderHistory || [],
-          savedAt: supabaseState.savedAt,
-        };
-        console.log('[portfolio init] Supabase load SUCCESS, positions:', supabaseState.positions.length, 'cash:', supabaseState.cashBalance);
-        setDemoState(merged);
-        setDemoOrders(merged.orders);
-        // Also update localStorage as cache
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...merged, savedAt: Date.now() })); } catch {}
-      }
+
+      const merged: DemoState = {
+        positions: supabaseState.positions,
+        cashBalance: supabaseState.cashBalance,
+        orders: supabaseState.orderHistory || [],
+        savedAt: supabaseState.savedAt,
+      };
+      console.log('[portfolio init] Supabase load SUCCESS, positions:', supabaseState.positions.length, 'cash:', supabaseState.cashBalance);
+      setDemoState(merged);
+      setDemoOrders(merged.orders);
+      // Cache in localStorage for speed
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...merged, savedAt: Date.now() })); } catch {}
     };
     trySupabaseLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
