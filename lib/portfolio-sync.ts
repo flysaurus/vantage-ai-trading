@@ -93,7 +93,11 @@ export async function loadPortfolioFromSupabase(
     const row = data as Record<string, unknown>;
 
     return {
-      positions: (row.positions as any[]) || [],
+      positions: ((row.positions as any[]) || []).map((p: any) => ({
+        ...p,
+        qty: p.qty ?? p.shares ?? 0, // normalize BrokerPosition (shares) → DemoOrder (qty)
+        avgCost: p.avgCost ?? p.price ?? p.avgCost,
+      })),
       cashBalance: (row.cash_balance as number) ?? 0,
       orderHistory: (row.order_history as any[]) || [],
       basketPositions: (row.basket_positions as any[]) || [],

@@ -102,9 +102,14 @@ export class DemoBroker implements BrokerEngine {
       // Sync to Supabase if configured — canonical column is order_history
       if (this.supabase && this.userId !== 'demo_user') {
         try {
+          // Normalize positions to DemoOrder format (qty) for UI compatibility
+          const normalizedPositions = this.state.positions.map((p: any) => ({
+            ...p,
+            qty: p.qty ?? p.shares ?? 0,
+          }));
           await this.supabase.from('demo_portfolio_state').upsert({
             user_id: this.userId,
-            positions: this.state.positions,
+            positions: normalizedPositions,
             cash_balance: this.state.cashBalance,
             order_history: this.state.orders,       // canonical: full BrokerOrder[]
             basket_orders: this.state.basketOrders,
@@ -136,7 +141,10 @@ export class DemoBroker implements BrokerEngine {
           submittedAt: o.submittedAt || o.createdAt || o.submitted_at,
         }));
         this.state = {
-          positions: data.positions,
+          positions: (data.positions as any[]).map((p: any) => ({
+            ...p,
+            shares: p.shares ?? p.qty ?? p.quantity ?? 0, // normalize DemoOrder (qty) → BrokerPosition (shares)
+          })),
           cashBalance: data.cash_balance,
           orders: canonicalOrders,
           basketOrders: data.basket_orders || [],

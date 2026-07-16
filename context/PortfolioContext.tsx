@@ -369,13 +369,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         positions: supabaseState.positions,
         cashBalance: supabaseState.cashBalance,
         orders: supabaseState.orderHistory || [],
-        savedAt: supabaseState.savedAt,
+        savedAt: supabaseState.savedAt, // keep original server timestamp
       };
       console.log('[portfolio init] Supabase load SUCCESS, positions:', supabaseState.positions.length, 'cash:', supabaseState.cashBalance);
       setDemoState(merged);
       setDemoOrders(merged.orders);
-      // Cache in localStorage for speed
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...merged, savedAt: Date.now() })); } catch {}
+      // Also update broker refs so sync doesn't push stale seed orders
+      brokerOrdersRef.current = supabaseState.orderHistory || [];
+      // Cache in localStorage for speed — preserve original savedAt so sync guard works
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...merged, savedAt: supabaseState.savedAt })); } catch {}
     };
     trySupabaseLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
