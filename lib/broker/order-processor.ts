@@ -354,10 +354,10 @@ export async function processAllPendingOrders(
 ): Promise<BatchProcessResult> {
   const now = new Date();
 
-  // 1. Fetch all portfolio states that have OPEN orders
+  // 1. Fetch all portfolio states. Canonical column: order_history.
   const { data: rows, error } = await supabase
     .from('demo_portfolio_state')
-    .select('user_id, positions, cash_balance, orders, basket_orders');
+    .select('user_id, positions, cash_balance, order_history, orders, basket_orders');
 
   if (error) {
     console.error('[processAllPendingOrders] Supabase query error:', error.message);
@@ -368,8 +368,18 @@ export async function processAllPendingOrders(
     };
   }
 
+  // Normalize: canonical = order_history, fallback = orders.
+  // Also handle orders stored in DemoOrder format (createdAt → submittedAt).
+  const normalized = (rows || []).map((r: any) => ({
+    ...r,
+    orders: (r.order_history || r.orders || []).map((o: any) => ({
+      ...o,
+      submittedAt: o.submittedAt || o.createdAt || o.submitted_at,
+    })),
+  }));
+
   // 2. Filter to only rows with OPEN orders
-  const active: PortfolioRow[] = (rows || []).filter(
+  const active: PortfolioRow[] = normalized.filter(
     (r: any) => (r.orders || []).some((o: any) => o.status === 'OPEN')
   );
 
@@ -420,14 +430,14 @@ export async function processAllPendingOrders(
       const { result, updated } = processUserOrders(row, quotes, now, userEmail);
 
       if (updated) {
-        // Persist changes
+        // Persist changes — canonical column: order_history
         const { error: updateErr } = await supabase
           .from('demo_portfolio_state')
           .upsert({
             user_id: row.user_id,
             positions: row.positions,
             cash_balance: row.cash_balance,
-            orders: row.orders,
+            order_history: row.orders,
             basket_orders: row.basket_orders,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });

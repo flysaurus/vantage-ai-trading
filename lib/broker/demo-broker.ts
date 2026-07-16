@@ -99,14 +99,14 @@ export class DemoBroker implements BrokerEngine {
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
       }
-      // Sync to Supabase if configured
+      // Sync to Supabase if configured — canonical column is order_history
       if (this.supabase && this.userId !== 'demo_user') {
         try {
           await this.supabase.from('demo_portfolio_state').upsert({
             user_id: this.userId,
             positions: this.state.positions,
             cash_balance: this.state.cashBalance,
-            orders: this.state.orders,
+            order_history: this.state.orders,       // canonical: full BrokerOrder[]
             basket_orders: this.state.basketOrders,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });
@@ -128,10 +128,16 @@ export class DemoBroker implements BrokerEngine {
         .eq('user_id', this.userId)
         .single();
       if (data && (data.positions?.length > 0 || data.cash_balance != null)) {
+        // Canonical source: order_history. Fall back to orders for legacy data.
+        // Normalize createdAt → submittedAt for orders stored in DemoOrder format.
+        const canonicalOrders = (data.order_history || data.orders || []).map((o: any) => ({
+          ...o,
+          submittedAt: o.submittedAt || o.createdAt || o.submitted_at,
+        }));
         this.state = {
           positions: data.positions,
           cashBalance: data.cash_balance,
-          orders: data.orders || [],
+          orders: canonicalOrders,
           basketOrders: data.basket_orders || [],
           savedAt: new Date(data.updated_at).getTime(),
         };

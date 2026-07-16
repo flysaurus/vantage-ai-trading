@@ -26,6 +26,7 @@ import { scoreDiversification } from '@/lib/confidence';
 import { getMarketStatus } from '@/lib/market-hours';
 import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getBroker } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import type { BrokerEngine, BrokerOrder } from '@/lib/broker/engine';
@@ -85,6 +86,7 @@ interface DemoOrder {
   totalCost: number;
   status: string;
   createdAt: string;
+  submittedAt?: string;
   /** Price at which the order was submitted (for OPEN orders) */
   submittedPrice?: number;
   /** Cash reserved for OPEN BUY orders */
@@ -93,6 +95,15 @@ interface DemoOrder {
   note?: string;
   /** When the order was cancelled */
   cancelledAt?: string;
+  // Basket metadata — preserved for cron fill processing
+  basketOrderId?: string;
+  basketId?: string;
+  basketName?: string;
+  basketEmoji?: string;
+  // Advanced order params
+  limitPrice?: number;
+  stopPrice?: number;
+  timeInForce?: string;
 }
 
 interface DemoState {
@@ -518,8 +529,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const ctxOrders: DemoOrder[] = bOrders.map((bo: any) => ({
       id: bo.id, symbol: bo.symbol, side: bo.side, shares: bo.shares, type: bo.type,
       fillPrice: bo.fillPrice || bo.submittedPrice, totalCost: bo.totalCost,
-      status: bo.status, createdAt: bo.submittedAt, submittedPrice: bo.submittedPrice,
+      status: bo.status, createdAt: bo.submittedAt, submittedAt: bo.submittedAt,
+      submittedPrice: bo.submittedPrice,
       reservedCost: bo.reservedCost, note: bo.note, cancelledAt: bo.cancelledAt,
+      // Basket metadata — preserved for cron fill processing
+      basketOrderId: bo.basketOrderId, basketId: bo.basketId,
+      basketName: bo.basketName, basketEmoji: bo.basketEmoji,
+      limitPrice: bo.limitPrice, stopPrice: bo.stopPrice,
+      timeInForce: bo.timeInForce,
     }));
     const newState: DemoState = { positions: ctxPositions, cashBalance: bAccount.cashBalance, orders: ctxOrders, savedAt: Date.now() };
     setDemoState(newState);
@@ -532,7 +549,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── Broker initialization ──
   useEffect(() => {
-    brokerRef.current = getBroker('demo', user?.id, undefined, user?.email);
+    const supabaseClient = getSupabaseBrowserClient();
+    brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
     // Always sync broker state to React — even with no positions (e.g. pending basket orders)
     brokerRef.current.getPositions().then(() => {
       refreshStateFromBroker();
