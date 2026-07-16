@@ -1078,15 +1078,34 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
         {/* Quick selects */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '24px' }}>
-          {[1000, 5000, 10000, 25000].map(amt => (
+          {[1000, 5000, 10000, 25000].map(amt => {
+            const overCash = amt > cashBalance;
+            return (
             <button key={amt} onClick={() => setBudget(String(amt))} style={{
-              background: budget === String(amt) ? 'rgba(34,211,238,0.1)' : 'transparent',
-              border: budget === String(amt) ? '1px solid #22d3ee' : '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '20px', padding: '8px 16px', color: budget === String(amt) ? '#22d3ee' : '#94a3b8',
+              background: budget === String(amt) ? (overCash ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.1)') : 'transparent',
+              border: budget === String(amt) ? (overCash ? '1px solid #ef4444' : '1px solid #22d3ee') : '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '20px', padding: '8px 16px', color: budget === String(amt) ? (overCash ? '#ef4444' : '#22d3ee') : (overCash ? '#6b7280' : '#94a3b8'),
               fontSize: '13px', cursor: 'pointer',
+              opacity: overCash && budget !== String(amt) ? 0.5 : 1,
             }}>${amt.toLocaleString()}</button>
-          ))}
+          )})}
         </div>
+
+        {/* Insufficient buying power warning in budget step */}
+        {budget && parseInt(budget) > cashBalance && (
+          <div style={{
+            padding: '10px 12px',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: '8px',
+            color: '#ef4444',
+            fontSize: '12px',
+            lineHeight: '1.5',
+            marginBottom: '24px',
+          }}>
+            ⚠️ Insufficient buying power. Your budget of ${parseInt(budget).toLocaleString()} exceeds your available cash of ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
+          </div>
+        )}
       </div>
 
       {/* Fixed bottom buttons */}
@@ -1106,20 +1125,20 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       }}>
         <button
           onClick={() => selectedCurated ? setStep('basket_review') : generateBasket()}
-          disabled={!budget || parseInt(budget) <= 0}
+          disabled={!budget || parseInt(budget) <= 0 || parseInt(budget) > cashBalance}
           style={{
             width: '100%',
             padding: '16px',
-            background: budget && parseInt(budget) > 0 ? '#22d3ee' : 'rgba(34,211,238,0.2)',
-            color: budget && parseInt(budget) > 0 ? '#0a0f1e' : '#6b7280',
-            border: 'none',
+            background: budget && parseInt(budget) > 0 && parseInt(budget) <= cashBalance ? '#22d3ee' : (parseInt(budget) > cashBalance ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.2)'),
+            color: budget && parseInt(budget) > 0 && parseInt(budget) <= cashBalance ? '#0a0f1e' : (parseInt(budget) > cashBalance ? '#ef4444' : '#6b7280'),
+            border: parseInt(budget) > cashBalance ? '1px solid rgba(239,68,68,0.3)' : 'none',
             borderRadius: '12px',
             fontSize: '16px',
             fontWeight: '600',
-            cursor: budget && parseInt(budget) > 0 ? 'pointer' : 'not-allowed',
+            cursor: budget && parseInt(budget) > 0 && parseInt(budget) <= cashBalance ? 'pointer' : 'not-allowed',
           }}
         >
-          {selectedCurated ? 'Review Order →' : 'Generate Basket →'}
+          {parseInt(budget) > cashBalance ? `Insufficient funds · $${(parseInt(budget) - cashBalance).toLocaleString()} short` : selectedCurated ? 'Review Order →' : 'Generate Basket →'}
         </button>
         <button
           onClick={onClose}
@@ -1443,6 +1462,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   async function handleConfirmOrder() {
     if (!selectedCurated || reviewStocks.length === 0) return;
     if (editLocked) return;
+    const bNum = parseInt(budget) || 0;
+    if (bNum > cashBalance) {
+      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `Insufficient funds. Need $${bNum.toLocaleString()}, have $${cashBalance.toLocaleString()}` } as any);
+      return;
+    }
     setExecuting(true);
     setExecutionResult(null);
 
@@ -2155,6 +2179,20 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           flexDirection: 'column',
           gap: '10px',
         }}>
+          {(parseInt(budget) || 0) > cashBalance && (
+            <div style={{
+              padding: '10px 12px',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.25)',
+              borderRadius: '8px',
+              color: '#ef4444',
+              fontSize: '12px',
+              lineHeight: '1.5',
+              textAlign: 'left',
+            }}>
+              ⚠️ Insufficient buying power. You need ${(parseInt(budget) || 0).toLocaleString()} but only have ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available.
+            </div>
+          )}
           <button onClick={handleConfirmOrder}
             disabled={executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance}
             style={{
