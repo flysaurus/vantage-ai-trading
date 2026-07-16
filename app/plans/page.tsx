@@ -6,7 +6,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Minus } from 'lucide-react';
+import { Check, Minus } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 
 // ── API Types ───────────────────────────────────────────────
 
@@ -135,14 +136,14 @@ export default function PlansPage() {
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 12px 4px', flexShrink: 0,
       }}>
-        <button onClick={() => router.push('/?tab=settings')} aria-label="Back" style={{
-          width: 28, height: 28, borderRadius: 6,
-          border: 'none', background: 'rgba(255,255,255,0.05)',
-          color: '#94a3b8', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <ArrowLeft size={14} />
-        </button>
+        <BackButton
+          tab="settings"
+          style={{
+            width: 28, height: 28, borderRadius: 6,
+            background: 'rgba(255,255,255,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        />
         <h1 style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>
           Plans &amp; Pricing
         </h1>

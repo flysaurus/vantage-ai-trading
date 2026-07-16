@@ -12,8 +12,9 @@ import type { StyleDef } from '@/components/onboarding/styles';
 import type { Position, User } from '@/types';
 import {
   RefreshCcw, Shield, AlertTriangle, Info,
-  TrendingUp, CheckCircle, XCircle, ArrowLeft,
+  TrendingUp, CheckCircle, XCircle,
 } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 
 // ─── Page ─────────────────────────────────────────────────────
 export default function InvestorStylePage() {
@@ -102,18 +103,13 @@ export default function InvestorStylePage() {
     <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
       <div style={{ marginBottom: 14 }}>
-        <button
-          onClick={() => router.push('/?tab=settings')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'none', border: 'none',
-            color: '#94a3b8', fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', padding: '4px 0', marginBottom: 8,
-            fontFamily: 'inherit',
-          }}
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
+        <BackButton
+          tab="settings"
+          showLabel
+          label="Back"
+          iconSize={16}
+          style={{ padding: '4px 0', marginBottom: 8, fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}
+        />
         <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Investor Style</h1>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
           All analysis filtered through your investment philosophy

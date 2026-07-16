@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -219,18 +219,13 @@ export function GamificationEditor() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1rem' }}>
-      <button
-        onClick={() => router.push('/?tab=settings')}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: 'none', border: 'none',
-          color: '#94a3b8', fontSize: 13, fontWeight: 600,
-          cursor: 'pointer', padding: '4px 0', marginBottom: 12,
-          fontFamily: 'inherit',
-        }}
-      >
-        <ArrowLeft size={16} /> Back to Settings
-      </button>
+      <BackButton
+        tab="settings"
+        showLabel
+        label="Back to Settings"
+        iconSize={16}
+        style={{ padding: '4px 0', marginBottom: 12, fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}
+      />
       <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>⚙️ Gamification Config</h1>
       <p style={{ color: '#888', marginBottom: '2rem' }}>
         Pillar weights, milestone thresholds, and point caps.

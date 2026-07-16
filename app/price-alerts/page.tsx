@@ -8,9 +8,10 @@ import {
   type Alert, type AlertType, type NotificationChannel,
 } from '@/lib/supabase/alerts';
 import {
-  ArrowLeft, Plus, Bell, BellOff, Trash2, RefreshCcw,
+  Plus, Bell, BellOff, Trash2, RefreshCcw,
   TrendingUp, TrendingDown, Activity, X,
 } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 
 // ─── Alert Type Labels ────────────────────────────────────────
 const ALERT_TYPE_LABELS: Record<AlertType, { label: string; icon: typeof TrendingUp; template: (symbol: string, value: number) => string }> = {
@@ -160,9 +161,7 @@ export default function PriceAlertsPage() {
     <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <button onClick={() => router.push('/?tab=settings')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
-          <ArrowLeft size={20} />
-        </button>
+        <BackButton tab="settings" iconSize={20} />
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Price Alerts</h1>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>

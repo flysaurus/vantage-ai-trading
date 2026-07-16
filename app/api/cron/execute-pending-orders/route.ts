@@ -27,14 +27,17 @@ import { processAllPendingOrders } from '@/lib/broker/order-processor';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const CRON_SECRET = process.env.CRON_SECRET || '';
+const GH_CRON_SECRET = process.env.GH_CRON_SECRET || '';
 
 export const maxDuration = 55;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // Validate cron secret
   const authHeader = req.headers.get('authorization');
-  const expectedAuth = `Bearer ${CRON_SECRET}`;
-  if (!CRON_SECRET || authHeader !== expectedAuth) {
+  const expectedAuths = [CRON_SECRET, GH_CRON_SECRET].filter(Boolean);
+  const authValid = expectedAuths.length > 0 && 
+    expectedAuths.some(secret => authHeader === `Bearer ${secret}`);
+  if (!authValid) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

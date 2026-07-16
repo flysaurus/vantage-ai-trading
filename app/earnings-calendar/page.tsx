@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import {
-  ArrowLeft, Calendar, List, ChevronLeft, ChevronRight,
+  Calendar, List, ChevronLeft, ChevronRight,
   TrendingUp, TrendingDown, Minus, Clock, RefreshCcw,
   Search, X, ExternalLink, FileText,
 } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 import type { EarningsEvent } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -275,9 +276,7 @@ function EarningsCalendarPage() {
     <div style={{ height: '100dvh', overflowY: 'auto', padding: '12px 16px 120px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <button onClick={() => router.push('/?tab=settings')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
-          <ArrowLeft size={20} />
-        </button>
+        <BackButton tab="settings" iconSize={20} />
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Earnings Calendar</h1>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>

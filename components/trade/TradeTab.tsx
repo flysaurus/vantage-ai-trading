@@ -175,10 +175,22 @@ export function TradeTab() {
   const displayOrders = liveOrders.length > 0 ? liveOrders : DEMO_ORDERS;
   
   // Execute pending orders on tab mount + periodic check while market is open
+  // Two-pronged: local DemoBroker (fast, primary) + server API (reliable fallback)
   useEffect(() => {
+    const doServerExec = async () => {
+      try {
+        await fetch('/api/cron/trigger-execution');
+      } catch {
+        // silent — server exec is a best-effort fallback
+      }
+    };
     executePendingOrders();
+    doServerExec();
     const interval = setInterval(() => {
-      if (getMarketStatus().isOpen) executePendingOrders();
+      if (getMarketStatus().isOpen) {
+        executePendingOrders();
+        doServerExec();
+      }
     }, 120000); // every 2 min while market is open
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -713,6 +725,44 @@ export function TradeTab() {
           return null;
         })()}
 
+        {/* Insufficient shares warning (sell) */}
+        {side === 'sell' && (() => {
+          const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
+            ? parseFloat(limitPrice)
+            : symbolQuote?.price;
+          if (!price || !qty || isNaN(price)) return null;
+          const shares = qtyType === 'dollars' && price > 0
+            ? parseFloat(qty) / price
+            : parseFloat(qty);
+          if (!shares || shares <= 0) return null;
+          const position = account?.positions?.find(p => p.symbol === selectedSymbol);
+          const reserved = position?.reservedShares ?? 0;
+          const owned = position?.qty ?? 0;
+          const available = owned - reserved;
+          if (!position || available < shares) {
+            const msg = !position
+              ? `You don't own any shares of ${selectedSymbol}`
+              : reserved > 0
+                ? `Insufficient shares. You want to sell ${shares.toLocaleString()} but only have ${available.toLocaleString()} available (${owned.toLocaleString()} held, ${reserved.toLocaleString()} reserved by pending orders)`
+                : `Insufficient shares. You want to sell ${shares.toLocaleString()} but only own ${owned.toLocaleString()}`;
+            return (
+              <div style={{
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                marginBottom: '16px',
+                fontSize: '12px',
+                color: '#ef4444',
+                lineHeight: '1.5',
+              }}>
+                ⚠️ {msg}
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         {/* Limit/Stop advisory */}
         {(orderType === 'limit' || orderType === 'stop' || orderType === 'stop_limit') && (
           <div style={{
@@ -752,11 +802,14 @@ export function TradeTab() {
             if (side === 'buy') {
               const estCost = shares * price;
               const bp = account?.buyingPower ?? 0;
-              if (estCost > bp) {
-                // Error will be shown by executeTrade toast
-                await executeTrade(selectedSymbol, 'BUY', shares, price, orderType, stopPx, limitPx, tif);
-                return;
-              }
+              if (estCost > bp) return; // Blocked by buy warning — don't submit
+            }
+
+            // Pre-check share ownership for SELL orders
+            if (side === 'sell') {
+              const pos = account?.positions?.find(p => p.symbol === selectedSymbol);
+              const available = (pos?.qty ?? 0) - (pos?.reservedShares ?? 0);
+              if (!pos || available < shares) return; // Blocked by sell warning — don't submit
             }
 
             const result = await executeTrade(
@@ -790,8 +843,42 @@ export function TradeTab() {
             color: '#ffffff',
             fontSize: '16px',
             fontWeight: '700',
-            cursor: selectedSymbol && symbolQuote ? 'pointer' : 'not-allowed',
-            opacity: selectedSymbol && symbolQuote ? 1 : 0.5,
+            cursor: (() => {
+              if (!selectedSymbol || !symbolQuote) return 'not-allowed';
+              const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
+                ? parseFloat(limitPrice) : symbolQuote?.price;
+              if (!price || !qty || isNaN(price)) return 'not-allowed';
+              const shares = qtyType === 'dollars' && price > 0
+                ? parseFloat(qty) / price : parseFloat(qty);
+              if (!shares || shares <= 0) return 'not-allowed';
+              if (side === 'buy') {
+                if (shares * price > (account?.buyingPower ?? 0)) return 'not-allowed';
+              }
+              if (side === 'sell') {
+                const pos = account?.positions?.find(p => p.symbol === selectedSymbol);
+                const available = (pos?.qty ?? 0) - (pos?.reservedShares ?? 0);
+                if (!pos || available < shares) return 'not-allowed';
+              }
+              return 'pointer';
+            })(),
+            opacity: (() => {
+              if (!selectedSymbol || !symbolQuote) return 0.5;
+              const price = (orderType === 'limit' || orderType === 'stop_limit') && limitPrice
+                ? parseFloat(limitPrice) : symbolQuote?.price;
+              if (!price || !qty || isNaN(price)) return 0.5;
+              const shares = qtyType === 'dollars' && price > 0
+                ? parseFloat(qty) / price : parseFloat(qty);
+              if (!shares || shares <= 0) return 0.5;
+              if (side === 'buy') {
+                if (shares * price > (account?.buyingPower ?? 0)) return 0.5;
+              }
+              if (side === 'sell') {
+                const pos = account?.positions?.find(p => p.symbol === selectedSymbol);
+                const available = (pos?.qty ?? 0) - (pos?.reservedShares ?? 0);
+                if (!pos || available < shares) return 0.5;
+              }
+              return 1;
+            })(),
           }}
         >
           {side === 'buy' ? 'Place Buy Order' : 'Place Sell Order'}

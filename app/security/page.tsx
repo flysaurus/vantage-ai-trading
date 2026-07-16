@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, X } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 
 export default function SecurityPage() {
   const router = useRouter();
@@ -28,12 +29,9 @@ export default function SecurityPage() {
           padding: '32px 24px',
         }}>
           {/* Close Button */}
-          <button
-            onClick={() => router.push('/?tab=settings')}
+          <BackButton
+            tab="settings"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
               padding: '8px 14px',
               borderRadius: 8,
               border: '1px solid #334155',
@@ -41,14 +39,13 @@ export default function SecurityPage() {
               color: '#94a3b8',
               fontSize: 12,
               fontWeight: 600,
-              cursor: 'pointer',
               fontFamily: 'inherit',
               marginBottom: 24,
             }}
           >
             <X size={14} />
             Close
-          </button>
+          </BackButton>
 
           {/* Page Title */}
           <div style={{ marginBottom: 32 }}>

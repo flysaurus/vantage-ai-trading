@@ -1000,42 +1000,84 @@ export function PortfolioTab() {
     positions: displayPositions,
   };
 
+  // ── Hero insight from risk-narrative API ──
+  const [heroInsight, setHeroInsight] = useState<{
+    text: string;
+    color: string;
+    loading: boolean;
+  }>({ text: '', color: '#64748b', loading: true });
+  useEffect(() => {
+    if (!enrichedPositions || enrichedPositions.length === 0) {
+      setHeroInsight({ text: '', color: '#64748b', loading: false });
+      return;
+    }
+    let cancelled = false;
+    async function fetchInsight() {
+      try {
+        const payload = {
+          positions: enrichedPositions.map(p => ({
+            symbol: p.symbol,
+            qty: p.qty,
+            currentPrice: p.currentPrice,
+            sector: p.sector,
+            avgCost: p.avgCost,
+          })),
+        };
+        const res = await fetch('/api/risk-narrative', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const hasTriggers = data.triggers?.length > 0;
+        const severity = !hasTriggers
+          ? 'safe'
+          : data.triggers.some((t: any) => t.severity === 'critical')
+            ? 'critical'
+            : 'warning';
+        const colors: Record<string, string> = { safe: '#10b981', warning: '#f59e0b', critical: '#ef4444' };
+        const text = data.narrative
+          || (severity === 'safe' && data.sectorCount
+            ? `Well diversified across ${data.sectorCount} sectors`
+            : data.triggers?.[0]?.message)
+          || 'Portfolio overview loaded';
+        setHeroInsight({ text, color: colors[severity] || '#64748b', loading: false });
+      } catch {
+        if (!cancelled) {
+          setHeroInsight({ text: 'Portfolio overview loaded', color: '#64748b', loading: false });
+        }
+      }
+    }
+    fetchInsight();
+    return () => { cancelled = true; };
+  }, [enrichedPositions]);
+
   return (
     <div style={{ paddingBottom: 120 }}>
       {/* ── Account Hero ── */}
       <AccountHero account={accountData} isConnected={isConnected} />
 
       {/* ── AI Insight Line ── */}
-      {(() => {
-        const sectors = new Set<string>();
-        enrichedPositions.forEach(p => { if (p.sector) sectors.add(p.sector); });
-        const sectorCount = sectors.size;
-        const isDiversified = sectorCount >= 5;
-        const insightText = sectorCount > 0
-          ? `Your portfolio is diversified across ${sectorCount} sectors`
-          : 'Portfolio overview loading...';
-        const barColor = sectorCount > 0
-          ? (isDiversified ? '#10b981' : '#f59e0b')
-          : '#64748b';
-        return (
-          <div style={{
-            margin: '0 16px 12px',
-            padding: '10px 16px',
-            borderRadius: 12,
-            background: `${barColor}18`,
-            border: `1px solid ${barColor}30`,
-            display: 'flex', alignItems: 'center', gap: 8,
+      {heroInsight.text ? (
+        <div style={{
+          margin: '0 16px 12px',
+          padding: '10px 16px',
+          borderRadius: 12,
+          background: `${heroInsight.color}18`,
+          border: `1px solid ${heroInsight.color}30`,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontSize: 14 }}>💡</span>
+          <span style={{
+            color: heroInsight.color, fontSize: 13, fontWeight: 600,
+            fontFamily: 'var(--font-sans)',
           }}>
-            <span style={{ fontSize: 14 }}>💡</span>
-            <span style={{
-              color: barColor, fontSize: 13, fontWeight: 600,
-              fontFamily: 'var(--font-sans)',
-            }}>
-              {insightText}
-            </span>
-          </div>
-        );
-      })()}
+            {heroInsight.text}
+          </span>
+        </div>
+      ) : null}
 {/* ── Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>
         <PortfolioChart

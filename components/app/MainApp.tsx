@@ -155,10 +155,15 @@ function AppShell() {
   // ── Auto-execute pending orders ──
   const { executePendingOrders } = useLivePortfolio();
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') executePendingOrders();
+    const triggerExec = () => {
+      executePendingOrders();
+      // Server-side fallback (idempotent, best-effort)
+      fetch('/api/cron/trigger-execution').catch(() => {});
     };
-    const handleFocus = () => executePendingOrders();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') triggerExec();
+    };
+    const handleFocus = () => triggerExec();
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleFocus);
     return () => {

@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings2, Bell, Shield, Eye, ArrowLeft, ChevronRight, RefreshCw, User } from 'lucide-react';
+import { Settings2, Bell, Shield, Eye, ChevronRight, RefreshCw, User } from 'lucide-react';
+import BackButton from '@/components/shared/BackButton';
 
 // ─── localStorage keys ───────────────────────────────────────
 const PREFS_KEY = 'vantage:preferences';
@@ -70,14 +71,7 @@ export default function PreferencesPage() {
               </div>
               <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Preferences</h1>
             </div>
-            <button onClick={() => router.push('/?tab=settings')} style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px 8px',
-              fontSize: 12, fontWeight: 500,
-            }}>
-              <ArrowLeft size={14} />
-              Back to Settings
-            </button>
+            <BackButton tab="settings" showLabel />
           </div>
 
           {/* Notifications */}
