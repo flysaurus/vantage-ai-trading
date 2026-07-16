@@ -15,17 +15,37 @@ interface PortfolioState {
 /** Save portfolio state to Supabase (upsert by user_id). */
 export async function syncPortfolioToSupabase(
   userId: string,
-  state: PortfolioState,
-): Promise<void> {
-  if (!userId) return;
+  state: PortfolioState & { savedAt?: number },
+): Promise<boolean> {
+  if (!userId) return false;
   try {
     const supabase = getSupabaseBrowserClient();
     // Set auth JWT from session if available (browser context)
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id || session.user.id !== userId) return;
+    if (!session?.user?.id || session.user.id !== userId) return false;
 
-    const { error } = await supabase
-      .from('demo_portfolio_state')
+    // Guard: don't overwrite newer server data with stale client state.
+    // If the server was updated more recently than our last known save,
+    // we reload instead of pushing potentially stale data.
+    const clientSavedAt = state.savedAt || 0;
+    if (clientSavedAt > 0) {
+      const { data: serverRow, error: readErr } = await supabase
+        .from('demo_portfolio_state')
+        .select('updated_at')
+        .eq('user_id', userId)
+        .single();
+
+      if (!readErr && serverRow && (serverRow as any).updated_at) {
+        const serverUpdatedAt = new Date((serverRow as any).updated_at as string).getTime();
+        if (serverUpdatedAt > clientSavedAt) {
+          console.log('[Portfolio Sync] Server data is newer — skipping sync, reload needed');
+          return false; // caller should reload from server
+        }
+      }
+    }
+
+    const { error } = await (supabase
+      .from('demo_portfolio_state') as any)
       .upsert(
         {
           user_id: userId,
@@ -40,12 +60,15 @@ export async function syncPortfolioToSupabase(
 
     if (error) {
       console.warn('[Portfolio Sync] Supabase upsert failed:', error.message);
+      return false;
     } else {
       console.log('[Portfolio Sync] Saved to Supabase ✅');
+      return true;
     }
   } catch (e: any) {
     // localStorage backup already done — safe to swallow
     console.warn('[Portfolio Sync] Supabase error (non-fatal):', e?.message || e);
+    return false;
   }
 }
 

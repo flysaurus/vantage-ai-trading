@@ -346,6 +346,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         cashBalance: demoState.cashBalance,
         orderHistory: brokerOrdersRef.current,       // BrokerOrder[] — full metadata for cron
         basketPositions: basketPositionsRef.current,
+        savedAt: demoState.savedAt,
+      }).then((didSync) => {
+        if (!didSync) {
+          // Server had newer data — stale client prevented from overwriting.
+          // Trigger a reload from Supabase on next mount.
+          console.log('[Portfolio Sync] Client state was stale — server preserved');
+        }
       });
     }, 5000);
     return () => clearTimeout(timer);
