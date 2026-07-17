@@ -1462,11 +1462,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   async function handleConfirmOrder() {
     if (!selectedCurated || reviewStocks.length === 0) return;
     if (editLocked) return;
-    const bNum = parseInt(budget) || 0;
-    if (bNum > cashBalance) {
-      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `Insufficient funds. Need $${bNum.toLocaleString()}, have $${cashBalance.toLocaleString()}` } as any);
-      return;
-    }
     setExecuting(true);
     setExecutionResult(null);
 
@@ -1480,6 +1475,11 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     }
 
     const bNum = parseInt(budget) || 0;
+    if (bNum > cashBalance) {
+      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `Insufficient funds. Need $${bNum.toLocaleString()}, have $${cashBalance.toLocaleString()}` } as any);
+      setExecuting(false);
+      return;
+    }
     const result = await executeBasketTrade(
       isBasketEditMode ? 'custom_' + Date.now() : selectedCurated.id,
       isBasketEditMode ? (editBasket?.basketName || selectedCurated.name) : selectedCurated.name,

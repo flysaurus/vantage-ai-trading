@@ -93,6 +93,17 @@ export class DemoBroker implements BrokerEngine {
     };
   }
 
+  private saveLocalOnly(): void {
+    try {
+      const toSave = { ...this.state, savedAt: Date.now() };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      }
+    } catch (e) {
+      console.error('[DemoBroker] Local save error:', e);
+    }
+  }
+
   private async saveState(): Promise<void> {
     try {
       const toSave = { ...this.state, savedAt: Date.now() };
@@ -201,11 +212,10 @@ export class DemoBroker implements BrokerEngine {
 
     this.state.basketOrders = [];
     this.state.savedAt = Date.now();
-    this.saveState(); // fire-and-forget; errors logged inside saveState()
-    console.log('[DemoBroker] Seeded from demo-data:', {
-      positions: this.state.positions.length,
-      cash: this.state.cashBalance,
-    });
+    // Do NOT call saveState() — seeds are for localStorage only.
+    // Supabase is the authoritative store; pushing seeds would overwrite
+    // real user portfolio data on every stale-cache-clear cycle.
+    this.saveLocalOnly();
   }
 
   // ─── ACCOUNT ───
