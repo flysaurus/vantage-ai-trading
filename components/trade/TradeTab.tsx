@@ -285,6 +285,13 @@ export function TradeTab() {
     date: o.createdAt ?? o.date ?? '',
     note: o.note ?? '',
     reservedCost: o.reservedCost,
+    fillPrice: o.fillPrice,
+    totalCost: o.totalCost,
+    basketId: o.basketId,
+    basketOrderId: o.basketOrderId,
+    basketName: o.basketName,
+    basketEmoji: o.basketEmoji,
+    submittedAt: o.submittedAt,
   }));
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
@@ -1184,8 +1191,72 @@ export function TradeTab() {
             if (historyTab === 'all') return true;
             return bo.status === historyTab.toUpperCase();
           });
-          // Individual orders without a basket
-          const soloOrders = filteredOrders.filter((o: any) => !o.basketOrderId && !o.id?.toString().includes('-b'));
+
+          // Pending baskets from localStorage — needed for edit modal when tapping a pending group
+          let allPb: any[] = [];
+          try {
+            const raw = localStorage.getItem('vantage_pending_baskets');
+            if (raw) allPb = JSON.parse(raw);
+          } catch { /* ignore */ }
+
+          // ── Group individual orders by basketId for orders not covered by liveBasketOrders ──
+          // This handles baskets whose orders exist in order_history but not as basket-level
+          // entries (e.g. baskets filled via manual recovery or cross-session via Supabase sync).
+          const ordersWithBasketId = filteredOrders.filter((o: any) => o.basketId && !o.basketOrderId);
+          const groupMap = new Map<string, any[]>();
+          for (const order of ordersWithBasketId) {
+            const bid = order.basketId!;
+            if (!groupMap.has(bid)) groupMap.set(bid, []);
+            groupMap.get(bid)!.push(order);
+          }
+          const basketOrderGroups = Array.from(groupMap.entries()).map(([basketId, orders]) => {
+            const allFilled = orders.every((o: any) => o.status === 'filled');
+            const someFilled = orders.some((o: any) => o.status === 'filled');
+            const allCancelled = orders.every((o: any) => o.status === 'cancelled');
+            const aggregateStatus = allFilled ? 'FILLED' : allCancelled ? 'CANCELLED' : 'OPEN';
+            const displayStatus = (someFilled && !allFilled) ? 'PARTIAL' : aggregateStatus;
+            const first = orders[0];
+            const totalCost = orders.reduce((s: number, o: any) =>
+              s + (o.totalCost || o.reservedCost || (o.shares * (o.fillPrice || o.submittedPrice || 0))), 0);
+            return {
+              id: `basket-grp-${basketId}`,
+              basketId,
+              basketName: first.basketName || orders[0].symbol || 'Basket',
+              basketEmoji: first.basketEmoji || '🧺',
+              orders,
+              aggregateStatus,
+              displayStatus,
+              totalCost,
+              orderCount: orders.length,
+              filledCount: orders.filter((o: any) => o.status === 'filled').length,
+              submittedAt: first.submittedAt || first.createdAt || first.date,
+            };
+          });
+
+          // Filter basket groups by current tab
+          const visibleGroups = basketOrderGroups.filter((g: any) => {
+            if (historyTab === 'all') return true;
+            const s = g.aggregateStatus;
+            // PARTIAL baskets appear under Open tab (user explicitly chose this)
+            if (historyTab === 'open') return s === 'OPEN' || g.displayStatus === 'PARTIAL';
+            if (historyTab === 'filled') return s === 'FILLED';
+            if (historyTab === 'cancelled') return s === 'CANCELLED';
+            return true;
+          });
+
+          // Already-grouped basket orders (from liveBasketOrders) — track which basketOrderIds
+          // and basketIds are covered so we don't duplicate in the individual section
+          const coveredBasketIds = new Set(filteredBasketOrders.map((b: any) => b.basketId));
+          const groupedOrderIds = new Set(basketOrderGroups.flatMap((g: any) => g.orders.map((o: any) => o.id)));
+
+          // Solo orders: exclude basket-covered orders + already-grouped
+          const soloOrders = filteredOrders.filter((o: any) => {
+            if (o.basketOrderId) return false;
+            if (o.id?.toString().includes('-b')) return false;
+            if (groupedOrderIds.has(o.id)) return false;
+            if (o.basketId && coveredBasketIds.has(o.basketId)) return false;
+            return true;
+          });
 
           return (
             <>
@@ -1370,6 +1441,143 @@ export function TradeTab() {
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* ── BASKET GROUPS FROM INDIVIDUAL ORDERS ── */}
+              {visibleGroups.map((group: any) => {
+                const isExpanded = expandedBasketOrder === group.id;
+                const isPending = group.aggregateStatus === 'OPEN' && group.displayStatus !== 'PARTIAL';
+                const statusColor = group.aggregateStatus === 'FILLED' ? '#10b981'
+                  : group.aggregateStatus === 'CANCELLED' ? '#64748b'
+                  : group.displayStatus === 'PARTIAL' ? '#22d3ee'
+                  : '#f59e0b';
+                const statusBg = group.aggregateStatus === 'FILLED' ? 'rgba(16,185,129,0.15)'
+                  : group.aggregateStatus === 'CANCELLED' ? 'rgba(100,116,139,0.15)'
+                  : group.displayStatus === 'PARTIAL' ? 'rgba(34,211,238,0.15)'
+                  : 'rgba(245,158,11,0.15)';
+                return (
+                  <div key={group.id} style={{
+                    background: '#1a2235',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '12px',
+                    marginBottom: '10px',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Basket header — tap to expand */}
+                    <div
+                      onClick={() => {
+                        if (isPending) {
+                          // Pending: open edit modal (reuses BuildBasketModal)
+                          const pb = allPb?.find((b: any) => (b.basketId || b.id) === group.basketId);
+                          if (pb) { setEditingBasket(pb); setShowBuildBasket(true); }
+                        } else {
+                          setExpandedBasketOrder(isExpanded ? null : group.id);
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '14px 16px',
+                        cursor: isPending ? 'pointer' : 'pointer',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '18px' }}>{group.basketEmoji}</span>
+                          <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>
+                            {group.basketName}
+                          </span>
+                        </div>
+                        <div style={{ color: '#cbd5e1', fontSize: '11px' }}>
+                          {group.orderCount} positions · ${group.totalCost.toFixed(2)}
+                          {group.displayStatus === 'PARTIAL' && (
+                            <span style={{ color: '#22d3ee' }}>
+                              {' · '}⚠️ {group.filledCount}/{group.orderCount} filled
+                            </span>
+                          )}
+                          {isPending && (
+                            <span style={{ color: '#f59e0b' }}>
+                              {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : 'awaiting market open'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          fontSize: '11px', fontWeight: '700',
+                          padding: '3px 8px', borderRadius: '4px',
+                          background: statusBg, color: statusColor,
+                        }}>
+                          {group.displayStatus}
+                        </span>
+                        {!isPending && (
+                          <span style={{
+                            color: '#cbd5e1', fontSize: '14px',
+                            transform: isExpanded ? 'rotate(90deg)' : 'none',
+                            transition: 'transform 0.2s',
+                          }}>›</span>
+                        )}
+                        {isPending && (
+                          <span style={{ color: '#cbd5e1', fontSize: '10px', opacity: 0.6 }}>✏️</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expanded — read-only stock breakdown (FILLED / PARTIAL / CANCELLED only) */}
+                    {isExpanded && !isPending && (
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        {group.orders.map((order: any) => (
+                          <div key={order.id} style={{
+                            display: 'flex', justifyContent: 'space-between',
+                            padding: '10px 16px',
+                            borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          }}>
+                            <div>
+                              <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
+                                {order.symbol}
+                                <span style={{
+                                  color: '#10b981', fontSize: '10px', marginLeft: '6px',
+                                  background: 'rgba(16,185,129,0.15)',
+                                  padding: '1px 5px', borderRadius: '3px',
+                                }}>BUY</span>
+                              </div>
+                              <div style={{ color: '#cbd5e1', fontSize: '11px', marginTop: '2px' }}>
+                                {order.shares?.toFixed(4)}sh
+                                {order.fillPrice ? ` @ $${order.fillPrice.toFixed(2)}` : ` @ ~$${(order.submittedPrice || 0).toFixed(2)}`}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{
+                                color: order.status === 'filled' ? '#10b981'
+                                  : order.status === 'open' ? '#f59e0b'
+                                  : '#64748b',
+                                fontSize: '11px', fontWeight: '600',
+                              }}>
+                                {order.status.toUpperCase()}
+                              </div>
+                              <div style={{ color: '#cbd5e1', fontSize: '11px' }}>
+                                ${((order.totalCost || order.reservedCost || (order.shares * (order.fillPrice || order.submittedPrice || 0)) as number)).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Pending basket — tapping opens edit, no inline expand */}
+                    {isPending && (
+                      <div style={{
+                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                        padding: '10px 16px',
+                        color: '#94a3b8', fontSize: '11px',
+                        textAlign: 'center',
+                      }}>
+                        Tap to edit in Build Basket
                       </div>
                     )}
                   </div>
