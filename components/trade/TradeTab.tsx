@@ -207,20 +207,71 @@ export function TradeTab() {
     return () => window.removeEventListener('vantage-set-subtab', handler);
   }, []);
 
-  // Load pending baskets from localStorage
+  // Load pending baskets from localStorage, computing real status from broker orders.
+  // Basket status must be derived from the actual order state (order_history via context),
+  // never from a stale localStorage field that was set at submission time.
   useEffect(() => {
     try {
       const raw = localStorage.getItem('vantage_pending_baskets');
-      if (raw) {
-        const all = JSON.parse(raw);
-        setPendingBaskets(all.filter((b: any) => b.status === 'OPEN'));
-      } else {
-        setPendingBaskets([]);
+      if (!raw) { setPendingBaskets([]); return; }
+
+      const all: any[] = JSON.parse(raw);
+
+      // Cross-reference with actual broker orders to determine real status
+      const ordersByBasket: Record<string, { filled: number; total: number }> = {};
+      for (const order of (liveOrders || [])) {
+        const bid = order.basketId || order.basketOrderId;
+        if (!bid) continue;
+        if (!ordersByBasket[bid]) ordersByBasket[bid] = { filled: 0, total: 0 };
+        ordersByBasket[bid].total++;
+        if (order.status === 'FILLED') ordersByBasket[bid].filled++;
+      }
+
+      const stillPending: any[] = [];
+      let changed = false;
+
+      for (const basket of all) {
+        const bid = basket.basketId || basket.id;
+        const info = ordersByBasket[bid];
+
+        if (!info || info.total === 0) {
+          // No broker orders found yet → still pending
+          stillPending.push(basket);
+          continue;
+        }
+
+        if (info.filled === info.total) {
+          // All orders FILLED → basket complete, remove from pending
+          changed = true;
+          continue;
+        }
+
+        if (info.filled > 0) {
+          // Partial fill
+          changed = true;
+          stillPending.push({ ...basket, computedStatus: 'PARTIAL', filledCount: info.filled, totalCount: info.total });
+          continue;
+        }
+
+        // No fills yet → still pending
+        stillPending.push(basket);
+      }
+
+      setPendingBaskets(stillPending);
+
+      // Clean up localStorage: remove baskets whose orders are all FILLED
+      if (changed) {
+        const clean = all.filter(b => {
+          const bid = b.basketId || b.id;
+          const info = ordersByBasket[bid];
+          return !(info && info.filled === info.total);
+        });
+        localStorage.setItem('vantage_pending_baskets', JSON.stringify(clean));
       }
     } catch {
       setPendingBaskets([]);
     }
-  }, [baskets]); // re-check when baskets change
+  }, [baskets, liveOrders]); // re-check when broker orders change
 
   // ── Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
   const normalizedOrders = displayOrders.map((o: any) => ({
@@ -983,25 +1034,35 @@ export function TradeTab() {
             MY BASKETS
           </div>
 
-          {/* Pending baskets (not yet executed) */}
-          {pendingBaskets.map((pb: any) => (
+          {/* Pending baskets (not yet fully executed) */}
+          {pendingBaskets.map((pb: any) => {
+            const isPartial = pb.computedStatus === 'PARTIAL';
+            const statusColor = isPartial ? '#22d3ee' : '#f59e0b';
+            const statusBg = isPartial ? 'rgba(34,211,238,0.15)' : 'rgba(245,158,11,0.15)';
+            const statusBorder = isPartial ? 'rgba(34,211,238,0.3)' : 'rgba(245,158,11,0.3)';
+            return (
             <div key={pb.id} onClick={() => { setEditingBasket(pb); setShowBuildBasket(true); }} style={{
               background: '#1a2235',
-              border: '1px solid rgba(245,158,11,0.3)',
+              border: `1px solid ${statusBorder}`,
               borderRadius: '12px',
               padding: '14px 16px',
               marginBottom: '8px',
               cursor: 'pointer',
             }}>
               <div style={{
-                color: '#f59e0b',
+                color: statusColor,
                 fontSize: '11px',
                 marginBottom: '8px',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}>
-                <span>⏳ Pending · {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : pb.nextOpenLabel || 'Opens at market open'}</span>
+                <span>
+                  {isPartial
+                    ? `⚠️ Partial · ${pb.filledCount}/${pb.totalCount} stocks filled`
+                    : `⏳ Pending · ${getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : pb.nextOpenLabel || 'Opens at market open'}`
+                  }
+                </span>
                 <span style={{ color: '#cbd5e1', fontSize: '10px', opacity: 0.6 }}>✏️ Tap to edit</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -1033,7 +1094,8 @@ export function TradeTab() {
                 Cancel Basket Order
               </button>
             </div>
-          ))}
+          );
+          })}
 
           {/* Active baskets */}
           {baskets.map(basket => (
