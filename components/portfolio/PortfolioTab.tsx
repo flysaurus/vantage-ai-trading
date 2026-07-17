@@ -1164,7 +1164,60 @@ export function PortfolioTab() {
           if (p.status === 'active') basketSymbolMap.set(p.symbol, b.id);
         }));
 
-        const hasBasketsOrPositions = baskets.length > 0 || filteredPositions.length > 0;
+        // ── Compute basket groups from positions with basketId (not in context baskets) ──
+        // This is the SAME grouping logic Order History uses (Part 2) —
+        // positions carry basketId from order_history, grouping them into ONE basket row.
+        const coveredBasketIds = new Set(baskets.map(b => b.id));
+        const positionBasketIdSet = new Set<string>();
+        filteredPositions.forEach((pos: any) => {
+          if (pos.basketId && !coveredBasketIds.has(pos.basketId)) {
+            positionBasketIdSet.add(pos.basketId);
+          }
+        });
+
+        const positionBasketGroups: any[] = Array.from(positionBasketIdSet).map(basketId => {
+          const groupPositions = filteredPositions.filter((p: any) => p.basketId === basketId);
+          const firstPos = groupPositions[0];
+          const totalCost = groupPositions.reduce((s: number, p: any) => s + (p.avgCost || 0) * (p.qty || 0), 0);
+          const marketValue = groupPositions.reduce((s: number, p: any) => s + (p.marketValue || 0), 0);
+          const totalPnl = marketValue - totalCost;
+          const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+
+          // Register symbols for exclusion from individual position list
+          groupPositions.forEach(p => basketSymbolMap.set(p.symbol, basketId));
+
+          return {
+            id: basketId,
+            userId: '',
+            name: firstPos.basketName || firstPos.symbol || 'Basket',
+            emoji: firstPos.basketEmoji || '🧺',
+            theme: '',
+            positions: groupPositions.map(p => ({
+              symbol: p.symbol,
+              shares: p.qty || 0,
+              avgCost: p.avgCost || 0,
+              currentPrice: p.currentPrice || p.avgCost || 0,
+              status: 'active' as const,
+              totalPnl: (p.totalPnl || 0),
+              allocationPct: totalCost > 0 ? (((p.avgCost || 0) * (p.qty || 0)) / totalCost) * 100 : 0,
+              name: p.name || p.symbol,
+              sector: p.sector || '',
+            })),
+            totalCost,
+            marketValue,
+            totalPnl,
+            totalPnlPct,
+            activeCount: groupPositions.length,
+            status: 'active' as const,
+            created_at: (firstPos as any).submittedAt || (firstPos as any).createdAt || '',
+            filled_at: (firstPos as any).submittedAt || (firstPos as any).createdAt || '',
+          };
+        });
+
+        // Combine context baskets + position-based basket groups into one render list
+        const allBasketRows = [...baskets, ...positionBasketGroups];
+
+        const hasBasketsOrPositions = allBasketRows.length > 0 || filteredPositions.length > 0;
         if (!hasBasketsOrPositions) {
           return (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 14 }}>
@@ -1176,7 +1229,7 @@ export function PortfolioTab() {
         return (
           <>
             {/* Render baskets interleaved with positions */}
-            {baskets.map((basket: Basket) => {
+            {allBasketRows.map((basket: any) => {
               const isExpanded = expandedBasketIds.has(basket.id);
               const plColor = basket.totalPnL >= 0 ? '#10b981' : '#ef4444';
               const plSign = basket.totalPnL >= 0 ? '+' : '';
@@ -1299,7 +1352,7 @@ export function PortfolioTab() {
 
                       {/* Individual stocks */}
                       <div style={{ padding: '0 16px' }}>
-                        {basket.positions.filter(p => p.status === 'active').map((pos, i, arr) => {
+                        {basket.positions.filter((p: any) => p.status === 'active').map((pos: any, i: number, arr: any[]) => {
                           const posPl = (pos.totalPnL || 0);
                           const posPlClr = posPl >= 0 ? '#10b981' : '#ef4444';
                           const posPlSgn = posPl >= 0 ? '+' : '';
@@ -1379,7 +1432,7 @@ export function PortfolioTab() {
               ))}
 
             {/* No items at all */}
-            {baskets.length === 0 && filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length === 0 && (
+            {allBasketRows.length === 0 && filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length === 0 && (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 14 }}>
                 No positions yet
               </div>
