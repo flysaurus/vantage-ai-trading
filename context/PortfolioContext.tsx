@@ -560,10 +560,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabaseClient = getSupabaseBrowserClient();
     brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
-    // Always sync broker state to React — even with no positions (e.g. pending basket orders)
-    brokerRef.current.getPositions().then(() => {
+    // Restore broker state from Supabase if localStorage is empty/stale
+    const initBroker = async () => {
+      const b = brokerRef.current as any;
+      if (b?.loadFromSupabase) {
+        const restored = await b.loadFromSupabase();
+        if (restored) console.log('[portfolio] Broker state restored from Supabase');
+      }
+      // Always sync broker state to React — even with no positions (e.g. pending basket orders)
       refreshStateFromBroker();
-    });
+    };
+    initBroker();
   }, [refreshStateFromBroker, user?.id]);
 
   // ── Seed fallback: use broker.seedFromDemoData() ──

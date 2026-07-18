@@ -67,7 +67,6 @@ export function TradeTab() {
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
   const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
   const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; totalReserved: number } | null>(null);
-  const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
   const [editingBasket, setEditingBasket] = useState<any>(null);
 
   // ─── Symbol search state ───
@@ -213,7 +212,7 @@ export function TradeTab() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem('vantage_pending_baskets');
-      if (!raw) { setPendingBaskets([]); return; }
+      if (!raw) { return; }
 
       const all: any[] = JSON.parse(raw);
 
@@ -288,7 +287,7 @@ export function TradeTab() {
         stillPending.push(basket);
       }
 
-      setPendingBaskets(stillPending);
+      // Compute which baskets are still pending for localStorage cleanup below
 
       // Clean up localStorage: remove filled/cancelled baskets
       if (changed) {
@@ -302,7 +301,7 @@ export function TradeTab() {
         localStorage.setItem('vantage_pending_baskets', JSON.stringify(clean));
       }
     } catch {
-      setPendingBaskets([]);
+      // localStorage parse error — ignore
     }
   }, [baskets, liveOrders, liveBasketOrders]); // re-check when broker orders change
 
@@ -1066,126 +1065,6 @@ export function TradeTab() {
         </div>
       </div>
 
-      {/* ─── 3.5: MY BASKETS ─── */}
-
-      {(baskets.length > 0 || pendingBaskets.length > 0) && (
-        <div style={{ margin: '0 16px 16px 16px' }}>
-          <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
-            MY BASKETS
-          </div>
-
-          {/* Pending baskets (not yet fully executed) */}
-          {pendingBaskets.map((pb: any) => {
-            const isPartial = pb.computedStatus === 'PARTIAL';
-            const statusColor = isPartial ? '#22d3ee' : '#f59e0b';
-            const statusBg = isPartial ? 'rgba(34,211,238,0.15)' : 'rgba(245,158,11,0.15)';
-            const statusBorder = isPartial ? 'rgba(34,211,238,0.3)' : 'rgba(245,158,11,0.3)';
-            return (
-            <div key={pb.id} onClick={() => { setEditingBasket(pb); setShowBuildBasket(true); }} style={{
-              background: '#1a2235',
-              border: `1px solid ${statusBorder}`,
-              borderRadius: '12px',
-              padding: '14px 16px',
-              marginBottom: '8px',
-              cursor: 'pointer',
-            }}>
-              <div style={{
-                color: statusColor,
-                fontSize: '11px',
-                marginBottom: '8px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}>
-                <span>
-                  {isPartial
-                    ? `⚠️ Partial · ${pb.filledCount}/${pb.totalCount} stocks filled`
-                    : `⏳ Pending · ${getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : pb.nextOpenLabel || 'Opens at market open'}`
-                  }
-                </span>
-                <span style={{ color: '#cbd5e1', fontSize: '10px', opacity: 0.6 }}>✏️ Tap to edit</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <div>
-                  <span style={{ fontSize: '16px' }}>{pb.basketEmoji}</span>
-                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px', marginLeft: '8px' }}>
-                    {pb.basketName}
-                  </span>
-                </div>
-                <span style={{ color: '#f59e0b', fontSize: '12px', fontWeight: '500' }}>
-                  ${pb.totalReserved?.toLocaleString()}
-                </span>
-              </div>
-              <div style={{ color: '#cbd5e1', fontSize: '11px', marginBottom: '10px' }}>
-                {pb.stocks?.length || 0} stocks · Submitted {new Date(pb.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); cancelBasketOrder(pb.id); }}
-                style={{
-                  background: 'none',
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: '8px',
-                  color: '#ef4444',
-                  fontSize: '13px',
-                  padding: '8px 16px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel Basket Order
-              </button>
-            </div>
-          );
-          })}
-
-          {/* Active baskets */}
-          {baskets.map(basket => (
-            <div key={basket.id} style={{
-              background: '#1a2235',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '12px',
-              padding: '14px 16px',
-              marginBottom: '8px',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <div>
-                  <span style={{ fontSize: '16px' }}>{basket.emoji}</span>
-                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px', marginLeft: '8px' }}>
-                    {basket.name}
-                  </span>
-                </div>
-                <span style={{
-                  color: basket.totalPnL >= 0 ? '#10b981' : '#ef4444',
-                  fontSize: '13px', fontWeight: '500',
-                }}>
-                  {basket.totalPnL >= 0 ? '+' : ''}{basket.totalPnLPct.toFixed(1)}%
-                </span>
-              </div>
-              <div style={{ color: '#cbd5e1', fontSize: '11px', marginBottom: '10px' }}>
-                Bought {new Date(basket.boughtAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${basket.totalCost.toLocaleString()} invested · {basket.activeCount} positions active
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => { setActiveTab('portfolio'); }}
-                  style={{
-                    flex: 1, padding: '8px', background: 'transparent',
-                    border: '1px solid rgba(34,211,238,0.4)', borderRadius: '8px',
-                    color: '#22d3ee', fontSize: '13px', cursor: 'pointer',
-                  }}
-                >Manage</button>
-                <button
-                  onClick={() => { setActiveTab('portfolio'); }}
-                  style={{
-                    flex: 1, padding: '8px', background: 'rgba(239,68,68,0.1)',
-                    border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px',
-                    color: '#ef4444', fontSize: '13px', cursor: 'pointer',
-                  }}
-                >Sell</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* ─── 4. ORDER HISTORY ─── */}
       <div id="order-history" style={{ margin: '0 16px' }}>
         <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
@@ -1296,20 +1175,32 @@ export function TradeTab() {
               {/* ── BASKET ORDER GROUPS ── */}
               {filteredBasketOrders.map((basket: any) => {
                 const isExpanded = expandedBasketOrder === basket.id;
+                const isOpen = basket.status === 'OPEN';
+                // Look up pending basket data from localStorage for edit modal
+                const matchingPb = isOpen
+                  ? allPb?.find((b: any) => (b.basketId || b.id) === (basket.basketId || basket.id))
+                  : null;
                 return (
                   <div
                     key={basket.id}
                     style={{
                       background: '#1a2235',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      border: `1px solid ${isOpen ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.08)'}`,
                       borderRadius: '12px',
                       marginBottom: '10px',
                       overflow: 'hidden',
                     }}
                   >
-                    {/* Basket header — tap to expand */}
+                    {/* Basket header — tap to expand (filled) or edit (pending) */}
                     <div
-                      onClick={() => setExpandedBasketOrder(isExpanded ? null : basket.id)}
+                      onClick={() => {
+                        if (matchingPb) {
+                          setEditingBasket(matchingPb);
+                          setShowBuildBasket(true);
+                        } else {
+                          setExpandedBasketOrder(isExpanded ? null : basket.id);
+                        }
+                      }}
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -1342,7 +1233,7 @@ export function TradeTab() {
                         }}>
                           {basket.orders?.length || 0} positions ·
                           ${(basket.totalReserved || 0).toFixed(2)}
-                          {basket.status === 'OPEN' && (
+                          {isOpen && (
                             <span style={{ color: '#f59e0b' }}>
                               {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : basket.nextOpenLabel || 'awaiting market open'}
                             </span>
@@ -1354,28 +1245,55 @@ export function TradeTab() {
                         alignItems: 'center',
                         gap: '8px',
                       }}>
+                        {isOpen && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmCancelBasket({
+                                basketOrderId: basket.id,
+                                basketDisplayName: basket.basketDisplayName || basket.basketName,
+                                orderCount: basket.orders?.length || 0,
+                                totalReserved: basket.totalReserved || 0,
+                              });
+                            }}
+                            style={{
+                              background: 'none',
+                              border: '1px solid rgba(239,68,68,0.4)',
+                              borderRadius: '6px',
+                              color: '#ef4444',
+                              fontSize: '11px',
+                              padding: '4px 10px',
+                              cursor: 'pointer',
+                              fontWeight: '600',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        )}
                         <span style={{
                           fontSize: '11px',
                           fontWeight: '700',
                           padding: '3px 8px',
                           borderRadius: '4px',
-                          background: basket.status === 'OPEN' ? 'rgba(245,158,11,0.15)'
+                          background: isOpen ? 'rgba(245,158,11,0.15)'
                             : basket.status === 'FILLED' ? 'rgba(16,185,129,0.15)'
                             : 'rgba(100,116,139,0.15)',
-                          color: basket.status === 'OPEN' ? '#f59e0b'
+                          color: isOpen ? '#f59e0b'
                             : basket.status === 'FILLED' ? '#10b981'
                             : '#64748b',
                         }}>
                           {basket.status}
                         </span>
-                        <span style={{
-                          color: '#cbd5e1',
-                          fontSize: '14px',
-                          transform: isExpanded ? 'rotate(90deg)' : 'none',
-                          transition: 'transform 0.2s',
-                        }}>
-                          ›
-                        </span>
+                        {!isOpen && (
+                          <span style={{
+                            color: '#cbd5e1',
+                            fontSize: '14px',
+                            transform: isExpanded ? 'rotate(90deg)' : 'none',
+                            transition: 'transform 0.2s',
+                          }}>
+                            ›
+                          </span>
+                        )}
                       </div>
                     </div>
 

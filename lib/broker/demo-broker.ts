@@ -105,33 +105,34 @@ export class DemoBroker implements BrokerEngine {
   }
 
   private async saveState(): Promise<void> {
+    // 1. Save to localStorage (non-critical — Supabase is authoritative)
     try {
       const toSave = { ...this.state, savedAt: Date.now() };
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
       }
-      // Sync to Supabase if configured — canonical column is order_history
-      if (this.supabase && this.userId !== 'demo_user') {
-        try {
-          // Normalize positions to DemoOrder format (qty) for UI compatibility
-          const normalizedPositions = this.state.positions.map((p: any) => ({
-            ...p,
-            qty: p.qty ?? p.shares ?? 0,
-          }));
-          await this.supabase.from('demo_portfolio_state').upsert({
-            user_id: this.userId,
-            positions: normalizedPositions,
-            cash_balance: this.state.cashBalance,
-            order_history: this.state.orders,       // canonical: full BrokerOrder[]
-            basket_orders: this.state.basketOrders,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'user_id' });
-        } catch (err: any) {
-          console.error('[DemoBroker] Supabase sync failed:', err?.message || err);
-        }
-      }
     } catch (e) {
-      console.error('[DemoBroker] Save error:', e);
+      console.error('[DemoBroker] localStorage save failed:', e);
+    }
+
+    // 2. Sync to Supabase if configured (runs even if localStorage fails)
+    if (this.supabase && this.userId !== 'demo_user') {
+      try {
+        const normalizedPositions = this.state.positions.map((p: any) => ({
+          ...p,
+          qty: p.qty ?? p.shares ?? 0,
+        }));
+        await this.supabase.from('demo_portfolio_state').upsert({
+          user_id: this.userId,
+          positions: normalizedPositions,
+          cash_balance: this.state.cashBalance,
+          order_history: this.state.orders,       // canonical: full BrokerOrder[]
+          basket_orders: this.state.basketOrders,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      } catch (err: any) {
+        console.error('[DemoBroker] Supabase sync failed:', err?.message || err);
+      }
     }
   }
 
@@ -562,6 +563,32 @@ export class DemoBroker implements BrokerEngine {
         } catch { /* position create failed */ }
       }
       await this.saveState();
+
+      // Save positions to BASKET_POSITIONS_KEY so loadBaskets() finds filled baskets
+      const nowOpen = new Date().toISOString();
+      try {
+        if (typeof window !== 'undefined') {
+          const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
+          const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
+          for (const s of executionPlan) {
+            savedPositions.push({
+              id: crypto.randomUUID(),
+              basketId: req.basketId,
+              basketName: req.basketName,
+              basketEmoji: req.basketEmoji,
+              basketDisplayName: req.basketDisplayName,
+              symbol: s.symbol,
+              shares: s.shares,
+              avgCost: s.price,
+              totalCost: s.dollarAmount,
+              allocationPct: s.allocationPct,
+              status: 'active',
+              boughtAt: nowOpen,
+            });
+          }
+          localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(savedPositions));
+        }
+      } catch { /* ignore */ }
 
       // ── Notify: basket filled ──
       if (this.userEmail) {
