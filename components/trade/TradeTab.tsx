@@ -220,14 +220,16 @@ export function TradeTab() {
       // ── Source A: basket-level orders from broker (liveBasketOrders) ──
       // These are the canonical "did this basket fill?" records.
       // A BrokerBasketOrder.status === 'FILLED' means ALL individual orders filled.
+      // Use case-insensitive match: orders from Supabase sync may arrive as 'filled' (lc).
+      const norm = (s: any) => String(s || '').toUpperCase();
       const filledBasketIds = new Set<string>(
         (liveBasketOrders || [])
-          .filter((bo: any) => bo.status === 'FILLED')
+          .filter((bo: any) => norm(bo.status) === 'FILLED')
           .map((bo: any) => bo.basketId)
       );
       const cancelledBasketIds = new Set<string>(
         (liveBasketOrders || [])
-          .filter((bo: any) => bo.status === 'CANCELLED')
+          .filter((bo: any) => norm(bo.status) === 'CANCELLED')
           .map((bo: any) => bo.basketId)
       );
 
@@ -239,7 +241,7 @@ export function TradeTab() {
         if (!bid) continue;
         if (!ordersByBasket[bid]) ordersByBasket[bid] = { filled: 0, total: 0 };
         ordersByBasket[bid].total++;
-        if (order.status === 'FILLED') ordersByBasket[bid].filled++;
+        if (norm(order.status) === 'FILLED') ordersByBasket[bid].filled++;
       }
 
       const stillPending: any[] = [];
