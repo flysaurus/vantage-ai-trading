@@ -786,6 +786,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const filled = await b.executePendingOrders();
     if (filled > 0) {
       await refreshStateFromBroker();
+      await loadBasketsRef.current(); // Refresh basket state from BASKET_POSITIONS_KEY
       setToast({ message: `🔔 Executed ${filled} pending orders`, type: 'success' });
       setTimeout(() => setToast(null), 4000);
     }

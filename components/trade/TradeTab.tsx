@@ -217,7 +217,22 @@ export function TradeTab() {
 
       const all: any[] = JSON.parse(raw);
 
-      // Cross-reference with actual broker orders to determine real status
+      // ── Source A: basket-level orders from broker (liveBasketOrders) ──
+      // These are the canonical "did this basket fill?" records.
+      // A BrokerBasketOrder.status === 'FILLED' means ALL individual orders filled.
+      const filledBasketIds = new Set<string>(
+        (liveBasketOrders || [])
+          .filter((bo: any) => bo.status === 'FILLED')
+          .map((bo: any) => bo.basketId)
+      );
+      const cancelledBasketIds = new Set<string>(
+        (liveBasketOrders || [])
+          .filter((bo: any) => bo.status === 'CANCELLED')
+          .map((bo: any) => bo.basketId)
+      );
+
+      // ── Source B: individual orders from broker (liveOrders) ──
+      // Fallback for baskets whose BrokerBasketOrder isn't in liveBasketOrders yet.
       const ordersByBasket: Record<string, { filled: number; total: number }> = {};
       for (const order of (liveOrders || [])) {
         const bid = order.basketId || order.basketOrderId;
@@ -232,6 +247,18 @@ export function TradeTab() {
 
       for (const basket of all) {
         const bid = basket.basketId || basket.id;
+
+        // Check basket-level order FIRST (canonical source)
+        if (filledBasketIds.has(bid)) {
+          changed = true;
+          continue; // Basket filled → remove from pending
+        }
+        if (cancelledBasketIds.has(bid)) {
+          changed = true;
+          continue; // Basket cancelled → remove from pending
+        }
+
+        // Fall back to individual order check
         const info = ordersByBasket[bid];
 
         if (!info || info.total === 0) {
@@ -259,10 +286,11 @@ export function TradeTab() {
 
       setPendingBaskets(stillPending);
 
-      // Clean up localStorage: remove baskets whose orders are all FILLED
+      // Clean up localStorage: remove filled/cancelled baskets
       if (changed) {
         const clean = all.filter(b => {
           const bid = b.basketId || b.id;
+          if (filledBasketIds.has(bid) || cancelledBasketIds.has(bid)) return false;
           const info = ordersByBasket[bid];
           return !(info && info.filled === info.total);
         });
@@ -271,7 +299,7 @@ export function TradeTab() {
     } catch {
       setPendingBaskets([]);
     }
-  }, [baskets, liveOrders]); // re-check when broker orders change
+  }, [baskets, liveOrders, liveBasketOrders]); // re-check when broker orders change
 
   // ── Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
   const normalizedOrders = displayOrders.map((o: any) => ({
