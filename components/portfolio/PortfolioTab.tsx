@@ -1205,8 +1205,8 @@ export function PortfolioTab() {
             })),
             totalCost,
             marketValue,
-            totalPnl,
-            totalPnlPct,
+            totalPnL: totalPnl,  // match rendering key 'totalPnL'
+            totalPnLPct: totalPnlPct,  // match rendering key 'totalPnLPct'
             activeCount: groupPositions.length,
             status: 'active' as const,
             created_at: (firstPos as any).submittedAt || (firstPos as any).createdAt || '',

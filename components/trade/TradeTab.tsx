@@ -219,19 +219,21 @@ export function TradeTab() {
 
       // ── Source A: basket-level orders from broker (liveBasketOrders) ──
       // These are the canonical "did this basket fill?" records.
-      // A BrokerBasketOrder.status === 'FILLED' means ALL individual orders filled.
-      // Use case-insensitive match: orders from Supabase sync may arrive as 'filled' (lc).
+      // Build sets from BOTH basketId (user-facing) AND id (basketOrderId UUID) —
+      // old broker saves may not have basketId set on the BrokerBasketOrder.
       const norm = (s: any) => String(s || '').toUpperCase();
-      const filledBasketIds = new Set<string>(
-        (liveBasketOrders || [])
-          .filter((bo: any) => norm(bo.status) === 'FILLED')
-          .map((bo: any) => bo.basketId)
-      );
-      const cancelledBasketIds = new Set<string>(
-        (liveBasketOrders || [])
-          .filter((bo: any) => norm(bo.status) === 'CANCELLED')
-          .map((bo: any) => bo.basketId)
-      );
+      const filledBasketIds = new Set<string>();
+      const cancelledBasketIds = new Set<string>();
+      for (const bo of (liveBasketOrders || [])) {
+        const s = norm(bo.status);
+        if (s === 'FILLED') {
+          if (bo.basketId) filledBasketIds.add(bo.basketId);
+          if (bo.id) filledBasketIds.add(bo.id);
+        } else if (s === 'CANCELLED') {
+          if (bo.basketId) cancelledBasketIds.add(bo.basketId);
+          if (bo.id) cancelledBasketIds.add(bo.id);
+        }
+      }
 
       // ── Source B: individual orders from broker (liveOrders) ──
       // Fallback for baskets whose BrokerBasketOrder isn't in liveBasketOrders yet.
@@ -250,14 +252,14 @@ export function TradeTab() {
       for (const basket of all) {
         const bid = basket.basketId || basket.id;
 
-        // Check basket-level order FIRST (canonical source)
-        if (filledBasketIds.has(bid)) {
+        // Check basket-level order FIRST (canonical source).
+        // Match against BOTH bid (basketId) and basket.id (UUID) —
+        // the filledBasketIds set contains both from BrokerBasketOrder entries.
+        const isFilled = filledBasketIds.has(bid) || filledBasketIds.has(basket.id);
+        const isCancelled = cancelledBasketIds.has(bid) || cancelledBasketIds.has(basket.id);
+        if (isFilled || isCancelled) {
           changed = true;
-          continue; // Basket filled → remove from pending
-        }
-        if (cancelledBasketIds.has(bid)) {
-          changed = true;
-          continue; // Basket cancelled → remove from pending
+          continue; // Basket filled/cancelled → remove from pending
         }
 
         // Fall back to individual order check
@@ -291,9 +293,10 @@ export function TradeTab() {
       // Clean up localStorage: remove filled/cancelled baskets
       if (changed) {
         const clean = all.filter(b => {
-          const bid = b.basketId || b.id;
-          if (filledBasketIds.has(bid) || cancelledBasketIds.has(bid)) return false;
-          const info = ordersByBasket[bid];
+          const bid2 = b.basketId || b.id;
+          if (filledBasketIds.has(bid2) || filledBasketIds.has(b.id) ||
+              cancelledBasketIds.has(bid2) || cancelledBasketIds.has(b.id)) return false;
+          const info = ordersByBasket[bid2];
           return !(info && info.filled === info.total);
         });
         localStorage.setItem('vantage_pending_baskets', JSON.stringify(clean));
