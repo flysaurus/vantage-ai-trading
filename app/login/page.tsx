@@ -66,6 +66,50 @@ export default function LoginPage() {
 
   const canSubmit = isValidEmail(email) && password.length > 0 && !submitting;
 
+  // ── Profile processing (extracted for reuse) ────────
+  const processProfile = useCallback(async (user: any) => {
+    // ── 1. Email not yet verified (first login after signup) ──
+    // Send a fresh OTP and redirect to verify-email page
+    if (user.email_verified === false) {
+      setSubmitting(false);
+      await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email }),
+      });
+      window.location.href = `/verify-email?email=${encodeURIComponent(user.email)}`;
+      return;
+    }
+
+    // ── 2. MFA enabled — redirect to MFA verification ──
+    if (user.mfa_enabled === true) {
+      setSubmitting(false);
+      window.sessionStorage.setItem('vantage_mfa_pending', 'true');
+      window.location.href = '/verify-mfa';
+      return;
+    }
+
+    // ── 3. MFA not set up — force setup ──
+    if (user.mfa_enabled === false) {
+      setSubmitting(false);
+      window.location.href = '/setup-mfa';
+      return;
+    }
+    // If mfa_enabled is absent (undefined), columns don't exist — bypass
+
+    // ── 4. Demo splash check ──
+    if (user.demo_start_at) {
+      const status = getDemoStatus(user.demo_start_at, user.demo_expires_at);
+      setSplashMode('demo');
+      setSplashDays(status.daysRemaining);
+      setSubmitting(false);
+      return;
+    }
+
+    // No verification needed, no MFA, no demo — go to app
+    window.location.href = getSafeRedirect();
+  }, []);
+
   // ── Already authenticated? Redirect instantly ───────────
   useEffect(() => {
     if (!supabase) return;
@@ -145,55 +189,36 @@ export default function LoginPage() {
     // Single /api/auth/me call for email_verified, MFA, and demo status
     try {
       const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-      if (meRes.ok) {
-        const { user } = await meRes.json();
 
-        // ── 1. Email not yet verified (first login after signup) ──
-        // Send a fresh OTP and redirect to verify-email page
-        if (user.email_verified === false) {
-          setSubmitting(false);
-          await fetch('/api/auth/send-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: user.email }),
-          });
-          window.location.href = `/verify-email?email=${encodeURIComponent(user.email)}`;
-          return;
-        }
-
-        // ── 2. MFA enabled — redirect to MFA verification ──
-        if (user.mfa_enabled === true) {
-          setSubmitting(false);
-          window.sessionStorage.setItem('vantage_mfa_pending', 'true');
-          window.location.href = '/verify-mfa';
-          return;
-        }
-
-        // ── 3. MFA not set up — force setup ──
-        if (user.mfa_enabled === false) {
-          setSubmitting(false);
-          window.location.href = '/setup-mfa';
-          return;
-        }
-        // If mfa_enabled is absent (undefined), columns don't exist — bypass
-
-        // ── 4. Demo splash check ──
-        if (user.demo_start_at) {
-          const status = getDemoStatus(user.demo_start_at, user.demo_expires_at);
-          setSplashMode('demo');
-          setSplashDays(status.daysRemaining);
+      if (!meRes.ok) {
+        // Auth check failed (e.g., session cookies not readable yet or middleware redirect)
+        // Retry once after a short delay — cookies may need an event-loop tick to settle
+        console.warn('[login] /api/auth/me returned', meRes.status, '— retrying after 300ms');
+        await new Promise((r) => setTimeout(r, 300));
+        const retryRes = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!retryRes.ok) {
+          setInlineError(
+            'Could not verify your account. Please refresh and try again.'
+          );
           setSubmitting(false);
           return;
         }
+        const { user: retryUser } = await retryRes.json();
+        await processProfile(retryUser);
+        return;
       }
-    } catch {
-      // If check fails (network error), proceed normally
-    }
 
-    // No verification needed, no MFA, no demo — go to app
-    // Use hard navigation to go through middleware (session-only cookie)
-    window.location.href = getSafeRedirect();
-  }, [canSubmit, email, password, supabase, router]);
+      const { user } = await meRes.json();
+      await processProfile(user);
+    } catch (err) {
+      console.error('[login] /api/auth/me failed:', err);
+      setInlineError(
+        'Could not verify your account. Please refresh and try again.'
+      );
+      setSubmitting(false);
+      return;
+    }
+  }, [canSubmit, email, password, supabase, processProfile]);
 
   // ── Forgot password handler ───────────────────────────
   const handleForgotPassword = useCallback(async () => {
