@@ -903,18 +903,22 @@ export function AITab({ messages, setMessages }: AITabProps) {
         correctedSymbolsRef.current.add(m[1].toUpperCase());
       }
 
-      const hasCorrectedSymbols = correctedSymbolsRef.current.size > 0;
-      if (hasCorrectedSymbols) {
-        console.log('[chat] Adding symbols to validSymbols:', [...correctedSymbolsRef.current]);
+      // Capture symbols BEFORE clearing the ref — React state updaters run
+      // asynchronously, so correctedSymbolsRef.current would be empty by then.
+      const symbolsToAdd = correctedSymbolsRef.current.size > 0
+        ? new Set([...correctedSymbolsRef.current])
+        : null;
+      correctedTextRef.current = null;
+      correctedSymbolsRef.current = new Set();
+      if (symbolsToAdd && symbolsToAdd.size > 0) {
+        console.log('[chat] Adding symbols to validSymbols:', [...symbolsToAdd]);
         setValidSymbols(prev => {
           const next = new Set(prev || []);
-          for (const s of correctedSymbolsRef.current) next.add(s);
+          for (const s of symbolsToAdd) next.add(s);
           console.log('[chat] validSymbols size after add:', next.size);
           return next;
         });
       }
-      correctedTextRef.current = null;
-      correctedSymbolsRef.current = new Set();
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
