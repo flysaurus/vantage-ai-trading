@@ -504,6 +504,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
   if (!isOpen) return null;
 
+  console.log('[BuildBasketModal] render', { step, isOpen, selectedCurated: selectedCurated?.name, budget, curatedCount: curatedBaskets.length });
+
   const budgetNum = parseInt(budget) || 10000;
   const displayTheme = selectedCurated ? selectedCurated.name : (customName.trim() || 'Custom');
 
@@ -564,8 +566,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
   // ── Invest from curated basket ──
   function investCurated(basket: CuratedBasket) {
+    console.log('[BuildBasketModal] investCurated called', { basketId: basket.id, basketName: basket.name, currentStep: step });
     setSelectedCurated(basket);
     setStep('budget');
+    console.log('[BuildBasketModal] investCurated — state setters called, new step should be "budget"');
   }
 
   // ── Add curated basket directly to portfolio ──
@@ -847,7 +851,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               {/* Action buttons */}
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
-                  onClick={() => setExpandedPreview(isExpanded ? null : basket.id)}
+                  onClick={(e) => { console.log('[BuildBasketModal] Preview button clicked', { basketId: basket.id, currentExpanded: expandedPreview }); e.stopPropagation(); setExpandedPreview(isExpanded ? null : basket.id); }}
                   style={{
                     flex: 1, background: 'transparent',
                     border: '1px solid #22d3ee', borderRadius: '8px',
@@ -858,7 +862,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                   {isExpanded ? 'Collapse' : 'Preview'}
                 </button>
                 <button
-                  onClick={() => investCurated(basket)}
+                  onClick={(e) => { console.log('[BuildBasketModal] Invest button clicked', { basketId: basket.id, basketName: basket.name }); e.stopPropagation(); investCurated(basket); }}
                   style={{
                     flex: 1, background: '#22d3ee', border: 'none',
                     borderRadius: '8px', padding: '8px 0', color: '#000000',
