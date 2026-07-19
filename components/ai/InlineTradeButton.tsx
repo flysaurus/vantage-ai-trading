@@ -79,7 +79,10 @@ export function parseSuggestions(
     }
 
     // Validate against real ticker list if available (catches hallucinated symbols)
-    if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) continue;
+    if (validSymbols && validSymbols.size > 0 && !validSymbols.has(symbol)) {
+      console.log('[parseSuggestions] FILTERED OUT:', symbol, '(not in validSymbols set of', validSymbols.size, 'symbols)');
+      continue;
+    }
 
     const key = `${symbol}:${side}`;
     if (!seen.has(key)) {

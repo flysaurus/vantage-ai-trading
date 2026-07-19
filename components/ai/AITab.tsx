@@ -894,11 +894,22 @@ export function AITab({ messages, setMessages }: AITabProps) {
       // Also add corrected symbols to validSymbols so OTC/ADR tickers (like SKHYV)
       // pass client-side validation — they aren't in the exchange=US symbol cache.
       const finalContent = correctedTextRef.current || displayedContentRef.current;
+
+      // Always sync marker symbols to validSymbols — prevents legitimate markers
+      // (ETFs, ADRs) from being filtered out when symbols came from the original
+      // AI response (not gap-fill) and validSymbols was populated from Finnhub.
+      const ALL_MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):/g;
+      for (const m of finalContent.matchAll(ALL_MARKER_REGEX)) {
+        correctedSymbolsRef.current.add(m[1].toUpperCase());
+      }
+
       const hasCorrectedSymbols = correctedSymbolsRef.current.size > 0;
       if (hasCorrectedSymbols) {
+        console.log('[chat] Adding symbols to validSymbols:', [...correctedSymbolsRef.current]);
         setValidSymbols(prev => {
           const next = new Set(prev || []);
           for (const s of correctedSymbolsRef.current) next.add(s);
+          console.log('[chat] validSymbols size after add:', next.size);
           return next;
         });
       }
