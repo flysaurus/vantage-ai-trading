@@ -573,7 +573,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       const b = brokerRef.current as any;
       if (b?.loadFromSupabase) {
         const restored = await b.loadFromSupabase();
-        if (restored) console.log('[portfolio] Broker state restored from Supabase');
+        if (restored) {
+          console.log('[portfolio] Broker state restored from Supabase');
+          // Block seed fallback — we have real data from Supabase
+          demoSeededRef.current = true;
+        }
       }
       // Always sync broker state to React — even with no positions (e.g. pending basket orders)
       refreshStateFromBroker();

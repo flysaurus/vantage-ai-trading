@@ -137,14 +137,19 @@ export class DemoBroker implements BrokerEngine {
   }
 
   async loadFromSupabase(): Promise<boolean> {
-    if (!this.supabase || this.userId === 'demo_user') return false;
+    if (!this.supabase || this.userId === 'demo_user') {
+      console.log('[DemoBroker] loadFromSupabase SKIP — no supabase client or demo user');
+      return false;
+    }
     try {
-      const { data } = await this.supabase
+      console.log('[DemoBroker] loadFromSupabase — querying demo_portfolio_state for user:', this.userId);
+      const { data, error } = await this.supabase
         .from('demo_portfolio_state')
         .select('order_history, positions, cash_balance, basket_orders, updated_at')
         .eq('user_id', this.userId)
         .single();
-      if (data && (data.positions?.length > 0 || data.cash_balance != null)) {
+      console.log('[DemoBroker] loadFromSupabase — result:', { hasData: !!data, error: error?.message, basketOrdersCount: data?.basket_orders?.length, positionsCount: data?.positions?.length, cashBalance: data?.cash_balance });
+      if (data) {
         // Single canonical column: order_history (BrokerOrder[] format).
         // Normalize createdAt→submittedAt for legacy DemoOrder-format records.
         const rawOrders: any[] = data.order_history || [];
@@ -152,21 +157,25 @@ export class DemoBroker implements BrokerEngine {
           ...o,
           submittedAt: o.submittedAt || o.createdAt || o.submitted_at,
         }));
+        const restoredBasketOrders = data.basket_orders || [];
+        console.log('[DemoBroker] loadFromSupabase — restoring basketOrders:', restoredBasketOrders.length, 'names:', restoredBasketOrders.map((bo: any) => bo.name || bo.basketName));
         this.state = {
           positions: (data.positions as any[]).map((p: any) => ({
             ...p,
             shares: p.shares ?? p.qty ?? p.quantity ?? 0, // normalize DemoOrder (qty) → BrokerPosition (shares)
           })),
-          cashBalance: data.cash_balance,
+          cashBalance: data.cash_balance ?? 0,
           orders: canonicalOrders,
-          basketOrders: data.basket_orders || [],
+          basketOrders: restoredBasketOrders,
           savedAt: new Date(data.updated_at).getTime(),
         };
         if (typeof window !== 'undefined') {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...this.state, savedAt: Date.now() }));
         }
-        console.log('[DemoBroker] Restored from Supabase (order_history)');
+        console.log('[DemoBroker] Restored from Supabase — positions:', this.state.positions.length, 'basketOrders:', this.state.basketOrders.length, 'orders:', this.state.orders.length);
         return true;
+      } else {
+        console.log('[DemoBroker] loadFromSupabase — no row found for this user');
       }
     } catch (e) {
       console.error('[DemoBroker] Supabase load:', e);
@@ -211,7 +220,7 @@ export class DemoBroker implements BrokerEngine {
       filledAt: new Date(`${p.buyDate}T14:30:00Z`).toISOString(),
     }));
 
-    this.state.basketOrders = [];
+    this.state.basketOrders = this.state.basketOrders || []; // preserve basket orders restored from Supabase
     this.state.savedAt = Date.now();
     // Do NOT call saveState() — seeds are for localStorage only.
     // Supabase is the authoritative store; pushing seeds would overwrite
