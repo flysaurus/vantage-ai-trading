@@ -311,6 +311,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const basketPositionsRef = useRef<BasketPosition[]>([]);
   const brokerRef = useRef<BrokerEngine | null>(null);
   const brokerOrdersRef = useRef<any[]>([]); // raw BrokerOrder[] for Supabase sync
+  const brokerBasketOrdersRef = useRef<any[]>([]); // raw BrokerBasketOrder[] for Supabase sync
   const demoSeededRef = useRef(false);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
@@ -346,6 +347,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         cashBalance: demoState.cashBalance,
         orderHistory: brokerOrdersRef.current,       // BrokerOrder[] — full metadata for cron
         basketPositions: basketPositionsRef.current,
+        basketOrders: brokerBasketOrdersRef.current,  // BrokerBasketOrder[] — linked to broker via same column
         savedAt: demoState.savedAt,
       }).then((didSync) => {
         if (!didSync) {
@@ -371,11 +373,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         orders: supabaseState.orderHistory || [],
         savedAt: supabaseState.savedAt, // keep original server timestamp
       };
-      console.log('[portfolio init] Supabase load SUCCESS, positions:', supabaseState.positions.length, 'cash:', supabaseState.cashBalance);
+      console.log('[portfolio init] Supabase load SUCCESS, positions:', supabaseState.positions.length, 'cash:', supabaseState.cashBalance, 'basketOrders:', (supabaseState.basketOrders || []).length);
       setDemoState(merged);
       setDemoOrders(merged.orders);
       // Also update broker refs so sync doesn't push stale seed orders
       brokerOrdersRef.current = supabaseState.orderHistory || [];
+      brokerBasketOrdersRef.current = supabaseState.basketOrders || [];
+      // Restore basket orders into the broker so they survive localStorage clears
+      if (brokerRef.current && supabaseState.basketOrders?.length) {
+        (brokerRef.current as any).setBasketOrders?.(supabaseState.basketOrders);
+      }
       // Cache in localStorage for speed — preserve original savedAt so sync guard works
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...merged, savedAt: supabaseState.savedAt })); } catch {}
     };
@@ -547,6 +554,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }));
     // Keep raw BrokerOrder[] for Supabase sync (full metadata, no DemoOrder normalization)
     brokerOrdersRef.current = bOrders;
+    brokerBasketOrdersRef.current = bBasketOrders || []; // BrokerBasketOrder[] for Supabase sync
     const newState: DemoState = { positions: ctxPositions, cashBalance: bAccount.cashBalance, orders: ctxOrders, savedAt: Date.now() };
     setDemoState(newState);
     setDemoOrders(ctxOrders);

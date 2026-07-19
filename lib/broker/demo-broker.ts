@@ -252,6 +252,10 @@ export class DemoBroker implements BrokerEngine {
     return this.state.basketOrders;
   }
 
+  setBasketOrders(orders: BrokerBasketOrder[]): void {
+    this.state.basketOrders = orders;
+  }
+
   // ─── FETCH QUOTE ───
 
   private async fetchQuote(symbol: string): Promise<{ price: number; change: number } | null> {
