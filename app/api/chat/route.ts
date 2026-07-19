@@ -98,6 +98,62 @@ function extractSearchTerm(text: string): string | null {
   return null;
 }
 
+// ─── Gap-fill missing markers for multi-position allocations ───
+// Detects explicit $ amount recommendations that lack [RECOMMEND:SYMBOL:BUY:$N] markers.
+const RECOMMEND_MARKER = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
+
+// Dollar-amount + ticker patterns where the model recommended but dropped the marker
+const DOLLAR_RECOMMEND_PATTERNS: Array<{ regex: RegExp; tickerGroup: number; amountGroup: number }> = [
+  // "$3,500 into VOO", "$500 in MSFT", "$1,000 of QQQ"
+  { regex: /\$([\d,]+(?:\.\d+)?)\s+(?:into|in|for|of|to|toward)\s+\b([A-Z]{2,5})\b/gi, tickerGroup: 2, amountGroup: 1 },
+  // "VOO ($3,500)", "MSFT ($500)"
+  { regex: /\b([A-Z]{2,5})\b\s*\(\$([\d,]+(?:\.\d+)?)\)/g, tickerGroup: 1, amountGroup: 2 },
+  // "VOO: $3,500", "QQQ — $1,000"
+  { regex: /\b([A-Z]{2,5})\b\s*[:—–-]\s*\$([\d,]+(?:\.\d+)?)\b/g, tickerGroup: 1, amountGroup: 2 },
+  // "allocate $3,500 to VOO", "put $500 in MSFT"
+  { regex: /(?:allocate|put|place|invest|direct|send)\s+\$([\d,]+(?:\.\d+)?)\s+(?:into|in|for|of|to|toward)\s+\b([A-Z]{2,5})\b/gi, tickerGroup: 2, amountGroup: 1 },
+];
+
+function fillMissingMarkers(text: string): string {
+  // Gather already-marked symbols
+  const marked = new Set<string>();
+  RECOMMEND_MARKER.lastIndex = 0;
+  for (const m of text.matchAll(RECOMMEND_MARKER)) {
+    marked.add(m[1].toUpperCase());
+  }
+
+  // Find unmarked symbols with explicit dollar-amount recommendations
+  const missing: Array<{ symbol: string; amount: number }> = [];
+  const seen = new Set<string>();
+
+  for (const { regex, tickerGroup, amountGroup } of DOLLAR_RECOMMEND_PATTERNS) {
+    regex.lastIndex = 0;
+    for (const m of text.matchAll(regex)) {
+      const symbol = m[tickerGroup].toUpperCase();
+      const amountStr = m[amountGroup].replace(/,/g, '');
+      const amount = parseFloat(amountStr);
+
+      // Skip if already marked, not a valid-looking ticker (filter common words),
+      // or amount is unreasonable
+      if (marked.has(symbol) || seen.has(symbol)) continue;
+      if (NOT_TICKERS.has(symbol)) continue;
+      if (amount <= 0 || amount > 100_000_000) continue;
+
+      seen.add(symbol);
+      missing.push({ symbol, amount: Math.round(amount) });
+    }
+  }
+
+  if (missing.length === 0) return text;
+
+  // Append missing markers at the end (invisible markers — appended after a blank line)
+  const appendix = '\n\n' + missing
+    .map(({ symbol, amount }) => `[RECOMMEND:${symbol}:BUY:$${amount}]`)
+    .join(' ');
+
+  return text + appendix;
+}
+
 // ─── Common non-company capitalized words ──
 const FILTERED_PROPER_NOUNS = /^(This|That|What|When|Where|Why|Which|Whose|How|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never|Tell|Show|Find|Look|Check|Search|Give|Make|Take|Know|Think|Want|Need|Like|Love|Can|Will|Just|Also|Only|Even|Then|Than|Its|His|Her|Our|Been|Being|Having|Doing|Going|Getting)$/;
 
@@ -541,7 +597,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         } while (turn < MAX_TOOL_TURNS);
 
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-        const responseText = fullResponse.join('');
+        let responseText = fullResponse.join('');
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
         try {
@@ -551,9 +607,26 @@ CRITICAL: Use these live prices for any current-price questions. They override b
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ corrections: validation.issues, correctedText: validation.corrected })}\n\n`)
             );
+            responseText = validation.corrected;
           }
         } catch (valErr) {
           console.error('[chat] Marker validation error:', valErr);
+        }
+
+        // ── Fill missing markers for multi-position allocations ──
+        // When AI recommends N holdings with explicit $ amounts but emits < N markers,
+        // this detects the gap and appends the missing [RECOMMEND:SYMBOL:BUY:$N] markers.
+        try {
+          const filled = fillMissingMarkers(responseText);
+          if (filled !== responseText) {
+            console.log('[chat] 🔧 Filled missing markers for multi-position recommendation');
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ gapFill: true, correctedText: filled })}\n\n`)
+            );
+            responseText = filled;
+          }
+        } catch (fillErr) {
+          console.error('[chat] Marker gap-fill error:', fillErr);
         }
 
         // ── Post-stream: await DB write BEFORE closing the stream ──
