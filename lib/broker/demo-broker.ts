@@ -511,9 +511,12 @@ export class DemoBroker implements BrokerEngine {
 
     const executionPlan = req.stocks.map((s, i) => {
       const r = priceResults[i];
-      const price = r.status === 'fulfilled' ? r.value?.price || 0 : 0;
+      const livePrice = r.status === 'fulfilled' ? r.value?.price || 0 : 0;
+      const fallback = s.fallbackPrice || 0;
+      // Prefer live quote, but use review-step price as fallback if quote fails
+      const price = livePrice > 0 ? livePrice : fallback;
       const shares = price > 0 ? s.dollarAmount / price : 0;
-      return { symbol: s.symbol, price, shares, dollarAmount: s.dollarAmount, allocationPct: s.allocationPct };
+      return { symbol: s.symbol, price, shares, dollarAmount: s.dollarAmount, allocationPct: s.allocationPct, usedFallback: livePrice === 0 && fallback > 0 };
     }).filter(s => s.price > 0 && s.shares > 0);
 
     if (executionPlan.length === 0) {

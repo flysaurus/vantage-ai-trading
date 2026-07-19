@@ -1489,7 +1489,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       isBasketEditMode ? (editBasket?.basketName || selectedCurated.name) : selectedCurated.name,
       isBasketEditMode ? (editBasket?.basketEmoji || selectedCurated.emoji) : selectedCurated.emoji,
       basketDisplayName || (isBasketEditMode ? (editBasket?.basketDisplayName || selectedCurated.name) : selectedCurated.name),
-      reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name })),
+      reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name, fallbackPrice: s.price })),
       bNum,
     );
     setExecutionResult(result);

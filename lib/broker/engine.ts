@@ -45,6 +45,8 @@ export interface BasketOrderRequest {
     symbol: string;
     dollarAmount: number;
     allocationPct: number;
+    /** Price from review step — used as fallback when live quote fails */
+    fallbackPrice?: number;
   }>;
   totalBudget: number;
 }

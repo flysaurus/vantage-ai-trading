@@ -187,7 +187,7 @@ interface PortfolioContextValue {
     basketName: string,
     basketEmoji: string,
     displayName: string,
-    stocks: Array<{ symbol: string; allocationPct: number; name: string }>,
+    stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number }>,
     budget: number,
   ) => Promise<BasketTradeResult>;
   /** Sell selected basket positions */
@@ -1001,7 +1001,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     basketName: string,
     basketEmoji: string,
     displayName: string,
-    stocks: Array<{ symbol: string; allocationPct: number; name: string }>,
+    stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number }>,
     budget: number,
   ): Promise<BasketTradeResult> => {
     const b = brokerRef.current;
@@ -1011,7 +1011,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       basketName,
       basketEmoji,
       basketDisplayName: displayName,
-      stocks: stocks.map(s => ({ symbol: s.symbol, dollarAmount: (s.allocationPct / 100) * budget * 0.95, allocationPct: s.allocationPct })),
+      stocks: stocks.map(s => ({ symbol: s.symbol, dollarAmount: (s.allocationPct / 100) * budget * 0.95, allocationPct: s.allocationPct, fallbackPrice: s.fallbackPrice })),
       totalBudget: budget,
     });
     if (!result.success) {
