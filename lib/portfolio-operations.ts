@@ -229,6 +229,24 @@ export async function seedDemoPortfolio(
   );
   const cashBalance = Math.max(0, 100000 - totalInvested);
 
+  // ⚠️ NEVER blindly overwrite existing portfolio data.
+  // Check if the user already has positions, orders, or basket orders —
+  // if so, skip seeding entirely. This prevents reset/disconnect/mount-race
+  // from wiping real user data back to seed defaults.
+  const existing = await db
+    .from('demo_portfolio_state')
+    .select('positions, basket_orders')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const hasExistingPositions = existing && Array.isArray(existing.positions) && existing.positions.length > 0;
+  const hasExistingBasketOrders = existing && Array.isArray(existing.basket_orders) && existing.basket_orders.length > 0;
+
+  if (hasExistingPositions || hasExistingBasketOrders) {
+    console.log('[seedDemoPortfolio] User already has data — skipping seed to prevent data loss');
+    return;
+  }
+
   await db
     .from('demo_portfolio_state')
     .upsert(

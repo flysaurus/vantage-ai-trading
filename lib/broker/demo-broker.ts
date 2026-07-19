@@ -837,15 +837,39 @@ export class DemoBroker implements BrokerEngine {
       }
     }
 
-    // Update basket orders that have all their orders filled
+    // Update basket orders that have completed
     const newlyFilledBaskets: typeof this.state.basketOrders = [];
     for (const basket of this.state.basketOrders.filter(b => b.status === 'OPEN')) {
       const basketOrders = this.state.orders.filter(o => o.basketOrderId === basket.id);
-      if (basketOrders.length > 0 && basketOrders.every(o => o.status !== 'OPEN')) {
-        basket.status = 'FILLED';
-        basket.filledAt = new Date().toISOString();
-        newlyFilledBaskets.push(basket);
+
+      // ── Bug #5 fix: sync inner order statuses from canonical orders array ──
+      // basket.orders was snapshotted at submission time and never updated
+      // after fills/cancellations — it was stale. Now sync before computing status.
+      for (const innerOrder of basket.orders) {
+        const canonical = basketOrders.find(o => o.id === innerOrder.id);
+        if (canonical) {
+          innerOrder.status = canonical.status;
+          if (canonical.fillPrice) innerOrder.fillPrice = canonical.fillPrice;
+          if (canonical.filledAt) innerOrder.filledAt = canonical.filledAt;
+        }
       }
+
+      if (basketOrders.length === 0) continue;
+      if (basketOrders.some(o => o.status === 'OPEN')) continue; // still pending
+
+      // ── Bug #4 fix: distinguish FILLED vs CANCELLED vs PARTIAL ──
+      const filledCount = basketOrders.filter(o => o.status === 'FILLED').length;
+      const cancelledCount = basketOrders.filter(o => o.status === 'CANCELLED').length;
+
+      if (filledCount > 0 && cancelledCount === 0) {
+        basket.status = 'FILLED';
+      } else if (cancelledCount > 0 && filledCount === 0) {
+        basket.status = 'CANCELLED';
+      } else {
+        basket.status = 'PARTIAL';
+      }
+      basket.filledAt = new Date().toISOString();
+      newlyFilledBaskets.push(basket);
     }
 
     // ── Notify: baskets filled via cron ──

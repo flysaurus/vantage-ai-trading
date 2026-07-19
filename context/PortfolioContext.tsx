@@ -564,40 +564,59 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     setPendingBaskets((bBasketOrders || []).filter((bo: any) => bo.status === 'OPEN'));
   }, [persistDemoState]);
 
-  // ── Broker initialization ──
+  // ── Broker initialization + seed fallback (merged — no race) ──
+  // The seed fallback MUST wait for the Supabase load to definitively
+  // succeed or fail before deciding whether to seed. Running them as
+  // separate effects created a race where the seed could fire before
+  // loadFromSupabase() resolved, wiping real data with empty defaults.
   useEffect(() => {
     const supabaseClient = getSupabaseBrowserClient();
     brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
-    // Restore broker state from Supabase if localStorage is empty/stale
+
+    if (isConnected) return;
+
     const initBroker = async () => {
       const b = brokerRef.current as any;
+      let restoredFromSupabase = false;
+
+      // Step 1: Try Supabase load — await the result
       if (b?.loadFromSupabase) {
-        const restored = await b.loadFromSupabase();
-        if (restored) {
-          console.log('[portfolio] Broker state restored from Supabase');
-          // Block seed fallback — we have real data from Supabase
-          demoSeededRef.current = true;
+        try {
+          restoredFromSupabase = await b.loadFromSupabase();
+          if (restoredFromSupabase) {
+            console.log('[portfolio] Broker state restored from Supabase');
+          }
+        } catch (e) {
+          console.error('[portfolio] Supabase load failed:', e);
+          // restoredFromSupabase stays false — will trigger seed below
         }
       }
-      // Always sync broker state to React — even with no positions (e.g. pending basket orders)
-      refreshStateFromBroker();
-    };
-    initBroker();
-  }, [refreshStateFromBroker, user?.id]);
 
-  // ── Seed fallback: use broker.seedFromDemoData() ──
-  // Only fires ONCE when there's no persisted state and broker has no data.
-  // Must NOT re-fire on style changes (that would wipe user's actual orders).
-  useEffect(() => {
-    if (isConnected || initialPersistedState || demoSeededRef.current) return;
-    const style = (user?.investorStyle || 'buffett') as InvestorStyle;
-    demoSeededRef.current = true;
-    (brokerRef.current as any)?.seedFromDemoData(style);
-    // Sync after seeding
-    setTimeout(async () => {
-      await refreshStateFromBroker();
-    }, 100);
-  }, [isConnected, user?.investorStyle, initialPersistedState, refreshStateFromBroker]);
+      // Step 2: If Supabase had data (or localStorage persisted), skip seed
+      if (restoredFromSupabase || initialPersistedState) {
+        demoSeededRef.current = true;
+        refreshStateFromBroker();
+        return;
+      }
+
+      // Step 3: No data anywhere — seed is legitimate (first-time user)
+      if (demoSeededRef.current) {
+        refreshStateFromBroker();
+        return;
+      }
+
+      demoSeededRef.current = true;
+      const style = (user?.investorStyle || 'buffett') as InvestorStyle;
+      console.log('[portfolio] No existing data — seeding fresh demo portfolio');
+      (brokerRef.current as any)?.seedFromDemoData(style);
+      // Wait briefly for broker to process seeds, then sync
+      setTimeout(async () => {
+        await refreshStateFromBroker();
+      }, 100);
+    };
+
+    initBroker();
+  }, [isConnected, user?.investorStyle, initialPersistedState, refreshStateFromBroker, user?.id]);
 
   // ── executeTrade ──
   const executeTrade = useCallback(
@@ -816,9 +835,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const loadBaskets = useCallback(() => {
     try {
       const raw = localStorage.getItem(BASKET_STORAGE_KEY);
-      if (!raw) { setBaskets([]); return; }
+      if (!raw) {
+        setBaskets([]);
+        basketPositionsRef.current = [];
+        return;
+      }
 
       const positions: BasketPosition[] = JSON.parse(raw);
+      // Sync ref for Supabase sync — basketPositionsRef was declared but never wired
+      basketPositionsRef.current = positions;
       if (!positions.length) { setBaskets([]); return; }
 
       // Group by basketId
