@@ -46,6 +46,14 @@ export class DemoBroker implements BrokerEngine {
     this.userEmail = email;
   }
 
+  setUserId(userId: string): void {
+    this.userId = userId;
+  }
+
+  setSupabase(client: any): void {
+    this.supabase = client;
+  }
+
   // ─── MARKET HOURS (delegate to lib/market-hours) ───
 
   isMarketOpen(): boolean {

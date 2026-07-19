@@ -25,10 +25,18 @@ export function getBroker(
 
   if (!activeBroker) {
     activeBroker = new DemoBroker(userId, supabaseClient, userEmail);
-  } else if (userEmail && activeBroker instanceof DemoBroker) {
-    // Update email on cached broker — user may not have been
+  } else if (activeBroker instanceof DemoBroker) {
+    // Update context on cached broker — user/auth may not have been
     // available when broker was first created (e.g. auth still loading)
-    (activeBroker as DemoBroker).setUserEmail(userEmail);
+    if (userId && userId !== 'demo_user') {
+      (activeBroker as DemoBroker).setUserId(userId);
+    }
+    if (supabaseClient) {
+      (activeBroker as DemoBroker).setSupabase(supabaseClient);
+    }
+    if (userEmail) {
+      (activeBroker as DemoBroker).setUserEmail(userEmail);
+    }
   }
 
   return activeBroker;
