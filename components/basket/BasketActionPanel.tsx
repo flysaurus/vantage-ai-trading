@@ -162,7 +162,7 @@ export default function BasketActionPanel({
         const shares = Math.round((posBudget / price) * 10000) / 10000;
         if (shares <= 0) continue;
 
-        await executeTrade(pos.symbol, 'BUY', shares, price);
+        await executeTrade(pos.symbol, 'BUY', shares, price, undefined, undefined, undefined, undefined, basketId, basketName, basketEmoji);
         updateBasketBuyMore(basketId, pos.symbol, shares, price, shares * price);
       }
       await loadBaskets();
@@ -185,7 +185,7 @@ export default function BasketActionPanel({
       const price = pos.currentPrice || pos.avgCost;
       const shares = Math.round((amount / price) * 10000) / 10000;
       if (shares > 0) {
-        await executeTrade(symbol, 'BUY', shares, price);
+        await executeTrade(symbol, 'BUY', shares, price, undefined, undefined, undefined, undefined, basketId, basketName, basketEmoji);
         updateBasketBuyMore(basketId, symbol, shares, price, shares * price);
         await loadBaskets();
       }
