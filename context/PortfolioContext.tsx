@@ -280,6 +280,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── Persistent state (positions, cash, orders) — load from localStorage first ──
   const initialPersistedState = typeof window !== 'undefined' ? loadPersistedDemoState() : null;
+  // Capture initial persisted state once in a ref — used by the init effect
+  // (raw variable would change every render via JSON.parse, creating a dep-loop)
+  const initialPersistedStateRef = useRef(initialPersistedState);
   const [demoState, setDemoState] = useState<DemoState | null>(initialPersistedState);
   const [demoOrders, setDemoOrders] = useState<DemoOrder[]>(initialPersistedState?.orders || []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -313,6 +316,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const brokerOrdersRef = useRef<any[]>([]); // raw BrokerOrder[] for Supabase sync
   const brokerBasketOrdersRef = useRef<any[]>([]); // raw BrokerBasketOrder[] for Supabase sync
   const demoSeededRef = useRef(false);
+  // Track which userId we've already initialized for (prevents re-init loops)
+  const brokerInitDoneForUserRef = useRef<string | null>(null);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
   // ── Clear stale demo portfolio cache on mount ──
@@ -575,6 +580,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     if (isConnected) return;
 
+    // Guard: only run init sequence once per userId (prevents dep-loop
+    // while still allowing re-init when auth resolves from null → real id)
+    const currentUserId = (user?.id as string | undefined) ?? null;
+    if (brokerInitDoneForUserRef.current === currentUserId) return;
+    brokerInitDoneForUserRef.current = currentUserId;
+
     const initBroker = async () => {
       const b = brokerRef.current as any;
       let restoredFromSupabase = false;
@@ -593,7 +604,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Step 2: If Supabase had data (or localStorage persisted), skip seed
-      if (restoredFromSupabase || initialPersistedState) {
+      if (restoredFromSupabase || initialPersistedStateRef.current) {
         demoSeededRef.current = true;
         refreshStateFromBroker();
         return;
@@ -616,7 +627,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     };
 
     initBroker();
-  }, [isConnected, user?.investorStyle, initialPersistedState, refreshStateFromBroker, user?.id]);
+  }, [isConnected, user?.investorStyle, refreshStateFromBroker, user?.id]);
 
   // ── executeTrade ──
   const executeTrade = useCallback(

@@ -358,11 +358,20 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     const effectiveBudget = bNum * 0.95;
 
     try {
-      const results = await Promise.allSettled(
-        selectedCurated.stocks.map(stock =>
-          fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(stock.symbol)}`).then(r => r.json())
-        )
-      );
+      // Hard timeout: 8s per quote, 10s overall ceiling, so loadingPrices never sticks
+      const QUOTE_TIMEOUT_MS = 8000;
+      const OVERALL_TIMEOUT_MS = 10000;
+      const fetchWithTimeout = (symbol: string) =>
+        fetch(`/api/finnhub/quote?symbol=${encodeURIComponent(symbol)}`, {
+          signal: AbortSignal.timeout(QUOTE_TIMEOUT_MS),
+        }).then(r => r.json());
+
+      const quotePromises = selectedCurated.stocks.map(s => fetchWithTimeout(s.symbol));
+      const results = await Promise.allSettled(quotePromises);
+
+      // Belt-and-suspenders: if overall somehow takes >10s, proceed anyway
+      const overallTimeout = new Promise<void>(resolve => setTimeout(resolve, OVERALL_TIMEOUT_MS));
+      await Promise.race([Promise.resolve(), overallTimeout]);
 
       const enriched: ReviewStock[] = selectedCurated.stocks.map((stock, i) => {
         const result = results[i];
