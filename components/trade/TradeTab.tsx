@@ -7,6 +7,7 @@ import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { onBasketCreated } from '@/lib/gamification/events';
 import { getMarketStatus } from '@/lib/market-hours';
+import BasketActionPanel from '@/components/basket/BasketActionPanel';
 
 const DEMO_ORDERS = [
   { id: '1', symbol: 'SPY', side: 'buy', status: 'filled', qty: 25, price: 480.00, date: 'Jan 8, 2024' },
@@ -1479,7 +1480,7 @@ export function TradeTab() {
                       </div>
                     </div>
 
-                    {/* Expanded — read-only stock breakdown (FILLED / PARTIAL / CANCELLED only) */}
+                    {/* Expanded — stock breakdown + basket actions (FILLED / PARTIAL only) */}
                     {isExpanded && !isPending && (
                       <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         {group.orders.map((order: any) => (
@@ -1517,6 +1518,35 @@ export function TradeTab() {
                             </div>
                           </div>
                         ))}
+                        {/* Shared Basket Action Panel — buy/sell from Invest tab */}
+                        {(() => {
+                          const ctxBasket = baskets.find(b => b.id === group.basketId);
+                          if (!ctxBasket || !ctxBasket.positions || ctxBasket.positions.length === 0) return null;
+                          return (
+                            <BasketActionPanel
+                              basketId={ctxBasket.id}
+                              basketName={ctxBasket.name}
+                              basketEmoji={ctxBasket.emoji || '🧺'}
+                              positions={ctxBasket.positions.map((p: any) => ({
+                                symbol: p.symbol,
+                                shares: p.shares,
+                                avgCost: p.avgCost,
+                                currentPrice: p.currentPrice || p.avgCost,
+                                allocationPct: p.allocationPct || 0,
+                                marketValue: p.marketValue,
+                                totalPnL: p.totalPnL,
+                                totalPnLPct: p.totalPnLPct,
+                                name: p.name,
+                                status: p.status,
+                              }))}
+                              totalCost={ctxBasket.totalCost}
+                              marketValue={ctxBasket.marketValue}
+                              totalPnL={ctxBasket.totalPnL}
+                              totalPnLPct={ctxBasket.totalPnLPct}
+                              context="invest"
+                            />
+                          );
+                        })()}
                       </div>
                     )}
 

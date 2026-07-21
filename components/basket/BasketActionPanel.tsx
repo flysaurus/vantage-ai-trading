@@ -1,0 +1,635 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import { useLivePortfolio } from '@/context/PortfolioContext';
+import SellModal from '@/components/portfolio/SellModal';
+
+// ─── Types ─────────────────────────────────────────────
+
+interface BasketPositionData {
+  symbol: string;
+  name?: string;
+  shares: number;
+  avgCost: number;
+  currentPrice: number;
+  allocationPct: number;
+  marketValue?: number;
+  totalPnL?: number;
+  totalPnLPct?: number;
+  status?: string;
+  sector?: string;
+}
+
+interface BasketActionPanelProps {
+  basketId: string;
+  basketName: string;
+  basketEmoji: string;
+  positions: BasketPositionData[];
+  totalCost: number;
+  marketValue: number;
+  totalPnL: number;
+  totalPnLPct: number;
+  /** Where the panel is mounted — adjusts visual padding */
+  context?: 'portfolio' | 'invest';
+}
+
+// ─── Helpers ─────────────────────────────────────────
+
+const DOLLAR_FMT: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+};
+
+// Update basket position tracking in localStorage after buying more
+function updateBasketBuyMore(
+  basketId: string,
+  symbol: string,
+  addedShares: number,
+  purchasePrice: number,
+  addedCost: number,
+) {
+  try {
+    const KEY = 'vantage_basket_positions_v1';
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return;
+    const saved: any[] = JSON.parse(raw);
+    let found = false;
+    const updated = saved.map((p: any) => {
+      if (p.basketId === basketId && p.symbol === symbol && p.status !== 'closed') {
+        found = true;
+        const newShares = p.shares + addedShares;
+        const newTotalCost = p.totalCost + addedCost;
+        const newAvgCost = newShares > 0 ? newTotalCost / newShares : p.avgCost;
+        return { ...p, shares: newShares, avgCost: newAvgCost, totalCost: newTotalCost };
+      }
+      return p;
+    });
+    // If no existing position found, add it (stock wasn't previously tracked in basket)
+    if (!found) {
+      updated.push({
+        id: `${basketId}-${symbol}-${Date.now()}`,
+        basketId,
+        basketName: '', // will be overwritten by loadBaskets
+        basketEmoji: '',
+        symbol,
+        shares: addedShares,
+        avgCost: purchasePrice,
+        totalCost: addedCost,
+        allocationPct: 0, // will be re-normalized below
+        status: 'active',
+        boughtAt: new Date().toISOString(),
+      });
+    }
+    // Re-normalize allocation percentages for active positions
+    const activeInBasket = updated.filter(
+      (p: any) => p.basketId === basketId && p.status === 'active',
+    );
+    let totalValue = 0;
+    for (const p of activeInBasket) {
+      const price = p.currentPrice || p.avgCost || 0;
+      totalValue += (p.shares || 0) * price;
+    }
+    if (totalValue > 0) {
+      for (let i = 0; i < updated.length; i++) {
+        if (
+          updated[i].basketId === basketId &&
+          updated[i].status === 'active'
+        ) {
+          const mv = (updated[i].shares || 0) * (updated[i].currentPrice || updated[i].avgCost || 0);
+          updated[i].allocationPct = Math.round((mv / totalValue) * 10000) / 100;
+        }
+      }
+    }
+    localStorage.setItem(KEY, JSON.stringify(updated));
+  } catch { /* localStorage error — ignore */ }
+}
+
+// ─── Component ───────────────────────────────────────
+
+export default function BasketActionPanel({
+  basketId,
+  basketName,
+  basketEmoji,
+  positions,
+  totalCost,
+  marketValue,
+  totalPnL,
+  totalPnLPct,
+  context = 'portfolio',
+}: BasketActionPanelProps) {
+  const { executeTrade, sellBasketPositions, loadBaskets } = useLivePortfolio();
+
+  const plColor = totalPnL >= 0 ? '#10b981' : '#ef4444';
+  const plSign = totalPnL >= 0 ? '+' : '';
+
+  // ── State ──
+  const [showBuyWholeInput, setShowBuyWholeInput] = useState(false);
+  const [buyWholeAmount, setBuyWholeAmount] = useState('');
+  const [buyWholeSubmitting, setBuyWholeSubmitting] = useState(false);
+
+  const [buySingleSymbol, setBuySingleSymbol] = useState<string | null>(null);
+  const [buySingleAmount, setBuySingleAmount] = useState('');
+  const [buySingleSubmitting, setBuySingleSubmitting] = useState(false);
+
+  const [sellPositions, setSellPositions] = useState<
+    Array<{ symbol: string; qty: number; currentPrice: number }> | null
+  >(null);
+  const [sellSingleSymbol, setSellSingleSymbol] = useState<string | null>(null);
+
+  // ── Derived ──
+  const activePositions = useMemo(
+    () => positions.filter(p => (p.status || 'active') === 'active'),
+    [positions],
+  );
+
+  const hasActivePositions = activePositions.length > 0;
+
+  // ── Handlers ──
+
+  // Buy More — Whole Basket (proportional top-up)
+  const handleBuyWhole = async () => {
+    const amount = parseFloat(buyWholeAmount);
+    if (!amount || amount <= 0 || amount > 9999999) return;
+    if (!hasActivePositions) return;
+
+    setBuyWholeSubmitting(true);
+    try {
+      // Split budget proportionally by current allocation %
+      for (const pos of activePositions) {
+        const posBudget = amount * (pos.allocationPct / 100);
+        const price = pos.currentPrice || pos.avgCost;
+        if (price <= 0 || posBudget <= 0) continue;
+        const shares = Math.round((posBudget / price) * 10000) / 10000;
+        if (shares <= 0) continue;
+
+        await executeTrade(pos.symbol, 'BUY', shares, price);
+        updateBasketBuyMore(basketId, pos.symbol, shares, price, shares * price);
+      }
+      await loadBaskets();
+    } catch { /* errors surfaced via toast */ }
+    setBuyWholeSubmitting(false);
+    setBuyWholeAmount('');
+    setShowBuyWholeInput(false);
+  };
+
+  // Buy More — Single Stock
+  const handleBuySingle = async (symbol: string) => {
+    const amount = parseFloat(buySingleAmount);
+    if (!amount || amount <= 0 || amount > 9999999) return;
+
+    const pos = activePositions.find(p => p.symbol === symbol);
+    if (!pos) return;
+
+    setBuySingleSubmitting(true);
+    try {
+      const price = pos.currentPrice || pos.avgCost;
+      const shares = Math.round((amount / price) * 10000) / 10000;
+      if (shares > 0) {
+        await executeTrade(symbol, 'BUY', shares, price);
+        updateBasketBuyMore(basketId, symbol, shares, price, shares * price);
+        await loadBaskets();
+      }
+    } catch { /* errors surfaced via toast */ }
+    setBuySingleSubmitting(false);
+    setBuySingleAmount('');
+    setBuySingleSymbol(null);
+  };
+
+  // Sell — Single Stock (open SellModal)
+  const handleSellSingle = (symbol: string) => {
+    const pos = activePositions.find(p => p.symbol === symbol);
+    if (!pos) return;
+    setSellSingleSymbol(symbol);
+    setSellPositions([
+      { symbol: pos.symbol, qty: pos.shares, currentPrice: pos.currentPrice },
+    ]);
+  };
+
+  // Sell — Whole Basket (open SellModal with proportional %)
+  const handleSellWhole = () => {
+    setSellSingleSymbol(null);
+    setSellPositions(
+      activePositions.map(p => ({
+        symbol: p.symbol,
+        qty: p.shares,
+        currentPrice: p.currentPrice,
+      })),
+    );
+  };
+
+  // Sell confirmation
+  const handleSellConfirm = async (percentSold?: number) => {
+    if (!sellPositions || sellPositions.length === 0) {
+      setSellPositions(null);
+      return;
+    }
+
+    const symbolsToSell = sellPositions.map(p => p.symbol);
+    const sellPct = (percentSold ?? 100) / 100;
+
+    try {
+      if (sellPct < 1 && sellPositions.length > 1) {
+        // Proportional sell
+        const sharesMap: Record<string, number> = {};
+        sellPositions.forEach(p => {
+          sharesMap[p.symbol] = Math.round(p.qty * sellPct * 10000) / 10000;
+        });
+        await sellBasketPositions(basketId, symbolsToSell, sharesMap);
+      } else {
+        await sellBasketPositions(basketId, symbolsToSell);
+      }
+    } catch { /* errors surfaced via toast */ }
+
+    setSellPositions(null);
+    setSellSingleSymbol(null);
+    // Refresh baskets after sell updates localStorage
+    setTimeout(() => loadBaskets(), 200);
+  };
+
+  // ── Render ──
+
+  return (
+    <div style={{
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+      background: context === 'invest' ? 'transparent' : 'transparent',
+    }}>
+      {/* ─── Composition List ─── */}
+      {activePositions.length > 0 && (
+        <div style={{ padding: '8px 0' }}>
+          {/* Header */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 10,
+            padding: '4px 16px 8px',
+          }}>
+            <div>
+              <div className="section-label" style={{ fontSize: 9, marginBottom: 2 }}>
+                INVESTED
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                ${totalCost.toLocaleString('en-US', DOLLAR_FMT)}
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 9, marginBottom: 2 }}>
+                MARKET VALUE
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>
+                ${marketValue.toLocaleString('en-US', DOLLAR_FMT)}
+              </div>
+            </div>
+            <div>
+              <div className="section-label" style={{ fontSize: 9, marginBottom: 2 }}>
+                TOTAL P&L
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: plColor }}>
+                {plSign}${Math.abs(totalPnL).toLocaleString('en-US', DOLLAR_FMT)}
+              </div>
+            </div>
+          </div>
+
+          {/* Position rows */}
+          <div style={{ padding: '0 16px' }}>
+            {activePositions.map((pos, i, arr) => {
+              const posPl = pos.totalPnL || 0;
+              const posPlClr = posPl >= 0 ? '#10b981' : '#ef4444';
+              const posPlSgn = posPl >= 0 ? '+' : '';
+              const mv = pos.marketValue || (pos.currentPrice * pos.shares);
+              const isBuyingSingle = buySingleSymbol === pos.symbol;
+
+              return (
+                <div key={pos.symbol}>
+                  {/* Position row with inline action buttons */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 0',
+                    borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  }}>
+                    {/* Left: symbol info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ color: '#ffffff', fontWeight: 600, fontSize: 13 }}>
+                          {pos.symbol}
+                        </span>
+                        {(pos.allocationPct || 0) > 0 && (
+                          <span style={{
+                            color: '#64748b',
+                            fontSize: 9,
+                            fontWeight: 600,
+                            background: 'rgba(100,116,139,0.15)',
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                          }}>
+                            {(pos.allocationPct || 0).toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 1 }}>
+                        {pos.shares.toFixed(4)}sh · avg ${pos.avgCost.toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* Right: value + P&L + action buttons */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexShrink: 0,
+                      marginLeft: 8,
+                    }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 500 }}>
+                          ${mv.toLocaleString('en-US', DOLLAR_FMT)}
+                        </div>
+                        <div style={{ color: posPlClr, fontSize: 10, fontWeight: 500 }}>
+                          {posPlSgn}${Math.abs(posPl).toLocaleString('en-US', DOLLAR_FMT)}
+                        </div>
+                      </div>
+
+                      {/* Buy More button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isBuyingSingle) {
+                            setBuySingleSymbol(null);
+                            setBuySingleAmount('');
+                          } else {
+                            setBuySingleSymbol(pos.symbol);
+                            setBuySingleAmount('');
+                            // Close buy-whole if open
+                            setShowBuyWholeInput(false);
+                            setBuyWholeAmount('');
+                          }
+                        }}
+                        style={{
+                          background: isBuyingSingle
+                            ? 'rgba(16,185,129,0.15)'
+                            : 'transparent',
+                          border: isBuyingSingle
+                            ? '1px solid rgba(16,185,129,0.3)'
+                            : '1px solid rgba(16,185,129,0.15)',
+                          borderRadius: 6,
+                          color: isBuyingSingle ? '#10b981' : '#10b981',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {isBuyingSingle ? '×' : '+Buy'}
+                      </button>
+
+                      {/* Sell button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSellSingle(pos.symbol);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid rgba(239,68,68,0.15)',
+                          borderRadius: 6,
+                          color: '#ef4444',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          padding: '3px 8px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        -Sell
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Inline buy-single budget input */}
+                  {isBuyingSingle && (
+                    <div style={{
+                      padding: '8px 0',
+                      borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          type="number"
+                          placeholder="$ amount"
+                          value={buySingleAmount}
+                          onChange={e => setBuySingleAmount(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleBuySingle(pos.symbol);
+                          }}
+                          autoFocus
+                          style={{
+                            flex: 1,
+                            background: '#0f172a',
+                            border: '1px solid rgba(16,185,129,0.2)',
+                            borderRadius: 8,
+                            padding: '8px 12px',
+                            color: '#ffffff',
+                            fontSize: 13,
+                            outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={() => handleBuySingle(pos.symbol)}
+                          disabled={buySingleSubmitting || !buySingleAmount}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: 8,
+                            background: buySingleAmount
+                              ? '#10b981'
+                              : 'rgba(16,185,129,0.2)',
+                            border: 'none',
+                            color: buySingleAmount ? '#ffffff' : 'rgba(255,255,255,0.4)',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: buySingleAmount ? 'pointer' : 'default',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {buySingleSubmitting ? '…' : 'Buy'}
+                        </button>
+                      </div>
+                      <div style={{
+                        color: '#94a3b8',
+                        fontSize: 10,
+                        marginTop: 4,
+                      }}>
+                        ${parseFloat(buySingleAmount || '0').toFixed(0) === '0'
+                          ? ''
+                          : `~${(parseFloat(buySingleAmount || '0') / (pos.currentPrice || 1)).toFixed(4)} shares @ $${pos.currentPrice.toFixed(2)}`
+                        }
+                        {!buySingleAmount && 'Buy more shares — increases this stock\'s weight in the basket'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Whole Basket Actions ─── */}
+      {hasActivePositions && (
+        <div style={{ padding: '10px 16px 12px' }}>
+          {/* Buy Whole — toggle and input */}
+          {showBuyWholeInput && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="number"
+                  placeholder="$ total budget"
+                  value={buyWholeAmount}
+                  onChange={e => setBuyWholeAmount(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleBuyWhole();
+                  }}
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    background: '#0f172a',
+                    border: '1px solid rgba(16,185,129,0.2)',
+                    borderRadius: 8,
+                    padding: '8px 12px',
+                    color: '#ffffff',
+                    fontSize: 13,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={handleBuyWhole}
+                  disabled={buyWholeSubmitting || !buyWholeAmount}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    background: buyWholeAmount
+                      ? '#10b981'
+                      : 'rgba(16,185,129,0.2)',
+                    border: 'none',
+                    color: buyWholeAmount ? '#ffffff' : 'rgba(255,255,255,0.4)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: buyWholeAmount ? 'pointer' : 'default',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {buyWholeSubmitting ? '…' : 'Buy All'}
+                </button>
+              </div>
+              {/* Proportional breakdown preview */}
+              {buyWholeAmount && (() => {
+                const amt = parseFloat(buyWholeAmount);
+                if (!amt || amt <= 0) return null;
+                return (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>
+                      Proportional split at current weights:
+                    </div>
+                    {activePositions.map(pos => {
+                      const posBudget = amt * (pos.allocationPct / 100);
+                      const shares = Math.round((posBudget / (pos.currentPrice || pos.avgCost)) * 10000) / 10000;
+                      return (
+                        <div key={pos.symbol} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: 10,
+                          color: '#94a3b8',
+                          padding: '1px 0',
+                        }}>
+                          <span>{pos.symbol} ({pos.allocationPct.toFixed(0)}%)</span>
+                          <span>
+                            ${posBudget.toFixed(2)} · {shares.toFixed(4)}sh
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+              {!buyWholeAmount && (
+                <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>
+                  New $ splits across holdings at current allocation %
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action buttons row */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => {
+                setShowBuyWholeInput(!showBuyWholeInput);
+                setBuyWholeAmount('');
+                // Close per-stock buy if open
+                setBuySingleSymbol(null);
+                setBuySingleAmount('');
+              }}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: 8,
+                background: showBuyWholeInput
+                  ? 'rgba(16,185,129,0.10)'
+                  : 'rgba(16,185,129,0.06)',
+                border: showBuyWholeInput
+                  ? '1px solid rgba(16,185,129,0.25)'
+                  : '1px solid rgba(16,185,129,0.12)',
+                color: '#10b981',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {showBuyWholeInput ? 'Cancel' : 'Buy More'}
+            </button>
+            <button
+              onClick={handleSellWhole}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                borderRadius: 8,
+                background: 'rgba(239,68,68,0.06)',
+                border: '1px solid rgba(239,68,68,0.12)',
+                color: '#ef4444',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Sell
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Empty state ─── */}
+      {!hasActivePositions && (
+        <div style={{
+          padding: '16px',
+          color: '#94a3b8',
+          fontSize: 13,
+          textAlign: 'center',
+        }}>
+          All positions in this basket have been sold
+        </div>
+      )}
+
+      {/* ─── Sell Modal ─── */}
+      {sellPositions && (
+        <SellModal
+          positions={sellPositions}
+          showPercentOption={sellPositions.length > 1}
+          onClose={() => {
+            setSellPositions(null);
+            setSellSingleSymbol(null);
+          }}
+          onConfirm={(percentSold?: number) => {
+            handleSellConfirm(percentSold);
+          }}
+        />
+      )}
+    </div>
+  );
+}
