@@ -1090,7 +1090,10 @@ export function TradeTab() {
           // ── Group individual orders by basketId for orders not covered by liveBasketOrders ──
           // This handles baskets whose orders exist in order_history but not as basket-level
           // entries (e.g. baskets filled via manual recovery or cross-session via Supabase sync).
-          const ordersWithBasketId = filteredOrders.filter((o: any) => o.basketId && !o.basketOrderId);
+          const coveredBasketIds = new Set(filteredBasketOrders.map((b: any) => b.basketId));
+          const ordersWithBasketId = filteredOrders.filter((o: any) =>
+            o.basketId && !o.basketOrderId && !coveredBasketIds.has(o.basketId),
+          );
           const groupMap = new Map<string, any[]>();
           for (const order of ordersWithBasketId) {
             const bid = order.basketId!;
@@ -1134,7 +1137,6 @@ export function TradeTab() {
 
           // Already-grouped basket orders (from liveBasketOrders) — track which basketOrderIds
           // and basketIds are covered so we don't duplicate in the individual section
-          const coveredBasketIds = new Set(filteredBasketOrders.map((b: any) => b.basketId));
           const groupedOrderIds = new Set(basketOrderGroups.flatMap((g: any) => g.orders.map((o: any) => o.id)));
 
           // Solo orders: exclude basket-covered orders + already-grouped
@@ -1142,7 +1144,6 @@ export function TradeTab() {
             if (o.basketOrderId) return false;
             if (o.id?.toString().includes('-b')) return false;
             if (groupedOrderIds.has(o.id)) return false;
-            if (o.basketId && coveredBasketIds.has(o.basketId)) return false;
             return true;
           });
 
