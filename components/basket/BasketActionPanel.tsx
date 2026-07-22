@@ -55,7 +55,7 @@ export default function BasketActionPanel({
   totalPnLPct,
   context = 'portfolio',
 }: BasketActionPanelProps) {
-  const { account, executeTrade, executeBasketTrade, sellBasketPositions, loadBaskets } = useLivePortfolio();
+  const { account, executeBasketTrade, sellBasketPositions, loadBaskets } = useLivePortfolio();
 
   const plColor = totalPnL >= 0 ? '#10b981' : '#ef4444';
   const plSign = totalPnL >= 0 ? '+' : '';
@@ -107,37 +107,38 @@ export default function BasketActionPanel({
 
     // Cash validation — reject entire order if insufficient
     if (amount > availableCash) {
-      // Visual feedback: flash the input red (will rely on inline message)
       return;
     }
 
     setBuyWholeSubmitting(true);
-    const executedSymbols: string[] = [];
     try {
-      for (const pos of positionsWithLiveWeights) {
-        const posBudget = amount * ((pos.liveAllocationPct || 0) / 100);
-        const price = pos.currentPrice || pos.avgCost;
-        if (price <= 0 || posBudget <= 1) continue; // skip trivial amounts
-        const shares = Math.round((posBudget / price) * 10000) / 10000;
-        if (shares <= 0) continue;
+      const stocks = positionsWithLiveWeights
+        .filter(p => {
+          const price = p.currentPrice || p.avgCost;
+          return price > 0 && amount * ((p.liveAllocationPct || 0) / 100) > 1;
+        })
+        .map(p => ({
+          symbol: p.symbol,
+          allocationPct: p.liveAllocationPct || 0,
+          name: p.symbol,
+          fallbackPrice: p.currentPrice || p.avgCost,
+        }));
 
-        const result = await executeTrade(
-          pos.symbol, 'BUY', shares, price,
-          undefined, undefined, undefined, undefined,
-          basketId, basketName, basketEmoji,
-        );
-        if (!result.success) {
-          // Abort — already-executed positions will remain (no rollback)
-          // but user sees a clear error and remaining positions are skipped
-          throw new Error(result.error || `Failed to buy ${pos.symbol}`);
-        }
-        executedSymbols.push(pos.symbol);
+      if (stocks.length === 0) {
+        setBuyWholeSubmitting(false);
+        return;
       }
-      await loadBaskets();
+
+      const result = await executeBasketTrade(
+        basketId, basketName, basketEmoji, basketName,
+        stocks,
+        amount,
+      );
+      if (result.success) {
+        await loadBaskets();
+      }
     } catch (e: any) {
-      // Individual trade errors already surface via executeTrade's toast.
-      // If we got a partial fill, the toast from executeTrade already fired
-      // for each successful trade. The failed trade also fired its own error toast.
+      // Error surfaced via executeBasketTrade toast
     }
     setBuyWholeSubmitting(false);
     setBuyWholeAmount('');
@@ -156,16 +157,22 @@ export default function BasketActionPanel({
     setBuySingleSubmitting(true);
     try {
       const price = pos.currentPrice || pos.avgCost;
-      const shares = Math.round((amount / price) * 10000) / 10000;
-      if (shares > 0) {
-        const result = await executeTrade(symbol, 'BUY', shares, price, undefined, undefined, undefined, undefined, basketId, basketName, basketEmoji);
-        if (!result.success) {
-          // Error already surfaced via executeTrade toast
-          setBuySingleSubmitting(false);
-          setBuySingleAmount('');
-          setBuySingleSymbol(null);
-          return;
-        }
+      if (price <= 0) {
+        setBuySingleSubmitting(false);
+        return;
+      }
+
+      const result = await executeBasketTrade(
+        basketId, basketName, basketEmoji, basketName,
+        [{
+          symbol,
+          allocationPct: 100,
+          name: symbol,
+          fallbackPrice: price,
+        }],
+        amount,
+      );
+      if (result.success) {
         await loadBaskets();
       }
     } catch { /* errors surfaced via toast */ }
