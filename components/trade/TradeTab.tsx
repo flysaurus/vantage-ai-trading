@@ -207,104 +207,86 @@ export function TradeTab() {
     return () => window.removeEventListener('vantage-set-subtab', handler);
   }, []);
 
-  // Load pending baskets from localStorage, computing real status from broker orders.
-  // Basket status must be derived from the actual order state (order_history via context),
+  // Load pending baskets from broker in-memory state (no localStorage fallback).
+  // Basket status is derived from actual order state (order_history via context),
   // never from a stale localStorage field that was set at submission time.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('vantage_pending_baskets');
-      if (!raw) { return; }
+    const all = pendingBaskets;
+    if (!all.length) return;
 
-      const all: any[] = JSON.parse(raw);
-
-      // ── Source A: basket-level orders from broker (liveBasketOrders) ──
-      // These are the canonical "did this basket fill?" records.
-      // Build sets from BOTH basketId (user-facing) AND id (basketOrderId UUID) —
-      // old broker saves may not have basketId set on the BrokerBasketOrder.
-      const norm = (s: any) => String(s || '').toUpperCase();
-      const filledBasketIds = new Set<string>();
-      const cancelledBasketIds = new Set<string>();
-      for (const bo of (liveBasketOrders || [])) {
-        const s = norm(bo.status);
-        if (s === 'FILLED') {
-          if (bo.basketId) filledBasketIds.add(bo.basketId);
-          if (bo.id) filledBasketIds.add(bo.id);
-        } else if (s === 'CANCELLED') {
-          if (bo.basketId) cancelledBasketIds.add(bo.basketId);
-          if (bo.id) cancelledBasketIds.add(bo.id);
-        }
+    // ── Source A: basket-level orders from broker (liveBasketOrders) ──
+    // These are the canonical "did this basket fill?" records.
+    // Build sets from BOTH basketId (user-facing) AND id (basketOrderId UUID) —
+    // old broker saves may not have basketId set on the BrokerBasketOrder.
+    const norm = (s: any) => String(s || '').toUpperCase();
+    const filledBasketIds = new Set<string>();
+    const cancelledBasketIds = new Set<string>();
+    for (const bo of (liveBasketOrders || [])) {
+      const s = norm(bo.status);
+      if (s === 'FILLED') {
+        if (bo.basketId) filledBasketIds.add(bo.basketId);
+        if (bo.id) filledBasketIds.add(bo.id);
+      } else if (s === 'CANCELLED') {
+        if (bo.basketId) cancelledBasketIds.add(bo.basketId);
+        if (bo.id) cancelledBasketIds.add(bo.id);
       }
-
-      // ── Source B: individual orders from broker (liveOrders) ──
-      // Fallback for baskets whose BrokerBasketOrder isn't in liveBasketOrders yet.
-      const ordersByBasket: Record<string, { filled: number; total: number }> = {};
-      for (const order of (liveOrders || [])) {
-        const bid = order.basketId || order.basketOrderId;
-        if (!bid) continue;
-        if (!ordersByBasket[bid]) ordersByBasket[bid] = { filled: 0, total: 0 };
-        ordersByBasket[bid].total++;
-        if (norm(order.status) === 'FILLED') ordersByBasket[bid].filled++;
-      }
-
-      const stillPending: any[] = [];
-      let changed = false;
-
-      for (const basket of all) {
-        const bid = basket.basketId || basket.id;
-
-        // Check basket-level order FIRST (canonical source).
-        // Match against BOTH bid (basketId) and basket.id (UUID) —
-        // the filledBasketIds set contains both from BrokerBasketOrder entries.
-        const isFilled = filledBasketIds.has(bid) || filledBasketIds.has(basket.id);
-        const isCancelled = cancelledBasketIds.has(bid) || cancelledBasketIds.has(basket.id);
-        if (isFilled || isCancelled) {
-          changed = true;
-          continue; // Basket filled/cancelled → remove from pending
-        }
-
-        // Fall back to individual order check
-        const info = ordersByBasket[bid];
-
-        if (!info || info.total === 0) {
-          // No broker orders found yet → still pending
-          stillPending.push(basket);
-          continue;
-        }
-
-        if (info.filled === info.total) {
-          // All orders FILLED → basket complete, remove from pending
-          changed = true;
-          continue;
-        }
-
-        if (info.filled > 0) {
-          // Partial fill
-          changed = true;
-          stillPending.push({ ...basket, computedStatus: 'PARTIAL', filledCount: info.filled, totalCount: info.total });
-          continue;
-        }
-
-        // No fills yet → still pending
-        stillPending.push(basket);
-      }
-
-      // Compute which baskets are still pending for localStorage cleanup below
-
-      // Clean up localStorage: remove filled/cancelled baskets
-      if (changed) {
-        const clean = all.filter(b => {
-          const bid2 = b.basketId || b.id;
-          if (filledBasketIds.has(bid2) || filledBasketIds.has(b.id) ||
-              cancelledBasketIds.has(bid2) || cancelledBasketIds.has(b.id)) return false;
-          const info = ordersByBasket[bid2];
-          return !(info && info.filled === info.total);
-        });
-        localStorage.setItem('vantage_pending_baskets', JSON.stringify(clean));
-      }
-    } catch {
-      // localStorage parse error — ignore
     }
-  }, [baskets, liveOrders, liveBasketOrders]); // re-check when broker orders change
+
+    // ── Source B: individual orders from broker (liveOrders) ──
+    // Fallback for baskets whose BrokerBasketOrder isn't in liveBasketOrders yet.
+    const ordersByBasket: Record<string, { filled: number; total: number }> = {};
+    for (const order of (liveOrders || [])) {
+      const bid = order.basketId || order.basketOrderId;
+      if (!bid) continue;
+      if (!ordersByBasket[bid]) ordersByBasket[bid] = { filled: 0, total: 0 };
+      ordersByBasket[bid].total++;
+      if (norm(order.status) === 'FILLED') ordersByBasket[bid].filled++;
+    }
+
+    const stillPending: any[] = [];
+    let changed = false;
+
+    for (const basket of all) {
+      const bid = basket.basketId || basket.id;
+
+      // Check basket-level order FIRST (canonical source).
+      // Match against BOTH bid (basketId) and basket.id (UUID) —
+      // the filledBasketIds set contains both from BrokerBasketOrder entries.
+      const isFilled = filledBasketIds.has(bid) || filledBasketIds.has(basket.id);
+      const isCancelled = cancelledBasketIds.has(bid) || cancelledBasketIds.has(basket.id);
+      if (isFilled || isCancelled) {
+        changed = true;
+        continue; // Basket filled/cancelled → remove from pending
+      }
+
+      // Fall back to individual order check
+      const info = ordersByBasket[bid];
+
+      if (!info || info.total === 0) {
+        // No broker orders found yet → still pending
+        stillPending.push(basket);
+        continue;
+      }
+
+      if (info.filled === info.total) {
+        // All orders FILLED → basket complete, remove from pending
+        changed = true;
+        continue;
+      }
+
+      if (info.filled > 0) {
+        // Partial fill
+        changed = true;
+        stillPending.push({ ...basket, computedStatus: 'PARTIAL', filledCount: info.filled, totalCount: info.total });
+        continue;
+      }
+
+      // No fills yet → still pending
+      stillPending.push(basket);
+    }
+
+    // No localStorage writes — broker in-memory state is the source of truth
+  }, [pendingBaskets, liveOrders, liveBasketOrders]); // re-check when broker orders change
 
   // ── Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
   const normalizedOrders = displayOrders.map((o: any) => ({

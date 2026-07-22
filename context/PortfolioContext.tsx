@@ -116,7 +116,7 @@ interface DemoState {
 const STORAGE_VERSION = 'v2';
 const STORAGE_KEY = `vantage_demo_portfolio_${STORAGE_VERSION}`;
 const OLD_STORAGE_KEY = 'vantage_demo_portfolio';
-const BASKET_STORAGE_KEY = 'vantage_basket_positions_v1';
+const BASKET_STORAGE_KEY = 'vantage_basket_positions_v1'; // read-only cache key
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const INITIAL_CAPITAL = 100000; // $100K starting demo balance
 
@@ -182,8 +182,8 @@ interface PortfolioContextValue {
   dismissToast: () => void;
   /** Basket holdings (from localStorage, live-priced) */
   baskets: Basket[];
-  /** Reload baskets from localStorage */
-  loadBaskets: () => void;
+  /** Reload baskets from Supabase */
+  loadBaskets: () => Promise<void>;
   /** Execute a basket trade (all stocks at once) */
   executeBasketTrade: (
     basketId: string,
@@ -209,6 +209,8 @@ interface PortfolioContextValue {
   basketOrders: any[];
   /** Pending basket orders (OPEN status, awaiting market open) */
   pendingBaskets: any[];
+  /** Whether Supabase is currently unreachable (using stale localStorage cache) */
+  supabaseDegraded: boolean;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -221,7 +223,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   toast: null,
   dismissToast: () => {},
   baskets: [],
-  loadBaskets: () => {},
+  loadBaskets: async () => {},
   executeBasketTrade: async () => ({ success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Not initialized' }) as any,
   sellBasketPositions: async () => ({ success: false, proceeds: 0, executed: [], failed: [] }),
   cancelOrder: async () => {},
@@ -229,6 +231,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   executePendingOrders: async () => {},
   basketOrders: [],
   pendingBaskets: [],
+  supabaseDegraded: false,
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -291,14 +294,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [baskets, setBaskets] = useState<Basket[]>([]);
   const [basketOrders, setBasketOrders] = useState<any[]>([]);
-  const [pendingBaskets, setPendingBaskets] = useState<any[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = localStorage.getItem('vantage_pending_baskets');
-      if (raw) return JSON.parse(raw).filter((b: any) => b.status === 'OPEN');
-    } catch { }
-    return [];
-  });
+  const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
 
   // ── Account: from persisted state if available, otherwise seed ──
   const [account, setAccount] = useState<AccountSummary | null>(() => {
@@ -321,6 +317,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const demoSeededRef = useRef(false);
   // Track which userId we've already initialized for (prevents re-init loops)
   const brokerInitDoneForUserRef = useRef<string | null>(null);
+  // Degradation flag: Supabase unreachable → show warning, use localStorage cache
+  const [supabaseDegraded, setSupabaseDegraded] = useState(false);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
   // ── Clear stale demo portfolio cache on mount ──
@@ -354,7 +352,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         positions: demoState.positions,
         cashBalance: demoState.cashBalance,
         orderHistory: brokerOrdersRef.current,       // BrokerOrder[] — full metadata for cron
-        basketPositions: basketPositionsRef.current,
         basketOrders: brokerBasketOrdersRef.current,  // BrokerBasketOrder[] — linked to broker via same column
         savedAt: demoState.savedAt,
       }).then((didSync) => {
@@ -844,102 +841,116 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [brokerRef, refreshStateFromBroker]);
 
-  const loadBasketsRef = useRef<() => void>(() => {});
+  const loadBasketsRef = useRef<() => Promise<void>>(async () => {});
 
-  const loadBaskets = useCallback(() => {
-    try {
-      const raw = localStorage.getItem(BASKET_STORAGE_KEY);
-      if (!raw) {
-        setBaskets([]);
-        basketPositionsRef.current = [];
-        return;
-      }
+  const loadBaskets = useCallback(async () => {
+    let positions: BasketPosition[] = [];
+    let fromSupabase = false;
 
-      let positions: BasketPosition[] = JSON.parse(raw);
+    // Try Supabase basket_holdings first (single source of truth)
+    if (user?.id) {
+      try {
+        const supabaseClient = getSupabaseBrowserClient();
+        // Ensure session is available
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session?.user?.id === user.id) {
+          const { data: rows, error } = await (supabaseClient as any)
+            .from('basket_holdings')
+            .select('*')
+            .eq('user_id', user.id)
+            .neq('status', 'closed')
+            .neq('status', 'sold');
 
-      // ── Self-healing dedup: merge duplicate symbol+basketId+status entries ──
-      // Historical bug: placeBasketOrder always appended rows instead of upserting.
-      // This cleans up stale duplicates so they don't re-sync to Supabase.
-      let healed = false;
-      const mergeMap = new Map<string, BasketPosition>();
-      for (const p of positions) {
-        const key = `${p.basketId}::${p.symbol}::${p.status || 'active'}`;
-        const existing = mergeMap.get(key);
-        if (existing) {
-          const newShares = existing.shares + p.shares;
-          const newTotalCost = existing.totalCost + p.totalCost;
-          existing.shares = newShares;
-          existing.totalCost = newTotalCost;
-          existing.avgCost = newShares > 0 ? newTotalCost / newShares : existing.avgCost;
-          existing.reservedAmount = (existing.reservedAmount || 0) + (p.reservedAmount || 0);
-          healed = true;
-        } else {
-          mergeMap.set(key, { ...p });
+          if (!error && rows) {
+            fromSupabase = true;
+            setSupabaseDegraded(false);
+            positions = rows.map((r: any) => ({
+              id: r.id,
+              basketId: r.basket_id,
+              symbol: r.symbol,
+              shares: r.shares ?? 0,
+              avgCost: r.avg_cost ?? 0,
+              totalCost: r.total_cost ?? 0,
+              allocationPct: r.allocation_pct ?? 0,
+              status: r.status,
+              reservedAmount: r.reserved_amount ?? 0,
+              nextOpenLabel: r.next_open_label || undefined,
+              name: r.name || r.symbol,
+              sector: r.sector || '',
+              basketName: r.basket_name || '',
+              basketEmoji: r.emoji || '',
+              boughtAt: r.bought_at || new Date().toISOString(),
+            }));
+            // Cache in localStorage for fast reads when Supabase is down
+            try { localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(positions)); } catch {}
+          } else if (error) {
+            console.warn('[PortfolioContext] basket_holdings fetch failed:', error.message);
+          }
         }
+      } catch (err: any) {
+        console.warn('[PortfolioContext] Supabase unreachable, using localStorage cache:', err?.message || err);
+        setSupabaseDegraded(true);
       }
-      if (healed) {
-        positions = Array.from(mergeMap.values());
-        console.log('[PortfolioContext] Healed duplicate basket positions:', {
-          before: JSON.parse(raw).length,
-          after: positions.length,
-          removed: JSON.parse(raw).length - positions.length,
-        });
-        try { localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(positions)); } catch {}
-      }
-
-      // Sync ref for Supabase sync
-      basketPositionsRef.current = positions;
-      if (!positions.length) { setBaskets([]); return; }
-
-      // Group by basketId
-      const grouped = positions.reduce(
-        (acc, pos) => {
-          if (!acc[pos.basketId]) acc[pos.basketId] = [];
-          acc[pos.basketId].push(pos);
-          return acc;
-        },
-        {} as Record<string, BasketPosition[]>,
-      );
-
-      // Build Basket objects
-      const basketList = Object.entries(grouped).map(([basketId, posList]) => {
-        const active = posList.filter(p => p.status === 'active');
-        const pending = posList.filter(p => p.status === 'pending');
-        const totalCost = posList.reduce((sum, p) => sum + (p.totalCost || p.reservedAmount || 0), 0);
-        const allPending = pending.length === posList.length;
-        const allClosed = posList.every(p => p.status === 'closed');
-
-        return {
-          id: basketId,
-          name: posList[0].basketName,
-          emoji: posList[0].basketEmoji,
-          positions: posList,
-          totalCost,
-          marketValue: allPending ? 0 : 0,
-          totalPnL: 0,
-          totalPnLPct: 0,
-          dailyPnL: 0,
-          positionCount: posList.length,
-          activeCount: active.length,
-          status: allPending
-            ? 'pending' as const
-            : allClosed
-              ? 'closed' as const
-              : active.length < posList.length
-                ? 'partial' as const
-                : 'active' as const,
-          boughtAt: posList[0].boughtAt,
-          nextOpenLabel: pending.length > 0 ? posList.find(p => p.nextOpenLabel)?.nextOpenLabel : undefined,
-        };
-      });
-
-      // Exclude pending-only baskets — they appear only in the pending section, not as owned
-      const ownedBaskets = basketList.filter(b => b.status !== 'pending');
-      setBaskets(ownedBaskets);
-    } catch {
-      setBaskets([]);
     }
-  }, []);
+
+    // Fallback: read from localStorage cache
+    if (!fromSupabase) {
+      try {
+        const raw = localStorage.getItem(BASKET_STORAGE_KEY);
+        if (raw) positions = JSON.parse(raw);
+      } catch {}
+    }
+
+    // Update ref for external consumers
+    basketPositionsRef.current = positions;
+    if (!positions.length) { setBaskets([]); return; }
+
+    // Group by basketId
+    const grouped = positions.reduce(
+      (acc, pos) => {
+        if (!acc[pos.basketId]) acc[pos.basketId] = [];
+        acc[pos.basketId].push(pos);
+        return acc;
+      },
+      {} as Record<string, BasketPosition[]>,
+    );
+
+    // Build Basket objects
+    const basketList = Object.entries(grouped).map(([basketId, posList]) => {
+      const active = posList.filter(p => p.status === 'active');
+      const pending = posList.filter(p => p.status === 'pending');
+      const totalCost = posList.reduce((sum, p) => sum + (p.totalCost || p.reservedAmount || 0), 0);
+      const allPending = pending.length === posList.length;
+      const allClosed = posList.every(p => p.status === 'closed');
+
+      return {
+        id: basketId,
+        name: posList[0].basketName,
+        emoji: posList[0].basketEmoji,
+        positions: posList,
+        totalCost,
+        marketValue: allPending ? 0 : 0,
+        totalPnL: 0,
+        totalPnLPct: 0,
+        dailyPnL: 0,
+        positionCount: posList.length,
+        activeCount: active.length,
+        status: allPending
+          ? 'pending' as const
+          : allClosed
+            ? 'closed' as const
+            : active.length < posList.length
+              ? 'partial' as const
+              : 'active' as const,
+        boughtAt: posList[0].boughtAt,
+        nextOpenLabel: pending.length > 0 ? posList.find(p => p.nextOpenLabel)?.nextOpenLabel : undefined,
+      };
+    });
+
+    // Exclude pending-only baskets — they appear only in the pending section, not as owned
+    const ownedBaskets = basketList.filter(b => b.status !== 'pending');
+    setBaskets(ownedBaskets);
+  }, [user?.id]);
 
   // Keep ref in sync
   useEffect(() => { loadBasketsRef.current = loadBaskets; }, [loadBaskets]);
@@ -1137,7 +1148,54 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Update basket position status in localStorage
+    // Update basket position status in Supabase basket_holdings
+    try {
+      const supabaseClient = getSupabaseBrowserClient();
+      for (const symbol of symbolsToSell) {
+        const sellQty = sharesOverride?.[symbol];
+        if (sellQty != null && sellQty < (basket.positions.find(p => p.symbol === symbol)?.shares ?? 0)) {
+          // Partial sell: update shares via upsert
+          const pos = basket.positions.find(p => p.symbol === symbol)!;
+          await (supabaseClient as any).from('basket_holdings').upsert({
+            user_id: user!.id,
+            basket_id: basketId,
+            symbol,
+            shares: pos.shares - sellQty,
+            status: 'active',
+          }, { onConflict: 'basket_id,symbol,user_id' });
+        } else {
+          // Full sell: close
+          await (supabaseClient as any).from('basket_holdings').upsert({
+            user_id: user!.id,
+            basket_id: basketId,
+            symbol,
+            status: 'closed',
+          }, { onConflict: 'basket_id,symbol,user_id' });
+        }
+      }
+      // Re-normalize remaining positions' allocation % via basket_holdings
+      const remaining = basket.positions.filter(
+        p => !symbolsToSell.includes(p.symbol) || (sharesOverride?.[p.symbol] != null && (sharesOverride[p.symbol]) < p.shares)
+      );
+      if (remaining.length > 0) {
+        const totalAlloc = remaining.reduce((sum, p) => sum + (p.allocationPct || 0), 0);
+        if (totalAlloc > 0) {
+          const scale = 100 / totalAlloc;
+          for (const p of remaining) {
+            const newAlloc = Math.round((p.allocationPct || 0) * scale * 100) / 100;
+            await (supabaseClient as any).from('basket_holdings').upsert({
+              user_id: user!.id,
+              basket_id: basketId,
+              symbol: p.symbol,
+              allocation_pct: newAlloc,
+              status: p.status,
+            }, { onConflict: 'basket_id,symbol,user_id' });
+          }
+        }
+      }
+    } catch { /* Supabase unreachable — positions/basket state already updated in-memory */ }
+
+    // Cache the basket state in localStorage for offline reads
     try {
       const savedRaw = localStorage.getItem(BASKET_STORAGE_KEY);
       const saved: BasketPosition[] = savedRaw ? JSON.parse(savedRaw) : [];
@@ -1145,34 +1203,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         if (p.basketId === basketId && symbolsToSell.includes(p.symbol)) {
           const sellQty = sharesOverride?.[p.symbol];
           if (sellQty != null && sellQty < p.shares) {
-            // Partial sell: reduce shares, keep active
             return { ...p, shares: p.shares - sellQty };
           }
-          // Full sell: close
           return { ...p, status: 'closed' as const };
         }
         return p;
       });
-      // Re-normalize remaining positions' allocation % to sum to 100%
-      const basketPositions = updated.filter(p => p.basketId === basketId);
-      const remainingActive = basketPositions.filter(p => p.status !== 'closed');
-      if (remainingActive.length > 0) {
-        const totalAlloc = remainingActive.reduce((sum, p) => sum + (p.allocationPct || 0), 0);
-        if (totalAlloc > 0) {
-          const scale = 100 / totalAlloc;
-          const reNormalized = updated.map(p => {
-            if (p.basketId === basketId && p.status !== 'closed') {
-              return { ...p, allocationPct: Math.round((p.allocationPct || 0) * scale * 100) / 100 };
-            }
-            return p;
-          });
-          localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(reNormalized));
-        } else {
-          localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(updated));
-        }
-      } else {
-        localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(updated));
-      }
+      localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(updated));
     } catch { /* ignore */ }
 
     // Add sell orders to history
@@ -1227,6 +1264,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         executePendingOrders,
         basketOrders,
         pendingBaskets,
+        supabaseDegraded,
       }}
     >
       {children}

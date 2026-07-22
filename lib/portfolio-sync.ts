@@ -9,7 +9,6 @@ interface PortfolioState {
   positions: any[];
   cashBalance: number;
   orderHistory: any[];
-  basketPositions: any[];
   basketOrders?: any[];
 }
 
@@ -53,7 +52,6 @@ export async function syncPortfolioToSupabase(
           positions: state.positions,
           cash_balance: state.cashBalance,
           order_history: state.orderHistory,
-          basket_positions: state.basketPositions,
           basket_orders: state.basketOrders || [],
           updated_at: new Date().toISOString(),
         },
@@ -102,7 +100,6 @@ export async function loadPortfolioFromSupabase(
       })),
       cashBalance: (row.cash_balance as number) ?? 0,
       orderHistory: (row.order_history as any[]) || [],
-      basketPositions: (row.basket_positions as any[]) || [],
       basketOrders: (row.basket_orders as any[]) || [],
       savedAt: new Date(row.updated_at as string).getTime(),
     };

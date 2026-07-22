@@ -20,8 +20,6 @@ import { getDemoAccount } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
 
 const STORAGE_KEY = 'vantage_demo_state_v3';
-const PENDING_KEY = 'vantage_pending_baskets';
-const BASKET_POSITIONS_KEY = 'vantage_basket_positions_v1';
 const STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export class DemoBroker implements BrokerEngine {
@@ -109,6 +107,92 @@ export class DemoBroker implements BrokerEngine {
       }
     } catch (e) {
       console.error('[DemoBroker] Local save error:', e);
+    }
+  }
+
+  // ── Basket holdings sync (Supabase basket_holdings table, replaces localStorage) ──
+  private async syncBasketHoldings(
+    basketId: string,
+    mode: 'upsert' | 'delete' | 'activatePending',
+    positions?: Array<{
+      symbol: string;
+      shares?: number;
+      avgCost?: number;
+      totalCost?: number;
+      allocationPct?: number;
+      status: 'active' | 'pending' | 'filled' | 'closed' | 'sold' | 'cancelled';
+      basketName?: string;
+      emoji?: string;
+      name?: string;
+      sector?: string;
+      reservedAmount?: number;
+      nextOpenLabel?: string;
+      boughtAt?: string;
+      basketOrderId?: string;
+      basketDisplayName?: string;
+    }>,
+  ): Promise<void> {
+    if (!this.supabase || this.userId === 'demo_user') return;
+
+    try {
+      if (mode === 'delete') {
+        await this.supabase.from('basket_holdings')
+          .delete()
+          .eq('basket_id', basketId)
+          .eq('user_id', this.userId);
+        return;
+      }
+
+      if (mode === 'activatePending') {
+        // Update all pending rows for this basket → active with real fill data
+        const pendingRows = this.state.orders.filter(
+          (o: any) => o.basketOrderId && o.status === 'FILLED' &&
+            this.state.basketOrders.some((b: any) => b.id === o.basketOrderId && b.basketId === basketId)
+        );
+        for (const o of pendingRows) {
+          await this.supabase.from('basket_holdings').upsert({
+            user_id: this.userId,
+            basket_id: basketId,
+            symbol: o.symbol,
+            shares: o.shares,
+            avg_cost: o.fillPrice,
+            total_cost: o.totalCost,
+            status: 'active',
+            bought_at: o.filledAt || new Date().toISOString(),
+          }, { onConflict: 'basket_id,symbol,user_id' });
+        }
+        return;
+      }
+
+      // mode === 'upsert'
+      if (!positions?.length) return;
+
+      const rows = positions.map(p => ({
+        user_id: this.userId,
+        basket_id: basketId,
+        basket_order_id: p.basketOrderId || null,
+        symbol: p.symbol,
+        name: p.name || null,
+        sector: p.sector || null,
+        basket_name: p.basketName || null,
+        emoji: p.emoji || null,
+        shares: p.shares ?? 0,
+        avg_cost: p.avgCost ?? 0,
+        total_cost: p.totalCost ?? 0,
+        reserved_amount: p.reservedAmount ?? 0,
+        allocation_pct: p.allocationPct ?? 0,
+        status: p.status,
+        next_open_label: p.nextOpenLabel || null,
+        bought_at: p.boughtAt || new Date().toISOString(),
+      }));
+
+      const { error } = await this.supabase.from('basket_holdings').upsert(rows, {
+        onConflict: 'basket_id,symbol,user_id',
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('[DemoBroker] Basket holdings sync failed:', err?.message || err);
+      throw err; // No localStorage fallback — fail explicitly
     }
   }
 
@@ -588,50 +672,23 @@ export class DemoBroker implements BrokerEngine {
       }
       await this.saveState();
 
-      // Upsert positions into BASKET_POSITIONS_KEY so loadBaskets() finds filled baskets.
-      // Must merge with existing entries (same symbol+basketId) — never create duplicates.
-      const nowOpen = new Date().toISOString();
+      // Upsert filled basket positions into Supabase basket_holdings
       try {
-        if (typeof window !== 'undefined') {
-          const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
-          const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
-          for (const s of executionPlan) {
-            const existingIdx = savedPositions.findIndex(
-              (p: any) => p.symbol === s.symbol && p.basketId === req.basketId
-            );
-            if (existingIdx >= 0) {
-              const p = savedPositions[existingIdx];
-              const newShares = p.shares + s.shares;
-              const newTotalCost = p.totalCost + s.dollarAmount;
-              p.shares = newShares;
-              p.totalCost = newTotalCost;
-              p.avgCost = newShares > 0 ? newTotalCost / newShares : p.avgCost;
-              p.allocationPct = s.allocationPct;
-              p.status = 'active';
-              p.boughtAt = nowOpen;
-              // Clear pending markers if they were pending before
-              delete p.nextOpenLabel;
-              delete p.reservedAmount;
-            } else {
-              savedPositions.push({
-                id: crypto.randomUUID(),
-                basketId: req.basketId,
-                basketName: req.basketName,
-                basketEmoji: req.basketEmoji,
-                basketDisplayName: req.basketDisplayName,
-                symbol: s.symbol,
-                shares: s.shares,
-                avgCost: s.price,
-                totalCost: s.dollarAmount,
-                allocationPct: s.allocationPct,
-                status: 'active',
-                boughtAt: nowOpen,
-              });
-            }
-          }
-          localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(savedPositions));
-        }
-      } catch { /* ignore */ }
+        const positions = executionPlan.map(s => ({
+          symbol: s.symbol,
+          shares: s.shares,
+          avgCost: s.price,
+          totalCost: s.dollarAmount,
+          allocationPct: s.allocationPct,
+          status: 'active' as const,
+          basketName: req.basketName,
+          emoji: req.basketEmoji,
+          boughtAt: new Date().toISOString(),
+        }));
+        await this.syncBasketHoldings(req.basketId, 'upsert', positions);
+      } catch (err: any) {
+        console.error('[DemoBroker] Failed to sync filled basket holdings:', err?.message || err);
+      }
 
       // ── Notify: basket filled ──
       if (this.userEmail) {
@@ -667,68 +724,25 @@ export class DemoBroker implements BrokerEngine {
     const now = new Date().toISOString();
     const nextOpenLabel = this.getNextOpenLabel();
 
-    // Upsert pending positions into basket_positions key so loadBaskets() finds them.
-    // Must merge with existing entries (same symbol+basketId) — never create duplicates.
+    // Upsert pending basket positions into Supabase basket_holdings
     try {
-      if (typeof window !== 'undefined') {
-        const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
-        const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
-        for (const s of executionPlan) {
-          const existingIdx = savedPositions.findIndex(
-            (p: any) => p.symbol === s.symbol && p.basketId === req.basketId
-          );
-          if (existingIdx >= 0) {
-            const p = savedPositions[existingIdx];
-            p.totalCost += s.dollarAmount;
-            p.allocationPct = s.allocationPct;
-            p.reservedAmount = (p.reservedAmount || 0) + s.dollarAmount;
-            p.boughtAt = now;
-            p.nextOpenLabel = nextOpenLabel;
-            p.status = 'pending';
-            p.basketDisplayName = p.basketDisplayName || req.basketDisplayName;
-          } else {
-            savedPositions.push({
-              id: crypto.randomUUID(),
-              basketId: req.basketId,
-              basketName: req.basketName,
-              basketEmoji: req.basketEmoji,
-              basketDisplayName: req.basketDisplayName,
-              symbol: s.symbol,
-              shares: 0,
-              avgCost: 0,
-              totalCost: s.dollarAmount,
-              allocationPct: s.allocationPct,
-              status: 'pending',
-              boughtAt: now,
-              nextOpenLabel,
-              reservedAmount: s.dollarAmount,
-            });
-          }
-        }
-        localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(savedPositions));
-      }
-    } catch { /* ignore */ }
-
-    // Save to pending baskets key (legacy compat)
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem(PENDING_KEY);
-        const pending = raw ? JSON.parse(raw) : [];
-        pending.push({
-          id: basketOrderId,
-          basketId: req.basketId,
-          basketName: req.basketName,
-          basketEmoji: req.basketEmoji,
-          basketDisplayName: req.basketDisplayName,
-          stocks: executionPlan,
-          totalReserved: totalCost,
-          status: 'OPEN',
-          submittedAt: now,
-          nextOpenLabel,
-        });
-        localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
-      }
-    } catch { /* ignore */ }
+      const positions = executionPlan.map(s => ({
+        symbol: s.symbol,
+        shares: 0,
+        avgCost: 0,
+        totalCost: s.dollarAmount,
+        allocationPct: s.allocationPct,
+        status: 'pending' as const,
+        basketName: req.basketName,
+        emoji: req.basketEmoji,
+        reservedAmount: s.dollarAmount,
+        nextOpenLabel,
+        boughtAt: now,
+      }));
+      await this.syncBasketHoldings(req.basketId, 'upsert', positions);
+    } catch (err: any) {
+      console.error('[DemoBroker] Failed to sync pending basket holdings:', err?.message || err);
+    }
 
     // ── Notify: basket submitted (pending) ──
     if (this.userEmail) {
@@ -810,25 +824,12 @@ export class DemoBroker implements BrokerEngine {
     bo.cancelledAt = new Date().toISOString();
     await this.saveState();
 
-    // Clean up pending basket positions for this cancelled basket
+    // Delete pending basket holdings for this cancelled basket
     try {
-      if (typeof window !== 'undefined') {
-        // Remove from basket_positions
-        const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
-        if (rawPos) {
-          const saved = JSON.parse(rawPos);
-          const kept = saved.filter((p: any) => !(p.basketId === bo.basketId && p.status === 'pending'));
-          localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(kept));
-        }
-        // Remove from pending baskets
-        const raw = localStorage.getItem(PENDING_KEY);
-        if (raw) {
-          const pending = JSON.parse(raw);
-          const kept = pending.filter((pb: any) => pb.id !== basketOrderId);
-          localStorage.setItem(PENDING_KEY, JSON.stringify(kept));
-        }
-      }
-    } catch { /* ignore */ }
+      await this.syncBasketHoldings(bo.basketId, 'delete');
+    } catch (err: any) {
+      console.error('[DemoBroker] Failed to delete cancelled basket holdings:', err?.message || err);
+    }
 
     return { success: true };
   }
@@ -938,58 +939,17 @@ export class DemoBroker implements BrokerEngine {
     if (filled > 0 || expired > 0) {
       await this.saveState();
 
-      // Update basket_positions: pending → active with real fill data
+      // Activate pending basket positions → active with real fill data
       const executedBasketIds = new Set(
         this.state.basketOrders.filter(b => b.status === 'FILLED').map(b => b.basketId)
       );
       try {
-        if (typeof window !== 'undefined' && executedBasketIds.size > 0) {
-          const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
-          const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
-          const updated = savedPositions.map((p: any) => {
-            if (p.status === 'pending' && executedBasketIds.has(p.basketId)) {
-              const filledOrder = this.state.orders.find(
-                (o: any) => o.symbol === p.symbol && o.basketOrderId && o.status === 'FILLED' && executedBasketIds.has(o.basketId)
-              );
-              if (filledOrder) {
-                return {
-                  ...p,
-                  status: 'active',
-                  shares: filledOrder.shares,
-                  avgCost: filledOrder.fillPrice,
-                  totalCost: filledOrder.totalCost,
-                  boughtAt: filledOrder.filledAt || p.boughtAt,
-                  nextOpenLabel: undefined,
-                  reservedAmount: undefined,
-                };
-              }
-            }
-            return p;
-          });
-          localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(updated));
+        for (const basketId of executedBasketIds) {
+          await this.syncBasketHoldings(basketId, 'activatePending');
         }
-      } catch { /* ignore */ }
-
-      // Clean up pending baskets key for executed baskets.
-      // Match on both basketId AND id (basketOrderId) to handle old records
-      // that were saved without basketId.
-      try {
-        if (typeof window !== 'undefined') {
-          const raw = localStorage.getItem(PENDING_KEY);
-          if (raw) {
-            const executedOrderIds = new Set(
-              this.state.basketOrders.filter(b => b.status === 'FILLED').map(b => b.id)
-            );
-            const pending = JSON.parse(raw);
-            const kept = pending.filter((pb: any) =>
-              !executedBasketIds.has(pb.basketId) &&
-              !executedOrderIds.has(pb.id) &&
-              !executedBasketIds.has(pb.id)
-            );
-            localStorage.setItem(PENDING_KEY, JSON.stringify(kept));
-          }
-        }
-      } catch { /* ignore */ }
+      } catch (err: any) {
+        console.error('[DemoBroker] Failed to activate pending basket holdings:', err?.message || err);
+      }
 
       console.log(`[DemoBroker] Filled ${filled}, expired ${expired} pending orders`);
     }
@@ -1126,10 +1086,7 @@ export class DemoBroker implements BrokerEngine {
   }
 
   getPendingBaskets(): any[] {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = localStorage.getItem(PENDING_KEY);
-      return raw ? JSON.parse(raw).filter((b: any) => b.status === 'OPEN') : [];
-    } catch { return []; }
+    // Read from in-memory broker state (synced to Supabase via saveState)
+    return this.state.basketOrders.filter((b: any) => b.status === 'OPEN');
   }
 }

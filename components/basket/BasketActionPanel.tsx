@@ -42,70 +42,6 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
   maximumFractionDigits: 2,
 };
 
-// Update basket position tracking in localStorage after buying more
-function updateBasketBuyMore(
-  basketId: string,
-  symbol: string,
-  addedShares: number,
-  purchasePrice: number,
-  addedCost: number,
-) {
-  try {
-    const KEY = 'vantage_basket_positions_v1';
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const saved: any[] = JSON.parse(raw);
-    let found = false;
-    const updated = saved.map((p: any) => {
-      if (p.basketId === basketId && p.symbol === symbol && p.status !== 'closed') {
-        found = true;
-        const newShares = p.shares + addedShares;
-        const newTotalCost = p.totalCost + addedCost;
-        const newAvgCost = newShares > 0 ? newTotalCost / newShares : p.avgCost;
-        return { ...p, shares: newShares, avgCost: newAvgCost, totalCost: newTotalCost };
-      }
-      return p;
-    });
-    // If no existing position found, add it (stock wasn't previously tracked in basket)
-    if (!found) {
-      updated.push({
-        id: `${basketId}-${symbol}-${Date.now()}`,
-        basketId,
-        basketName: '', // will be overwritten by loadBaskets
-        basketEmoji: '',
-        symbol,
-        shares: addedShares,
-        avgCost: purchasePrice,
-        totalCost: addedCost,
-        allocationPct: 0, // will be re-normalized below
-        status: 'active',
-        boughtAt: new Date().toISOString(),
-      });
-    }
-    // Re-normalize allocation percentages for active positions
-    const activeInBasket = updated.filter(
-      (p: any) => p.basketId === basketId && p.status === 'active',
-    );
-    let totalValue = 0;
-    for (const p of activeInBasket) {
-      const price = p.currentPrice || p.avgCost || 0;
-      totalValue += (p.shares || 0) * price;
-    }
-    if (totalValue > 0) {
-      for (let i = 0; i < updated.length; i++) {
-        if (
-          updated[i].basketId === basketId &&
-          updated[i].status === 'active'
-        ) {
-          const mv = (updated[i].shares || 0) * (updated[i].currentPrice || updated[i].avgCost || 0);
-          updated[i].allocationPct = Math.round((mv / totalValue) * 10000) / 100;
-        }
-      }
-    }
-    localStorage.setItem(KEY, JSON.stringify(updated));
-  } catch { /* localStorage error — ignore */ }
-}
-
 // ─── Component ───────────────────────────────────────
 
 export default function BasketActionPanel({
@@ -196,7 +132,6 @@ export default function BasketActionPanel({
           throw new Error(result.error || `Failed to buy ${pos.symbol}`);
         }
         executedSymbols.push(pos.symbol);
-        updateBasketBuyMore(basketId, pos.symbol, shares, price, shares * price);
       }
       await loadBaskets();
     } catch (e: any) {
@@ -231,7 +166,6 @@ export default function BasketActionPanel({
           setBuySingleSymbol(null);
           return;
         }
-        updateBasketBuyMore(basketId, symbol, shares, price, shares * price);
         await loadBaskets();
       }
     } catch { /* errors surfaced via toast */ }
