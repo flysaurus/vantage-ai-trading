@@ -855,8 +855,39 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const positions: BasketPosition[] = JSON.parse(raw);
-      // Sync ref for Supabase sync — basketPositionsRef was declared but never wired
+      let positions: BasketPosition[] = JSON.parse(raw);
+
+      // ── Self-healing dedup: merge duplicate symbol+basketId+status entries ──
+      // Historical bug: placeBasketOrder always appended rows instead of upserting.
+      // This cleans up stale duplicates so they don't re-sync to Supabase.
+      let healed = false;
+      const mergeMap = new Map<string, BasketPosition>();
+      for (const p of positions) {
+        const key = `${p.basketId}::${p.symbol}::${p.status || 'active'}`;
+        const existing = mergeMap.get(key);
+        if (existing) {
+          const newShares = existing.shares + p.shares;
+          const newTotalCost = existing.totalCost + p.totalCost;
+          existing.shares = newShares;
+          existing.totalCost = newTotalCost;
+          existing.avgCost = newShares > 0 ? newTotalCost / newShares : existing.avgCost;
+          existing.reservedAmount = (existing.reservedAmount || 0) + (p.reservedAmount || 0);
+          healed = true;
+        } else {
+          mergeMap.set(key, { ...p });
+        }
+      }
+      if (healed) {
+        positions = Array.from(mergeMap.values());
+        console.log('[PortfolioContext] Healed duplicate basket positions:', {
+          before: JSON.parse(raw).length,
+          after: positions.length,
+          removed: JSON.parse(raw).length - positions.length,
+        });
+        try { localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify(positions)); } catch {}
+      }
+
+      // Sync ref for Supabase sync
       basketPositionsRef.current = positions;
       if (!positions.length) { setBaskets([]); return; }
 
