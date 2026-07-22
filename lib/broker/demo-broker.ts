@@ -588,27 +588,46 @@ export class DemoBroker implements BrokerEngine {
       }
       await this.saveState();
 
-      // Save positions to BASKET_POSITIONS_KEY so loadBaskets() finds filled baskets
+      // Upsert positions into BASKET_POSITIONS_KEY so loadBaskets() finds filled baskets.
+      // Must merge with existing entries (same symbol+basketId) — never create duplicates.
       const nowOpen = new Date().toISOString();
       try {
         if (typeof window !== 'undefined') {
           const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
           const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
           for (const s of executionPlan) {
-            savedPositions.push({
-              id: crypto.randomUUID(),
-              basketId: req.basketId,
-              basketName: req.basketName,
-              basketEmoji: req.basketEmoji,
-              basketDisplayName: req.basketDisplayName,
-              symbol: s.symbol,
-              shares: s.shares,
-              avgCost: s.price,
-              totalCost: s.dollarAmount,
-              allocationPct: s.allocationPct,
-              status: 'active',
-              boughtAt: nowOpen,
-            });
+            const existingIdx = savedPositions.findIndex(
+              (p: any) => p.symbol === s.symbol && p.basketId === req.basketId
+            );
+            if (existingIdx >= 0) {
+              const p = savedPositions[existingIdx];
+              const newShares = p.shares + s.shares;
+              const newTotalCost = p.totalCost + s.dollarAmount;
+              p.shares = newShares;
+              p.totalCost = newTotalCost;
+              p.avgCost = newShares > 0 ? newTotalCost / newShares : p.avgCost;
+              p.allocationPct = s.allocationPct;
+              p.status = 'active';
+              p.boughtAt = nowOpen;
+              // Clear pending markers if they were pending before
+              delete p.nextOpenLabel;
+              delete p.reservedAmount;
+            } else {
+              savedPositions.push({
+                id: crypto.randomUUID(),
+                basketId: req.basketId,
+                basketName: req.basketName,
+                basketEmoji: req.basketEmoji,
+                basketDisplayName: req.basketDisplayName,
+                symbol: s.symbol,
+                shares: s.shares,
+                avgCost: s.price,
+                totalCost: s.dollarAmount,
+                allocationPct: s.allocationPct,
+                status: 'active',
+                boughtAt: nowOpen,
+              });
+            }
           }
           localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(savedPositions));
         }
@@ -648,28 +667,43 @@ export class DemoBroker implements BrokerEngine {
     const now = new Date().toISOString();
     const nextOpenLabel = this.getNextOpenLabel();
 
-    // Save pending positions to basket_positions key so loadBaskets() finds them
+    // Upsert pending positions into basket_positions key so loadBaskets() finds them.
+    // Must merge with existing entries (same symbol+basketId) — never create duplicates.
     try {
       if (typeof window !== 'undefined') {
         const rawPos = localStorage.getItem(BASKET_POSITIONS_KEY);
         const savedPositions: any[] = rawPos ? JSON.parse(rawPos) : [];
         for (const s of executionPlan) {
-          savedPositions.push({
-            id: crypto.randomUUID(),
-            basketId: req.basketId,
-            basketName: req.basketName,
-            basketEmoji: req.basketEmoji,
-            basketDisplayName: req.basketDisplayName,
-            symbol: s.symbol,
-            shares: 0,
-            avgCost: 0,
-            totalCost: s.dollarAmount,
-            allocationPct: s.allocationPct,
-            status: 'pending',
-            boughtAt: now,
-            nextOpenLabel,
-            reservedAmount: s.dollarAmount,
-          });
+          const existingIdx = savedPositions.findIndex(
+            (p: any) => p.symbol === s.symbol && p.basketId === req.basketId
+          );
+          if (existingIdx >= 0) {
+            const p = savedPositions[existingIdx];
+            p.totalCost += s.dollarAmount;
+            p.allocationPct = s.allocationPct;
+            p.reservedAmount = (p.reservedAmount || 0) + s.dollarAmount;
+            p.boughtAt = now;
+            p.nextOpenLabel = nextOpenLabel;
+            p.status = 'pending';
+            p.basketDisplayName = p.basketDisplayName || req.basketDisplayName;
+          } else {
+            savedPositions.push({
+              id: crypto.randomUUID(),
+              basketId: req.basketId,
+              basketName: req.basketName,
+              basketEmoji: req.basketEmoji,
+              basketDisplayName: req.basketDisplayName,
+              symbol: s.symbol,
+              shares: 0,
+              avgCost: 0,
+              totalCost: s.dollarAmount,
+              allocationPct: s.allocationPct,
+              status: 'pending',
+              boughtAt: now,
+              nextOpenLabel,
+              reservedAmount: s.dollarAmount,
+            });
+          }
         }
         localStorage.setItem(BASKET_POSITIONS_KEY, JSON.stringify(savedPositions));
       }

@@ -1105,13 +1105,6 @@ export function TradeTab() {
             return bo.status === historyTab.toUpperCase();
           });
 
-          // Pending baskets from localStorage — needed for edit modal when tapping a pending group
-          let allPb: any[] = [];
-          try {
-            const raw = localStorage.getItem('vantage_pending_baskets');
-            if (raw) allPb = JSON.parse(raw);
-          } catch { /* ignore */ }
-
           // ── Group individual orders by basketId for orders not covered by liveBasketOrders ──
           // This handles baskets whose orders exist in order_history but not as basket-level
           // entries (e.g. baskets filled via manual recovery or cross-session via Supabase sync).
@@ -1177,11 +1170,7 @@ export function TradeTab() {
               {filteredBasketOrders.map((basket: any) => {
                 const isExpanded = expandedBasketOrder === basket.id;
                 const isOpen = basket.status === 'OPEN';
-                // Look up pending basket data from localStorage for edit modal
-                const matchingPb = isOpen
-                  ? allPb?.find((b: any) => (b.basketId || b.id) === (basket.basketId || basket.id))
-                  : null;
-                return (
+                  return (
                   <div
                     key={basket.id}
                     style={{
@@ -1195,8 +1184,28 @@ export function TradeTab() {
                     {/* Basket header — tap to expand (filled) or edit (pending) */}
                     <div
                       onClick={() => {
-                        if (matchingPb) {
-                          setEditingBasket(matchingPb);
+                        if (isOpen) {
+                          // Build edit payload from LIVE broker basket order data (not stale localStorage)
+                          const stocks = (basket.orders || []).map((o: any) => ({
+                            symbol: o.symbol,
+                            price: o.submittedPrice || 0,
+                            shares: o.shares || 0,
+                            dollarAmount: o.totalCost || o.reservedCost || 0,
+                            allocationPct: basket.totalReserved > 0
+                              ? ((o.totalCost || o.reservedCost || 0) / basket.totalReserved) * 100
+                              : 0,
+                          }));
+                          setEditingBasket({
+                            id: basket.id,
+                            basketName: basket.basketName,
+                            basketEmoji: basket.basketEmoji,
+                            basketDisplayName: basket.basketDisplayName || basket.basketName,
+                            stocks,
+                            totalReserved: basket.totalReserved || 0,
+                            status: 'OPEN',
+                            submittedAt: basket.submittedAt,
+                            nextOpenLabel: basket.nextOpenLabel || '',
+                          });
                           setShowBuildBasket(true);
                         } else {
                           setExpandedBasketOrder(isExpanded ? null : basket.id);
@@ -1423,10 +1432,28 @@ export function TradeTab() {
                     <div
                       onClick={() => {
                         if (isPending) {
-                          // Pending: open edit modal — check both localStorage and broker state
-                          const pb = allPb?.find((b: any) => (b.basketId || b.id) === group.basketId)
-                            || pendingBaskets?.find((b: any) => (b.basketId || b.id) === group.basketId);
-                          if (pb) { setEditingBasket(pb); setShowBuildBasket(true); }
+                          // Build edit payload from LIVE grouped orders (not stale localStorage)
+                          const stocks = (group.orders || []).map((o: any) => ({
+                            symbol: o.symbol,
+                            price: o.submittedPrice || o.fillPrice || 0,
+                            shares: o.shares || 0,
+                            dollarAmount: o.totalCost || o.reservedCost || 0,
+                            allocationPct: group.totalCost > 0
+                              ? ((o.totalCost || o.reservedCost || 0) / group.totalCost) * 100
+                              : 0,
+                          }));
+                          setEditingBasket({
+                            id: group.basketId,
+                            basketName: group.basketName,
+                            basketEmoji: group.basketEmoji,
+                            basketDisplayName: group.basketName,
+                            stocks,
+                            totalReserved: group.totalCost || 0,
+                            status: 'OPEN',
+                            submittedAt: group.submittedAt,
+                            nextOpenLabel: '',
+                          });
+                          setShowBuildBasket(true);
                         } else {
                           setExpandedBasketOrder(isExpanded ? null : group.id);
                         }
