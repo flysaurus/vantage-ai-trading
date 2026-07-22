@@ -144,21 +144,22 @@ export class DemoBroker implements BrokerEngine {
       }
 
       if (mode === 'activatePending') {
-        // Update all pending rows for this basket → active with real fill data
-        const pendingRows = this.state.orders.filter(
-          (o: any) => o.basketOrderId && o.status === 'FILLED' &&
-            this.state.basketOrders.some((b: any) => b.id === o.basketOrderId && b.basketId === basketId)
+        // Sync ALL positions for this basket (post-merge) — not just the newly filled orders
+        const allPositions = this.state.positions.filter(
+          (p: any) => p.basketId === basketId,
         );
-        for (const o of pendingRows) {
+        const totalValue = allPositions.reduce((sum: number, p: any) => sum + (p.shares * p.avgCost), 0);
+        for (const p of allPositions) {
           await this.supabase.from('basket_holdings').upsert({
             user_id: this.userId,
             basket_id: basketId,
-            symbol: o.symbol,
-            shares: o.shares,
-            avg_cost: o.fillPrice,
-            total_cost: o.totalCost,
+            symbol: p.symbol,
+            shares: p.shares,
+            avg_cost: p.avgCost,
+            total_cost: p.shares * p.avgCost,
+            allocation_pct: totalValue > 0 ? Math.round((p.shares * p.avgCost / totalValue) * 10000) / 100 : 0,
             status: 'active',
-            bought_at: o.filledAt || new Date().toISOString(),
+            bought_at: new Date().toISOString(),
           }, { onConflict: 'basket_id,symbol,user_id' });
         }
         return;
@@ -672,14 +673,20 @@ export class DemoBroker implements BrokerEngine {
       }
       await this.saveState();
 
-      // Upsert filled basket positions into Supabase basket_holdings
+      // Upsert ALL basket positions into Supabase basket_holdings (merged, not just new)
       try {
-        const positions = executionPlan.map(s => ({
-          symbol: s.symbol,
-          shares: s.shares,
-          avgCost: s.price,
-          totalCost: s.dollarAmount,
-          allocationPct: s.allocationPct,
+        // Build merged position list from broker's in-memory state after upsert,
+        // so existing shares are added to, not replaced
+        const allPositions = this.state.positions.filter(
+          (p: any) => p.basketId === req.basketId,
+        );
+        const totalValue = allPositions.reduce((sum: number, p: any) => sum + (p.shares * p.avgCost), 0);
+        const positions = allPositions.map((p: any) => ({
+          symbol: p.symbol,
+          shares: p.shares,
+          avgCost: p.avgCost,
+          totalCost: p.shares * p.avgCost,
+          allocationPct: totalValue > 0 ? Math.round((p.shares * p.avgCost / totalValue) * 10000) / 100 : 0,
           status: 'active' as const,
           basketName: req.basketName,
           emoji: req.basketEmoji,
