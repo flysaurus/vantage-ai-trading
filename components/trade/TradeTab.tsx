@@ -98,7 +98,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast } = useLivePortfolio();
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -1423,8 +1423,9 @@ export function TradeTab() {
                     <div
                       onClick={() => {
                         if (isPending) {
-                          // Pending: open edit modal (reuses BuildBasketModal)
-                          const pb = allPb?.find((b: any) => (b.basketId || b.id) === group.basketId);
+                          // Pending: open edit modal — check both localStorage and broker state
+                          const pb = allPb?.find((b: any) => (b.basketId || b.id) === group.basketId)
+                            || pendingBaskets?.find((b: any) => (b.basketId || b.id) === group.basketId);
                           if (pb) { setEditingBasket(pb); setShowBuildBasket(true); }
                         } else {
                           setExpandedBasketOrder(isExpanded ? null : group.id);

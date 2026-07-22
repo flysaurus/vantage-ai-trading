@@ -18,6 +18,8 @@ interface BasketPositionData {
   totalPnLPct?: number;
   status?: string;
   sector?: string;
+  /** Computed live weight from current market values (not stale localStorage) */
+  liveAllocationPct?: number;
 }
 
 interface BasketActionPanelProps {
@@ -117,7 +119,7 @@ export default function BasketActionPanel({
   totalPnLPct,
   context = 'portfolio',
 }: BasketActionPanelProps) {
-  const { executeTrade, sellBasketPositions, loadBaskets } = useLivePortfolio();
+  const { account, executeTrade, executeBasketTrade, sellBasketPositions, loadBaskets } = useLivePortfolio();
 
   const plColor = totalPnL >= 0 ? '#10b981' : '#ef4444';
   const plSign = totalPnL >= 0 ? '+' : '';
@@ -144,29 +146,64 @@ export default function BasketActionPanel({
 
   const hasActivePositions = activePositions.length > 0;
 
+  // Current allocation % from live market values (NOT stale localStorage)
+  const totalMarketValue = useMemo(() => {
+    return activePositions.reduce((sum, p) => sum + (p.marketValue || p.currentPrice * p.shares || 0), 0);
+  }, [activePositions]);
+
+  const positionsWithLiveWeights = useMemo(() => {
+    if (totalMarketValue <= 0) return activePositions;
+    return activePositions.map(p => ({
+      ...p,
+      liveAllocationPct: ((p.marketValue || p.currentPrice * p.shares || 0) / totalMarketValue) * 100,
+    }));
+  }, [activePositions, totalMarketValue]);
+
+  const availableCash = account?.cash ?? 0;
+
   // ── Handlers ──
 
-  // Buy More — Whole Basket (proportional top-up)
+  // Buy More — Whole Basket (proportional top-up at LIVE weights)
   const handleBuyWhole = async () => {
     const amount = parseFloat(buyWholeAmount);
     if (!amount || amount <= 0 || amount > 9999999) return;
     if (!hasActivePositions) return;
 
+    // Cash validation — reject entire order if insufficient
+    if (amount > availableCash) {
+      // Visual feedback: flash the input red (will rely on inline message)
+      return;
+    }
+
     setBuyWholeSubmitting(true);
+    const executedSymbols: string[] = [];
     try {
-      // Split budget proportionally by current allocation %
-      for (const pos of activePositions) {
-        const posBudget = amount * (pos.allocationPct / 100);
+      for (const pos of positionsWithLiveWeights) {
+        const posBudget = amount * ((pos.liveAllocationPct || 0) / 100);
         const price = pos.currentPrice || pos.avgCost;
-        if (price <= 0 || posBudget <= 0) continue;
+        if (price <= 0 || posBudget <= 1) continue; // skip trivial amounts
         const shares = Math.round((posBudget / price) * 10000) / 10000;
         if (shares <= 0) continue;
 
-        await executeTrade(pos.symbol, 'BUY', shares, price, undefined, undefined, undefined, undefined, basketId, basketName, basketEmoji);
+        const result = await executeTrade(
+          pos.symbol, 'BUY', shares, price,
+          undefined, undefined, undefined, undefined,
+          basketId, basketName, basketEmoji,
+        );
+        if (!result.success) {
+          // Abort — already-executed positions will remain (no rollback)
+          // but user sees a clear error and remaining positions are skipped
+          throw new Error(result.error || `Failed to buy ${pos.symbol}`);
+        }
+        executedSymbols.push(pos.symbol);
         updateBasketBuyMore(basketId, pos.symbol, shares, price, shares * price);
       }
       await loadBaskets();
-    } catch { /* errors surfaced via toast */ }
+    } catch (e: any) {
+      // Individual trade errors already surface via executeTrade's toast.
+      // If we got a partial fill, the toast from executeTrade already fired
+      // for each successful trade. The failed trade also fired its own error toast.
+    }
     setBuyWholeSubmitting(false);
     setBuyWholeAmount('');
     setShowBuyWholeInput(false);
@@ -176,6 +213,7 @@ export default function BasketActionPanel({
   const handleBuySingle = async (symbol: string) => {
     const amount = parseFloat(buySingleAmount);
     if (!amount || amount <= 0 || amount > 9999999) return;
+    if (amount > availableCash) return;
 
     const pos = activePositions.find(p => p.symbol === symbol);
     if (!pos) return;
@@ -185,7 +223,14 @@ export default function BasketActionPanel({
       const price = pos.currentPrice || pos.avgCost;
       const shares = Math.round((amount / price) * 10000) / 10000;
       if (shares > 0) {
-        await executeTrade(symbol, 'BUY', shares, price, undefined, undefined, undefined, undefined, basketId, basketName, basketEmoji);
+        const result = await executeTrade(symbol, 'BUY', shares, price, undefined, undefined, undefined, undefined, basketId, basketName, basketEmoji);
+        if (!result.success) {
+          // Error already surfaced via executeTrade toast
+          setBuySingleSubmitting(false);
+          setBuySingleAmount('');
+          setBuySingleSymbol(null);
+          return;
+        }
         updateBasketBuyMore(basketId, symbol, shares, price, shares * price);
         await loadBaskets();
       }
@@ -291,12 +336,13 @@ export default function BasketActionPanel({
 
           {/* Position rows */}
           <div style={{ padding: '0 16px' }}>
-            {activePositions.map((pos, i, arr) => {
+            {positionsWithLiveWeights.map((pos, i, arr) => {
               const posPl = pos.totalPnL || 0;
               const posPlClr = posPl >= 0 ? '#10b981' : '#ef4444';
               const posPlSgn = posPl >= 0 ? '+' : '';
               const mv = pos.marketValue || (pos.currentPrice * pos.shares);
               const isBuyingSingle = buySingleSymbol === pos.symbol;
+              const weight = pos.liveAllocationPct || 0;
 
               return (
                 <div key={pos.symbol}>
@@ -314,7 +360,7 @@ export default function BasketActionPanel({
                         <span style={{ color: '#ffffff', fontWeight: 600, fontSize: 13 }}>
                           {pos.symbol}
                         </span>
-                        {(pos.allocationPct || 0) > 0 && (
+                        {weight > 0 && (
                           <span style={{
                             color: '#64748b',
                             fontSize: 9,
@@ -323,7 +369,7 @@ export default function BasketActionPanel({
                             padding: '1px 5px',
                             borderRadius: 4,
                           }}>
-                            {(pos.allocationPct || 0).toFixed(0)}%
+                            {weight.toFixed(0)}%
                           </span>
                         )}
                       </div>
@@ -433,7 +479,7 @@ export default function BasketActionPanel({
                         />
                         <button
                           onClick={() => handleBuySingle(pos.symbol)}
-                          disabled={buySingleSubmitting || !buySingleAmount}
+                          disabled={buySingleSubmitting || !buySingleAmount || !!(buySingleAmount && parseFloat(buySingleAmount) > availableCash)}
                           style={{
                             padding: '8px 16px',
                             borderRadius: 8,
@@ -456,9 +502,13 @@ export default function BasketActionPanel({
                         fontSize: 10,
                         marginTop: 4,
                       }}>
-                        ${parseFloat(buySingleAmount || '0').toFixed(0) === '0'
+                        {parseFloat(buySingleAmount || '0').toFixed(0) === '0'
                           ? ''
-                          : `~${(parseFloat(buySingleAmount || '0') / (pos.currentPrice || 1)).toFixed(4)} shares @ $${pos.currentPrice.toFixed(2)}`
+                          : (() => {
+                              const amt = parseFloat(buySingleAmount || '0');
+                              if (amt > availableCash) return <span style={{ color: '#ef4444' }}>⚠️ Not enough cash — have ${availableCash.toLocaleString('en-US', DOLLAR_FMT)}</span>;
+                              return `~${(amt / (pos.currentPrice || 1)).toFixed(4)} shares @ $${pos.currentPrice.toFixed(2)}`;
+                            })()
                         }
                         {!buySingleAmount && 'Buy more shares — increases this stock\'s weight in the basket'}
                       </div>
@@ -500,7 +550,7 @@ export default function BasketActionPanel({
                 />
                 <button
                   onClick={handleBuyWhole}
-                  disabled={buyWholeSubmitting || !buyWholeAmount}
+                  disabled={buyWholeSubmitting || !buyWholeAmount || !!(buyWholeAmount && parseFloat(buyWholeAmount) > availableCash)}
                   style={{
                     padding: '8px 16px',
                     borderRadius: 8,
@@ -518,17 +568,35 @@ export default function BasketActionPanel({
                   {buyWholeSubmitting ? '…' : 'Buy All'}
                 </button>
               </div>
+              {/* Cash validation warning */}
+              {buyWholeAmount && parseFloat(buyWholeAmount) > availableCash && (
+                <div style={{
+                  marginTop: 6,
+                  color: '#ef4444',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: 'rgba(239,68,68,0.08)',
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                }}>
+                  Not enough cash — have ${availableCash.toLocaleString('en-US', DOLLAR_FMT)}, need ${parseFloat(buyWholeAmount).toLocaleString('en-US', DOLLAR_FMT)}
+                </div>
+              )}
+
               {/* Proportional breakdown preview */}
               {buyWholeAmount && (() => {
                 const amt = parseFloat(buyWholeAmount);
                 if (!amt || amt <= 0) return null;
+                // Don't show preview if cash insufficient
+                if (amt > availableCash) return null;
                 return (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>
                       Proportional split at current weights:
                     </div>
-                    {activePositions.map(pos => {
-                      const posBudget = amt * (pos.allocationPct / 100);
+                    {positionsWithLiveWeights.map(pos => {
+                      const allocation = pos.liveAllocationPct || 0;
+                      const posBudget = amt * (allocation / 100);
                       const shares = Math.round((posBudget / (pos.currentPrice || pos.avgCost)) * 10000) / 10000;
                       return (
                         <div key={pos.symbol} style={{
@@ -538,7 +606,7 @@ export default function BasketActionPanel({
                           color: '#94a3b8',
                           padding: '1px 0',
                         }}>
-                          <span>{pos.symbol} ({pos.allocationPct.toFixed(0)}%)</span>
+                          <span>{pos.symbol} ({allocation.toFixed(0)}%)</span>
                           <span>
                             ${posBudget.toFixed(2)} · {shares.toFixed(4)}sh
                           </span>
