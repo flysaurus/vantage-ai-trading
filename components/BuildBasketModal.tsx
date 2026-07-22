@@ -218,7 +218,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   // ── Stock management hooks (above early return per TDZ rules) ──
   const removeStock = useCallback((symbol: string) => {
     if (!basketData || basketData.stocks.length <= 2) return;
-    const bNum = parseInt(budget) || 10000;
+    const bNum = Math.round(parseFloat(budget)) || 10000;
     const remaining = basketData.stocks.filter(s => s.symbol !== symbol);
     const totalAlloc = remaining.reduce((sum, s) => sum + s.allocation, 0);
     const updated = remaining.map(s => {
@@ -249,7 +249,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       const qData = await qRes.json();
       const price = qData?.c || 0;
       if (price <= 0) { setError(`Could not fetch price for ${s}`); return; }
-      const bNum = parseInt(budget) || 10000;
+      const bNum = Math.round(parseFloat(budget)) || 10000;
       const newCount = basketData.stocks.length + 1;
       const allocPer = +(100 / newCount).toFixed(1);
       const updated = basketData.stocks.map(st => {
@@ -354,7 +354,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     if (!selectedCurated) return;
     setLoadingPrices(true);
     setPriceError(false);
-    const bNum = parseInt(budget) || 0;
+    const bNum = Math.round(parseFloat(budget)) || 0;
     const effectiveBudget = bNum * 0.95;
 
     try {
@@ -396,7 +396,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
   function onRemoveStock(symbol: string) {
     if (reviewStocks.length <= 2) return;
-    const bNum = parseInt(budget) || 0;
+    const bNum = Math.round(parseFloat(budget)) || 0;
     const effectiveBudget = bNum * 0.95;
     const remaining = reviewStocks.filter(s => s.symbol !== symbol);
     const totalAlloc = remaining.reduce((sum, s) => sum + s.allocation, 0);
@@ -424,7 +424,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       const qData = await qRes.json();
       const price = qData?.c || 0;
       if (price <= 0) { setError(`Could not fetch price for ${s}`); return; }
-      const bNum = parseInt(budget) || 0;
+      const bNum = Math.round(parseFloat(budget)) || 0;
       const effectiveBudget = bNum * 0.95;
       const newCount = reviewStocks.length + 1;
       const allocPer = +(100 / newCount).toFixed(1);
@@ -455,7 +455,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   // (must be above early return per React hooks rules)
   const executionPlan = useMemo(() => {
     if (!selectedCurated || !budget) return null;
-    const bNum = parseInt(budget) || 0;
+    const bNum = Math.round(parseFloat(budget)) || 0;
     const effectiveBudget = bNum * 0.95;
     return selectedCurated.stocks.map(stock => {
       const dollarAmount = (stock.allocation / 100) * effectiveBudget;
@@ -473,7 +473,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   }, [selectedCurated, budget]);
 
   const orderEstTotal = executionPlan?.reduce((sum, p) => sum + p.totalCost, 0) || 0;
-  const orderEstBuffer = (parseInt(budget) || 0) - orderEstTotal;
+  const orderEstBuffer = (Math.round(parseFloat(budget)) || 0) - orderEstTotal;
 
   // ── Scroll trap: prevent background scroll when modal is open ──
   useEffect(() => {
@@ -498,10 +498,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
   // ── Basket review budget validation (must be above early return) ──
   useEffect(() => {
-    if (step === 'basket_review') {
+    if (step === 'basket_review' && !loadingPrices) {
       doValidateBudget();
     }
-  }, [reviewStocks, budget, step]);
+  }, [reviewStocks, budget, step, loadingPrices]);
 
   // Initialize basketDisplayName when entering confirm step
   useEffect(() => {
@@ -515,7 +515,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
   console.log('[BuildBasketModal] render', { step, isOpen, selectedCurated: selectedCurated?.name, budget, curatedCount: curatedBaskets.length });
 
-  const budgetNum = parseInt(budget) || 10000;
+  const budgetNum = Math.round(parseFloat(budget)) || 10000;
   const displayTheme = selectedCurated ? selectedCurated.name : (customName.trim() || 'Custom');
 
   // ── Navigate back ──
@@ -1105,7 +1105,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         </div>
 
         {/* Insufficient buying power warning in budget step */}
-        {budget && parseInt(budget) > cashBalance && (
+        {budget && Math.round(parseFloat(budget)) > cashBalance && (
           <div style={{
             padding: '10px 12px',
             background: 'rgba(239,68,68,0.08)',
@@ -1116,7 +1116,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             lineHeight: '1.5',
             marginBottom: '24px',
           }}>
-            ⚠️ Insufficient buying power. Your budget of ${parseInt(budget).toLocaleString()} exceeds your available cash of ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
+            ⚠️ Insufficient buying power. Your budget of ${Math.round(parseFloat(budget)).toLocaleString()} exceeds your available cash of ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
           </div>
         )}
       </div>
@@ -1138,20 +1138,20 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       }}>
         <button
           onClick={() => selectedCurated ? setStep('basket_review') : generateBasket()}
-          disabled={!budget || parseInt(budget) <= 0 || parseInt(budget) > cashBalance}
+          disabled={!budget || Math.round(parseFloat(budget)) <= 0 || Math.round(parseFloat(budget)) > cashBalance}
           style={{
             width: '100%',
             padding: '16px',
-            background: budget && parseInt(budget) > 0 && parseInt(budget) <= cashBalance ? '#22d3ee' : (parseInt(budget) > cashBalance ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.2)'),
-            color: budget && parseInt(budget) > 0 && parseInt(budget) <= cashBalance ? '#0a0f1e' : (parseInt(budget) > cashBalance ? '#ef4444' : '#6b7280'),
-            border: parseInt(budget) > cashBalance ? '1px solid rgba(239,68,68,0.3)' : 'none',
+            background: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? '#22d3ee' : (Math.round(parseFloat(budget)) > cashBalance ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.2)'),
+            color: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? '#0a0f1e' : (Math.round(parseFloat(budget)) > cashBalance ? '#ef4444' : '#6b7280'),
+            border: Math.round(parseFloat(budget)) > cashBalance ? '1px solid rgba(239,68,68,0.3)' : 'none',
             borderRadius: '12px',
             fontSize: '16px',
             fontWeight: '600',
-            cursor: budget && parseInt(budget) > 0 && parseInt(budget) <= cashBalance ? 'pointer' : 'not-allowed',
+            cursor: budget && Math.round(parseFloat(budget)) > 0 && Math.round(parseFloat(budget)) <= cashBalance ? 'pointer' : 'not-allowed',
           }}
         >
-          {parseInt(budget) > cashBalance ? `Insufficient funds · $${(parseInt(budget) - cashBalance).toLocaleString()} short` : selectedCurated ? 'Review Order →' : 'Generate Basket →'}
+          {Math.round(parseFloat(budget)) > cashBalance ? `Insufficient funds · $${(Math.round(parseFloat(budget)) - cashBalance).toLocaleString()} short` : selectedCurated ? 'Review Order →' : 'Generate Basket →'}
         </button>
         <button
           onClick={onClose}
@@ -1380,7 +1380,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   // ── Dollar amount editing & budget validation (unified) ──
   function validateBudget() {
     if (!budget) return;
-    const bNum = parseInt(budget) || 0;
+    const bNum = Math.round(parseFloat(budget)) || 0;
     const total = reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0);
     const softLimit = bNum * 0.95;
     setRunningTotal(total);
@@ -1398,7 +1398,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   }
 
   function updateDollarAmount(symbol: string, rawAmount: number) {
-    const bNum = parseInt(budget) || 0;
+    const bNum = Math.round(parseFloat(budget)) || 0;
     if (!bNum) return;
 
     // Per-stock ceiling: budget * 0.95 (can't put more than budget in one stock)
@@ -1487,7 +1487,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       }
     }
 
-    const bNum = parseInt(budget) || 0;
+    const bNum = Math.round(parseFloat(budget)) || 0;
     if (bNum > cashBalance) {
       setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `Insufficient funds. Need $${bNum.toLocaleString()}, have $${cashBalance.toLocaleString()}` } as any);
       setExecuting(false);
@@ -1554,10 +1554,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             <span style={{ color: '#ffffff', fontWeight: '600' }}>
               {selectedCurated?.emoji} {selectedCurated?.name}
             </span>
-            <span style={{ color: '#22d3ee' }}>${(parseInt(budget) || 0).toLocaleString()} budget</span>
+            <span style={{ color: '#22d3ee' }}>${Math.round(parseFloat(budget) || 0).toLocaleString()} budget</span>
           </div>
           <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '4px' }}>
-            Effective: <span style={{ color: '#22d3ee' }}>${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}</span> · 5% buffer held (~${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })})
+            Effective: <span style={{ color: '#22d3ee' }}>${Math.round((parseFloat(budget) || 0) * 0.95).toLocaleString()}</span> · 5% buffer held (~${Math.round((parseFloat(budget) || 0) * 0.05).toLocaleString()})
           </div>
         </div>
 
@@ -1721,7 +1721,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
 
                     {/* + button (dim when near budget limit) */}
                     {(() => {
-                      const bNum = parseInt(budget) || 0;
+                      const bNum = Math.round(parseFloat(budget)) || 0;
                       const total = reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0);
                       const wouldExceed = (total - stock.dollarAmount + stock.dollarAmount + 10) > bNum;
                       return (
@@ -1828,7 +1828,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             {/* ── Running Total + Estimated Total ── */}
             {(() => {
               const runningTotal = reviewStocks.reduce((sum, s) => sum + s.dollarAmount, 0);
-              const bNum = parseInt(budget) || 0;
+              const bNum = Math.round(parseFloat(budget)) || 0;
               const effBudget = bNum * 0.95;
               return (
                 <>
@@ -2151,9 +2151,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               </div>
 
               {[
-                { label: 'Budget', value: `$${(parseInt(budget) || 0).toLocaleString()}`, color: '#ffffff' },
-                { label: 'Effective (5% buffer)', value: `$${((parseInt(budget) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#22d3ee' },
-                { label: 'Est. buffer held', value: `~$${((parseInt(budget) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#cbd5e1' },
+                { label: 'Budget', value: `$${(Math.round(parseFloat(budget)) || 0).toLocaleString()}`, color: '#ffffff' },
+                { label: 'Effective (5% buffer)', value: `$${((Math.round(parseFloat(budget)) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#22d3ee' },
+                { label: 'Est. buffer held', value: `~$${((Math.round(parseFloat(budget)) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#cbd5e1' },
                 { label: 'Est. Total', value: `$${reviewStocks.reduce((s, r) => s + r.dollarAmount, 0).toFixed(2)}`, color: '#ffffff', bold: true },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -2192,7 +2192,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           flexDirection: 'column',
           gap: '10px',
         }}>
-          {(parseInt(budget) || 0) > cashBalance && (
+          {(Math.round(parseFloat(budget)) || 0) > cashBalance && (
             <div style={{
               padding: '10px 12px',
               background: 'rgba(239,68,68,0.08)',
@@ -2203,17 +2203,17 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               lineHeight: '1.5',
               textAlign: 'left',
             }}>
-              ⚠️ Insufficient buying power. You need ${(parseInt(budget) || 0).toLocaleString()} but only have ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available.
+              ⚠️ Insufficient buying power. You need ${(Math.round(parseFloat(budget)) || 0).toLocaleString()} but only have ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available.
             </div>
           )}
           <button onClick={handleConfirmOrder}
-            disabled={executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance}
+            disabled={executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance}
             style={{
               width: '100%', padding: '16px',
-              background: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.4)' : '#22d3ee',
-              color: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'rgba(34,211,238,0.6)' : '#0a0f1e',
+              background: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance) ? 'rgba(34,211,238,0.4)' : '#22d3ee',
+              color: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance) ? 'rgba(34,211,238,0.6)' : '#0a0f1e',
               border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600',
-              cursor: (executing || !parseInt(budget) || (parseInt(budget) || 0) > cashBalance) ? 'not-allowed' : 'pointer',
+              cursor: (executing || !Math.round(parseFloat(budget)) || (Math.round(parseFloat(budget)) || 0) > cashBalance) ? 'not-allowed' : 'pointer',
             }}
           >{executing ? 'Executing...' : 'Confirm & Buy →'}</button>
 
