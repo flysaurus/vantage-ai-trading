@@ -295,7 +295,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       stocks: editBasket.stocks.map(s => ({
         symbol: s.symbol,
         name: s.symbol,
-        allocation: s.allocationPct,
+        allocation: Math.round(s.allocationPct * 100) / 100,
         rationale: 'Pending basket stock',
         price: s.price,
         shares: s.shares,
@@ -317,7 +317,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       return {
         symbol: s.symbol,
         name: s.symbol,
-        allocation: s.allocationPct,
+        allocation: Math.round(s.allocationPct * 100) / 100,
         price: s.price || 0,
         dollarAmount: Math.round(dollarAmount * 100) / 100,
         shares: s.price > 0 ? calcShares(dollarAmount, s.price) : (s.shares || 0),
@@ -833,7 +833,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                           </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: '#22d3ee' }}>{s.allocation}%</span>
+                          <span style={{ fontSize: '11px', color: '#22d3ee' }}>{s.allocation.toFixed(2)}%</span>
                           {s.performance && (
                             <span style={{
                               fontSize: '10px', fontWeight: '600',
@@ -1235,7 +1235,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         <span style={{ fontSize: '11px', color: '#cbd5e1', marginLeft: '6px' }}>{stock.name}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{stock.allocation}%</span>
+                        <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{stock.allocation.toFixed(2)}%</span>
                         <span style={{ fontSize: '12px', color: '#ffffff', fontWeight: '500' }}>
                           ${(stock.dollarAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}
                         </span>
@@ -1651,7 +1651,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                         <span style={{ fontSize: '9px', color: '#22d3ee', background: 'rgba(34,211,238,0.1)', borderRadius: '4px', padding: '1px 5px' }}>CUSTOM</span>
                       )}
                     </div>
-                    <span style={{ color: '#22d3ee', fontWeight: '600', fontSize: '13px' }}>{stock.allocation}%</span>
+                    <span style={{ color: '#22d3ee', fontWeight: '600', fontSize: '13px' }}>{stock.allocation.toFixed(2)}%</span>
                   </div>
 
                   {/* Row 2: Controls + amount + qty (same line) */}

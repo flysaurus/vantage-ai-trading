@@ -607,6 +607,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (restoredFromSupabase || initialPersistedStateRef.current) {
         demoSeededRef.current = true;
         refreshStateFromBroker();
+        // Recovery sync: push broker's actual positions → basket_holdings
+        // Heals any corruption from stale pending syncs that overwrote FILLED positions
+        if (b?.syncAllBasketPositions) {
+          try { await b.syncAllBasketPositions(); } catch (e) { console.error('[portfolio] Recovery sync failed:', e); }
+        }
         return;
       }
 
@@ -859,12 +864,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             .select('*')
             .eq('user_id', user.id)
             .neq('status', 'closed')
-            .neq('status', 'sold');
+            .neq('status', 'sold')
+            .neq('status', 'pending');  // Never show pending (shares=0) as held positions
 
           if (!error && rows) {
             fromSupabase = true;
             setSupabaseDegraded(false);
-            positions = rows.map((r: any) => ({
+            positions = rows
+              .filter((r: any) => (r.shares ?? 0) > 0)  // Safety net: zero shares = not a real position
+              .map((r: any) => ({
               id: r.id,
               basketId: r.basket_id,
               symbol: r.symbol,

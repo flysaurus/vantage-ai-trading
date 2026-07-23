@@ -197,6 +197,51 @@ export class DemoBroker implements BrokerEngine {
     }
   }
 
+  /** Recovery sync: push ALL basket positions from broker state → basket_holdings.
+   *  Called on initialization to heal any corruption from stale pending syncs. */
+  async syncAllBasketPositions(): Promise<void> {
+    if (!this.supabase || this.userId === 'demo_user') return;
+
+    try {
+      // Group positions by basketId
+      const byBasket = new Map<string, any[]>();
+      for (const pos of this.state.positions) {
+        if (!pos.basketId) continue;
+        if (!byBasket.has(pos.basketId)) byBasket.set(pos.basketId, []);
+        byBasket.get(pos.basketId)!.push(pos);
+      }
+
+      for (const [basketId, positions] of byBasket) {
+        const totalValue = positions.reduce((sum: number, p: any) => sum + (p.shares * p.avgCost), 0);
+        const rows = positions.map((p: any) => ({
+          user_id: this.userId,
+          basket_id: basketId,
+          symbol: p.symbol,
+          shares: p.shares,
+          avg_cost: p.avgCost,
+          total_cost: p.shares * p.avgCost,
+          allocation_pct: totalValue > 0 ? Math.round((p.shares * p.avgCost / totalValue) * 10000) / 100 : 0,
+          status: 'active' as const,
+          basket_name: p.basketName || null,
+          emoji: p.basketEmoji || null,
+          name: p.name || null,
+          sector: p.sector || null,
+          reserved_amount: 0,
+          bought_at: p.boughtAt || new Date().toISOString(),
+        }));
+
+        console.log('[DemoBroker] Recovery sync — basket:', basketId.slice(0, 8), 'positions:', rows.length);
+        for (const row of rows) {
+          await this.supabase.from('basket_holdings').upsert(row, {
+            onConflict: 'basket_id,symbol,user_id',
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('[DemoBroker] Recovery sync failed:', err?.message || err);
+    }
+  }
+
   private async saveState(): Promise<void> {
     // 1. Save to localStorage (non-critical — Supabase is authoritative)
     try {
@@ -731,25 +776,11 @@ export class DemoBroker implements BrokerEngine {
     const now = new Date().toISOString();
     const nextOpenLabel = this.getNextOpenLabel();
 
-    // Upsert pending basket positions into Supabase basket_holdings
-    try {
-      const positions = executionPlan.map(s => ({
-        symbol: s.symbol,
-        shares: 0,
-        avgCost: 0,
-        totalCost: s.dollarAmount,
-        allocationPct: s.allocationPct,
-        status: 'pending' as const,
-        basketName: req.basketName,
-        emoji: req.basketEmoji,
-        reservedAmount: s.dollarAmount,
-        nextOpenLabel,
-        boughtAt: now,
-      }));
-      await this.syncBasketHoldings(req.basketId, 'upsert', positions);
-    } catch (err: any) {
-      console.error('[DemoBroker] Failed to sync pending basket holdings:', err?.message || err);
-    }
+    // ⚠️ Do NOT sync pending positions to basket_holdings.
+    // Pending orders live in basketOrders + orders tables only.
+    // basket_holdings is the single source of truth for FILLED/active
+    // positions. Syncing pending (shares=0) would overwrite real held
+    // positions via UNIQUE(basket_id, symbol, user_id) upsert.
 
     // ── Notify: basket submitted (pending) ──
     if (this.userEmail) {
