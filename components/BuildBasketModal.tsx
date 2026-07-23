@@ -1250,7 +1250,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       </div>
                     </div>
                     <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0 }}>
-                      {stock.shares} shares @ ${(stock.price || 0).toFixed(2)}
+                      {stock.shares.toFixed(4)}sh @ ${(stock.price || 0).toFixed(2)}
                     </p>
                     {stock.rationale && (
                       <p style={{ fontSize: '11px', color: '#cbd5e1', fontStyle: 'italic', margin: '2px 0 0 0', lineHeight: '1.4' }}>
@@ -1718,7 +1718,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                           textAlign: 'center',
                           cursor: 'pointer',
                         }}
-                      >${stock.dollarAmount.toFixed(0)}</button>
+                      >${stock.dollarAmount.toFixed(2)}</button>
                     )}
 
                     {/* + button (dim when near budget limit) */}
