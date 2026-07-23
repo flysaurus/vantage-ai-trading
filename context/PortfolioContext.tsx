@@ -612,6 +612,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         if (b?.syncAllBasketPositions) {
           try { await b.syncAllBasketPositions(); } catch (e) { console.error('[portfolio] Recovery sync failed:', e); }
         }
+        if (b?.syncBasketOrderChildStatuses) {
+          try { b.syncBasketOrderChildStatuses(); } catch (e) { console.error('[portfolio] Basket order status sync failed:', e); }
+        }
         return;
       }
 

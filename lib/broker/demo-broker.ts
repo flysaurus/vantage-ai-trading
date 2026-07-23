@@ -242,6 +242,61 @@ export class DemoBroker implements BrokerEngine {
     }
   }
 
+  /**
+   * Self-healing: sync ALL basket_orders child order statuses from canonical orders.
+   * Fixes the bug where container status is FILLED but child orders still show OPEN
+   * because the sync only ran for OPEN baskets, not already-FILLED ones.
+   */
+  syncBasketOrderChildStatuses(): void {
+    for (const basket of this.state.basketOrders) {
+      let changedCount = 0;
+
+      // Step 1: sync each inner order from the canonical orders array
+      for (const innerOrder of basket.orders) {
+        const canonical = this.state.orders.find(o => o.id === innerOrder.id);
+        if (!canonical) continue;
+        if (innerOrder.status !== canonical.status) {
+          innerOrder.status = canonical.status;
+          changedCount++;
+        }
+        if (canonical.fillPrice != null && innerOrder.fillPrice !== canonical.fillPrice) {
+          innerOrder.fillPrice = canonical.fillPrice;
+        }
+        if (canonical.filledAt && innerOrder.filledAt !== canonical.filledAt) {
+          innerOrder.filledAt = canonical.filledAt;
+        }
+        if (canonical.totalCost != null && innerOrder.totalCost !== canonical.totalCost) {
+          innerOrder.totalCost = canonical.totalCost;
+        }
+      }
+
+      // Step 2: recompute container status from synced children
+      const allStatuses = basket.orders.map((o: any) => o.status);
+      const uniqueStatuses = [...new Set(allStatuses)];
+      let computedStatus: string;
+      if (uniqueStatuses.length === 1) {
+        computedStatus = uniqueStatuses[0];
+      } else {
+        const hasFilled = uniqueStatuses.includes('FILLED');
+        const hasCancelled = uniqueStatuses.includes('CANCELLED');
+        const hasOpen = uniqueStatuses.includes('OPEN');
+        if (hasFilled && hasCancelled) computedStatus = 'PARTIAL';
+        else if (hasOpen) computedStatus = 'OPEN';
+        else computedStatus = 'PARTIAL';
+      }
+
+      const oldStatus = basket.status;
+      basket.status = computedStatus;
+      if (oldStatus !== computedStatus) {
+        changedCount++;
+      }
+
+      if (changedCount > 0) {
+        console.log(`[DemoBroker] Sync — "${basket.basketDisplayName || basket.basketName}" (${basket.id.slice(0, 8)}): fixed ${changedCount} stale entries${oldStatus !== computedStatus ? `, container ${oldStatus} → ${computedStatus}` : ''}`);
+      }
+    }
+  }
+
   private async saveState(): Promise<void> {
     // 1. Save to localStorage (non-critical — Supabase is authoritative)
     try {
