@@ -1169,24 +1169,48 @@ export function TradeTab() {
                     <div
                       onClick={() => {
                         if (isOpen) {
-                          // Build edit payload from LIVE broker basket order data (not stale localStorage)
-                          const stocks = (basket.orders || []).map((o: any) => ({
-                            symbol: o.symbol,
-                            price: o.submittedPrice || 0,
-                            shares: o.shares || 0,
-                            dollarAmount: o.totalCost || o.reservedCost || 0,
-                            allocationPct: basket.totalReserved > 0
-                              ? ((o.totalCost || o.reservedCost || 0) / basket.totalReserved) * 100
-                              : 0,
-                          }));
+                          // Build edit payload from ACTUAL held positions (single source of truth),
+                          // NOT from the basket order's execution plan (which may be stale/outdated).
+                          // This prevents template corruption when the AI-curated definition changes
+                          // after purchase — edit MUST reflect what the user actually owns.
+                          const heldBasket = baskets.find((b: any) => b.id === basket.basketId);
+                          let stocks: any[];
+                          let totalCost = 0;
+                          let basketStatus: 'OPEN' | 'FILLED' = basket.aggregateStatus === 'FILLED' ? 'FILLED' : 'OPEN';
+
+                          if (heldBasket?.positions?.length) {
+                            // FILLED basket: use actual held positions from basket_holdings
+                            totalCost = heldBasket.positions.reduce((sum: number, p: any) => sum + (p.totalCost || 0), 0);
+                            stocks = heldBasket.positions.map((p: any) => ({
+                              symbol: p.symbol,
+                              price: p.currentPrice || p.avgCost || 0,
+                              shares: p.shares || 0,
+                              dollarAmount: p.totalCost || 0,
+                              allocationPct: totalCost > 0 ? ((p.totalCost || 0) / totalCost) * 100 : 0,
+                            }));
+                            basketStatus = 'FILLED';
+                          } else {
+                            // OPEN basket (no positions executed yet): use order's execution plan
+                            totalCost = basket.totalReserved || 0;
+                            stocks = (basket.orders || []).map((o: any) => ({
+                              symbol: o.symbol,
+                              price: o.submittedPrice || 0,
+                              shares: o.shares || 0,
+                              dollarAmount: o.totalCost || o.reservedCost || 0,
+                              allocationPct: basket.totalReserved > 0
+                                ? ((o.totalCost || o.reservedCost || 0) / basket.totalReserved) * 100
+                                : 0,
+                            }));
+                          }
                           setEditingBasket({
                             id: basket.id,
-                            basketName: basket.basketName,
+                            basketId: basket.basketId,
+                            basketName: heldBasket?.name || basket.basketName,
                             basketEmoji: basket.basketEmoji,
-                            basketDisplayName: basket.basketDisplayName || basket.basketName,
+                            basketDisplayName: heldBasket?.name || basket.basketDisplayName || basket.basketName,
                             stocks,
-                            totalReserved: Math.ceil(basket.totalReserved || 0),
-                            status: 'OPEN',
+                            totalReserved: Math.ceil(totalCost || 0),
+                            status: basketStatus,
                             submittedAt: basket.submittedAt,
                             nextOpenLabel: basket.nextOpenLabel || '',
                           });

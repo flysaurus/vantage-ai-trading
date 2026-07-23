@@ -66,7 +66,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onBasketGenerated: (msg: string, data: any) => void;
-  editBasket?: { id: string; basketName: string; basketEmoji: string; basketDisplayName: string; stocks: Array<{ symbol: string; price: number; shares: number; dollarAmount: number; allocationPct: number }>; totalReserved: number; status: 'OPEN'; submittedAt: string; nextOpenLabel: string } | null;
+  editBasket?: { id: string; basketId?: string; basketName: string; basketEmoji: string; basketDisplayName: string; stocks: Array<{ symbol: string; price: number; shares: number; dollarAmount: number; allocationPct: number }>; totalReserved: number; status: 'OPEN' | 'FILLED'; submittedAt: string; nextOpenLabel: string } | null;
 }
 
 export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, editBasket }: Props) {
@@ -1963,7 +1963,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       color: '#34d399',
                       fontSize: '12px',
                     }}>
-                      ✓ Within budget · ${(bNum - runningTotal).toFixed(2)} remaining
+                      ✓ Within budget · ${(effBudget - runningTotal).toFixed(2)} remaining
                     </div>
                   )}
                 </>
