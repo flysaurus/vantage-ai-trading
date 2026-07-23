@@ -276,10 +276,10 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     finally { setIsAddingStock(false); }
   }, [basketData, budget]);
 
-  // ── Basket Review: fetch live prices ──
+  // ── Basket Review: fetch live prices (creation flow only, NOT edit mode) ──
   useEffect(() => {
-    if (step === 'basket_review' && selectedCurated && budget) fetchReviewPrices();
-  }, [step]);
+    if (step === 'basket_review' && selectedCurated && budget && !isBasketEditMode) fetchReviewPrices();
+  }, [step, isBasketEditMode]);
 
   // ── Edit mode: pre-fill on open ──
   useEffect(() => {
@@ -310,6 +310,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     setBasketDisplayName(editBasket.basketDisplayName || editBasket.basketName);
 
     // Pre-fill reviewStocks directly from editBasket stocks
+    setLoadingPrices(true);  // ⚠️ Set BEFORE step change to prevent premature validation
     const bNum = editBasket.totalReserved;
     const effectiveBudget = bNum * 0.95;
     const enriched: ReviewStock[] = editBasket.stocks.map(s => {
@@ -326,7 +327,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       };
     });
     setReviewStocks(enriched);
-    setLoadingPrices(false);
+    // loadingPrices stays true until live prices finish fetching below
 
     // Also fetch live prices to refresh them
     Promise.allSettled(
@@ -347,7 +348,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         };
       });
       setReviewStocks(refreshed);
-    }).catch(() => {});
+      setLoadingPrices(false);
+    }).catch(() => { setLoadingPrices(false); });
   }, [isOpen, isBasketEditMode, editBasket]);
 
   async function fetchReviewPrices() {
@@ -1237,7 +1239,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '12px', color: '#22d3ee', fontWeight: '500' }}>{stock.allocation.toFixed(2)}%</span>
                         <span style={{ fontSize: '12px', color: '#ffffff', fontWeight: '500' }}>
-                          ${(stock.dollarAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                          ${(stock.dollarAmount || 0).toFixed(2)}
                         </span>
                         {basketData.stocks.length > 2 && (
                           <button onClick={() => removeStock(stock.symbol)} style={{
@@ -1270,7 +1272,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             }}>
               <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>Total</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
-                ${basketData.stocks.reduce((sum, s) => sum + (s.dollarAmount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                ${basketData.stocks.reduce((sum, s) => sum + (s.dollarAmount || 0), 0).toFixed(2)}
               </span>
             </div>
 
@@ -2151,9 +2153,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               </div>
 
               {[
-                { label: 'Budget', value: `$${(Math.round(parseFloat(budget)) || 0).toLocaleString()}`, color: '#ffffff' },
-                { label: 'Effective (5% buffer)', value: `$${((Math.round(parseFloat(budget)) || 0) * 0.95).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#22d3ee' },
-                { label: 'Est. buffer held', value: `~$${((Math.round(parseFloat(budget)) || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 0 })}`, color: '#cbd5e1' },
+                { label: 'Budget', value: `$${(Math.round(parseFloat(budget)) || 0).toFixed(2)}`, color: '#ffffff' },
+                { label: 'Effective (5% buffer)', value: `$${((Math.round(parseFloat(budget)) || 0) * 0.95).toFixed(2)}`, color: '#22d3ee' },
+                { label: 'Est. buffer held', value: `~$${((Math.round(parseFloat(budget)) || 0) * 0.05).toFixed(2)}`, color: '#cbd5e1' },
                 { label: 'Est. Total', value: `$${reviewStocks.reduce((s, r) => s + r.dollarAmount, 0).toFixed(2)}`, color: '#ffffff', bold: true },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
