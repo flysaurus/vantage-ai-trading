@@ -1,8 +1,7 @@
 // ─── POST /api/demo/start — Initialize 30-day demo ─────────
 // Called when user taps "Start my 30-day demo" CTA.
 // Sets demo_start_at, demo_expires_at, portfolio_mode.
-// Seeds style-specific starter positions ($15K-$25K invested).
-// Total account value: $100,000 (positions + cash).
+// Seeds cash-only demo account: $100,000 cash, no positions/orders.
 //
 // ⚠️ CRITICAL: This endpoint DESTROYS existing demo positions and
 // orders via seedDemoPortfolio → clearPortfolio. It filters to

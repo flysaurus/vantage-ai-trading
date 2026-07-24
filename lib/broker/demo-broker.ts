@@ -16,8 +16,7 @@ import {
 import { evaluateOpenOrder } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getMarketStatus } from '@/lib/market-hours';
-import { getDemoAccount } from '@/lib/demo-data';
-import type { InvestorStyle } from '@/types';
+
 
 const STORAGE_KEY = 'vantage_demo_state_v3';
 const STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -64,14 +63,32 @@ export class DemoBroker implements BrokerEngine {
 
   // ─── STATE PERSISTENCE ───
 
+  // ─── Single source of truth for fresh demo account seeding ───
+  // Every new/reset demo account gets $100,000 cash, nothing else.
+  // Real portfolio content only comes from real trades.
+  private seedCashOnly(): void {
+    this.state = {
+      positions: [],
+      cashBalance: 100_000,
+      orders: [],
+      basketOrders: [],
+      savedAt: Date.now(),
+    };
+    this.saveLocalOnly();
+    console.log('[DemoBroker] Seeded cash-only account: $100,000, no positions/orders/baskets');
+  }
+
   private loadState(): DemoStateInternal {
-    if (typeof window === 'undefined') return this.emptyState();
+    if (typeof window === 'undefined') {
+      this.seedCashOnly();
+      return this.state;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw);
         const age = Date.now() - (saved.savedAt || 0);
-        if (age < STALE_MS && saved.positions?.length > 0) {
+        if (age < STALE_MS && (saved.positions?.length > 0 || saved.cashBalance > 0)) {
           // Ensure all loaded positions have name/sector fields (patch pre-fix localStorage)
           saved.positions = saved.positions.map((p: any) => ({ ...p, name: p.name || p.symbol, sector: p.sector || '' }));
           console.log('[DemoBroker] Loaded state:', {
@@ -85,18 +102,9 @@ export class DemoBroker implements BrokerEngine {
     } catch (e) {
       console.error('[DemoBroker] Load error:', e);
     }
-    console.log('[DemoBroker] Using empty state — needs seed');
-    return this.emptyState();
-  }
-
-  private emptyState(): DemoStateInternal {
-    return {
-      positions: [],
-      cashBalance: 0,
-      orders: [],
-      basketOrders: [],
-      savedAt: Date.now(),
-    };
+    console.log('[DemoBroker] No valid localStorage state — seeding cash-only');
+    this.seedCashOnly();
+    return this.state;
   }
 
   private saveLocalOnly(): void {
@@ -311,6 +319,36 @@ export class DemoBroker implements BrokerEngine {
     // 2. Sync to Supabase if configured (runs even if localStorage fails)
     if (this.supabase && this.userId !== 'demo_user') {
       try {
+        // ── Guardrail: never overwrite non-empty server state with empty local state ──
+        const isLocalEmpty =
+          this.state.positions.length === 0 &&
+          this.state.orders.length === 0 &&
+          this.state.basketOrders.length === 0;
+
+        if (isLocalEmpty) {
+          const { data: serverRow, error: fetchErr } = await this.supabase
+            .from('demo_portfolio_state')
+            .select('positions, cash_balance, order_history')
+            .eq('user_id', this.userId)
+            .maybeSingle();
+
+          if (!fetchErr && serverRow) {
+            const serverNonEmpty =
+              (serverRow.positions?.length > 0) ||
+              (serverRow.cash_balance > 0) ||
+              (serverRow.order_history?.length > 0);
+
+            if (serverNonEmpty) {
+              console.error(
+                '[DemoBroker] 🛑 REFUSING to overwrite non-empty Supabase state with empty local state.',
+                'This is a data-safety guardrail. Check why broker state is empty.',
+                { userId: this.userId, serverPositions: serverRow.positions?.length, serverCash: serverRow.cash_balance }
+              );
+              return; // ABORT — do not write
+            }
+          }
+        }
+
         const normalizedPositions = this.state.positions.map((p: any) => ({
           ...p,
           qty: p.qty ?? p.shares ?? 0,
@@ -340,9 +378,29 @@ export class DemoBroker implements BrokerEngine {
         .from('demo_portfolio_state')
         .select('order_history, positions, cash_balance, basket_orders, updated_at')
         .eq('user_id', this.userId)
-        .single();
+        .maybeSingle();
       console.log('[DemoBroker] loadFromSupabase — result:', { hasData: !!data, error: error?.message, basketOrdersCount: data?.basket_orders?.length, positionsCount: data?.positions?.length, cashBalance: data?.cash_balance });
+
       if (data) {
+        // ── Detect empty row (data existed but was wiped) ──
+        const isEmpty =
+          (!data.positions || data.positions.length === 0) &&
+          (!data.order_history || data.order_history.length === 0) &&
+          (!data.basket_orders || data.basket_orders.length === 0) &&
+          (!data.cash_balance || data.cash_balance === 0);
+
+        if (isEmpty) {
+          console.warn(
+            '[DemoBroker] ⚠️ Supabase row exists but is EMPTY (all arrays/cash zeroed).',
+            'Previous data may have been lost. Seeding cash-only account.',
+            { userId: this.userId, updatedAt: data.updated_at }
+          );
+          this.seedCashOnly();
+          // Save the fresh seed so the empty row is replaced immediately
+          await this.saveState();
+          return true;
+        }
+
         // Single canonical column: order_history (BrokerOrder[] format).
         // Normalize createdAt→submittedAt for legacy DemoOrder-format records.
         const rawOrders: any[] = data.order_history || [];
@@ -368,57 +426,14 @@ export class DemoBroker implements BrokerEngine {
         console.log('[DemoBroker] Restored from Supabase — positions:', this.state.positions.length, 'basketOrders:', this.state.basketOrders.length, 'orders:', this.state.orders.length);
         return true;
       } else {
-        console.log('[DemoBroker] loadFromSupabase — no row found for this user');
+        console.log('[DemoBroker] loadFromSupabase — no row found, seeding cash-only');
+        this.seedCashOnly();
+        return true;
       }
     } catch (e) {
       console.error('[DemoBroker] Supabase load:', e);
     }
     return false;
-  }
-
-  // ─── SEED DEMO DATA ───
-
-  seedFromDemoData(style: InvestorStyle): void {
-    const account = getDemoAccount(style, {});
-    if (!account) return;
-
-    this.state.positions = (account.positions || []).map((p: any) => ({
-      symbol: p.symbol,
-      name: p.name || p.symbol,
-      sector: p.sector,
-      type: 'Stock' as const,
-      shares: p.qty,
-      avgCost: p.avgCost,
-      totalCost: p.qty * p.avgCost,
-      buyDate: p.buyDate || '2024-01-01',
-      basketId: p.basketId,
-      basketName: p.basketName,
-      basketEmoji: p.basketEmoji,
-    }));
-
-    this.state.cashBalance = account.cash || 0;
-
-    // Generate FILLED orders from positions
-    this.state.orders = this.state.positions.map((p, i) => ({
-      id: `demo-${p.symbol}-${i}`,
-      symbol: p.symbol,
-      side: 'BUY' as const,
-      type: 'market' as const,
-      status: 'FILLED' as const,
-      shares: p.shares,
-      submittedPrice: p.avgCost,
-      fillPrice: p.avgCost,
-      totalCost: p.totalCost,
-      submittedAt: new Date(`${p.buyDate}T14:30:00Z`).toISOString(),
-      filledAt: new Date(`${p.buyDate}T14:30:00Z`).toISOString(),
-    }));
-
-    this.state.basketOrders = this.state.basketOrders || []; // preserve basket orders restored from Supabase
-    this.state.savedAt = Date.now();
-    // Do NOT call saveState() — seeds are for localStorage only.
-    // Supabase is the authoritative store; pushing seeds would overwrite
-    // real user portfolio data on every stale-cache-clear cycle.
-    this.saveLocalOnly();
   }
 
   // ─── ACCOUNT ───

@@ -2,8 +2,7 @@
  * POST /api/demo/reset — Reset demo portfolio to fresh state.
  *
  * Clears all positions and demo_portfolio_state for the user,
- * then re-seeds with their current investor style's portfolio.
- * Total account value: $100,000 (style-specific positions + cash).
+ * then re-seeds $100,000 cash-only (no positions/orders).
  * Only works in demo mode.
  */
 

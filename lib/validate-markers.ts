@@ -34,7 +34,9 @@ interface MarkerIssue {
   profileName?: string;
 }
 
-const MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)\]/g;
+// Matches [RECOMMEND:SYMBOL:BUY/SELL] with optional :$N suffix
+// (gap-fill injects markers with :$N amounts — the validator must parse them too)
+const MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
 
 function getApiKey(): string | null {
   return process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY || null;
@@ -45,8 +47,8 @@ function getApiKey(): string | null {
  * Looks for patterns like "SK Hynix", "Nvidia (NVDA)", "$TICKER (NAME)", etc.
  */
 function extractContextName(text: string, symbol: string): string | null {
-  // Find the marker containing this symbol
-  const markerPattern = new RegExp(`\\[RECOMMEND:${symbol.replace(/\./g, '\\.')}:(BUY|SELL)\\]`, 'g');
+  // Find the marker containing this symbol (handles optional :$N suffix from gap-fill)
+  const markerPattern = new RegExp(`\\[RECOMMEND:${symbol.replace(/\./g, '\\.')}:(BUY|SELL)(?::(?:\\$?\\d+(?:\\.\\d+)?))?\\]`, 'g');
   const markerMatch = markerPattern.exec(text);
   if (!markerMatch) return null;
 
@@ -201,14 +203,15 @@ export async function validateRecommendationMarkers(
     return { corrected: responseText, issues: [], hasCorrections: false };
   }
 
-  // Extract all markers
+  // Extract all markers (group 3 = optional :$N suffix from gap-fill)
   MARKER_REGEX.lastIndex = 0;
-  const markers: Array<{ fullMatch: string; symbol: string; side: string; index: number }> = [];
+  const markers: Array<{ fullMatch: string; symbol: string; side: string; amount: string | undefined; index: number }> = [];
   for (const match of responseText.matchAll(MARKER_REGEX)) {
     markers.push({
       fullMatch: match[0],
       symbol: match[1],
       side: match[2],
+      amount: match[3],  // e.g. "$3500" or "10" or undefined
       index: match.index!,
     });
   }
@@ -230,7 +233,8 @@ export async function validateRecommendationMarkers(
       if (issue.correction) {
         if (Array.isArray(issue.correction)) {
           // Ambiguous — multiple possible tickers. Add a selection note.
-          const options = issue.correction.map(s => `[RECOMMEND:${s}:${marker.side}]`).join(' or ');
+          const amountSuffix = marker.amount ? `:${marker.amount}` : '';
+          const options = issue.correction.map(s => `[RECOMMEND:${s}:${marker.side}${amountSuffix}]`).join(' or ');
           const display = issue.correction.map(s => {
             const dot = s === 'SKHYV' ? 'ADR' : s === '000660' ? 'KRX' : '';
             return dot ? `\`${s}\` (${dot})` : `\`${s}\``;
@@ -245,7 +249,8 @@ export async function validateRecommendationMarkers(
           // We'll handle this after the main replacement loop
         } else {
           // Single correction — replace wrong ticker with correct one
-          const correctedMarker = `[RECOMMEND:${issue.correction}:${marker.side}]`;
+          const amountSuffix2 = marker.amount ? `:${marker.amount}` : '';
+          const correctedMarker = `[RECOMMEND:${issue.correction}:${marker.side}${amountSuffix2}]`;
           replacements.push({
             index: marker.index,
             oldStr: marker.fullMatch,

@@ -24,13 +24,12 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { onTradeExecuted } from '@/lib/gamification/events';
 import { scoreDiversification } from '@/lib/confidence';
 import { getMarketStatus } from '@/lib/market-hours';
-import { getDemoAccount, getDemoSymbols } from '@/lib/demo-data';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getBroker } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import type { BrokerEngine, BrokerOrder } from '@/lib/broker/engine';
-import type { AccountSummary, Position, Order, InvestorStyle } from '@/types';
+import type { AccountSummary, Position, Order } from '@/types';
 
 // ─── Basket types ──────────────────────────────────────────
 
@@ -296,13 +295,21 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [basketOrders, setBasketOrders] = useState<any[]>([]);
   const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
 
-  // ── Account: from persisted state if available, otherwise seed ──
+  // ── Account: from persisted state if available, otherwise cash-only ──
   const [account, setAccount] = useState<AccountSummary | null>(() => {
     if (isConnected) return null;
     if (initialPersistedState) return accountFromDemoState(initialPersistedState);
-    const localStyle = typeof window !== 'undefined' ? localStorage.getItem('vantage:investorStyle') : null;
-    const style = (user?.investorStyle || localStyle || 'buffett') as InvestorStyle;
-    return getDemoAccount(style, {});
+    // Cash-only default — no fake positions/orders. Real data only from trades.
+    return {
+      equity: 100_000,
+      buyingPower: 100_000,
+      cash: 100_000,
+      dayPnl: 0,
+      dayPnlPercent: 0,
+      totalPnl: 0,
+      totalPnlPercent: 0,
+      positions: [],
+    };
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -625,9 +632,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       }
 
       demoSeededRef.current = true;
-      const style = (user?.investorStyle || 'buffett') as InvestorStyle;
-      console.log('[portfolio] No existing data — seeding fresh demo portfolio');
-      (brokerRef.current as any)?.seedFromDemoData(style);
+      console.log('[portfolio] No existing data — seeding cash-only demo account ($100,000)');
+      (brokerRef.current as any)?.seedCashOnly();
       // Wait briefly for broker to process seeds, then sync
       setTimeout(async () => {
         await refreshStateFromBroker();

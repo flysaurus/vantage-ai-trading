@@ -9,21 +9,6 @@ import { onBasketCreated } from '@/lib/gamification/events';
 import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
 
-const DEMO_ORDERS = [
-  { id: '1', symbol: 'SPY', side: 'buy', status: 'filled', qty: 25, price: 480.00, date: 'Jan 8, 2024' },
-  { id: '2', symbol: 'QQQ', side: 'buy', status: 'filled', qty: 20, price: 415.00, date: 'Jan 8, 2024' },
-  { id: '3', symbol: 'GOOGL', side: 'buy', status: 'filled', qty: 60, price: 140.00, date: 'Jan 15, 2024' },
-  { id: '4', symbol: 'MSFT', side: 'buy', status: 'filled', qty: 20, price: 415.00, date: 'Feb 5, 2024' },
-  { id: '5', symbol: 'JPM', side: 'buy', status: 'filled', qty: 45, price: 195.00, date: 'Feb 20, 2024' },
-  { id: '6', symbol: 'ADBE', side: 'buy', status: 'filled', qty: 12, price: 560.00, date: 'Mar 1, 2024' },
-  { id: '7', symbol: 'ISRG', side: 'buy', status: 'filled', qty: 8, price: 395.00, date: 'Apr 12, 2024' },
-  { id: '8', symbol: 'COST', side: 'buy', status: 'filled', qty: 10, price: 720.00, date: 'May 3, 2024' },
-  { id: '9', symbol: 'LLY', side: 'buy', status: 'filled', qty: 18, price: 750.00, date: 'Jun 18, 2024' },
-  { id: '10', symbol: 'NVDA', side: 'buy', status: 'filled', qty: 80, price: 108.00, date: 'Aug 15, 2024' },
-  { id: '11', symbol: 'CRM', side: 'sell', status: 'open', qty: 20, price: undefined, date: 'Today · pending' },
-  { id: '12', symbol: 'NFLX', side: 'buy', status: 'cancelled', qty: 10, price: 85.00, date: 'Apr 22, 2024' },
-];
-
 const statusBorder: Record<string, string> = {
   filled_buy: '#10b981',
   filled_sell: '#ef4444',
@@ -171,8 +156,8 @@ export function TradeTab() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Use live orders from PortfolioContext if available, fall back to demo seed
-  const displayOrders = liveOrders.length > 0 ? liveOrders : DEMO_ORDERS;
+  // Use live orders from PortfolioContext
+  const displayOrders = liveOrders;
   
   // Execute pending orders on tab mount + periodic check while market is open
   // Two-pronged: local DemoBroker (fast, primary) + server API (reliable fallback)
@@ -288,7 +273,7 @@ export function TradeTab() {
     // No localStorage writes — broker in-memory state is the source of truth
   }, [pendingBaskets, liveOrders, liveBasketOrders]); // re-check when broker orders change
 
-  // ── Normalize orders for rendering (handles both DemoOrder and DEMO_ORDERS format)
+  // ── Normalize orders for rendering ──
   const normalizedOrders = displayOrders.map((o: any) => ({
     id: o.id,
     symbol: o.symbol,
@@ -1150,6 +1135,29 @@ export function TradeTab() {
 
           return (
             <>
+              {/* ── Empty state: no orders at all ── */}
+              {filteredBasketOrders.length === 0 && visibleGroups.length === 0 && soloOrders.length === 0 && (
+                <div style={{
+                  padding: '40px 24px',
+                  textAlign: 'center',
+                  color: '#64748b',
+                }}>
+                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: '#94a3b8', marginBottom: '6px' }}>
+                    {historyTab === 'all'
+                      ? 'No orders yet'
+                      : historyTab === 'open'
+                        ? 'No open orders'
+                        : historyTab === 'filled'
+                          ? 'No filled orders'
+                          : 'No cancelled orders'}
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#64748b' }}>
+                    Search a stock above to place your first trade
+                  </div>
+                </div>
+              )}
+
               {/* ── BASKET ORDER GROUPS ── */}
               {filteredBasketOrders.map((basket: any) => {
                 const isExpanded = expandedBasketOrder === basket.id;

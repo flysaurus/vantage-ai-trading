@@ -31,6 +31,7 @@ const NOT_TICKERS = new Set([
   'BE', 'IS', 'SO', 'ME', 'MY', 'WE', 'HE', 'NO', 'GO', 'DO', 'UP', 'AM',
   'A', 'I', 'O', 'USD', 'EST', 'LTD', 'INC', 'CORP', 'PLC', 'LLC', 'NYSE',
   'NASDAQ', 'SVS', 'USA', 'EUR', 'GBP', 'JPY', 'YTD', 'NYSEARCA',
+  'BUY', 'SELL', 'HOLD', 'PUT', 'CALL', // trading verbs/options that look like 3-4 char tickers
 ]);
 
 // ─── Ticker extraction ──
