@@ -48,6 +48,7 @@ const PUBLIC_ROUTES = [
   '/api/cron/execute-pending-orders', // cron — own CRON_SECRET auth
   '/api/cron/drawdown-check', // cron — own CRON_SECRET auth
   '/api/cron/investor-score', // cron — own CRON_SECRET auth
+  '/api/cron/portfolio-agent', // cron — own QSTASH_CRON_SECRET auth
   '/api/cron', // cron — own CRON_SECRET auth
   '/api/access-requests/resend', // public POST (resend invite for approved users)
   '/api/auth/signup', // public — server-side signup with hard invite gate
