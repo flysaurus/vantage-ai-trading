@@ -66,6 +66,9 @@
     },
     "app/api/cron/execute-pending-orders/route.ts": {
       "maxDuration": 55
+    },
+    "app/api/cron/portfolio-agent/route.ts": {
+      "maxDuration": 55
     }
   }
 }
