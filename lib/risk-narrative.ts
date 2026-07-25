@@ -37,7 +37,7 @@ export interface RiskTrigger {
 // sectors won't match them.
 // ═══════════════════════════════════════════════════════════════
 
-const STYLE_SECTOR_TARGETS: Record<string, Record<string, number>> = {
+export const STYLE_SECTOR_TARGETS: Record<string, Record<string, number>> = {
   buffett: {
     'Financial Services': 30,
     Consumer: 20,
@@ -82,7 +82,7 @@ const STYLE_SECTOR_TARGETS: Record<string, Record<string, number>> = {
 };
 
 /** Non-sector buckets that we skip during drift comparison. */
-const NON_SECTOR_BUCKETS = new Set([
+export const NON_SECTOR_BUCKETS = new Set([
   'Broad Market',
   'Cash',
   'Fixed Income',

@@ -9,7 +9,7 @@
 
 import { createServerClient } from '@/lib/supabase';
 
-export type UsageType = 'message' | 'deepAnalysis' | 'dailyBrief' | 'weeklySnapshot' | 'greeting';
+export type UsageType = 'message' | 'deepAnalysis' | 'dailyBrief' | 'weeklySnapshot' | 'greeting' | 'noticed';
 
 // ─── Timezone helpers ────────────────────────────────────
 
@@ -101,6 +101,7 @@ const SURFACE_LOG_MAP: Record<string, string> = {
   greeting: 'greeting',
   dailyBrief: 'daily_brief',
   weeklySnapshot: 'weekly_snapshot',
+  noticed: 'noticed',
 };
 
 export async function checkUsageLimit(
@@ -147,6 +148,11 @@ export async function checkUsageLimit(
       monthlyFeature: null,
       dbField: '', // checked via ai_generation_log, not ai_usage
     },
+    noticed: {
+      dailyFeature: 'noticed_check_limit',
+      monthlyFeature: null,
+      dbField: '', // checked via ai_generation_log, not ai_usage
+    },
   };
 
   const config = configMap[type];
@@ -157,7 +163,7 @@ export async function checkUsageLimit(
   //   contaminating the chat message_count with non-chat activity
   let dailyUsed = 0;
 
-  if (type === 'greeting' || type === 'dailyBrief' || type === 'weeklySnapshot') {
+  if (type === 'greeting' || type === 'dailyBrief' || type === 'weeklySnapshot' || type === 'noticed') {
     const logSurface = SURFACE_LOG_MAP[type];
     const { count } = await (supabase as any)
       .from('ai_generation_log')
