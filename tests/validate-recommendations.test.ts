@@ -205,6 +205,37 @@ async function runTests() {
     }
   });
 
+  // ── FIXTURE 5: $1,000 dividend/income portfolio ──
+  const FIXTURE_5 = `
+[SUMMARY_TLDR:$1,000 across 3 income ETFs — VOO core, QQQ growth, SCHD dividends]
+
+**VOO** (Vanguard S&P 500 ETF) [RECOMMEND:VOO:BUY:$500] — Broad market with yield
+**QQQ** (Invesco QQQ Trust) [RECOMMEND:QQQ:BUY:$300] — Tech growth with income
+**SCHD** (Schwab US Dividend) [RECOMMEND:SCHD:BUY:$200] — Pure dividend play
+
+Bottom line: $500 VOO + $300 QQQ + $200 SCHD = $1,000 total.
+`;
+  console.log('\n📋 FIXTURE 5 — $1,000 dividend/income portfolio (VOO, QQQ, SCHD ETFs):');
+  await test('PASSES all checks for dividend portfolio', async () => {
+    const r = await v(FIXTURE_5, 1000);
+    if (!r.ok) throw new Error('Expected OK. Failures: ' + JSON.stringify(r.failures));
+  });
+  await test('returns 3 ETF suggestions', async () => {
+    const r = await v(FIXTURE_5, 1000);
+    if (!r.result || r.result.suggestions.length !== 3) throw new Error(`Expected 3, got ${r.result?.suggestions.length}`);
+  });
+  await test('budget is exactly $1,000 (500+300+200)', async () => {
+    const r = await v(FIXTURE_5, 1000);
+    if (!r.result || r.result.total !== 1000) throw new Error(`Expected 1000, got ${r.result?.total}`);
+  });
+  await test('symbols are VOO, QQQ, SCHD (all in mock cache)', async () => {
+    const r = await v(FIXTURE_5, 1000);
+    if (!r.result) throw new Error('Expected result');
+    const syms = r.result.suggestions.map(s => s.symbol).sort();
+    const expected = ['QQQ', 'SCHD', 'VOO'];
+    if (JSON.stringify(syms) !== JSON.stringify(expected)) throw new Error(`Expected ${expected}, got ${syms}`);
+  });
+
   // ── EDGE CASES ──
   console.log('\n📋 Edge Cases:');
   await test('accepts comma-formatted amounts ($1,000, $1,500.50)', async () => {

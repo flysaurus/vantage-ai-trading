@@ -103,6 +103,25 @@ export async function loadSymbolCache(): Promise<Set<string>> {
     _symbolNameMap = symbolNameMap;
     _lastFetchTime = now;
     console.log(`[symbol-validator] Cached ${symbols.size.toLocaleString()} valid US symbols (24h TTL) with ${symbolNameMap.size.toLocaleString()} name mappings`);
+
+    // ── Cache health check ──
+    const HEALTH_THRESHOLD = 5000; // minimum expected US symbols
+    const CRITICAL_ETFS = ['VOO', 'QQQ', 'SPY', 'SCHD', 'VTI', 'IVV', 'VEA', 'BND', 'VGT', 'XLK'];
+    const missingEtfs = CRITICAL_ETFS.filter(s => !symbols.has(s));
+    
+    if (symbols.size < HEALTH_THRESHOLD) {
+      console.error(`[symbol-validator] ⚠️ HEALTH WARNING: Symbol cache only has ${symbols.size.toLocaleString()} entries (threshold: ${HEALTH_THRESHOLD.toLocaleString()}). Finnhub response may be incomplete — live lookups will be used as fallback.`);
+    }
+    if (missingEtfs.length > 0) {
+      console.error(`[symbol-validator] ⚠️ HEALTH WARNING: ${missingEtfs.length} critical ETFs missing from cache: ${missingEtfs.join(', ')}. These will require live Finnhub lookups during validation.`);
+      if (missingEtfs.length >= 5) {
+        console.error('[symbol-validator] 🔴 SEVERE: More than half of critical ETFs missing — Finnhub API key may be expired or rate-limited.');
+      }
+    }
+    if (symbols.size >= HEALTH_THRESHOLD && missingEtfs.length === 0) {
+      console.log('[symbol-validator] ✅ Cache health check passed — size OK, critical ETFs present');
+    }
+
     return symbols;
   } catch (err: any) {
     console.error('[symbol-validator] Failed to load symbol cache:', err.message || err);

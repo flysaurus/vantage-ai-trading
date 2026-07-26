@@ -11,6 +11,7 @@
 // Fail = reject and regenerate. Never partial render.
 
 import { loadSymbolCache } from '@/lib/symbol-validator';
+import { getCompanyProfile } from '@/lib/finnhub';
 
 // Exchange/country-code suffixes that indicate non-US listings
 const EXCHANGE_SUFFIXES = new Set([
@@ -117,26 +118,51 @@ export async function validateRecommendations(
   }
 
   // ────────────────────────────────────────────────────────
-  // CHECK 2: Exact-match symbol resolution
+  // CHECK 2: Exact-match symbol resolution (with live fallback)
   // ────────────────────────────────────────────────────────
   const symbolCache = symbolCacheOverride ?? (await loadSymbolCache());
   const unknownSymbols = new Set<string>();
+  const liveVerified = new Map<string, boolean>(); // symbol → true (verified via live API)
 
   for (const m of validMarkers) {
-    if (symbolCache.size > 0 && !symbolCache.has(m.symbol.toUpperCase())) {
-      unknownSymbols.add(m.symbol);
+    const sym = m.symbol.toUpperCase();
+    if (symbolCache.size > 0 && !symbolCache.has(sym)) {
+      unknownSymbols.add(sym);
+    }
+  }
+
+  // Soft-fail: try live Finnhub profile lookup for cache misses
+  if (unknownSymbols.size > 0 && !symbolCacheOverride) {
+    console.log(`[validate] ${unknownSymbols.size} symbol(s) missing from cache — trying live lookup:`, [...unknownSymbols]);
+    for (const sym of unknownSymbols) {
+      try {
+        const profile = await getCompanyProfile(sym);
+        if (profile && profile.country === 'US' && profile.ticker) {
+          liveVerified.set(sym.toUpperCase(), true);
+          console.log(`[validate] Live lookup confirmed: ${sym} → ${profile.name} (${profile.exchange})`);
+        } else {
+          console.log(`[validate] Live lookup failed for ${sym}: ${profile ? `country=${profile.country}` : 'no profile'}`);
+        }
+      } catch (e: any) {
+        console.warn(`[validate] Live lookup error for ${sym}: ${e?.message || e}`);
+      }
     }
   }
 
   if (unknownSymbols.size > 0) {
     for (const sym of unknownSymbols) {
+      // Skip if live lookup verified it
+      if (liveVerified.has(sym.toUpperCase())) {
+        console.log(`[validate] ${sym} rescued by live lookup — treating as valid`);
+        continue;
+      }
       // Check if it's a known exchange-code suffix issue
       const dotIdx = sym.lastIndexOf('.');
       if (dotIdx >= 0) {
         const suffix = sym.slice(dotIdx + 1);
         if (EXCHANGE_SUFFIXES.has(suffix.toUpperCase())) {
           const base = sym.slice(0, dotIdx);
-          if (symbolCache.has(base)) {
+          if (symbolCache.has(base) || liveVerified.has(base.toUpperCase())) {
             failures.push({
               check: 'symbol_resolution',
               detail: `"${sym}" is a foreign exchange listing (${suffix}). Use US primary listing "${base}" instead.`,
@@ -159,7 +185,7 @@ export async function validateRecommendations(
       } else {
         failures.push({
           check: 'symbol_resolution',
-          detail: `"${sym}" is not a recognized US-traded symbol. Use resolveSymbol tool to verify before recommending.`,
+          detail: `"${sym}" is not a recognized US-traded symbol. Use resolveSymbol tool to find correct ticker.`,
           offendingMarkers: validMarkers.filter(m => m.symbol === sym).map(m => m.raw),
         });
       }
