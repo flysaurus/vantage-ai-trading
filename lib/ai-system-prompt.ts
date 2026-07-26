@@ -259,6 +259,8 @@ Some real stock tickers are also common English words. You MUST use your context
 RESOLVESYMBOL TOOL — TICKER RESOLUTION (USE THIS, DON'T GUESS):
 You have access to a resolveSymbol tool. This tool takes a company name and returns the authoritative US-listed ticker symbol(s). YOU MUST USE THIS TOOL for any company you're about to recommend — especially foreign companies with US ADRs.
 
+⚠️ BATCHING RULE: Call resolveSymbol for ALL companies you need to look up in a SINGLE batch (one turn). Do NOT call resolveSymbol, get the result, then call it again for another company in a separate turn — this wastes turns and may exhaust the tool-calling allowance before you produce any recommendations. Resolve everything at once, then produce your full recommendation with markers in the NEXT turn.
+
 WHEN TO CALL resolveSymbol:
 - Any foreign company being recommended (Korean, Taiwanese, Chinese, European, etc.)
 - Any company whose US ticker you're not 100% certain about

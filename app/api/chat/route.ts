@@ -475,7 +475,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let turn = 0;
-        const MAX_TOOL_TURNS = 3;
+        const MAX_TOOL_TURNS = 5; // allow enough turns for complex portfolios with many symbols
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
 
@@ -570,6 +570,12 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         } while (turn < MAX_TOOL_TURNS);
 
         let responseText = fullResponse.join('');
+
+        // ── Guard: tool-loop exhaustion detection ──
+        const hasMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+\]/i.test(responseText);
+        if (!hasMarkers && turn >= MAX_TOOL_TURNS) {
+          console.warn(`[chat] ⚠️ Tool-loop exhausted after ${turn} turns — no RECOMMEND markers produced. Response starts with: "${responseText.slice(0, 100)}"`);
+        }
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
         try {
