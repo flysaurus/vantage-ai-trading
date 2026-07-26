@@ -980,15 +980,17 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalValidationFailure) {
-          // Both attempts failed — show fallback message
-          console.warn('[chat] Fatal validation failure after retry');
+          // Both attempts failed — show fallback with failure details for debugging
+          const failureDetails = (rejectData.failures || [])
+            .map((f: any) => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`)
+            .join('\n');
+          console.warn('[chat] Fatal validation failure after retry:', rejectData.failures);
           setMessages(prev => {
             const next = [...prev];
-            // Replace the regenerated message with the fallback
             if (next.length > 0 && next[next.length - 1].role === 'ai') {
               next[next.length - 1] = {
                 role: 'ai' as const,
-                content: `Let me try that again — my recommendation didn't pass validation. Could you rephrase your request?`,
+                content: `My recommendation didn't pass validation after two attempts. Here's what went wrong:\n\n${failureDetails}\n\nCould you rephrase your request or try a different approach?`,
               };
             }
             return next;
