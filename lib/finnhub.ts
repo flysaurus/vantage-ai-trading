@@ -30,7 +30,13 @@ export interface FinnhubProfile {
  * Free tier: 60 calls/min. Returns null on error/not found.
  */
 export async function getCompanyProfile(symbol: string): Promise<FinnhubProfile | null> {
-  const token = getToken();
+  let token: string;
+  try {
+    token = getToken();
+  } catch {
+    // API key not configured — return null gracefully
+    return null;
+  }
   try {
     const res = await fetch(
       `${FINNHUB_BASE}/stock/profile2?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`,

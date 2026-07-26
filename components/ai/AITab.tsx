@@ -893,6 +893,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 validationRejectRef.current = data;
                 console.log('[chat] Validation rejection received:', data.regenerate ? 'regenerate' : 'fatal');
               }
+              if (data.fatalStreamError) {
+                // Server-side stream crashed — store error for display
+                validationRejectRef.current = data;
+                console.error('[chat] Fatal stream error received:', data.message);
+              }
             } catch (e) {}
           }
         }
@@ -987,6 +992,21 @@ export function AITab({ messages, setMessages }: AITabProps) {
               next[next.length - 1] = {
                 role: 'ai' as const,
                 content: `My recommendation didn't pass validation after two attempts. Here's what went wrong:\n\n${failureDetails}\n\nCould you rephrase your request or try a different approach?`,
+              };
+            }
+            return next;
+          });
+        }
+
+        if (rejectData.fatalStreamError) {
+          // Server-side stream crashed — surface the actual error
+          console.error('[chat] Handling fatal stream error:', rejectData.message);
+          setMessages(prev => {
+            const next = [...prev];
+            if (next.length > 0 && next[next.length - 1].role === 'ai') {
+              next[next.length - 1] = {
+                role: 'ai' as const,
+                content: `I hit an internal error processing your request: **${rejectData.message || 'Unknown streaming error'}**\n\nThis has been logged. Could you try again? If it persists, try a simpler query.`,
               };
             }
             return next;

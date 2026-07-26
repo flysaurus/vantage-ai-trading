@@ -224,6 +224,12 @@ export async function POST(req: Request) {
 
     // ── Usage limit check (type depends on mode) ──
     const userId = await getOptionalUserId();
+    
+    // Request tracing — makes it easy to isolate specific failures in Vercel logs
+    const lastMsg = messages?.[messages.length - 1]?.content;
+    const lastMsgPreview = typeof lastMsg === 'string' ? lastMsg.slice(0, 80) : '[non-text]';
+    console.log(`[chat] ===> REQUEST user=${userId?.slice(0,8) || 'anon'} retry=${retryAttempt} msg="${lastMsgPreview}"`);
+    
     const usageType = mode === 'deep' ? 'deepAnalysis' : 'message';
     // Compute user's local date from their timezone (not server UTC)
     const localDate = getLocalDateFromTimezone(timezone);
@@ -472,6 +478,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
     const fullResponse: string[] = []; // ALL text from ALL tool-call turns
     const readable = new ReadableStream({
       async start(controller) {
+        try {
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let turn = 0;
@@ -556,8 +563,8 @@ CRITICAL: Use these live prices for any current-price questions. They override b
             let result: string;
             if (tb.name === 'resolveSymbol') {
               const t0 = Date.now();
-              result = await resolveSymbol(tb.input.companyName || '');
-              console.log(`[chat] resolveSymbol("${tb.input.companyName}") → ${Date.now() - t0}ms`);
+              result = await resolveSymbol(tb.input?.companyName || '');
+              console.log(`[chat] resolveSymbol("${tb.input?.companyName || ''}") → ${Date.now() - t0}ms`);
             } else {
               result = JSON.stringify({ error: `Unknown tool: ${tb.name}` });
             }
@@ -701,6 +708,30 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           }
         } catch (e) {
           console.error('[chat] deviation detection error:', e)
+        }
+      }
+
+        } catch (streamError: any) {
+          // Catch any unhandled exception inside the streaming pipeline.
+          // Without this, the ReadableStream crashes silently → browser sees
+          // a closed connection → client throws generic "API error" → user
+          // sees "Sorry — I encountered an error" with zero context.
+          console.error('[chat] 🔴 STREAM FATAL ERROR:', streamError?.message || streamError);
+          if (streamError?.stack) console.error('[chat] Stack trace:', streamError.stack);
+          try {
+            // Attempt to send diagnostic SSE event before the stream dies
+            const errMsg = streamError?.message || 'Unknown streaming error';
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                fatalStreamError: true,
+                message: `Server error: ${errMsg.slice(0, 200)}`,
+              })}\n\n`)
+            );
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          } catch (_) {
+            // Stream is already broken — nothing we can do
+            console.error('[chat] Could not send error event — stream already closed');
+          }
         }
       }
     })
