@@ -59,7 +59,7 @@ function canonicalSymbol(raw: string): string {
 
 /** Extract the dollar amount from a marker's $N suffix. Returns null if missing. */
 function extractDollarAmount(marker: string): number | null {
-  const m = marker.match(/\$([\d,]+(?:\.\d+)?)\]$/);
+  const m = marker.match(/\$?([\d,]+(?:\.[\d,]+)?)\]$/);
   if (!m) return null;
   const n = parseFloat(m[1].replace(/,/g, ''));
   return isNaN(n) || n <= 0 ? null : n;
@@ -80,8 +80,8 @@ export async function validateRecommendations(
   // ────────────────────────────────────────────────────────
   // CHECK 1: Strict marker parsing
   // ────────────────────────────────────────────────────────
-  // Amount allows commas (e.g. $1,000) — stripped during parse
-  const STRICT_MARKER = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$([\d,]+(?:\.[\d,]+)?)\]/g;
+  // Dollar sign is optional per client regex; amounts allow commas
+  const STRICT_MARKER = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d,]+)?)\]/g;
   const ANY_MARKER_LIKE = /\[RECOMMEND:[^\]]*\]/g;
 
   const validMarkers: Array<{ raw: string; symbol: string; amount: number; canonical: string }> = [];
@@ -90,7 +90,7 @@ export async function validateRecommendations(
   for (const match of rawText.matchAll(ANY_MARKER_LIKE)) {
     const raw = match[0];
     // Test if it matches strict format by creating a fresh regex (avoid lastIndex issues)
-    const STRICT_FORMAT = /^\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$([\d,]+(?:\.[\d,]+)?)\]$/;
+    const STRICT_FORMAT = /^\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d,]+)?)\]$/;
     if (STRICT_FORMAT.test(raw)) {
       const strictMatch = raw.match(STRICT_FORMAT);
       if (strictMatch) {

@@ -46,7 +46,7 @@ export interface ChoiceSuggestion {
 // Exchange suffix (.DE, .MX, etc.) is captured but stripped — only base US symbol is used.
 // These are stripped from visible text by AITab's rendering layer.
 
-const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
+const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL)(?::(\$?[\d,]+(?:\.\d+)?))?\]/g;
 const CHOICE_MARKER_PATTERN = /\[RECOMMEND_CHOICE:(.+?):(BUY|SELL)\]/g;
 
 /**
@@ -83,9 +83,9 @@ export function parseSuggestions(
     let suggestedAmount: number | undefined;
     if (quantityStr) {
       if (quantityStr.startsWith('$')) {
-        suggestedAmount = parseFloat(quantityStr.slice(1));
+        suggestedAmount = parseFloat(quantityStr.slice(1).replace(/,/g, ''));
       } else {
-        suggestedShares = parseFloat(quantityStr);
+        suggestedShares = parseFloat(quantityStr.replace(/,/g, ''));
       }
     }
 

@@ -219,6 +219,12 @@ async function runTests() {
     if (!r.ok) throw new Error('Expected OK for decimal comma amounts. Failures: ' + JSON.stringify(r.failures));
     if (r.result.total !== 1500.50) throw new Error(`Expected $1500.50, got $${r.result.total}`);
   });
+  await test('accepts dollar-less amounts (1000 not $1000)', async () => {
+    const dx = '[SUMMARY_TLDR:$800]\nMSFT [RECOMMEND:MSFT:BUY:500]\nVGT [RECOMMEND:VGT:BUY:300]\n';
+    const r = await v(dx, 800);
+    if (!r.ok) throw new Error('Expected OK for dollar-less amounts. Failures: ' + JSON.stringify(r.failures));
+    if (r.result.total !== 800) throw new Error(`Expected $800, got $${r.result.total}`);
+  });
   await test('rejects exact duplicate symbol (same ticker twice)', async () => {
     const dup = '[SUMMARY_TLDR:$500 NVDA]\n[RECOMMEND:NVDA:BUY:$300]\n[RECOMMEND:NVDA:BUY:$200]\n';
     const r = await v(dup, 500);

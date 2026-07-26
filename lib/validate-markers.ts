@@ -37,7 +37,7 @@ interface MarkerIssue {
 // Matches [RECOMMEND:SYMBOL:BUY/SELL] with optional :$N suffix
 // Exchange suffix (.DE, .MX, etc.) is captured but will be flagged by Finnhub validation
 // (gap-fill injects markers with :$N amounts — the validator must parse them too)
-const MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
+const MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL)(?::(\$?[\d,]+(?:\.\d+)?))?\]/g;
 
 function getApiKey(): string | null {
   return process.env.FINNHUB_IO_API_KEY || process.env.FINNHUB_API_KEY || null;
