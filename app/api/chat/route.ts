@@ -7,6 +7,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
+import { loadSymbolCache } from '@/lib/symbol-validator'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
 import { createServerClient } from '@/lib/supabase'
@@ -330,6 +331,40 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
         }
       }
     }
+
+    // ── GUARDRAIL: Filter to US-listed tickers only ──
+    // Any ticker extracted from search results or user message must be verified
+    // against the Finnhub US symbol cache before the model sees live data for it.
+    // This is the pre-generation filter — the model should never see foreign-listed
+    // symbols in live market data.
+    if (tickers.length > 0) {
+      try {
+        const usSymbols = await loadSymbolCache()
+        if (usSymbols.size > 0) {
+          const foreignFiltered: string[] = []
+          tickers = tickers.filter(t => {
+            const upper = t.toUpperCase()
+            if (upper.includes('.') || !/^[A-Z]{1,5}$/.test(upper)) {
+              foreignFiltered.push(t)
+              return false // not even a valid US ticker format
+            }
+            const isUS = usSymbols.has(upper)
+            if (!isUS) foreignFiltered.push(t)
+            return isUS
+          })
+          if (foreignFiltered.length > 0) {
+            console.log(`[chat] 🛡️ US-only filter: removed ${foreignFiltered.length} non-US ticker(s): ${foreignFiltered.join(', ')}`)
+          }
+          if (tickers.length === 0) {
+            console.log('[chat] 🛡️ US-only filter: NO US-traded tickers found for this query — model will receive empty live data')
+          }
+        }
+      } catch (e) {
+        console.error('[chat] US-only filter error (failing open):', e)
+        // Fail open — let the validator catch foreign markers downstream
+      }
+    }
+
     if (tickers.length > 0) {
       try {
         const quotes = await getBatchQuotes(tickers)
