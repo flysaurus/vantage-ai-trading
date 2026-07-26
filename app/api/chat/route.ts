@@ -10,6 +10,12 @@ import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
 import { createServerClient } from '@/lib/supabase'
+import {
+  validateRecommendations,
+  buildRetryPrompt,
+  extractBudget,
+  type ValidationFailure,
+} from '@/lib/validate-recommendations'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -212,7 +218,9 @@ DO NOT mention that you searched, found, or looked up this information. State fi
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { messages, portfolioContext, additionalContext, mode, timezone } = body
+    const { messages, portfolioContext, additionalContext, mode, timezone, retryAttempt: retryAttemptRaw, validationFailures: retryFailuresRaw } = body
+    const retryAttempt: number = typeof retryAttemptRaw === 'number' ? retryAttemptRaw : 0;
+    const retryFailures: ValidationFailure[] | undefined = Array.isArray(retryFailuresRaw) ? retryFailuresRaw : undefined;
 
     // ── Usage limit check (type depends on mode) ──
     const userId = await getOptionalUserId();
@@ -370,6 +378,16 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, deviationContext].filter(Boolean).join('\n\n'),
       },
     ];
+
+    // ── Retry prompt injection (for validation-driven regeneration) ──
+    const requestedBudget = extractBudget(lastMessage);
+    if (retryAttempt >= 1 && retryFailures && retryFailures.length > 0) {
+      console.log(`[chat] Retry attempt ${retryAttempt} — injecting stricter prompt. Failures:`, retryFailures.length);
+      systemBlocks.push({
+        type: 'text' as const,
+        text: buildRetryPrompt(retryFailures),
+      });
+    }
 
     // ── Model selection with tier-based access control ──────
     // Default: Haiku for chat, Sonnet for deep analysis.
@@ -551,7 +569,6 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           turn++;
         } while (turn < MAX_TOOL_TURNS);
 
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         let responseText = fullResponse.join('');
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
@@ -573,10 +590,65 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // root cause of ghost tickers (exchange codes), contradictory buttons,
         // and duplicate positions across foreign listings.
 
+        // ── STRICT VALIDATION: format, symbol existence, dedupes, budget reconciliation ──
+        let validationRejected = false;
+        if (requestedBudget !== null) {
+          try {
+            const strictValidation = await validateRecommendations(responseText, requestedBudget);
+            if (!strictValidation.ok) {
+              console.warn('[chat] ⚠️ Strict validation FAILED:', JSON.stringify(strictValidation.failures, null, 2));
+              validationRejected = true;
+
+              // Log failure to DB for review
+              try {
+                if (userId && userId !== 'anonymous') {
+                  const supabase = createServerClient();
+                  const rawMarkers = [...responseText.matchAll(/\[RECOMMEND:[^\]]*\]/g)].map(m => m[0]);
+                  const allocation = strictValidation.failures.length > 0 ? 0 : 0; // markers exist but failed checks
+                  await (supabase as any)
+                    .from('validation_failures')
+                    .insert({
+                      user_id: userId,
+                      attempt: (retryAttempt || 0) + 1,
+                      prompt: lastMessage.slice(0, 2000),
+                      raw_response: responseText.slice(0, 5000),
+                      raw_markers: rawMarkers.length > 0 ? rawMarkers : null,
+                      failures: JSON.parse(JSON.stringify(strictValidation.failures)),
+                      budget: requestedBudget,
+                      allocation: allocation,
+                    });
+                  console.log('[chat] Validation failure logged to DB');
+                }
+              } catch (logErr) {
+                console.error('[chat] Validation failure DB log error:', logErr);
+              }
+
+              if (retryAttempt >= 1) {
+                // Second attempt also failed — fatal
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: strictValidation.failures })}\n\n`)
+                );
+              } else {
+                // First attempt — trigger client-side regeneration
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: strictValidation.failures, budget: requestedBudget })}\n\n`)
+                );
+              }
+            }
+          } catch (strictValErr) {
+            console.error('[chat] Strict validation error:', strictValErr);
+            // Non-fatal — proceed without validation (existing corrections still apply)
+          }
+        }
+
+        // [DONE] signal
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+
         // ── Post-stream: await DB write BEFORE closing the stream ──
         // Must complete before controller.close() so the client's
         // refreshRemaining() reads the updated count, not the old one.
-        if (userId && userId !== 'anonymous') {
+        // Skip usage tracking for rejected responses — client will retry.
+        if (userId && userId !== 'anonymous' && !validationRejected) {
           const totalTokens = totalInputTokens + totalOutputTokens;
           const isDeep = mode === 'deep';
           // Claude 4.5 Haiku: $1/MTok input, $5/MTok output

@@ -354,6 +354,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const displayedContentRef = useRef('');
   const streamDoneRef = useRef(false);
   const correctedTextRef = useRef<string | null>(null);
+  const validationRejectRef = useRef<any>(null); // stores regenerate/fatalValidationFailure event
   // Symbols corrected by server-side validator — force-allow in client validation
   const correctedSymbolsRef = useRef<Set<string>>(new Set());
 
@@ -779,7 +780,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [showMenu]);
 
-  const sendMessage = async (content: string, mode: 'chat' | 'alerts' = 'chat', additionalContext?: string) => {
+  const sendMessage = async (
+    content: string,
+    mode: 'chat' | 'alerts' = 'chat',
+    additionalContext?: string,
+    retryOpts?: { retryAttempt: number; retryFailures: any[] },
+  ) => {
     if (!content.trim() || loading) return;
 
     if ((chatRemaining ?? 0) <= 0) {
@@ -828,6 +834,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
         riskTolerance: user?.riskTolerance || 'Moderate',
         name: user?.name || (typeof window !== 'undefined' ? user?.name || '' : null) || 'M',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
+        retryAttempt: retryOpts?.retryAttempt ?? 0,
+        validationFailures: retryOpts?.retryFailures ?? null,
       });
 
       if (!res.ok) {
@@ -845,6 +853,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       displayedContentRef.current = '';
       streamDoneRef.current = false;
       correctedTextRef.current = null;
+      validationRejectRef.current = null;
       correctedSymbolsRef.current = new Set();
 
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
@@ -869,10 +878,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
               }
               if (data.corrections) {
                 // Server-side marker validation caught a hallucinated ticker
-                // Store corrected text; applied after drainer finishes
                 correctedTextRef.current = data.correctedText;
-                // Also collect corrected symbols so they bypass client-side validSymbols filtering
-                // (OTC ADRs like SKHYV aren't in the exchange=US symbol list)
                 for (const issue of data.corrections) {
                   if (issue.correction) {
                     const syms = Array.isArray(issue.correction) ? issue.correction : [issue.correction];
@@ -880,6 +886,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
                   }
                 }
                 console.log('[chat] Marker corrections applied:', data.corrections);
+              }
+              if (data.regenerate || data.fatalValidationFailure) {
+                // Server-side strict validation rejected the response
+                // Store regeneration state — processed after stream ends
+                validationRejectRef.current = data;
+                console.log('[chat] Validation rejection received:', data.regenerate ? 'regenerate' : 'fatal');
               }
             } catch (e) {}
           }
@@ -934,6 +946,46 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
         return updated;
       });
+
+      // ── Handle validation rejection (regenerate / fatal) ──
+      if (validationRejectRef.current) {
+        const rejectData = validationRejectRef.current;
+        validationRejectRef.current = null;
+
+        if (rejectData.regenerate && !rejectData.fatalValidationFailure) {
+          // Auto-retry: remove the rejected message, resend with retry params
+          console.log('[chat] Validation failed — auto-regenerating...');
+          setMessages(prev => prev.slice(0, -1)); // Remove rejected AI message
+          // Don't count this as a user-facing message
+          setLoading(true);
+          try {
+            // Recursively call send with retry params
+            await sendMessage(content, 'chat', undefined, {
+              retryAttempt: 1,
+              retryFailures: rejectData.failures,
+            });
+          } catch (retryErr) {
+            console.error('[chat] Auto-retry failed:', retryErr);
+          }
+          return; // Skip normal post-processing for rejected response
+        }
+
+        if (rejectData.fatalValidationFailure) {
+          // Both attempts failed — show fallback message
+          console.warn('[chat] Fatal validation failure after retry');
+          setMessages(prev => {
+            const next = [...prev];
+            // Replace the regenerated message with the fallback
+            if (next.length > 0 && next[next.length - 1].role === 'ai') {
+              next[next.length - 1] = {
+                role: 'ai' as const,
+                content: `Let me try that again — my recommendation didn't pass validation. Could you rephrase your request?`,
+              };
+            }
+            return next;
+          });
+        }
+      }
       // Scroll suppressed — user controls position
     } catch (error: any) {
       console.error('Chat error:', error);
@@ -1472,24 +1524,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       </div>
                     ) : (
                       <>
-                        {/* Summary card: TL;DR + allocation table above prose */}
-                        {(() => {
-                          if (tier === 'silver') return null;
-                          const suggestions = parseSuggestions(msg.content, validSymbols);
-                          if (suggestions.length === 0) return null;
-                          const tldrText = parseSummaryTLDR(msg.content);
-                          if (!tldrText) return null;
-                          return (
-                            <SummaryCard
-                              tldr={tldrText}
-                              suggestions={suggestions}
-                              symbolNames={symbolNames}
-                              proseText={msg.content}
-                              enabled={tier !== 'silver'}
-                              onTrade={handleTradeAction}
-                            />
-                          );
-                        })()}
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -1509,6 +1543,24 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       >
                         {stripRecommendationMarkers(msg.content)}
                       </ReactMarkdown>
+                        {/* Summary card: TL;DR + allocation table below prose */}
+                        {(() => {
+                          if (tier === 'silver') return null;
+                          const suggestions = parseSuggestions(msg.content, validSymbols);
+                          if (suggestions.length === 0) return null;
+                          const tldrText = parseSummaryTLDR(msg.content);
+                          if (!tldrText) return null;
+                          return (
+                            <SummaryCard
+                              tldr={tldrText}
+                              suggestions={suggestions}
+                              symbolNames={symbolNames}
+                              proseText={msg.content}
+                              enabled={tier !== 'silver'}
+                              onTrade={handleTradeAction}
+                            />
+                          );
+                        })()}
                       </>
                     )}
                   </>
