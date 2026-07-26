@@ -654,8 +654,12 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // and duplicate positions across foreign listings.
 
         // ── STRICT VALIDATION: format, symbol existence, dedupes, budget reconciliation ──
+        // ONLY runs when response contains RECOMMEND markers. Responses without markers
+        // (clarifying questions, informational replies, "I can't recommend X" prose) are
+        // skipped — they aren't recommendations and shouldn't be validated as such.
         let validationRejected = false;
-        if (requestedBudget !== null) {
+        const hasRecommendMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:/i.test(responseText);
+        if (requestedBudget !== null && hasRecommendMarkers) {
           try {
             const strictValidation = await validateRecommendations(responseText, requestedBudget);
             if (!strictValidation.ok) {
@@ -702,6 +706,8 @@ CRITICAL: Use these live prices for any current-price questions. They override b
             console.error('[chat] Strict validation error:', strictValErr);
             // Non-fatal — proceed without validation (existing corrections still apply)
           }
+        } else if (requestedBudget !== null && !hasRecommendMarkers) {
+          console.log('[chat] ⏭️ Skipped validation — no RECOMMEND markers in response (likely a question or informational reply)');
         }
 
         // [DONE] signal
