@@ -355,6 +355,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const streamDoneRef = useRef(false);
   const correctedTextRef = useRef<string | null>(null);
   const validationRejectRef = useRef<any>(null); // stores regenerate/fatalValidationFailure event
+  const skipFinallyRef = useRef(false); // flag to skip double-counting on retry
   // Symbols corrected by server-side validator — force-allow in client validation
   const correctedSymbolsRef = useRef<Set<string>>(new Set());
 
@@ -854,6 +855,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       streamDoneRef.current = false;
       correctedTextRef.current = null;
       validationRejectRef.current = null;
+      skipFinallyRef.current = false;
       correctedSymbolsRef.current = new Set();
 
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
@@ -956,8 +958,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
           // Auto-retry: remove the rejected message, resend with retry params
           console.log('[chat] Validation failed — auto-regenerating...');
           setMessages(prev => prev.slice(0, -1)); // Remove rejected AI message
-          // Don't count this as a user-facing message
-          setLoading(true);
+          // Prevent outer finally from double-counting this failed attempt
+          skipFinallyRef.current = true;
+          // Reset loading so the recursive sendMessage call passes its guard check
+          setLoading(false);
+          // Small delay to let React flush the loading state
+          await new Promise(r => setTimeout(r, 50));
           try {
             // Recursively call send with retry params
             await sendMessage(content, 'chat', undefined, {
@@ -967,7 +973,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
           } catch (retryErr) {
             console.error('[chat] Auto-retry failed:', retryErr);
           }
-          return; // Skip normal post-processing for rejected response
+          // IMPORTANT: return BEFORE the finally block below runs,
+          // so the failed first attempt doesn't count against limits.
+          // The retry's own finally block will handle counting + saving.
+          return;
         }
 
         if (rejectData.fatalValidationFailure) {
@@ -1015,6 +1024,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
       }
     } finally {
+      // Skip counting/saving on regeneration (the retry's finally block handles it)
+      if (skipFinallyRef.current) {
+        skipFinallyRef.current = false;
+        setLoading(false);
+        return;
+      }
       setLoading(false);
       incrementMessageCount();
       refreshRemaining();

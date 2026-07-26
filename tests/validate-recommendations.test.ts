@@ -207,6 +207,18 @@ async function runTests() {
 
   // ── EDGE CASES ──
   console.log('\n📋 Edge Cases:');
+  await test('accepts comma-formatted amounts ($1,000, $1,500.50)', async () => {
+    const commas = '[SUMMARY_TLDR:$1,500]\nMSFT [RECOMMEND:MSFT:BUY:$1,000]\nVGT [RECOMMEND:VGT:BUY:$500]\n';
+    const r = await v(commas, 1500);
+    if (!r.ok) throw new Error('Expected OK for comma amounts. Failures: ' + JSON.stringify(r.failures));
+    if (r.result.total !== 1500) throw new Error(`Expected $1500, got $${r.result.total}`);
+  });
+  await test('accepts decimal comma amounts ($1,500.50)', async () => {
+    const dec = '[SUMMARY_TLDR:$1,500.50]\nMSFT [RECOMMEND:MSFT:BUY:$1,500.50]\n';
+    const r = await v(dec, 1500.50);
+    if (!r.ok) throw new Error('Expected OK for decimal comma amounts. Failures: ' + JSON.stringify(r.failures));
+    if (r.result.total !== 1500.50) throw new Error(`Expected $1500.50, got $${r.result.total}`);
+  });
   await test('rejects exact duplicate symbol (same ticker twice)', async () => {
     const dup = '[SUMMARY_TLDR:$500 NVDA]\n[RECOMMEND:NVDA:BUY:$300]\n[RECOMMEND:NVDA:BUY:$200]\n';
     const r = await v(dup, 500);
