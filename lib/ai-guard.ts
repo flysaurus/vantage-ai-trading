@@ -411,6 +411,74 @@ export function isFinanceQuery(message: string): boolean {
   return true;
 }
 
+// ─── Abuse Protection: Consecutive Validation Failures ───────────────
+// Independent of daily message quota. Caps consecutive failed requests
+// to prevent infinite resource drain without penalizing legitimate users
+// who hit transient bugs.
+
+export interface AbuseCheck {
+  blocked: boolean;
+  cooldownSeconds: number;
+  consecutiveFailures: number;
+}
+
+/**
+ * Check if the user has triggered the abuse cooldown from too many
+ * consecutive validation failures in a short window.
+ *
+ * Threshold: 5+ failures within 120 seconds → 60s cooldown from last failure.
+ * This protects against spam/resource-waste while allowing legitimate retries
+ * after the cooldown expires.
+ */
+export async function checkAbuseCooldown(userId: string): Promise<AbuseCheck> {
+  const supabase = createServerClient();
+  try {
+    const { data, error } = await (supabase as any)
+      .from('validation_failures')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('resolved', false)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error || !data || data.length < 5) {
+      return { blocked: false, cooldownSeconds: 0, consecutiveFailures: data?.length || 0 };
+    }
+
+    const now = Date.now();
+    const windowMs = 120_000; // 2 minutes
+    const cooldownMs = 60_000; // 1 minute
+
+    // All 5 must be within the window
+    const recent = data.filter((f: any) => {
+      const age = now - new Date(f.created_at).getTime();
+      return age <= windowMs;
+    });
+
+    if (recent.length < 5) {
+      return { blocked: false, cooldownSeconds: 0, consecutiveFailures: recent.length };
+    }
+
+    // Cooldown: 60s from the MOST RECENT failure
+    const lastFailureAge = now - new Date(data[0].created_at).getTime();
+    const remainingCooldown = Math.max(0, cooldownMs - lastFailureAge);
+
+    if (remainingCooldown > 0) {
+      return {
+        blocked: true,
+        cooldownSeconds: Math.ceil(remainingCooldown / 1000),
+        consecutiveFailures: 5,
+      };
+    }
+
+    // Cooldown expired — failures are old enough, allow next attempt
+    return { blocked: false, cooldownSeconds: 0, consecutiveFailures: 5 };
+  } catch (e) {
+    console.error('[ai-guard] Abuse check error (failing open):', e);
+    return { blocked: false, cooldownSeconds: 0, consecutiveFailures: 0 };
+  }
+}
+
 export const NON_FINANCE_RESPONSE = `
 Vantage AI is a specialized financial advisor focused on:
 - Portfolio analysis and health checks

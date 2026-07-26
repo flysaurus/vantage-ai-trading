@@ -1018,32 +1018,41 @@ export function AITab({ messages, setMessages }: AITabProps) {
       console.error('Chat error:', error);
       setToast(null);
       if (error?.status === 429) {
-        // Limit reached — build a clear system message
         const reason = error?.reason || error?.error || 'Usage limit reached';
         const resetsIn = error?.resetsIn || '';
-        const isPool = reason.includes('trial') || reason.includes('pool');
-        const isMonthly = reason.includes('Monthly') || reason.includes('monthly');
+        const errorType = error?.type || '';
 
-        let msg = `📊 ${reason}`;
-        if (resetsIn === 'upgrade' || isPool) {
-          msg += `\n\nUpgrade to Silver or Gold for more deep analyses.`;
-        } else if (isMonthly) {
-          msg += `\n\nResets on the 1st of next month.`;
+        // Abuse cooldown — short temporary throttle, no upgrade nudge
+        if (errorType === 'abuse_cooldown') {
+          setMessages(prev => [...prev, {
+            role: 'ai',
+            content: `⏳ ${reason}`,
+          }]);
         } else {
-          msg += `\n\nResets tomorrow.`;
+          // Limit reached — build a clear system message
+          const isPool = reason.includes('trial') || reason.includes('pool');
+          const isMonthly = reason.includes('Monthly') || reason.includes('monthly');
+
+          let msg = `📊 ${reason}`;
+          if (resetsIn === 'upgrade' || isPool) {
+            msg += `\n\nUpgrade to Silver or Gold for more deep analyses.`;
+          } else if (isMonthly) {
+            msg += `\n\nResets on the 1st of next month.`;
+          } else {
+            msg += `\n\nResets tomorrow.`;
+          }
+          // Only show upgrade mention for Demo/Silver
+          if (tier !== 'gold') {
+            const upgradeTarget = tier === 'demo' ? 'Silver' : 'Gold';
+            msg += ` Upgrade to ${upgradeTarget} on the [Plans &amp; Pricing](/plans) page.`;
+          }
+          setMessages(prev => [...prev, { role: 'ai', content: msg }]);
         }
-        // Only show upgrade mention for Demo/Silver
-        if (tier !== 'gold') {
-          const upgradeTarget = tier === 'demo' ? 'Silver' : 'Gold';
-          msg += ` Upgrade to ${upgradeTarget} on the [Plans &amp; Pricing](/plans) page.`;
-        }
-        setMessages(prev => [...prev, { role: 'ai', content: msg }]);
       } else {
         setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
       }
     } finally {
       setLoading(false);
-      incrementMessageCount();
       refreshRemaining();
       if (userId) {
         try {

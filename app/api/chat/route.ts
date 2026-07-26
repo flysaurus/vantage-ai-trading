@@ -5,7 +5,7 @@ import { resolveSymbol } from '@/lib/tools/resolve-symbol'
 import type { SystemBlock } from '@/lib/ai-provider'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
-import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
+import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone, checkAbuseCooldown } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { loadSymbolCache } from '@/lib/symbol-validator'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
@@ -243,6 +243,21 @@ export async function POST(req: Request) {
             remaining: usageCheck.remaining,
             resetsIn: usageCheck.resetsIn,
             type: usageType,
+          },
+          { status: 429 }
+        );
+      }
+
+      // ── Abuse protection: consecutive validation failure cooldown ──
+      // Independent of daily quota. Caps rapid-fire rejected requests.
+      const abuseCheck = await checkAbuseCooldown(userId);
+      if (abuseCheck.blocked) {
+        return Response.json(
+          {
+            error: `Too many failed attempts — cooldown active`,
+            reason: `Please wait ${abuseCheck.cooldownSeconds}s before trying again.`,
+            resetsIn: `${abuseCheck.cooldownSeconds}s`,
+            type: 'abuse_cooldown',
           },
           { status: 429 }
         );
