@@ -127,6 +127,7 @@ function fillMissingMarkers(text: string): string {
   const missing: Array<{ symbol: string; amount: number }> = [];
   const seen = new Set<string>();
 
+  // ── Stage 1: Direct dollar-amount patterns (existing) ──
   for (const { regex, tickerGroup, amountGroup } of DOLLAR_RECOMMEND_PATTERNS) {
     regex.lastIndex = 0;
     for (const m of text.matchAll(regex)) {
@@ -134,14 +135,63 @@ function fillMissingMarkers(text: string): string {
       const amountStr = m[amountGroup].replace(/,/g, '');
       const amount = parseFloat(amountStr);
 
-      // Skip if already marked, not a valid-looking ticker (filter common words),
-      // or amount is unreasonable
       if (marked.has(symbol) || seen.has(symbol)) continue;
       if (NOT_TICKERS.has(symbol)) continue;
       if (amount <= 0 || amount > 100_000_000) continue;
 
       seen.add(symbol);
       missing.push({ symbol, amount: Math.round(amount) });
+    }
+  }
+
+  // ── Stage 2: Category-level allocation detection ──
+  // Detects patterns like:
+  //   "CORE TECH ETFs (60% = $600)"
+  //   "QQQ — Invesco Nasdaq 100 ETF"
+  //   "VGT — Vanguard Information Technology ETF"
+  // Where the $ is at the category level and individual ETFs are unmarked.
+  //
+  // Strategy: find dollar amounts in headers, then collect unmarked tickers
+  // in the following text up to the next section break (--- or blank line before another header).
+  if (missing.length === 0) {
+    // Match category headers with dollar amounts: "NAME (X% = $N)" or "NAME $N"
+    const categoryDollarPattern = /\(\d+%\s*=\s*\$([\d,]+(?:\.\d+)?)\)/g;
+    const lines = text.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const dollarMatch = categoryDollarPattern.exec(line);
+      categoryDollarPattern.lastIndex = 0;
+      if (!dollarMatch) continue;
+
+      const totalAmount = parseFloat(dollarMatch[1].replace(/,/g, ''));
+      if (totalAmount <= 0 || totalAmount > 100_000_000) continue;
+
+      // Collect unmarked tickers in subsequent lines until next section break
+      const sectionTickers: string[] = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j].trim();
+        // Stop at section breaks
+        if (nextLine === '---' || nextLine === '' && lines[j - 1]?.trim() === '') break;
+        // Stop at another category header with dollar amount
+        if (/\(\d+%\s*=\s*\$[\d,]+\)/.test(nextLine)) break;
+        // Stop at next major category (INDIVIDUAL, CASH, SUMMARY, etc.)
+        if (/^(INDIVIDUAL|CASH|BONDS|CRYPTO|COMMODITIES|REAL\s*ESTATE)\s/.test(nextLine)) break;
+        // Extract ticker: a 2-5 char uppercase word at start of line, followed by em-dash/en-dash/hyphen/colon
+        const tickerMatch = nextLine.match(/^([A-Z]{2,5}(?:\.[A-Z])?)\s*[:—–-]/);
+        if (tickerMatch && !marked.has(tickerMatch[1]) && !NOT_TICKERS.has(tickerMatch[1]) && !seen.has(tickerMatch[1])) {
+          sectionTickers.push(tickerMatch[1]);
+        }
+      }
+
+      // Distribute total among unmarked tickers
+      if (sectionTickers.length > 0) {
+        const perTicker = Math.round(totalAmount / sectionTickers.length);
+        for (const sym of sectionTickers) {
+          seen.add(sym);
+          missing.push({ symbol: sym, amount: perTicker });
+        }
+      }
     }
   }
 

@@ -357,6 +357,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
     isDrainingRef.current = true;
 
     const drain = () => {
+      // If server sent corrected text (gapFill/validation), stop rendering
+      // the streamed version — prevents buttons from flashing/disappearing
+      // when the corrected text and streamed text swap mid-render.
+      if (correctedTextRef.current) {
+        isDrainingRef.current = false;
+        charQueueRef.current = [];
+        return;
+      }
+
       if (charQueueRef.current.length === 0) {
         isDrainingRef.current = false;
         if (streamDoneRef.current) streamDoneRef.current = false;
