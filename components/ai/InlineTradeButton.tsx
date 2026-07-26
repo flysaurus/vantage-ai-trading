@@ -43,9 +43,10 @@ export interface ChoiceSuggestion {
 // Matches: [RECOMMEND:SYMBOL:BUY/SELL:10] — with share count
 // Matches: [RECOMMEND:SYMBOL:BUY/SELL:$500] — with dollar amount
 // Matches: [RECOMMEND_CHOICE:CompanyName:BUY/SELL] — multiple candidates
+// Exchange suffix (.DE, .MX, etc.) is captured but stripped — only base US symbol is used.
 // These are stripped from visible text by AITab's rendering layer.
 
-const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
+const MARKER_PATTERN = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
 const CHOICE_MARKER_PATTERN = /\[RECOMMEND_CHOICE:(.+?):(BUY|SELL)\]/g;
 
 /**
@@ -63,9 +64,19 @@ export function parseSuggestions(
   MARKER_PATTERN.lastIndex = 0;
 
   for (const match of markdownContent.matchAll(MARKER_PATTERN)) {
-    const symbol = match[1].toUpperCase();
+    const rawSymbol = match[1].toUpperCase();
     const side = match[2] as 'BUY' | 'SELL';
     const quantityStr = match[3] || '';
+
+    // ── Exchange suffix stripping ──
+    // Multi-char suffixes (.DE, .MX, .SW, .LN, .PA etc.) = foreign exchange listing → strip
+    // Single-char suffixes (.B in BRK.B, .A in BRK.A) = legitimate US share classes → keep
+    const dotIdx = rawSymbol.lastIndexOf('.');
+    const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
+    const symbol = suffix.length >= 2 ? rawSymbol.slice(0, dotIdx) : rawSymbol;
+    if (symbol !== rawSymbol && process.env.NODE_ENV !== 'production') {
+      console.log('[parseSuggestions] Stripped exchange suffix:', rawSymbol, '→', symbol);
+    }
 
     // Parse optional quantity: "10" = shares, "$500" = dollar amount
     let suggestedShares: number | undefined;

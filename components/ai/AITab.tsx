@@ -876,17 +876,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 }
                 console.log('[chat] Marker corrections applied:', data.corrections);
               }
-              if (data.gapFill && data.correctedText) {
-                // Server detected multi-position allocation with missing markers —
-                // appended additional [RECOMMEND:...] markers. Use this corrected text.
-                correctedTextRef.current = data.correctedText;
-                // Extract gap-filled symbols and add to validSymbols whitelist
-                const gapMarkerRegex = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):/g;
-                for (const gm of data.correctedText.matchAll(gapMarkerRegex)) {
-                  correctedSymbolsRef.current.add(gm[1].toUpperCase());
-                }
-                console.log('[chat] Gap-fill: added missing buy markers for multi-position rec');
-              }
             } catch (e) {}
           }
         }
@@ -907,9 +896,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
       // Always sync marker symbols to validSymbols — prevents legitimate markers
       // (ETFs, ADRs) from being filtered out when symbols came from the original
       // AI response (not gap-fill) and validSymbols was populated from Finnhub.
-      const ALL_MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):/g;
+      const ALL_MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):/g;
       for (const m of finalContent.matchAll(ALL_MARKER_REGEX)) {
-        correctedSymbolsRef.current.add(m[1].toUpperCase());
+        // Strip exchange-code suffixes (.DE, .MX, etc.) — keep single-char (.B = BRK.B)
+        const raw = m[1].toUpperCase();
+        const dotIdx = raw.lastIndexOf('.');
+        const suffix = dotIdx >= 0 ? raw.slice(dotIdx + 1) : '';
+        const symbol = suffix.length >= 2 ? raw.slice(0, dotIdx) : raw;
+        correctedSymbolsRef.current.add(symbol);
       }
 
       // Capture symbols BEFORE clearing the ref — React state updaters run

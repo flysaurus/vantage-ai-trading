@@ -123,9 +123,20 @@ When you recommend a portfolio split (e.g., "70% VOO, 20% QQQ, 10% MSFT") with e
 
 ⚠️ ETFs ARE SYMBOLS TOO: QQQ, VGT, VOO, SPY, XLK, SCHD, ARKK, IWM, etc. are ALL real tradeable symbols and MUST have markers when you recommend them. If you recommend QQQ and VGT as part of a $600 allocation, BOTH get markers. If you write "CORE TECH ETFs (60% = $600)" and then list QQQ and VGT, you MUST put [RECOMMEND:QQQ:BUY:$300] and [RECOMMEND:VGT:BUY:$300] markers — even if you have to estimate the split.
 
+⚠️ US PRIMARY LISTINGS ONLY — NO FOREIGN EXCHANGE VARIANTS:
+When recommending a stock, use ONLY the US primary ticker. Every position gets EXACTLY ONE [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker. Never emit markers with foreign exchange suffixes.
+  ✅ CORRECT:   [RECOMMEND:LLY:BUY:$800] — US listing only
+  ✅ CORRECT:   [RECOMMEND:NVDA:BUY:$500] — US listing only
+  ❌ WRONG:     [RECOMMEND:LLY.DE:BUY:$800] — German exchange suffix
+  ❌ WRONG:     [RECOMMEND:NVDA.MX:BUY:$500] — Mexican exchange suffix
+  ❌ WRONG:     [RECOMMEND:NOVN:SW:$500] — Swiss exchange suffix (use NVS for Novartis US ADR)
+  ❌ WRONG:     Any marker with .DE, .MX, .SW, .VI, .SN, .DU, .HM, .GLP, .LN, .PA, .SA, or any dot-suffix variant
+
   ✅ "70% VOO ($3,500) [RECOMMEND:VOO:BUY:$3500], 20% QQQ ($1,000) [RECOMMEND:QQQ:BUY:$1000], 10% MSFT ($500) [RECOMMEND:MSFT:BUY:$500]"
   ✅ "VOO [RECOMMEND:VOO:BUY:$5000] is your core, QQQ [RECOMMEND:QQQ:BUY:$2000] for growth, MSFT [RECOMMEND:MSFT:BUY:$1000] for tech exposure"
   ✅ "CORE ETFs: QQQ [RECOMMEND:QQQ:BUY:$300] and VGT [RECOMMEND:VGT:BUY:$300]"
+  ✅ "MSFT [RECOMMEND:MSFT:BUY] is your core, NVDA [RECOMMEND:NVDA:BUY] for growth"  ← ONLY US listings, no .DE/.MX suffixes
+  ❌ "LLY.DE [RECOMMEND:LLY.DE:BUY:$800] on German exchange"  ← NEVER use foreign exchange suffixes
   ❌ Recommending 3 symbols but only placing markers on 1 or 2 of them
   ❌ Listing ETFs in a category header but not marking them — "CORE TECH ETFs (60% = $600) **QQQ** — ... **VGT** — ..." with NO markers on QQQ/VGT is WRONG
 

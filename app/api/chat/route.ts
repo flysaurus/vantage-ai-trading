@@ -32,6 +32,10 @@ const NOT_TICKERS = new Set([
   'A', 'I', 'O', 'USD', 'EST', 'LTD', 'INC', 'CORP', 'PLC', 'LLC', 'NYSE',
   'NASDAQ', 'SVS', 'USA', 'EUR', 'GBP', 'JPY', 'YTD', 'NYSEARCA',
   'BUY', 'SELL', 'HOLD', 'PUT', 'CALL', // trading verbs/options that look like 3-4 char tickers
+  // Exchange/country-code suffixes — prevent ghost buttons from foreign listings
+  'DE', 'MX', 'SW', 'VI', 'SN', 'DU', 'HM', 'GLP', 'LN', 'L', 'PA', 'SA',
+  'TO', 'CN', 'HK', 'JP', 'KR', 'BR', 'IN', 'AU', 'AS', 'AX', 'TA', 'OL',
+  // Note: "TO" is already blocked — a common preposition AND Toronto exchange suffix
 ]);
 
 // ─── Ticker extraction ──
@@ -99,115 +103,11 @@ function extractSearchTerm(text: string): string | null {
   return null;
 }
 
-// ─── Gap-fill missing markers for multi-position allocations ───
-// Detects explicit $ amount recommendations that lack [RECOMMEND:SYMBOL:BUY:$N] markers.
-const RECOMMEND_MARKER = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z])?):(BUY|SELL)(?::(\$?\d+(?:\.\d+)?))?\]/g;
-
-// Dollar-amount + ticker patterns where the model recommended but dropped the marker
-const DOLLAR_RECOMMEND_PATTERNS: Array<{ regex: RegExp; tickerGroup: number; amountGroup: number }> = [
-  // "$3,500 into VOO", "$500 in MSFT", "$1,000 of QQQ"
-  { regex: /\$([\d,]+(?:\.\d+)?)\s+(?:into|in|for|of|to|toward)\s+\b([A-Z]{2,5})\b/gi, tickerGroup: 2, amountGroup: 1 },
-  // "VOO ($3,500)", "MSFT ($500)"
-  { regex: /\b([A-Z]{2,5})\b\s*\(\$([\d,]+(?:\.\d+)?)\)/g, tickerGroup: 1, amountGroup: 2 },
-  // "VOO: $3,500", "QQQ — $1,000"
-  { regex: /\b([A-Z]{2,5})\b\s*[:—–-]\s*\$([\d,]+(?:\.\d+)?)\b/g, tickerGroup: 1, amountGroup: 2 },
-  // "allocate $3,500 to VOO", "put $500 in MSFT"
-  { regex: /(?:allocate|put|place|invest|direct|send)\s+\$([\d,]+(?:\.\d+)?)\s+(?:into|in|for|of|to|toward)\s+\b([A-Z]{2,5})\b/gi, tickerGroup: 2, amountGroup: 1 },
-];
-
-function fillMissingMarkers(text: string): string {
-  // Gather already-marked symbols
-  const marked = new Set<string>();
-  RECOMMEND_MARKER.lastIndex = 0;
-  for (const m of text.matchAll(RECOMMEND_MARKER)) {
-    marked.add(m[1].toUpperCase());
-  }
-
-  // Find unmarked symbols with explicit dollar-amount recommendations
-  const missing: Array<{ symbol: string; amount: number }> = [];
-  const seen = new Set<string>();
-
-  // ── Stage 1: Direct dollar-amount patterns (existing) ──
-  for (const { regex, tickerGroup, amountGroup } of DOLLAR_RECOMMEND_PATTERNS) {
-    regex.lastIndex = 0;
-    for (const m of text.matchAll(regex)) {
-      const symbol = m[tickerGroup].toUpperCase();
-      const amountStr = m[amountGroup].replace(/,/g, '');
-      const amount = parseFloat(amountStr);
-
-      if (marked.has(symbol) || seen.has(symbol)) continue;
-      if (NOT_TICKERS.has(symbol)) continue;
-      if (amount <= 0 || amount > 100_000_000) continue;
-
-      seen.add(symbol);
-      missing.push({ symbol, amount: Math.round(amount) });
-    }
-  }
-
-  // ── Stage 2: Category-level allocation detection ──
-  // Detects patterns like:
-  //   "CORE TECH ETFs (60% = $600)"
-  //   "**QQQ** — Invesco Nasdaq 100 ETF"   (bold ticker)
-  //   "VGT — Vanguard Information Technology ETF"
-  // Where the $ is at the category level and individual ETFs are unmarked.
-  //
-  // Strategy: find every (X% = $N) category header, extract text until the
-  // next section break, then find all unmarked tickers in that region.
-  if (missing.length === 0) {
-    const categoryDollarRe = /\(\d+%\s*=\s*\$([\d,]+(?:\.\d+)?)\)/g;
-    
-    // Build list of category headers with their position and dollar amount
-    const headers: Array<{ idx: number; amount: number }> = [];
-    for (const m of text.matchAll(categoryDollarRe)) {
-      const amount = parseFloat(m[1].replace(/,/g, ''));
-      if (amount > 0 && amount <= 100_000_000) {
-        headers.push({ idx: m.index!, amount });
-      }
-    }
-
-    // For each header, extract the region until the next break and find unmarked tickers
-    for (let h = 0; h < headers.length; h++) {
-      const startIdx = headers[h].idx;
-      const endIdx = h + 1 < headers.length ? headers[h + 1].idx : text.length;
-      let region = text.slice(startIdx, endIdx);
-
-      // Stop at common section break patterns within the region
-      const breakIdx = region.search(/\n---\n|\n\n(?:INDIVIDUAL|CASH|BONDS|CRYPTO|COMMODITIES|REAL\s*ESTATE|SUMMARY|KEY|BOTTOM|RISK|REBALANCE)\s/);
-      if (breakIdx !== -1) region = region.slice(0, breakIdx);
-
-      // Find ticker mentions in this region. Ticker = 2-5 uppercase chars
-      // preceded by word boundary (or ** for bold) and followed by
-      // em-dash, colon, newline, or description.
-      // Matches: "QQQ —", "**QQQ** —", "VGT:", "**VGT** —"
-      const tickerRe = /(?:\*\*)?\b([A-Z]{2,5}(?:\.[A-Z])?)\b(?:\*\*)?\s*[:—–-]/g;
-      const sectionTickers: string[] = [];
-      for (const tm of region.matchAll(tickerRe)) {
-        const sym = tm[1].toUpperCase();
-        if (marked.has(sym)) continue;
-        if (NOT_TICKERS.has(sym)) continue;
-        if (seen.has(sym)) continue;
-        seen.add(sym);
-        sectionTickers.push(sym);
-      }
-
-      if (sectionTickers.length > 0) {
-        const perTicker = Math.round(headers[h].amount / sectionTickers.length);
-        for (const sym of sectionTickers) {
-          missing.push({ symbol: sym, amount: perTicker });
-        }
-      }
-    }
-  }
-
-  if (missing.length === 0) return text;
-
-  // Append missing markers at the end (invisible markers — appended after a blank line)
-  const appendix = '\n\n' + missing
-    .map(({ symbol, amount }) => `[RECOMMEND:${symbol}:BUY:$${amount}]`)
-    .join(' ');
-
-  return text + appendix;
-}
+// NOTE: fillMissingMarkers() was removed — buttons now ONLY generated from
+// explicit [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers in the AI response text.
+// Prose-scanning heuristics were the root cause of ghost tickers (exchange
+// suffixes like DE/MX/SN), contradictory buttons (SPY when VOO is recommended),
+// and duplicate positions across foreign exchange listings.
 
 // ─── Common non-company capitalized words ──
 const FILTERED_PROPER_NOUNS = /^(This|That|What|When|Where|Why|Which|Whose|How|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never|Tell|Show|Find|Look|Check|Search|Give|Make|Take|Know|Think|Want|Need|Like|Love|Can|Will|Just|Also|Only|Even|Then|Than|Its|His|Her|Our|Been|Being|Having|Doing|Going|Getting)$/;
@@ -668,21 +568,10 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           console.error('[chat] Marker validation error:', valErr);
         }
 
-        // ── Fill missing markers for multi-position allocations ──
-        // When AI recommends N holdings with explicit $ amounts but emits < N markers,
-        // this detects the gap and appends the missing [RECOMMEND:SYMBOL:BUY:$N] markers.
-        try {
-          const filled = fillMissingMarkers(responseText);
-          if (filled !== responseText) {
-            console.log('[chat] 🔧 Filled missing markers for multi-position recommendation');
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ gapFill: true, correctedText: filled })}\n\n`)
-            );
-            responseText = filled;
-          }
-        } catch (fillErr) {
-          console.error('[chat] Marker gap-fill error:', fillErr);
-        }
+        // NOTE: fillMissingMarkers removed — buttons now ONLY from explicit
+        // [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers. Prose heuristics were the
+        // root cause of ghost tickers (exchange codes), contradictory buttons,
+        // and duplicate positions across foreign listings.
 
         // ── Post-stream: await DB write BEFORE closing the stream ──
         // Must complete before controller.close() so the client's
