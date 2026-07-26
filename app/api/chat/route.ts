@@ -123,6 +123,116 @@ function isFilteredWord(word: string): boolean {
   return FILTERED_PROPER_NOUNS.test(word);
 }
 
+// ─── Pre-flight company name extraction + resolution ───
+// Words that commonly appear in financial text but aren't company names
+const NOT_COMPANIES = new Set([
+  'NYSE', 'NASDAQ', 'STOCK', 'STOCKS', 'SHARE', 'SHARES', 'PRICE', 'PRICES',
+  'TRADE', 'TRADING', 'MARKET', 'MARKETS', 'INVEST', 'INVESTING', 'ANALYST',
+  'FUTURE', 'FUTURES', 'TODAY', 'QUARTERLY', 'ANNUAL', 'REPORT', 'REPORTS',
+  'GROWTH', 'VALUE', 'PROFIT', 'REVENUE', 'EARNINGS', 'DIVIDEND', 'YIELD',
+  'TECH', 'HEALTH', 'FINANCE', 'ENERGY', 'SECTOR', 'SECTORS', 'INDUSTRY',
+  'YAHOO', 'BLOOMBERG', 'REUTERS', 'BARRONS', 'FIDELITY', 'VANGUARD',
+  'RECOMMEND', 'RECOMMENDATION', 'ANALYSIS', 'OUTLOOK', 'FORECAST',
+  'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY',
+  'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
+  'PORTFOLIO', 'ALLOCATION', 'BUDGET', 'STRATEGY', 'RISK', 'BALANCE',
+  'COMPANY', 'CORPORATION', 'HOLDINGS', 'LIMITED', 'GROUP', 'LTD', 'CORP', 'INC',
+  'INTERNATIONAL', 'RESEARCH', 'MANAGEMENT', 'CAPITAL', 'PARTNERS',
+])
+
+/** Extract potential company names from text (search results, user message). */
+function extractCompanyNames(text: string): string[] {
+  const names = new Set<string>()
+  if (!text) return []
+  // Pattern: 2-3 word capitalized phrases ("Eli Lilly", "Novo Nordisk", "Goldman Sachs")
+  const multiWord = text.match(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){1,2})\b/g)
+  if (multiWord) {
+    for (const m of multiWord) {
+      if (!NOT_COMPANIES.has(m.toUpperCase()) && !FILTERED_PROPER_NOUNS.test(m) && m.length > 5) {
+        names.add(m)
+      }
+    }
+  }
+  // Pattern: company name followed by ticker in parens — "Eli Lilly and Company (LLY)"
+  const tickerPattern = text.matchAll(/([A-Z][a-z]{2,}(?:\s+(?:of|the|de|van|von|del|&|and)\s+)?[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\s*\(([A-Z]{1,5})\)/g)
+  for (const m of tickerPattern) {
+    if (!NOT_COMPANIES.has(m[1].toUpperCase())) names.add(m[1])
+  }
+  // Pattern: standalone capitalized words (single-word company names: "Pfizer", "Amgen")
+  const singleWord = text.match(/\b([A-Z][a-z]{3,})\b/g)
+  if (singleWord) {
+    for (const m of singleWord) {
+      if (!NOT_COMPANIES.has(m.toUpperCase()) && !FILTERED_PROPER_NOUNS.test(m) && m.length > 4) {
+        names.add(m)
+      }
+    }
+  }
+  return [...names].slice(0, 15)
+}
+
+/** Resolve a company name to its US ticker via Finnhub search (fast Phase 1 only). */
+async function resolveOneFast(name: string): Promise<{ symbol: string; name: string } | null> {
+  const key = process.env.FINNHUB_IO_API_KEY
+  if (!key) return null
+  try {
+    const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(name)}&token=${key}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.result?.length > 0) {
+      // Prefer US-exchange results
+      const usResult = data.result.find((r: any) =>
+        /^(NASDAQ|NYSE|AMEX|OTC|BATS|IEX)\b/i.test(r.exchange || '') &&
+        /^[A-Z]{1,5}(\.[A-Z])?$/.test(r.symbol)
+      )
+      if (usResult) return { symbol: usResult.symbol, name: usResult.description }
+      // Fallback: first result with valid US ticker format
+      const valid = data.result.find((r: any) => /^[A-Z]{1,5}(\.[A-Z])?$/.test(r.symbol))
+      if (valid) return { symbol: valid.symbol, name: valid.description }
+    }
+    return null
+  } catch { return null }
+}
+
+/** Pre-resolve company names to ticker symbols before the Anthropic call.
+ *  Prevents the tool loop from burning turns on one-by-one resolveSymbol calls. */
+async function preResolveTickers(
+  userMessage: string,
+  searchContext: string
+): Promise<Array<{ name: string; symbol: string }>> {
+  const fromSearch = extractCompanyNames(searchContext || '')
+  const fromUser = extractCompanyNames(userMessage)
+  // Deduplicate, sort longest-first (more specific names first)
+  const seen = new Set<string>()
+  const unique = [...fromSearch, ...fromUser].filter(n => {
+    const upper = n.toUpperCase()
+    if (seen.has(upper)) return false
+    seen.add(upper)
+    return true
+  }).sort((a, b) => b.length - a.length).slice(0, 10)
+
+  if (unique.length === 0) return []
+
+  console.log(`[chat] 🔍 Pre-resolving ${unique.length} company names: ${unique.join(', ')}`)
+
+  const BATCH_SIZE = 5
+  const resolved: Array<{ name: string; symbol: string }> = []
+  for (let i = 0; i < unique.length; i += BATCH_SIZE) {
+    const batch = unique.slice(i, i + BATCH_SIZE)
+    const results = await Promise.all(batch.map(async (name) => {
+      const r = await resolveOneFast(name)
+      return r ? { name, symbol: r.symbol } : null
+    }))
+    for (const r of results) { if (r) resolved.push(r) }
+    if (i + BATCH_SIZE < unique.length) await new Promise(r => setTimeout(r, 200))
+  }
+
+  if (resolved.length > 0) {
+    console.log(`[chat] ✅ Pre-resolved: ${resolved.map(r => `${r.name}→${r.symbol}`).join(', ')}`)
+  }
+  return resolved
+}
+
 // ─── Stage 0: DeepSeek Screening ───
 async function screenMessage(userMessage: string): Promise<{
   needsSearch: boolean
@@ -412,6 +522,21 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       }
     }
 
+    // ── Pre-flight symbol resolution: resolve company names from search results
+    // BEFORE the Anthropic call. This prevents the model from burning tool-loop
+    // turns on one-by-one resolveSymbol calls (the #1 cause of cut-off responses).
+    let preResolvedContext = ''
+    try {
+      const preResolved = await preResolveTickers(lastMessage, searchContext)
+      if (preResolved.length > 0) {
+        preResolvedContext = '\n🏷️ PRE-RESOLVED TICKER MAPPINGS (use these directly — DO NOT call resolveSymbol for names listed here):\n' +
+          preResolved.map(r => `  ${r.name} → ${r.symbol}`).join('\n') +
+          '\n\nOnly call resolveSymbol if you need a company NOT listed above.'
+      }
+    } catch (e) {
+      console.error('[chat] Pre-resolution error (non-fatal):', e)
+    }
+
     // ── Prompt Caching: static instructions cached, dynamic context not ──
     // CRITICAL: Inject authoritative server date — models do NOT know the real date
     const currentDate = new Date().toLocaleDateString('en-US', {
@@ -431,7 +556,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       },
       {
         type: 'text' as const,
-        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, deviationContext].filter(Boolean).join('\n\n'),
+        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext].filter(Boolean).join('\n\n'),
       },
     ];
 
