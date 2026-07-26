@@ -147,48 +147,52 @@ function fillMissingMarkers(text: string): string {
   // ── Stage 2: Category-level allocation detection ──
   // Detects patterns like:
   //   "CORE TECH ETFs (60% = $600)"
-  //   "QQQ — Invesco Nasdaq 100 ETF"
+  //   "**QQQ** — Invesco Nasdaq 100 ETF"   (bold ticker)
   //   "VGT — Vanguard Information Technology ETF"
   // Where the $ is at the category level and individual ETFs are unmarked.
   //
-  // Strategy: find dollar amounts in headers, then collect unmarked tickers
-  // in the following text up to the next section break (--- or blank line before another header).
+  // Strategy: find every (X% = $N) category header, extract text until the
+  // next section break, then find all unmarked tickers in that region.
   if (missing.length === 0) {
-    // Match category headers with dollar amounts: "NAME (X% = $N)" or "NAME $N"
-    const categoryDollarPattern = /\(\d+%\s*=\s*\$([\d,]+(?:\.\d+)?)\)/g;
-    const lines = text.split('\n');
+    const categoryDollarRe = /\(\d+%\s*=\s*\$([\d,]+(?:\.\d+)?)\)/g;
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const dollarMatch = categoryDollarPattern.exec(line);
-      categoryDollarPattern.lastIndex = 0;
-      if (!dollarMatch) continue;
+    // Build list of category headers with their position and dollar amount
+    const headers: Array<{ idx: number; amount: number }> = [];
+    for (const m of text.matchAll(categoryDollarRe)) {
+      const amount = parseFloat(m[1].replace(/,/g, ''));
+      if (amount > 0 && amount <= 100_000_000) {
+        headers.push({ idx: m.index!, amount });
+      }
+    }
 
-      const totalAmount = parseFloat(dollarMatch[1].replace(/,/g, ''));
-      if (totalAmount <= 0 || totalAmount > 100_000_000) continue;
+    // For each header, extract the region until the next break and find unmarked tickers
+    for (let h = 0; h < headers.length; h++) {
+      const startIdx = headers[h].idx;
+      const endIdx = h + 1 < headers.length ? headers[h + 1].idx : text.length;
+      let region = text.slice(startIdx, endIdx);
 
-      // Collect unmarked tickers in subsequent lines until next section break
+      // Stop at common section break patterns within the region
+      const breakIdx = region.search(/\n---\n|\n\n(?:INDIVIDUAL|CASH|BONDS|CRYPTO|COMMODITIES|REAL\s*ESTATE|SUMMARY|KEY|BOTTOM|RISK|REBALANCE)\s/);
+      if (breakIdx !== -1) region = region.slice(0, breakIdx);
+
+      // Find ticker mentions in this region. Ticker = 2-5 uppercase chars
+      // preceded by word boundary (or ** for bold) and followed by
+      // em-dash, colon, newline, or description.
+      // Matches: "QQQ —", "**QQQ** —", "VGT:", "**VGT** —"
+      const tickerRe = /(?:\*\*)?\b([A-Z]{2,5}(?:\.[A-Z])?)\b(?:\*\*)?\s*[:—–-]/g;
       const sectionTickers: string[] = [];
-      for (let j = i + 1; j < lines.length; j++) {
-        const nextLine = lines[j].trim();
-        // Stop at section breaks
-        if (nextLine === '---' || nextLine === '' && lines[j - 1]?.trim() === '') break;
-        // Stop at another category header with dollar amount
-        if (/\(\d+%\s*=\s*\$[\d,]+\)/.test(nextLine)) break;
-        // Stop at next major category (INDIVIDUAL, CASH, SUMMARY, etc.)
-        if (/^(INDIVIDUAL|CASH|BONDS|CRYPTO|COMMODITIES|REAL\s*ESTATE)\s/.test(nextLine)) break;
-        // Extract ticker: a 2-5 char uppercase word at start of line, followed by em-dash/en-dash/hyphen/colon
-        const tickerMatch = nextLine.match(/^([A-Z]{2,5}(?:\.[A-Z])?)\s*[:—–-]/);
-        if (tickerMatch && !marked.has(tickerMatch[1]) && !NOT_TICKERS.has(tickerMatch[1]) && !seen.has(tickerMatch[1])) {
-          sectionTickers.push(tickerMatch[1]);
-        }
+      for (const tm of region.matchAll(tickerRe)) {
+        const sym = tm[1].toUpperCase();
+        if (marked.has(sym)) continue;
+        if (NOT_TICKERS.has(sym)) continue;
+        if (seen.has(sym)) continue;
+        seen.add(sym);
+        sectionTickers.push(sym);
       }
 
-      // Distribute total among unmarked tickers
       if (sectionTickers.length > 0) {
-        const perTicker = Math.round(totalAmount / sectionTickers.length);
+        const perTicker = Math.round(headers[h].amount / sectionTickers.length);
         for (const sym of sectionTickers) {
-          seen.add(sym);
           missing.push({ symbol: sym, amount: perTicker });
         }
       }

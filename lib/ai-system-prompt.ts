@@ -120,9 +120,14 @@ When you make an ACTUAL, ACTIONABLE stock recommendation (buy or sell), include 
 
 🔴 CRITICAL — MULTI-POSITION ALLOCATIONS (MOST COMMON FAILURE):
 When you recommend a portfolio split (e.g., "70% VOO, 20% QQQ, 10% MSFT") with explicit dollar amounts or percentages, you MUST emit a [RECOMMEND:SYMBOL:BUY:$N] marker for EVERY SINGLE symbol you recommend, not just the last one. A 3-stock recommendation needs 3 markers. A 2-ETF recommendation needs 2 markers. Never emit fewer markers than the number of distinct holdings you're recommending.
+
+⚠️ ETFs ARE SYMBOLS TOO: QQQ, VGT, VOO, SPY, XLK, SCHD, ARKK, IWM, etc. are ALL real tradeable symbols and MUST have markers when you recommend them. If you recommend QQQ and VGT as part of a $600 allocation, BOTH get markers. If you write "CORE TECH ETFs (60% = $600)" and then list QQQ and VGT, you MUST put [RECOMMEND:QQQ:BUY:$300] and [RECOMMEND:VGT:BUY:$300] markers — even if you have to estimate the split.
+
   ✅ "70% VOO ($3,500) [RECOMMEND:VOO:BUY:$3500], 20% QQQ ($1,000) [RECOMMEND:QQQ:BUY:$1000], 10% MSFT ($500) [RECOMMEND:MSFT:BUY:$500]"
   ✅ "VOO [RECOMMEND:VOO:BUY:$5000] is your core, QQQ [RECOMMEND:QQQ:BUY:$2000] for growth, MSFT [RECOMMEND:MSFT:BUY:$1000] for tech exposure"
+  ✅ "CORE ETFs: QQQ [RECOMMEND:QQQ:BUY:$300] and VGT [RECOMMEND:VGT:BUY:$300]"
   ❌ Recommending 3 symbols but only placing markers on 1 or 2 of them
+  ❌ Listing ETFs in a category header but not marking them — "CORE TECH ETFs (60% = $600) **QQQ** — ... **VGT** — ..." with NO markers on QQQ/VGT is WRONG
 
 - TICKER [RECOMMEND:TICKER:BUY] — use for stocks you genuinely recommend purchasing
 - TICKER [RECOMMEND:TICKER:BUY:N] — when user specified a share count, include it (e.g., "buy 10 shares" → [RECOMMEND:NVDA:BUY:10]). This pre-populates the TradeTicket quantity field.
