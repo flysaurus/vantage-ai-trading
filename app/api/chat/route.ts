@@ -532,7 +532,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let turn = 0;
-        const MAX_TOOL_TURNS = 5; // allow enough turns for complex portfolios with many symbols
+        const MAX_TOOL_TURNS = 8; // enough for complex portfolios with many symbol lookups (pharma, minerals, etc.)
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
 
@@ -624,6 +624,27 @@ CRITICAL: Use these live prices for any current-price questions. They override b
             });
           }
           turn++;
+
+          // ── Turn-exhaustion warning: inject a system message when model is burning
+          // through turns without producing any RECOMMEND markers yet ──
+          const accumulatedText = fullResponse.join('');
+          const hasAnyRecs = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(accumulatedText);
+          if (!hasAnyRecs) {
+            const remaining = MAX_TOOL_TURNS - turn;
+            if (remaining === 3) {
+              console.log(`[chat] ⚠️ Turn ${turn}/${MAX_TOOL_TURNS} — no markers yet. Injecting batch warning (${remaining} turns remain)`);
+              convMessages.push({
+                role: 'user' as const,
+                content: [{ type: 'text' as const, text: `[SYSTEM] You have used ${turn}/${MAX_TOOL_TURNS} allowed tool turns and have NOT produced any [RECOMMEND:...] markers yet. IF you need more symbol lookups, call ALL of them in ONE message — batch them. If you run out of turns before producing markers, the user will only see your partial text.` }],
+              });
+            } else if (remaining === 1) {
+              console.log(`[chat] 🔴 Turn ${turn}/${MAX_TOOL_TURNS} — URGENT: 1 turn remaining, no markers yet`);
+              convMessages.push({
+                role: 'user' as const,
+                content: [{ type: 'text' as const, text: `[SYSTEM] ⚠️ URGENT — ${remaining} turn remaining out of ${MAX_TOOL_TURNS}, and you have produced ZERO [RECOMMEND:...] markers. Do NOT call any more tools. Produce your full recommendation with markers NOW. If you fail to emit markers this turn, the user will see only partial/incomplete text.` }],
+              });
+            }
+          }
         } while (turn < MAX_TOOL_TURNS);
 
         let responseText = fullResponse.join('');
@@ -765,7 +786,6 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         } catch (e) {
           console.error('[chat] deviation detection error:', e)
         }
-      }
 
         } catch (streamError: any) {
           // Catch any unhandled exception inside the streaming pipeline.

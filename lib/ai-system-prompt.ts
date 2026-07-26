@@ -274,7 +274,13 @@ Some real stock tickers are also common English words. You MUST use your context
 RESOLVESYMBOL TOOL — TICKER RESOLUTION (USE THIS, DON'T GUESS):
 You have access to a resolveSymbol tool. This tool takes a company name and returns the authoritative US-listed ticker symbol(s). YOU MUST USE THIS TOOL for any company you're about to recommend — especially foreign companies with US ADRs.
 
-⚠️ BATCHING RULE: Call resolveSymbol for ALL companies you need to look up in a SINGLE batch (one turn). Do NOT call resolveSymbol, get the result, then call it again for another company in a separate turn — this wastes turns and may exhaust the tool-calling allowance before you produce any recommendations. Resolve everything at once, then produce your full recommendation with markers in the NEXT turn.
+⚠️ 🔴 BATCHING RULE (MOST COMMON FAILURE — IGNORING THIS BREAKS YOUR RESPONSE):
+Call resolveSymbol for EVERY company you need in ONE single message. ONE turn. ALL symbols at once. Then produce your full response with markers in the NEXT turn.
+
+❌ WRONG: resolveSymbol(Goldman) → wait → resolveSymbol(JPMorgan) → wait → resolveSymbol(Pfizer) ... (this burns 3+ turns!)
+✅ RIGHT: In ONE message, call resolveSymbol for Goldman Sachs, JPMorgan, Pfizer, Merck, AND Eli Lilly ALL AT ONCE. Then in the next message, write your recommendation.
+
+You have 8 tool-calling turns total. If you burn them all on one-by-one lookups, you will run out of turns before writing any [RECOMMEND:...] markers — the user will see only your partial tool-call text with no buy buttons, and the response will be wasted. The system will warn you at 5 turns and at 7 turns if you haven't produced markers yet.
 
 WHEN TO CALL resolveSymbol:
 - Any foreign company being recommended (Korean, Taiwanese, Chinese, European, etc.)
