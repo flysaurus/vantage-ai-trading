@@ -658,7 +658,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // (clarifying questions, informational replies, "I can't recommend X" prose) are
         // skipped — they aren't recommendations and shouldn't be validated as such.
         let validationRejected = false;
-        const hasRecommendMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:/i.test(responseText);
+        const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(responseText);
         if (requestedBudget !== null && hasRecommendMarkers) {
           try {
             const strictValidation = await validateRecommendations(responseText, requestedBudget);
