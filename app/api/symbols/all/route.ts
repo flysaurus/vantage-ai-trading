@@ -1,6 +1,6 @@
 // ─── GET /api/symbols/all — Full US stock symbol list (cached, 24h TTL) ──────
 // Client fetches once per session for client-side symbol validation.
-// Response: { symbols: string[] }
+// Response: { symbols: string[], symbolNames: Record<string, string>, count: number }
 
 import { NextResponse } from 'next/server';
 import { getCachedSymbols } from '@/lib/symbol-validator';
@@ -10,9 +10,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const symbols = await getCachedSymbols();
+    const { symbols, symbolNames } = await getCachedSymbols();
     return NextResponse.json({
       symbols,
+      symbolNames: Object.fromEntries(symbolNames),
       count: symbols.length,
       cached: symbols.length > 0,
     });

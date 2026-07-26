@@ -13,7 +13,8 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, stripRecommendationMarkers, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { SummaryCard } from '@/components/ai/SummaryCard';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
@@ -211,6 +212,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // Passed to parseSuggestions to filter false positives ("I", "A", common words)
   // Finnhub source → server-side 24h cache → client fetches once per session
   const [validSymbols, setValidSymbols] = useState<Set<string> | null>(null);
+  const [symbolNames, setSymbolNames] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -220,6 +222,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
         if (data.symbols && Array.isArray(data.symbols) && !cancelled) {
           setValidSymbols(new Set(data.symbols));
+          if (data.symbolNames) {
+            setSymbolNames(new Map(Object.entries(data.symbolNames)));
+          }
         }
       } catch {
         // Silent — symbol validation degrades gracefully (allows all if unavailable)
@@ -1466,6 +1471,25 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                         {tldr}
                       </div>
                     ) : (
+                      <>
+                        {/* Summary card: TL;DR + allocation table above prose */}
+                        {(() => {
+                          if (tier === 'silver') return null;
+                          const suggestions = parseSuggestions(msg.content, validSymbols);
+                          if (suggestions.length === 0) return null;
+                          const tldrText = parseSummaryTLDR(msg.content);
+                          if (!tldrText) return null;
+                          return (
+                            <SummaryCard
+                              tldr={tldrText}
+                              suggestions={suggestions}
+                              symbolNames={symbolNames}
+                              proseText={msg.content}
+                              enabled={tier !== 'silver'}
+                              onTrade={handleTradeAction}
+                            />
+                          );
+                        })()}
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -1485,6 +1509,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       >
                         {stripRecommendationMarkers(msg.content)}
                       </ReactMarkdown>
+                      </>
                     )}
                   </>
                 );

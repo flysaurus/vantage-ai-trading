@@ -152,11 +152,21 @@ export function parseChoiceSuggestions(markdownContent: string): ChoiceSuggestio
   return results;
 }
 
+/**
+ * Extract the TL;DR summary from [SUMMARY_TLDR:...] marker.
+ * Returns null if no marker found.
+ */
+export function parseSummaryTLDR(markdownContent: string): string | null {
+  const match = markdownContent.match(/\[SUMMARY_TLDR:(.+?)\]/);
+  return match ? match[1].trim() : null;
+}
+
 /** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
   let result = text
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
+    .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text
     // Remove JSON candidate blocks that follow choice markers
     .replace(/```json\s*\n?\{[\s\S]*?"candidates"[\s\S]*?\}\s*\n?```/g, '')
     .replace(/\s+,/g, ',')  // fix "MSFT , NVDA" → "MSFT, NVDA"

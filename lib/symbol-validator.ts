@@ -124,10 +124,16 @@ export async function filterValidSymbols(candidates: string[]): Promise<string[]
   return candidates.filter(s => cache.has(s.toUpperCase().trim()));
 }
 
-/** Get the full symbol set (for client-side one-time loading). */
-export async function getCachedSymbols(): Promise<string[]> {
+/** Get the full symbol set AND name map (for client-side one-time loading). */
+export async function getCachedSymbols(): Promise<{
+  symbols: string[];
+  symbolNames: Map<string, string>;
+}> {
   const cache = await loadSymbolCache();
-  return Array.from(cache).sort();
+  return {
+    symbols: Array.from(cache).sort(),
+    symbolNames: _symbolNameMap || new Map(),
+  };
 }
 
 /** Force refresh the symbol cache (e.g., from a cron job). */
