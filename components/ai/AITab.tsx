@@ -355,7 +355,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const streamDoneRef = useRef(false);
   const correctedTextRef = useRef<string | null>(null);
   const validationRejectRef = useRef<any>(null); // stores regenerate/fatalValidationFailure event
-  const skipFinallyRef = useRef(false); // flag to skip double-counting on retry
   // Symbols corrected by server-side validator — force-allow in client validation
   const correctedSymbolsRef = useRef<Set<string>>(new Set());
 
@@ -855,7 +854,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       streamDoneRef.current = false;
       correctedTextRef.current = null;
       validationRejectRef.current = null;
-      skipFinallyRef.current = false;
       correctedSymbolsRef.current = new Set();
 
       setMessages(prev => [...prev, { role: 'ai', content: '' }]);
@@ -958,8 +956,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
           // Auto-retry: remove the rejected message, resend with retry params
           console.log('[chat] Validation failed — auto-regenerating...');
           setMessages(prev => prev.slice(0, -1)); // Remove rejected AI message
-          // Prevent outer finally from double-counting this failed attempt
-          skipFinallyRef.current = true;
           // Reset loading so the recursive sendMessage call passes its guard check
           setLoading(false);
           // Small delay to let React flush the loading state
@@ -1026,28 +1022,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
       }
     } finally {
-      // Skip counting/saving on regeneration (the retry's finally block handles it)
-      if (skipFinallyRef.current) {
-        skipFinallyRef.current = false;
-        setLoading(false);
-        return;
-      }
       setLoading(false);
       incrementMessageCount();
       refreshRemaining();
       if (userId) {
         try {
           // Await both saves before anything else — prevents losing the last message on refresh
-          await saveChatMessage(userId, 'user', content);
+          const userSaved = await saveChatMessage(userId, 'user', content).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
           if (lastAiResponseRef.current) {
-            await saveChatMessage(userId, 'assistant', lastAiResponseRef.current);
+            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
+            console.log('[AITab] Saved: user=', !!userSaved, 'ai=', !!aiSaved);
             setLastAIResponse(lastAiResponseRef.current);
             lastAiResponseRef.current = '';
             // Refresh session list after saving to DB
             fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); }).catch(() => {});
           }
-        } catch (e) {
-          console.error('[AITab] save message failed:', e);
+        } catch (e: any) {
+          console.error('[AITab] save message exception:', e?.message || e);
           // Still clear refs so we don't leak stale data
           if (lastAiResponseRef.current) {
             setLastAIResponse(lastAiResponseRef.current);
