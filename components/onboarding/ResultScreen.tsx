@@ -13,8 +13,7 @@ import { getStyleContent, getStyleTrait, getStyleTag, ALL_STYLES, PILL_TRAITS } 
 import { RISK_COLORS, RISK_LABELS } from '@/lib/onboarding/quiz-logic';
 import { CompassBurst } from '@/lib/animations/compass-burst';
 import { useTypewriter } from '@/lib/animations/typewriter';
-import { ShareCardModal } from '@/components/sharing/ShareCardModal';
-import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
+
 import type { QuizResult } from '@/lib/onboarding/quiz-logic';
 
 interface ResultScreenProps {
@@ -26,7 +25,7 @@ interface ResultScreenProps {
 export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
   const [selectedStyle, setSelectedStyle] = useState<InvestorStyle>(result.style);
   const [phase, setPhase] = useState<'burst' | 'reveal' | 'stats' | 'done'>('burst');
-  const [showShareModal, setShowShareModal] = useState(false);
+
 
   // ── DIAGNOSTIC: Log mount ────────────────────────────────
   useEffect(() => {
@@ -317,36 +316,13 @@ export function ResultScreen({ result, userName, onEnter }: ResultScreenProps) {
                 Enter Vantage →
               </button>
 
-              <button
-                onClick={() => setShowShareModal(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#22d3ee',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  marginTop: '12px',
-                  padding: '8px 16px',
-                }}
-              >
-                Share your style ↗
-              </button>
+
             </>
           )}
         </>
       )}
 
-      {/* Share Modal */}
-      <ShareCardModal
-        open={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        styleId={selectedStyle as ShareStyleId}
-        score={0}
-        level="Apprentice"
-        riskTolerance={result.risk}
-        userName={userName}
-      />
+
 
       <style>{`
         @keyframes scaleInSpring {

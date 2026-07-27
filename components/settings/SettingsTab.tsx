@@ -6,9 +6,7 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { ShareCardModal } from '@/components/sharing/ShareCardModal';
-import type { ShareStyleId } from '@/components/sharing/StyleShareCard';
-import type { Level } from '@/lib/theme/tokens';
+
 import { useInvestorScore } from '@/hooks/useInvestorScore';
 import { getDemoStatus } from '@/lib/demo-utils';
 import { isLearningEnabled, setLearningEnabled as saveLearningPref } from '@/lib/learning/preferences';
@@ -51,7 +49,7 @@ export function SettingsTab() {
   });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [showShareModal, setShowShareModal] = useState(false);
+
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const { score, level } = useInvestorScore();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -388,7 +386,6 @@ export function SettingsTab() {
 
         {/* Style + Score row */}
         <div
-          onClick={() => setShowShareModal(true)}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -397,7 +394,6 @@ export function SettingsTab() {
             background: '#1a2235',
             borderRadius: '0 0 10px 10px',
             minHeight: '52px',
-            cursor: 'pointer',
           }}
         >
           <div>
@@ -414,25 +410,7 @@ export function SettingsTab() {
           <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>
         </div>
 
-        {/* View & Share Card button */}
-        <button
-          onClick={() => setShowShareModal(true)}
-          style={{
-            width: '100%',
-            padding: '12px 0',
-            borderRadius: '10px',
-            border: 'none',
-            background: '#22d3ee',
-            color: '#0a0f1e',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            marginTop: '8px',
-            marginBottom: '8px',
-          }}
-        >
-          View &amp; Share Style Card
-        </button>
+
 
         {/* Retake Quiz */}
         <button
@@ -1050,15 +1028,7 @@ export function SettingsTab() {
         </>
       )}
 
-      {/* Share Card Modal */}
-      <ShareCardModal
-        open={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        styleId={selectedStyle as ShareStyleId}
-        score={score}
-        level={level as Level}
-        riskTolerance={riskLevel}
-      />
+
     </>
   );
 }

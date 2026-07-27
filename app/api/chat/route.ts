@@ -340,18 +340,11 @@ interface BudgetGateResult {
 /** Extract a dollar budget from the user's message. */
 function extractRequestedBudget(message: string): number | null {
   // Match: "$500 portfolio", "$500 basket", "$500 worth", "$500 in stocks", etc.
-  const dollarMatch = message.match(/\
-$([\
-d,]+(?:\
-.\
-d+)?)\s*(?:portfolio|basket|worth|in|of|budget|total|invest|allocate|spend|split|across|each|pick|choose|buy|build)/i);
+  const dollarMatch = message.match(/\$([\d,]+(?:\.\d+)?)\s*(?:portfolio|basket|worth|in|of|budget|total|invest|allocate|spend|split|across|each|pick|choose|buy|build)/i);
   if (dollarMatch) return parseFloat(dollarMatch[1].replace(/,/g, ''));
 
   // Match: "500 dollar portfolio", "500 portfolio", "500 budget"
-  const numMatch = message.match(/([\
-d,]+(?:\
-.\
-d+)?)\s*(?:dollar|portfolio|basket|budget)\b/i);
+  const numMatch = message.match(/([\d,]+(?:\.\d+)?)\s*(?:dollar|portfolio|basket|budget)\b/i);
   if (numMatch) return parseFloat(numMatch[1].replace(/,/g, ''));
 
   // Match bare $N in context: "$500", "$1,000"
