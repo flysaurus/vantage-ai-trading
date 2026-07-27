@@ -8,7 +8,7 @@
 // VALIDATION: All marker suggestions are validated against a cached Set of real
 //   US stock symbols loaded from Finnhub on mount (catches hallucinated tickers).
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 
 // ── Extraction ───────────────────────────────────────────────
@@ -182,6 +182,22 @@ export function stripRecommendationMarkers(text: string): string {
 
 // ── Component ────────────────────────────────────────────────
 
+/**
+ * Mark a trade as executed — stores the marker key in localStorage
+ * so all InlineTradeButton instances reflect the greyed-out state.
+ * Call this from the TradeTicket onConfirm handler after a real order submission.
+ */
+export function markMarkerExecuted(symbol: string, side: 'BUY' | 'SELL'): void {
+  if (typeof window === 'undefined') return;
+  const executedKey = `${symbol}:${side}`;
+  try {
+    const raw = localStorage.getItem('vantage_executed_markers');
+    const set = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+    set.add(executedKey);
+    localStorage.setItem('vantage_executed_markers', JSON.stringify([...set]));
+  } catch { /* degrade silently */ }
+}
+
 interface InlineTradeButtonProps {
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -201,13 +217,43 @@ export function InlineTradeButton({
   symbol, side, suggestedShares, suggestedAmount, enabled, onTrade, executed,
 }: InlineTradeButtonProps) {
   const [tapped, setTapped] = useState(false);
+  const executedKey = `${symbol}:${side}`;
+
+  // ── Persistent executed-state check ──
+  // After a real trade submission, the marker stays greyed out with a ✓
+  // Survives page reloads via localStorage, persists across chat history
+  const [isExecuted, setIsExecuted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const raw = localStorage.getItem('vantage_executed_markers');
+      if (raw) {
+        const set = new Set<string>(JSON.parse(raw));
+        return set.has(executedKey);
+      }
+    } catch {}
+    return false;
+  });
+
+  // Listen for cross-component execution events (when TradeTicket confirms an order)
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === 'vantage_executed_markers' && e.newValue) {
+        try {
+          const set = new Set<string>(JSON.parse(e.newValue));
+          if (set.has(executedKey)) setIsExecuted(true);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, [executedKey]);
 
   const handleClick = useCallback(() => {
-    if (!enabled || executed) return;
+    if (!enabled || executed || isExecuted) return;
     setTapped(true);
     onTrade(symbol, side, suggestedShares, suggestedAmount);
     setTimeout(() => setTapped(false), 600);
-  }, [enabled, executed, symbol, side, suggestedShares, suggestedAmount, onTrade]);
+  }, [enabled, executed, isExecuted, symbol, side, suggestedShares, suggestedAmount, onTrade]);
 
   if (!enabled) return null;
 
@@ -238,18 +284,20 @@ export function InlineTradeButton({
   }
 
   const isBuy = side === 'BUY';
-  const color = isBuy ? '#10b981' : '#ef4444';
-  const bg = isBuy
-    ? 'rgba(16,185,129,0.12)'
-    : 'rgba(239,68,68,0.12)';
-  const border = isBuy
-    ? 'rgba(16,185,129,0.35)'
-    : 'rgba(239,68,68,0.35)';
+  const effectiveExecuted = !!(executed || isExecuted);
+  const color = effectiveExecuted ? '#475569' : isBuy ? '#10b981' : '#ef4444';
+  const bg = effectiveExecuted
+    ? 'rgba(71,85,105,0.08)'
+    : isBuy ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+  const border = effectiveExecuted
+    ? 'rgba(71,85,105,0.2)'
+    : isBuy ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)';
 
   return (
     <button
       onClick={handleClick}
-      disabled={tapped}
+      disabled={tapped || effectiveExecuted}
+      title={effectiveExecuted ? 'Order already submitted' : `${side} ${symbol}`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -261,16 +309,18 @@ export function InlineTradeButton({
         fontSize: '11px',
         fontWeight: 700,
         padding: '3px 8px',
-        cursor: enabled ? 'pointer' : 'default',
+        cursor: effectiveExecuted ? 'default' : enabled ? 'pointer' : 'default',
         fontFamily: 'inherit',
         transition: 'all 0.15s ease',
         letterSpacing: '0.03em',
+        opacity: effectiveExecuted ? 0.5 : 1,
+        textDecoration: effectiveExecuted ? 'line-through' : 'none',
       }}
     >
       <span style={{ fontSize: '10px' }}>
-        {isBuy ? '💰' : '📤'}
+        {effectiveExecuted ? '✅' : isBuy ? '💰' : '📤'}
       </span>
-      {isBuy ? 'BUY' : 'SELL'} {symbol}
+      {effectiveExecuted ? `${side} ${symbol}` : `${isBuy ? 'BUY' : 'SELL'} ${symbol}`}
     </button>
   );
 }

@@ -13,7 +13,7 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -198,6 +198,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [budgetWarnings, setBudgetWarnings] = useState<any>(null); // budget gate violations
+  const [showBudgetWarning, setShowBudgetWarning] = useState(false);
 
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
@@ -943,6 +945,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 // Server-side stream crashed — store error for display
                 validationRejectRef.current = data;
                 console.error('[chat] Fatal stream error received:', data.message);
+              }
+              if (data.budgetViolation) {
+                // Budget gate flagged the portfolio total as outside ±2% of requested budget
+                // Show a warning banner on the LAST AI message
+                setBudgetWarnings(data.budgetViolation);
+                console.warn('[chat] Budget violation:', data.budgetViolation.message);
               }
             } catch (e) {}
           }
@@ -1721,6 +1729,56 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         )}
       </div>
 
+      {/* ── Budget violation warning banner ── */}
+      {budgetWarnings && (
+        <div style={{
+          margin: '0 16px 0 16px',
+          padding: '10px 14px',
+          background: 'rgba(239,68,68,0.12)',
+          border: '1px solid rgba(239,68,68,0.3)',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '8px',
+        }}>
+          <span style={{ fontSize: '14px', flexShrink: 0 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <p style={{
+              fontSize: '12px',
+              color: '#fca5a5',
+              fontWeight: 600,
+              margin: '0 0 4px 0',
+              lineHeight: '1.4',
+            }}>
+              Budget Mismatch
+            </p>
+            <p style={{
+              fontSize: '11px',
+              color: 'rgba(255,255,255,0.7)',
+              margin: 0,
+              lineHeight: '1.5',
+            }}>
+              {budgetWarnings.message || 'The generated portfolio total differs from your requested budget.'}
+            </p>
+          </div>
+          <button
+            onClick={() => setBudgetWarnings(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.4)',
+              fontSize: '16px',
+              cursor: 'pointer',
+              padding: '0 4px',
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ======== MESSAGE THREAD END ======== */}
       </div>
 
@@ -2333,6 +2391,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               }),
             }).catch(e => console.error('[marker-exec] Record failed:', e));
           }
+          // Also update localStorage for InlineTradeButton component persistence
+          markMarkerExecuted(tradeTicket.symbol, tradeTicket.side);
         }}
       />
 

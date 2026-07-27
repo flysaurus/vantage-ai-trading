@@ -151,7 +151,8 @@ function nameOverlaps(result: RawResult, companyName: string): boolean {
   return [...queryWords].filter(w => descWords.has(w)).length > 0;
 }
 
-/** Enrich a result with profile2 data; falls back to search data for OTC. */
+/** Enrich a result with profile2 data; falls back to search data for OTC.
+ * Returns null if the stock is confirmed delisted, bankrupt, or has no exchange. */
 async function enrich(r: RawResult, key: string): Promise<Candidate | null> {
   try {
     const res = await fetch(
@@ -161,10 +162,33 @@ async function enrich(r: RawResult, key: string): Promise<Candidate | null> {
     if (res.ok) {
       const p = await res.json();
       if (p.name && p.ticker && US_TICKER_RE.test(p.ticker || '')) {
+        // ── Delisting guard: reject symbols with null/empty exchange ──
+        // Finnhub returns exchange=null or exchange='' for delisted/bankrupt stocks
+        // (e.g., AFIIQ — Armstrong Flooring Inc, delisted after Chapter 11).
+        // Also reject known OTC-markets that host bankrupt shells.
+        const exchange = (p.exchange || '').trim();
+        if (!exchange) {
+          console.warn(`[resolveSymbol] Rejected ${r.symbol}: empty exchange (likely delisted/bankrupt)`);
+          return null;
+        }
+        // Additional safety: Finnhub sometimes returns stale profiles where
+        // the ticker field doesn't match the search result. Filter those.
+        if (p.ticker !== r.symbol && p.ticker !== r.displaySymbol) {
+          console.warn(`[resolveSymbol] Rejected ${r.symbol}: profile ticker mismatch (${p.ticker})`);
+          return null;
+        }
         return { symbol: p.ticker, name: p.name, exchange: p.exchange || 'Unknown', type: r.type };
       }
     }
   } catch { /* fall through */ }
+  // ── Fallback: use search result data but check for minimum viability ──
+  const symbol = r.symbol;
+  // Reject symbols that look like OTC bankrupt shells:
+  //   - 5-character tickers ending in Q (Chapter 11 bankruptcy indicator)
+  if (symbol.length === 5 && symbol.endsWith('Q')) {
+    console.warn(`[resolveSymbol] Rejected ${symbol}: ends with Q (bankruptcy indicator)`);
+    return null;
+  }
   return { symbol: r.symbol, name: r.description || '', exchange: 'Unknown', type: r.type };
 }
 

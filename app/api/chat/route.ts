@@ -325,6 +325,106 @@ DO NOT mention that you searched, found, or looked up this information. State fi
   }
 }
 
+// ─── Budget Gate: Portfolio Generation Reconciliation ───
+// Extracts the user's requested budget from their message and compares
+// it against the AI-generated portfolio total. Rejects anything outside ±2%.
+
+interface BudgetGateResult {
+  hasViolation: boolean;
+  requestedBudget: number | null;
+  responseTotal: number | null;
+  deviationPercent: number | null;
+  message: string | null;
+}
+
+/** Extract a dollar budget from the user's message. */
+function extractRequestedBudget(message: string): number | null {
+  // Match: "$500 portfolio", "$500 basket", "$500 worth", "$500 in stocks", etc.
+  const dollarMatch = message.match(/\
+$([\
+d,]+(?:\
+.\
+d+)?)\s*(?:portfolio|basket|worth|in|of|budget|total|invest|allocate|spend|split|across|each|pick|choose|buy|build)/i);
+  if (dollarMatch) return parseFloat(dollarMatch[1].replace(/,/g, ''));
+
+  // Match: "500 dollar portfolio", "500 portfolio", "500 budget"
+  const numMatch = message.match(/([\
+d,]+(?:\
+.\
+d+)?)\s*(?:dollar|portfolio|basket|budget)\b/i);
+  if (numMatch) return parseFloat(numMatch[1].replace(/,/g, ''));
+
+  // Match bare $N in context: "$500", "$1,000"
+  const bareDollar = message.match(/\$([\d,]+(?:\\.\d+)?)\b/);
+  if (bareDollar) {
+    const val = parseFloat(bareDollar[1].replace(/,/g, ''));
+    // Only consider it a budget if it's a round number ≥ $50 (avoids "$12.50 earnings")
+    if (val >= 50 && val % 10 === 0) return val;
+  }
+
+  return null;
+}
+
+/** Extract total portfolio value from the AI's response. */
+function extractResponseTotal(response: string): number | null {
+  // Pattern 1: Explicit total line — "Total: $800", "**Total** $800", "TOTAL: $1,234.56"
+  const totalMatch = response.match(/(?:total|TOTAL|Total Portfolio|Sum|Portfolio Value|Grand Total|portfolio total)\s*(?:[:$]|is)\s*\$?([\d,]+(?:\.\d+)?)/i);
+  if (totalMatch) return parseFloat(totalMatch[1].replace(/,/g, ''));
+
+  // Pattern 2: "Total:" preceded by "6 positions totaling $800"
+  const positionsMatch = response.match(/(?:positions?|stocks?|holdings?)\s*(?:totaling|totalling|worth|valued? at|at)\s*\$?([\d,]+(?:\.\d+)?)\b/i);
+  if (positionsMatch) return parseFloat(positionsMatch[1].replace(/,/g, ''));
+
+  // Pattern 3: Sum all dollar amounts in table rows and take the largest
+  // (the total is usually the largest figure in a portfolio response)
+  const dollarAmounts = [...response.matchAll(/\$([\d,]+(?:\.\d+)?)\b/g)];
+  if (dollarAmounts.length >= 3) {
+    const amounts = dollarAmounts.map(m => parseFloat(m[1].replace(/,/g, '')));
+    const sorted = [...amounts].sort((a, b) => b - a);
+    // Skip obvious stock prices (>5% of max for individual positions)
+    const max = sorted[0];
+    // Count how many amounts are close to the max — if there's a clear top value
+    // that's >2x the next value, it's likely the total
+    if (sorted.length >= 4 && max > sorted[1] * 1.5) {
+      return max;
+    }
+  }
+
+  return null;
+}
+
+/** Validate portfolio totals against requested budget (±2% threshold). */
+function validateBudgetGate(userMessage: string, aiResponse: string): BudgetGateResult {
+  const requestedBudget = extractRequestedBudget(userMessage);
+  if (!requestedBudget) {
+    return { hasViolation: false, requestedBudget: null, responseTotal: null, deviationPercent: null, message: null };
+  }
+
+  const responseTotal = extractResponseTotal(aiResponse);
+  if (!responseTotal) {
+    // Can't determine total — no violation to report (false positive avoidance)
+    return { hasViolation: false, requestedBudget, responseTotal: null, deviationPercent: null, message: null };
+  }
+
+  const deviationPercent = ((responseTotal - requestedBudget) / requestedBudget) * 100;
+  const withinTolerance = Math.abs(deviationPercent) <= 2;
+
+  if (withinTolerance) {
+    return { hasViolation: false, requestedBudget, responseTotal, deviationPercent, message: null };
+  }
+
+  const direction = responseTotal > requestedBudget ? 'exceeds' : 'falls short of';
+  const message = `⚠️ Budget mismatch: You requested a $${requestedBudget.toLocaleString()} portfolio, but the generated allocation totals $${responseTotal.toLocaleString()} (${deviationPercent >= 0 ? '+' : ''}${deviationPercent.toFixed(1)}% ${direction} your budget by ${Math.abs(deviationPercent).toFixed(1)}% — outside the ±2% tolerance). The AI may need to regenerate this with tighter constraints.`;
+
+  return {
+    hasViolation: true,
+    requestedBudget,
+    responseTotal,
+    deviationPercent,
+    message,
+  };
+}
+
 // ─── POST Handler ───
 export async function POST(req: Request) {
   try {
@@ -867,9 +967,24 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           console.log('[chat] ⏭️ Skipped validation — no RECOMMEND markers in response (likely a question or informational reply)');
         }
 
+        // ── Budget reconciliation gate (secondary guard) ──
+        // Runs IN ADDITION to strict validation above — catches cases where
+        // RECOMMEND markers are absent but the response is a portfolio table
+        // (e.g., old-style portfolio generation without markers).
+        try {
+          const budgetGate = validateBudgetGate(lastMessage, responseText);
+          if (budgetGate.hasViolation) {
+            console.warn('[chat] ⚠️ Budget gate violation:', JSON.stringify(budgetGate, null, 2));
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ budgetViolation: budgetGate })}\n\n`)
+            );
+          }
+        } catch (bgErr) {
+          console.error('[chat] Budget gate error:', bgErr);
+        }
+
         // [DONE] signal
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-
         // ── Post-stream: await DB write BEFORE closing the stream ──
         // Must complete before controller.close() so the client's
         // refreshRemaining() reads the updated count, not the old one.
