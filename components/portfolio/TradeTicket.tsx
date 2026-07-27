@@ -76,6 +76,7 @@ export default function TradeTicket({
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [stopPrice, setStopPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [marketOpen, setMarketOpen] = useState(true);
   const [nextOpenLabel, setNextOpenLabel] = useState('');
 
@@ -100,6 +101,7 @@ export default function TradeTicket({
     setLimitPrice('');
     setStopPrice('');
     setSubmitting(false);
+    setConfirmed(false);
     return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
@@ -134,7 +136,8 @@ export default function TradeTicket({
   const pricesValid = isValidStopPrice && isValidLimitPrice;
   const canAfford = side === 'SELL' || (forceDollarMode ? estimatedTotal <= availableCash : estimatedTotal <= availableCash);
   const hasEnoughShares = side === 'BUY' || Math.floor(rawShares) <= sharesHeld;
-  const canSubmit = isValidQty && pricesValid && canAfford && hasEnoughShares && !submitting;
+  const canSubmit = isValidQty && pricesValid && canAfford && hasEnoughShares;
+  const canClick = canSubmit && !submitting && !confirmed;
 
   const setMax = useCallback(() => {
     if (forceDollarMode || isAIVariant) {
@@ -148,7 +151,7 @@ export default function TradeTicket({
   }, [side, sharesHeld, availableCash, effectivePrice, forceDollarMode, isAIVariant]);
 
   const handleConfirm = useCallback(async () => {
-    if (!canSubmit) return;
+    if (!canClick) return;
     setSubmitting(true);
     try {
       await onConfirm({
@@ -158,11 +161,15 @@ export default function TradeTicket({
         stopPrice: (orderType === 'stop' || orderType === 'stop_limit') && stop > 0 ? stop : undefined,
         timeInForce,
       });
-      onClose();
+      // Success — confirmed state, then close
+      setConfirmed(true);
+      setSubmitting(false);
+      setTimeout(() => onClose(), 1500);
     } catch {
+      // Submission failed — reactivate button immediately
       setSubmitting(false);
     }
-  }, [canSubmit, qty, orderType, limit, stop, onConfirm, onClose]);
+  }, [canClick, qty, rawShares, supportsFractional, orderType, limit, stop, timeInForce, onConfirm, onClose]);
 
   if (!isOpen) return null;
 
@@ -367,13 +374,13 @@ export default function TradeTicket({
             </button>
           )}
         </div>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         {forceDollarMode && (
           <span style={{
-            position: 'absolute', left: 14, top: '50%', transform: 'translateY(-0%)',
+            position: 'absolute', left: 14,
             fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.4)',
             fontFamily: 'var(--font-mono, monospace)', pointerEvents: 'none',
-            lineHeight: '46px',
+            transform: 'translateY(-50%)', top: '50%',
           }}>$</span>
         )}
         <input
@@ -578,20 +585,25 @@ export default function TradeTicket({
           }}>
             Cancel
           </button>
-          <button onClick={handleConfirm} disabled={!canSubmit} style={{
+          <button onClick={handleConfirm} disabled={!canClick} style={{
             flex: 2, padding: '14px 0',
-            background: canSubmit ? sideColor : 'rgba(255,255,255,0.06)',
+            background: confirmed ? '#10b981' : canSubmit ? sideColor : 'rgba(255,255,255,0.06)',
             border: 'none', borderRadius: 12,
-            color: canSubmit ? '#ffffff' : '#64748b',
+            color: (confirmed || canSubmit) ? '#ffffff' : '#64748b',
             fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15,
-            cursor: canSubmit ? 'pointer' : 'not-allowed',
-            opacity: canSubmit ? 1 : 0.5,
+            cursor: canClick ? 'pointer' : (confirmed ? 'default' : 'not-allowed'),
+            opacity: canClick ? 1 : (confirmed ? 0.9 : 0.5),
+            transition: 'background 0.3s ease',
           }}>
-            {submitting ? 'Processing...' : isAIVariant
-              ? `${sideLabel} $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈${rawShares.toFixed(supportsFractional ? 4 : 0)} shares)`
-              : forceDollarMode
-                ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`
-                : `${sideLabel} ${qty || 0} shares`}
+            {confirmed
+              ? '✓ Sent'
+              : submitting
+                ? 'Sending…'
+                : isAIVariant
+                  ? `${sideLabel} $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈${rawShares.toFixed(supportsFractional ? 4 : 0)} shares)`
+                  : forceDollarMode
+                    ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`
+                    : `${sideLabel} ${qty || 0} shares`}
           </button>
         </div>
 
