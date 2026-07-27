@@ -148,3 +148,26 @@ export async function fetchSessionMessages(
     createdAt: msg.created_at,
   }));
 }
+
+/**
+ * Clear all chat messages for a user. Called when the user
+ * manually clears their conversation from the UI.
+ */
+export async function clearUserMessages(userId: string): Promise<boolean> {
+  const supabase = createClient();
+  try {
+    const { error } = await (supabase as any)
+      .from('chat_messages')
+      .delete()
+      .eq('user_id', userId);
+    if (error) {
+      console.error('[chat-history-db] Failed to clear messages:', error);
+      return false;
+    }
+    console.log('[chat-history-db] Cleared all messages for user:', userId);
+    return true;
+  } catch (e) {
+    console.error('[chat-history-db] Error clearing messages:', e);
+    return false;
+  }
+}

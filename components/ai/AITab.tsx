@@ -10,7 +10,7 @@ import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
 import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
-import { fetchRecentSessions, type DBSession } from '@/lib/chat-history-db';
+import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
@@ -2220,7 +2220,29 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px', lineHeight: '1.5' }}>This will remove all messages from your current session. This cannot be undone.</p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => setShowClearConfirm(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid #374151', borderRadius: '10px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={() => { setMessages([]); setShowClearConfirm(false); setLoading(false); setToast(null); greetingFetchedRef.current = false; setGreetingLoaded(false); charQueueRef.current = []; displayedContentRef.current = ''; streamDoneRef.current = false; isDrainingRef.current = false; }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
+              <button onClick={async () => {
+                // ── Clear everything: in-memory state, DB, localStorage ──
+                const sessionToDelete = currentSessionId;
+                setMessages([]);
+                setCurrentSessionId(null);
+                setShowClearConfirm(false);
+                setLoading(false);
+                setToast(null);
+                greetingFetchedRef.current = false;
+                setGreetingLoaded(false);
+                charQueueRef.current = [];
+                displayedContentRef.current = '';
+                streamDoneRef.current = false;
+                isDrainingRef.current = false;
+                if (userId) {
+                  clearUserMessages(userId).catch(e => console.error('[clear] DB clear failed:', e));
+                }
+                try {
+                  const mod = await import('@/lib/chat-history');
+                  if (sessionToDelete) mod.deleteSession(sessionToDelete);
+                  mod.saveSessions([]);
+                } catch {}
+              }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
             </div>
           </div>
         </div>
