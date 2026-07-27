@@ -33,20 +33,17 @@ export function ProgressIndicator({ currentStage }: ProgressIndicatorProps) {
       style={{
         opacity: stage === 0 ? 0 : 1,
         transition: 'opacity 0.35s ease',
-        padding: '12px 0',
       }}
     >
       <div
-        className="card-frost"
         style={{
-          padding: '20px 24px',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
+          gap: '12px',
         }}
       >
         {/* Stage steps */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
           {STAGES.map((s, i) => {
             const isCurrent = s.stage === stage;
             const isDone = s.stage < stage;
