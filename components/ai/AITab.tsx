@@ -2261,6 +2261,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         availableCash={tradeTicket?.availableCash || 0}
         initialShares={tradeTicket?.initialShares}
         initialAmount={tradeTicket?.initialAmount}
+        variant="ai"
+        supportsFractional={true}
         onConfirm={async (params) => {
           if (!tradeTicket) return;
           const price = (params.type === 'limit' || params.type === 'stop_limit') && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;

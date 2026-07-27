@@ -207,6 +207,9 @@ export interface BrokerAdapter {
 
   // Streaming
   subscribe(symbols: string[], onQuote: (q: BrokerQuote) => void): () => void;
+
+  // Fractional Support
+  supportsFractional(symbol: string): Promise<boolean>;
 }
 
 // ─── Market Data ───

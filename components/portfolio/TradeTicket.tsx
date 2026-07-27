@@ -32,6 +32,10 @@ interface TradeTicketProps {
   initialShares?: number;
   /** Pre-populated dollar amount (e.g. from AI chat "buy $120") */
   initialAmount?: number;
+  /** 'manual' = Portfolio "Buy More" (full order controls). 'ai' = AI Advisor (dollar-first, market only). */
+  variant?: 'manual' | 'ai';
+  /** Whether the broker supports fractional shares for this symbol */
+  supportsFractional?: boolean;
   onConfirm: (params: {
     shares: number;
     type: 'market' | 'limit' | 'stop' | 'stop_limit';
@@ -43,20 +47,32 @@ interface TradeTicketProps {
 
 export default function TradeTicket({
   isOpen, onClose, symbol, side, currentPrice,
-  sharesHeld, availableCash, initialShares, initialAmount, onConfirm,
+  sharesHeld, availableCash, initialShares, initialAmount,
+  variant = 'manual', supportsFractional = false, onConfirm,
 }: TradeTicketProps) {
-  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares, initialAmount });
+  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares, initialAmount, variant, supportsFractional });
+  
+  const isAIVariant = variant === 'ai';
+  
+  // ── AI variant: always dollar-first, editable amount, derived shares ──
+  // ── Manual variant: smart detection from initialAmount/initialShares ──
+  const forceDollarMode = isAIVariant || !!(initialAmount && initialAmount > 0);
+  const isLockedInput = !isAIVariant && (!!(initialAmount && initialAmount > 0) || !!(initialShares && initialShares > 0));
+  
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
   
-  // ── Smart mode detection: $ amount → dollar mode, shares → share mode, neither → free entry ──
-  // Locked: AI recommendations pre-fill & lock the input. Manual trades are free-edit.
-  const isDollarMode = initialAmount && initialAmount > 0 ? true : false;
-  const isPreFilled = !!(initialAmount && initialAmount > 0) || !!(initialShares && initialShares > 0);
   const [quantity, setQuantity] = useState<string>(() => {
     if (initialAmount && initialAmount > 0) return String(initialAmount);
+    if (isAIVariant && initialShares && initialShares > 0) {
+      return currentPrice > 0 ? String(Math.round(initialShares * currentPrice)) : String(initialShares);
+    }
     return initialShares && initialShares > 0 ? String(initialShares) : '';
   });
+  
+  // ── Advanced order options (collapsed in AI variant) ──
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [stopPrice, setStopPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -74,7 +90,13 @@ export default function TradeTicket({
     // Reset state
     setOrderType('market');
     setTimeInForce('day');
-    setQuantity(isDollarMode ? String(initialAmount) : (initialShares && initialShares > 0 ? String(initialShares) : ''));
+    setShowAdvanced(false);
+    if (isAIVariant) {
+      const amt = initialAmount && initialAmount > 0 ? String(initialAmount) : '';
+      setQuantity(amt);
+    } else {
+      setQuantity(forceDollarMode ? String(initialAmount) : (initialShares && initialShares > 0 ? String(initialShares) : ''));
+    }
     setLimitPrice('');
     setStopPrice('');
     setSubmitting(false);
@@ -86,12 +108,22 @@ export default function TradeTicket({
   const stop = parseFloat(stopPrice) || 0;
   const effectivePrice = (orderType === 'limit' || orderType === 'stop_limit') && limit > 0
     ? limit : currentPrice;
-  // In dollars mode, compute shares; in shares mode, raw input is the share count
-  const qty = isDollarMode 
-    ? Math.floor(rawInput / effectivePrice)
+  
+  // ── Share computation with fractional awareness ──
+  const rawShares = forceDollarMode && effectivePrice > 0
+    ? rawInput / effectivePrice
     : rawInput;
-  const dollarAmount = isDollarMode ? rawInput : qty * effectivePrice;
+  // When fractional NOT supported, round to nearest whole share
+  const qty = (!forceDollarMode || supportsFractional) ? rawShares : Math.round(rawShares);
+  // True dollar amount (what will actually be spent)
+  const dollarAmount = forceDollarMode ? qty * effectivePrice : rawInput * effectivePrice;
   const estimatedTotal = dollarAmount;
+  
+  // ── Fractional warning ──
+  const fractionalGap = !supportsFractional && forceDollarMode && rawInput > 0 && effectivePrice > 0;
+  const fractionalDiff = fractionalGap ? Math.abs(rawInput - estimatedTotal) : 0;
+  const fractionalDiffPct = fractionalGap && rawInput > 0 ? (fractionalDiff / rawInput) * 100 : 0;
+  const showLargeFractionalWarning = fractionalGap && fractionalDiffPct > 20;
 
   // Validation
   const isValidQty = qty > 0 && Number.isFinite(qty);
@@ -100,12 +132,12 @@ export default function TradeTicket({
   const isValidStopPrice = !hasStop || (stop > 0 && Number.isFinite(stop));
   const isValidLimitPrice = !hasLimit || (limit > 0 && Number.isFinite(limit));
   const pricesValid = isValidStopPrice && isValidLimitPrice;
-  const canAfford = side === 'SELL' || (isDollarMode ? rawInput <= availableCash : estimatedTotal <= availableCash);
-  const hasEnoughShares = side === 'BUY' || qty <= sharesHeld;
+  const canAfford = side === 'SELL' || (forceDollarMode ? estimatedTotal <= availableCash : estimatedTotal <= availableCash);
+  const hasEnoughShares = side === 'BUY' || Math.floor(rawShares) <= sharesHeld;
   const canSubmit = isValidQty && pricesValid && canAfford && hasEnoughShares && !submitting;
 
   const setMax = useCallback(() => {
-    if (isDollarMode) {
+    if (forceDollarMode || isAIVariant) {
       setQuantity(availableCash.toFixed(2));
     } else if (side === 'SELL') {
       setQuantity(sharesHeld.toString());
@@ -113,14 +145,14 @@ export default function TradeTicket({
       const max = Math.floor(availableCash / effectivePrice);
       setQuantity(max > 0 ? max.toString() : '');
     }
-  }, [side, sharesHeld, availableCash, effectivePrice, isDollarMode]);
+  }, [side, sharesHeld, availableCash, effectivePrice, forceDollarMode, isAIVariant]);
 
   const handleConfirm = useCallback(async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
       await onConfirm({
-        shares: qty,
+        shares: supportsFractional ? rawShares : qty,
         type: orderType,
         limitPrice: (orderType === 'limit' || orderType === 'stop_limit') && limit > 0 ? limit : undefined,
         stopPrice: (orderType === 'stop' || orderType === 'stop_limit') && stop > 0 ? stop : undefined,
@@ -190,12 +222,14 @@ export default function TradeTicket({
           </button>
         </div>
 
-        {/* Order type toggle */}
-        <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Order Type</div>
-        <div style={{
-          display: 'flex', background: 'rgba(255,255,255,0.04)',
-          borderRadius: 10, padding: 3, marginBottom: 16,
-        }}>
+        {/* Order type — hidden in AI variant (Market only), except via Advanced */}
+        {!isAIVariant && (
+          <>
+            <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Order Type</div>
+            <div style={{
+              display: 'flex', background: 'rgba(255,255,255,0.04)',
+              borderRadius: 10, padding: 3, marginBottom: 16,
+            }}>
           {(['market', 'limit', 'stop', 'stop_limit'] as const).map((t) => (
             <button
               key={t}
@@ -213,8 +247,12 @@ export default function TradeTicket({
             </button>
           ))}
         </div>
+          </>
+        )}
 
-        {/* Time in Force */}
+        {/* Time in Force — hidden in AI variant */}
+        {!isAIVariant && (
+          <>
         <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Time in Force</div>
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px',
@@ -246,14 +284,80 @@ export default function TradeTicket({
             </button>
           ))}
         </div>
+          </>
+        )}
+
+        {/* AI variant: Advanced order options disclosure */}
+        {isAIVariant && (
+          <div style={{ marginBottom: 14 }}>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              style={{
+                background: 'none', border: 'none',
+                fontSize: 11, fontWeight: 600, color: '#64748b',
+                cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}
+            >
+              {showAdvanced ? '▾' : '▸'} Advanced order options
+            </button>
+            {showAdvanced && (
+              <div style={{ marginTop: 10, padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+                {/* Order type */}
+                <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Order Type</div>
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 3, marginBottom: 10 }}>
+                  {(['market', 'limit', 'stop', 'stop_limit'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setOrderType(t)}
+                      style={{
+                        flex: 1, padding: '8px 0',
+                        border: 'none', borderRadius: 8,
+                        background: orderType === t ? 'rgba(34,211,238,0.15)' : 'transparent',
+                        color: orderType === t ? '#22d3ee' : '#94a3b8',
+                        fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'var(--font-sans)',
+                      }}
+                    >
+                      {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : t === 'stop' ? 'Stop' : 'StopLimit'}
+                    </button>
+                  ))}
+                </div>
+                {/* TIF */}
+                <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Time in Force</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
+                  {(Object.entries(TIF_LABELS) as [TimeInForce, { label: string; desc: string }][]) .map(([tif, { label, desc }]) => (
+                    <button
+                      key={tif}
+                      onClick={() => setTimeInForce(tif)}
+                      title={desc}
+                      style={{
+                        padding: '6px 2px',
+                        border: timeInForce === tif ? '1px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 8,
+                        background: timeInForce === tif ? 'rgba(34,211,238,0.12)' : 'rgba(255,255,255,0.02)',
+                        color: timeInForce === tif ? '#22d3ee' : 'rgba(255,255,255,0.5)',
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        fontFamily: 'var(--font-sans)',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quantity / Dollar Amount */}
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
           <div className="section-label" style={{ fontSize: 10 }}>
-            {isDollarMode ? 'Amount ($)' : 'Quantity'}
-            {isPreFilled && <span style={{ fontSize: 9, color: '#22d3ee', marginLeft: 6, fontWeight: 500 }}>— from AI</span>}
+            {isAIVariant ? 'Amount ($)' : (forceDollarMode ? 'Amount ($)' : 'Quantity')}
+            {isAIVariant && <span style={{ fontSize: 9, color: '#22d3ee', marginLeft: 6, fontWeight: 500 }}>— from AI</span>}
+            {!isAIVariant && isLockedInput && <span style={{ fontSize: 9, color: '#22d3ee', marginLeft: 6, fontWeight: 500 }}>— from AI</span>}
           </div>
-          {!isPreFilled && (
+          {(!isLockedInput || isAIVariant) && (
             <button onClick={setMax} style={{
               background: 'none', border: 'none',
               fontSize: 11, fontWeight: 700, color: '#22d3ee',
@@ -264,7 +368,7 @@ export default function TradeTicket({
           )}
         </div>
         <div style={{ position: 'relative' }}>
-        {isDollarMode && (
+        {forceDollarMode && (
           <span style={{
             position: 'absolute', left: 14, top: '50%', transform: 'translateY(-0%)',
             fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.4)',
@@ -279,25 +383,56 @@ export default function TradeTicket({
           onChange={(e) => setQuantity(e.target.value)}
           placeholder="0"
           min="0"
-          readOnly={isPreFilled}
+          readOnly={!isAIVariant && isLockedInput}
           style={{
             width: '100%', padding: '12px 14px',
-            background: isPreFilled ? 'rgba(34,211,238,0.06)' : 'rgba(255,255,255,0.04)',
-            border: isPreFilled ? '1px solid rgba(34,211,238,0.2)' : '1px solid rgba(255,255,255,0.1)',
+            background: (isAIVariant || isLockedInput) ? 'rgba(34,211,238,0.06)' : 'rgba(255,255,255,0.04)',
+            border: (isAIVariant || isLockedInput) ? '1px solid rgba(34,211,238,0.2)' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: 10, fontSize: 18, fontWeight: 600,
-            color: isPreFilled ? '#22d3ee' : '#ffffff', fontFamily: 'var(--font-mono, monospace)',
+            color: isAIVariant ? '#ffffff' : (isLockedInput ? '#22d3ee' : '#ffffff'),
+            fontFamily: 'var(--font-mono, monospace)',
             outline: 'none', marginBottom: 4,
-            cursor: isPreFilled ? 'default' : 'text',
+            cursor: (!isAIVariant && isLockedInput) ? 'default' : 'text',
           }}
         />
         </div>
         <div style={{ fontSize: 11, color: '#cbd5e1', marginBottom: 14 }}>
           {side === 'SELL'
             ? `${sharesHeld} shares held`
-            : isDollarMode
-              ? `≈ ${qty} shares at $${currentPrice.toFixed(2)} each`
-              : `≈ $${(qty * currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at market price`}
+            : isAIVariant && rawInput > 0
+              ? `≈ ${rawShares.toFixed(4)} shares at $${currentPrice.toFixed(2)} each`
+              : forceDollarMode
+                ? `≈ ${qty} shares at $${currentPrice.toFixed(2)} each`
+                : `≈ $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at market price`}
         </div>
+
+        {/* ── Fractional warning for whole-share-only stocks ── */}
+        {showLargeFractionalWarning && (
+          <div style={{
+            padding: '10px 14px',
+            background: 'rgba(251,191,36,0.08)',
+            border: '1px solid rgba(251,191,36,0.2)',
+            borderRadius: 10,
+            marginBottom: 14,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24', marginBottom: 4 }}>⚠️ Whole shares only</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', lineHeight: '1.5' }}>
+              Fractional shares aren&apos;t available for {symbol}. The AI recommended ${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}, but 1 share costs ${currentPrice.toFixed(2)} ({fractionalDiffPct.toFixed(0)}% more than suggested).
+            </div>
+          </div>
+        )}
+        {fractionalGap && !showLargeFractionalWarning && dollarAmount > rawInput && (
+          <div style={{
+            padding: '8px 12px',
+            background: 'rgba(34,211,238,0.06)',
+            border: '1px solid rgba(34,211,238,0.15)',
+            borderRadius: 10,
+            marginBottom: 14,
+            fontSize: 11, color: '#22d3ee',
+          }}>
+            Adjusted to ${dollarAmount.toFixed(2)} for 1 whole share.
+          </div>
+        )}
 
         {/* Stop price */}
         {(orderType === 'stop' || orderType === 'stop_limit') && (
@@ -452,9 +587,11 @@ export default function TradeTicket({
             cursor: canSubmit ? 'pointer' : 'not-allowed',
             opacity: canSubmit ? 1 : 0.5,
           }}>
-            {submitting ? 'Processing...' : isDollarMode
-              ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`
-              : `${sideLabel} ${qty || 0} shares`}
+            {submitting ? 'Processing...' : isAIVariant
+              ? `${sideLabel} $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈${rawShares.toFixed(supportsFractional ? 4 : 0)} shares)`
+              : forceDollarMode
+                ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`
+                : `${sideLabel} ${qty || 0} shares`}
           </button>
         </div>
 

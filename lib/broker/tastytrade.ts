@@ -572,6 +572,11 @@ export class TastytradeAdapter implements BrokerAdapter {
     return cleanup;
   }
 
+  async supportsFractional(_symbol: string): Promise<boolean> {
+    // Tastytrade supports fractional shares for most US-listed securities
+    return true;
+  }
+
   // ─── Helpers ───────────────────────────────────────────────
 
   private mapOrderType(type: string): string {

@@ -455,6 +455,11 @@ export class AlpacaAdapter implements BrokerAdapter {
     return cleanup;
   }
 
+  async supportsFractional(_symbol: string): Promise<boolean> {
+    // Alpaca supports fractional shares for most US-listed stocks/ETFs
+    return true;
+  }
+
   // ─── Helpers ───────────────────────────────────────────────
 
   private mapOrder(o: Record<string, unknown>): BrokerOrder {
