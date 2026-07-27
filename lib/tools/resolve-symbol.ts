@@ -177,6 +177,14 @@ async function enrich(r: RawResult, key: string): Promise<Candidate | null> {
           console.warn(`[resolveSymbol] Rejected ${r.symbol}: profile ticker mismatch (${p.ticker})`);
           return null;
         }
+        // ── Bankruptcy/delisting suffix check (applies even when profile2 succeeds) ──
+        //   • Q suffix = Chapter 11 bankruptcy (e.g., AFIIQ — Armstrong Flooring)
+        //   • These stocks still show exchange="OTC Markets" in Finnhub profile2
+        const symbol = p.ticker;
+        if (symbol.length === 5 && symbol.endsWith('Q')) {
+          console.warn(`[resolveSymbol] Rejected ${symbol}: ends with Q (bankruptcy indicator)`);
+          return null;
+        }
         return { symbol: p.ticker, name: p.name, exchange: p.exchange || 'Unknown', type: r.type };
       }
     }
