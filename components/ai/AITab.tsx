@@ -205,7 +205,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
-    initialShares?: number;
+    initialShares?: number; initialAmount?: number;
   } | null>(null);
   // Track tickers the user asked about in their last message (for deviation scenarios)
 
@@ -266,13 +266,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const sharesHeld = Math.max(0, rawShares - reservedSell);
     const availableCash = liveAccount?.cash || 0;
 
-    // Convert dollar amount to approximate shares if needed
-    let initialShares = suggestedShares;
-    if (!initialShares && suggestedAmount && currentPrice > 0) {
-      initialShares = Math.floor(suggestedAmount / currentPrice);
+    // Pass both amount and shares — TradeTicket defaults to dollar mode when initialAmount is set
+    const initialAmount = suggestedAmount && suggestedAmount > 0 ? suggestedAmount : undefined;
+    let initialShares = suggestedShares && suggestedShares > 0 ? suggestedShares : undefined;
+    // Only compute shares from amount if no explicit shares were given AND we have a price
+    if (!initialShares && initialAmount && currentPrice > 0) {
+      initialShares = Math.floor(initialAmount / currentPrice);
     }
 
-    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares });
+    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares, initialAmount });
   }, [liveAccount]);
   const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -2258,6 +2260,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         sharesHeld={tradeTicket?.sharesHeld || 0}
         availableCash={tradeTicket?.availableCash || 0}
         initialShares={tradeTicket?.initialShares}
+        initialAmount={tradeTicket?.initialAmount}
         onConfirm={async (params) => {
           if (!tradeTicket) return;
           const price = (params.type === 'limit' || params.type === 'stop_limit') && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;

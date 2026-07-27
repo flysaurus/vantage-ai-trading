@@ -30,6 +30,8 @@ interface TradeTicketProps {
   availableCash: number;
   /** Pre-populated share count (e.g. from AI chat "buy 10 shares") */
   initialShares?: number;
+  /** Pre-populated dollar amount (e.g. from AI chat "buy $120") */
+  initialAmount?: number;
   onConfirm: (params: {
     shares: number;
     type: 'market' | 'limit' | 'stop' | 'stop_limit';
@@ -41,12 +43,21 @@ interface TradeTicketProps {
 
 export default function TradeTicket({
   isOpen, onClose, symbol, side, currentPrice,
-  sharesHeld, availableCash, initialShares, onConfirm,
+  sharesHeld, availableCash, initialShares, initialAmount, onConfirm,
 }: TradeTicketProps) {
-  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares });
+  console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares, initialAmount });
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
-  const [quantity, setQuantity] = useState<string>(() => initialShares && initialShares > 0 ? String(initialShares) : '');
+  
+  // ── Shares vs Dollars toggle ──
+  // If AI recommended a dollar amount, default to dollar mode
+  const [inputMode, setInputMode] = useState<'shares' | 'dollars'>(
+    initialAmount && initialAmount > 0 ? 'dollars' : 'shares'
+  );
+  const [quantity, setQuantity] = useState<string>(() => {
+    if (initialAmount && initialAmount > 0) return String(initialAmount);
+    return initialShares && initialShares > 0 ? String(initialShares) : '';
+  });
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [stopPrice, setStopPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -64,19 +75,26 @@ export default function TradeTicket({
     // Reset state
     setOrderType('market');
     setTimeInForce('day');
-    setQuantity(initialShares && initialShares > 0 ? String(initialShares) : '');
+    const isDollar = initialAmount && initialAmount > 0;
+    setInputMode(isDollar ? 'dollars' : 'shares');
+    setQuantity(isDollar ? String(initialAmount) : (initialShares && initialShares > 0 ? String(initialShares) : ''));
     setLimitPrice('');
     setStopPrice('');
     setSubmitting(false);
     return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
-  const qty = parseFloat(quantity) || 0;
+  const rawInput = parseFloat(quantity) || 0;
   const limit = parseFloat(limitPrice) || 0;
   const stop = parseFloat(stopPrice) || 0;
   const effectivePrice = (orderType === 'limit' || orderType === 'stop_limit') && limit > 0
     ? limit : currentPrice;
-  const estimatedTotal = qty * effectivePrice;
+  // In dollars mode, compute shares; in shares mode, raw input is the share count
+  const qty = inputMode === 'dollars' 
+    ? Math.floor(rawInput / effectivePrice)
+    : rawInput;
+  const dollarAmount = inputMode === 'dollars' ? rawInput : qty * effectivePrice;
+  const estimatedTotal = dollarAmount;
 
   // Validation
   const isValidQty = qty > 0 && Number.isFinite(qty);
@@ -85,19 +103,22 @@ export default function TradeTicket({
   const isValidStopPrice = !hasStop || (stop > 0 && Number.isFinite(stop));
   const isValidLimitPrice = !hasLimit || (limit > 0 && Number.isFinite(limit));
   const pricesValid = isValidStopPrice && isValidLimitPrice;
-  const canAfford = side === 'SELL' || estimatedTotal <= availableCash;
+  const canAfford = side === 'SELL' || (inputMode === 'dollars' ? rawInput <= availableCash : estimatedTotal <= availableCash);
   const hasEnoughShares = side === 'BUY' || qty <= sharesHeld;
   const canSubmit = isValidQty && pricesValid && canAfford && hasEnoughShares && !submitting;
 
   const setMax = useCallback(() => {
-    if (side === 'SELL') {
+    if (inputMode === 'dollars') {
+      // Max affordable dollar amount
+      setQuantity(availableCash.toFixed(2));
+    } else if (side === 'SELL') {
       setQuantity(sharesHeld.toString());
     } else {
       // Max affordable (round down to whole shares for stocks)
       const max = Math.floor(availableCash / effectivePrice);
       setQuantity(max > 0 ? max.toString() : '');
     }
-  }, [side, sharesHeld, availableCash, effectivePrice]);
+  }, [side, sharesHeld, availableCash, effectivePrice, inputMode]);
 
   const handleConfirm = useCallback(async () => {
     if (!canSubmit) return;
@@ -231,9 +252,50 @@ export default function TradeTicket({
           ))}
         </div>
 
-        {/* Quantity */}
+        {/* Quantity / Dollar Amount — togglable */}
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-          <div className="section-label" style={{ fontSize: 10 }}>Quantity</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="section-label" style={{ fontSize: 10 }}>
+              {inputMode === 'dollars' ? 'Amount ($)' : 'Quantity'}
+            </div>
+            {/* Toggle between $ and # */}
+            <div style={{
+              display: 'flex',
+              background: 'rgba(255,255,255,0.06)',
+              borderRadius: '6px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <button
+                onClick={() => { setInputMode('dollars'); setQuantity(''); }}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: inputMode === 'dollars' ? 700 : 400,
+                  background: inputMode === 'dollars' ? 'rgba(34,211,238,0.15)' : 'transparent',
+                  border: 'none',
+                  color: inputMode === 'dollars' ? '#22d3ee' : 'rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)',
+                  transition: 'all 0.15s',
+                }}
+              >$</button>
+              <button
+                onClick={() => { setInputMode('shares'); setQuantity(''); }}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: inputMode === 'shares' ? 700 : 400,
+                  background: inputMode === 'shares' ? 'rgba(34,211,238,0.15)' : 'transparent',
+                  border: 'none',
+                  color: inputMode === 'shares' ? '#22d3ee' : 'rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)',
+                  transition: 'all 0.15s',
+                }}
+              >#</button>
+            </div>
+          </div>
           <button onClick={setMax} style={{
             background: 'none', border: 'none',
             fontSize: 11, fontWeight: 700, color: '#22d3ee',
@@ -242,6 +304,15 @@ export default function TradeTicket({
             Max
           </button>
         </div>
+        <div style={{ position: 'relative' }}>
+        {inputMode === 'dollars' && (
+          <span style={{
+            position: 'absolute', left: 14, top: '50%', transform: 'translateY(-0%)',
+            fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.5)',
+            fontFamily: 'var(--font-mono, monospace)', pointerEvents: 'none',
+            lineHeight: '46px',
+          }}>$</span>
+        )}
         <input
           type="number"
           inputMode="decimal"
@@ -258,10 +329,13 @@ export default function TradeTicket({
             outline: 'none', marginBottom: 4,
           }}
         />
+        </div>
         <div style={{ fontSize: 11, color: '#cbd5e1', marginBottom: 14 }}>
           {side === 'SELL'
             ? `${sharesHeld} shares held`
-            : `≈ $${(qty * currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at market price`}
+            : inputMode === 'dollars'
+              ? `≈ ${qty} shares at $${currentPrice.toFixed(2)} each`
+              : `≈ $${(qty * currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at market price`}
         </div>
 
         {/* Stop price */}
@@ -417,7 +491,9 @@ export default function TradeTicket({
             cursor: canSubmit ? 'pointer' : 'not-allowed',
             opacity: canSubmit ? 1 : 0.5,
           }}>
-            {submitting ? 'Processing...' : `${sideLabel} ${qty || 0} shares`}
+            {submitting ? 'Processing...' : inputMode === 'dollars'
+              ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`
+              : `${sideLabel} ${qty || 0} shares`}
           </button>
         </div>
 
