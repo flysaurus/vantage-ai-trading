@@ -49,13 +49,15 @@ export type ValidationResult =
 // ── Helpers ──
 
 /** Strip exchange suffixes (.DE, .MX, etc.) to get canonical base symbol.
- *  Keeps single-char suffixes (.B in BRK.B) as legitimate US share classes. */
+ *  Only .A and .B are legitimate US share classes (BRK.A, BRK.B).
+ *  All other single-char suffixes (.F, .X, .Y) are foreign exchange → strip. */
 function canonicalSymbol(raw: string): string {
   const upper = raw.toUpperCase();
   const dotIdx = upper.lastIndexOf('.');
   if (dotIdx < 0) return upper;
   const suffix = upper.slice(dotIdx + 1);
-  return suffix.length >= 2 ? upper.slice(0, dotIdx) : upper;
+  const validSingleChar = new Set(['A', 'B']);
+  return (suffix.length >= 2 || !validSingleChar.has(suffix)) ? upper.slice(0, dotIdx) : upper;
 }
 
 /** Extract the dollar amount from a marker's $N suffix. Returns null if missing. */

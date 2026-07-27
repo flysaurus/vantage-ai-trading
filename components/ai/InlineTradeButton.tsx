@@ -70,10 +70,14 @@ export function parseSuggestions(
 
     // ── Exchange suffix stripping ──
     // Multi-char suffixes (.DE, .MX, .SW, .LN, .PA etc.) = foreign exchange listing → strip
-    // Single-char suffixes (.B in BRK.B, .A in BRK.A) = legitimate US share classes → keep
+    // Single-char suffixes: only .A and .B are legitimate US share classes (BRK.A, BRK.B)
+    // All other single-char suffixes (.F, .X, .Y etc.) are foreign exchange → strip
     const dotIdx = rawSymbol.lastIndexOf('.');
     const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
-    const symbol = suffix.length >= 2 ? rawSymbol.slice(0, dotIdx) : rawSymbol;
+    const validSingleCharSuffixes = new Set(['A', 'B']);
+    const symbol = (suffix.length >= 2 || (suffix.length === 1 && !validSingleCharSuffixes.has(suffix.toUpperCase())))
+      ? rawSymbol.slice(0, dotIdx)
+      : rawSymbol;
     if (symbol !== rawSymbol && process.env.NODE_ENV !== 'production') {
       console.log('[parseSuggestions] Stripped exchange suffix:', rawSymbol, '→', symbol);
     }

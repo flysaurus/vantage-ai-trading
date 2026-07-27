@@ -661,6 +661,14 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
 
+        // ── Progress: Stage 1 — Researching ──
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ progress: { stage: 1, total: 3 } })}\n\n`));
+
+        // ── Progress: Stage 2 — Building portfolio (Anthropic starts generating) ──
+        // Small stagger so stage 1 is visible before transitioning
+        await new Promise(r => setTimeout(r, 300));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ progress: { stage: 2, total: 3 } })}\n\n`));
+
         // ── Multi-turn tool-calling loop ──────────────────────
         do {
           const turnStream = turn === 0
@@ -779,6 +787,9 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         if (!hasMarkers && turn >= MAX_TOOL_TURNS) {
           console.warn(`[chat] ⚠️ Tool-loop exhausted after ${turn} turns — no RECOMMEND markers produced. Response starts with: "${responseText.slice(0, 100)}"`);
         }
+
+        // ── Progress: Stage 3 — Validating ──
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ progress: { stage: 3, total: 3 } })}\n\n`));
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
         try {

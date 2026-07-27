@@ -15,6 +15,7 @@ import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import { SummaryCard } from '@/components/ai/SummaryCard';
+import { ProgressIndicator } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
@@ -166,6 +167,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── state ──
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progressStage, setProgressStage] = useState<{ stage: number; total: number } | null>(null);
   const [lastMessageTime, setLastMessageTime] = useState(0);
   // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
   const getCachedGreeting = (): { opener: string; hook: string } | null => {
@@ -870,6 +872,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
           if (line.startsWith('data: ') && line !== 'data: [DONE]') {
             try {
               const data = JSON.parse(line.slice(6));
+              if (data.progress) {
+                setProgressStage(data.progress);
+                // Don't start the text drainer during progress — keep raw
+                // reasoning hidden behind the progress indicator
+                continue;
+              }
               if (data.text) {
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
@@ -904,6 +912,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
 
       streamDoneRef.current = true;
+
+      // ── Progress complete: transition from progress indicator to final content ──
+      setProgressStage(null);
 
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
@@ -962,6 +973,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           console.log('[chat] Validation failed — auto-regenerating...');
           setMessages(prev => prev.slice(0, -1)); // Remove rejected AI message
           // Reset loading so the recursive sendMessage call passes its guard check
+          setProgressStage(null); // clear progress for retry
           setLoading(false);
           // Small delay to let React flush the loading state
           await new Promise(r => setTimeout(r, 50));
@@ -981,6 +993,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalValidationFailure) {
+          setProgressStage(null); // clear progress for error display
           // Both attempts failed — show fallback with failure details for debugging
           const failureDetails = (rejectData.failures || [])
             .map((f: any) => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`)
@@ -999,6 +1012,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalStreamError) {
+          setProgressStage(null); // clear progress for error display
           // Server-side stream crashed — surface the actual error
           console.error('[chat] Handling fatal stream error:', rejectData.message);
           setMessages(prev => {
@@ -1015,6 +1029,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       // Scroll suppressed — user controls position
     } catch (error: any) {
+      setProgressStage(null); // clear progress for error display
       console.error('Chat error:', error);
       setToast(null);
       if (error?.status === 429) {
@@ -1529,6 +1544,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 VANTAGE AI
               </div>
               {(() => {
+                // ── Show progress indicator while AI is generating ──
+                // Replaces raw reasoning text with branded pipeline stages
+                if (loading && i === messages.length - 1 && progressStage) {
+                  return <ProgressIndicator currentStage={progressStage} />;
+                }
                 const tldr = extractTLDR(msg.content);
                 const showTLDR = tldr && qualifiesForTLDR(msg.content);
                 const isCollapsed = collapsedTLDRs.has(i);
@@ -1618,15 +1638,15 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   />
                 );
               })()}
-                {loading && i === messages.length - 1 && (
+                {loading && i === messages.length - 1 && !progressStage && (
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
             </div>
           );
         })}
 
-        {/* Thinking indicator */}
-        {loading && (
+        {/* Thinking indicator — hidden during progress (ProgressIndicator takes over) */}
+        {loading && !progressStage && (
           <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 0 4px' }}>
             <span className="vantage-typing-dot" style={{ animationDelay: '0s' }} />
             <span className="vantage-typing-dot" style={{ animationDelay: '0.2s' }} />
