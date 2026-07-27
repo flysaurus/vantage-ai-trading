@@ -587,13 +587,14 @@ export default function TradeTicket({
           </button>
           <button onClick={handleConfirm} disabled={!canClick} style={{
             flex: 2, padding: '14px 0',
-            background: confirmed ? '#10b981' : canSubmit ? sideColor : 'rgba(255,255,255,0.06)',
-            border: 'none', borderRadius: 12,
-            color: (confirmed || canSubmit) ? '#ffffff' : '#64748b',
+            background: confirmed ? 'rgba(16,185,129,0.08)' : (submitting ? 'rgba(16,185,129,0.15)' : canSubmit ? sideColor : 'rgba(255,255,255,0.06)'),
+            border: confirmed ? '1px solid rgba(16,185,129,0.25)' : 'none',
+            borderRadius: 12,
+            color: confirmed ? '#10b981' : (submitting ? '#6ee7b7' : canSubmit ? '#ffffff' : '#64748b'),
             fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 15,
-            cursor: canClick ? 'pointer' : (confirmed ? 'default' : 'not-allowed'),
-            opacity: canClick ? 1 : (confirmed ? 0.9 : 0.5),
-            transition: 'background 0.3s ease',
+            cursor: canClick ? 'pointer' : (confirmed || submitting ? 'default' : 'not-allowed'),
+            opacity: canClick ? 1 : (confirmed ? 1 : submitting ? 0.85 : 0.5),
+            transition: 'all 0.25s ease',
           }}>
             {confirmed
               ? '✓ Sent'
