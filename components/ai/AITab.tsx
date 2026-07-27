@@ -103,6 +103,7 @@ const pctStr = (v: number) => {
 interface Message {
   role: 'user' | 'ai';
   content: string;
+  id?: string;
 }
 
 interface AITabProps {
@@ -206,8 +207,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
     initialShares?: number; initialAmount?: number;
+    /** ID of the AI message the marker came from — for persisting execution state */
+    messageId?: string;
   } | null>(null);
   // Track tickers the user asked about in their last message (for deviation scenarios)
+
+  // ── Executed markers: permanent state across sessions ──
+  // Key = "messageId:symbol" → { shares, amount, side }
+  const [executedMarkers, setExecutedMarkers] = useState<Record<string, { shares: number; amount: number; side: string }>>({});
+  const executedLoadedRef = useRef(false);
 
 
   // ── Real ticker validation: load US stock symbol list once on mount ──
@@ -243,10 +251,38 @@ export function AITab({ messages, setMessages }: AITabProps) {
     });
   }, []);
 
+  // ── Load executed markers from DB when messages change ──
+  const loadedMessageIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!userId || userId === 'anonymous' || messages.length === 0) return;
+
+    const newIds = messages
+      .map(m => m.id)
+      .filter((id): id is string => !!id && !loadedMessageIdsRef.current.has(id));
+
+    if (newIds.length === 0) return;
+    newIds.forEach(id => loadedMessageIdsRef.current.add(id));
+
+    // Batch in chunks to avoid URL length issues
+    const chunkSize = 50;
+    for (let i = 0; i < newIds.length; i += chunkSize) {
+      const chunk = newIds.slice(i, i + chunkSize);
+      fetch(`/api/marker-executions?message_ids=${chunk.join(',')}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.executions) {
+            setExecutedMarkers(prev => ({ ...prev, ...data.executions }));
+          }
+        })
+        .catch(() => {}); // Fail silently — buttons stay active
+    }
+  }, [userId, messages]);
+
   // ── Trade button handler: fetch live price → open TradeTicket ──
   const handleTradeAction = useCallback(async (
     symbol: string, side: 'BUY' | 'SELL',
     suggestedShares?: number, suggestedAmount?: number,
+    messageId?: string,
   ) => {
     // Fetch live price
     let currentPrice = 0;
@@ -274,7 +310,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       initialShares = Math.floor(initialAmount / currentPrice);
     }
 
-    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares, initialAmount });
+    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares, initialAmount, messageId });
   }, [liveAccount]);
   const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1616,7 +1652,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                               symbolNames={symbolNames}
                               proseText={msg.content}
                               enabled={tier !== 'silver'}
-                              onTrade={handleTradeAction}
+                              onTrade={(sym, sd, sh, am) => handleTradeAction(sym, sd, sh, am, msg.id)}
                             />
                           );
                         })()}
@@ -1631,12 +1667,19 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 const suggestions = parseSuggestions(msg.content, validSymbols);
                 const choices = parseChoiceSuggestions(msg.content);
                 if (suggestions.length === 0 && choices.length === 0) return null;
+                // Build executedMap for this message from global state
+                const msgExecutedMap: Record<string, { shares: number; amount: number; side: string }> = {};
+                for (const s of suggestions) {
+                  const key = `${msg.id}:${s.symbol}`;
+                  if (executedMarkers[key]) msgExecutedMap[s.symbol] = executedMarkers[key];
+                }
                 return (
                   <InlineTradeButtons
                     suggestions={suggestions}
                     choiceSuggestions={choices}
                     enabled={tier !== 'silver'}
-                    onTrade={handleTradeAction}
+                    onTrade={(sym, sd, sh, am) => handleTradeAction(sym, sd, sh, am, msg.id)}
+                    executedMap={msgExecutedMap}
                   />
                 );
               })()}
@@ -2269,6 +2312,26 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce);
           if (!result.success) {
             throw new Error(result.error || 'Order failed');
+          }
+          // ── Persist marker execution state ──
+          if (tradeTicket.messageId) {
+            const key = `${tradeTicket.messageId}:${tradeTicket.symbol}`;
+            const execData = { shares: params.shares, amount: params.shares * price, side: tradeTicket.side };
+            // Optimistic: update local state immediately
+            setExecutedMarkers(prev => ({ ...prev, [key]: execData }));
+            // Persist to DB (fire-and-forget — fails silently)
+            fetch('/api/marker-executions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message_id: tradeTicket.messageId,
+                symbol: tradeTicket.symbol,
+                side: tradeTicket.side,
+                executed_shares: params.shares,
+                executed_amount: params.shares * price,
+                order_id: result.orderId || null,
+              }),
+            }).catch(e => console.error('[marker-exec] Record failed:', e));
           }
         }}
       />

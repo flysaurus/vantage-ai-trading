@@ -193,21 +193,49 @@ interface InlineTradeButtonProps {
   enabled: boolean;
   /** Callback to open TradeTicket */
   onTrade: (symbol: string, side: 'BUY' | 'SELL', suggestedShares?: number, suggestedAmount?: number) => void;
+  /** If previously executed, the real fill data — renders permanent "✓ Bought" state */
+  executed?: { shares: number; amount: number } | null;
 }
 
 export function InlineTradeButton({
-  symbol, side, suggestedShares, suggestedAmount, enabled, onTrade,
+  symbol, side, suggestedShares, suggestedAmount, enabled, onTrade, executed,
 }: InlineTradeButtonProps) {
   const [tapped, setTapped] = useState(false);
 
   const handleClick = useCallback(() => {
-    if (!enabled) return;
+    if (!enabled || executed) return;
     setTapped(true);
     onTrade(symbol, side, suggestedShares, suggestedAmount);
     setTimeout(() => setTapped(false), 600);
-  }, [enabled, symbol, side, suggestedShares, suggestedAmount, onTrade]);
+  }, [enabled, executed, symbol, side, suggestedShares, suggestedAmount, onTrade]);
 
   if (!enabled) return null;
+
+  // ── Executed state: show permanent confirmation, no click action ──
+  if (executed) {
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          background: 'rgba(16,185,129,0.06)',
+          border: '1px solid rgba(16,185,129,0.15)',
+          borderRadius: '6px',
+          color: '#10b981',
+          fontSize: '11px',
+          fontWeight: 600,
+          padding: '3px 8px',
+          fontFamily: 'inherit',
+          letterSpacing: '0.03em',
+          opacity: 0.8,
+        }}
+      >
+        <span style={{ fontSize: '10px' }}>✓</span>
+        Bought ${executed.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({executed.shares.toFixed(4).replace(/\.?0+$/, '') || '0'} shares)
+      </span>
+    );
+  }
 
   const isBuy = side === 'BUY';
   const color = isBuy ? '#10b981' : '#ef4444';
@@ -254,9 +282,11 @@ interface InlineTradeButtonsProps {
   choiceSuggestions?: ChoiceSuggestion[];
   enabled: boolean;
   onTrade: (symbol: string, side: 'BUY' | 'SELL', suggestedShares?: number, suggestedAmount?: number) => void;
+  /** Map of "symbol" → execution data for this message's buttons */
+  executedMap?: Record<string, { shares: number; amount: number; side: string }>;
 }
 
-export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, onTrade }: InlineTradeButtonsProps) {
+export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, onTrade, executedMap }: InlineTradeButtonsProps) {
   if (!enabled) return null;
   if (suggestions.length === 0 && (!choiceSuggestions || choiceSuggestions.length === 0)) return null;
 
@@ -282,6 +312,7 @@ export function InlineTradeButtons({ suggestions, choiceSuggestions, enabled, on
               suggestedAmount={s.suggestedAmount}
               enabled={enabled}
               onTrade={onTrade}
+              executed={executedMap?.[s.symbol] || null}
             />
           ))}
         </div>

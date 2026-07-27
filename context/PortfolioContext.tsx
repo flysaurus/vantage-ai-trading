@@ -132,6 +132,8 @@ interface TradeResult {
   error?: string;
   /** Whether the order was FILLED (market open), OPEN (pending, market closed), or REJECTED */
   status?: 'FILLED' | 'OPEN' | 'REJECTED';
+  /** Order ID from the broker, for linking marker executions */
+  orderId?: string;
 }
 
 interface BasketTradeResult {
@@ -807,7 +809,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }).catch(() => {});
       }
 
-      return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
+      return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED', orderId: result.orderId };
     },
     [brokerRef, refreshStateFromBroker],
   );
