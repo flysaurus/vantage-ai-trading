@@ -1,14 +1,14 @@
 'use client';
 
 // ─── ClarifyingOptions — Tappable chip UI for AI clarifying questions ───
-// When the AI asks a question with 2-4 discrete options (rendered as bold
-// list items), this component extracts them and renders frosted-glass chips
-// that the user can tap to reply instantly — no typing required.
+// When the AI asks a question with 2-4 discrete options, this component
+// extracts them and renders frosted-glass pill chips the user can tap to
+// reply instantly — no typing required.
 
 import { useState, useCallback } from 'react';
 
 export interface ClarifyingOption {
-  /** Short button label (4-30 chars, e.g. "Value", "Deploy $2K fresh") */
+  /** Short button label (3-30 chars, e.g. "Value", "Deploy $2K fresh") */
   label: string;
   /** Full option text sent as user reply */
   fullText: string;
@@ -19,58 +19,78 @@ export interface ClarifyingOption {
 // ── Patterns for detecting clarifying questions ──────────────
 
 // Bold list items:  - **Label** — description  or  1. **Label** — description
-// Captures the bold text (label) and optional description after — or :
 const BOLD_LIST_ITEM_RE = /^[\s]*(?:[-*•]|\d{1,2}\.)\s+\*\*(.+?)\*\*(?:\s*[—\-–:]\s*(.+))?$/gm;
 
-// Standalone bold lines (no list marker): each line is just **Label**
-// Used when the model outputs bold options without bullet markers
+// Plain list items (no bold):  - Label text here  or  1. Label text here
+const PLAIN_LIST_ITEM_RE = /^[\s]*(?:[-*•]|\d{1,2}\.)\s+(?!\*\*)([^\n]{4,80})$/gm;
+
+// Standalone bold lines: each line is just **Label**
 const BOLD_LINE_RE = /^[\s]*\*\*(.+?)\*\*[\s]*$/gm;
 
-// Question indicators: the surrounding text should suggest a clarifying question
+// Question indicators: surrounding text should suggest a clarifying question
 const QUESTION_HINTS = [
-  /\?/,                          // literal question mark
-  /\b(?:which|choose|prefer|pick|select|decide)\b/i,
+  /\?/,
+  /\b(?:which|choose|prefer|pick|select|decide|option|approach)\b/i,
   /\bwould you like\b/i,
   /\bwant me to\b/i,
   /\blet me know\b/i,
-  /\bhow would you\b/i,
-  /\bwhat would you\b/i,
+  /\bhow (?:would|should|do) you\b/i,
+  /\bwhat (?:would|do) you\b/i,
   /\bdo you want\b/i,
+  /\bhere are\b/i,
 ];
 
 /**
  * Parse an AI markdown response to detect clarifying questions with
- * 2-4 discrete bold-list options the user can tap to reply.
+ * 2-4 discrete options the user can tap to reply.
+ *
+ * Multi-tier detection:
+ * 1. Bold list items (highest confidence — the AI was explicit)
+ * 2. Plain text list items + question context
+ * 3. Standalone bold lines + question context
  *
  * Returns null if no valid clarifying question is detected.
  */
 export function parseClarifyingOptions(markdownContent: string): ClarifyingOption[] | null {
-  if (!markdownContent || markdownContent.length < 20) return null;
+  if (!markdownContent || markdownContent.length < 15) return null;
 
-  // Step 1: Extract bold list items
-  BOLD_LIST_ITEM_RE.lastIndex = 0;
-  const options: { label: string; fullText: string; index: number }[] = [];
-  let match: RegExpExecArray | null;
+  let options: { label: string; fullText: string; index: number }[] = [];
   let idx = 0;
 
+  // ── Tier 1: Bold list items (highest confidence) ──
+  BOLD_LIST_ITEM_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
   while ((match = BOLD_LIST_ITEM_RE.exec(markdownContent)) !== null) {
     const label = match[1].trim();
     const description = match[2]?.trim() || '';
     const fullText = description ? `${label} — ${description}` : label;
-    // Only accept labels that are 6+ chars (skip single-word placeholders)
-    if (label.length >= 6) {
+    if (label.length >= 3) {
       options.push({ label, fullText, index: idx });
     }
     idx++;
   }
 
-  // Step 1b: If no bold list items found, try standalone bold lines
+  // ── Tier 2: Plain text list items (fallback) ──
+  if (options.length === 0) {
+    PLAIN_LIST_ITEM_RE.lastIndex = 0;
+    idx = 0;
+    while ((match = PLAIN_LIST_ITEM_RE.exec(markdownContent)) !== null) {
+      const label = match[1].trim();
+      // Filter out sub-bullets, code blocks, and markdown syntax
+      if (label.length >= 3 && !label.startsWith('`') && !label.startsWith('[')) {
+        options.push({ label, fullText: label, index: idx });
+      }
+      idx++;
+    }
+  }
+
+  // ── Tier 3: Standalone bold lines ──
   if (options.length === 0) {
     BOLD_LINE_RE.lastIndex = 0;
     idx = 0;
     while ((match = BOLD_LINE_RE.exec(markdownContent)) !== null) {
       const label = match[1].trim();
-      if (label.length >= 6) {
+      if (label.length >= 3) {
         options.push({ label, fullText: label, index: idx });
       }
       idx++;
@@ -79,54 +99,56 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
 
   // Need 2-4 discrete options
   if (options.length < 2 || options.length > 4) {
-    if (options.length > 0) {
-      console.log('[ClarifyingOptions] Found', options.length, 'bold items — need 2-4, skipping');
+    if (options.length > 0 && typeof window !== 'undefined') {
+      console.log('[ClarifyingOptions] Found', options.length, 'items — need 2-4, skipping');
     }
     return null;
   }
 
-  // Step 2: Check if the surrounding context is a clarifying question
-  // Remove the matched list items to check the remaining text for question hints
-  let surrounding = markdownContent.replace(BOLD_LIST_ITEM_RE, '');
-  BOLD_LIST_ITEM_RE.lastIndex = 0; // reset after replace
-  surrounding = surrounding.replace(BOLD_LINE_RE, '');
+  // ── Validate question context ──
+  let surrounding = markdownContent
+    .replace(BOLD_LIST_ITEM_RE, '')
+    .replace(PLAIN_LIST_ITEM_RE, '')
+    .replace(BOLD_LINE_RE, '');
+  BOLD_LIST_ITEM_RE.lastIndex = 0;
+  PLAIN_LIST_ITEM_RE.lastIndex = 0;
   BOLD_LINE_RE.lastIndex = 0;
+  surrounding = surrounding
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\[RECOMMEND[^\]]*\]/g, '');
 
-  // Also strip other markdownisms that might interfere
-  surrounding = surrounding.replace(/\*\*(.+?)\*\*/g, '$1'); // strip remaining bold
-  surrounding = surrounding.replace(/\[RECOMMEND[^\]]*\]/g, ''); // strip recommendation markers
+  // Lenient: if response is SHORT and mostly consists of the list items,
+  // treat it as a clarifying question even without explicit question words.
+  // (The AI was told to be terse for clarifying questions.)
+  const isShortResponse = markdownContent.length < 400;
+  const hasQuestionContext = QUESTION_HINTS.some(p => p.test(surrounding));
 
-  const hasQuestionContext = QUESTION_HINTS.some(pattern => pattern.test(surrounding));
-  if (!hasQuestionContext) {
-    if (process.env.NODE_ENV !== 'production' || typeof window !== 'undefined') {
-      console.log('[ClarifyingOptions] Found', options.length, 'options but no question context in surrounding text');
+  if (!hasQuestionContext && !isShortResponse) {
+    if (typeof window !== 'undefined') {
+      console.log('[ClarifyingOptions] Found', options.length, 'options but no question context');
     }
     return null;
   }
 
-  console.log('[ClarifyingOptions] Detected clarifying question with', options.length, 'options:', options.map(o => o.label));
+  console.log('[ClarifyingOptions] ✅ Detected', options.length, 'options:', options.map(o => o.label));
   return options;
 }
 
 /**
- * Derive a compact button label from the full bold text.
- * Strategy (in order):
- * 1. If already short (≤30 chars), use as-is
- * 2. Try to extract "Action $Amount" pattern (e.g. "Deploy $2K into…" → "Deploy $2K")
- * 3. Truncate at word boundary near 32 chars with ellipsis
+ * Derive a compact button label from the full option text.
  */
 function shortenLabel(label: string): string {
   if (label.length <= 30) return label;
 
-  // Pattern: verb + money + rest → "Deploy $2K into fresh positions" → "Deploy $2K"
+  // Pattern: "Verb $Amount …" → "Verb $Amount"
   const moneyMatch = label.match(/^(.+?\$[\d,.]+[KMB]?)\b.*$/);
   if (moneyMatch && moneyMatch[1].length <= 25) return moneyMatch[1];
 
-  // Pattern: verb + "your" + noun → "Rebalance your entire…" → "Rebalance your…"
+  // Pattern: "Verb your Noun …" → "Verb your Noun"
   const yourMatch = label.match(/^(.+?your\s+\w+).*$/i);
   if (yourMatch && yourMatch[1].length <= 30) return yourMatch[1];
 
-  // Fallback: truncate at word boundary
+  // Fallback: word-boundary truncation
   const maxLen = 32;
   const cut = label.lastIndexOf(' ', maxLen - 3);
   if (cut > 10) return label.slice(0, cut) + '…';
@@ -137,7 +159,6 @@ function shortenLabel(label: string): string {
 
 interface ClarifyingOptionsProps {
   options: ClarifyingOption[];
-  /** Called when the user taps an option — sends the full text as reply */
   onSelect: (option: ClarifyingOption) => void;
 }
 
@@ -146,7 +167,6 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
 
   const handleTap = useCallback((opt: ClarifyingOption, i: number) => {
     setTapped(i);
-    // Brief visual feedback then send
     setTimeout(() => {
       onSelect(opt);
       setTapped(null);
@@ -154,18 +174,15 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
   }, [onSelect]);
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '6px',
-        marginTop: '2px',
-        marginBottom: '4px',
-        alignSelf: 'flex-start',
-        maxWidth: '92%',
-      }}
-    >
-      {/* Option chips */}
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
+      marginTop: '2px',
+      marginBottom: '4px',
+      alignSelf: 'flex-start',
+      maxWidth: '92%',
+    }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {options.map((opt, i) => {
           const isTapped = tapped === i;
@@ -175,7 +192,6 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
               onClick={() => handleTap(opt, i)}
               disabled={tapped !== null}
               style={{
-                // Frosted-glass pill
                 background: isTapped
                   ? 'rgba(34,211,238,0.15)'
                   : 'rgba(255,255,255,0.04)',
@@ -216,7 +232,6 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
           );
         })}
       </div>
-
     </div>
   );
 }
