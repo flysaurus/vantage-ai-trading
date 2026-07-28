@@ -248,36 +248,33 @@ export function InlineTradeButton({
   symbol, side, suggestedShares, suggestedAmount, enabled, onTrade, executed,
 }: InlineTradeButtonProps) {
   const [tapped, setTapped] = useState(false);
-  const executedKey = `${symbol}:${side}`;
 
   // ── Persistent executed-state check ──
   // After a real trade submission, the marker stays greyed out with a ✓
   // Survives page reloads via localStorage, persists across chat history
-  const [isExecuted, setIsExecuted] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const raw = localStorage.getItem('vantage_executed_markers');
-      if (raw) {
-        const set = new Set<string>(JSON.parse(raw));
-        return set.has(executedKey);
-      }
-    } catch {}
-    return false;
-  });
+  // Supports both old format (Set → JSON array) and new format (Record → JSON object)
+  const [isExecuted, setIsExecuted] = useState(() => isMarkerExecutedInStorage(symbol, side) !== null);
 
   // Listen for cross-component execution events (when TradeTicket confirms an order)
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === 'vantage_executed_markers' && e.newValue) {
         try {
-          const set = new Set<string>(JSON.parse(e.newValue));
-          if (set.has(executedKey)) setIsExecuted(true);
+          const data = JSON.parse(e.newValue);
+          const key = `${symbol}:${side}`;
+          // New format: object with keys
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            if (data[key]) setIsExecuted(true);
+          } else if (Array.isArray(data)) {
+            // Old format: array of strings
+            if (data.includes(key)) setIsExecuted(true);
+          }
         } catch {}
       }
     };
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
-  }, [executedKey]);
+  }, [symbol, side]);
 
   const handleClick = useCallback(() => {
     if (!enabled || executed || isExecuted) return;
