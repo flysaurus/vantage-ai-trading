@@ -301,11 +301,12 @@ export function InlineTradeButton({
           borderRadius: '6px',
           color: '#10b981',
           fontSize: '11px',
-          fontWeight: 600,
+          fontWeight: 700,
           padding: '3px 8px',
           fontFamily: 'inherit',
           letterSpacing: '0.03em',
-          opacity: 0.8,
+          opacity: 1,
+          textDecoration: 'none',
         }}
       >
         <span style={{ fontSize: '10px' }}>☑️</span>
