@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1577,9 +1577,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             );
           }
           // AI message — accent left border, same 14px font as user messages
+          // Compute clarifying options for chips BELOW the bubble
+          const isLastAiMsg = !loading && !messages.slice(i + 1).some(m => m.role === 'ai');
+          const clarifyingOpts = isLastAiMsg ? parseClarifyingOptions(msg.content) : null;
           return (
+            <React.Fragment key={i}>
             <div
-              key={i}
               style={{
                 maxWidth: '92%',
                 background: 'rgba(255,255,255,0.04)',
@@ -1650,25 +1653,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       >
                         {stripRecommendationMarkers(msg.content)}
                       </ReactMarkdown>
-                        {/* Clarifying question options — tappable chips for discrete choices */}
-                        {(() => {
-                          // Only show on the most recent AI message (not loading)
-                          if (msg.role !== 'ai') return null;
-                          if (loading && i === messages.length - 1) return null;
-                          // Check if any later message is also AI — only show on the newest one
-                          const hasLaterAi = messages.slice(i + 1).some(m => m.role === 'ai');
-                          if (hasLaterAi) return null;
-                          const clarifyingOpts = parseClarifyingOptions(msg.content);
-                          if (!clarifyingOpts) return null;
-                          return (
-                            <ClarifyingOptions
-                              options={clarifyingOpts}
-                              onSelect={(opt: ClarifyingOption) => {
-                                sendMessage(opt.fullText, 'chat');
-                              }}
-                            />
-                          );
-                        })()}
                         {/* Summary card: TL;DR + allocation table below prose */}
                         {(() => {
                           if (tier === 'silver') return null;
@@ -1732,6 +1716,16 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
             </div>
+            {/* Clarifying options chips — BELOW the bubble, never inside */}
+            {clarifyingOpts && (
+              <ClarifyingOptions
+                options={clarifyingOpts}
+                onSelect={(opt: ClarifyingOption) => {
+                  sendMessage(opt.fullText, 'chat');
+                }}
+              />
+            )}
+          </React.Fragment>
           );
         })}
 

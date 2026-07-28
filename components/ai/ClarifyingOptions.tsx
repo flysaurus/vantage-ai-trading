@@ -8,7 +8,7 @@
 import { useState, useCallback } from 'react';
 
 export interface ClarifyingOption {
-  /** Short button label (bold text minus description) */
+  /** Short button label (4-30 chars, e.g. "Value", "Deploy $2K fresh") */
   label: string;
   /** Full option text sent as user reply */
   fullText: string;
@@ -78,7 +78,12 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
   }
 
   // Need 2-4 discrete options
-  if (options.length < 2 || options.length > 4) return null;
+  if (options.length < 2 || options.length > 4) {
+    if (options.length > 0) {
+      console.log('[ClarifyingOptions] Found', options.length, 'bold items — need 2-4, skipping');
+    }
+    return null;
+  }
 
   // Step 2: Check if the surrounding context is a clarifying question
   // Remove the matched list items to check the remaining text for question hints
@@ -92,17 +97,37 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
   surrounding = surrounding.replace(/\[RECOMMEND[^\]]*\]/g, ''); // strip recommendation markers
 
   const hasQuestionContext = QUESTION_HINTS.some(pattern => pattern.test(surrounding));
-  if (!hasQuestionContext) return null;
+  if (!hasQuestionContext) {
+    if (process.env.NODE_ENV !== 'production' || typeof window !== 'undefined') {
+      console.log('[ClarifyingOptions] Found', options.length, 'options but no question context in surrounding text');
+    }
+    return null;
+  }
 
+  console.log('[ClarifyingOptions] Detected clarifying question with', options.length, 'options:', options.map(o => o.label));
   return options;
 }
 
 /**
- * Shorten a label for button display.
- * Keeps it under ~35 chars, cutting at word boundaries.
+ * Derive a compact button label from the full bold text.
+ * Strategy (in order):
+ * 1. If already short (≤30 chars), use as-is
+ * 2. Try to extract "Action $Amount" pattern (e.g. "Deploy $2K into…" → "Deploy $2K")
+ * 3. Truncate at word boundary near 32 chars with ellipsis
  */
-function shortenLabel(label: string, maxLen = 35): string {
-  if (label.length <= maxLen) return label;
+function shortenLabel(label: string): string {
+  if (label.length <= 30) return label;
+
+  // Pattern: verb + money + rest → "Deploy $2K into fresh positions" → "Deploy $2K"
+  const moneyMatch = label.match(/^(.+?\$[\d,.]+[KMB]?)\b.*$/);
+  if (moneyMatch && moneyMatch[1].length <= 25) return moneyMatch[1];
+
+  // Pattern: verb + "your" + noun → "Rebalance your entire…" → "Rebalance your…"
+  const yourMatch = label.match(/^(.+?your\s+\w+).*$/i);
+  if (yourMatch && yourMatch[1].length <= 30) return yourMatch[1];
+
+  // Fallback: truncate at word boundary
+  const maxLen = 32;
   const cut = label.lastIndexOf(' ', maxLen - 3);
   if (cut > 10) return label.slice(0, cut) + '…';
   return label.slice(0, maxLen - 3) + '…';
@@ -134,23 +159,12 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
         display: 'flex',
         flexDirection: 'column',
         gap: '6px',
-        marginTop: '10px',
-        paddingTop: '8px',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        marginTop: '2px',
+        marginBottom: '4px',
+        alignSelf: 'flex-start',
+        maxWidth: '92%',
       }}
     >
-      {/* Small caption */}
-      <div style={{
-        fontSize: '10px',
-        fontWeight: 600,
-        color: 'rgba(255,255,255,0.35)',
-        letterSpacing: '0.05em',
-        textTransform: 'uppercase',
-        marginBottom: '2px',
-      }}>
-        Tap to reply
-      </div>
-
       {/* Option chips */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {options.map((opt, i) => {
@@ -161,7 +175,7 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
               onClick={() => handleTap(opt, i)}
               disabled={tapped !== null}
               style={{
-                // Frosted-glass base
+                // Frosted-glass pill
                 background: isTapped
                   ? 'rgba(34,211,238,0.15)'
                   : 'rgba(255,255,255,0.04)',
@@ -170,8 +184,8 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
                 border: isTapped
                   ? '1px solid rgba(34,211,238,0.4)'
                   : '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px',
-                padding: '8px 14px',
+                borderRadius: '20px',
+                padding: '7px 16px',
                 cursor: tapped !== null ? 'default' : 'pointer',
                 color: isTapped ? '#22d3ee' : 'rgba(255,255,255,0.85)',
                 fontFamily: 'var(--font-sans, inherit)',
@@ -188,13 +202,13 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
               }}
               onMouseEnter={(e) => {
                 if (tapped !== null) return;
-                e.currentTarget.style.background = 'rgba(34,211,238,0.08)';
-                e.currentTarget.style.borderColor = 'rgba(34,211,238,0.3)';
+                (e.currentTarget as HTMLElement).style.background = 'rgba(34,211,238,0.08)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(34,211,238,0.3)';
               }}
               onMouseLeave={(e) => {
                 if (tapped !== null) return;
-                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
               }}
             >
               {shortenLabel(opt.label)}
@@ -203,15 +217,6 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
         })}
       </div>
 
-      {/* Subtle hint */}
-      <div style={{
-        fontSize: '10px',
-        color: 'rgba(255,255,255,0.25)',
-        marginTop: '2px',
-        fontStyle: 'italic',
-      }}>
-        or type your own reply below
-      </div>
     </div>
   );
 }
