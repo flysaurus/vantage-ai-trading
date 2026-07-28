@@ -308,8 +308,8 @@ export function InlineTradeButton({
           opacity: 0.8,
         }}
       >
-        <span style={{ fontSize: '10px' }}>✓</span>
-        Bought ${executed.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({executed.shares.toFixed(4).replace(/\.?0+$/, '') || '0'} shares)
+        <span style={{ fontSize: '10px' }}>☑️</span>
+        {' '}{symbol} ${executed.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </span>
     );
   }
