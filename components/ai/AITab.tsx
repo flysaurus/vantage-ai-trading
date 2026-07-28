@@ -13,7 +13,7 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -857,7 +857,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       onAISessionStarted(anonId).catch(() => {});
     }
 
-    const userMessage = { role: 'user' as const, content };
+    const userMessage = { role: 'user' as const, content, id: crypto.randomUUID() };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput('');
@@ -898,7 +898,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       validationRejectRef.current = null;
       correctedSymbolsRef.current = new Set();
 
-      setMessages(prev => [...prev, { role: 'ai', content: '' }]);
+      setMessages(prev => [...prev, { role: 'ai', content: '', id: crypto.randomUUID() }]);
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -1004,7 +1004,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
-          updated[updated.length - 1] = { role: 'ai' as const, content: finalContent };
+          updated[updated.length - 1] = { ...updated[updated.length - 1], role: 'ai' as const, content: finalContent };
         }
         return updated;
       });
@@ -1675,11 +1675,21 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 const suggestions = parseSuggestions(msg.content, validSymbols);
                 const choices = parseChoiceSuggestions(msg.content);
                 if (suggestions.length === 0 && choices.length === 0) return null;
-                // Build executedMap for this message from global state
+                // Build executedMap for this message from global state + localStorage
                 const msgExecutedMap: Record<string, { shares: number; amount: number; side: string }> = {};
                 for (const s of suggestions) {
-                  const key = `${msg.id}:${s.symbol}`;
-                  if (executedMarkers[key]) msgExecutedMap[s.symbol] = executedMarkers[key];
+                  // Check in-memory DB state first (works across sessions for loaded history)
+                  if (msg.id) {
+                    const key = `${msg.id}:${s.symbol}`;
+                    if (executedMarkers[key]) {
+                      msgExecutedMap[s.symbol] = executedMarkers[key];
+                      continue;
+                    }
+                  }
+                  // Fallback: localStorage by symbol:side (survives reloads, works for live sessions)
+                  if (isMarkerExecutedInStorage(s.symbol, s.side)) {
+                    msgExecutedMap[s.symbol] = { shares: 0, amount: 0, side: s.side };
+                  }
                 }
                 return (
                   <InlineTradeButtons

@@ -187,6 +187,22 @@ export function stripRecommendationMarkers(text: string): string {
  * so all InlineTradeButton instances reflect the greyed-out state.
  * Call this from the TradeTicket onConfirm handler after a real order submission.
  */
+/**
+ * Check if a symbol/side combination has been marked as executed
+ * in localStorage. Survives page reloads.
+ */
+export function isMarkerExecutedInStorage(symbol: string, side: 'BUY' | 'SELL'): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('vantage_executed_markers');
+    if (!raw) return false;
+    const set = new Set<string>(JSON.parse(raw));
+    return set.has(`${symbol}:${side}`);
+  } catch {
+    return false;
+  }
+}
+
 export function markMarkerExecuted(symbol: string, side: 'BUY' | 'SELL'): void {
   if (typeof window === 'undefined') return;
   const executedKey = `${symbol}:${side}`;
