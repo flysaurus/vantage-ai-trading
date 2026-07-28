@@ -109,12 +109,16 @@ function evaluateLimitFill(
  * Determine if a DAY order should be considered expired.
  *
  * A DAY order expires when:
- * - The market is closed (after regular hours or on a weekend/holiday), AND
+ * - The market session has already ended for the day (after close), AND
  * - The order was submitted on a previous calendar day (not today)
+ *
+ * KEY: We do NOT expire orders during pre-market on the next trading day.
+ * Orders submitted on a weekend should survive until at least Monday's close.
  *
  * This double-check prevents premature expiry:
  * - "submitted today, market closed now" → NOT expired (might have filled today)
- * - "submitted yesterday, market closed now" → expired
+ * - "submitted Saturday/Sunday, Monday pre-market" → NOT expired (market hasn't opened yet)
+ * - "submitted yesterday, after market close today" → expired (today's session is over)
  *
  * Stop and stop-limit orders are NOT subject to day expiry — they always
  * behave as GTC.
@@ -132,6 +136,11 @@ export function isDayOrderExpiredAt(
 
   // Only check expiry when market is closed
   if (marketIsOpen) return false;
+
+  // Only expire if today's market session has ACTUALLY ENDED (after close).
+  // If it's pre-market, the market hasn't opened yet today — the order
+  // should survive and get a chance to fill when the market opens.
+  if (!isAfterMarketClose()) return false;
 
   // Check if this order was submitted on a previous calendar day
   // Use ET for consistency with market hours

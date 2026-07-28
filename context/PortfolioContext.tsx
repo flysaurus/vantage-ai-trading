@@ -324,6 +324,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const brokerOrdersRef = useRef<any[]>([]); // raw BrokerOrder[] for Supabase sync
   const brokerBasketOrdersRef = useRef<any[]>([]); // raw BrokerBasketOrder[] for Supabase sync
   const demoSeededRef = useRef(false);
+  const submittingTradeRef = useRef(false); // double-submit guard
+  const submittingBasketRef = useRef(false); // double-submit guard
   // Track which userId we've already initialized for (prevents re-init loops)
   const brokerInitDoneForUserRef = useRef<string | null>(null);
   // Degradation flag: Supabase unreachable → show warning, use localStorage cache
@@ -648,6 +650,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // ── executeTrade ──
   const executeTrade = useCallback(
     async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string): Promise<TradeResult> => {
+      if (submittingTradeRef.current) {
+        console.log('[executeTrade] Already submitting — ignoring duplicate call');
+        return { success: false, error: 'Order already in progress' };
+      }
+      submittingTradeRef.current = true;
+      try {
       const b = brokerRef.current;
       if (!b) return { success: false, error: 'Broker not initialized' };
       const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
@@ -810,6 +818,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       }
 
       return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED', orderId: result.orderId };
+      } finally {
+        submittingTradeRef.current = false;
+      }
     },
     [brokerRef, refreshStateFromBroker],
   );
@@ -1079,6 +1090,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number }>,
     budget: number,
   ): Promise<BasketTradeResult> => {
+    if (submittingBasketRef.current) {
+      console.log('[executeBasketTrade] Already submitting — ignoring duplicate call');
+      return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Basket order already in progress' };
+    }
+    submittingBasketRef.current = true;
+    try {
     const b = brokerRef.current;
     if (!b) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Broker not initialized' };
     const result = await b.placeBasketOrder({
@@ -1104,6 +1121,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
     setTimeout(() => setToast(null), 5000);
     return { success: true, executed: result.orders.length, failed: 0, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
+    } finally {
+      submittingBasketRef.current = false;
+    }
   }, [brokerRef, refreshStateFromBroker, loadBaskets]);
 
   // ── sellBasketPositions ──
