@@ -1050,6 +1050,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             const next = [...prev];
             if (next.length > 0 && next[next.length - 1].role === 'ai') {
               next[next.length - 1] = {
+                ...next[next.length - 1],
                 role: 'ai' as const,
                 content: `My recommendation didn't pass validation after two attempts. Here's what went wrong:\n\n${failureDetails}\n\nCould you rephrase your request or try a different approach?`,
               };
@@ -1066,6 +1067,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             const next = [...prev];
             if (next.length > 0 && next[next.length - 1].role === 'ai') {
               next[next.length - 1] = {
+                ...next[next.length - 1],
                 role: 'ai' as const,
                 content: `I hit an internal error processing your request: **${rejectData.message || 'Unknown streaming error'}**\n\nThis has been logged. Could you try again? If it persists, try a simpler query.`,
               };
@@ -1679,15 +1681,18 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 // Build executedMap for this message from global state + localStorage
                 const msgExecutedMap: Record<string, { shares: number; amount: number; side: string }> = {};
                 for (const s of suggestions) {
-                  // Check in-memory DB state first (works across sessions for loaded history)
-                  if (msg.id) {
-                    const key = `${msg.id}:${s.symbol}`;
-                    if (executedMarkers[key]) {
-                      msgExecutedMap[s.symbol] = executedMarkers[key];
-                      continue;
-                    }
+                  // Check in-memory state (triggers immediate re-render, most reliable)
+                  // Layer 1: messageId:symbol key (from DB-persisted markers)
+                  if (msg.id && executedMarkers[`${msg.id}:${s.symbol}`]) {
+                    msgExecutedMap[s.symbol] = executedMarkers[`${msg.id}:${s.symbol}`];
+                    continue;
                   }
-                  // Fallback: localStorage by symbol:side (survives reloads, works for live sessions)
+                  // Layer 2: direct:symbol:side fallback (works even without messageId)
+                  if (executedMarkers[`direct:${s.symbol}:${s.side}`]) {
+                    msgExecutedMap[s.symbol] = executedMarkers[`direct:${s.symbol}:${s.side}`];
+                    continue;
+                  }
+                  // Layer 3: localStorage by symbol:side (survives reloads)
                   const stored = isMarkerExecutedInStorage(s.symbol, s.side);
                   if (stored) {
                     msgExecutedMap[s.symbol] = stored;
@@ -2384,12 +2389,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             throw new Error(result.error || 'Order failed');
           }
           // ── Persist marker execution state ──
+          // Always update in-memory state to trigger immediate button update.
+          // Uses a primary key (messageId:symbol) + fallback key (direct:symbol:side)
+          // so the re-render happens regardless of whether messageId is available.
+          const execData = { shares: params.shares, amount: params.shares * price, side: tradeTicket.side };
+          const update: Record<string, typeof execData> = {
+            [`direct:${tradeTicket.symbol}:${tradeTicket.side}`]: execData,
+          };
           if (tradeTicket.messageId) {
-            const key = `${tradeTicket.messageId}:${tradeTicket.symbol}`;
-            const execData = { shares: params.shares, amount: params.shares * price, side: tradeTicket.side };
-            // Optimistic: update local state immediately
-            setExecutedMarkers(prev => ({ ...prev, [key]: execData }));
-            // Persist to DB (fire-and-forget — fails silently)
+            update[`${tradeTicket.messageId}:${tradeTicket.symbol}`] = execData;
+          }
+          setExecutedMarkers(prev => ({ ...prev, ...update }));
+
+          // Persist to DB (only with messageId — DB needs a valid message_id FK)
+          if (tradeTicket.messageId) {
             fetch('/api/marker-executions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
