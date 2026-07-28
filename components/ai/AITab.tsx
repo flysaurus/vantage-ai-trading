@@ -1687,8 +1687,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     }
                   }
                   // Fallback: localStorage by symbol:side (survives reloads, works for live sessions)
-                  if (isMarkerExecutedInStorage(s.symbol, s.side)) {
-                    msgExecutedMap[s.symbol] = { shares: 0, amount: 0, side: s.side };
+                  const stored = isMarkerExecutedInStorage(s.symbol, s.side);
+                  if (stored) {
+                    msgExecutedMap[s.symbol] = stored;
                   }
                 }
                 return (
@@ -2402,7 +2403,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             }).catch(e => console.error('[marker-exec] Record failed:', e));
           }
           // Also update localStorage for InlineTradeButton component persistence
-          markMarkerExecuted(tradeTicket.symbol, tradeTicket.side);
+          markMarkerExecuted(tradeTicket.symbol, tradeTicket.side, params.shares, params.shares * price);
         }}
       />
 

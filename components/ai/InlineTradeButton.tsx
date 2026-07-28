@@ -189,28 +189,43 @@ export function stripRecommendationMarkers(text: string): string {
  */
 /**
  * Check if a symbol/side combination has been marked as executed
- * in localStorage. Survives page reloads.
+ * in localStorage. Returns trade data if found, null otherwise.
+ * Survives page reloads.
  */
-export function isMarkerExecutedInStorage(symbol: string, side: 'BUY' | 'SELL'): boolean {
-  if (typeof window === 'undefined') return false;
+export function isMarkerExecutedInStorage(
+  symbol: string,
+  side: 'BUY' | 'SELL',
+): { shares: number; amount: number; side: string } | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem('vantage_executed_markers');
-    if (!raw) return false;
-    const set = new Set<string>(JSON.parse(raw));
-    return set.has(`${symbol}:${side}`);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const key = `${symbol}:${side}`;
+    return data[key] || null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function markMarkerExecuted(symbol: string, side: 'BUY' | 'SELL'): void {
+/**
+ * Persist trade execution data to localStorage so buttons stay greyed
+ * across sessions and page reloads.
+ */
+export function markMarkerExecuted(
+  symbol: string,
+  side: 'BUY' | 'SELL',
+  shares: number,
+  amount: number,
+): void {
   if (typeof window === 'undefined') return;
-  const executedKey = `${symbol}:${side}`;
   try {
     const raw = localStorage.getItem('vantage_executed_markers');
-    const set = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-    set.add(executedKey);
-    localStorage.setItem('vantage_executed_markers', JSON.stringify([...set]));
+    const data: Record<string, { shares: number; amount: number; side: string }> =
+      raw ? JSON.parse(raw) : {};
+    const key = `${symbol}:${side}`;
+    data[key] = { shares, amount, side };
+    localStorage.setItem('vantage_executed_markers', JSON.stringify(data));
   } catch { /* degrade silently */ }
 }
 
