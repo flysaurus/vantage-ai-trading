@@ -14,6 +14,7 @@ import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/ch
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { parseClarifyingOptions, ClarifyingOptions, type ClarifyingOption } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -1649,6 +1650,25 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       >
                         {stripRecommendationMarkers(msg.content)}
                       </ReactMarkdown>
+                        {/* Clarifying question options — tappable chips for discrete choices */}
+                        {(() => {
+                          // Only show on the most recent AI message (not loading)
+                          if (msg.role !== 'ai') return null;
+                          if (loading && i === messages.length - 1) return null;
+                          // Check if any later message is also AI — only show on the newest one
+                          const hasLaterAi = messages.slice(i + 1).some(m => m.role === 'ai');
+                          if (hasLaterAi) return null;
+                          const clarifyingOpts = parseClarifyingOptions(msg.content);
+                          if (!clarifyingOpts) return null;
+                          return (
+                            <ClarifyingOptions
+                              options={clarifyingOpts}
+                              onSelect={(opt: ClarifyingOption) => {
+                                sendMessage(opt.fullText, 'chat');
+                              }}
+                            />
+                          );
+                        })()}
                         {/* Summary card: TL;DR + allocation table below prose */}
                         {(() => {
                           if (tier === 'silver') return null;
