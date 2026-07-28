@@ -109,6 +109,7 @@ export function processUserOrders(
               orderType: order.type,
               shares: order.shares,
               fillPrice: fillPx,
+              submittedPrice: order.submittedPrice,
             }).catch(() => {});
           }
           break;
@@ -127,6 +128,7 @@ export function processUserOrders(
               orderType: order.type,
               shares: order.shares,
               cancelReason: 'day_expired',
+              submittedPrice: order.submittedPrice,
             }).catch(() => {});
           }
           break;
@@ -151,6 +153,7 @@ export function processUserOrders(
                   orderType: order.type,
                   shares: order.shares,
                   cancelReason: 'day_expired',
+                  submittedPrice: order.submittedPrice,
                 }).catch(() => {});
               }
               break;

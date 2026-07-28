@@ -905,6 +905,7 @@ export class DemoBroker implements BrokerEngine {
         orderType: order.type,
         shares: order.shares,
         cancelReason: 'user_cancelled',
+        submittedPrice: order.submittedPrice,
       }).catch(() => {});
     }
 
@@ -1106,6 +1107,7 @@ export class DemoBroker implements BrokerEngine {
         orderType: order.type,
         shares: order.shares,
         fillPrice,
+        submittedPrice: order.submittedPrice,
       }).catch(() => {});
     }
   }
@@ -1129,6 +1131,7 @@ export class DemoBroker implements BrokerEngine {
         orderType: order.type,
         shares: order.shares,
         cancelReason: 'day_expired',
+        submittedPrice: order.submittedPrice,
       }).catch(() => {});
     }
   }

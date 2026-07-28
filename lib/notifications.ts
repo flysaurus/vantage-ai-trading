@@ -56,28 +56,34 @@ export interface BasketNotification {
 
 function buildOrderSubject(n: OrderNotification): string {
   const sym = n.symbol;
-  const side = n.side === 'BUY' ? 'Bought' : 'Sold';
   switch (n.type) {
     case 'order_acknowledged':
-      return `${side} ${n.shares}sh ${sym} — Order Placed`;
+      return `${n.side === 'BUY' ? 'Buy' : 'Sell'} order scheduled for ${sym}`;
     case 'order_filled':
-      return n.fillPrice
-        ? `✅ ${side} ${n.shares}sh ${sym} @ $${n.fillPrice.toFixed(2)}`
-        : `✅ ${side} ${n.shares}sh ${sym} — Filled`;
+      return `${n.side === 'BUY' ? 'Bought' : 'Sold'} ${sym}`;
     case 'order_cancelled':
-      return `❌ ${side} ${n.shares}sh ${sym} — Cancelled`;
+      return `Canceled ${n.side === 'BUY' ? 'Buy' : 'Sell'} order for ${sym}`;
   }
 }
 
 function buildOrderHtml(n: OrderNotification): string {
+  const now = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
   const typeLabel =
     n.type === 'order_acknowledged' ? 'Order Placed'
-    : n.type === 'order_filled' ? 'Order Filled'
+    : n.type === 'order_filled' ? 'Order Executed'
     : 'Order Cancelled';
   const typeColor =
     n.type === 'order_acknowledged' ? '#22d3ee'
     : n.type === 'order_filled' ? '#10b981'
     : '#ef4444';
+
+  const sideLabel = n.side === 'BUY' ? 'Buy' : 'Sell';
+  const sideColor = n.side === 'BUY' ? '#10b981' : '#ef4444';
 
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
@@ -94,16 +100,40 @@ function buildOrderHtml(n: OrderNotification): string {
             <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">${n.symbol}</td>
           </tr>
           <tr style="border-bottom: 1px solid #334155;">
-            <td style="padding: 8px 0; color: #94a3b8;">Side</td>
-            <td style="padding: 8px 0; color: ${n.side === 'BUY' ? '#10b981' : '#ef4444'}; font-weight: 600; text-align: right;">${n.side}</td>
+            <td style="padding: 8px 0; color: #94a3b8;">Order</td>
+            <td style="padding: 8px 0; color: ${sideColor}; font-weight: 600; text-align: right;">${sideLabel} ${n.shares.toFixed(4)} shares</td>
           </tr>
           <tr style="border-bottom: 1px solid #334155;">
-            <td style="padding: 8px 0; color: #94a3b8;">Shares</td>
-            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">${n.shares.toFixed(4)}</td>
+            <td style="padding: 8px 0; color: #94a3b8;">Type</td>
+            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">${n.orderType.replace(/_/g, ' ').toUpperCase()}</td>
           </tr>
+          ${n.submittedPrice ? `<tr style="border-bottom: 1px solid #334155;">
+            <td style="padding: 8px 0; color: #94a3b8;">Price (submitted)</td>
+            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">$${n.submittedPrice.toFixed(2)}</td>
+          </tr>` : ''}
+          ${n.limitPrice ? `<tr style="border-bottom: 1px solid #334155;">
+            <td style="padding: 8px 0; color: #94a3b8;">Limit Price</td>
+            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">$${n.limitPrice.toFixed(2)}</td>
+          </tr>` : ''}
+          ${n.stopPrice ? `<tr style="border-bottom: 1px solid #334155;">
+            <td style="padding: 8px 0; color: #94a3b8;">Stop Price</td>
+            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">$${n.stopPrice.toFixed(2)}</td>
+          </tr>` : ''}
           ${n.fillPrice ? `<tr style="border-bottom: 1px solid #334155;">
             <td style="padding: 8px 0; color: #94a3b8;">Fill Price</td>
             <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">$${n.fillPrice.toFixed(2)}</td>
+          </tr>` : ''}
+          ${n.fillPrice ? `<tr style="border-bottom: 1px solid #334155;">
+            <td style="padding: 8px 0; color: #94a3b8;">Total</td>
+            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">$${(n.fillPrice * n.shares).toFixed(2)}</td>
+          </tr>` : ''}
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8;">Date / Time</td>
+            <td style="padding: 8px 0; color: #f8fafc; font-weight: 600; text-align: right;">${now} ET</td>
+          </tr>
+          ${n.cancelReason ? `<tr style="border-bottom: 1px solid #334155;">
+            <td style="padding: 8px 0; color: #94a3b8;">Reason</td>
+            <td style="padding: 8px 0; color: #ef4444; font-weight: 600; text-align: right;">${n.cancelReason === 'day_expired' ? 'Day order expired' : 'Cancelled by user'}</td>
           </tr>` : ''}
           ${n.details ? `<tr><td colspan="2" style="padding: 8px 0; color: #94a3b8; font-size: 13px;">${n.details}</td></tr>` : ''}
         </table>
