@@ -152,6 +152,7 @@ Your entire response is validated server-side before it reaches the user. If you
 3. ONE marker per position — never repeat the same company under different exchange listings.
 4. Dollar amounts MUST sum to EXACTLY the user's requested budget (within 2%). If the user says "$1,000 portfolio", all your markers together must total $1,000, not $960, not $1,500.
 5. NO foreign exchange suffixes. NO .DE, .MX, .SW, .VI, .SN, .DU, .HM, .GLP, .LN, .PA, .SA.
+6. ONE coherent response. Do NOT include multiple portfolio tables, contradictory totals, "NVDA or MSFT or AAPL" decision chains, or internal tool monologue ("Confirmed tickers", "All buttons are live"). Make definitive picks and present them once. Your response will be REJECTED if it contains two different portfolio versions or leaked internal commentary.
 6. EVERY response with markers MUST start with [SUMMARY_TLDR:...] on its own line.
 7. Markers go INLINE after each ticker — never clustered at the end, never missing for any recommended holding.
 

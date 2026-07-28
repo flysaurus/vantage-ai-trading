@@ -25,7 +25,7 @@ const EXCHANGE_SUFFIXES = new Set([
 // ── Types ──
 
 export interface ValidationFailure {
-  check: 'marker_format' | 'symbol_resolution' | 'duplicate_company' | 'budget_reconciliation';
+  check: 'marker_format' | 'symbol_resolution' | 'duplicate_company' | 'budget_reconciliation' | 'response_coherence';
   detail: string;
   offendingMarkers: string[];
 }
@@ -276,6 +276,7 @@ export function buildRetryPrompt(failures: ValidationFailure[]): string {
   lines.push('4. No exchange suffixes (.DE, .MX, .SW, etc.) — US listings only.');
   lines.push('5. No duplicate positions for the same company.');
   lines.push('6. Start with [SUMMARY_TLDR:...] marker.');
+  lines.push('7. ONE coherent response. Do NOT include multiple portfolio tables, contradictory totals, "X or Y or Z" decision chains, or internal monologue ("Confirmed tickers", "All buttons"). Make definitive picks and present them ONCE.');
   lines.push('\nRegenerate your response now, following ALL rules above precisely.\n');
 
   return lines.join('\n');

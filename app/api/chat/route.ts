@@ -418,6 +418,72 @@ function validateBudgetGate(userMessage: string, aiResponse: string): BudgetGate
   };
 }
 
+/**
+ * Detect AI response incoherence: two contradictory portfolio tables,
+ * malformed marker-decision chains ("NVDA or or or or"), or internal
+ * monologue leaking into user-facing text.
+ *
+ * Returns a detail string if incoherence is detected, null if clean.
+ */
+function detectResponseIncoherence(response: string): string | null {
+  // ── Pattern 1: Multiple markdown portfolio tables ──
+  // Two "| **Total** |" lines with different dollar amounts
+  const totalLines = [...response.matchAll(/\|\s*\*{0,2}Total\*{0,2}\s*\|[^|]*\|\s*\*{0,2}\$?([\d,]+)/gi)];
+  if (totalLines.length >= 2) {
+    const amounts = totalLines.map(m => parseFloat(m[1].replace(/,/g, '')));
+    const unique = new Set(amounts);
+    if (unique.size >= 2) {
+      return `Two contradictory portfolio totals found: ${[...unique].map(a => `$${a.toLocaleString()}`).join(' and ')}. Regenerate a single coherent response.`;
+    }
+    // Same total twice — still suspicious (duplicate table)
+    if (totalLines.length >= 2) {
+      return 'Duplicate portfolio table detected — two "Total" rows in one response. Regenerate a single clean table.';
+    }
+  }
+
+  // ── Pattern 2: Multiple position-count summaries ──
+  // "6 positions totaling $2,000" + later "8 positions totaling $2,700"
+  const posCounts = [...response.matchAll(/(\d+)\s+positions?\s+(?:totaling|totalling|worth|at)\s+\$?([\d,]+)/gi)];
+  if (posCounts.length >= 2) {
+    const counts = posCounts.map(m => ({ count: parseInt(m[1]), total: parseFloat(m[2].replace(/,/g, '')) }));
+    const uniqueCounts = new Set(counts.map(c => c.count));
+    const uniqueTotals = new Set(counts.map(c => c.total));
+    if (uniqueCounts.size >= 2 || uniqueTotals.size >= 2) {
+      return `Two contradictory position summaries: ${counts.map(c => `${c.count} pos / $${c.total.toLocaleString()}`).join(' and ')}. Regenerate a single coherent response.`;
+    }
+  }
+
+  // ── Pattern 3: Malformed marker-decision chains ──
+  // "NVDA or or or or", "MSFT or or or or" — the AI waffling between tickers
+  const orChain = response.match(/\b([A-Z]{2,5})\s+(or\s+){2,}/gi);
+  if (orChain) {
+    return `Malformed marker-decision chain detected: "${orChain[0].trim()}". AI is waffling instead of making decisions. Regenerate with definitive picks.`;
+  }
+
+  // ── Pattern 4: Internal monologue leaking ──
+  // "Confirmed tickers", "All buttons are live", "Validating symbols..."
+  const internalPhrases = [
+    /confirmed\s+tickers/i,
+    /all\s+buttons\s+are\s+live/i,
+    /checking\s+ticker/i,
+    /validating\s+symbols/i,
+    /(?:ticker|symbol)\s+(?:lookup|check|verify|confirm)/i,
+  ];
+  for (const phrase of internalPhrases) {
+    if (phrase.test(response)) {
+      return `Internal tool monologue leaking into user-facing text: matched "${phrase.source}". Regenerate without internal commentary.`;
+    }
+  }
+
+  // ── Pattern 5: "TL;DR" appearing twice (two summaries = two different portfolios) ──
+  const tldrCount = (response.match(/\[SUMMARY_TLDR:/gi) || []).length;
+  if (tldrCount >= 2) {
+    return `Two [SUMMARY_TLDR:...] markers found — indicates two separate recommendation blocks. Regenerate one coherent response.`;
+  }
+
+  return null;
+}
+
 // ─── POST Handler ───
 export async function POST(req: Request) {
   try {
@@ -902,6 +968,28 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers. Prose heuristics were the
         // root cause of ghost tickers (exchange codes), contradictory buttons,
         // and duplicate positions across foreign listings.
+
+        // ── Response Coherence Check ──
+        // Detects AI producing two contradictory portfolios in one response,
+        // raw "NVDA or or or or" marker-decision chains, and internal monologue
+        // leaking into user-facing text. These indicate a broken generation that
+        // should be regenerated — no partial render.
+        const coherenceFailure = detectResponseIncoherence(responseText);
+        if (coherenceFailure) {
+          console.warn('[chat] ⚠️ Response coherence check FAILED:', coherenceFailure);
+          if (retryAttempt >= 1) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }] })}\n\n`)
+            );
+          } else {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }], budget: requestedBudget })}\n\n`)
+            );
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+          return;
+        }
 
         // ── STRICT VALIDATION: format, symbol existence, dedupes, budget reconciliation ──
         // ONLY runs when response contains RECOMMEND markers. Responses without markers
