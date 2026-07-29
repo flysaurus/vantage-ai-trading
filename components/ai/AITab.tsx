@@ -892,6 +892,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
     bypassStepperRef.current = false;
 
     if (!isBypass && clarifyQueue.length > 0 && clarifyStep < clarifyQueue.length) {
+      // Only intercept when the stepper is rendering for the CURRENT message.
+      // If the stepper is NOT active (single-question mode), the clarify state
+      // should have been cleared — this guard prevents stale state from eating
+      // chip taps in single-question mode.
+      const isStepperMsg = stepperMsgIdRef.current !== null && messages.some(m => m.id === stepperMsgIdRef.current);
+      if (!isStepperMsg) {
+        // Stale queue — clear it so chip taps reach the server
+        setClarifyQueue([]);
+        setClarifyStep(0);
+        setClarifyAnswers([]);
+        // Fall through to normal sendMessage flow
+      } else {
       const currentQ = clarifyQueue[clarifyStep];
       // Only intercept if current question has NO chips (open-ended)
       // Questions with chips should be answered by tapping, not typing
@@ -905,6 +917,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       // If current question has chips, ignore free-form text input
       return;
+      }
     }
 
     if ((chatRemaining ?? 0) <= 0) {
