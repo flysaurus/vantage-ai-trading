@@ -1735,6 +1735,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               <ClarifyingOptions
                 options={clarifyingOpts}
                 onSelect={(opt: ClarifyingOption) => {
+                  // "Let me adjust" opens free-text input instead of sending a preset
+                  if (opt.label === 'Let me adjust ✎') {
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                    return;
+                  }
                   sendMessage(opt.fullText, 'chat');
                 }}
               />

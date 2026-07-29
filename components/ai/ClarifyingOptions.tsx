@@ -41,6 +41,124 @@ const QUESTION_HINTS = [
   /\byou want\b/i,
 ];
 
+// ── Shape 2: CONFIRM-OR-ADJUST detection ──────────────
+// AI proposes a framework/plan then asks for confirmation or adjustment.
+// Renders as "Looks good ✓" + "Let me adjust ✎" chips.
+
+const CONFIRM_ADJUST_PATTERNS = [
+  /\b(?:framework|plan|approach|strategy|setup|split|allocation)\s+(?:work|look|sound)(?:s)?\b/i,
+  /\b(?:want|need|like)\s+(?:me to|to)\s+(?:adjust|change|tweak|modify|revise)\b/i,
+  /\b(?:let me know|tell me)\s+(?:if|what|how)\b.*\b(?:adjust|change|tweak|want)\b/i,
+  /\b(?:does|do)\s+(?:this|that|it)\s+(?:work|look|sound|feel)\b/i,
+  /\b(?:confirm|lock|finalize)\s+(?:before|and|then|criteri)/i,
+  /\b(?:before|once)\s+(?:i|we|you)\s+(?:screen|build|run|go)\b/i,
+  /\bgo\s+(?:ahead|with)\b/i,
+];
+
+/**
+ * Check if the response contains a confirm-or-adjust pattern:
+ * AI proposed a framework AND asks "does this work / should I tweak?"
+ * Returns true if the response is a framework proposal asking for confirmation.
+ */
+function detectConfirmOrAdjust(markdownContent: string): boolean {
+  // Guard: very short responses aren't framework proposals
+  if (markdownContent.length < 100) return false;
+
+  // Must have a question mark (asking for confirmation)
+  if (!markdownContent.includes('?')) return false;
+
+  // Must match at least one confirm-adjust pattern
+  const hasPattern = CONFIRM_ADJUST_PATTERNS.some(p => p.test(markdownContent));
+
+  // Must have substantive framework content (bullet items, specific metrics, P/E bands, etc.)
+  const hasFrameworkContent = /\b(?:P\/E|EPS|growth|margin|drawdown|position|allocation|caps?)\b/i.test(markdownContent);
+
+  console.log('[ClarifyingOptions] Confirm-adjust check: pattern=' + hasPattern + ' framework=' + hasFrameworkContent);
+
+  return hasPattern && hasFrameworkContent;
+}
+
+// ── Shape 1: CLOSED OPTIONS — scan for "or"-separated choices ──
+// Finds the last question sentence containing " or " and extracts
+// discrete named options (e.g. "50/50 split, or lean heavier?")
+// rather than blindly splitting the whole response.
+
+function extractOrOptions(text: string): string[] | null {
+  // Strategy: find each "?", then look BACKWARD up to 150 chars for " or ".
+  // This catches the actual closing question ("50/50 or lean heavier?")
+  // while ignoring incidental "or" in prose far from any question mark.
+  const qPositions: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '?') qPositions.push(i);
+  }
+  if (qPositions.length === 0) return null;
+
+  // Work backward through question marks
+  for (let qi = qPositions.length - 1; qi >= 0; qi--) {
+    const qPos = qPositions[qi];
+    // Look at the text 150 chars before this ? (or start of text)
+    const lookStart = Math.max(0, qPos - 150);
+    const window = text.slice(lookStart, qPos);
+
+    // Find the last " or " in this window
+    const orIdx = window.lastIndexOf(' or ');
+    if (orIdx === -1) continue;
+
+    // Extract from after the " or " separator backward to find the options
+    // We want the text around this " or ", starting from the previous sentence break
+    const fullWindow = text.slice(lookStart, qPos);
+    
+    // Find the rightmost sentence-start within our window (capital letter after [.!?])
+    // or fall back to the lookStart
+    const sentenceBreaks = [...fullWindow.matchAll(/(?<=[.!?])\s+(?=[A-Z])/g)];
+    let sentenceStart = lookStart;
+    if (sentenceBreaks.length > 0) {
+      const lastBreak = sentenceBreaks[sentenceBreaks.length - 1];
+      sentenceStart = lookStart + (lastBreak.index || 0) + lastBreak[0].length;
+    }
+
+    // Also try to find a dash/colon separator AFTER the sentence start
+    let target = text.slice(sentenceStart, qPos);
+    const sepIdx = Math.max(
+      target.lastIndexOf('—'), target.lastIndexOf('–'),
+      target.lastIndexOf(': ')
+    );
+    if (sepIdx > 5) target = target.slice(sepIdx + 1);
+
+    // Clean up
+    target = target.replace(/^(how|what|which|would you|do you|should i|can you|want to|could you|let me know)\s+/i, '').trim();
+    target = target.replace(/[?.!]+$/, '').trim();
+
+    if (!target.includes(' or ')) continue;
+
+    // Split on " or "
+    const parts = target.split(/\s+or\s+/i);
+    if (parts.length < 2) continue;
+
+    const candidates: string[] = [];
+    for (const p of parts) {
+      let opt = p.trim().replace(/[,]+$/, '').trim();
+      const subParts = opt.split(/\s*,\s*/).filter(s => s.length >= 3);
+      for (const sp of subParts) {
+        if (sp.length >= 3 && sp.length <= 80) candidates.push(sp);
+      }
+    }
+
+    if (candidates.length >= 2 && candidates.length <= 4) {
+      // Gate: reject if candidates look like confirm-or-adjust framing instead
+      // of discrete named choices (e.g. "should I adjust?" vs "50/50 split")
+      const looksLikeConfirmAdjust = candidates.some(c =>
+        /^(?:do(?:es)?|should|would|can|could|want|need|let)\s/i.test(c) ||
+        /\b(?:work|look|sound|adjust|change|tweak|modify|revise|go ahead)\b/i.test(c) && c.length > 30
+      );
+      if (!looksLikeConfirmAdjust) return candidates;
+      console.log('[ClarifyingOptions] Tier 4 candidates look like confirm/adjust framing — skipping to Tier 5');
+    }
+  }
+
+  return null;
+}
+
 /**
  * Parse an AI markdown response to detect clarifying questions with
  * 2-4 discrete options the user can tap to reply.
@@ -49,6 +167,8 @@ const QUESTION_HINTS = [
  * 1. Bold list items (highest confidence — the AI was explicit)
  * 2. Plain text list items + question context
  * 3. Standalone bold lines + question context
+ * 4. Inline "or"-separated options in the closing question sentence
+ * 5. CONFIRM-OR-ADJUST: proposed framework + confirmation question
  *
  * Returns null if no valid clarifying question is detected.
  */
@@ -77,7 +197,6 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
     idx = 0;
     while ((match = PLAIN_LIST_ITEM_RE.exec(markdownContent)) !== null) {
       const label = match[1].trim();
-      // Filter out sub-bullets, code blocks, and markdown syntax
       if (label.length >= 3 && !label.startsWith('`') && !label.startsWith('[')) {
         options.push({ label, fullText: label, index: idx });
       }
@@ -98,73 +217,56 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
     }
   }
 
-  // Need 2-4 discrete options
-  if (options.length < 2 || options.length > 4) {
-    // ── Tier 4 (desperate): Inline "or"-separated options ──
-    // Pattern: "X or Y?" or "X, Y, or Z?" in the closing question line
-    if (options.length === 0) {
-      const lastParagraph = markdownContent.split(/\n\n+/).pop() || '';
-      
-      // Split on " or " — handles "A or B or C" patterns
-      const orParts = lastParagraph.split(/\s+or\s+/i);
-      if (orParts.length >= 2 && orParts.length <= 5) {
-        const candidates: string[] = [];
-        for (let i = 0; i < orParts.length; i++) {
-          let part = orParts[i].trim().replace(/[,?.!]+$/, '').trim();
-          if (i === 0) {
-            // Strip leading question framing: find dash/colon separator
-            const sepIdx = Math.max(
-              part.lastIndexOf('—'), part.lastIndexOf('–'),
-              part.lastIndexOf(': ')
-            );
-            if (sepIdx > 5) part = part.slice(sepIdx + 1).trim();
-            part = part.replace(/^(how|what|which|would you|do you|should i|can you|want to|could you|let me know)\s+/i, '').trim();
-            // Sub-split on commas (e.g. "NVDA, MSFT" before first "or")
-            for (const sp of part.split(/\s*,\s*/)) {
-              const c = sp.trim();
-              if (c.length >= 3 && c.length <= 80) candidates.push(c);
-            }
-          } else {
-            if (part.length >= 3 && part.length <= 80) candidates.push(part);
-          }
-        }
-        if (candidates.length >= 2 && candidates.length <= 4) {
-          options = candidates.map((c, i) => ({ label: c, fullText: c, index: i }));
-        }
-      }
-    }
-    
-    if (options.length < 2 || options.length > 4) {
-      if (options.length > 0 && typeof window !== 'undefined') {
-        console.log('[ClarifyingOptions] Found', options.length, 'items — need 2-4, skipping');
-      }
-      return null;
+  // ── Tier 4: Inline "or"-separated CLOSED OPTIONS ──
+  if (options.length === 0) {
+    const orCandidates = extractOrOptions(markdownContent);
+    if (orCandidates) {
+      options = orCandidates.map((c, i) => ({ label: c, fullText: c, index: i }));
+      console.log('[ClarifyingOptions] Tier 4 (or-options) detected:', options.map(o => o.label));
     }
   }
 
-  // ── Validate question context ──
-  let surrounding = markdownContent
-    .replace(BOLD_LIST_ITEM_RE, '')
-    .replace(PLAIN_LIST_ITEM_RE, '')
-    .replace(BOLD_LINE_RE, '');
-  BOLD_LIST_ITEM_RE.lastIndex = 0;
-  PLAIN_LIST_ITEM_RE.lastIndex = 0;
-  BOLD_LINE_RE.lastIndex = 0;
-  surrounding = surrounding
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\[RECOMMEND[^\]]*\]/g, '');
+  // ── Tier 5: CONFIRM-OR-ADJUST (proposed framework + confirmation) ──
+  if (options.length === 0) {
+    if (detectConfirmOrAdjust(markdownContent)) {
+      options = [
+        { label: 'Looks good ✓', fullText: 'Looks good — go ahead with this.', index: 0 },
+        { label: 'Let me adjust ✎', fullText: 'Let me adjust:', index: 1 },
+      ];
+      console.log('[ClarifyingOptions] Tier 5 (confirm-or-adjust) detected');
+    }
+  }
 
-  // Lenient: if response is SHORT and mostly consists of the list items,
-  // treat it as a clarifying question even without explicit question words.
-  // (The AI was told to be terse for clarifying questions.)
-  const isShortResponse = markdownContent.length < 400;
-  const hasQuestionContext = QUESTION_HINTS.some(p => p.test(surrounding));
-
-  if (!hasQuestionContext && !isShortResponse) {
-    if (typeof window !== 'undefined') {
-      console.log('[ClarifyingOptions] Found', options.length, 'options but no question context');
+  // Need 2-4 discrete options
+  if (options.length < 2 || options.length > 4) {
+    if (options.length > 0 && typeof window !== 'undefined') {
+      console.log('[ClarifyingOptions] Found', options.length, 'items — need 2-4, skipping');
     }
     return null;
+  }
+
+  // ── Validate question context (skip for Tier 4/5 which already validated) ──
+  if (options.length > 0 && options[0].fullText !== 'Looks good — go ahead with this.') {
+    let surrounding = markdownContent
+      .replace(BOLD_LIST_ITEM_RE, '')
+      .replace(PLAIN_LIST_ITEM_RE, '')
+      .replace(BOLD_LINE_RE, '');
+    BOLD_LIST_ITEM_RE.lastIndex = 0;
+    PLAIN_LIST_ITEM_RE.lastIndex = 0;
+    BOLD_LINE_RE.lastIndex = 0;
+    surrounding = surrounding
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\[RECOMMEND[^\]]*\]/g, '');
+
+    const isShortResponse = markdownContent.length < 400;
+    const hasQuestionContext = QUESTION_HINTS.some(p => p.test(surrounding));
+
+    if (!hasQuestionContext && !isShortResponse) {
+      if (typeof window !== 'undefined') {
+        console.log('[ClarifyingOptions] Found', options.length, 'options but no question context');
+      }
+      return null;
+    }
   }
 
   console.log('[ClarifyingOptions] ✅ Detected', options.length, 'options:', options.map(o => o.label));
@@ -210,6 +312,9 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
     }, 250);
   }, [onSelect]);
 
+  // Check if the "Let me adjust" chip was tapped (opens free-text, not preset)
+  const isAdjustChip = (label: string) => label === 'Let me adjust ✎';
+
   return (
     <div style={{
       display: 'flex',
@@ -223,6 +328,7 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {options.map((opt, i) => {
           const isTapped = tapped === i;
+          const isAdjust = isAdjustChip(opt.label);
           return (
             <button
               key={i}
@@ -231,16 +337,24 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
               style={{
                 background: isTapped
                   ? 'rgba(34,211,238,0.15)'
-                  : 'rgba(255,255,255,0.04)',
+                  : isAdjust
+                    ? 'rgba(250,204,21,0.06)'
+                    : 'rgba(255,255,255,0.04)',
                 backdropFilter: 'blur(8px)',
                 WebkitBackdropFilter: 'blur(8px)',
                 border: isTapped
                   ? '1px solid rgba(34,211,238,0.4)'
-                  : '1px solid rgba(255,255,255,0.1)',
+                  : isAdjust
+                    ? '1px solid rgba(250,204,21,0.25)'
+                    : '1px solid rgba(255,255,255,0.1)',
                 borderRadius: '20px',
                 padding: '7px 16px',
                 cursor: tapped !== null ? 'default' : 'pointer',
-                color: isTapped ? '#22d3ee' : 'rgba(255,255,255,0.85)',
+                color: isTapped
+                  ? '#22d3ee'
+                  : isAdjust
+                    ? 'rgba(250,204,21,0.9)'
+                    : 'rgba(255,255,255,0.85)',
                 fontFamily: 'var(--font-sans, inherit)',
                 fontSize: '12.5px',
                 fontWeight: 500,
@@ -255,16 +369,31 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
               }}
               onMouseEnter={(e) => {
                 if (tapped !== null) return;
-                (e.currentTarget as HTMLElement).style.background = 'rgba(34,211,238,0.08)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(34,211,238,0.3)';
+                (e.currentTarget as HTMLElement).style.background = isAdjust
+                  ? 'rgba(250,204,21,0.1)'
+                  : 'rgba(34,211,238,0.08)';
+                (e.currentTarget as HTMLElement).style.borderColor = isAdjust
+                  ? 'rgba(250,204,21,0.35)'
+                  : 'rgba(34,211,238,0.3)';
               }}
               onMouseLeave={(e) => {
                 if (tapped !== null) return;
-                (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
+                (e.currentTarget as HTMLElement).style.background = isAdjust
+                  ? 'rgba(250,204,21,0.06)'
+                  : 'rgba(255,255,255,0.04)';
+                (e.currentTarget as HTMLElement).style.borderColor = isAdjust
+                  ? 'rgba(250,204,21,0.25)'
+                  : 'rgba(255,255,255,0.1)';
               }}
             >
-              {shortenLabel(opt.label)}
+              {isAdjust ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {shortenLabel(opt.label).replace(' ✎', '')}
+                  <span style={{ fontSize: '10px', opacity: 0.6 }}>✎</span>
+                </span>
+              ) : (
+                shortenLabel(opt.label)
+              )}
             </button>
           );
         })}
