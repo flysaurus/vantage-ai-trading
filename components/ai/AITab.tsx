@@ -14,7 +14,7 @@ import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/ch
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
-import { parseClarifyingOptions, ClarifyingOptions, type ClarifyingOption } from '@/components/ai/ClarifyingOptions';
+import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, type ClarifyingOption } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -1591,9 +1591,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             );
           }
           // AI message — accent left border, same 14px font as user messages
-          // Compute clarifying options for chips BELOW the bubble
+          // Compute clarifying options from [CLARIFY:...] markers for chips BELOW the bubble
           const isLastAiMsg = !loading && !messages.slice(i + 1).some(m => m.role === 'ai');
-          const clarifyingOpts = isLastAiMsg ? parseClarifyingOptions(msg.content) : null;
+          const clarifyingOpts = isLastAiMsg ? questionsToOptions(parseClarifyMarkers(msg.content)) : null;
           return (
             <React.Fragment key={i}>
             <div
@@ -1736,7 +1736,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 options={clarifyingOpts}
                 onSelect={(opt: ClarifyingOption) => {
                   // "Let me adjust" opens free-text input instead of sending a preset
-                  if (opt.label === 'Let me adjust ✎') {
+                  if (opt.label === 'Let me adjust ✎' || opt.label === 'Let me adjust something') {
                     setTimeout(() => inputRef.current?.focus(), 100);
                     return;
                   }

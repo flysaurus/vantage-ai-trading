@@ -171,6 +171,7 @@ export function stripRecommendationMarkers(text: string): string {
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
     .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text
+    .replace(/\[CLARIFY:\s*\{[^}]+\}\]\s*/g, '')  // Remove CLARIFY markers from visible text
     // Remove JSON candidate blocks that follow choice markers
     .replace(/```json\s*\n?\{[\s\S]*?"candidates"[\s\S]*?\}\s*\n?```/g, '')
     .replace(/\s+,/g, ',')  // fix "MSFT , NVDA" → "MSFT, NVDA"
