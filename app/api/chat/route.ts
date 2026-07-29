@@ -413,14 +413,12 @@ function validateBudgetGate(userMessage: string, aiResponse: string): BudgetGate
   }
 
   const deviationPercent = ((responseTotal - requestedBudget) / requestedBudget) * 100;
-  const withinTolerance = Math.abs(deviationPercent) <= 2;
-
-  if (withinTolerance) {
+  if (responseTotal === requestedBudget) {
     return { hasViolation: false, requestedBudget, responseTotal, deviationPercent, message: null };
   }
 
   const direction = responseTotal > requestedBudget ? 'exceeds' : 'falls short of';
-  const message = `⚠️ Budget mismatch: You requested a $${requestedBudget.toLocaleString()} portfolio, but the generated allocation totals $${responseTotal.toLocaleString()} (${deviationPercent >= 0 ? '+' : ''}${deviationPercent.toFixed(1)}% ${direction} your budget by ${Math.abs(deviationPercent).toFixed(1)}% — outside the ±2% tolerance). The AI may need to regenerate this with tighter constraints.`;
+  const message = `⚠️ Budget mismatch: You requested a $${requestedBudget.toLocaleString()} portfolio, but the generated allocation totals $${responseTotal.toLocaleString()} (${deviationPercent >= 0 ? '+' : ''}${deviationPercent.toFixed(1)}% ${direction} your budget by ${Math.abs(deviationPercent).toFixed(1)}% — must match exactly). The AI may need to regenerate this with tighter constraints.`;
 
   return {
     hasViolation: true,

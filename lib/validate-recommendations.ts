@@ -225,16 +225,15 @@ export async function validateRecommendations(
   // ────────────────────────────────────────────────────────
   if (requestedBudget !== null && requestedBudget > 0) {
     const total = validMarkers.reduce((sum, m) => sum + m.amount, 0);
-    const margin = requestedBudget * 0.02; // 2% tolerance
-    const lowerBound = requestedBudget - margin;
-    const upperBound = requestedBudget + margin;
-
-    if (total < lowerBound || total > upperBound) {
-      const direction = total < lowerBound ? 'under' : 'over';
+    // EXACT match required on the aggregate portfolio total — no tolerance.
+    // Rounding is only acceptable when converting individual positions to
+    // whole shares downstream; the top-line $ figure must reconcile exactly.
+    if (total !== requestedBudget) {
+      const direction = total < requestedBudget ? 'under' : 'over';
       const pctOff = Math.abs(((total - requestedBudget) / requestedBudget) * 100).toFixed(1);
       failures.push({
         check: 'budget_reconciliation',
-        detail: `Allocation total $${total.toLocaleString()} is ${direction} budget by ${pctOff}% (requested: $${requestedBudget.toLocaleString()}, allowed ±2%).`,
+        detail: `Allocation total $${total.toLocaleString()} is ${direction} budget by ${pctOff}% (requested: $${requestedBudget.toLocaleString()} — must match exactly).`,
         offendingMarkers: validMarkers.map(m => m.raw),
       });
       return { ok: false, failures };
@@ -272,7 +271,7 @@ export function buildRetryPrompt(failures: ValidationFailure[]): string {
   lines.push('CRITICAL RULES (these MUST be followed — your response will be rejected otherwise):');
   lines.push('1. EXACTLY one [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker per position. No variations, no alternatives.');
   lines.push('2. EVERY symbol must be a US primary listing — use the resolveSymbol tool to verify before recommending.');
-  lines.push('3. Dollar amounts must sum to EXACTLY the requested budget (within 2%).');
+  lines.push('3. Dollar amounts must sum to EXACTLY the requested budget (no tolerance, no rounding at the aggregate level).');
   lines.push('4. No exchange suffixes (.DE, .MX, .SW, etc.) — US listings only.');
   lines.push('5. No duplicate positions for the same company.');
   lines.push('6. Start with [SUMMARY_TLDR:...] marker.');
