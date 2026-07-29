@@ -1,9 +1,9 @@
 'use client';
 
 // ─── ClarifyingOptions — Tappable chip UI for AI clarifying questions ───
-// When the AI includes [CLARIFY:{...}] markers in its response, this
-// component extracts them and renders frosted-glass pill chips the user
-// can tap to reply instantly — no typing required.
+// Two modes:
+// 1. Single-question: all chips rendered at once (existing behavior)
+// 2. ClarifyStepper: sequential one-at-a-time for multi-question messages
 
 import { useState, useCallback } from 'react';
 
@@ -36,9 +36,8 @@ export function parseClarifyMarkers(content: string): ClarifyingQuestion[] {
   if (!content || content.length < 10) return [];
 
   const results: ClarifyingQuestion[] = [];
-  const seen = new Set<string>(); // deduplicate identical markers
+  const seen = new Set<string>();
 
-  // Reset regex state
   CLARIFY_PATTERN.lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -48,7 +47,6 @@ export function parseClarifyMarkers(content: string): ClarifyingQuestion[] {
       const question = parsed.question;
       if (!question || typeof question !== 'string' || question.trim().length < 2) continue;
 
-      // Deduplicate
       const key = question.trim() + '|' + JSON.stringify(parsed.options);
       if (seen.has(key)) continue;
       seen.add(key);
@@ -59,7 +57,6 @@ export function parseClarifyMarkers(content: string): ClarifyingQuestion[] {
 
       results.push({ question: question.trim(), options });
     } catch {
-      // Malformed JSON — skip, don't crash
       console.log('[ClarifyingOptions] Skipped malformed CLARIFY marker');
     }
   }
@@ -73,18 +70,16 @@ export function parseClarifyMarkers(content: string): ClarifyingQuestion[] {
 
 /**
  * Strip [CLARIFY:{...}] markers from display text.
- * The marker itself is invisible — only the question text within gets rendered.
  */
 export function stripClarifyMarkers(text: string): string {
   return text
     .replace(CLARIFY_PATTERN, '')
-    .replace(/\n{3,}/g, '\n\n')  // collapse excessive blank lines
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 /**
- * Convert ClarifyingQuestion[] to the chip-compatible ClarifyingOption[] format
- * used by the render component.
+ * Convert ClarifyingQuestion[] to the chip-compatible ClarifyingOption[] format.
  */
 export function questionsToOptions(questions: ClarifyingQuestion[]): ClarifyingOption[] {
   const options: ClarifyingOption[] = [];
@@ -106,7 +101,6 @@ export function questionsToOptions(questions: ClarifyingQuestion[]): ClarifyingO
 
 /**
  * Build the rendered clarifying text from parsed markers.
- * Each question text is displayed in the bubble above its chips.
  */
 export function buildClarifyText(questions: ClarifyingQuestion[]): string {
   if (questions.length === 0) return '';
@@ -115,7 +109,6 @@ export function buildClarifyText(questions: ClarifyingQuestion[]): string {
 
 /**
  * Legacy wrapper — kept for backward compatibility during transition.
- * Prefer parseClarifyMarkers + questionsToOptions for new code.
  */
 export function parseClarifyingOptions(markdownContent: string): ClarifyingOption[] | null {
   const questions = parseClarifyMarkers(markdownContent);
@@ -124,37 +117,34 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
   return options;
 }
 
-// ── Rendering ───────────────────────────────────────────────
+// ── Chip renderer (shared by single-question and stepper) ───
 
-/**
- * Derive a compact button label from the full option text.
- */
-function shortenLabel(label: string): string {
-  if (label.length <= 30) return label;
+const CHIP_STYLE: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.04)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '20px',
+  padding: '7px 16px',
+  cursor: 'pointer',
+  color: 'rgba(255,255,255,0.85)',
+  fontFamily: 'var(--font-sans, inherit)',
+  fontSize: '12.5px',
+  fontWeight: 500,
+  lineHeight: '1.4',
+  textAlign: 'left' as const,
+  transition: 'all 0.2s ease',
+  whiteSpace: 'normal' as const,
+  wordBreak: 'break-word' as const,
+  opacity: 1,
+};
 
-  // Pattern: "Verb $Amount …" → "Verb $Amount"
-  const moneyMatch = label.match(/^(.+?\$[\d,.]+[KMB]?)\b.*$/);
-  if (moneyMatch && moneyMatch[1].length <= 25) return moneyMatch[1];
-
-  // Pattern: "Verb your Noun …" → "Verb your Noun"
-  const yourMatch = label.match(/^(.+?your\s+\w+).*$/i);
-  if (yourMatch && yourMatch[1].length <= 30) return yourMatch[1];
-
-  // Fallback: word-boundary truncation
-  const maxLen = 32;
-  const cut = label.lastIndexOf(' ', maxLen - 3);
-  if (cut > 10) return label.slice(0, cut) + '…';
-  return label.slice(0, maxLen - 3) + '…';
-}
-
-// ── Component ────────────────────────────────────────────────
-
-interface ClarifyingOptionsProps {
+interface ChipRowProps {
   options: ClarifyingOption[];
   onSelect: (option: ClarifyingOption) => void;
 }
 
-export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps) {
+function ChipRow({ options, onSelect }: ChipRowProps) {
   const [tapped, setTapped] = useState<number | null>(null);
 
   const handleTap = useCallback((opt: ClarifyingOption, i: number) => {
@@ -162,13 +152,54 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
     setTimeout(() => {
       onSelect(opt);
       setTapped(null);
-    }, 250);
+    }, 200);
   }, [onSelect]);
 
-  // Check if the "Let me adjust" chip was tapped (opens free-text, not preset)
   const isAdjustChip = (label: string) =>
     label === 'Let me adjust ✎' || label === 'Let me adjust something';
 
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+      {options.map((opt, i) => {
+        const isTapped = tapped === i;
+        const isAdjust = isAdjustChip(opt.label);
+        return (
+          <button
+            key={i}
+            onClick={() => handleTap(opt, i)}
+            disabled={tapped !== null}
+            style={{
+              ...CHIP_STYLE,
+              background: isTapped
+                ? 'rgba(34,211,238,0.15)'
+                : isAdjust ? 'rgba(250,204,21,0.06)' : CHIP_STYLE.background,
+              borderColor: isTapped
+                ? 'rgba(34,211,238,0.4)'
+                : isAdjust ? 'rgba(250,204,21,0.25)' : 'rgba(255,255,255,0.1)',
+              color: isTapped
+                ? '#22d3ee'
+                : isAdjust ? 'rgba(250,204,21,0.9)' : 'rgba(255,255,255,0.85)',
+              cursor: tapped !== null ? 'default' : 'pointer',
+              opacity: isTapped ? 0.7 : 1,
+              transform: isTapped ? 'scale(0.97)' : 'scale(1)',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Single-question mode (existing behavior) ─────────────────
+
+interface ClarifyingOptionsProps {
+  options: ClarifyingOption[];
+  onSelect: (option: ClarifyingOption) => void;
+}
+
+export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps) {
   return (
     <div style={{
       display: 'flex',
@@ -179,79 +210,86 @@ export function ClarifyingOptions({ options, onSelect }: ClarifyingOptionsProps)
       alignSelf: 'flex-start',
       maxWidth: '92%',
     }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-        {options.map((opt, i) => {
-          const isTapped = tapped === i;
-          const isAdjust = isAdjustChip(opt.label);
-          return (
-            <button
-              key={i}
-              onClick={() => handleTap(opt, i)}
-              disabled={tapped !== null}
-              style={{
-                background: isTapped
-                  ? 'rgba(34,211,238,0.15)'
-                  : isAdjust
-                    ? 'rgba(250,204,21,0.06)'
-                    : 'rgba(255,255,255,0.04)',
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
-                border: isTapped
-                  ? '1px solid rgba(34,211,238,0.4)'
-                  : isAdjust
-                    ? '1px solid rgba(250,204,21,0.25)'
-                    : '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '20px',
-                padding: '7px 16px',
-                cursor: tapped !== null ? 'default' : 'pointer',
-                color: isTapped
-                  ? '#22d3ee'
-                  : isAdjust
-                    ? 'rgba(250,204,21,0.9)'
-                    : 'rgba(255,255,255,0.85)',
-                fontFamily: 'var(--font-sans, inherit)',
-                fontSize: '12.5px',
-                fontWeight: 500,
-                lineHeight: '1.4',
-                textAlign: 'left',
-                transition: 'all 0.2s ease',
-                maxWidth: '100%',
-                whiteSpace: 'normal',
-                wordBreak: 'break-word',
-                opacity: isTapped ? 0.7 : 1,
-                transform: isTapped ? 'scale(0.97)' : 'scale(1)',
-              }}
-              onMouseEnter={(e) => {
-                if (tapped !== null) return;
-                (e.currentTarget as HTMLElement).style.background = isAdjust
-                  ? 'rgba(250,204,21,0.1)'
-                  : 'rgba(34,211,238,0.08)';
-                (e.currentTarget as HTMLElement).style.borderColor = isAdjust
-                  ? 'rgba(250,204,21,0.35)'
-                  : 'rgba(34,211,238,0.3)';
-              }}
-              onMouseLeave={(e) => {
-                if (tapped !== null) return;
-                (e.currentTarget as HTMLElement).style.background = isAdjust
-                  ? 'rgba(250,204,21,0.06)'
-                  : 'rgba(255,255,255,0.04)';
-                (e.currentTarget as HTMLElement).style.borderColor = isAdjust
-                  ? 'rgba(250,204,21,0.25)'
-                  : 'rgba(255,255,255,0.1)';
-              }}
-            >
-              {isAdjust ? (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {shortenLabel(opt.label).replace(' ✎', '')}
-                  <span style={{ fontSize: '10px', opacity: 0.6 }}>✎</span>
-                </span>
-              ) : (
-                shortenLabel(opt.label)
-              )}
-            </button>
-          );
-        })}
+      <ChipRow options={options} onSelect={onSelect} />
+    </div>
+  );
+}
+
+// ── Sequential stepper (multi-question mode) ─────────────────
+
+export interface ClarifyStepperProps {
+  /** Queue of questions (parsed from [CLARIFY:...] markers) */
+  questions: ClarifyingQuestion[];
+  /** Current step index (0-based) */
+  step: number;
+  /** Called when a chip is tapped — parent advances step */
+  onChipTap: (answer: string) => void;
+}
+
+export function ClarifyStepper({ questions, step, onChipTap }: ClarifyStepperProps) {
+  if (step >= questions.length) return null;
+
+  const currentQ = questions[step];
+  const total = questions.length;
+  const isMulti = total > 1;
+
+  // Build chip options for current question only
+  const currentOptions: ClarifyingOption[] = [];
+  if (currentQ.options && currentQ.options.length > 0) {
+    currentQ.options.forEach((label, i) => {
+      currentOptions.push({ label, fullText: label, questionIndex: 0 });
+    });
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      marginTop: '4px',
+      marginBottom: '4px',
+      alignSelf: 'flex-start',
+      maxWidth: '92%',
+    }}>
+      {/* Step indicator */}
+      {isMulti && (
+        <div style={{
+          fontSize: '10.5px',
+          fontWeight: 600,
+          color: 'rgba(34,211,238,0.7)',
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+        }}>
+          Question {step + 1} of {total}
+        </div>
+      )}
+
+      {/* Question text */}
+      <div style={{
+        fontSize: '13.5px',
+        color: 'rgba(255,255,255,0.85)',
+        lineHeight: '1.5',
+        fontWeight: 500,
+      }}>
+        {currentQ.question}
       </div>
+
+      {/* Chips for current question, or free-text hint */}
+      {currentOptions.length > 0 ? (
+        <ChipRow
+          options={currentOptions}
+          onSelect={(opt) => onChipTap(opt.fullText)}
+        />
+      ) : (
+        <div style={{
+          fontSize: '11.5px',
+          color: 'rgba(255,255,255,0.35)',
+          fontStyle: 'italic',
+          padding: '4px 0',
+        }}>
+          Type your answer below…
+        </div>
+      )}
     </div>
   );
 }

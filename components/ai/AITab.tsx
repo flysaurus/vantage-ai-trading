@@ -14,7 +14,7 @@ import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/ch
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
-import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, type ClarifyingOption } from '@/components/ai/ClarifyingOptions';
+import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
@@ -205,6 +205,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── TL;DR toggle state (set of collapsed message indices) ──
   const [collapsedTLDRs, setCollapsedTLDRs] = useState<Set<number>>(new Set());
 
+  // ── Sequential clarifying-question stepper ──
+  // When an AI response contains multiple [CLARIFY:{...}] markers,
+  // they are queued and revealed one at a time instead of all at once.
+  const [clarifyQueue, setClarifyQueue] = useState<ClarifyingQuestion[]>([]);
+  const [clarifyStep, setClarifyStep] = useState(0);
+  const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
+  const stepperMsgIdRef = useRef<string | null>(null); // tracks which message initialized the stepper
+  const bypassStepperRef = useRef(false); // bypasses stepper intercept when submitting combined answers
+
   // ── Inline trade buttons — TradeTicket state ──
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
@@ -253,6 +262,49 @@ export function AITab({ messages, setMessages }: AITabProps) {
       return next;
     });
   }, []);
+
+  // ── Advance clarifying-question stepper to next question ──
+  // Called on chip-tap or free-text submit. Submits combined answers when done.
+  const advanceStepper = useCallback((answers: string[]) => {
+    const queue = clarifyQueue; // capture current value
+    if (queue.length === 0) return;
+
+    const nextStep = answers.length; // after recording, answers.length === new step index
+    if (nextStep >= queue.length) {
+      // All questions answered — build combined message and submit
+      const combined = answers.map((a, i) =>
+        `${queue[i].question}\n→ ${a}`
+      ).join('\n\n');
+
+      // Reset stepper before sending
+      setClarifyQueue([]);
+      setClarifyStep(0);
+      setClarifyAnswers([]);
+      stepperMsgIdRef.current = null;
+
+      // Submit as a normal chat message (bypass ref prevents stepper intercept)
+      bypassStepperRef.current = true;
+      sendMessage(combined, 'chat');
+    } else {
+      setClarifyStep(nextStep);
+    }
+  }, [clarifyQueue]);
+
+  // ── Initialize clarifying-question stepper when new AI message arrives ──
+  useEffect(() => {
+    if (loading) return;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'ai' || lastMsg.id === stepperMsgIdRef.current) return;
+
+    const questions = parseClarifyMarkers(lastMsg.content);
+    if (questions.length > 0) {
+      stepperMsgIdRef.current = lastMsg.id;
+      setClarifyQueue(questions);
+      setClarifyStep(0);
+      setClarifyAnswers([]);
+      console.log('[ClarifyStepper] Initialized with', questions.length, 'questions');
+    }
+  }, [messages, loading]);
 
   // ── Load executed markers from DB when messages change ──
   const loadedMessageIdsRef = useRef<Set<string>>(new Set());
@@ -831,6 +883,29 @@ export function AITab({ messages, setMessages }: AITabProps) {
     retryOpts?: { retryAttempt: number; retryFailures: any[] },
   ) => {
     if (!content.trim() || loading) return;
+
+    // ── Stepper intercept: if a multi-question stepper is active ──
+    // Free-text answers (for open-ended questions without options) are
+    // captured here instead of being sent to the API as normal messages.
+    // bypassStepperRef skips this when advanceStepper submits combined answers.
+    const isBypass = bypassStepperRef.current;
+    bypassStepperRef.current = false;
+
+    if (!isBypass && clarifyQueue.length > 0 && clarifyStep < clarifyQueue.length) {
+      const currentQ = clarifyQueue[clarifyStep];
+      // Only intercept if current question has NO chips (open-ended)
+      // Questions with chips should be answered by tapping, not typing
+      const hasChips = currentQ.options && currentQ.options.length >= 2;
+      if (!hasChips) {
+        const newAnswers = [...clarifyAnswers, content.trim()];
+        setClarifyAnswers(newAnswers);
+        setInput('');
+        advanceStepper(newAnswers);
+        return;
+      }
+      // If current question has chips, ignore free-form text input
+      return;
+    }
 
     if ((chatRemaining ?? 0) <= 0) {
       const resetMsg = usageStats?.chat?.monthly
@@ -1593,7 +1668,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           // AI message — accent left border, same 14px font as user messages
           // Compute clarifying options from [CLARIFY:...] markers for chips BELOW the bubble
           const isLastAiMsg = !loading && !messages.slice(i + 1).some(m => m.role === 'ai');
-          const clarifyingOpts = isLastAiMsg ? questionsToOptions(parseClarifyMarkers(msg.content)) : null;
+          const clarifyQuestions = isLastAiMsg ? parseClarifyMarkers(msg.content) : [];
+          // Stepper mode: multi-question queue active for this message
+          const isStepperActive = clarifyQueue.length > 0 && msg.id === stepperMsgIdRef.current;
+          // Single-question mode: fallback for 1 question or no stepper
+          const clarifyingOpts = !isStepperActive ? questionsToOptions(clarifyQuestions) : null;
           return (
             <React.Fragment key={i}>
             <div
@@ -1731,7 +1810,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 )}
             </div>
             {/* Clarifying options chips — BELOW the bubble, never inside */}
-            {clarifyingOpts && (
+            {/* Stepper mode: sequential one-at-a-time for multi-question messages */}
+            {isStepperActive && (
+              <ClarifyStepper
+                questions={clarifyQueue}
+                step={clarifyStep}
+                onChipTap={(answer) => {
+                  const newAnswers = [...clarifyAnswers, answer];
+                  setClarifyAnswers(newAnswers);
+                  advanceStepper(newAnswers);
+                }}
+              />
+            )}
+            {/* Single-question mode: all chips at once (existing behavior) */}
+            {clarifyingOpts && clarifyingOpts.length >= 2 && (
               <ClarifyingOptions
                 options={clarifyingOpts}
                 onSelect={(opt: ClarifyingOption) => {

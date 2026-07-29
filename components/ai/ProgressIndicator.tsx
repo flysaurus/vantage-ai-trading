@@ -14,13 +14,13 @@ export interface ChecklistItem {
   detail?: string;
 }
 
-const STAGE_CONFIG: Record<string, { label: string; icon: string }> = {
-  tickers_resolved:      { label: 'Resolving tickers',       icon: '🏷️' },
-  recommendations_built: { label: 'Building recommendations', icon: '📊' },
-  marker_format:         { label: 'Validating marker format', icon: '🔍' },
-  coherence_check:       { label: 'Checking response coherence', icon: '🧩' },
-  symbol_verification:   { label: 'Verifying symbols',       icon: '✅' },
-  budget_reconciliation: { label: 'Reconciling budget',      icon: '💰' },
+const STAGE_CONFIG: Record<string, string> = {
+  tickers_resolved:      'Resolving tickers',
+  recommendations_built: 'Building recommendations',
+  marker_format:         'Validating marker format',
+  coherence_check:       'Checking response coherence',
+  symbol_verification:   'Verifying symbols',
+  budget_reconciliation: 'Reconciling budget',
 };
 
 const STAGE_ORDER = [
@@ -87,11 +87,10 @@ export function ProgressIndicator({ items }: ProgressIndicatorProps) {
   const itemMap = new Map(items.map(i => [i.stage, i]));
   const stages = STAGE_ORDER.map(stage => {
     const item = itemMap.get(stage);
-    const config = STAGE_CONFIG[stage] || { label: stage, icon: '•' };
+    const label = STAGE_CONFIG[stage] || stage;
     return {
       stage,
-      label: config.label,
-      icon: config.icon,
+      label,
       status: item?.status || 'pending',
       detail: item?.detail,
     };
@@ -136,7 +135,7 @@ export function ProgressIndicator({ items }: ProgressIndicatorProps) {
               transition: 'color 0.3s ease',
               whiteSpace: 'nowrap',
             }}>
-              {s.icon} {s.label}
+              {s.label}
             </span>
 
             {s.detail && (
