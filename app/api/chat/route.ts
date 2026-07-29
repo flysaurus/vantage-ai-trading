@@ -787,14 +787,63 @@ Use these for any market-direction questions ("how are markets today?", "any sel
  * conversational turns — if the last message has no budget, we walk back
  * through history until we find it.
  */
-function extractBudgetFromHistory(messages: Array<{ role: string; content: string }>): number | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role !== 'user') continue;
-    const budget = extractBudget(msg.content);
-    if (budget !== null) return budget;
+/** Parse incremental top-ups like "add $1,000", "add another 1000", "put in $500 more" */
+function extractIncrementalAdd(message: string): number | null {
+  // Match: "add $X", "add another $X", "add X", "put $X more", "add additional $X"
+  const patterns = [
+    /add\s+(?:another\s+)?(?:additional\s+)?\$?([\d,]+(?:\.[\d]{2})?)\s*(?:more|to\s+this|to\s+it|to\s+the\s+portfolio)?/i,
+    /put\s+(?:in\s+)?\$?([\d,]+(?:\.[\d]{2})?)\s*(?:more|additional)/i,
+  ]
+  for (const p of patterns) {
+    const m = message.match(p)
+    if (m) {
+      const val = parseFloat(m[1].replace(/,/g, ''))
+      if (!isNaN(val) && val >= 50 && val <= 100000) return val
+    }
   }
-  return null;
+  // Bare dollar mention that looks like an addition (not a full portfolio build)
+  const bareAdd = message.match(/add\s+(?:another\s+)?\$?([\d,]+)\b/i)
+  if (bareAdd) {
+    const val = parseFloat(bareAdd[1].replace(/,/g, ''))
+    if (!isNaN(val) && val >= 50 && val <= 100000) return val
+  }
+  return null
+}
+
+/**
+ * Walk backward through user messages to find the original portfolio budget
+ * AND accumulate any incremental top-ups along the way.
+ * 
+ * Example: "build a $2000 portfolio" → "add $1000 to this" → "add another 1000"
+ *   → finds base $2,000 + $1,000 (msg 2) + $1,000 (msg 3) = $4,000
+ */
+function extractBudgetFromHistory(messages: Array<{ role: string; content: string }>): number | null {
+  let baseBudget: number | null = null
+  let incrementalTotal = 0
+  
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== 'user') continue
+    
+    // Check for incremental addition first — these don't reset the base
+    const addition = extractIncrementalAdd(msg.content)
+    if (addition !== null) {
+      incrementalTotal += addition
+      continue // this was purely an addition, not a new budget request
+    }
+    
+    // Check for base portfolio budget
+    const budget = extractBudget(msg.content)
+    if (budget !== null) {
+      baseBudget = budget
+      break // found the original budget, stop walking
+    }
+  }
+  
+  if (baseBudget === null) return null
+  const total = baseBudget + incrementalTotal
+  console.log(`[chat] Budget from history: base=$${baseBudget} + incremental=$${incrementalTotal} = $${total}`)
+  return total
 }
 
 // ── Retry prompt injection (for validation-driven regeneration) ──
