@@ -1125,34 +1125,6 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
           controller.close();
           return;
         }
-        // ── MARKET-ONLY RESPONSE GATE ──
-        // If the first assistant message is pure market commentary, an unrelated watchlist,
-        // or a "having trouble generating" non-answer, regenerate — the user asked for a
-        // portfolio and the AI hasn't delivered actionable recommendations.
-        if (requestedBudget !== null && (
-          extractedPortfolioItems.length === 0 &&
-          parsedSuggestions.length === 0 &&
-          !hasRecommendMarkers
-        )) {
-          const pureCommentary = /^\*\*Market\b|^\*\*Watchlist\b|^\*\*Today.s|^Here are.*watchlist|^Let me show you.*market|^I.m having trouble|^I can.t (find|recommend|suggest)|^(the|current) market/mi.test(responseText);
-          if (pureCommentary) {
-            console.warn('[chat] ⚠️ Pure commentary / non-answer response — regenerating');
-            sendChecklist(controller, encoder, 'coherence_check', 'failed', 'Pure commentary, no recommendations');
-            if (retryAttempt >= 1) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: [{ check: 'response_coherence', detail: 'Response was pure commentary with no portfolio recommendations.', offendingMarkers: [] }] })}\n\n`)
-              );
-            } else {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'response_coherence', detail: 'Response was pure commentary with no portfolio recommendations. Generate actual recommendations with [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers.', offendingMarkers: [] }], budget: requestedBudget })}\n\n`)
-              );
-            }
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
-            return;
-          }
-        }
-
         // ── Budget Coherence Gate (marker-less recommendations) ──
         // If the user requested a budget, the response has NO [RECOMMEND:...] markers,
         // but extractResponseTotal found a portfolio total that's >2% off — the AI made
