@@ -298,7 +298,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
     const questions = parseClarifyMarkers(lastMsg.content);
     if (questions.length > 0) {
-      stepperMsgIdRef.current = lastMsg.id;
+      stepperMsgIdRef.current = lastMsg.id ?? null;
       setClarifyQueue(questions);
       setClarifyStep(0);
       setClarifyAnswers([]);
