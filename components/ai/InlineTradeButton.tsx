@@ -176,7 +176,8 @@ export function stripRecommendationMarkers(text: string): string {
     .replace(/```json\s*\n?\{[\s\S]*?"candidates"[\s\S]*?\}\s*\n?```/g, '')
     .replace(/\s+,/g, ',')  // fix "MSFT , NVDA" → "MSFT, NVDA"
     .replace(/\s+\./g, '.')  // fix trailing space before period
-    .replace(/\s{2,}/g, ' ')  // collapse multiple spaces
+    .replace(/[ \t]{2,}/g, ' ')  // collapse multiple horizontal spaces (preserve \n for tables)
+    .replace(/\n{3,}/g, '\n\n')  // collapse excessive blank lines
     .trim();
   return result;
 }
