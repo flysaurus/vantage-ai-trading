@@ -30,7 +30,7 @@ const BOLD_LINE_RE = /^[\s]*\*\*(.+?)\*\*[\s]*$/gm;
 // Question indicators: surrounding text should suggest a clarifying question
 const QUESTION_HINTS = [
   /\?/,
-  /\b(?:which|choose|prefer|pick|select|decide|option|approach)\b/i,
+  /\b(?:which|choose|prefer|pick|select|decide|option|approach|split|weight|direction|allocation)\b/i,
   /\bwould you like\b/i,
   /\bwant me to\b/i,
   /\blet me know\b/i,
@@ -38,6 +38,7 @@ const QUESTION_HINTS = [
   /\bwhat (?:would|do) you\b/i,
   /\bdo you want\b/i,
   /\bhere are\b/i,
+  /\byou want\b/i,
 ];
 
 /**
@@ -99,10 +100,46 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
 
   // Need 2-4 discrete options
   if (options.length < 2 || options.length > 4) {
-    if (options.length > 0 && typeof window !== 'undefined') {
-      console.log('[ClarifyingOptions] Found', options.length, 'items — need 2-4, skipping');
+    // ── Tier 4 (desperate): Inline "or"-separated options ──
+    // Pattern: "X or Y?" or "X, Y, or Z?" in the closing question line
+    if (options.length === 0) {
+      const lastParagraph = markdownContent.split(/\n\n+/).pop() || '';
+      
+      // Split on " or " — handles "A or B or C" patterns
+      const orParts = lastParagraph.split(/\s+or\s+/i);
+      if (orParts.length >= 2 && orParts.length <= 5) {
+        const candidates: string[] = [];
+        for (let i = 0; i < orParts.length; i++) {
+          let part = orParts[i].trim().replace(/[,?.!]+$/, '').trim();
+          if (i === 0) {
+            // Strip leading question framing: find dash/colon separator
+            const sepIdx = Math.max(
+              part.lastIndexOf('—'), part.lastIndexOf('–'),
+              part.lastIndexOf(': ')
+            );
+            if (sepIdx > 5) part = part.slice(sepIdx + 1).trim();
+            part = part.replace(/^(how|what|which|would you|do you|should i|can you|want to|could you|let me know)\s+/i, '').trim();
+            // Sub-split on commas (e.g. "NVDA, MSFT" before first "or")
+            for (const sp of part.split(/\s*,\s*/)) {
+              const c = sp.trim();
+              if (c.length >= 3 && c.length <= 80) candidates.push(c);
+            }
+          } else {
+            if (part.length >= 3 && part.length <= 80) candidates.push(part);
+          }
+        }
+        if (candidates.length >= 2 && candidates.length <= 4) {
+          options = candidates.map((c, i) => ({ label: c, fullText: c, index: i }));
+        }
+      }
     }
-    return null;
+    
+    if (options.length < 2 || options.length > 4) {
+      if (options.length > 0 && typeof window !== 'undefined') {
+        console.log('[ClarifyingOptions] Found', options.length, 'items — need 2-4, skipping');
+      }
+      return null;
+    }
   }
 
   // ── Validate question context ──
