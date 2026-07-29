@@ -386,6 +386,19 @@ function extractResponseTotal(response: string): number | null {
   return null;
 }
 
+// ─── Checklist event helper ───
+function sendChecklist(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  stage: string,
+  status: 'in_progress' | 'done' | 'failed' | 'skipped',
+  detail?: string
+) {
+  controller.enqueue(
+    encoder.encode(`data: ${JSON.stringify({ checklist: { stage, status, detail } })}\n\n`)
+  );
+}
+
 /** Validate portfolio totals against requested budget (±2% threshold). */
 function validateBudgetGate(userMessage: string, aiResponse: string): BudgetGateResult {
   const requestedBudget = extractRequestedBudget(userMessage);
@@ -685,8 +698,10 @@ CRITICAL: Use these live prices for any current-price questions. They override b
     // BEFORE the Anthropic call. This prevents the model from burning tool-loop
     // turns on one-by-one resolveSymbol calls (the #1 cause of cut-off responses).
     let preResolvedContext = ''
+    let preResolvedCount = 0
     try {
       const preResolved = await preResolveTickers(lastMessage, searchContext)
+      preResolvedCount = preResolved.length
       if (preResolved.length > 0) {
         preResolvedContext = '\n🏷️ PRE-RESOLVED TICKER MAPPINGS (use these directly — DO NOT call resolveSymbol for names listed here):\n' +
           preResolved.map(r => `  ${r.name} → ${r.symbol}`).join('\n') +
@@ -820,13 +835,12 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
 
-        // ── Progress: Stage 1 — Researching ──
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ progress: { stage: 1, total: 3 } })}\n\n`));
+        // ── Checklist: Tickers resolved (pre-flight already completed) ──
+        sendChecklist(controller, encoder, 'tickers_resolved', 'done',
+          preResolvedCount > 0 ? `${preResolvedCount} resolved` : 'None needed');
 
-        // ── Progress: Stage 2 — Building portfolio (Anthropic starts generating) ──
-        // Small stagger so stage 1 is visible before transitioning
-        await new Promise(r => setTimeout(r, 300));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ progress: { stage: 2, total: 3 } })}\n\n`));
+        // ── Checklist: Building recommendations ──
+        sendChecklist(controller, encoder, 'recommendations_built', 'in_progress');
 
         // ── Multi-turn tool-calling loop ──────────────────────
         do {
@@ -947,13 +961,18 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           console.warn(`[chat] ⚠️ Tool-loop exhausted after ${turn} turns — no RECOMMEND markers produced. Response starts with: "${responseText.slice(0, 100)}"`);
         }
 
-        // ── Progress: Stage 3 — Validating ──
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ progress: { stage: 3, total: 3 } })}\n\n`));
+        // ── Checklist: Recommendations built ──
+        const markerCount = (responseText.match(/\[RECOMMEND:[^\]]*\]/g) || []).length;
+        sendChecklist(controller, encoder, 'recommendations_built', 'done',
+          markerCount > 0 ? `${markerCount} markers` : 'No markers');
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
+        sendChecklist(controller, encoder, 'marker_format', 'in_progress');
+        let correctedCount = 0;
         try {
           const validation = await validateRecommendationMarkers(responseText);
           if (validation.hasCorrections) {
+            correctedCount = validation.issues.length;
             console.warn('[chat] ⚠️ Marker corrections:', JSON.stringify(validation.issues, null, 2));
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ corrections: validation.issues, correctedText: validation.corrected })}\n\n`)
@@ -963,6 +982,8 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         } catch (valErr) {
           console.error('[chat] Marker validation error:', valErr);
         }
+        sendChecklist(controller, encoder, 'marker_format', 'done',
+          correctedCount > 0 ? `${correctedCount} corrected` : `${markerCount || 0} valid`);
 
         // NOTE: fillMissingMarkers removed — buttons now ONLY from explicit
         // [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers. Prose heuristics were the
@@ -974,9 +995,11 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // raw "NVDA or or or or" marker-decision chains, and internal monologue
         // leaking into user-facing text. These indicate a broken generation that
         // should be regenerated — no partial render.
+        sendChecklist(controller, encoder, 'coherence_check', 'in_progress');
         const coherenceFailure = detectResponseIncoherence(responseText);
         if (coherenceFailure) {
           console.warn('[chat] ⚠️ Response coherence check FAILED:', coherenceFailure);
+          sendChecklist(controller, encoder, 'coherence_check', 'failed', 'Dual portfolios or leaked monologue');
           if (retryAttempt >= 1) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }] })}\n\n`)
@@ -990,6 +1013,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
           controller.close();
           return;
         }
+        sendChecklist(controller, encoder, 'coherence_check', 'done', 'No duplicates found');
 
         // ── STRICT VALIDATION: format, symbol existence, dedupes, budget reconciliation ──
         // ONLY runs when response contains RECOMMEND markers. Responses without markers
@@ -998,18 +1022,36 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         let validationRejected = false;
         const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(responseText);
         if (requestedBudget !== null && hasRecommendMarkers) {
+          sendChecklist(controller, encoder, 'symbol_verification', 'in_progress');
           try {
             const strictValidation = await validateRecommendations(responseText, requestedBudget);
             if (!strictValidation.ok) {
               console.warn('[chat] ⚠️ Strict validation FAILED:', JSON.stringify(strictValidation.failures, null, 2));
               validationRejected = true;
 
-              // Log failure to DB for review
+              // Determine which checks failed for checklist detail
+              const failedChecks = strictValidation.failures.map(f => f.check);
+              if (failedChecks.includes('symbol_resolution') || failedChecks.includes('marker_format') || failedChecks.includes('duplicate_company')) {
+                sendChecklist(controller, encoder, 'symbol_verification', 'failed',
+                  strictValidation.failures.filter(f => f.check !== 'budget_reconciliation').map(f => f.detail).join('; '));
+              } else {
+                sendChecklist(controller, encoder, 'symbol_verification', 'done', 'All symbols verified');
+              }
+
+              if (failedChecks.includes('budget_reconciliation')) {
+                const budgetFailure = strictValidation.failures.find(f => f.check === 'budget_reconciliation');
+                sendChecklist(controller, encoder, 'budget_reconciliation', 'failed',
+                  budgetFailure?.detail || 'Budget mismatch');
+              } else {
+                // Validation failed on an earlier check — budget was never reached
+                sendChecklist(controller, encoder, 'budget_reconciliation', 'skipped', 'Skipped — earlier check failed');
+              }
+
+              // ... DB logging omitted for brevity (unchanged)
               try {
                 if (userId && userId !== 'anonymous') {
                   const supabase = createServerClient();
                   const rawMarkers = [...responseText.matchAll(/\[RECOMMEND:[^\]]*\]/g)].map(m => m[0]);
-                  const allocation = strictValidation.failures.length > 0 ? 0 : 0; // markers exist but failed checks
                   await (supabase as any)
                     .from('validation_failures')
                     .insert({
@@ -1020,7 +1062,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
                       raw_markers: rawMarkers.length > 0 ? rawMarkers : null,
                       failures: JSON.parse(JSON.stringify(strictValidation.failures)),
                       budget: requestedBudget,
-                      allocation: allocation,
+                      allocation: 0,
                     });
                   console.log('[chat] Validation failure logged to DB');
                 }
@@ -1029,29 +1071,31 @@ CRITICAL: Use these live prices for any current-price questions. They override b
               }
 
               if (retryAttempt >= 1) {
-                // Second attempt also failed — fatal
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: strictValidation.failures })}\n\n`)
                 );
               } else {
-                // First attempt — trigger client-side regeneration
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: strictValidation.failures, budget: requestedBudget })}\n\n`)
                 );
               }
+            } else {
+              // All checks passed
+              sendChecklist(controller, encoder, 'symbol_verification', 'done',
+                `${strictValidation.result.count} symbols verified`);
+              sendChecklist(controller, encoder, 'budget_reconciliation', 'done',
+                `$${strictValidation.result.total.toLocaleString()} / $${requestedBudget.toLocaleString()}`);
             }
           } catch (strictValErr) {
             console.error('[chat] Strict validation error:', strictValErr);
-            // Non-fatal — proceed without validation (existing corrections still apply)
           }
         } else if (requestedBudget !== null && !hasRecommendMarkers) {
           console.log('[chat] ⏭️ Skipped validation — no RECOMMEND markers in response (likely a question or informational reply)');
+          sendChecklist(controller, encoder, 'symbol_verification', 'skipped', 'Non-recommendation response');
+          sendChecklist(controller, encoder, 'budget_reconciliation', 'skipped', 'No budget to reconcile');
         }
 
         // ── Budget reconciliation gate (secondary guard) ──
-        // Runs IN ADDITION to strict validation above — catches cases where
-        // RECOMMEND markers are absent but the response is a portfolio table
-        // (e.g., old-style portfolio generation without markers).
         try {
           const budgetGate = validateBudgetGate(lastMessage, responseText);
           if (budgetGate.hasViolation) {

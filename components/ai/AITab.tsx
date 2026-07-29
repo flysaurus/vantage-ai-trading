@@ -16,7 +16,7 @@ import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import { parseClarifyingOptions, ClarifyingOptions, type ClarifyingOption } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
-import { ProgressIndicator } from '@/components/ai/ProgressIndicator';
+import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
@@ -169,7 +169,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── state ──
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [progressStage, setProgressStage] = useState<{ stage: number; total: number } | null>(null);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [lastMessageTime, setLastMessageTime] = useState(0);
   // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
   const getCachedGreeting = (): { opener: string; hook: string } | null => {
@@ -914,10 +914,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
           if (line.startsWith('data: ') && line !== 'data: [DONE]') {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.progress) {
-                setProgressStage(data.progress);
-                // Don't start the text drainer during progress — keep raw
-                // reasoning hidden behind the progress indicator
+              if (data.checklist) {
+                setChecklistItems(prev => {
+                  const item: ChecklistItem = {
+                    stage: data.checklist.stage,
+                    status: data.checklist.status as ChecklistItem['status'],
+                    detail: data.checklist.detail,
+                    label: '', // filled by ProgressIndicator from STAGE_CONFIG
+                  };
+                  const next = prev.filter(i => i.stage !== item.stage);
+                  next.push(item);
+                  return next;
+                });
+                // Don't start the text drainer during checklist — keep raw
+                // reasoning hidden behind the checklist
                 continue;
               }
               if (data.text) {
@@ -962,7 +972,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       streamDoneRef.current = true;
 
       // ── Progress complete: transition from progress indicator to final content ──
-      setProgressStage(null);
+      setChecklistItems([]);
 
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
@@ -1021,7 +1031,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
           console.log('[chat] Validation failed — auto-regenerating...');
           setMessages(prev => prev.slice(0, -1)); // Remove rejected AI message
           // Reset loading so the recursive sendMessage call passes its guard check
-          setProgressStage(null); // clear progress for retry
+          // NOTE: Don't clear checklistItems — keep failed items visible until
+          // the new stream overwrites them (makes failure visible per spec)
           setLoading(false);
           // Small delay to let React flush the loading state
           await new Promise(r => setTimeout(r, 50));
@@ -1041,7 +1052,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalValidationFailure) {
-          setProgressStage(null); // clear progress for error display
+          // Let the failed checklist remain visible for 3 seconds before
+          // replacing with error text — makes the failure legible
+          await new Promise(r => setTimeout(r, 3000));
+          setChecklistItems([]); // clear progress for error display
           // Both attempts failed — show fallback with failure details for debugging
           const failureDetails = (rejectData.failures || [])
             .map((f: any) => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`)
@@ -1061,7 +1075,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalStreamError) {
-          setProgressStage(null); // clear progress for error display
+          setChecklistItems([]); // clear progress for error display
           // Server-side stream crashed — surface the actual error
           console.error('[chat] Handling fatal stream error:', rejectData.message);
           setMessages(prev => {
@@ -1079,7 +1093,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       // Scroll suppressed — user controls position
     } catch (error: any) {
-      setProgressStage(null); // clear progress for error display
+      setChecklistItems([]); // clear progress for error display
       console.error('Chat error:', error);
       setToast(null);
       if (error?.status === 429) {
@@ -1599,8 +1613,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {(() => {
                 // ── Show progress indicator while AI is generating ──
                 // Replaces raw reasoning text with branded pipeline stages
-                if (loading && i === messages.length - 1 && progressStage) {
-                  return <ProgressIndicator currentStage={progressStage} />;
+                if (loading && i === messages.length - 1 && checklistItems.length > 0) {
+                  return <ProgressIndicator items={checklistItems} />;
                 }
                 const tldr = extractTLDR(msg.content);
                 const showTLDR = tldr && qualifiesForTLDR(msg.content);
@@ -1712,7 +1726,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   />
                 );
               })()}
-                {loading && i === messages.length - 1 && !progressStage && (
+                {loading && i === messages.length - 1 && checklistItems.length === 0 && (
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
             </div>
@@ -1730,7 +1744,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         })}
 
         {/* Thinking indicator — hidden during progress (ProgressIndicator takes over) */}
-        {loading && !progressStage && (
+        {loading && checklistItems.length === 0 && (
           <div style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', padding: '12px 0 4px' }}>
             <span className="vantage-typing-dot" style={{ animationDelay: '0s' }} />
             <span className="vantage-typing-dot" style={{ animationDelay: '0.2s' }} />
