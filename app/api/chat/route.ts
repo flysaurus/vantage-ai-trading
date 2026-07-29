@@ -399,9 +399,12 @@ function sendChecklist(
   );
 }
 
-/** Validate portfolio totals against requested budget (±2% threshold). */
-function validateBudgetGate(userMessage: string, aiResponse: string): BudgetGateResult {
-  const requestedBudget = extractRequestedBudget(userMessage);
+/** Validate portfolio totals against requested budget (exact match).
+ *  Accepts an optional pre-computed budget from conversation history.
+ *  When provided, skips the greedy extractRequestedBudget() which would
+ *  incorrectly pick incremental amounts ($240) from clarifying answers. */
+function validateBudgetGate(userMessage: string, aiResponse: string, contextBudget?: number | null): BudgetGateResult {
+  const requestedBudget = contextBudget ?? extractRequestedBudget(userMessage);
   if (!requestedBudget) {
     return { hasViolation: false, requestedBudget: null, responseTotal: null, deviationPercent: null, message: null };
   }
@@ -465,8 +468,12 @@ function detectResponseIncoherence(response: string): string | null {
   }
 
   // ── Pattern 3: Malformed marker-decision chains ──
-  // "NVDA or or or or", "MSFT or or or or" — the AI waffling between tickers
-  const orChain = response.match(/\b([A-Z]{2,5})\s+(or\s+){2,}/gi);
+  // "NVDA or or or or", "MSFT or or or or" — the AI waffling between tickers.
+  // Also catches bold/formatted variants: **JNJ** or **PFE** or **JPM** or or or
+  // and inline-amount variants: JNJ ($200) or PFE ($200) or JPM — still waffling.
+  // First: strip markdown bold/italic to normalize the text for matching
+  const strippedForOrCheck = response.replace(/\*\*/g, '').replace(/\*/g, '');
+  const orChain = strippedForOrCheck.match(/\b([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+(or\s+){2,}/gi);
   if (orChain) {
     return `Malformed marker-decision chain detected: "${orChain[0].trim()}". AI is waffling instead of making decisions. Regenerate with definitive picks.`;
   }
@@ -732,8 +739,25 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       },
     ];
 
-    // ── Retry prompt injection (for validation-driven regeneration) ──
-    const requestedBudget = extractBudget(lastMessage);
+    /**
+ * Walk backward through user messages to find the original portfolio budget.
+ * Clarifying answers (chip taps) contain incremental amounts like $240 but
+ * lose the original $2,000 context. This ensures budget persists across
+ * conversational turns — if the last message has no budget, we walk back
+ * through history until we find it.
+ */
+function extractBudgetFromHistory(messages: Array<{ role: string; content: string }>): number | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== 'user') continue;
+    const budget = extractBudget(msg.content);
+    if (budget !== null) return budget;
+  }
+  return null;
+}
+
+// ── Retry prompt injection (for validation-driven regeneration) ──
+    const requestedBudget = extractBudgetFromHistory(messages);
     if (retryAttempt >= 1 && retryFailures && retryFailures.length > 0) {
       console.log(`[chat] Retry attempt ${retryAttempt} — injecting stricter prompt. Failures:`, retryFailures.length);
       systemBlocks.push({
@@ -1045,7 +1069,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
         // text-based recommendations with wrong amounts. Reject so the AI regenerates
         // with proper markers AND correct budget.
         if (requestedBudget !== null && !hasRecommendMarkers) {
-          const budgetGate = validateBudgetGate(lastMessage, responseText);
+          const budgetGate = validateBudgetGate(lastMessage, responseText, requestedBudget);
           if (budgetGate.hasViolation && budgetGate.responseTotal !== null) {
             console.warn('[chat] ⚠️ Budget coherence gate FAILED:', budgetGate.message);
             sendChecklist(controller, encoder, 'coherence_check', 'failed', `Budget mismatch: $${budgetGate.responseTotal.toLocaleString()} vs $${requestedBudget.toLocaleString()}`);
@@ -1148,7 +1172,7 @@ CRITICAL: Use these live prices for any current-price questions. They override b
 
         // ── Budget reconciliation gate (secondary guard) ──
         try {
-          const budgetGate = validateBudgetGate(lastMessage, responseText);
+          const budgetGate = validateBudgetGate(lastMessage, responseText, requestedBudget);
           if (budgetGate.hasViolation) {
             console.warn('[chat] ⚠️ Budget gate violation:', JSON.stringify(budgetGate, null, 2));
             controller.enqueue(
