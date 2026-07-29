@@ -953,8 +953,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
     setInput('');
     setLoading(true);
 
-    // Send only last 10 messages (user+ai) to cap context window
-    const contextMessages = newMessages.slice(-10);
+    // Send last 10 messages to cap context window, but ALWAYS include
+    // the first user message which carries the original portfolio budget.
+    // Without it, extractBudgetFromHistory() returns null and the
+    // budget gate has no context to validate against.
+    const recentMessages = newMessages.slice(-10);
+    const firstUserMsg = newMessages.find(m => m.role === 'user');
+    const contextMessages = (firstUserMsg && !recentMessages.includes(firstUserMsg))
+      ? [firstUserMsg, ...recentMessages]
+      : recentMessages;
 
     try {
       const res = await apiPost('/api/chat', {

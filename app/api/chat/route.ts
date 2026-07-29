@@ -404,7 +404,12 @@ function sendChecklist(
  *  When provided, skips the greedy extractRequestedBudget() which would
  *  incorrectly pick incremental amounts ($240) from clarifying answers. */
 function validateBudgetGate(userMessage: string, aiResponse: string, contextBudget?: number | null): BudgetGateResult {
-  const requestedBudget = contextBudget ?? extractRequestedBudget(userMessage);
+  // Use pre-computed budget from conversation history when available.
+  // When contextBudget is null, NO budget was found anywhere in the
+  // conversation — don't fall back to extractRequestedBudget() which
+  // uses greedy bareDollar matching that picks up incremental amounts
+  // like $1,000 from "add $1,000 to this" instead of the real portfolio total.
+  const requestedBudget = contextBudget ?? null;
   if (!requestedBudget) {
     return { hasViolation: false, requestedBudget: null, responseTotal: null, deviationPercent: null, message: null };
   }
@@ -696,6 +701,42 @@ CRITICAL: Use these live prices for any current-price questions. They override b
       } catch (e) {
         console.error('[chat] Live market data fetch error:', e)
         // Non-fatal — continue with search results only
+      }
+    }
+
+    // ── Baseline market context: always include major index ETFs ──
+    // If no tickers were extracted from user message, the AI has ZERO
+    // awareness of today's market. A question like "what happened today?"
+    // would get a training-data answer from 2024. Include SPY/QQQ/DIA/IWM/VIX
+    // as a floor so the AI always knows which way the wind is blowing.
+    if (!liveMarketContext) {
+      try {
+        const baselineSymbols = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX']
+        const baselineQuotes = await getBatchQuotes(baselineSymbols)
+        if (baselineQuotes.size > 0) {
+          const lines: string[] = []
+          const names: Record<string, string> = { SPY: 'S&P 500', QQQ: 'Nasdaq', DIA: 'Dow', IWM: 'Russell 2000', VIX: 'Volatility' }
+          for (const [sym, q] of baselineQuotes) {
+            if (q && q.price > 0) {
+              const sign = q.change >= 0 ? '+' : ''
+              lines.push(
+                `${sym} (${names[sym] || 'ETF'}): $${q.price.toFixed(2)} | ` +
+                `${sign}$${q.change.toFixed(2)} (${sign}${q.changePercent.toFixed(1)}%) | ` +
+                `Day: $${q.low?.toFixed(2)}–$${q.high?.toFixed(2)}`
+              )
+            }
+          }
+          if (lines.length > 0) {
+            liveMarketContext = `
+📡 MARKET SNAPSHOT (real-time — baseline indices):
+${lines.join('\n')}
+
+Use these for any market-direction questions ("how are markets today?", "any sell-off?", etc). When the user asks about specific stocks, these index moves provide the macro context.
+`
+          }
+        }
+      } catch (e) {
+        console.error('[chat] Baseline market data error:', e)
       }
     }
 
