@@ -6,7 +6,7 @@
 // so it can run server-side with no localStorage or browser APIs.
 
 import type { BrokerOrder, BrokerPosition, DemoStateInternal } from './engine';
-import { evaluateOpenOrder, isDayOrderExpiredAt, isMarketOpenNow, isAfterMarketClose } from './fill-engine';
+import { evaluateOpenOrder, isDayOrderExpiredAt, isMarketOpenNow, isAfterMarketClose, getETDateString } from './fill-engine';
 import type { FillDecision } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getBatchQuotes } from '@/lib/market-data';
@@ -99,6 +99,7 @@ export function processUserOrders(
     return {
       result: { userId: row.user_id, filled: 0, expired: 0, skipped: 0, errors: 0, cashReleased: 0 },
       updated: false,
+      staleNotifications: [],
     };
   }
 
@@ -152,13 +153,21 @@ export function processUserOrders(
           break;
         }
         case 'skip': {
+          // ── Market order diagnostic: if the market is OPEN and a market order
+          //     was skipped, it's because no quote was available. Log loudly.
+          if (order.type === 'market' && marketOpen) {
+            console.error(
+              `[processUserOrders] ⚠️ MARKET ORDER SKIPPED during market hours! ` +
+              `order=${order.id} symbol=${order.symbol} side=${order.side} ` +
+              `shares=${order.shares} — quote unavailable. Order will NOT fill until a quote is available.`
+            );
+          }
+
           // Check for DAY expiry separately (evaluateOpenOrder handles this for
           // non-stop orders, but we double-check here for edge cases)
           if (order.type !== 'stop' && order.type !== 'stop_limit' && afterClose && !marketOpen) {
             const orderDate = new Date(order.submittedAt);
-            const etNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-            const etOrderDate = new Date(orderDate.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-            if (etOrderDate.toISOString().split('T')[0] !== etNow.toISOString().split('T')[0]) {
+            if (getETDateString(now) !== getETDateString(orderDate)) {
               applyExpiry(row, order);
               cashReleased += order.reservedCost || 0;
               expired++;

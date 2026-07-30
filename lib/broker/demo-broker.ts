@@ -967,7 +967,18 @@ export class DemoBroker implements BrokerEngine {
     for (const order of openOrders) {
       try {
         const quotePrice = quotes.get(order.symbol.toUpperCase());
-        if (quotePrice == null || quotePrice <= 0) continue;
+        if (quotePrice == null || quotePrice <= 0) {
+          // ── Market order diagnostic: log loudly if a market order can't get a quote ──
+          if (order.type === 'market') {
+            console.error(
+              `[DemoBroker] ⚠️ MARKET ORDER has no quote! ` +
+              `order=${order.id} symbol=${order.symbol} side=${order.side} ` +
+              `shares=${order.shares} marketOpen=${marketOpen} — ` +
+              `order will NOT fill. Check Finnhub API key / rate limits.`
+            );
+          }
+          continue;
+        }
 
         const decision = evaluateOpenOrder(order, quotePrice, now, marketOpen);
 

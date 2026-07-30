@@ -123,6 +123,19 @@ function evaluateLimitFill(
  * Stop and stop-limit orders are NOT subject to day expiry — they always
  * behave as GTC.
  */
+export function getETDateString(date: Date): string {
+  // Use Intl.DateTimeFormat with 'en-CA' → YYYY-MM-DD output.
+  // This avoids the toLocaleString → new Date() → toISOString() round-trip
+  // which shifts dates across UTC boundaries when the system timezone is
+  // not UTC (i.e., browsers in ET).
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 export function isDayOrderExpiredAt(
   order: BrokerOrder,
   now: Date,
@@ -142,15 +155,12 @@ export function isDayOrderExpiredAt(
   // should survive and get a chance to fill when the market opens.
   if (!isAfterMarketClose()) return false;
 
-  // Check if this order was submitted on a previous calendar day
-  // Use ET for consistency with market hours
+  // Compare calendar days in ET using timezone-aware formatting.
+  // Using Intl.DateTimeFormat avoids the toLocaleString→new Date→toISOString
+  // round-trip which shifts dates across UTC boundaries in non-UTC timezones.
   const orderDate = new Date(order.submittedAt);
-  const etNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const etOrderDate = new Date(orderDate.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-
-  // Compare calendar days in ET
-  const todayET = etNow.toISOString().split('T')[0];
-  const orderDayET = etOrderDate.toISOString().split('T')[0];
+  const todayET = getETDateString(now);
+  const orderDayET = getETDateString(orderDate);
 
   return orderDayET !== todayET;
 }
