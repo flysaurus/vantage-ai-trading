@@ -45,6 +45,12 @@ const PUBLIC_ROUTES = [
   '/api/invites/validate', // public — invite token/email validation (pre-auth signup gate)
   '/api/access-requests', // public POST (waitlist submit), GET is admin-gated internally
   '/api/access-requests/check', // public GET (waitlist status check)
+  '/api/cron/execute-pending-orders', // cron — own CRON_SECRET/QSTASH_CRON_SECRET auth
+  '/api/cron/drawdown-check', // cron — own CRON_SECRET auth
+  '/api/cron/investor-score', // cron — own CRON_SECRET auth
+  '/api/cron/portfolio-agent', // cron — own QSTASH_CRON_SECRET auth
+  '/api/cron/send-agent-digest', // cron — own CRON_SECRET auth (daily email digest)
+  '/api/agent-emails/unsubscribe', // public — signed token, no login required
   '/api/access-requests/resend', // public POST (resend invite for approved users)
   '/api/auth/signup', // public — server-side signup with hard invite gate
   '/api/auth/reset-password', // public — set new password via reset token
@@ -53,6 +59,8 @@ const PUBLIC_ROUTES = [
   '/reset-password', // public — password reset page (token-based auth)
   '/verify-email', // public — email verification page (OTP entry)
   '/verify-otp', // public — OTP verification page (linked from Resend emails)
+  '/setup-mfa', // public — MFA setup (API calls enforce auth internally)
+  '/verify-mfa', // public — MFA verification (API calls enforce auth internally)
 ];
 
 export async function middleware(request: NextRequest) {
