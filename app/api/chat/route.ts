@@ -644,7 +644,6 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
     // Check for incremental addition first — these don't reset the base
     const addition = extractIncrementalAdd(msg.content)
     if (addition !== null) {
-      console.log(`[chat] Budget: incremental add $${addition} from msg[${i}]: "${msg.content.slice(0, 80)}"`)
       incrementalTotal += addition
       continue // this was purely an addition, not a new budget request
     }
@@ -653,10 +652,8 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
     const budget = extractBudget(msg.content)
     if (budget !== null) {
       baseBudget = budget
-      console.log(`[chat] Budget: base $${budget} from msg[${i}]: "${msg.content.slice(0, 80)}"`)
       break // found the original budget, stop walking
     }
-    console.log(`[chat] Budget: no match in msg[${i}]: "${msg.content.slice(0, 80)}"`)
   }
 
   if (baseBudget === null) return null
