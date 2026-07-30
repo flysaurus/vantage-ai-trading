@@ -233,21 +233,31 @@ export async function validateRecommendationMarkers(
 
       if (issue.correction) {
         if (Array.isArray(issue.correction)) {
-          // Ambiguous — multiple possible tickers. Add a selection note.
-          const amountSuffix = marker.amount ? `:${marker.amount}` : '';
-          const options = issue.correction.map(s => `[RECOMMEND:${s}:${marker.side}${amountSuffix}]`).join(' or ');
-          const display = issue.correction.map(s => {
-            const dot = s === 'SKHYV' ? 'ADR' : s === '000660' ? 'KRX' : '';
-            return dot ? `\`${s}\` (${dot})` : `\`${s}\``;
-          }).join(', ');
-          const note = `\n\n> ⚠️ **Which ${issue.contextName} symbol?** I found multiple: ${display}. Please confirm which one you want to trade.`;
-          replacements.push({
-            index: marker.index,
-            oldStr: marker.fullMatch,
-            newStr: options, // Replace with ALL options so user can pick any
-          });
-          // Also append the note
-          // We'll handle this after the main replacement loop
+          // Multiple possible tickers. The original symbol is almost always one of
+          // the entries (e.g. ['MSFT', 'MSFT.BC', 'MSFT.MX', ...]) — it's the
+          // clean US primary. Check that first to avoid creating or-chains with
+          // foreign-exchange variants that strict validation will reject anyway.
+          const origUpper = marker.symbol.toUpperCase();
+          if (issue.correction.includes(origUpper)) {
+            // Original symbol IS a valid US primary — preserve it as-is.
+            // Don't push a replacement. Don't create an or-chain.
+            console.log(`[validate] Array correction for ${marker.symbol}: preserving original (${origUpper} is valid US primary)`);
+          } else {
+            // Original isn't in the array — find a clean US primary (no .XX suffix).
+            const usPrimary = issue.correction.find(s => !s.includes('.'));
+            if (usPrimary) {
+              const amountSuffix = marker.amount ? `:${marker.amount}` : '';
+              const correctedMarker = `[RECOMMEND:${usPrimary}:${marker.side}${amountSuffix}]`;
+              replacements.push({
+                index: marker.index,
+                oldStr: marker.fullMatch,
+                newStr: correctedMarker,
+              });
+            }
+            // If no US primary at all → genuinely ambiguous, no clean ticker exists.
+            // Don't create an or-chain of foreign variants. Preserve the original —
+            // symbol validation downstream will catch truly invalid tickers.
+          }
         } else {
           // Single correction — replace wrong ticker with correct one
           const amountSuffix2 = marker.amount ? `:${marker.amount}` : '';
