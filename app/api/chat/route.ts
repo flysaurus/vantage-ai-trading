@@ -551,6 +551,52 @@ function detectResponseIncoherence(response: string): string | null {
     return `Narrative describes position(s) for ${missingTickers.join(', ')} with $ amounts but no corresponding [RECOMMEND:...] marker found. Every portfolio position MUST be tagged with a [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker.`;
   }
 
+  // ── Pattern 7: Prose questions outside [CLARIFY:...] blocks ──
+  // The contract: every question MUST be wrapped in a [CLARIFY:{...}] block.
+  // Questions in plain prose, bold text, or numbered lists outside CLARIFY blocks
+  // are invisible to the UI (no chips render) and should be rejected. Same class
+  // of incoherence as Pattern 6 — describes a decision point without the required
+  // structured tag. Same retry cap, same graceful-failure mechanism.
+  //
+  // Strip all [CLARIFY:...] blocks first (bracket-counting for nested JSON),
+  // then check if the remaining text contains questions.
+  let strippedForClarifyCheck = '';
+  let clarifyIdx = 0;
+  while (clarifyIdx < response.length) {
+    const clarifyStart = response.indexOf('[CLARIFY:', clarifyIdx);
+    if (clarifyStart === -1) {
+      strippedForClarifyCheck += response.slice(clarifyIdx);
+      break;
+    }
+    strippedForClarifyCheck += response.slice(clarifyIdx, clarifyStart);
+    // Bracket-count to find the matching ] (handle nested { and } in JSON)
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    let pos = clarifyStart + 1; // skip opening [
+    for (; pos < response.length; pos++) {
+      const ch = response[pos];
+      if (escapeNext) { escapeNext = false; continue; }
+      if (ch === '\\') { escapeNext = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') { depth++; continue; }
+      if (ch === '}') { if (depth > 0) depth--; continue; }
+      if (ch === ']' && depth === 0) break;
+    }
+    clarifyIdx = pos + 1; // skip past closing ]
+  }
+  // Check for question marks in the stripped text (outside CLARIFY blocks)
+  // Ignore ? that appears in URLs (preceded by http or followed by =)
+  const qCheckText = strippedForClarifyCheck.replace(/https?:\/\/\S+/g, ''); // strip URLs
+  const qMarkMatch = qCheckText.match(/\?/);
+  if (qMarkMatch) {
+    // Extract surrounding context for the error detail
+    const qIdx = qMarkMatch.index!;
+    const context = qCheckText.slice(Math.max(0, qIdx - 40), Math.min(qCheckText.length, qIdx + 40)).replace(/\n/g, ' ').trim();
+    return `Prose question detected outside [CLARIFY:...] block: "${context}". All questions MUST use the [CLARIFY:{"question":"...","options":[...]}] format. Rewrite the question as a CLARIFY block, or if no question was intended, rephrase without the question mark.`;
+  }
+
   return null;
 }
 

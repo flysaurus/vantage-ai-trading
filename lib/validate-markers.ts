@@ -259,12 +259,13 @@ export async function validateRecommendationMarkers(
           });
         }
       } else {
-        // No correction found — strip the marker to prevent wrong trade
-        replacements.push({
-          index: marker.index,
-          oldStr: marker.fullMatch,
-          newStr: '', // Remove the marker (user sees just the ticker name)
-        });
+        // No correction found. The original symbol IS in Finnhub's database
+        // (we only reach this branch after a successful profile fetch).
+        // "null" means resolveCompanyTicker couldn't find an alternative —
+        // NOT that the original ticker is invalid. This commonly happens when
+        // contextName is the ticker itself (e.g. "MSFT") rather than the
+        // company name ("Microsoft"). Preserve the original marker.
+        // Symbol validation downstream will catch truly invalid tickers.
       }
     }
   }
