@@ -569,6 +569,46 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
   return total
 }
 
+// ── Known foreign exchange suffixes the AI hallucinates despite prompt forbidding ──
+const FOREIGN_EXCHANGE_SUFFIXES = new Set([
+  'DE', 'DU', 'F', 'HM', 'GLP',   // German exchanges (XETRA, Frankfurt, Hamburg, etc.)
+  'MX',                           // Mexico
+  'SW', 'VI',                     // Swiss, Vienna
+  'SN',                           // Santiago
+  'AX',                           // Australia
+  'LN', 'L', 'IL',                // London, London Intl
+  'PA',                           // Paris
+  'SA',                           // Saudi / Sao Paulo
+  'AS', 'BR',                     // Amsterdam, Brussels
+  'CN', 'HK', 'KS', 'KQ', 'T',   // Canada, Hong Kong, Korea, Tokyo
+  'MC', 'MI',                     // Madrid, Milan
+  'MU', 'NE',                     // Munich, New Zealand?
+  'NX', 'OL', 'RG', 'SG',        // Various exchange suffixes
+  'SS', 'ST',                     // Stockholm, Singapore derivatives?
+  'TO', 'V', 'VN',                // Toronto, Vienna alt, Vietnam
+]);
+
+/**
+ * Strip known foreign exchange suffixes from RECOMMEND markers.
+ * The AI sometimes hallucinates tickers like JNJ.DE, PFE.MX, NVDA.VI
+ * despite explicit system-prompt forbidding. This sanitizer catches those
+ * BEFORE validation runs, so the response passes instead of being rejected.
+ */
+function stripForeignSuffixes(text: string): string {
+  return text.replace(
+    /\[RECOMMEND:([A-Z]{1,5})\.([A-Z]{1,3}):([A-Z]+):(\$?\d*)\]/g,
+    (match, symbol: string, suffix: string, action: string, amount: string) => {
+      if (FOREIGN_EXCHANGE_SUFFIXES.has(suffix.toUpperCase())) {
+        if (/^[A-Z]{2,5}$/.test(symbol)) {
+          console.warn(`[chat] 🔧 Stripped foreign suffix "${suffix}" from "${symbol}.${suffix}" → "${symbol}"`);
+          return `[RECOMMEND:${symbol}:${action}:${amount}]`;
+        }
+      }
+      return match;
+    }
+  );
+}
+
 // ─── POST Handler ───
 export async function POST(req: Request) {
   try {
@@ -1063,6 +1103,11 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
         let responseText = fullResponse.join('');
 
+        // ── Strip hallucinated foreign exchange suffixes from markers ──
+        // Despite explicit system-prompt forbidding, the AI sometimes hallucinates
+        // tickers like JNJ.DE, PFE.MX, NVDA.VI. Strip these before validation.
+        responseText = stripForeignSuffixes(responseText);
+
         // ── Guard: tool-loop exhaustion detection ──
         const hasMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+\]/i.test(responseText);
         if (!hasMarkers && turn >= MAX_TOOL_TURNS) {
@@ -1231,6 +1276,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         }
 
         // ── Budget reconciliation gate (secondary guard) ──
+        // Only fire if validation didn't already reject (avoid confusing users with
+        // budget warnings on top of symbol/format failures — client already shows those).
+        if (!validationRejected) {
         try {
           const budgetGate = validateBudgetGate(lastMessage, responseText, requestedBudget);
           if (budgetGate.hasViolation) {
@@ -1241,6 +1289,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           }
         } catch (bgErr) {
           console.error('[chat] Budget gate error:', bgErr);
+        }
         }
 
         // [DONE] signal
