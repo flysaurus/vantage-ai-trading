@@ -1283,7 +1283,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // but extractResponseTotal found a portfolio total that's >2% off — the AI made
         // text-based recommendations with wrong amounts. Reject so the AI regenerates
         // with proper markers AND correct budget.
-        if (requestedBudget !== null && !hasRecommendMarkers) {
+        // SKIP for [CLARIFY:...] responses — frameworks with budget numbers are fine.
+        const hasClarifyMarkers = /\[CLARIFY:/.test(responseText);
+        if (requestedBudget !== null && !hasRecommendMarkers && !hasClarifyMarkers) {
           const budgetGate = validateBudgetGate(lastMessage, responseText, requestedBudget);
           if (budgetGate.hasViolation && budgetGate.responseTotal !== null) {
             console.warn('[chat] ⚠️ Budget coherence gate FAILED:', budgetGate.message);
