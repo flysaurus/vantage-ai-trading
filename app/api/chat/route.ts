@@ -507,6 +507,68 @@ function detectResponseIncoherence(response: string): string | null {
   return null;
 }
 
+/**
+ * Parse incremental top-ups like "add $1,000", "add another 1000", "put in $500 more".
+ * Module-level to avoid block-scoped function TDZ in Vercel's serverless webpack bundler.
+ */
+function extractIncrementalAdd(message: string): number | null {
+  // Match: "add $X", "add another $X", "add X", "put $X more", "add additional $X"
+  const patterns = [
+    /add\s+(?:another\s+)?(?:additional\s+)?\$?([\d,]+(?:\.[\d]{2})?)\s*(?:more|to\s+this|to\s+it|to\s+the\s+portfolio)?/i,
+    /put\s+(?:in\s+)?\$?([\d,]+(?:\.[\d]{2})?)\s*(?:more|additional)/i,
+  ]
+  for (const p of patterns) {
+    const m = message.match(p)
+    if (m) {
+      const val = parseFloat(m[1].replace(/,/g, ''))
+      if (!isNaN(val) && val >= 50 && val <= 100000) return val
+    }
+  }
+  // Bare dollar mention that looks like an addition (not a full portfolio build)
+  const bareAdd = message.match(/add\s+(?:another\s+)?\$?([\d,]+)\b/i)
+  if (bareAdd) {
+    const val = parseFloat(bareAdd[1].replace(/,/g, ''))
+    if (!isNaN(val) && val >= 50 && val <= 100000) return val
+  }
+  return null
+}
+
+/**
+ * Walk backward through user messages to find the original portfolio budget
+ * AND accumulate any incremental top-ups along the way.
+ *
+ * Example: "build a $2000 portfolio" → "add $1000 to this" → "add another 1000"
+ *   → finds base $2,000 + $1,000 (msg 2) + $1,000 (msg 3) = $4,000
+ */
+function extractBudgetFromHistory(messages: Array<{ role: string; content: string }>): number | null {
+  let baseBudget: number | null = null
+  let incrementalTotal = 0
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== 'user') continue
+
+    // Check for incremental addition first — these don't reset the base
+    const addition = extractIncrementalAdd(msg.content)
+    if (addition !== null) {
+      incrementalTotal += addition
+      continue // this was purely an addition, not a new budget request
+    }
+
+    // Check for base portfolio budget
+    const budget = extractBudget(msg.content)
+    if (budget !== null) {
+      baseBudget = budget
+      break // found the original budget, stop walking
+    }
+  }
+
+  if (baseBudget === null) return null
+  const total = baseBudget + incrementalTotal
+  console.log(`[chat] Budget from history: base=$${baseBudget} + incremental=$${incrementalTotal} = $${total}`)
+  return total
+}
+
 // ─── POST Handler ───
 export async function POST(req: Request) {
   try {
@@ -780,73 +842,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       },
     ];
 
-    /**
- * Walk backward through user messages to find the original portfolio budget.
- * Clarifying answers (chip taps) contain incremental amounts like $240 but
- * lose the original $2,000 context. This ensures budget persists across
- * conversational turns — if the last message has no budget, we walk back
- * through history until we find it.
- */
-/** Parse incremental top-ups like "add $1,000", "add another 1000", "put in $500 more" */
-function extractIncrementalAdd(message: string): number | null {
-  // Match: "add $X", "add another $X", "add X", "put $X more", "add additional $X"
-  const patterns = [
-    /add\s+(?:another\s+)?(?:additional\s+)?\$?([\d,]+(?:\.[\d]{2})?)\s*(?:more|to\s+this|to\s+it|to\s+the\s+portfolio)?/i,
-    /put\s+(?:in\s+)?\$?([\d,]+(?:\.[\d]{2})?)\s*(?:more|additional)/i,
-  ]
-  for (const p of patterns) {
-    const m = message.match(p)
-    if (m) {
-      const val = parseFloat(m[1].replace(/,/g, ''))
-      if (!isNaN(val) && val >= 50 && val <= 100000) return val
-    }
-  }
-  // Bare dollar mention that looks like an addition (not a full portfolio build)
-  const bareAdd = message.match(/add\s+(?:another\s+)?\$?([\d,]+)\b/i)
-  if (bareAdd) {
-    const val = parseFloat(bareAdd[1].replace(/,/g, ''))
-    if (!isNaN(val) && val >= 50 && val <= 100000) return val
-  }
-  return null
-}
-
-/**
- * Walk backward through user messages to find the original portfolio budget
- * AND accumulate any incremental top-ups along the way.
- * 
- * Example: "build a $2000 portfolio" → "add $1000 to this" → "add another 1000"
- *   → finds base $2,000 + $1,000 (msg 2) + $1,000 (msg 3) = $4,000
- */
-function extractBudgetFromHistory(messages: Array<{ role: string; content: string }>): number | null {
-  let baseBudget: number | null = null
-  let incrementalTotal = 0
-  
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg.role !== 'user') continue
-    
-    // Check for incremental addition first — these don't reset the base
-    const addition = extractIncrementalAdd(msg.content)
-    if (addition !== null) {
-      incrementalTotal += addition
-      continue // this was purely an addition, not a new budget request
-    }
-    
-    // Check for base portfolio budget
-    const budget = extractBudget(msg.content)
-    if (budget !== null) {
-      baseBudget = budget
-      break // found the original budget, stop walking
-    }
-  }
-  
-  if (baseBudget === null) return null
-  const total = baseBudget + incrementalTotal
-  console.log(`[chat] Budget from history: base=$${baseBudget} + incremental=$${incrementalTotal} = $${total}`)
-  return total
-}
-
-// ── Retry prompt injection (for validation-driven regeneration) ──
+    // ── Retry prompt injection (for validation-driven regeneration) ──
     const requestedBudget = extractBudgetFromHistory(messages);
     if (retryAttempt >= 1 && retryFailures && retryFailures.length > 0) {
       console.log(`[chat] Retry attempt ${retryAttempt} — injecting stricter prompt. Failures:`, retryFailures.length);
@@ -1308,12 +1304,14 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
           console.error('[chat] 🔴 STREAM FATAL ERROR:', streamError?.message || streamError);
           if (streamError?.stack) console.error('[chat] Stack trace:', streamError.stack);
           try {
-            // Attempt to send diagnostic SSE event before the stream dies
-            const errMsg = streamError?.message || 'Unknown streaming error';
+            // Attempt to send diagnostic SSE event before the stream dies.
+            // NEVER leak raw JS error text to the user — the full trace is logged below.
+            console.error('[chat] 🔴 STREAM FATAL ERROR (full):', streamError);
+            if (streamError?.stack) console.error('[chat] Stack trace:', streamError.stack);
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 fatalStreamError: true,
-                message: `Server error: ${errMsg.slice(0, 200)}`,
+                message: 'Server error: An unexpected internal error occurred. Our team has been notified. Please try again — if this persists, try a simpler or rephrased query.',
               })}\n\n`)
             );
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
