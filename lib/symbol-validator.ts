@@ -104,22 +104,51 @@ export async function loadSymbolCache(): Promise<Set<string>> {
     _lastFetchTime = now;
     console.log(`[symbol-validator] Cached ${symbols.size.toLocaleString()} valid US symbols (24h TTL) with ${symbolNameMap.size.toLocaleString()} name mappings`);
 
-    // ── Cache health check ──
+    // ── Cache health check + ETF safety net ──
     const HEALTH_THRESHOLD = 5000; // minimum expected US symbols
-    const CRITICAL_ETFS = ['VOO', 'QQQ', 'SPY', 'SCHD', 'VTI', 'IVV', 'VEA', 'BND', 'VGT', 'XLK'];
-    const missingEtfs = CRITICAL_ETFS.filter(s => !symbols.has(s));
-    
+    // Critical ETFs with canonical names — hard-coded as fallback if Finnhub response
+    // is incomplete (partial response, rate limit, etc.). Ensures common ETFs
+    // never fail symbol validation even if the live profile2 fallback also fails.
+    const CRITICAL_ETFS: Record<string, string> = {
+      'VOO': 'Vanguard S&P 500 ETF',
+      'QQQ': 'Invesco QQQ Trust',
+      'SPY': 'SPDR S&P 500 ETF Trust',
+      'SCHD': 'Schwab U.S. Dividend Equity ETF',
+      'VTI': 'Vanguard Total Stock Market ETF',
+      'IVV': 'iShares Core S&P 500 ETF',
+      'VEA': 'Vanguard FTSE Developed Markets ETF',
+      'BND': 'Vanguard Total Bond Market ETF',
+      'VGT': 'Vanguard Information Technology ETF',
+      'XLK': 'Technology Select Sector SPDR Fund',
+      'VTV': 'Vanguard Value ETF',
+      'VUG': 'Vanguard Growth ETF',
+      'XLV': 'Health Care Select Sector SPDR Fund',
+      'XLF': 'Financial Select Sector SPDR Fund',
+      'SMH': 'VanEck Semiconductor ETF',
+    };
+    let missingEtfs = 0;
+    let hardcodedEtfs = 0;
+    for (const [etf, name] of Object.entries(CRITICAL_ETFS)) {
+      if (!symbols.has(etf)) {
+        missingEtfs++;
+        // Hard-code the ETF into the cache so it doesn't fail validation silently
+        symbols.add(etf);
+        symbolNameMap.set(etf, name);
+        hardcodedEtfs++;
+      }
+    }
+
     if (symbols.size < HEALTH_THRESHOLD) {
       console.error(`[symbol-validator] ⚠️ HEALTH WARNING: Symbol cache only has ${symbols.size.toLocaleString()} entries (threshold: ${HEALTH_THRESHOLD.toLocaleString()}). Finnhub response may be incomplete — live lookups will be used as fallback.`);
     }
-    if (missingEtfs.length > 0) {
-      console.error(`[symbol-validator] ⚠️ HEALTH WARNING: ${missingEtfs.length} critical ETFs missing from cache: ${missingEtfs.join(', ')}. These will require live Finnhub lookups during validation.`);
-      if (missingEtfs.length >= 5) {
-        console.error('[symbol-validator] 🔴 SEVERE: More than half of critical ETFs missing — Finnhub API key may be expired or rate-limited.');
+    if (hardcodedEtfs > 0) {
+      console.warn(`[symbol-validator] ⚠️ ${hardcodedEtfs}/${Object.keys(CRITICAL_ETFS).length} critical ETFs hard-coded into cache (missing from Finnhub response). Names set from canonical data.`);
+      if (hardcodedEtfs >= 8) {
+        console.error('[symbol-validator] 🔴 SEVERE: Most critical ETFs missing from Finnhub — API key may be expired or rate-limited.');
       }
     }
-    if (symbols.size >= HEALTH_THRESHOLD && missingEtfs.length === 0) {
-      console.log('[symbol-validator] ✅ Cache health check passed — size OK, critical ETFs present');
+    if (symbols.size >= HEALTH_THRESHOLD && hardcodedEtfs === 0) {
+      console.log('[symbol-validator] ✅ Cache health check passed — size OK, all critical ETFs present in Finnhub response');
     }
 
     return symbols;

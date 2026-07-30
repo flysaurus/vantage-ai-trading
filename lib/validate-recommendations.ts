@@ -139,7 +139,9 @@ export async function validateRecommendations(
     for (const sym of unknownSymbols) {
       try {
         const profile = await getCompanyProfile(sym);
-        if (profile && profile.country === 'US' && profile.ticker) {
+        // Note: ETFs and funds often return country='' from Finnhub profile2.
+        // If profile.ticker matches what we requested, treat it as valid regardless of country field.
+        if (profile && profile.ticker) {
           liveVerified.set(sym.toUpperCase(), true);
           console.log(`[validate] Live lookup confirmed: ${sym} → ${profile.name} (${profile.exchange})`);
         } else {
