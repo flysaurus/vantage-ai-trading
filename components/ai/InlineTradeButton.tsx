@@ -165,14 +165,38 @@ export function parseSummaryTLDR(markdownContent: string): string | null {
   return match ? match[1].trim() : null;
 }
 
+/** Strip [CLARIFY:{...}] markers with bracket counting — handles nested JSON arrays
+ *  that the old regex /\[CLARIFY:[^\]]*\]/ would truncate at the first inner ]. */
+function stripClarifyMarkers(text: string): string {
+  let result = text;
+  const prefix = '[CLARIFY:{';
+  let idx = 0;
+  while ((idx = result.indexOf(prefix, idx)) !== -1) {
+    // Walk forward counting { and } to find the matching close-brace of the JSON object
+    let depth = 1; // the opening { of the JSON object
+    let pos = idx + prefix.length;
+    while (pos < result.length && depth > 0) {
+      if (result[pos] === '{') depth++;
+      else if (result[pos] === '}') depth--;
+      pos++;
+    }
+    // Skip optional whitespace/newline to the closing ]
+    while (pos < result.length && (result[pos] === ' ' || result[pos] === '\n')) pos++;
+    if (pos < result.length && result[pos] === ']') pos++;
+    // Remove the entire [CLARIFY:{...}] span
+    result = result.slice(0, idx) + result.slice(pos);
+    // Don't advance idx — we removed content before the current position
+  }
+  return result;
+}
+
 /** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
-  let result = text
+  let result = stripClarifyMarkers(text)
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
     .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text
-    .replace(/\[CLARIFY:[^\]]*\]\s*/g, '')  // Remove well-formed or partial [CLARIFY:{...}] markers (stops at ])
-    .replace(/\[CLARIFY:[^\n]*/g, '')  // Fallback: strip truncated [CLARIFY:... fragments to EOL — NEVER leak raw JSON
+    .replace(/\[CLARIFY:[^\n]*/g, '')  // Fallback: strip any remaining CLARIFY fragments not caught by bracket counter
     // Remove JSON candidate blocks that follow choice markers
     .replace(/```json\s*\n?\{[\s\S]*?"candidates"[\s\S]*?\}\s*\n?```/g, '')
     .replace(/\s+,/g, ',')  // fix "MSFT , NVDA" → "MSFT, NVDA"
