@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           qty: order.qty,
           side: 'buy',
           type: order.orderType || 'market',
-          time_in_force: order.timeInForce || 'day',
+          time_in_force: order.timeInForce || 'gtc',
           limit_price: order.limitPrice || undefined,
         }),
       });

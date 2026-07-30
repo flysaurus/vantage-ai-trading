@@ -510,7 +510,7 @@ export class DemoBroker implements BrokerEngine {
     const limitPriceVal = hasLimit && req.limitPrice != null && req.limitPrice > 0 ? req.limitPrice : undefined;
     const stopPriceVal = isStopType && req.stopPrice != null && req.stopPrice > 0 ? req.stopPrice : undefined;
     const submitPrice = hasLimit ? (limitPriceVal || price) : (isStopType ? (stopPriceVal || price) : price);
-    const tif = req.timeInForce || 'day';
+    const tif = req.timeInForce || 'gtc';
 
     // Stop orders: check if stop is already triggered at current price
     let stopTriggered = false;

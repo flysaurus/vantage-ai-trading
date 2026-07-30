@@ -259,7 +259,7 @@ const defaultForm: OrderFormState = {
   type: 'market',
   qty: 0,
   qtyType: 'shares',
-  timeInForce: 'day',
+  timeInForce: 'gtc',
   extendedHours: false,
   bracketOrder: false,
 };

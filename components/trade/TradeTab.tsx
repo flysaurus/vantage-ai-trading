@@ -47,7 +47,7 @@ export function TradeTab() {
   const [qty, setQty] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
   const [stopPrice, setStopPrice] = useState('');
-  const [tif, setTif] = useState<'day' | 'gtc'>('day');
+  const [tif, setTif] = useState<'day' | 'gtc'>('gtc');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('filled');
   const [showBuildBasket, setShowBuildBasket] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);

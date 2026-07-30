@@ -11,6 +11,18 @@ import type { FillDecision } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getBatchQuotes } from '@/lib/market-data';
 
+export interface StaleOrderNotification {
+  userId: string;
+  orderId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  shares: number;
+  limitPrice?: number;
+  currentPrice: number;
+  submittedAt: string;
+  stalenessHours: number;
+}
+
 // ─── Quote batching (multi-source: Finnhub → Alpaca → Yahoo) ──
 
 async function fetchQuotesBatch(symbols: string[]): Promise<Map<string, number>> {
@@ -61,12 +73,17 @@ interface PortfolioRow {
  * Process all pending orders in a single user's portfolio state.
  * Mutates the row in place. Returns a summary.
  */
+// ─── Staleness threshold (48h for demo GTC orders) ──────────
+const GTC_STALE_HOURS = 48;
+const GTC_RENOTIFY_HOURS = 24; // cooldown before re-notifying
+
 export function processUserOrders(
   row: PortfolioRow,
   quotes: Map<string, number>,
   now: Date,
   userEmail?: string,
-): { result: OrderProcessSummary; updated: boolean } {
+  supabase?: any,
+): { result: OrderProcessSummary; updated: boolean; staleNotifications: StaleOrderNotification[] } {
   const marketOpen = isMarketOpenNow();
   const afterClose = isAfterMarketClose();
 
@@ -75,6 +92,7 @@ export function processUserOrders(
   let skipped = 0;
   let errors = 0;
   let cashReleased = 0;
+  let forceSave = false;
 
   const openOrders = row.orders.filter(o => o.status === 'OPEN');
   if (openOrders.length === 0) {
@@ -200,9 +218,73 @@ export function processUserOrders(
     }
   }
 
+  // ── Staleness check: GTC orders unfilled > 48h ──
+  const staleNotifications: StaleOrderNotification[] = [];
+  const nowMs = now.getTime();
+  const staleThresholdMs = GTC_STALE_HOURS * 60 * 60 * 1000;
+  const renotifyThresholdMs = GTC_RENOTIFY_HOURS * 60 * 60 * 1000;
+
+  for (const order of openOrders) {
+    // Only check GTC orders
+    if (order.timeInForce !== 'gtc') continue;
+
+    const submittedMs = new Date(order.submittedAt).getTime();
+    const ageHours = (nowMs - submittedMs) / (60 * 60 * 1000);
+
+    if (ageHours < GTC_STALE_HOURS) continue;
+
+    // Cooldown: don't re-notify if already notified recently
+    const lastNotifiedMs = (order as any)._stalenessNotifiedAt
+      ? new Date((order as any)._stalenessNotifiedAt).getTime()
+      : 0;
+    if (nowMs - lastNotifiedMs < renotifyThresholdMs) continue;
+
+    // Get current price for comparison
+    const currentPrice = quotes.get(order.symbol.toUpperCase());
+    const priceDelta = currentPrice != null && order.limitPrice != null
+      ? ((currentPrice - order.limitPrice) / order.limitPrice * 100).toFixed(1)
+      : null;
+
+    staleNotifications.push({
+      userId: row.user_id,
+      orderId: order.id,
+      symbol: order.symbol,
+      side: order.side,
+      shares: order.shares,
+      limitPrice: order.limitPrice,
+      currentPrice: currentPrice || 0,
+      submittedAt: order.submittedAt,
+      stalenessHours: Math.round(ageHours),
+    });
+
+    // Mark as notified
+    (order as any)._stalenessNotifiedAt = now.toISOString();
+    forceSave = true; // force save to persist _stalenessNotifiedAt
+
+    // ── Email notification ──
+    if (userEmail) {
+      const details = currentPrice != null
+        ? `Current: $${currentPrice.toFixed(2)}${order.limitPrice != null ? ` (${Number(priceDelta) >= 0 ? '+' : ''}${priceDelta}% vs limit $${order.limitPrice.toFixed(2)})` : ''}. Visit Vantage to adjust or cancel.`
+        : 'Quote unavailable. Visit Vantage to review.';
+      sendOrderNotification(userEmail, {
+        type: 'order_cancelled' as const,
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        orderType: order.type,
+        shares: order.shares,
+        cancelReason: 'day_expired' as const,
+        details,
+        submittedPrice: order.submittedPrice,
+        limitPrice: order.limitPrice,
+      }).catch(() => {});
+    }
+  }
+
   return {
     result: { userId: row.user_id, filled, expired, skipped, errors, cashReleased },
-    updated: filled > 0 || expired > 0,
+    updated: filled > 0 || expired > 0 || forceSave,
+    staleNotifications,
   };
 }
 
@@ -409,11 +491,12 @@ export async function processAllPendingOrders(
   // 6. Process each user
   const perUser: OrderProcessSummary[] = [];
   let totalFilled = 0, totalExpired = 0, totalSkipped = 0, totalErrors = 0, totalCashReleased = 0;
+  const allStaleNotifications: StaleOrderNotification[] = [];
 
   for (const row of active) {
     try {
       const userEmail = userEmails.get(row.user_id);
-      const { result, updated } = processUserOrders(row, quotes, now, userEmail);
+      const { result, updated, staleNotifications } = processUserOrders(row, quotes, now, userEmail, supabase);
 
       if (updated) {
         // Persist changes — canonical column: order_history
@@ -440,6 +523,11 @@ export async function processAllPendingOrders(
       totalSkipped += result.skipped;
       totalErrors += result.errors;
       totalCashReleased += result.cashReleased;
+
+      // Collect stale notifications for in-app notification
+      if (staleNotifications.length > 0) {
+        allStaleNotifications.push(...staleNotifications);
+      }
     } catch (err: any) {
       console.error(`[processAllPendingOrders] Error processing user ${row.user_id}:`, err.message);
       perUser.push({ userId: row.user_id, filled: 0, expired: 0, skipped: 0, errors: 1, cashReleased: 0 });
@@ -447,9 +535,15 @@ export async function processAllPendingOrders(
     }
   }
 
+  // 7. Write stale notifications to recent_notifications (in-app feed)
+  if (allStaleNotifications.length > 0) {
+    await writeStaleNotifications(supabase, allStaleNotifications);
+  }
+
+  const staleCount = allStaleNotifications.length;
   console.log(
     `[processAllPendingOrders] Done — ${totalFilled} filled, ${totalExpired} expired, ` +
-    `$${totalCashReleased.toFixed(2)} cash released, ${totalErrors} errors`
+    `${staleCount} stale notified, $${totalCashReleased.toFixed(2)} cash released, ${totalErrors} errors`
   );
 
   return {
@@ -457,4 +551,38 @@ export async function processAllPendingOrders(
     totalFilled, totalExpired, totalSkipped, totalErrors, totalCashReleased,
     perUser,
   };
+}
+
+// ─── Stale notification writer ───────────────────────────────
+
+async function writeStaleNotifications(
+  supabase: any,
+  notifications: StaleOrderNotification[],
+): Promise<void> {
+  for (const n of notifications) {
+    try {
+      const priceInfo = n.currentPrice > 0
+        ? `$${n.currentPrice.toFixed(2)}${n.limitPrice ? ` vs limit $${n.limitPrice.toFixed(2)}` : ''}`
+        : 'quote unavailable';
+
+      const message = `⏳ GTC ${n.side} ${n.symbol} unfilled for ${n.stalenessHours}h — current ${priceInfo}. Tap to adjust or cancel. [order:${n.orderId}|${n.symbol}|${n.side}|${n.shares}|${n.limitPrice || ''}|${n.currentPrice}]`;
+
+      const { error } = await supabase
+        .from('recent_notifications')
+        .insert({
+          user_id: n.userId,
+          type: 'order_stale',
+          message,
+          created_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        console.error(`[writeStaleNotifications] Failed for ${n.orderId}:`, error.message);
+      }
+    } catch (err: any) {
+      console.error(`[writeStaleNotifications] Error for ${n.orderId}:`, err.message);
+    }
+  }
+
+  console.log(`[writeStaleNotifications] Wrote ${notifications.length} stale notifications`);
 }

@@ -329,7 +329,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
             setExecutedMarkers(prev => ({ ...prev, ...data.executions }));
           }
         })
-        .catch(() => {}); // Fail silently — buttons stay active
+        .catch((e) => {
+          // Fail gracefully — buttons stay active on read failure
+          // But log with detail so the gap is discoverable
+          console.warn('[marker-exec] GET failed — buy buttons may not show persisted state', e?.message || e);
+        });
     }
   }, [userId, messages]);
 
@@ -2576,7 +2580,20 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 executed_amount: params.shares * price,
                 order_id: result.orderId || null,
               }),
-            }).catch(e => console.error('[marker-exec] Record failed:', e));
+            }).then(async (res) => {
+              if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                const detail = errBody?.error || `HTTP ${res.status}`;
+                console.error('[marker-exec] POST failed:', detail);
+                // Surface to user — this means cross-device buy-button persistence is broken
+                setToast(`⚠️ Buy recorded but may not persist across devices`);
+                setTimeout(() => setToast(null), 6000);
+              }
+            }).catch(e => {
+              console.error('[marker-exec] Record failed:', e);
+              setToast(`⚠️ Buy recorded but persistence failed — check connection`);
+              setTimeout(() => setToast(null), 6000);
+            });
           }
           // Also update localStorage for InlineTradeButton component persistence
           markMarkerExecuted(tradeTicket.symbol, tradeTicket.side, params.shares, params.shares * price);

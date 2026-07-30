@@ -60,7 +60,7 @@ export default function TradeTicket({
   const isLockedInput = !isAIVariant && (!!(initialAmount && initialAmount > 0) || !!(initialShares && initialShares > 0));
   
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
-  const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
+  const [timeInForce, setTimeInForce] = useState<TimeInForce>('gtc');
   
   const [quantity, setQuantity] = useState<string>(() => {
     if (initialAmount && initialAmount > 0) return String(initialAmount);
@@ -90,7 +90,7 @@ export default function TradeTicket({
     setNextOpenLabel(ms.nextOpenLabel);
     // Reset state
     setOrderType('market');
-    setTimeInForce('day');
+    setTimeInForce('gtc');
     setShowAdvanced(false);
     if (isAIVariant) {
       const amt = initialAmount && initialAmount > 0 ? String(initialAmount) : '';

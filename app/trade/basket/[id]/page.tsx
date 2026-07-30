@@ -64,7 +64,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
             symbol: p.symbol,
             qty: 0,
             orderType: 'market' as const,
-            timeInForce: 'day' as const,
+            timeInForce: 'gtc' as const,
             limitPrice: undefined,
             estCost: 0,
             included: true,
