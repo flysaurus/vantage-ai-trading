@@ -1121,6 +1121,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           controller.close();
           return;
         }
+        // ── Precompute marker presence BEFORE any gate code references it ──
+        const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(responseText);
+
         // ── Budget Coherence Gate (marker-less recommendations) ──
         // If the user requested a budget, the response has NO [RECOMMEND:...] markers,
         // but extractResponseTotal found a portfolio total that's >2% off — the AI made
@@ -1153,7 +1156,6 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // (clarifying questions, informational replies, "I can't recommend X" prose) are
         // skipped — they aren't recommendations and shouldn't be validated as such.
         let validationRejected = false;
-        const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(responseText);
         if (requestedBudget !== null && hasRecommendMarkers) {
           sendChecklist(controller, encoder, 'symbol_verification', 'in_progress');
           try {
