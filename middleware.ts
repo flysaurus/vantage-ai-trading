@@ -42,7 +42,6 @@ const PUBLIC_ROUTES = [
   '/api/symbols/search', // public — Finnhub company search
   '/api/symbols/check', // public — single-symbol validation
   '/api/symbols/all', // public — full symbol cache for client validation
-  '/api/chat', // TEMP: consolidated 7-check retest — REVERT AFTER
   '/api/invites/validate', // public — invite token/email validation (pre-auth signup gate)
   '/api/access-requests', // public POST (waitlist submit), GET is admin-gated internally
   '/api/access-requests/check', // public GET (waitlist status check)
