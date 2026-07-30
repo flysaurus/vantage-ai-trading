@@ -586,7 +586,7 @@ function detectResponseIncoherence(response: string): string | null {
     }
     clarifyIdx = pos + 1; // skip past closing ]
   }
-  // Check for question marks in the stripped text (outside CLARIFY blocks)
+  // 7a: Check for question marks in the stripped text (outside CLARIFY blocks)
   // Ignore ? that appears in URLs (preceded by http or followed by =)
   const qCheckText = strippedForClarifyCheck.replace(/https?:\/\/\S+/g, ''); // strip URLs
   const qMarkMatch = qCheckText.match(/\?/);
@@ -595,6 +595,24 @@ function detectResponseIncoherence(response: string): string | null {
     const qIdx = qMarkMatch.index!;
     const context = qCheckText.slice(Math.max(0, qIdx - 40), Math.min(qCheckText.length, qIdx + 40)).replace(/\n/g, ' ').trim();
     return `Prose question detected outside [CLARIFY:...] block: "${context}". All questions MUST use the [CLARIFY:{"question":"...","options":[...]}] format. Rewrite the question as a CLARIFY block, or if no question was intended, rephrase without the question mark.`;
+  }
+  // 7b: "X or Y or Z" alternative presentations without a question mark
+  // The AI lists 2+ alternatives with "or" as a prose decision point — e.g.,
+  // "You could deploy fresh cash, rebalance, or replace ADBE" — instead of
+  // wrapping it in a structured [CLARIFY:...] block. These are invisible to
+  // the UI (no chips render) and violate the one-format contract.
+  const altCheckText = strippedForClarifyCheck.replace(/https?:\/\/\S+/g, '');
+  // Match 3+ alternatives joined by "or" with a decision-oriented verb nearby.
+  // The decision pattern anchors on words the AI typically uses when asking
+  // the user to choose between options: "choose", "pick", "want", "prefer",
+  // "go with", "would you", "should I", "do you", "let me know", "tell me".
+  // Require at least 2 "or" connectors (3 alternatives) to avoid flagging
+  // simple "X or Y" binary statements like "SCHD or VTI works here".
+  const altPattern = /(?:choose|pick|select|want|prefer|go with|let me know|tell me|would you|should i|do you|could|can|may)\s.{10,100}\b(\w+(?:\s+\w+){0,4})\s+or\s+(\w+(?:\s+\w+){0,4})\s+or\s+(\w+(?:\s+\w+){0,4})/i;
+  const altMatch = altCheckText.match(altPattern);
+  if (altMatch) {
+    const context = altMatch[0].slice(0, 100).replace(/\n/g, ' ').trim();
+    return `Decision alternatives presented outside [CLARIFY:...] block: "${context}". Use [CLARIFY:{"question":"...","options":["A","B","C"]}] format instead of listing alternatives in prose.`;
   }
 
   return null;
