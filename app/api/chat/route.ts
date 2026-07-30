@@ -473,14 +473,20 @@ function detectResponseIncoherence(response: string): string | null {
   }
 
   // ── Pattern 3: Malformed marker-decision chains ──
-  // "NVDA or or or or", "MSFT or or or or" — the AI waffling between tickers.
-  // Also catches bold/formatted variants: **JNJ** or **PFE** or **JPM** or or or
-  // and inline-amount variants: JNJ ($200) or PFE ($200) or JPM — still waffling.
-  // First: strip markdown bold/italic to normalize the text for matching
+  // Two sub-patterns: (A) consecutive "or or or or" (AI deliberating aloud),
+  // and (B) "or TICKER or TICKER or TICKER" (listing alternatives instead of picking).
+  // Strip markdown bold/italic first to normalize the text for matching.
   const strippedForOrCheck = response.replace(/\*\*/g, '').replace(/\*/g, '');
-  const orChain = strippedForOrCheck.match(/\b([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+(or\s+){2,}/gi);
+  // Sub-pattern A: consecutive "or or or or" after a ticker (e.g. "JNJ or or or or")
+  const orChain = strippedForOrCheck.match(/\b([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+(?:or\s+){2,}/gi);
   if (orChain) {
     return `Malformed marker-decision chain detected: "${orChain[0].trim()}". AI is waffling instead of making decisions. Regenerate with definitive picks.`;
+  }
+  // Sub-pattern B: "or TICKER or TICKER or TICKER" — 3+ tickers alternating with "or"
+  const tickerOrChain = strippedForOrCheck.match(/\bor\s+([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+or\s+([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+or\s+([A-Z]{1,5})/gi);
+  if (tickerOrChain) {
+    const tickers = [...tickerOrChain[0].matchAll(/\b([A-Z]{2,5})\b/g)].map(m => m[1]).filter(t => t !== 'or' && t !== 'OR');
+    return `Marker-decision chain with tickers detected: ${tickers.join(' or ')}. AI is listing alternatives instead of making definitive picks. Regenerate with definitive [RECOMMEND:...] markers.`;
   }
 
   // ── Pattern 4: Internal monologue leaking ──
@@ -502,6 +508,47 @@ function detectResponseIncoherence(response: string): string | null {
   const tldrCount = (response.match(/\[SUMMARY_TLDR:/gi) || []).length;
   if (tldrCount >= 2) {
     return `Two [SUMMARY_TLDR:...] markers found — indicates two separate recommendation blocks. Regenerate one coherent response.`;
+  }
+
+  // ── Pattern 6: Narrative table describes positions with $ amounts but no [RECOMMEND:...] markers ──
+  // The AI sometimes describes positions in markdown tables with dollar amounts
+  // but forgets to emit a [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker for every one.
+  // This causes those positions to silently drop from the rendered summary table
+  // and trade buttons. Example: "| GEHC | GE HealthCare | $1,800 | 18% |" in
+  // the narrative without a [RECOMMEND:GEHC:BUY:$1800] marker → GEHC missing from UI.
+  const narrativeTickerSet = new Set<string>();
+  const tableRowRe = /^\|.*?\$[\d,]+.*\|/gm;
+  let trMatch: RegExpExecArray | null;
+  tableRowRe.lastIndex = 0;
+  while ((trMatch = tableRowRe.exec(response)) !== null) {
+    const row = trMatch[0];
+    // Skip total/summary rows
+    if (/\b(?:total|sum|portfolio value|grand total)\b/i.test(row)) continue;
+    // Extract ticker from the FIRST column of the table row only.
+    // This avoids false positives like extracting "GE" from "GE HealthCare"
+    // in the company name column.
+    const firstCellMatch = row.match(/^\|\s*([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\s*\|/);
+    if (firstCellMatch) {
+      const word = firstCellMatch[1].toUpperCase();
+      if (isFilteredWord(word)) continue;
+      if (/^(?:BUY|SELL|TOTAL|NAME|TICKER|SYMBOL|SECTOR|ALLOCATION|CATEGORY|WEIGHT|SHARES|PRICE|VALUE|AMOUNT|CORE|GROWTH|YIELD|RATIO|NOTE|TRANCHE|COST|LOT|TYPE|PICK|HOLD)$/.test(word)) continue;
+      narrativeTickerSet.add(word);
+    }
+  }
+  // Extract tickers from [RECOMMEND:...] markers
+  const markerTickerSet = new Set<string>();
+  const mkrRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(?:BUY|SELL)/gi;
+  let mkMatch: RegExpExecArray | null;
+  mkrRe.lastIndex = 0;
+  while ((mkMatch = mkrRe.exec(response)) !== null) {
+    const rawSymbol = mkMatch[1].toUpperCase();
+    const dotIdx = rawSymbol.lastIndexOf('.');
+    const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
+    markerTickerSet.add(suffix.length >= 2 ? rawSymbol.slice(0, dotIdx) : rawSymbol);
+  }
+  const missingTickers = [...narrativeTickerSet].filter(t => !markerTickerSet.has(t));
+  if (missingTickers.length > 0) {
+    return `Narrative describes position(s) for ${missingTickers.join(', ')} with $ amounts but no corresponding [RECOMMEND:...] marker found. Every portfolio position MUST be tagged with a [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker.`;
   }
 
   return null;
