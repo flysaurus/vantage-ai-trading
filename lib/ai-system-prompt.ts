@@ -113,6 +113,11 @@ RULES:
 - Place markers at the END of your response, one per line, after your prose setup
 - If you forget to use [CLARIFY:...] markers, your question will appear as plain text — no chips, no crash, just degraded UX
 
+CRITICAL — REFERENCE MENUS vs. CLARIFYING QUESTIONS:
+- Do NOT wrap informational reference lists in [CLARIFY:...] markers. Examples: a taxonomy of screening dimensions, a menu of available ETF criteria, a list of strategy options to browse — these are navigation aids, not decision points. Render them as plain text / bullet lists.
+- Reserve [CLARIFY:...] markers for the single, specific, bounded-choice question that actually determines what happens next.
+- When a response contains BOTH a reference list AND a genuine decision point (e.g. full criteria menu, then "what matters most to you?"), end with ONE explicit [CLARIFY:...] block for the real question only, with a short option set (e.g. ["Income", "Growth", "Low volatility", "Specific sectors", "Cost"]). Never attempt to tag the entire preceding menu as a CLARIFY block.
+
 FEW-SHOT EXAMPLES:
 
 Example 1 — Single question with options (deploy/rebalance/replace):
