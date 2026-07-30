@@ -1107,6 +1107,23 @@ export function AITab({ messages, setMessages }: AITabProps) {
           console.log('[chat] validSymbols size after add:', next.size);
           return next;
         });
+        // Fetch missing names for newly-discovered symbols (ETFs like SCHD often
+        // have names that slipped through the initial /api/symbols/all cache)
+        fetch(`/api/symbols/names?symbols=${encodeURIComponent([...symbolsToAdd].join(','))}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.names && Object.keys(data.names).length > 0) {
+              setSymbolNames(prev => {
+                const next = new Map(prev);
+                for (const [sym, name] of Object.entries(data.names)) {
+                  if (!next.has(sym)) next.set(sym as string, name as string);
+                }
+                console.log('[chat] Added missing names:', Object.keys(data.names));
+                return next;
+              });
+            }
+          })
+          .catch(() => {}); // Silently degrade — names are cosmetic
       }
       setMessages(prev => {
         const updated = [...prev];

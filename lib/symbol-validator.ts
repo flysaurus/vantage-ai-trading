@@ -214,3 +214,54 @@ export async function searchSymbolsByName(
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);
 }
+
+/**
+ * Look up display names for symbols. Checks the in-memory cache first;
+ * for symbols NOT in the cache, does a live Finnhub profile lookup.
+ * Returns a Map of symbol → name (only for symbols that have names).
+ */
+export async function lookupSymbolNames(symbols: string[]): Promise<Map<string, string>> {
+  await loadSymbolCache();
+  const result = new Map<string, string>();
+  const missing: string[] = [];
+
+  for (const sym of symbols) {
+    const upper = sym.toUpperCase().trim();
+    const cached = _symbolNameMap?.get(upper);
+    if (cached) {
+      result.set(upper, cached);
+    } else {
+      missing.push(upper);
+    }
+  }
+
+  // For symbols not in cache, try live Finnhub profile lookup
+  if (missing.length > 0) {
+    const token = process.env.FINNHUB_IO_API_KEY;
+    if (token) {
+      for (const sym of missing.slice(0, 5)) { // cap live lookups at 5
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+          const res = await fetch(
+            `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`,
+            { signal: controller.signal },
+          );
+          clearTimeout(timeout);
+          if (res.ok) {
+            const profile = await res.json();
+            if (profile?.name) {
+              result.set(sym, profile.name);
+              // Also cache it for future lookups
+              if (_symbolNameMap) _symbolNameMap.set(sym, profile.name);
+            }
+          }
+        } catch {
+          // Silently skip individual failures
+        }
+      }
+    }
+  }
+
+  return result;
+}
