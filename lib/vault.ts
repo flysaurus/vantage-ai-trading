@@ -21,12 +21,12 @@ const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 const ALGORITHM = 'aes-256-gcm';
 
-function deriveUserKey(userId: string): Buffer {
+export function deriveUserKey(userId: string): Buffer {
   const secret = process.env.VAULT_ENCRYPTION_KEY || 'dev-encryption-key-change-me';
   return crypto.createHash('sha256').update(userId + secret).digest();
 }
 
-function encryptData(plaintext: string, key: Buffer): string {
+export function encryptData(plaintext: string, key: Buffer): string {
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
@@ -38,7 +38,7 @@ function encryptData(plaintext: string, key: Buffer): string {
   });
 }
 
-function decryptData(payload: string, key: Buffer): string {
+export function decryptData(payload: string, key: Buffer): string {
   const { encrypted, iv, authTag } = JSON.parse(payload);
   const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(iv, 'base64'), { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(Buffer.from(authTag, 'base64'));
