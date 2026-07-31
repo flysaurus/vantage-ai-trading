@@ -349,13 +349,19 @@ export class DemoBroker implements BrokerEngine {
           }
         }
 
-        const normalizedPositions = this.state.positions.map((p: any) => ({
-          ...p,
-          qty: p.qty ?? p.shares ?? 0,
-        }));
+        // ── Strip ghost positions (empty/missing symbol) before saving ──
+        const cleanPositions = this.state.positions
+          .filter((p: any) => p?.symbol && p.symbol !== '')
+          .map((p: any) => ({ ...p, qty: p.qty ?? p.shares ?? 0 }));
+        
+        const ghostCount = this.state.positions.length - cleanPositions.length;
+        if (ghostCount > 0) {
+          console.warn(`[DemoBroker] ⚠️ Stripping ${ghostCount} ghost position(s) before Supabase save`, { userId: this.userId });
+        }
+
         await this.supabase.from('demo_portfolio_state').upsert({
           user_id: this.userId,
-          positions: normalizedPositions,
+          positions: cleanPositions,
           cash_balance: this.state.cashBalance,
           order_history: this.state.orders,       // canonical: full BrokerOrder[]
           basket_orders: this.state.basketOrders,
@@ -382,12 +388,22 @@ export class DemoBroker implements BrokerEngine {
       console.log('[DemoBroker] loadFromSupabase — result:', { hasData: !!data, error: error?.message, basketOrdersCount: data?.basket_orders?.length, positionsCount: data?.positions?.length, cashBalance: data?.cash_balance });
 
       if (data) {
-        // ── Detect empty row (data existed but was wiped) ──
+        // ── Detect empty/ghost-row (empty arrays, zero cash, OR only empty-symbol positions) ──
+        const validPositions = (data.positions || []).filter((p: any) => p?.symbol && p.symbol !== '');
+        const ghostPositions = (data.positions || []).length - validPositions.length;
+        
         const isEmpty =
-          (!data.positions || data.positions.length === 0) &&
+          validPositions.length === 0 &&
           (!data.order_history || data.order_history.length === 0) &&
           (!data.basket_orders || data.basket_orders.length === 0) &&
           (!data.cash_balance || data.cash_balance === 0);
+
+        if (ghostPositions > 0) {
+          console.warn(
+            `[DemoBroker] ⚠️ Dropping ${ghostPositions} ghost position(s) with empty/missing symbol from Supabase row.`,
+            { userId: this.userId }
+          );
+        }
 
         if (isEmpty) {
           console.warn(
@@ -411,9 +427,9 @@ export class DemoBroker implements BrokerEngine {
         const restoredBasketOrders = data.basket_orders || [];
         console.log('[DemoBroker] loadFromSupabase — restoring basketOrders:', restoredBasketOrders.length, 'names:', restoredBasketOrders.map((bo: any) => bo.name || bo.basketName));
         this.state = {
-          positions: (data.positions as any[]).map((p: any) => ({
+          positions: validPositions.map((p: any) => ({
             ...p,
-            shares: p.shares ?? p.qty ?? p.quantity ?? 0, // normalize DemoOrder (qty) → BrokerPosition (shares)
+            shares: p.shares ?? p.qty ?? p.quantity ?? 0,
           })),
           cashBalance: data.cash_balance ?? 0,
           orders: canonicalOrders,
