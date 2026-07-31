@@ -4,7 +4,6 @@ import { Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBroker } from '@/components/providers/BrokerProvider';
-import { onAISessionStarted } from '@/lib/gamification/events';
 import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -947,8 +946,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     setLastMessageTime(now);
 
     if (messages.length === 0) {
-      const anonId = String(user?.id || 'unknown');
-      onAISessionStarted(anonId).catch(() => {});
+      // session tracking stub removed — gamification UI retired
     }
 
     const userMessage = { role: 'user' as const, content, id: crypto.randomUUID() };

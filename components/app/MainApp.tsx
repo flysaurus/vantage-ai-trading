@@ -15,7 +15,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
 import { MarketBar } from '@/components/layout/MarketBar';
 import { WatchlistBar } from '@/components/layout/WatchlistBar';
-import { PlayerStatusBar } from '@/components/gamification/PlayerStatusBar';
+import { InvestorStyleBadge } from '@/components/layout/InvestorStyleBadge';
 import { AITab } from '@/components/ai/AITab';
 import { TradeTab } from '@/components/trade/TradeTab';
 import { PortfolioTab } from '@/components/portfolio/PortfolioTab';
@@ -25,7 +25,6 @@ import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
-import { onDailyOpen } from '@/lib/gamification/events';
 import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
 import { useTabStore } from '@/store';
@@ -55,7 +54,6 @@ function AppShell() {
   const [showGreeting, setShowGreeting] = useState(false);
   const [showWelcomeToast, setShowWelcomeToast] = useState(false);
   const greetingShown = useRef(false);
-  const dailyOpenSent = useRef(false);
 
   const demoStatus = useMemo(() =>
     getDemoStatus(
@@ -114,13 +112,6 @@ function AppShell() {
       setTimeout(() => setShowGreeting(true), 300);
     }
   }, [effectiveUser, isDataLoaded, showOnboarding, isAuthenticated]);
-
-  // ── Daily streak sync ──
-  useEffect(() => {
-    if (!effectiveUser?.id || !isAuthenticated || dailyOpenSent.current) return;
-    dailyOpenSent.current = true;
-    onDailyOpen(effectiveUser.id).catch(() => {});
-  }, [effectiveUser?.id, isAuthenticated]);
 
   // ── Cross-component navigation ──
   useEffect(() => {
@@ -229,12 +220,12 @@ function AppShell() {
       <Header />
       <div className="flex items-center gap-3 px-4 py-2 border-b border-white/5">
         <AccountSwitcher />
+        <InvestorStyleBadge />
         {/* Read-only trading warning */}
         <ActiveAccountWarning />
       </div>
       {TABS_WITH_MARKETBAR.has(activeTab) && <MarketBar />}
       <WatchlistBar />
-      <PlayerStatusBar />
       {demoStatus.showWarning && (
         <DemoWarningBanner daysRemaining={demoStatus.daysRemaining} />
       )}

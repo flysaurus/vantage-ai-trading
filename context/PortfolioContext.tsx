@@ -21,8 +21,6 @@ import React, {
 } from 'react';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { onTradeExecuted } from '@/lib/gamification/events';
-import { scoreDiversification } from '@/lib/confidence';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
@@ -695,102 +693,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             b.getAccount(),
             b.getPositions(),
           ]);
-          const positionsCost = positions.reduce((s: number, p: any) => s + (p.totalCost || 0), 0);
-          const pv = (account?.totalValue || 0);
-          const pc = positionsCost + (account?.cashBalance || 0);
-
-          // ── Compute real trade characteristics for style inference ──
-          const existingPos = positions.find((p: any) => p.symbol === symbol);
-          const tradeSector = existingPos?.sector || undefined;
-          const tradeAssetType = existingPos?.type || (orderType === 'market' ? 'Stock' : 'ETF');
-          let tradeHoldingDays: number | undefined;
-          if (existingPos?.buyDate) {
-            try {
-              tradeHoldingDays = Math.round(
-                (Date.now() - new Date(existingPos.buyDate).getTime()) / (1000 * 60 * 60 * 24)
-              );
-            } catch { /* leave undefined */ }
-          }
-
-          // ── Compute portfolio skill metrics ──
-          // BrokerPosition from engine.ts: shares, avgCost, totalCost, buyDate, sector, type
-          // (does NOT have marketValue or dayChangePercent — compute from available fields)
-          const cashRatio = account?.totalValue > 0
-            ? ((account?.cashBalance || 0) / account.totalValue) * 100
-            : 10;
-          const growthSectors = ['Technology', 'Communication Services', 'Consumer Cyclical'];
-          let growthValue = 0;
-          let totalMarketValue = 0;
-          for (const p of positions) {
-            const mv = (p.shares || 0) * (p.avgCost || 0);
-            totalMarketValue += mv;
-            if (p.sector && growthSectors.includes(p.sector)) {
-              growthValue += mv;
-            }
-          }
-          const growthExposure = totalMarketValue > 0
-            ? (growthValue / totalMarketValue) * 100
-            : 50;
-
-          // Volatility: rough proxy from portfolio breadth (0.15-0.40 range)
-          const volatility = positions.length <= 3 ? 0.35
-            : positions.length <= 8 ? 0.25
-            : 0.18;
-
-          // Map BrokerPosition[] → minimal Position shape for scoreDiversification()
-          const minimalPositions = positions.map((p: any) => ({
-            symbol: p.symbol,
-            sector: p.sector,
-            marketValue: (p.shares || 0) * (p.avgCost || 0),
-            profitLossPct: 0,
-            dayChangePercent: 0,
-          }));
-          const diversScore = scoreDiversification(minimalPositions as any).score;
-
-          const positionCount = positions.length;
-          const maxPositionPct = positions.length > 0 && totalMarketValue > 0
-            ? Math.max(...positions.map(p =>
-                ((p.shares || 0) * (p.avgCost || 0)) / totalMarketValue * 100
-              ))
-            : 0;
-
-          try {
-            await onTradeExecuted(
-            user.id as string,
-            tradeAssetType,
-            tradeSector,
-            tradeHoldingDays,
-            undefined, // basketStrategy (not from basket)
-            user?.investorStyle as string | undefined,
-            diversScore,
-            positionCount,
-            maxPositionPct,
-            undefined, // heldThroughDrawdown (requires current prices)
-            pv,
-            pc
-          );
-          } catch (scoreErr: any) {
-            console.error('[PortfolioContext] onTradeExecuted error:', scoreErr?.message || scoreErr);
-          }
-        } else {
-          try {
-            await onTradeExecuted(
-            user.id as string,
-            undefined, // assetType
-            undefined, // sector
-            undefined, // holdingDays
-            undefined, // basketStrategy
-            user?.investorStyle as string | undefined,
-            undefined, // diversificationScore
-            undefined, // positionCount
-            undefined, // maxPositionPct
-            undefined, // heldThroughDrawdown
-            undefined, // portfolioValue
-            undefined  // portfolioCost
-          );
-          } catch (scoreErr: any) {
-            console.error('[PortfolioContext] onTradeExecuted error:', scoreErr?.message || scoreErr);
-          }
         }
       }
 

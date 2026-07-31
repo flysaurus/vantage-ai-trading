@@ -7,7 +7,6 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 
-import { useInvestorScore } from '@/hooks/useInvestorScore';
 import { getDemoStatus } from '@/lib/demo-utils';
 import { isLearningEnabled, setLearningEnabled as saveLearningPref } from '@/lib/learning/preferences';
 
@@ -51,7 +50,6 @@ export function SettingsTab() {
   const [toast, setToast] = useState<string | null>(null);
 
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
-  const { score, level } = useInvestorScore();
   const [isAdmin, setIsAdmin] = useState(false);
   const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
   const [demoStartAt, setDemoStartAt] = useState<string | null>(null);
@@ -439,9 +437,6 @@ export function SettingsTab() {
                 const s = INVESTOR_STYLES.find(s => s.id === selectedStyle);
                 return s ? `${s.emoji} ${s.name}` : 'Lynch';
               })()}
-            </p>
-            <p style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '2px' }}>
-              {level} &middot; {score} pts
             </p>
           </div>
           <span style={{ color: '#94a3b8', fontSize: '18px' }}>›</span>

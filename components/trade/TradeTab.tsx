@@ -5,7 +5,6 @@ import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore } from '@/store';
 import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { onBasketCreated } from '@/lib/gamification/events';
 import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
 
@@ -1907,9 +1906,6 @@ export function TradeTab() {
             setShowBuildBasket(false);
             setEditingBasket(null);
             if (result?.success) {
-              // Fire gamification
-              const anonId = (user as any)?.id || 'unknown';
-              onBasketCreated(anonId).catch(() => {});
               // Navigate to Portfolio tab → baskets section
               window.dispatchEvent(new CustomEvent('vantage-navigate', {
                 detail: { tab: 'portfolio', section: 'baskets-section' },
