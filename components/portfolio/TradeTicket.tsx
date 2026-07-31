@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getMarketStatus } from '@/lib/market-hours';
+import { useAccounts } from '@/context/AccountContext';
 import { X } from 'lucide-react';
 
 export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
@@ -50,6 +51,8 @@ export default function TradeTicket({
   sharesHeld, availableCash, initialShares, initialAmount,
   variant = 'manual', supportsFractional = false, onConfirm,
 }: TradeTicketProps) {
+  const { activeAccount } = useAccounts();
+  const isReadOnlyBroker = activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled;
   console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares, initialAmount, variant, supportsFractional });
   
   const isAIVariant = variant === 'ai';
@@ -137,7 +140,7 @@ export default function TradeTicket({
   const canAfford = side === 'SELL' || (forceDollarMode ? estimatedTotal <= availableCash : estimatedTotal <= availableCash);
   const hasEnoughShares = side === 'BUY' || Math.floor(rawShares) <= sharesHeld;
   const canSubmit = isValidQty && pricesValid && canAfford && hasEnoughShares;
-  const canClick = canSubmit && !submitting && !confirmed;
+  const canClick = canSubmit && !submitting && !confirmed && !isReadOnlyBroker;
 
   const setMax = useCallback(() => {
     if (forceDollarMode || isAIVariant) {
@@ -600,7 +603,9 @@ export default function TradeTicket({
               ? '✓ Sent'
               : submitting
                 ? 'Sending…'
-                : isAIVariant
+                : isReadOnlyBroker
+                  ? `🔒 Read-only — ${activeAccount?.broker || 'broker'} does not support trading`
+                  : isAIVariant
                   ? `${sideLabel} $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈${rawShares.toFixed(supportsFractional ? 4 : 0)} shares)`
                   : forceDollarMode
                     ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`

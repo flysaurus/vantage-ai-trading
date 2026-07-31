@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import TradeTicket from '@/components/portfolio/TradeTicket';
+import { useAccounts } from '@/context/AccountContext';
 
 // ── Extraction ───────────────────────────────────────────────
 
@@ -275,6 +276,8 @@ export function InlineTradeButton({
   symbol, side, suggestedShares, suggestedAmount, enabled, onTrade, executed,
 }: InlineTradeButtonProps) {
   const [tapped, setTapped] = useState(false);
+  const { activeAccount } = useAccounts();
+  const isReadOnly = activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled;
 
   // ── Persistent executed-state check ──
   // After a real trade submission, the marker stays greyed out with a ✓
@@ -304,11 +307,11 @@ export function InlineTradeButton({
   }, [symbol, side]);
 
   const handleClick = useCallback(() => {
-    if (!enabled || executed || isExecuted) return;
+    if (!enabled || executed || isExecuted || isReadOnly) return;
     setTapped(true);
     onTrade(symbol, side, suggestedShares, suggestedAmount);
     setTimeout(() => setTapped(false), 600);
-  }, [enabled, executed, isExecuted, symbol, side, suggestedShares, suggestedAmount, onTrade]);
+  }, [enabled, executed, isExecuted, isReadOnly, symbol, side, suggestedShares, suggestedAmount, onTrade]);
 
   if (!enabled) return null;
 
@@ -336,6 +339,34 @@ export function InlineTradeButton({
         <span style={{ fontSize: '10px' }}>☑️</span>
         {' '}{symbol} ${executed.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </span>
+    );
+  }
+
+  // ── Read-only broker: disabled buy button ──
+  if (isReadOnly) {
+    return (
+      <button
+        disabled
+        title={`Trading not available — ${activeAccount.broker} is read-only`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          background: 'rgba(100,116,139,0.06)',
+          border: '1px solid rgba(100,116,139,0.15)',
+          borderRadius: '6px',
+          color: '#64748b',
+          fontSize: '11px',
+          fontWeight: 600,
+          padding: '3px 8px',
+          cursor: 'not-allowed',
+          fontFamily: 'inherit',
+          opacity: 0.5,
+        }}
+      >
+        <span style={{ fontSize: '10px' }}>🔒</span>
+        Read-only broker
+      </button>
     );
   }
 
