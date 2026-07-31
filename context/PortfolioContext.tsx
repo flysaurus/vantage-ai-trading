@@ -26,7 +26,7 @@ import { scoreDiversification } from '@/lib/confidence';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
-import { getBroker } from '@/lib/broker/broker-factory';
+import { getBroker, getBrokerAsync } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import type { BrokerEngine, BrokerOrder } from '@/lib/broker/engine';
 import type { AccountSummary, Position, Order } from '@/types';
@@ -212,6 +212,10 @@ interface PortfolioContextValue {
   pendingBaskets: any[];
   /** Whether Supabase is currently unreachable (using stale localStorage cache) */
   supabaseDegraded: boolean;
+  /** Data source: 'demo' or 'snaptrade' */
+  brokerSource: 'demo' | 'snaptrade';
+  /** Broker metadata for UI badges */
+  brokerMeta: { slug: string; name: string; tradingEnabled: boolean; isDemo: boolean } | null;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -233,6 +237,8 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   basketOrders: [],
   pendingBaskets: [],
   supabaseDegraded: false,
+  brokerSource: 'demo',
+  brokerMeta: null,
 });
 
 // ─── Provider ──────────────────────────────────────────────
@@ -330,6 +336,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const brokerInitDoneForUserRef = useRef<string | null>(null);
   // Degradation flag: Supabase unreachable → show warning, use localStorage cache
   const [supabaseDegraded, setSupabaseDegraded] = useState(false);
+  const [brokerSource, setBrokerSource] = useState<'demo' | 'snaptrade'>('demo');
+  const [brokerMeta, setBrokerMeta] = useState<PortfolioContextValue['brokerMeta']>(null);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
   // ── Clear stale demo portfolio cache on mount ──
@@ -1283,6 +1291,78 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     return { success: executed.length > 0, proceeds: totalProceeds, executed, failed };
   }, [baskets, demoState, demoOrders, persistDemoState, loadBaskets]);
 
+  // ── SnapTrade: detect connected broker and load live data ──
+  const snapInitDoneRef = useRef(false);
+  useEffect(() => {
+    if (snapInitDoneRef.current) return;
+    const uid = user?.id;
+    if (!uid) return;
+
+    async function initSnapTrade() {
+      try {
+        const res = await fetch('/api/accounts');
+        if (!res.ok) return;
+        const { accounts } = await res.json();
+        const snapAccounts = (accounts || []).filter((a: any) => !a.isDemo);
+        if (snapAccounts.length === 0) return;
+
+        // Use the first connected SnapTrade account
+        const first = snapAccounts[0];
+        setBrokerSource('snaptrade');
+        setBrokerMeta({
+          slug: first.broker || 'unknown',
+          name: first.name || first.broker || 'Connected Broker',
+          tradingEnabled: first.tradingEnabled ?? false,
+          isDemo: false,
+        });
+
+        // Fetch live portfolio data
+        const pfRes = await fetch('/api/snaptrade/portfolio');
+        if (!pfRes.ok) {
+          console.error('[portfolio] SnapTrade portfolio fetch failed:', pfRes.status);
+          return;
+        }
+        const pfData = await pfRes.json();
+        if (pfData.account) {
+          const acct = pfData.account;
+          const pos = (pfData.positions || []).map((p: any) => ({
+            symbol: p.symbol,
+            name: p.name || p.symbol,
+            sector: p.sector || '',
+            qty: p.shares,
+            avgCost: p.avgCost,
+            totalCost: p.totalCost,
+            currentPrice: p.avgCost,
+            marketValue: p.totalCost,
+            dayChange: 0,
+            dayChangePercent: 0,
+            totalPnl: 0,
+            totalPnlPercent: 0,
+            portfolioPercent: 0,
+            buyDate: p.buyDate || new Date().toISOString(),
+          }));
+          setAccount({
+            equity: acct.totalValue,
+            cash: acct.cashBalance,
+            buyingPower: acct.buyingPower,
+            positions: pos,
+            dayPnl: acct.todayPnL || 0,
+            dayPnlPercent: acct.todayPnLPct || 0,
+            totalPnl: acct.totalPnL || 0,
+            totalPnlPercent: acct.totalPnLPct || 0
+          });
+          setLoading(false);
+          console.error('[portfolio] SnapTrade data loaded:', pos.length, 'positions, $', acct.totalValue);
+        }
+      } catch (e) {
+        console.error('[portfolio] SnapTrade init error:', e);
+      }
+    }
+
+    snapInitDoneRef.current = true;
+    initSnapTrade();
+  }, [user?.id]);
+
   return (
     <PortfolioContext.Provider
       value={{
@@ -1304,6 +1384,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         basketOrders,
         pendingBaskets,
         supabaseDegraded,
+        brokerSource,
+        brokerMeta,
       }}
     >
       {children}

@@ -50,19 +50,19 @@ function splitCents(value: number): { dollars: string; cents: string } {
 // ─── Account Hero Card ────────────────────────────────────
 
 function AccountHero({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
-  const { activeAccount } = useAccounts();
+  const { brokerSource, brokerMeta } = useLivePortfolio();
   const { dollars, cents } = splitCents(account.equity);
   
   // Data source badge
-  const dataSourceLabel = activeAccount?.isDemo
+  const dataSourceLabel = brokerSource === 'demo'
     ? 'DEMO MODE'
-    : activeAccount?.tradingEnabled
-      ? `${activeAccount.broker} · Live`
-      : `${activeAccount.broker} · Read-only`;
+    : brokerMeta?.tradingEnabled
+      ? `${brokerMeta.name} · Live`
+      : `${brokerMeta.name} · Read-only`;
   
-  const dataSourceStyle = activeAccount?.isDemo
-    ? 'hero-demo-badge'
-    : activeAccount?.tradingEnabled
+  const dataSourceStyle = brokerSource === 'demo'
+    ? undefined
+    : brokerMeta?.tradingEnabled
       ? { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }
       : { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' };
   
@@ -70,8 +70,8 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
     <div className="hero-container" style={{ position: 'relative' }}>
       {/* Data source badge */}
       <span
-        className={activeAccount?.isDemo ? 'hero-demo-badge' : ''}
-        style={activeAccount?.isDemo ? undefined : dataSourceStyle}
+        className={brokerSource === 'demo' ? 'hero-demo-badge' : ''}
+        style={brokerSource === 'demo' ? undefined : dataSourceStyle as any}
       >
         {dataSourceLabel}
       </span>
