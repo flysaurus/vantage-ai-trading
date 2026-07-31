@@ -115,7 +115,21 @@ export default function BrokerSelectScreen({
   const [phase, setPhase] = useState<ConnectPhase>('idle');
   const [connectError, setConnectError] = useState<string | null>(null);
 
-  // ── Load brokers ──
+  // ── US stock broker filter ──
+const US_STOCK_BROKERS = new Set([
+  'ALPACA-PAPER',
+  'TASTYTRADE',
+  'ETRADE',
+  'WEBULL',
+  'PUBLIC',
+  'MOOMOO',
+]);
+
+function isUSStockBroker(slug: string): boolean {
+  return US_STOCK_BROKERS.has(slug.toUpperCase());
+}
+
+// ── Load brokers ──
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -126,8 +140,8 @@ export default function BrokerSelectScreen({
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         const data = await res.json();
         if (cancelled) return;
-        setTradingBrokers(data.trading || []);
-        setReadOnlyBrokers(data.readOnly || []);
+        setTradingBrokers((data.trading || []).filter((b: BrokerInfo) => isUSStockBroker(b.slug)));
+        setReadOnlyBrokers((data.readOnly || []).filter((b: BrokerInfo) => isUSStockBroker(b.slug)));
       } catch (err) {
         if (cancelled) return;
         console.error('[BrokerSelect] Failed to load:', err);
@@ -375,12 +389,12 @@ export default function BrokerSelectScreen({
 
   // ── Main broker grid ──
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-y-auto max-h-[60vh]">
       {/* Trading-enabled section */}
       <section>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 sticky top-0 bg-background pt-2 pb-1 z-10">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Trading Enabled
+            US Stock Brokers
           </h3>
           <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
             {tradingBrokers.length}
