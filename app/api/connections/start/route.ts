@@ -2,16 +2,6 @@
 // Initiates a broker connection via SnapTrade.
 //
 // Body: { brokerage_slug: string, connection_type?: "read" | "trade" | "trade-if-available" }
-//
-// Flow:
-//   1. Authenticate user
-//   2. Validate brokerage_slug against SnapTrade /partners
-//   3. Get or create SnapTrade user (stored in broker_connections)
-//   4. Generate Connection Portal URL
-//   5. Return { redirectUrl } to client
-//
-// The client then redirects the user to the SnapTrade Connection Portal.
-// After OAuth completes, SnapTrade redirects to /api/connections/callback.
 
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
@@ -24,6 +14,19 @@ import {
 import { getAllowedBrokerages } from '@/lib/snaptrade/auth';
 
 export async function POST(req: NextRequest) {
+  try {
+    return await handlePost(req);
+  } catch (err) {
+    const detail = err instanceof Error ? (err.stack || err.message) : 'Unknown error';
+    console.error('[connections/start] UNHANDLED CRASH:', detail.substring(0, 500));
+    return NextResponse.json(
+      { error: 'Internal server error. Please try again.' },
+      { status: 500 },
+    );
+  }
+}
+
+async function handlePost(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
@@ -36,9 +39,6 @@ export async function POST(req: NextRequest) {
   }
 
   const brokerageSlug = (body.brokerage_slug as string)?.trim();
-  const connectionType =
-    (body.connection_type as 'read' | 'trade' | 'trade-if-available') ||
-    'trade-if-available';
 
   if (!brokerageSlug) {
     return NextResponse.json(
@@ -51,7 +51,9 @@ export async function POST(req: NextRequest) {
   let brokerName: string;
   let allowsTrading: boolean;
   try {
+    console.log('[connections/start] Fetching brokerages...');
     const brokers = await getAllowedBrokerages();
+    console.log(`[connections/start] Got ${brokers.length} brokerages`);
     const broker = brokers.find(
       (b) => b.slug.toUpperCase() === brokerageSlug.toUpperCase(),
     );
@@ -68,10 +70,11 @@ export async function POST(req: NextRequest) {
 
     brokerName = broker.displayName;
     allowsTrading = broker.allowsTrading;
+    console.log(`[connections/start] Broker validated: ${brokerName}`);
   } catch (err) {
     console.error(
       '[connections/start] Failed to validate brokerage:',
-      err instanceof Error ? err.message : 'Unknown',
+      err instanceof Error ? err.stack || err.message : 'Unknown',
     );
     return NextResponse.json(
       { error: 'Failed to validate brokerage. Try again.' },
@@ -80,10 +83,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Build callback URL ──
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
-  const proto = req.headers.get('x-forwarded-proto') || 'https';
-  const origin = process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`;
-  const redirectUri = `${origin}/api/connections/callback`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+  const redirectUri = `${appUrl}/api/connections/callback`;
+  console.log('[connections/start] Callback URL:', redirectUri);
 
   // ── Get or create SnapTrade user ──
   const supabase = createClient(
@@ -92,19 +94,23 @@ export async function POST(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  // Check for existing SnapTrade user record
-  const { data: existingConn } = await supabase
+  console.log('[connections/start] Looking up existing SnapTrade user...');
+  const { data: existingConn, error: lookupErr } = await supabase
     .from('broker_connections')
     .select('snaptrade_user_id, snaptrade_user_secret_encrypted, id')
     .eq('user_id', authUser.id)
     .eq('connection_type', 'snaptrade')
     .maybeSingle();
 
+  if (lookupErr) {
+    console.warn('[connections/start] DB lookup warning (non-fatal):', lookupErr.message);
+  }
+
   let snapUserId: string;
   let snapUserSecret: string;
-  let isNew: boolean;
 
   try {
+    console.log('[connections/start] Getting/creating SnapTrade user...');
     const result = await getOrCreateSnapTradeUser(
       authUser.id,
       existingConn?.snaptrade_user_id,
@@ -112,11 +118,11 @@ export async function POST(req: NextRequest) {
     );
     snapUserId = result.userId;
     snapUserSecret = result.userSecret;
-    isNew = result.isNew;
+    console.log('[connections/start] SnapTrade user ready, isNew:', result.isNew);
   } catch (err) {
     console.error(
       '[connections/start] SnapTrade user setup failed:',
-      err instanceof Error ? err.message : 'Unknown',
+      err instanceof Error ? err.stack || err.message : 'Unknown',
     );
     return NextResponse.json(
       { error: 'Failed to set up SnapTrade user. Please try again.' },
@@ -125,11 +131,26 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Store/update SnapTrade user in broker_connections ──
-  const encryptedSecret = encryptUserSecret(authUser.id, snapUserSecret);
+  let encryptedSecret: string;
+  try {
+    encryptedSecret = encryptUserSecret(authUser.id, snapUserSecret);
+    console.log('[connections/start] User secret encrypted');
+  } catch (err) {
+    console.error(
+      '[connections/start] Encryption failed:',
+      err instanceof Error ? err.message : 'Unknown',
+    );
+    return NextResponse.json(
+      { error: 'Failed to secure credentials. Please try again.' },
+      { status: 500 },
+    );
+  }
+
   const now = new Date().toISOString();
 
   if (existingConn?.id) {
-    await supabase
+    console.log('[connections/start] Updating existing connection row:', existingConn.id);
+    const { error: updateErr } = await supabase
       .from('broker_connections')
       .update({
         snaptrade_user_id: snapUserId,
@@ -139,26 +160,37 @@ export async function POST(req: NextRequest) {
         updated_at: now,
       })
       .eq('id', existingConn.id);
+    if (updateErr) {
+      console.warn('[connections/start] DB update warning (non-fatal):', updateErr.message);
+    }
   } else {
-    await supabase.from('broker_connections').insert({
-      user_id: authUser.id,
-      connection_type: 'snaptrade',
-      snaptrade_user_id: snapUserId,
-      snaptrade_user_secret_encrypted: encryptedSecret,
-      brokerage_slug: brokerageSlug.toUpperCase(),
-      status: 'pending',
-    });
+    console.log('[connections/start] Inserting new connection row');
+    const { error: insertErr } = await supabase
+      .from('broker_connections')
+      .insert({
+        user_id: authUser.id,
+        connection_type: 'snaptrade',
+        snaptrade_user_id: snapUserId,
+        snaptrade_user_secret_encrypted: encryptedSecret,
+        brokerage_slug: brokerageSlug.toUpperCase(),
+        status: 'pending',
+      });
+    if (insertErr) {
+      console.warn('[connections/start] DB insert warning (non-fatal):', insertErr.message);
+    }
   }
 
   // ─── Generate portal URL ──
   try {
+    console.log('[connections/start] Generating portal URL for', brokerageSlug);
     const portalUrl = await generateConnectionPortalUrl(
       snapUserId,
       snapUserSecret,
       brokerageSlug.toUpperCase(),
       redirectUri,
-      connectionType,
+      'trade-if-available',
     );
+    console.log('[connections/start] Portal URL generated successfully');
 
     return NextResponse.json({
       success: true,
@@ -167,13 +199,13 @@ export async function POST(req: NextRequest) {
         slug: brokerageSlug.toUpperCase(),
         name: brokerName,
         allowsTrading,
-        connectionType,
+        connectionType: 'trade-if-available',
       },
     });
   } catch (err) {
     console.error(
       '[connections/start] Portal URL generation failed:',
-      err instanceof Error ? err.message : 'Unknown',
+      err instanceof Error ? err.stack || err.message : 'Unknown',
     );
     return NextResponse.json(
       { error: 'Failed to generate connection portal. Please try again.' },
