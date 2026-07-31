@@ -231,10 +231,29 @@ export class SnapTradeBroker implements BrokerEngine {
   // ── Internals ─────────────────────────────────────────────
 
   private async _fetchAccounts(): Promise<SnapAccount[]> {
-    return snapTradeFetch<SnapAccount[]>(
+    const raw = await snapTradeFetch<any[]>(
       `/authorizations/${this.connectionId}/accounts`,
       null,
       { userId: this.userId, userSecret: this.userSecret },
     );
+    // Normalize SnapTrade's nested balance structure into flat fields
+    return raw.map((a) => {
+      const bal = a.balance || {};
+      const totalValue = a.total_value ?? bal.total?.amount ?? bal.total ?? 0;
+      const cash =
+        a.cash ?? bal.cash?.amount ?? bal.cash ?? bal.available_cash?.amount ?? bal.available_cash ?? undefined;
+      const buyingPower =
+        a.buying_power ?? bal.buying_power?.amount ?? bal.buying_power ?? undefined;
+      return {
+        id: a.id,
+        name: a.name,
+        number: a.number,
+        currency: a.currency,
+        type: a.type,
+        cash,
+        buying_power,
+        total_value: totalValue,
+      };
+    });
   }
 }

@@ -177,11 +177,25 @@ export async function listAccounts(
   userId: string,
   userSecret: string,
 ): Promise<SnapTradeAccount[]> {
-  return snapTradeFetch<SnapTradeAccount[]>(
+  const raw = await snapTradeFetch<any[]>(
     `/authorizations/${connectionId}/accounts`,
     null,
     { userId, userSecret },
   );
+  // Normalize SnapTrade's nested balance structure into flat fields
+  return raw.map((a) => {
+    const bal = a.balance || {};
+    return {
+      id: a.id,
+      number: a.number,
+      name: a.name,
+      currency: a.currency,
+      type: a.type,
+      cash: a.cash ?? bal.cash?.amount ?? bal.cash ?? bal.available_cash?.amount ?? bal.available_cash ?? null,
+      buying_power: a.buying_power ?? bal.buying_power?.amount ?? bal.buying_power ?? null,
+      total_value: a.total_value ?? bal.total?.amount ?? bal.total ?? 0,
+    };
+  });
 }
 
 // ─── Higher-level helpers ────────────────────────────────────

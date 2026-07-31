@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
+import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
 
 export interface AccountEntry {
   id: string;
@@ -72,29 +74,59 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     // ── 2. SnapTrade broker connections ──
     const { data: connections } = await supabaseAdmin
       .from('broker_connections')
-      .select('id, brokerage_slug, trading_enabled, snaptrade_accounts, status')
+      .select('id, brokerage_slug, trading_enabled, snaptrade_accounts, snaptrade_connection_id, snaptrade_user_id, snaptrade_user_secret_encrypted, status')
       .eq('user_id', userId)
       .eq('connection_type', 'snaptrade')
       .eq('status', 'connected');
 
     if (connections) {
       for (const conn of connections) {
-        const snapAccounts = (conn.snaptrade_accounts as any[]) || [];
-        const totalValue = snapAccounts.reduce((sum: number, a: any) => sum + (a.totalValue || 0), 0);
-        const buyingPower = snapAccounts.reduce((sum: number, a: any) => sum + (a.buyingPower || 0), 0);
-        const cash = snapAccounts.reduce((sum: number, a: any) => sum + (a.cash || 0), 0);
+        let totalValue = 0;
+        let cash = 0;
+        let buyingPower = 0;
+        let accountName = mapSlugToName(conn.brokerage_slug);
 
-        const brokerName = mapSlugToName(conn.brokerage_slug);
+        // Try to fetch live account data from SnapTrade
+        try {
+          const snapUser = await getOrCreateSnapTradeUser(
+            userId,
+            conn.snaptrade_user_id,
+            conn.snaptrade_user_secret_encrypted,
+          );
+          const broker = new SnapTradeBroker({
+            userId: snapUser.userId,
+            userSecret: snapUser.userSecret,
+            connectionId: conn.snaptrade_connection_id || '',
+            brokerSlug: conn.brokerage_slug,
+            brokerName: mapSlugToName(conn.brokerage_slug),
+            tradingEnabled: conn.trading_enabled ?? false,
+          });
+          const summary = await broker.getAccount();
+          totalValue = summary.totalValue;
+          cash = summary.cashBalance;
+          buyingPower = summary.buyingPower;
+        } catch (err) {
+          console.warn(
+            '[accounts] Failed to fetch live SnapTrade data:',
+            err instanceof Error ? err.message : String(err)
+          );
+          // Fall back to stored data
+          const snapAccounts = (conn.snaptrade_accounts as any[]) || [];
+          totalValue = snapAccounts.reduce((sum: number, a: any) => sum + (a.totalValue || a.total_value || 0), 0);
+          cash = snapAccounts.reduce((sum: number, a: any) => sum + (a.cash || 0), 0);
+          buyingPower = snapAccounts.reduce((sum: number, a: any) => sum + (a.buyingPower || a.buying_power || 0), 0);
+          accountName = snapAccounts[0]?.name || accountName;
+        }
 
         accounts.push({
           id: `snaptrade:${conn.id}`,
-          name: snapAccounts[0]?.name || brokerName,
-          broker: brokerName,
+          name: accountName,
+          broker: mapSlugToName(conn.brokerage_slug),
           isDemo: false,
           tradingEnabled: conn.trading_enabled ?? false,
-          totalValue: totalValue || 0,
-          buyingPower: buyingPower || 0,
-          cash: cash || 0,
+          totalValue,
+          buyingPower,
+          cash,
           environment: conn.brokerage_slug === 'ALPACA-PAPER' ? 'paper' : 'live',
           connectionId: conn.id,
         });
