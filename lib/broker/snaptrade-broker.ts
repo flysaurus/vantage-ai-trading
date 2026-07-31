@@ -251,7 +251,7 @@ export class SnapTradeBroker implements BrokerEngine {
         currency: a.currency,
         type: a.type,
         cash,
-        buying_power,
+        buying_power: buyingPower,
         total_value: totalValue,
       };
     });
