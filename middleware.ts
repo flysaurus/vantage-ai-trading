@@ -52,6 +52,7 @@ const PUBLIC_ROUTES = [
   '/api/cron/send-agent-digest', // cron — own CRON_SECRET auth (daily email digest)
   '/api/agent-emails/unsubscribe', // public — signed token, no login required
   '/api/access-requests/resend', // public POST (resend invite for approved users)
+  '/api/diag/snaptrade', // TEMP: SnapTrade diagnostic (secret-gated internally)
   '/api/auth/signup', // public — server-side signup with hard invite gate
   '/api/auth/reset-password', // public — set new password via reset token
   '/api/auth/send-otp', // public — generate/resend OTP for email verification
