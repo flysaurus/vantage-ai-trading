@@ -353,6 +353,15 @@ export default function BrokerSelectScreen({
   // ── Main broker grid ──
   return (
     <div className="space-y-8 pb-4">
+      {/* Navigation header */}
+      <button
+        onClick={onCancel}
+        className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/70 transition-colors group"
+      >
+        <ExternalLink className="h-4 w-4 rotate-180 group-hover:-translate-x-0.5 transition-transform" strokeWidth={1.5} />
+        <span>Back to connections</span>
+      </button>
+
       {/* Trading section */}
       <section>
         {/* Section header */}
