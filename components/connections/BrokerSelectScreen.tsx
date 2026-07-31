@@ -125,7 +125,7 @@ export default function BrokerSelectScreen({
       onRedirect?.(broker);
       window.location.href = data.redirectUrl;
     } catch (err) {
-      setPhase('error');
+      // Stay in 'connecting' phase and show error inline (avoids missing 'error' state UI)
       setConnectError(
         err instanceof Error ? err.message : 'Connection failed. Please try again.',
       );
@@ -309,8 +309,8 @@ export default function BrokerSelectScreen({
     );
   }
 
-  // ── Connecting state ──
-  if (phase === 'connecting') {
+  // ── Connecting / Error state ──
+  if (phase === 'connecting' || phase === 'error') {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-5">
         <div className="relative">
@@ -328,16 +328,19 @@ export default function BrokerSelectScreen({
           </p>
         </div>
         {connectError && (
-          <div className="w-full max-w-sm rounded-xl p-3.5 bg-red-500/10 border border-red-500/20">
+          <div className="w-full max-w-sm rounded-xl p-4 bg-red-500/10 border border-red-500/20">
             <div className="flex items-start gap-2.5">
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
-              <div>
-                <p className="text-sm text-red-300">{connectError}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-red-300 break-words">{connectError}</p>
                 <button
-                  onClick={handleCancel}
+                  onClick={() => {
+                    setConnectError(null);
+                    if (selectedBroker) startConnection(selectedBroker);
+                  }}
                   className="mt-2 text-xs text-red-400 underline hover:text-red-300"
                 >
-                  Go back
+                  Try again
                 </button>
               </div>
             </div>
