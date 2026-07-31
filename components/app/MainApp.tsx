@@ -26,7 +26,6 @@ import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext'
 import { onDailyOpen } from '@/lib/gamification/events';
 import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
-import { BrokerGate } from '@/components/onboarding/BrokerGate';
 import { useTabStore } from '@/store';
 import type { TabId } from '@/store';
 import GreetingModal from '@/components/GreetingModal';
@@ -35,9 +34,6 @@ import { getDemoStatus } from '@/lib/demo-utils';
 
 import type { User } from '@/types';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
-
-// Module-level: survives in-app navigation but resets on full page load (login)
-let brokerGateDismissedThisSession = false;
 
 const TABS_WITH_MARKETBAR: Set<TabId> = new Set(['ai', 'invest', 'portfolio']);
 
@@ -53,7 +49,6 @@ function AppShell() {
   const { state, user: supabaseUser, profile } = useAppState();
   const { isConnected, isInitialized } = useBroker();
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showBrokerGate, setShowBrokerGate] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [showGreeting, setShowGreeting] = useState(false);
   const [showWelcomeToast, setShowWelcomeToast] = useState(false);
@@ -105,7 +100,7 @@ function AppShell() {
   // ── Greeting modal after login ──
   useEffect(() => {
     if (!effectiveUser || !isDataLoaded) return;
-    if (showOnboarding || showBrokerGate) return;
+    if (showOnboarding) return;
     if (!isAuthenticated) return;
 
     const fromLogin = sessionStorage.getItem('show_greeting');
@@ -116,7 +111,7 @@ function AppShell() {
       setTimeout(() => setShowWelcomeToast(false), 3000);
       setTimeout(() => setShowGreeting(true), 300);
     }
-  }, [effectiveUser, isDataLoaded, showOnboarding, showBrokerGate, isAuthenticated]);
+  }, [effectiveUser, isDataLoaded, showOnboarding, isAuthenticated]);
 
   // ── Daily streak sync ──
   useEffect(() => {
@@ -190,15 +185,6 @@ function AppShell() {
     setShowOnboarding(true);
   }, [effectiveUser, isDataLoaded]);
 
-  // ── Broker gate ──
-  useEffect(() => {
-    if (!effectiveUser || !isDataLoaded || showOnboarding || !isAuthenticated) return;
-    if (!isInitialized) return;
-    if (!isConnected && !brokerGateDismissedThisSession) {
-      setShowBrokerGate(true);
-    }
-  }, [effectiveUser, isDataLoaded, showOnboarding, isAuthenticated, isInitialized, isConnected]);
-
   // ── Pending actions ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -233,17 +219,6 @@ function AppShell() {
 
   if (showOnboarding) {
     return <InvestorStyleOnboarding />;
-  }
-
-  if (showBrokerGate && isAuthenticated) {
-    return (
-      <BrokerGate
-        onDismiss={() => {
-          setShowBrokerGate(false);
-          brokerGateDismissedThisSession = true;
-        }}
-      />
-    );
   }
 
   const mainContent = (
