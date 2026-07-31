@@ -1,17 +1,16 @@
 'use client';
 
 // ─── Broker Select Screen ────────────────────────────────────
-// Displays available brokers grouped by trading capability.
+// Vantage frosted-glass broker selection with card-style rows.
 //
-// Features:
-//   - Fetches broker list from /api/connections/snaptrade-brokerages
-//   - Visually distinguishes trading-enabled vs read-only brokers
-//   - Safety confirmation before initiating connection
-//   - Loading/success/error states for the connection flow
-//   - Explicit mode labeling (Paper/Real/Demo)
+// Design matches BrokerChoicePage:
+//   - rgba(255,255,255,0.04) backgrounds with blurred borders
+//   - Pill badges for status indicators
+//   - Touch-friendly interactive feedback
+//   - Pull-to-connect pattern
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, ArrowLeftRight, Shield, Lock, ExternalLink } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowLeftRight, Shield, Lock, ExternalLink, Sparkles } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -30,70 +29,29 @@ interface BrokerInfo {
 }
 
 interface BrokerSelectScreenProps {
-  /** Called when user redirects to the SnapTrade portal */
   onRedirect?: (broker: BrokerInfo) => void;
-  /** Called when user cancels */
   onCancel?: () => void;
-  /** Show only trading brokers (default: true — per Phase 1 scope) */
   tradingOnly?: boolean;
 }
 
 type ConnectPhase = 'idle' | 'confirming' | 'connecting' | 'error';
 
-// ─── Known Broker Metadata ────────────────────────────────────
+// ─── US stock broker filter ──────────────────────────────────
 
-/** Fallback broker metadata if SnapTrade API is unreachable. */
-const FALLBACK_BROKERS: Record<string, Partial<BrokerInfo>> = {
-  'ALPACA-PAPER': {
-    displayName: 'Alpaca Paper',
-    description: 'Paper trading with real-time market data. Test strategies risk-free.',
-    allowsTrading: true,
-    allowsCrypto: true,
-  },
-  'TASTYTRADE': {
-    displayName: 'tastytrade',
-    description: 'Advanced options and futures trading platform.',
-    allowsTrading: true,
-    allowsCrypto: true,
-  },
-  'ETRADE': {
-    displayName: 'E*TRADE',
-    description: 'Full-service brokerage with stocks, ETFs, options, and mutual funds.',
-    allowsTrading: true,
-  },
-  'WEBULL': {
-    displayName: 'Webull',
-    description: 'Commission-free trading with advanced charting tools.',
-    allowsTrading: true,
-    allowsCrypto: true,
-  },
-  'COINBASE': {
-    displayName: 'Coinbase',
-    description: 'Cryptocurrency exchange and wallet.',
-    allowsTrading: true,
-    allowsCrypto: true,
-  },
-  'FIDELITY': {
-    displayName: 'Fidelity',
-    description: 'Portfolio import only — view holdings and performance.',
-    allowsTrading: false,
-  },
-  'ROBINHOOD': {
-    displayName: 'Robinhood',
-    description: 'Portfolio import only — view holdings and performance.',
-    allowsTrading: false,
-  },
-};
+const US_STOCK_BROKERS = new Set([
+  'ALPACA-PAPER',
+  'TASTYTRADE',
+  'ETRADE',
+  'WEBULL',
+  'PUBLIC',
+  'MOOMOO',
+]);
 
-// ─── Helper ───────────────────────────────────────────────────
-
-function getFallbackDetails(slug: string): Partial<BrokerInfo> | undefined {
-  return FALLBACK_BROKERS[slug.toUpperCase()];
+function isUSStockBroker(slug: string): boolean {
+  return US_STOCK_BROKERS.has(slug.toUpperCase());
 }
 
 function formatBrokerSlug(slug: string): string {
-  const fallback = getFallbackDetails(slug);
-  if (fallback?.displayName) return fallback.displayName;
   return slug
     .split('-')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -115,21 +73,6 @@ export default function BrokerSelectScreen({
   const [phase, setPhase] = useState<ConnectPhase>('idle');
   const [connectError, setConnectError] = useState<string | null>(null);
 
-  // ── US stock broker filter ──
-const US_STOCK_BROKERS = new Set([
-  'ALPACA-PAPER',
-  'TASTYTRADE',
-  'ETRADE',
-  'WEBULL',
-  'PUBLIC',
-  'MOOMOO',
-]);
-
-function isUSStockBroker(slug: string): boolean {
-  return US_STOCK_BROKERS.has(slug.toUpperCase());
-}
-
-// ── Load brokers ──
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -154,7 +97,6 @@ function isUSStockBroker(slug: string): boolean {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Start connection ──
   const startConnection = useCallback(async (broker: BrokerInfo) => {
     setPhase('connecting');
     setConnectError(null);
@@ -180,7 +122,6 @@ function isUSStockBroker(slug: string): boolean {
         throw new Error('No redirect URL received');
       }
 
-      // Notify parent, then redirect
       onRedirect?.(broker);
       window.location.href = data.redirectUrl;
     } catch (err) {
@@ -191,7 +132,6 @@ function isUSStockBroker(slug: string): boolean {
     }
   }, [onRedirect]);
 
-  // ── Safety confirmation step ──
   const handleBrokerClick = useCallback((broker: BrokerInfo) => {
     setSelectedBroker(broker);
     setPhase('confirming');
@@ -212,9 +152,13 @@ function isUSStockBroker(slug: string): boolean {
   // ── Loading state ──
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <span className="ml-3 text-muted-foreground">Loading available brokers…</span>
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <div className="relative">
+          <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+          </div>
+        </div>
+        <p className="text-sm text-white/40">Loading available brokers…</p>
       </div>
     );
   }
@@ -222,12 +166,14 @@ function isUSStockBroker(slug: string): boolean {
   // ── Error state ──
   if (loadError) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <AlertCircle className="h-8 w-8 text-destructive" />
-        <p className="text-destructive font-medium">{loadError}</p>
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+          <AlertCircle className="h-6 w-6 text-red-400" />
+        </div>
+        <p className="text-sm text-red-400 font-medium">{loadError}</p>
         <button
           onClick={() => window.location.reload()}
-          className="text-sm text-muted-foreground underline hover:text-foreground"
+          className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white/60 hover:text-white hover:bg-white/10 transition-all"
         >
           Try again
         </button>
@@ -239,45 +185,48 @@ function isUSStockBroker(slug: string): boolean {
   if (phase === 'confirming' && selectedBroker) {
     const isPaper = selectedBroker.slug.toUpperCase().includes('PAPER') ||
                     selectedBroker.slug.toUpperCase().includes('PRACTICE');
-    const isCrypto = selectedBroker.allowsCrypto;
 
     return (
-      <div className="max-w-md mx-auto py-8 px-4">
-        <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+      <div className="max-w-md mx-auto py-6 px-4">
+        <div
+          className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 space-y-5"
+        >
           {/* Broker header */}
           <div className="flex items-center gap-3">
             {selectedBroker.logoUrl ? (
               <img
                 src={selectedBroker.logoUrl}
                 alt={selectedBroker.displayName}
-                className="h-10 w-10 rounded-lg object-contain bg-white p-0.5"
+                className="h-11 w-11 rounded-xl object-contain bg-white p-1 shrink-0"
               />
             ) : (
-              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center text-lg font-bold">
+              <div className="h-11 w-11 rounded-xl bg-white/10 flex items-center justify-center text-lg font-bold shrink-0">
                 {selectedBroker.displayName.charAt(0)}
               </div>
             )}
             <div>
               <h3 className="font-semibold text-lg">{selectedBroker.displayName}</h3>
-              <p className="text-sm text-muted-foreground">
-                {selectedBroker.allowsTrading ? 'Trading enabled' : 'Read-only import'}
+              <p className="text-sm text-white/40">
+                {selectedBroker.allowsTrading ? 'Trading enabled' : 'Import only'}
                 {isPaper && ' · Paper account'}
               </p>
             </div>
           </div>
 
           {/* Mode warning banner */}
-          <div className={`rounded-lg p-3 text-sm flex items-start gap-2 ${
-            isPaper
-              ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
-              : 'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
-          }`}>
+          <div
+            className={`rounded-xl p-3.5 text-sm flex items-start gap-2.5 ${
+              isPaper
+                ? 'bg-amber-500/10 border border-amber-500/20 text-amber-200'
+                : 'bg-blue-500/10 border border-blue-500/20 text-blue-200'
+            }`}
+          >
             <Shield className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
               <strong className="font-semibold">
                 {isPaper ? 'Paper Trading Mode' : 'Live Broker Connection'}
               </strong>
-              <p className="mt-0.5">
+              <p className="mt-0.5 text-white/60">
                 {isPaper
                   ? 'No real money is used. Orders are simulated. Perfect for testing strategies.'
                   : 'This connects to a real brokerage account. Orders will execute with real money.'}
@@ -287,71 +236,71 @@ function isUSStockBroker(slug: string): boolean {
 
           {/* Non-trading warning */}
           {!selectedBroker.allowsTrading && (
-            <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-muted border">
-              <Lock className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-              <p className="text-muted-foreground">
-                This broker is <strong>read-only</strong>. You can view your portfolio and
-                holdings, but AI-driven trading and order placement are not available
-                through this connection.
+            <div className="rounded-xl p-3.5 text-sm flex items-start gap-2.5 bg-white/[0.02] border border-white/5">
+              <Lock className="h-4 w-4 mt-0.5 shrink-0 text-white/30" />
+              <p className="text-white/40">
+                This broker is <strong className="text-white/60">read-only</strong>. You can view
+                your portfolio and holdings, but AI-driven trading and order placement are
+                not available through this connection.
               </p>
             </div>
           )}
 
           {/* Description */}
           {selectedBroker.description && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-white/50 leading-relaxed">
               {selectedBroker.description}
             </p>
           )}
 
           {/* Connection details */}
-          <div className="text-xs text-muted-foreground space-y-1 bg-muted/50 rounded-lg p-3">
+          <div className="text-xs text-white/40 space-y-2 bg-white/[0.02] rounded-xl p-3.5">
             <div className="flex justify-between">
               <span>Authentication</span>
-              <span className="font-mono">
-                {selectedBroker.authTypes.map((a) => a.authType).join(' / ') || 'OAuth'}
+              <span className="text-white/60 font-mono">
+                {selectedBroker.authTypes?.map((a: { authType: string }) => a.authType).join(' / ') || 'OAuth'}
               </span>
             </div>
             <div className="flex justify-between">
               <span>Connection type</span>
-              <span className="font-mono text-green-600 dark:text-green-400">
+              <span className="text-emerald-400 font-mono">
                 trade-if-available
               </span>
             </div>
             {selectedBroker.allowsFractionalUnits != null && (
               <div className="flex justify-between">
                 <span>Fractional shares</span>
-                <span>{selectedBroker.allowsFractionalUnits ? '✅' : '❌'}</span>
+                <span className="text-white/60">
+                  {selectedBroker.allowsFractionalUnits ? 'Supported' : 'Not supported'}
+                </span>
               </div>
             )}
-            {isCrypto && (
+            {selectedBroker.allowsCrypto && (
               <div className="flex justify-between">
                 <span>Crypto</span>
-                <span className="text-amber-600 dark:text-amber-400">
-                  Available
-                </span>
+                <span className="text-amber-400">Available</span>
               </div>
             )}
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-1">
             <button
               onClick={handleCancel}
-              className="flex-1 py-2.5 px-4 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+              className="flex-1 py-2.5 px-4 rounded-xl border border-white/10 text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition-all"
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
-              className="flex-1 py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-white/10 border border-white/15 text-sm font-medium text-white hover:bg-white/15 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
             >
               <ArrowLeftRight className="h-4 w-4" />
               Connect
             </button>
           </div>
 
-          <p className="text-xs text-center text-muted-foreground">
+          <p className="text-xs text-center text-white/30">
             You&apos;ll be redirected to {selectedBroker.displayName} to authorize access.
             Your credentials are never stored by Vantage.
           </p>
@@ -363,24 +312,35 @@ function isUSStockBroker(slug: string): boolean {
   // ── Connecting state ──
   if (phase === 'connecting') {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="font-medium">Connecting to {selectedBroker?.displayName}…</p>
-        <p className="text-sm text-muted-foreground">
-          You&apos;ll be redirected to complete authorization.
-        </p>
+      <div className="flex flex-col items-center justify-center py-16 gap-5">
+        <div className="relative">
+          <div className="absolute inset-0 rounded-2xl bg-emerald-500/20 blur-xl animate-pulse" />
+          <div className="relative w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+            <Loader2 className="h-7 w-7 animate-spin text-emerald-400" />
+          </div>
+        </div>
+        <div className="text-center space-y-1">
+          <p className="font-medium text-white">
+            Connecting to {selectedBroker?.displayName}…
+          </p>
+          <p className="text-sm text-white/40">
+            You&apos;ll be redirected to complete authorization.
+          </p>
+        </div>
         {connectError && (
-          <div className="rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm max-w-sm">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{connectError}</span>
+          <div className="w-full max-w-sm rounded-xl p-3.5 bg-red-500/10 border border-red-500/20">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+              <div>
+                <p className="text-sm text-red-300">{connectError}</p>
+                <button
+                  onClick={handleCancel}
+                  className="mt-2 text-xs text-red-400 underline hover:text-red-300"
+                >
+                  Go back
+                </button>
+              </div>
             </div>
-            <button
-              onClick={handleCancel}
-              className="mt-2 text-xs underline hover:no-underline"
-            >
-              Go back
-            </button>
           </div>
         )}
       </div>
@@ -389,24 +349,28 @@ function isUSStockBroker(slug: string): boolean {
 
   // ── Main broker grid ──
   return (
-    <div className="space-y-6 overflow-y-auto max-h-[60vh]">
-      {/* Trading-enabled section */}
+    <div className="space-y-8 pb-4">
+      {/* Trading section */}
       <section>
-        <div className="flex items-center gap-2 mb-3 sticky top-0 bg-background pt-2 pb-1 z-10">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            US Stock Brokers
+        {/* Section header */}
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="w-1 h-5 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-500/50" />
+          <h3 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-white/50">
+            Trading Enabled
           </h3>
-          <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
             {tradingBrokers.length}
           </span>
         </div>
 
         {tradingBrokers.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">
-            No trading-enabled brokers available on your plan.
-          </p>
+          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.01] p-8 text-center">
+            <p className="text-sm text-white/40">
+              No trading-enabled brokers available on your plan.
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {tradingBrokers.map((broker) => (
               <BrokerCard
                 key={broker.slug}
@@ -418,47 +382,16 @@ function isUSStockBroker(slug: string): boolean {
         )}
       </section>
 
-      {/* Read-only section — only show if explicitly enabled */}
-      {!tradingOnly && readOnlyBrokers.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Portfolio Import Only
-            </h3>
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {readOnlyBrokers.length}
-            </span>
-          </div>
-
-          <p className="text-xs text-muted-foreground mb-3">
-            These connections are read-only. You can view holdings and performance,
-            but AI-driven trading and order placement are not available.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 opacity-60">
-            {readOnlyBrokers.map((broker) => (
-              <BrokerCard
-                key={broker.slug}
-                broker={broker}
-                onClick={() => handleBrokerClick(broker)}
-                readOnly
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Cancel */}
-      {onCancel && (
-        <div className="flex justify-center pt-4">
-          <button
-            onClick={onCancel}
-            className="text-sm text-muted-foreground underline hover:text-foreground"
-          >
-            Cancel
-          </button>
+      {/* Portfolio import — coming soon note */}
+      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.01] p-5 text-center">
+        <div className="inline-flex items-center gap-1.5 text-xs text-white/30 mb-1">
+          <Sparkles className="h-3 w-3" />
+          <span className="uppercase tracking-[0.08em] font-semibold">Coming Soon</span>
         </div>
-      )}
+        <p className="text-sm text-white/40">
+          Portfolio import from Fidelity, Robinhood, Schwab, Vanguard, and more.
+        </p>
+      </div>
     </div>
   );
 }
@@ -474,59 +407,78 @@ function BrokerCard({
   onClick: () => void;
   readOnly?: boolean;
 }) {
+  const [pressed, setPressed] = useState(false);
   const isPaper =
     broker.slug.toUpperCase().includes('PAPER') ||
     broker.slug.toUpperCase().includes('PRACTICE');
+  const isBeta = broker.releaseStage === 'BETA';
 
   return (
     <button
       onClick={onClick}
-      className="text-left rounded-xl border border-border bg-card hover:bg-accent/50 hover:border-accent-foreground/20 transition-all p-4 flex items-center gap-3 group"
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onMouseLeave={() => setPressed(false)}
+      onTouchStart={() => setPressed(true)}
+      onTouchEnd={() => setPressed(false)}
+      className="text-left w-full rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur-xl hover:bg-white/[0.06] hover:border-white/15 transition-all p-4 flex items-center gap-3.5 group active:scale-[0.985]"
+      style={{
+        transform: pressed ? 'scale(0.985)' : 'scale(1)',
+        transition: 'all 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
     >
       {/* Logo */}
       {broker.logoUrl ? (
-        <img
-          src={broker.logoUrl}
-          alt={broker.displayName}
-          className="h-10 w-10 rounded-lg object-contain bg-white p-0.5 shrink-0"
-        />
+        <div className="h-10 w-10 rounded-lg bg-white p-1 shrink-0 flex items-center justify-center">
+          <img
+            src={broker.logoUrl}
+            alt={broker.displayName}
+            className="h-full w-full object-contain"
+          />
+        </div>
       ) : (
-        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center text-lg font-bold shrink-0 group-hover:bg-background transition-colors">
+        <div className="h-10 w-10 rounded-lg bg-white/10 flex items-center justify-center text-base font-semibold shrink-0 text-white/50 group-hover:text-white/70 group-hover:bg-white/15 transition-all">
           {broker.displayName.charAt(0)}
         </div>
       )}
 
       {/* Info */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium truncate">{broker.displayName}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm truncate">
+            {broker.displayName}
+          </span>
           {isPaper && (
-            <span className="text-[10px] px-1 py-px rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium shrink-0">
-              PAPER
+            <span className="text-[10px] font-semibold px-1.5 py-px rounded-md bg-amber-500/15 border border-amber-500/20 text-amber-400 shrink-0 uppercase tracking-wide">
+              Paper
             </span>
           )}
-          {broker.releaseStage === 'BETA' && (
-            <span className="text-[10px] px-1 py-px rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium shrink-0">
-              BETA
+          {isBeta && !isPaper && (
+            <span className="text-[10px] font-semibold px-1.5 py-px rounded-md bg-blue-500/15 border border-blue-500/20 text-blue-400 shrink-0 uppercase tracking-wide">
+              Beta
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
+        <div className="flex items-center gap-2 mt-1">
           {readOnly ? (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span className="text-[11px] text-white/30 flex items-center gap-1">
               <Lock className="h-3 w-3" />
-              Read-only import
+              Import only
             </span>
           ) : (
-            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3" />
-              Trading available
+            <span className="text-[11px] text-emerald-400/80 flex items-center gap-1 font-medium">
+              Trading
             </span>
+          )}
+          {broker.allowsFractionalUnits && (
+            <span className="text-[10px] text-white/20">· Fractional</span>
           )}
         </div>
       </div>
 
-      <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+      <div className="shrink-0 w-6 h-6 rounded-full bg-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+        <ExternalLink className="h-3 w-3 text-white/30" />
+      </div>
     </button>
   );
 }
