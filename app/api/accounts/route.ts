@@ -26,19 +26,10 @@ export interface AccountEntry {
   connectionId?: string; // broker_connections UUID, only for live accounts
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
-  // TEMP: bypass auth for verification
-  const diag = req.nextUrl.searchParams.get('diag');
-  if (diag === 'vfy26') {
-    return accountsResponse('58ffa82a-2b14-4a5d-9662-5c48f105031f');
-  }
-
+export async function GET(_req: NextRequest): Promise<NextResponse> {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
-  return accountsResponse(authUser!.id);
-}
-
-async function accountsResponse(userId: string): Promise<NextResponse> {
+  const userId = authUser!.id;
 
   try {
     const supabaseAdmin = createClient(
@@ -97,13 +88,11 @@ async function accountsResponse(userId: string): Promise<NextResponse> {
 
         // Try to fetch live account data from SnapTrade
         try {
-          console.error('[accounts] Trying live SnapTrade fetch for', conn.id, 'slug:', conn.brokerage_slug);
           const snapUser = await getOrCreateSnapTradeUser(
             userId,
             conn.snaptrade_user_id,
             conn.snaptrade_user_secret_encrypted,
           );
-          console.error('[accounts] Got SnapTrade user, secret len:', snapUser.userSecret.length);
           const broker = new SnapTradeBroker({
             userId: snapUser.userId,
             userSecret: snapUser.userSecret,
@@ -113,7 +102,6 @@ async function accountsResponse(userId: string): Promise<NextResponse> {
             tradingEnabled: conn.trading_enabled ?? false,
           });
           const summary = await broker.getAccount();
-          console.error('[accounts] SnapTrade balance:', summary.totalValue, 'cash:', summary.cashBalance, 'bp:', summary.buyingPower);
           totalValue = summary.totalValue;
           cash = summary.cashBalance;
           buyingPower = summary.buyingPower;
@@ -143,8 +131,6 @@ async function accountsResponse(userId: string): Promise<NextResponse> {
         });
       }
     }
-
-    console.error('[accounts] Returning', accounts.length, 'accounts for user', userId);
 
     return NextResponse.json({ accounts });
   } catch (err: unknown) {
