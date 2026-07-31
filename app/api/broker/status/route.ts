@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
+import { createClient } from '@supabase/supabase-js';
 
 const ALPACA_PAPER = 'https://paper-api.alpaca.markets';
 const ALPACA_LIVE = 'https://api.alpaca.markets';
@@ -66,6 +67,49 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
   const userId = authUser!.id;
 
   try {
+    // ── Check SnapTrade connections first (broker_connections table) ──
+    // These are OAuth-based connections that don't store credentials in Vault.
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+
+    const { data: snapConn } = await supabaseAdmin
+      .from('broker_connections')
+      .select('brokerage_slug, trading_enabled, snaptrade_accounts, status')
+      .eq('user_id', userId)
+      .eq('connection_type', 'snaptrade')
+      .eq('status', 'connected')
+      .maybeSingle();
+
+    if (snapConn) {
+      const accounts = (snapConn.snaptrade_accounts as any[]) || [];
+      const totalValue = accounts.reduce((sum: number, a: any) => sum + (a.totalValue || 0), 0);
+      const buyingPower = accounts.reduce((sum: number, a: any) => sum + (a.buyingPower || 0), 0);
+
+      console.error(
+        '[broker/status] SnapTrade connection detected:',
+        snapConn.brokerage_slug,
+        'accounts:', accounts.length,
+        'totalValue:', totalValue
+      );
+
+      return NextResponse.json({
+        connected: true,
+        brokerId: snapConn.brokerage_slug,
+        accountPreview: {
+          id: accounts[0]?.id || 'snaptrade',
+          equity: totalValue,
+          buyingPower: buyingPower,
+          status: 'ACTIVE',
+        },
+        marketOpen: false,
+        environment: snapConn.brokerage_slug === 'ALPACA-PAPER' ? 'paper' : 'live',
+      });
+    }
+
+    // ── Fall through to Vault-based check (Alpaca/Tastytrade API keys) ──
     const ctx = await getBrokerContext(userId);
 
     if (ctx.isDemo || !ctx.credentials || !ctx.provider) {
