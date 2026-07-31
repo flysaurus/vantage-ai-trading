@@ -43,3 +43,5 @@ supabase/.temp/
 
 # Test env (Vercel CLI auto-generates this in preview builds)
 .env.test
+.env.example .env.local .env.preview.test .env.prod.test .env.production .env.vercel .env.vercel-prod
+*.env.preview.test\n*.env.prod.test
