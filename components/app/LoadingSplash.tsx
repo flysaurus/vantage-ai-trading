@@ -12,11 +12,10 @@ import { VantageOrb } from '@/components/brand/VantageOrb';
 
 // ── Types ───────────────────────────────────────────────────
 
-export type SplashMode = 'demo' | 'broker' | 'generic';
+export type SplashMode = 'broker' | 'generic';
 
 interface LoadingSplashProps {
   mode: SplashMode;
-  daysRemaining?: number;
   brokerName?: string;
   onComplete: () => void;
 }
@@ -33,7 +32,6 @@ const GRADIENT = `
 
 export function LoadingSplash({
   mode,
-  daysRemaining,
   brokerName,
   onComplete,
 }: LoadingSplashProps) {
@@ -54,10 +52,6 @@ export function LoadingSplash({
   // ── Message ───────────────────────────────────────────────
 
   const heading = (() => {
-    if (mode === 'demo') {
-      const days = daysRemaining ?? 30;
-      return `You have ${days} ${days === 1 ? 'day' : 'days'} left`;
-    }
     if (mode === 'broker') {
       const name = brokerName || 'broker';
       return `Your ${name} portfolio`;

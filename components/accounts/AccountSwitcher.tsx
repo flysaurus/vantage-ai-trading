@@ -75,7 +75,7 @@ export function AccountSwitcher() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute top-full mt-2 right-0 w-[260px] rounded-xl
+        <div className="absolute top-full mt-2 left-0 w-[260px] rounded-xl
                         bg-[#0a0a0f]/95 backdrop-blur-xl border border-white/10
                         shadow-2xl shadow-black/50 z-50 overflow-hidden"
              role="listbox"

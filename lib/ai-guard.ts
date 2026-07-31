@@ -258,19 +258,13 @@ export async function checkUsageLimit(
       if (typeof poolLimit === 'number' && poolLimit > 0) {
         const { data: userData } = await (supabase as any)
           .from('users')
-          .select('demo_deep_pool_used, demo_expires_at')
+          .select('demo_deep_pool_used')
           .eq('id', userId)
           .single();
 
         const poolUsed = userData?.demo_deep_pool_used || 0;
         if (poolUsed >= poolLimit) {
-          const expiresAt = userData?.demo_expires_at
-            ? new Date(userData.demo_expires_at)
-            : null;
-          const resetMsg =
-            expiresAt && expiresAt > new Date()
-              ? `Trial pool of ${poolLimit} deep analyses exhausted${expiresAt ? ` (resets ${expiresAt.toLocaleDateString()} with upgrade)` : ''}`
-              : `Trial pool exhausted. Upgrade to Silver/Gold for more deep analyses.`;
+          const resetMsg = `Trial pool of ${poolLimit} deep analyses exhausted. Upgrade to Silver/Gold for more deep analyses.`;
           return { allowed: false, remaining: 0, resetsIn: 'upgrade', reason: resetMsg };
         }
       }

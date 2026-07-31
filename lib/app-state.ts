@@ -10,10 +10,8 @@
 //   needs-quiz           → account exists, no investor_style
 //   needs-profile        → no first_name/last_name
 //   broker-selection     → edge case: has style + name, no demo/connection
-//   demo-counter         → demo user logging in → show days remaining
 //   connection-options   → needs to pick broker post-auth
 //   connection-loading   → broker syncing
-//   demo-expired         → demo_expires_at passed
 //   authenticated        → full access
 //
 // All routing decisions flow from this one hook.
@@ -24,7 +22,6 @@
 import { useState, useEffect } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
-import { getDemoStatus } from '@/lib/demo-utils';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -34,10 +31,8 @@ export type AppState =
   | 'needs-quiz'
   | 'needs-profile'
   | 'broker-selection'
-  | 'demo-counter'
   | 'connection-options'
   | 'connection-loading'
-  | 'demo-expired'
   | 'authenticated';
 
 export interface UserProfile {
@@ -86,46 +81,36 @@ export function resolveStateFromUsers(
   // No data → broker selection (safety fallback)
   if (!userData) return 'broker-selection';
 
-  const demoExpired = getDemoStatus(
-    userData.demo_start_at as string | null,
-    userData.demo_expires_at as string | null
-  ).isExpired;
-
-  // 1. demo_expires_at is set AND past now → 'demo-expired'
-  if (userData.demo_expires_at && demoExpired) {
-    return 'demo-expired';
-  }
-
   const connStatus = userData.connection_status as string | null;
 
-  // 2. connection_status = 'syncing' OR 'pending' → 'connection-loading'
+  // 1. connection_status = 'syncing' OR 'pending' → 'connection-loading'
   if (connStatus === 'syncing' || connStatus === 'pending') {
     return 'connection-loading';
   }
 
-  // 3. connection_status = 'connected' → 'authenticated'
+  // 2. connection_status = 'connected' → 'authenticated'
   if (connStatus === 'connected') {
     return 'authenticated';
   }
 
-  // 4. demo_start_at is set AND demo not expired → 'demo-counter'
-  if (userData.demo_start_at && !demoExpired) {
-    return 'demo-counter';
+  // 3. demo_start_at is set → 'authenticated' (demo is permanent, no expiry)
+  if (userData.demo_start_at) {
+    return 'authenticated';
   }
 
   const connType = userData.connection_type as string | null;
 
-  // 5. connection_type is set (status is null/not set yet) → 'connection-options'
+  // 4. connection_type is set (status is null/not set yet) → 'connection-options'
   if (connType) {
     return 'connection-options';
   }
 
-  // 6. demo_start_at is NULL AND connection_type is NULL → 'broker-selection'
+  // 5. demo_start_at is NULL AND connection_type is NULL → 'broker-selection'
   if (!userData.demo_start_at && !connType) {
     return 'broker-selection';
   }
 
-  // 7. Default → 'authenticated'
+  // 6. Default → 'authenticated'
   return 'authenticated';
 }
 

@@ -7,7 +7,6 @@ import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 
-import { getDemoStatus } from '@/lib/demo-utils';
 import { isLearningEnabled, setLearningEnabled as saveLearningPref } from '@/lib/learning/preferences';
 
 const INVESTOR_STYLES = [
@@ -51,9 +50,6 @@ export function SettingsTab() {
 
   const [learningEnabled, setLearningEnabled] = useState(isLearningEnabled);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
-  const [demoStartAt, setDemoStartAt] = useState<string | null>(null);
-
   // ── Confirmation dialog state ─────────────────────────
   const [confirmDialog, setConfirmDialog] = useState<{
     type: 'style' | 'risk';
@@ -65,17 +61,6 @@ export function SettingsTab() {
     fetch('/api/auth/is-admin')
       .then(r => r.json())
       .then(d => { if (d.isAdmin) setIsAdmin(true); })
-      .catch(() => {});
-
-    // Fetch demo expiry from DB (not localStorage — unreliable across devices/browsers)
-    fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(d => {
-        if (d.user) {
-          setDemoExpiresAt(d.user.demo_expires_at || null);
-          setDemoStartAt(d.user.demo_start_at || null);
-        }
-      })
       .catch(() => {});
   }, []);
 
@@ -228,107 +213,9 @@ export function SettingsTab() {
     <>
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* ═══════════════════════════════════════════════════════
-          ACCOUNT (demo status)
+          ACCOUNT
           ═══════════════════════════════════════════════════════ */}
       {sectionHeader('Account')}
-
-      {/* Demo Status Card */}
-      <div
-        style={{
-          margin: '0 16px 12px 16px',
-          background: '#1a2235',
-          border: '1px solid rgba(245, 158, 11, 0.2)',
-          borderRadius: '12px',
-          padding: '16px',
-        }}
-      >
-        {/* Header row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <div>
-            <p style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>
-              Demo Status
-            </p>
-            <p style={{ fontSize: '11px', color: '#e2e8f0', marginTop: '2px' }}>
-              {demoStartAt && demoExpiresAt ? `${getDemoStatus(demoStartAt, demoExpiresAt).daysRemaining}-day free trial` : '30-day free trial'}
-            </p>
-          </div>
-          {/* Tier badge */}
-          <span
-            style={{
-              background: 'rgba(245, 158, 11, 0.15)',
-              color: '#fbbf24',
-              fontSize: '10px',
-              fontWeight: '700',
-              padding: '3px 8px',
-              borderRadius: '4px',
-              letterSpacing: '0.05em',
-            }}
-          >
-            DEMO
-          </span>
-        </div>
-
-        {/* Days remaining */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '10px' }}>
-          {(demoStartAt && demoExpiresAt) ? (
-            <>
-              <span style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', lineHeight: 1 }}>
-                {getDemoStatus(demoStartAt, demoExpiresAt).daysRemaining}
-              </span>
-              <span style={{ fontSize: '13px', color: '#e2e8f0' }}>days left</span>
-            </>
-          ) : (
-            <span style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>Loading...</span>
-          )}
-        </div>
-
-        {/* Progress bar */}
-        {(() => {
-          const status = getDemoStatus(demoStartAt, demoExpiresAt);
-          const pct = (demoStartAt && demoExpiresAt) ? status.percentUsed : 0;
-          return (
-              <div
-                style={{
-                  height: '6px',
-                  background: 'rgba(255,255,255,0.06)',
-                  borderRadius: '3px',
-                  overflow: 'hidden',
-                  marginBottom: '10px',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${pct}%`,
-                    background: pct > 90
-                      ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
-                      : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
-                    borderRadius: '3px',
-                    transition: 'width 0.5s ease',
-                  }}
-                />
-              </div>
-            );
-        })()}
-
-        {/* Upgrade CTA */}
-        <button
-          onClick={() => window.location.href = '/plans'}
-          style={{
-            width: '100%',
-            background: 'linear-gradient(135deg, #22d3ee, #06b6d4)',
-            color: '#000000',
-            borderRadius: '8px',
-            padding: '10px 0',
-            fontSize: '13px',
-            fontWeight: '700',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          Upgrade to Silver
-        </button>
-      </div>
 
       {/* Broker Connections */}
       <div

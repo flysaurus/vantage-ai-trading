@@ -13,8 +13,6 @@ import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
 import { ConnectionOptionsPage } from '@/components/broker/ConnectionOptionsPage';
 import { ConnectionLoadingPage } from '@/components/broker/ConnectionLoadingPage';
-import { DemoCounterPage } from '@/components/demo/DemoCounterPage';
-import { DemoExpired } from '@/components/app/DemoExpired';
 
 export default function Page() {
   const { state, profile, refreshState } = useAppState();
@@ -22,24 +20,6 @@ export default function Page() {
 
   // Guard against repeated redirects — only run once per mount
   const redirectedToSetup = useRef(false);
-
-  // Dismiss state for demo-counter — persists across remounts within the same
-  // browser session. Without this, navigating back from any sub-page (e.g.
-  // /price-alerts → /) causes the page to remount and re-show the counter,
-  // intercepting query-param navigation like ?tab=settings.
-  const [showDemoCounter, setShowDemoCounter] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return sessionStorage.getItem('vantage_demo_counter_dismissed') !== 'true';
-  });
-  useEffect(() => {
-    if (state === 'demo-counter') {
-      const dismissed = sessionStorage.getItem('vantage_demo_counter_dismissed');
-      setShowDemoCounter(dismissed !== 'true');
-    }
-  }, [state]);
-
-  // Manual override: show connection-options page (from demo counter button)
-  const [connectionView, setConnectionView] = useState(false);
 
   // needs-profile: redirect to onboarding
   useEffect(() => {
@@ -132,45 +112,6 @@ export default function Page() {
     return <>{debugBanner}<BrokerChoicePage onStateChanged={refreshState} /></>;
   }
 
-  // connection-view override: user tapped "Connect a broker →" from demo counter
-  // MUST come before demo-counter check or it'll never be reached
-  if (connectionView) {
-    return (
-      <>
-        {debugBanner}
-        <ConnectionOptionsPage
-          onStateChanged={() => {
-            setConnectionView(false);
-            setShowDemoCounter(true); // Back → return to demo counter
-          }}
-          onDemoStart={() => {
-            setConnectionView(false);
-            setShowDemoCounter(false); // "Start with demo instead" → MainApp
-          }}
-        />
-      </>
-    );
-  }
-
-  // demo-counter: demo active — show counter, dismiss to MainApp
-  if (state === 'demo-counter' && showDemoCounter) {
-    return (
-      <>
-        {debugBanner}
-        <DemoCounterPage
-          profile={profile}
-          onEnter={() => { sessionStorage.setItem('vantage_demo_counter_dismissed', 'true'); setShowDemoCounter(false); }}
-          onConnectBroker={() => setConnectionView(true)}
-        />
-      </>
-    );
-  }
-
-  // demo-expired: 30-day demo has elapsed
-  if (state === 'demo-expired') {
-    return <>{debugBanner}<DemoExpired /></>;
-  }
-
   // connection-options: chose to connect a broker — show broker options
   if (state === 'connection-options') {
     return <>{debugBanner}<ConnectionOptionsPage onStateChanged={refreshState} /></>;
@@ -181,6 +122,6 @@ export default function Page() {
     return <>{debugBanner}<ConnectionLoadingPage profile={profile} onStateChanged={refreshState} /></>;
   }
 
-  // demo-counter (dismissed) / authenticated
+  // authenticated
   return <>{debugBanner}<MainApp /></>;
 }
