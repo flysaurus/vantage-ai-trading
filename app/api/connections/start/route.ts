@@ -1,74 +1,148 @@
 // ─── POST /api/connections/start ──────────────────────────────
-// DEBUG v2 — error codes in response body for diagnosis
+// Initiates a broker connection via SnapTrade.
 
+import { requireAuth } from '@/lib/auth/get-server-user';
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  getOrCreateSnapTradeUser,
+  generateConnectionPortalUrl,
+  encryptUserSecret,
+} from '@/lib/snaptrade/client';
+import { getAllowedBrokerages } from '@/lib/snaptrade/auth';
 
 export async function POST(req: NextRequest) {
-  let step = '0_init';
+  const { authUser, authError } = await requireAuth();
+  if (authError) return authError;
+
+  // ── Parse body ──
+  let body: Record<string, unknown>;
   try {
-    // Step 1: Parse body
-    step = '1_body';
-    let body: Record<string, unknown>;
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json({ error: 'STEP_1_INVALID_JSON' }, { status: 400 });
-    }
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
 
-    const slug = (body.brokerage_slug as string)?.trim();
-    if (!slug) {
-      return NextResponse.json({ error: 'STEP_1_NO_SLUG' }, { status: 400 });
-    }
+  const brokerageSlug = (body.brokerage_slug as string)?.trim();
 
-    // Step 2: Auth
-    step = '2_import_auth';
-    const { requireAuth } = await import('@/lib/auth/get-server-user');
-    const authResult = await requireAuth();
-    if (authResult.authError) return authResult.authError;
+  if (!brokerageSlug) {
+    return NextResponse.json({ error: 'brokerage_slug is required' }, { status: 400 });
+  }
 
-    // Step 3: Supabase
-    step = '3_import_supabase';
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    );
-
-    // Step 4: SnapTrade auth
-    step = '4_import_snaptrade_auth';
-    const { getAllowedBrokerages } = await import('@/lib/snaptrade/auth');
+  // ── Validate brokerage ──
+  let brokerName: string;
+  let allowsTrading: boolean;
+  try {
     const brokers = await getAllowedBrokerages();
-    const broker = brokers.find(b => b.slug.toUpperCase() === slug.toUpperCase());
+    const broker = brokers.find(
+      (b) => b.slug.toUpperCase() === brokerageSlug.toUpperCase(),
+    );
     if (!broker) {
-      return NextResponse.json({ error: `STEP_4_UNKNOWN_BROKER:${slug}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Unknown brokerage: ${brokerageSlug}` },
+        { status: 400 },
+      );
     }
+    brokerName = broker.displayName;
+    allowsTrading = broker.allowsTrading;
+  } catch (err) {
+    console.error('[start] Broker validation failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to validate brokerage. Try again.' },
+      { status: 502 },
+    );
+  }
 
-    // Step 5: SnapTrade client
-    step = '5_import_snaptrade_client';
-    const { getOrCreateSnapTradeUser } = await import('@/lib/snaptrade/client');
+  // ── Callback URL ──
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+  const redirectUri = `${appUrl}/api/connections/callback`;
+
+  // ── Supabase ──
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  const { data: existingConn } = await supabase
+    .from('broker_connections')
+    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, id')
+    .eq('user_id', authUser.id)
+    .eq('connection_type', 'snaptrade')
+    .maybeSingle();
+
+  // ── Get/create SnapTrade user ──
+  let snapUserId: string;
+  let snapUserSecret: string;
+  try {
     const result = await getOrCreateSnapTradeUser(
-      authResult.authUser.id,
-      undefined,
-      undefined,
+      authUser.id,
+      existingConn?.snaptrade_user_id,
+      existingConn?.snaptrade_user_secret_encrypted,
+    );
+    snapUserId = result.userId;
+    snapUserSecret = result.userSecret;
+  } catch (err) {
+    console.error('[start] SnapTrade user setup failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to set up SnapTrade user. Please try again.' },
+      { status: 502 },
+    );
+  }
+
+  // ── Store encrypted secret ──
+  const encryptedSecret = encryptUserSecret(authUser.id, snapUserSecret);
+  const now = new Date().toISOString();
+
+  if (existingConn?.id) {
+    await supabase
+      .from('broker_connections')
+      .update({
+        snaptrade_user_id: snapUserId,
+        snaptrade_user_secret_encrypted: encryptedSecret,
+        brokerage_slug: brokerageSlug.toUpperCase(),
+        status: 'pending',
+        updated_at: now,
+      })
+      .eq('id', existingConn.id);
+  } else {
+    await supabase
+      .from('broker_connections')
+      .insert({
+        user_id: authUser.id,
+        connection_type: 'snaptrade',
+        snaptrade_user_id: snapUserId,
+        snaptrade_user_secret_encrypted: encryptedSecret,
+        brokerage_slug: brokerageSlug.toUpperCase(),
+        status: 'pending',
+      });
+  }
+
+  // ── Generate portal URL ──
+  try {
+    const portalUrl = await generateConnectionPortalUrl(
+      snapUserId,
+      snapUserSecret,
+      brokerageSlug.toUpperCase(),
+      redirectUri,
+      'trade-if-available',
     );
 
-    // Success!
     return NextResponse.json({
       success: true,
-      debug: {
-        step: 'ALL_PASSED',
-        userId: result.userId.substring(0, 12),
-        isNew: result.isNew,
-        brokersFound: brokers.length,
+      redirectUrl: portalUrl,
+      broker: {
+        slug: brokerageSlug.toUpperCase(),
+        name: brokerName,
+        allowsTrading,
+        connectionType: 'trade-if-available',
       },
     });
-
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[start] Portal URL generation failed:', err);
     return NextResponse.json(
-      { error: `CRASH_AT_${step}: ${msg.substring(0, 200)}` },
-      { status: 500 },
+      { error: 'Failed to generate connection portal. Please try again.' },
+      { status: 502 },
     );
   }
 }

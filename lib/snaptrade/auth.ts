@@ -32,12 +32,29 @@ function getCredentials(): SnapTradeCredentials {
 // ─── Signature Generation ────────────────────────────────────
 
 /**
+ * Sort object keys recursively for canonical JSON output.
+ * Matches Python's json.dumps(..., sort_keys=True) behavior.
+ */
+function sortKeys(obj: unknown): unknown {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sortKeys);
+  const sorted: Record<string, unknown> = {};
+  Object.keys(obj as Record<string, unknown>)
+    .sort()
+    .forEach((k) => {
+      sorted[k] = sortKeys((obj as Record<string, unknown>)[k]);
+    });
+  return sorted;
+}
+
+/**
  * Generate a SnapTrade-compatible HMAC-SHA256 signature.
  *
- * @param path  - API path including /snapTrade prefix (e.g. "/snapTrade/partners")
- * @param query - Raw query string including clientId & timestamp (e.g. "clientId=X&timestamp=Y")
- * @param body  - Request body as a JS object, or null/undefined for GET requests
- * @returns Base64-encoded HMAC-SHA256 signature
+ * Canonical JSON per SnapTrade spec:
+ *   - { "content": <body or null>, "path": "...", "query": "..." }
+ *   - Keys sorted alphabetically at all nesting levels
+ *   - No whitespace
+ *   - Sign with HMAC-SHA256(consumerKey, canonical) → base64
  */
 export function signRequest(
   path: string,
@@ -46,13 +63,15 @@ export function signRequest(
 ): string {
   const { consumerKey } = getCredentials();
 
-  const payload: Record<string, unknown> = {
+  const payload = sortKeys({
     content: body ?? null,
     path,
     query,
-  };
+  }) as Record<string, unknown>;
 
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  // NOTE: Do NOT use a replacer array — it applies recursively and strips
+  // nested keys like content.userId / content.userSecret, breaking the signature.
+  const canonical = JSON.stringify(payload);
 
   const hmac = crypto.createHmac('sha256', consumerKey);
   hmac.update(canonical);
