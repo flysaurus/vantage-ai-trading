@@ -1,96 +1,74 @@
 // ─── POST /api/connections/start ──────────────────────────────
-// DEBUG BUILD — stripped down to isolate the 502 crash
+// DEBUG v2 — error codes in response body for diagnosis
 
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  console.error('[conn-start] ROUTE LOADED');
-
+  let step = '0_init';
   try {
-    // Step 1: can we even read the body?
+    // Step 1: Parse body
+    step = '1_body';
     let body: Record<string, unknown>;
     try {
       body = await req.json();
-      console.error('[conn-start] Body parsed:', JSON.stringify(body).substring(0, 200));
-    } catch (e) {
-      console.error('[conn-start] Body parse FAILED:', e);
-      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    } catch {
+      return NextResponse.json({ error: 'STEP_1_INVALID_JSON' }, { status: 400 });
     }
 
-    // Step 2: can we import and call requireAuth?
-    let authResult: any;
-    try {
-      const { requireAuth } = await import('@/lib/auth/get-server-user');
-      console.error('[conn-start] requireAuth imported, calling...');
-      authResult = await requireAuth();
-      console.error('[conn-start] requireAuth result:', authResult.authError ? 'authError' : `user=${authResult.authUser?.id?.substring(0, 8)}`);
-    } catch (e) {
-      console.error('[conn-start] requireAuth FAILED:', e instanceof Error ? e.stack || e.message : String(e));
-      return NextResponse.json({ error: 'Auth module failed to load' }, { status: 500 });
-    }
-
-    if (authResult.authError) {
-      console.error('[conn-start] Auth ERROR, returning');
-      return authResult.authError;
-    }
-
-    const authUser = authResult.authUser;
-    const slug = body.brokerage_slug as string;
+    const slug = (body.brokerage_slug as string)?.trim();
     if (!slug) {
-      return NextResponse.json({ error: 'brokerage_slug required' }, { status: 400 });
+      return NextResponse.json({ error: 'STEP_1_NO_SLUG' }, { status: 400 });
     }
 
-    // Step 3: can we create supabase client?
-    let supabase: any;
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      console.error('[conn-start] Supabase env vars:', {
-        hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      });
-      supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } },
-      );
-      console.error('[conn-start] Supabase client created');
-    } catch (e) {
-      console.error('[conn-start] Supabase create FAILED:', e instanceof Error ? e.message : String(e));
-      return NextResponse.json({ error: 'DB client failed to init' }, { status: 500 });
+    // Step 2: Auth
+    step = '2_import_auth';
+    const { requireAuth } = await import('@/lib/auth/get-server-user');
+    const authResult = await requireAuth();
+    if (authResult.authError) return authResult.authError;
+
+    // Step 3: Supabase
+    step = '3_import_supabase';
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+
+    // Step 4: SnapTrade auth
+    step = '4_import_snaptrade_auth';
+    const { getAllowedBrokerages } = await import('@/lib/snaptrade/auth');
+    const brokers = await getAllowedBrokerages();
+    const broker = brokers.find(b => b.slug.toUpperCase() === slug.toUpperCase());
+    if (!broker) {
+      return NextResponse.json({ error: `STEP_4_UNKNOWN_BROKER:${slug}` }, { status: 400 });
     }
 
-    // Step 4: can we import snapTrade modules?
-    try {
-      const { getAllowedBrokerages } = await import('@/lib/snaptrade/auth');
-      console.error('[conn-start] getAllowedBrokerages imported, calling...');
-      const brokers = await getAllowedBrokerages();
-      console.error(`[conn-start] Got ${brokers.length} brokers`);
-      const broker = brokers.find(b => b.slug.toUpperCase() === slug.toUpperCase());
-      if (!broker) {
-        return NextResponse.json({ error: `Unknown broker: ${slug}` }, { status: 400 });
-      }
-      console.error(`[conn-start] Broker found: ${broker.displayName}`);
-    } catch (e) {
-      console.error('[conn-start] SnapTrade import/call FAILED:', e instanceof Error ? e.stack || e.message : String(e));
-      return NextResponse.json({ error: 'SnapTrade failed' }, { status: 500 });
-    }
+    // Step 5: SnapTrade client
+    step = '5_import_snaptrade_client';
+    const { getOrCreateSnapTradeUser } = await import('@/lib/snaptrade/client');
+    const result = await getOrCreateSnapTradeUser(
+      authResult.authUser.id,
+      undefined,
+      undefined,
+    );
 
-    // Step 5: can we import the client modules?
-    try {
-      const { getOrCreateSnapTradeUser } = await import('@/lib/snaptrade/client');
-      console.error('[conn-start] getOrCreateSnapTradeUser imported, calling...');
-      const result = await getOrCreateSnapTradeUser(authUser.id, undefined, undefined);
-      console.error(`[conn-start] SnapTrade user ready: ${result.userId}, isNew=${result.isNew}`);
-    } catch (e) {
-      console.error('[conn-start] getOrCreateSnapTradeUser FAILED:', e instanceof Error ? e.stack || e.message : String(e));
-      return NextResponse.json({ error: 'SnapTrade user setup failed' }, { status: 500 });
-    }
+    // Success!
+    return NextResponse.json({
+      success: true,
+      debug: {
+        step: 'ALL_PASSED',
+        userId: result.userId.substring(0, 12),
+        isNew: result.isNew,
+        brokersFound: brokers.length,
+      },
+    });
 
-    console.error('[conn-start] ALL CHECKS PASSED — returning success');
-    return NextResponse.json({ success: true, debug: 'all steps passed' });
-
-  } catch (e) {
-    console.error('[conn-start] FATAL OUTER CRASH:', e instanceof Error ? e.stack || e.message : String(e));
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: `CRASH_AT_${step}: ${msg.substring(0, 200)}` },
+      { status: 500 },
+    );
   }
 }
