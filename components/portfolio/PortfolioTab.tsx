@@ -5,6 +5,7 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
+import { useAccounts } from '@/context/AccountContext';
 import type { Position, AccountSummary } from '@/types';
 import type { Basket } from '@/context/PortfolioContext';
 import SellModal from './SellModal';
@@ -49,13 +50,31 @@ function splitCents(value: number): { dollars: string; cents: string } {
 // ─── Account Hero Card ────────────────────────────────────
 
 function AccountHero({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
+  const { activeAccount } = useAccounts();
   const { dollars, cents } = splitCents(account.equity);
+  
+  // Data source badge
+  const dataSourceLabel = activeAccount?.isDemo
+    ? 'DEMO MODE'
+    : activeAccount?.tradingEnabled
+      ? `${activeAccount.broker} · Live`
+      : `${activeAccount.broker} · Read-only`;
+  
+  const dataSourceStyle = activeAccount?.isDemo
+    ? 'hero-demo-badge'
+    : activeAccount?.tradingEnabled
+      ? { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }
+      : { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' };
+  
   return (
     <div className="hero-container" style={{ position: 'relative' }}>
-      {/* DEMO MODE badge */}
-      {!isConnected && (
-        <span className="hero-demo-badge">DEMO MODE</span>
-      )}
+      {/* Data source badge */}
+      <span
+        className={activeAccount?.isDemo ? 'hero-demo-badge' : ''}
+        style={activeAccount?.isDemo ? undefined : dataSourceStyle}
+      >
+        {dataSourceLabel}
+      </span>
 
       {/* Label */}
       <div className="hero-label">Account Value</div>
