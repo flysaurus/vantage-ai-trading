@@ -370,21 +370,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     useOrderStore.getState().setOrders(mappedOrders);
   }, [demoOrders, isShowingDemo]);
 
-  // ── Clear stale demo portfolio cache on mount ──
-  // Forces fresh data from Supabase instead of stale localStorage
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      Object.keys(localStorage).forEach(key => {
-        if (key.includes('demo_portfolio') || key.includes('vantage_demo')) {
-          localStorage.removeItem(key);
-          console.log('[portfolio] cleared stale cache:', key);
-        }
-      });
-    } catch (e) {
-      // localStorage not available
-    }
-  }, []);
+
 
   const persistDemoState = useCallback((state: DemoState) => {
     try {
