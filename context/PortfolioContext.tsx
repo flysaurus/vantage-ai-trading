@@ -512,7 +512,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── Fetch live quotes + recompute ──
   const fetchData = useCallback(async () => {
-    if (isConnected || !demoState) return;
+    // Fetch live quotes for demo positions as long as demo state exists.
+    // Don't block on isConnected — user may switch to Demo while broker is connected.
+    if (!demoState) return;
 
     try {
       setError(null);
@@ -538,14 +540,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         setError(err instanceof Error ? err.message : 'Failed to load market data');
       }
     }
-  }, [isConnected, demoState, recomputeAccount]);
+  }, [demoState, recomputeAccount]);
 
   // ── Load real broker data when connected (SnapTrade / Alpaca / etc.) ──
   // This replaces the DemoBroker path — PortfolioContext's account state
   // reflects the user's ACTUAL brokerage data, not demo seed data mislabeled
   // as a connected broker.
   useEffect(() => {
-    if (!isConnected || !broker) return;
+    // ONLY load broker data when the user is actively viewing a broker account.
+    // When viewing Demo, leave the account state for the demo-init path.
+    if (!isConnected || !broker || isShowingDemo) return;
 
     let cancelled = false;
 
@@ -579,7 +583,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             totalPnlPercent: p.totalPnlPercent,
             portfolioPercent: p.portfolioPercent,
             sector: p.sector,
-            type: p.assetType === 'ETF' ? 'ETF' as const : 'Stock' as const,
+            type: p.assetType === 'etf' ? 'ETF' as const : 'Stock' as const,
           })),
         };
 
@@ -591,7 +595,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     loadBrokerAccount();
     return () => { cancelled = true; };
-  }, [isConnected, broker]);
+  }, [isConnected, broker, isShowingDemo]);
 
   // Fetch on mount and when state changes
   useEffect(() => {
@@ -680,7 +684,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const supabaseClient = getSupabaseBrowserClient();
     brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
 
-    if (isConnected) return;
+    // Don't initialise demo data when broker is the active view.
+    // DemoBroker ref is still set above — needed for executeTrade in any mode.
+    if (isConnected && !isShowingDemo) return;
 
     // Guard: only run init sequence once per userId (prevents dep-loop
     // while still allowing re-init when auth resolves from null → real id)
@@ -736,7 +742,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     };
 
     initBroker();
-  }, [isConnected, user?.investorStyle, refreshStateFromBroker, user?.id]);
+  }, [isConnected, isShowingDemo, user?.investorStyle, refreshStateFromBroker, user?.id]);
 
   // ── executeTrade ──
   const executeTrade = useCallback(

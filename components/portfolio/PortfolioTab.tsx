@@ -58,10 +58,10 @@ function AccountHero({ account, isConnected, isShowingDemo }: { account: Account
   const envLabel = actualIsDemo
     ? 'DEMO MODE'
     : brokerMeta?.environment === 'paper'
-      ? `${brokerMeta.name} · Paper`
+      ? `${brokerMeta?.name ?? 'Broker'} · Paper`
       : brokerMeta?.tradingEnabled
-        ? `${brokerMeta.name} · Live`
-        : `${brokerMeta.name} · Read-only`;
+        ? `${brokerMeta?.name ?? 'Broker'} · Live`
+        : `${brokerMeta?.name ?? 'Broker'} · Read-only`;
   
   const dataSourceStyle = actualIsDemo
     ? undefined
