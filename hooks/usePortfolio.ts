@@ -240,7 +240,7 @@ const RETRY_DELAY = 3000;
 
 export function usePortfolio() {
   const store = usePortfolioStore();
-  const { account, setAccount, setLoading, updatePosition } = store;
+  const { account, setAccount, clearAccount, setLoading, updatePosition } = store;
   const { broker, isConnected } = useBroker();
   const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -248,13 +248,14 @@ export function usePortfolio() {
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Bridge gap: when broker connects, mark loading so UI shows
-  //    skeleton (not stale demo data or $100K hardcoded fallback)
+  // ── Bridge gap: when broker connects, wipe stale demo data and
+  //    set loading so UI shows skeleton (not stale demo or hardcoded fallback)
   useEffect(() => {
     if (isConnected) {
+      clearAccount();
       setLoading(true);
     }
-  }, [isConnected, setLoading]);
+  }, [isConnected, clearAccount, setLoading]);
 
   // ── Demo data when no broker connected ────────────────────
   useEffect(() => {

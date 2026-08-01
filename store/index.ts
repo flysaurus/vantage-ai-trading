@@ -105,6 +105,7 @@ interface PortfolioStore {
   account: AccountSummary | null;
   loading: boolean;
   setAccount: (account: AccountSummary) => void;
+  clearAccount: () => void;
   setLoading: (loading: boolean) => void;
   updatePosition: (symbol: string, updates: Partial<Position>) => void;
 }
@@ -113,6 +114,7 @@ export const usePortfolioStore = create<PortfolioStore>((set) => ({
   account: null,
   loading: false,
   setAccount: (account) => set({ account, loading: false }),
+  clearAccount: () => set({ account: null }),
   setLoading: (loading) => set({ loading }),
   updatePosition: (symbol, updates) =>
     set((s) => {
