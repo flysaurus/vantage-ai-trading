@@ -19,6 +19,8 @@ interface BrokerContextValue {
   isConnected: boolean;
   /** True once the initial /api/broker/status check has completed (even if no broker). */
   isInitialized: boolean;
+  /** Whether the connected broker supports trading (vs read-only import). */
+  tradingEnabled: boolean;
   accountPreview: {
     id: string;
     equity: number;
@@ -33,6 +35,7 @@ const BrokerContext = createContext<BrokerContextValue>({
   brokerId: null,
   isConnected: false,
   isInitialized: false,
+  tradingEnabled: false,
   accountPreview: null,
   environment: null,
 });
@@ -43,6 +46,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const [accountPreview, setAccountPreview] = useState<BrokerContextValue['accountPreview']>(null);
   const [environment, setEnvironment] = useState<string | null>(null);
+  const [tradingEnabled, setTradingEnabled] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   // Discover broker on mount: check /api/broker/status
@@ -89,6 +93,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
               setIsConnected(true);
               setAccountPreview(data.accountPreview || null);
               setEnvironment(data.environment || null);
+              setTradingEnabled(data.trading_enabled !== false);
             } catch (err) {
               console.error(`[BrokerProvider] Failed to connect ${data.brokerId}:`, err);
               setIsConnected(false);
@@ -99,6 +104,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
           setIsConnected(false);
           setBrokerId(null);
           setBroker(null);
+          setTradingEnabled(false);
         }
 
         setInitialized(true);
@@ -107,6 +113,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) {
           setIsConnected(false);
           setBrokerId(null);
+          setTradingEnabled(false);
           setInitialized(true);
         }
       }
