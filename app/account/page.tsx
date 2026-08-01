@@ -124,7 +124,7 @@ function AccountPageInner() {
             </div>
             <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.6 }}>
               Vantage is a trading dashboard — not a broker. All deposits, withdrawals, and account management
-              happen on your broker's platform. Vantage securely stores your API keys to display portfolio
+              happen on your broker&apos;s platform. Vantage connects via secure OAuth to display portfolio
               data and place trades, but never touches your funds directly.
             </div>
           </div>

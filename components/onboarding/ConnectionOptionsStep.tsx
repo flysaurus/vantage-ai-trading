@@ -86,7 +86,7 @@ export default function ConnectionOptionsStep({
       id: 'alpaca',
       icon: <TrendingUp size={22} strokeWidth={2} color="#22c55e" />,
       title: 'Trade with Alpaca',
-      subtitle: 'Paper & live trading via API keys',
+      subtitle: 'Paper & live trading via secure OAuth',
       tag: 'Full trade execution',
       tagColor: '#22c55e',
     },

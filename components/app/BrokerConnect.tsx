@@ -45,7 +45,7 @@ const BROKER_CARDS: BrokerCard[] = [
   },
   {
     title: 'Trade with Alpaca',
-    subtitle: 'Paper & live trading via API keys',
+    subtitle: 'Paper & live trading via secure OAuth',
     featureTag: 'Full trade execution',
     iconBg: 'rgba(16,185,129,0.10)',
     iconBorder: 'rgba(16,185,129,0.20)',

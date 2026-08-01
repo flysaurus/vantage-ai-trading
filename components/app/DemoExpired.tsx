@@ -101,7 +101,7 @@ export function DemoExpired() {
           {
             icon: <TrendingUp size={22} color="rgba(255,255,255,0.50)" />,
             title: 'Trade with Alpaca',
-            subtitle: 'Paper & live trading via API keys',
+            subtitle: 'Paper & live trading via secure OAuth',
             featureTag: 'Full trade execution',
           },
           {

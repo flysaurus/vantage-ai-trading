@@ -8,64 +8,50 @@ interface BrokerSelectionProps {
   onSkip: () => void;
 }
 
-interface BrokerCard {
-  id: BrokerId;
+// Only brokers available through our OAuth flow (SnapTrade).
+// All future broker connections use SnapTrade — no raw API keys.
+const BROKER_CARDS: Array<{
+  id: BrokerId | 'snaptrade';
   emoji: string;
   name: string;
   description: string;
-  authSummary: string;
+  subtext: string;
   active: boolean;
-  comingSoon?: boolean;
-}
-
-const BROKER_CARDS: BrokerCard[] = [
+}> = [
   {
-    id: 'alpaca',
-    emoji: '🦙',
-    name: 'Alpaca',
-    description: 'Paper & live trading. API keys.',
-    authSummary: 'Connect with API keys',
+    id: 'snaptrade',
+    emoji: '🔗',
+    name: 'Connect Broker',
+    description: 'Alpaca, Robinhood, Schwab, Fidelity, E*TRADE, and more',
+    subtext: 'Secure OAuth — credentials never touch our servers',
     active: true,
-  },
-  {
-    id: 'tastytrade',
-    emoji: '🍝',
-    name: 'Tastytrade',
-    description: 'Options & futures. API keys.',
-    authSummary: 'Connect with API keys',
-    active: true,
-  },
-  {
-    id: 'ibkr',
-    emoji: '🏦',
-    name: 'IBKR',
-    description: 'Coming soon',
-    authSummary: 'Connect with API keys',
-    active: false,
-    comingSoon: true,
-  },
-  {
-    id: 'schwab',
-    emoji: '📊',
-    name: 'Schwab',
-    description: 'Coming soon',
-    authSummary: 'Connect with API keys',
-    active: false,
-    comingSoon: true,
-  },
-  {
-    id: 'robinhood',
-    emoji: '🌮',
-    name: 'Robinhood',
-    description: 'Coming soon',
-    authSummary: 'Connect with API keys',
-    active: false,
-    comingSoon: true,
   },
 ];
 
 export function BrokerSelection({ onSelect, onSkip }: BrokerSelectionProps) {
-  const [hoveredId, setHoveredId] = useState<BrokerId | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      // Redirect to broker connections page which handles SnapTrade OAuth
+      const res = await fetch('/api/connections/snaptrade/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broker_id: 'alpaca' }),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to start connection');
+      const data = await res.json();
+      if (data.redirectUri) {
+        window.location.href = data.redirectUri;
+      }
+    } catch (err) {
+      console.error('[BrokerSelection] Connection failed:', err);
+      setConnecting(false);
+    }
+  };
 
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -80,77 +66,62 @@ export function BrokerSelection({ onSelect, onSkip }: BrokerSelectionProps) {
         </p>
       </div>
 
-      {/* Broker Cards — scrollable */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, minHeight: 0 }}>
-        {BROKER_CARDS.map((card) => {
-          const isHovered = hoveredId === card.id;
-
-          return (
-            <button
-              key={card.id}
-              onClick={() => card.active && onSelect(card.id)}
-              onMouseEnter={() => card.active && setHoveredId(card.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              disabled={!card.active}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: 14,
-                borderRadius: 10,
-                border: isHovered && card.active
-                  ? '2px solid #06b6d4'
-                  : '2px solid #1e293b',
-                background: isHovered && card.active
-                  ? 'rgba(6,182,212,0.08)'
-                  : '#0f172a',
-                cursor: card.active ? 'pointer' : 'default',
-                transition: 'border-color 0.15s, background 0.15s',
-                fontFamily: 'inherit',
-                opacity: card.active ? 1 : 0.45,
-                position: 'relative',
-              }}
-            >
-              {/* Coming Soon badge */}
-              {card.comingSoon && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 10,
-                    fontSize: 9,
-                    color: '#e2e8f0',
-                    background: 'rgba(100,116,139,0.15)',
-                    padding: '2px 8px',
-                    borderRadius: 6,
-                    fontWeight: 600,
-                  }}
-                >
-                  SOON
-                </span>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                {/* Emoji */}
-                <span style={{ fontSize: 32, lineHeight: 1, flexShrink: 0 }}>
-                  {card.emoji}
-                </span>
-
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>
-                    {card.name}
-                  </div>
-                  <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '4px 0 0', lineHeight: 1.4 }}>
-                    {card.description}
-                  </p>
-                  <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: '6px 0 0' }}>
-                    {card.authSummary}
-                  </p>
-                </div>
+      {/* Single OAuth card */}
+      <div style={{ flex: 1, overflowY: 'auto', marginBottom: 16, minHeight: 0 }}>
+        <button
+          onClick={handleConnect}
+          onMouseEnter={() => setHoveredId('snaptrade')}
+          onMouseLeave={() => setHoveredId(null)}
+          disabled={connecting}
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            padding: 14,
+            borderRadius: 10,
+            border: hoveredId === 'snaptrade'
+              ? '2px solid #06b6d4'
+              : '2px solid #1e293b',
+            background: hoveredId === 'snaptrade'
+              ? 'rgba(6,182,212,0.08)'
+              : '#0f172a',
+            cursor: connecting ? 'wait' : 'pointer',
+            transition: 'border-color 0.15s, background 0.15s',
+            fontFamily: 'inherit',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{ fontSize: 32, lineHeight: 1, flexShrink: 0 }}>🔗</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>
+                {connecting ? 'Redirecting to SnapTrade...' : 'Connect Broker'}
               </div>
-            </button>
-          );
-        })}
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '4px 0 0', lineHeight: 1.4 }}>
+                Alpaca, Robinhood, Schwab, Fidelity, E*TRADE, and more
+              </p>
+              <p style={{ fontSize: 10, color: '#06b6d4', margin: '6px 0 0' }}>
+                🔒 Secure OAuth — credentials never touch our servers
+              </p>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* Security trust strip */}
+      <div
+        style={{
+          padding: '10px 14px',
+          borderRadius: 8,
+          background: 'rgba(6,182,212,0.05)',
+          border: '1px solid rgba(6,182,212,0.15)',
+          fontSize: 11,
+          color: '#94a3b8',
+          lineHeight: 1.4,
+          marginBottom: 16,
+          textAlign: 'center',
+        }}
+      >
+        🔒 You log in directly through your broker. Vantage never sees your password or trading credentials.
+        We use read-only access by default — you control what we can see.
       </div>
 
       {/* Skip link */}
@@ -168,7 +139,7 @@ export function BrokerSelection({ onSelect, onSkip }: BrokerSelectionProps) {
             textDecoration: 'underline',
           }}
         >
-          Skip for now
+          Skip for now — use demo portfolio
         </button>
       </div>
     </div>

@@ -52,76 +52,75 @@ export default function SecurityPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <Shield size={22} style={{ color: '#06b6d4' }} />
               <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#f1f5f9' }}>
-                How We Protect Your Broker Keys
+                How We Protect Your Broker Data
               </h1>
             </div>
             <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
-              We take the security of your financial accounts seriously. Here&apos;s exactly what
-              happens when you connect your broker and how your information is protected.
+              We take the security of your financial accounts seriously. Vantage uses
+              SnapTrade OAuth — you log in directly with your broker, and we never see your
+              password or trading credentials.
             </p>
           </div>
 
-          <Section title="When You Enter Your Keys">
+          <Section title="When You Connect">
             <p>
-              <strong>Encryption happens immediately.</strong> Your credentials are scrambled into
-              an unreadable format using industry-standard encryption before they leave your
-              device. No plain text ever travels over the internet.
+              <strong>You authenticate with your broker directly.</strong> When you link your
+              account, you&apos;re redirected to your broker&apos;s own login page — just like
+              logging into their app or website. Vantage never sees your username, password,
+              or multi-factor codes.
             </p>
             <p>
-              <strong>Your connection is already secure.</strong> All communication uses HTTPS,
-              the same encryption that protects online banking. Even before our
-              application-level encryption, the transport layer prevents interception.
+              After you approve the connection, your broker issues a secure access token
+              through SnapTrade. That token is what our servers use to read your portfolio
+              and data. You can revoke this access at any time from either Vantage or your
+              broker&apos;s settings.
             </p>
             <p>
-              <strong>Storage: locked, not hidden.</strong> Your encrypted credentials require your
-              active account session to unlock. Without both parts — your authenticated session
-              and our server-side security — the stored data is useless.
+              <strong>Read-only by default.</strong> Connections are set up with the minimum
+              permissions needed. We can see your holdings and order history, but cannot
+              place trades or move money unless you explicitly enable trading.
             </p>
           </Section>
 
-          <Section title="What We Do With Your Keys">
+          <Section title="What We Can Access">
             <p>
-              We use them for exactly what you ask us to do, and nothing else.
-            </p>
-            <p>
-              When you check your portfolio or place a trade, our servers temporarily decrypt
-              your credentials, make the request to your broker, and immediately discard the
-              decrypted copy. This happens in a fraction of a second in server memory — your
-              keys are never written to disk, logs, or any persistent storage.
+              We only access what you explicitly allow through the OAuth permission
+              flow, and only when you ask us to. There are no raw API keys for anyone
+              to lose, leak, or abuse.
             </p>
             <NoList
               items={[
-                'Use your keys for anything other than what you explicitly initiate',
-                'Share, sell, or transfer your credentials to any third party',
-                'Store decrypted copies anywhere',
-                'Access your account without your active session',
+                'Access your account without an active OAuth token that you have approved',
+                'See your broker login credentials — they were never shared with us',
+                'Share or transfer your data to any third party',
+                'Place trades or move money without your explicit action',
               ]}
             />
           </Section>
 
           <Section title="When You Disconnect">
             <p>
-              Disconnecting is a hard delete, not a soft hide. The encrypted data is
-              permanently destroyed with no recovery path. If you reconnect later, you&apos;ll
-              need to enter your keys again from scratch. There is no archive, no backup, and
-              no way for us — or anyone else — to recover deleted credentials.
+              Disconnecting revokes your OAuth token immediately. Your broker closes the
+              access window and we permanently delete all associated data from our database.
+              If you reconnect later, you go through the same secure OAuth flow — there is
+              no archive, no backup, and no cached credentials to recover.
             </p>
           </Section>
 
-          <Section title="Where Your Keys Never Go">
-            <p>Your raw broker credentials are never:</p>
+          <Section title="Your Credentials Never Touch Our Servers">
+            <p>At no point in the connection flow do we ever receive:</p>
             <NoList
               items={[
-                'Stored in your browser\'s local storage or cookies',
-                'Sent back to your browser after initial submission',
-                'Included in error logs, analytics, or monitoring systems',
-                'Accessible to our support team or any human operator',
-                'Backed up in recoverable form',
+                'Your broker username or password',
+                'API keys or secret keys generated in your broker dashboard',
+                'Multi-factor authentication codes or recovery tokens',
+                'Any credentials that could be used to independently access your account',
               ]}
             />
             <p>
-              If someone gained access to your browser, your phone, or even our database,
-              your broker credentials would not be accessible.
+              The OAuth access token stored on our servers is scoped, time-limited, and
+              revocable. Even if someone gained access to our database, they could not
+              obtain credentials to log into your broker account.
             </p>
           </Section>
 
@@ -129,15 +128,15 @@ export default function SecurityPage() {
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               <li style={{ marginBottom: 8, fontSize: 13, color: '#cbd5e1', lineHeight: 1.7 }}>
                 <strong style={{ color: '#f1f5f9' }}>Disconnect at any time</strong> from
-                Settings with one tap
+                Settings with one tap — access is revoked immediately
               </li>
               <li style={{ marginBottom: 8, fontSize: 13, color: '#cbd5e1', lineHeight: 1.7 }}>
-                <strong style={{ color: '#f1f5f9' }}>Use paper trading</strong> (Alpaca) to
+                <strong style={{ color: '#f1f5f9' }}>Use paper trading</strong> to
                 test the platform without exposing a funded account
               </li>
-              <li>
-                <strong style={{ color: '#f1f5f9' }}>Create dedicated API keys</strong> in
-                your broker&apos;s settings with only the permissions you need
+              <li style={{ marginBottom: 8, fontSize: 13, color: '#cbd5e1', lineHeight: 1.7 }}>
+                <strong style={{ color: '#f1f5f9' }}>Revoke access from your broker</strong>
+                {" "}— you can also manage or remove Vantage from your broker accounts
               </li>
             </ul>
           </Section>
@@ -145,7 +144,8 @@ export default function SecurityPage() {
           <Section title="Our Commitment">
             <p>
               Security isn&apos;t a feature — it&apos;s the foundation. We&apos;ve designed the system so
-              that even we cannot access your broker keys independently.
+              that your broker credentials never enter our infrastructure. We only hold the
+              minimum data needed to show you your portfolio.
             </p>
             <p>
               If you have questions about our security practices or want to report a concern,
