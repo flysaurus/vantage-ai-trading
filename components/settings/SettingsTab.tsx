@@ -274,7 +274,7 @@ export function SettingsTab() {
             </p>
           </div>
           <button
-            onClick={() => router.push('/?account-select=true')}
+            onClick={() => window.location.href = '/?account-select=true'}}
             style={{
               background: 'rgba(34, 211, 238, 0.1)',
               border: '1px solid rgba(34, 211, 238, 0.3)',
