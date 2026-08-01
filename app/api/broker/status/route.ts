@@ -77,7 +77,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
 
     const { data: snapConn } = await supabaseAdmin
       .from('broker_connections')
-      .select('brokerage_slug, trading_enabled, snaptrade_accounts, status')
+      .select('snaptrade_broker_id, brokerage_slug, trading_enabled, snaptrade_accounts, status')
       .eq('user_id', userId)
       .eq('connection_type', 'snaptrade')
       .eq('status', 'connected')
@@ -87,17 +87,22 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       const accounts = (snapConn.snaptrade_accounts as any[]) || [];
       const totalValue = accounts.reduce((sum: number, a: any) => sum + (a.totalValue || 0), 0);
       const buyingPower = accounts.reduce((sum: number, a: any) => sum + (a.buyingPower || 0), 0);
+      const brokerSlug = snapConn.snaptrade_broker_id || snapConn.brokerage_slug || '';
+      const isPaper = brokerSlug.toUpperCase().includes('PAPER');
 
       console.error(
         '[broker/status] SnapTrade connection detected:',
-        snapConn.brokerage_slug,
+        'brokerSlug:', brokerSlug,
         'accounts:', accounts.length,
-        'totalValue:', totalValue
+        'totalValue:', totalValue,
+        'tradingEnabled:', snapConn.trading_enabled
       );
 
       return NextResponse.json({
         connected: true,
-        brokerId: snapConn.brokerage_slug,
+        brokerId: 'snaptrade',
+        trading_enabled: snapConn.trading_enabled !== false,
+        underlying_broker: brokerSlug,
         accountPreview: {
           id: accounts[0]?.id || 'snaptrade',
           equity: totalValue,
@@ -105,7 +110,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
           status: 'ACTIVE',
         },
         marketOpen: false,
-        environment: snapConn.brokerage_slug === 'ALPACA-PAPER' ? 'paper' : 'live',
+        environment: isPaper ? 'paper' : 'live',
       });
     }
 

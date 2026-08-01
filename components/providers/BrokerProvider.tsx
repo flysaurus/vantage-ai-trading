@@ -75,8 +75,11 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
         if (data.connected && data.brokerId) {
           const adapter = brokerRegistry.get(data.brokerId as BrokerId);
           if (adapter) {
-            const underlyingBroker = data.accountPreview?.provider
-              || data.accountPreview?.id as string
+            // Use underlying_broker from status API if available (SnapTrade),
+            // otherwise fall back to account preview id/provider
+            const underlyingBroker = data.underlying_broker
+              || data.accountPreview?.provider
+              || (data.accountPreview?.id as string)
               || '';
             const config: BrokerConfig = {
               id: data.brokerId,
