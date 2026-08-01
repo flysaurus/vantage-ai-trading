@@ -86,6 +86,14 @@ export default function AccountSelectScreen({
     onDismiss();
   };
 
+  // Sort: Demo first, then live/paper brokers (MUST be before any early return)
+  const sorted: AccountEntry[] = useMemo(() => {
+    const demo = accounts.filter(a => a.isDemo);
+    const live = accounts.filter(a => !a.isDemo && a.environment !== 'paper');
+    const paper = accounts.filter(a => !a.isDemo && a.environment === 'paper');
+    return [...demo, ...live, ...paper];
+  }, [accounts]);
+
   // ── Loading state ──
   if (isLoading) {
     return (
@@ -97,14 +105,6 @@ export default function AccountSelectScreen({
       </div>
     );
   }
-
-  // Sort: Demo first, then live/paper brokers
-  const sorted: AccountEntry[] = useMemo(() => {
-    const demo = accounts.filter(a => a.isDemo);
-    const live = accounts.filter(a => !a.isDemo && a.environment !== 'paper');
-    const paper = accounts.filter(a => !a.isDemo && a.environment === 'paper');
-    return [...demo, ...live, ...paper];
-  }, [accounts]);
 
   // ── Dismiss confirmation dialog ──
   if (showConfirm) {
