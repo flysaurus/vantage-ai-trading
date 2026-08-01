@@ -5,7 +5,7 @@
 //
 // Adding a new broker = implementing this interface + registering it.
 
-export type BrokerId = 'alpaca' | 'ibkr' | 'schwab' | 'robinhood' | 'tastytrade';
+export type BrokerId = 'alpaca' | 'ibkr' | 'schwab' | 'robinhood' | 'tastytrade' | 'snaptrade';
 
 // ─── Broker Credential Types ──────────────────────────────────
 

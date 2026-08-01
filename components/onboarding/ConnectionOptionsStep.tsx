@@ -305,21 +305,23 @@ export default function ConnectionOptionsStep({
                         {card.title}
                       </span>
 
-                      {/* COMING SOON badge */}
-                      <span
-                        style={{
-                          fontSize: '9px',
-                          fontWeight: 600,
-                          color: '#d97706',
-                          background: 'rgba(217,119,6,0.12)',
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                          letterSpacing: '0.04em',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        COMING SOON
-                      </span>
+                      {/* COMING SOON badge (only for non-snaptrade) */}
+                      {card.id !== 'snaptrade' && (
+                        <span
+                          style={{
+                            fontSize: '9px',
+                            fontWeight: 600,
+                            color: '#d97706',
+                            background: 'rgba(217,119,6,0.12)',
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            letterSpacing: '0.04em',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          COMING SOON
+                        </span>
+                      )}
                     </div>
 
                     <p
@@ -397,8 +399,7 @@ export default function ConnectionOptionsStep({
             lineHeight: 1.5,
           }}
         >
-          Broker connections launching soon.
-          {"You'll"} be notified when ready.
+          Connect via SnapTrade to sync Fidelity, Schwab, Robinhood + 20 more.
         </p>
       </div>
 

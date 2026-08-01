@@ -29,6 +29,7 @@ interface BrokerCard {
   iconBorder: string;
   tagColor: string;
   icon: React.ReactNode;
+  comingSoon?: boolean;
 }
 
 const BROKER_CARDS: BrokerCard[] = [
@@ -40,6 +41,7 @@ const BROKER_CARDS: BrokerCard[] = [
     iconBorder: 'rgba(34,211,238,0.20)',
     tagColor: 'rgba(34,211,238,0.60)',
     icon: <Link size={22} color="var(--accent)" />,
+    comingSoon: false,
   },
   {
     title: 'Trade with Alpaca',
@@ -49,6 +51,7 @@ const BROKER_CARDS: BrokerCard[] = [
     iconBorder: 'rgba(16,185,129,0.20)',
     tagColor: 'rgba(16,185,129,0.60)',
     icon: <TrendingUp size={22} color="var(--gain)" />,
+    comingSoon: true,
   },
   {
     title: 'Trade with Tastytrade',
@@ -58,6 +61,7 @@ const BROKER_CARDS: BrokerCard[] = [
     iconBorder: 'rgba(168,85,247,0.20)',
     tagColor: 'rgba(168,85,247,0.60)',
     icon: <Zap size={22} color="#a855f7" />,
+    comingSoon: true,
   },
 ];
 
@@ -271,21 +275,23 @@ export function BrokerConnect({ onBack }: BrokerConnectProps) {
                 >
                   {card.title}
                 </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontWeight: 600,
-                    fontSize: 10,
-                    letterSpacing: '0.08em',
-                    color: 'var(--warning)',
-                    background: 'rgba(245,158,11,0.12)',
-                    border: '1px solid rgba(245,158,11,0.30)',
-                    padding: '3px 8px',
-                    borderRadius: 999,
-                  }}
-                >
-                  COMING SOON
-                </span>
+                {card.comingSoon !== false && (
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-sans)',
+                      fontWeight: 600,
+                      fontSize: 10,
+                      letterSpacing: '0.08em',
+                      color: 'var(--warning)',
+                      background: 'rgba(245,158,11,0.12)',
+                      border: '1px solid rgba(245,158,11,0.30)',
+                      padding: '3px 8px',
+                      borderRadius: 999,
+                    }}
+                  >
+                    COMING SOON
+                  </span>
+                )}
               </div>
 
               <div
@@ -323,7 +329,7 @@ export function BrokerConnect({ onBack }: BrokerConnectProps) {
         ))}
       </div>
 
-      {/* ═══ COMING SOON NOTE ═══ */}
+      {/* ═══ CONNECT NOTE ═══ */}
       <p
         style={{
           marginTop: 16,
@@ -335,7 +341,7 @@ export function BrokerConnect({ onBack }: BrokerConnectProps) {
           padding: '0 28px',
         }}
       >
-        Broker connections launching soon. You&apos;ll be notified when ready.
+        Connect via SnapTrade to sync Fidelity, Schwab, Robinhood + 20 more.
       </p>
 
       {/* ═══ ERROR BANNER ═══ */}

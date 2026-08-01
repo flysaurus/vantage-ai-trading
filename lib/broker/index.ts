@@ -8,6 +8,7 @@
 import type { BrokerAdapter, BrokerId, BrokerRegistry } from '@/types/broker';
 import { AlpacaAdapter } from './alpaca';
 import { TastytradeAdapter } from './tastytrade';
+import { SnapTradeAdapter } from './snaptrade';
 
 class BrokerRegistryImpl implements BrokerRegistry {
   private adapters = new Map<BrokerId, BrokerAdapter>();
@@ -16,9 +17,7 @@ class BrokerRegistryImpl implements BrokerRegistry {
     // Register all available adapters
     this.register(new AlpacaAdapter());
     this.register(new TastytradeAdapter());
-    // Future: this.register(new IBKRAdapter());
-    // Future: this.register(new SchwabAdapter());
-    // Future: this.register(new RobinhoodAdapter());
+    this.register(new SnapTradeAdapter());
   }
 
   register(adapter: BrokerAdapter): void {

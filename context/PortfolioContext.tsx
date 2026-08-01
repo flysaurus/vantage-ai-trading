@@ -242,7 +242,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
 // ─── Provider ──────────────────────────────────────────────
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
-  const { isConnected } = useBroker();
+  const { isConnected, broker } = useBroker();
   const { user } = useAuth();
 
   // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
@@ -507,6 +507,59 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [isConnected, demoState, recomputeAccount]);
+
+  // ── Load real broker data when connected (SnapTrade / Alpaca / etc.) ──
+  // This replaces the DemoBroker path — PortfolioContext's account state
+  // reflects the user's ACTUAL brokerage data, not demo seed data mislabeled
+  // as a connected broker.
+  useEffect(() => {
+    if (!isConnected || !broker) return;
+
+    let cancelled = false;
+
+    const loadBrokerAccount = async () => {
+      try {
+        const [ba, positions] = await Promise.all([
+          broker.getAccount(),
+          broker.getPositions(),
+        ]);
+
+        if (cancelled) return;
+
+        const summary: AccountSummary = {
+          equity: ba.equity,
+          buyingPower: ba.buyingPower,
+          cash: ba.cash,
+          dayPnl: ba.dayPnl ?? 0,
+          dayPnlPercent: ba.dayPnlPercent ?? 0,
+          totalPnl: ba.totalPnl ?? 0,
+          totalPnlPercent: ba.totalPnlPercent ?? 0,
+          positions: positions.map(p => ({
+            symbol: p.symbol,
+            name: p.name,
+            qty: p.qty,
+            avgCost: p.avgCost,
+            currentPrice: p.currentPrice,
+            marketValue: p.marketValue,
+            dayChange: p.dayChange,
+            dayChangePercent: p.dayChangePercent,
+            totalPnl: p.totalPnl,
+            totalPnlPercent: p.totalPnlPercent,
+            portfolioPercent: p.portfolioPercent,
+            sector: p.sector,
+            type: p.assetType === 'ETF' ? 'ETF' as const : 'Stock' as const,
+          })),
+        };
+
+        setAccount(summary);
+      } catch (e) {
+        console.error('[portfolio] Failed to load broker account:', e);
+      }
+    };
+
+    loadBrokerAccount();
+    return () => { cancelled = true; };
+  }, [isConnected, broker]);
 
   // Fetch on mount and when state changes
   useEffect(() => {

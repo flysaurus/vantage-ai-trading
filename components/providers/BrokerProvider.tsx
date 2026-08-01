@@ -71,10 +71,14 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
         if (data.connected && data.brokerId) {
           const adapter = brokerRegistry.get(data.brokerId as BrokerId);
           if (adapter) {
+            const underlyingBroker = data.accountPreview?.provider
+              || data.accountPreview?.id as string
+              || '';
             const config: BrokerConfig = {
               id: data.brokerId,
               name: adapter.name,
               environment: data.environment || 'paper',
+              extra: underlyingBroker ? { brokerId: underlyingBroker } : undefined,
             };
 
             try {
@@ -137,6 +141,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
           if (data.connected && data.accountPreview) {
             setAccountPreview(data.accountPreview);
             setEnvironment(data.environment || null);
+            setTradingEnabled(data.trading_enabled !== false);
           }
         }
       } catch (err) {
@@ -154,6 +159,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
         brokerId,
         isConnected,
         isInitialized: initialized,
+        tradingEnabled,
         accountPreview,
         environment,
       }}

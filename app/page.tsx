@@ -11,7 +11,7 @@ import { VantageOrb } from '@/components/brand/VantageOrb';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import MainApp from '@/components/app/MainApp';
 import { BrokerChoicePage } from '@/components/broker/BrokerChoicePage';
-import { ConnectionOptionsPage } from '@/components/broker/ConnectionOptionsPage';
+import { BrokerConnectionsPage } from '@/components/broker/BrokerConnectionsPage';
 import { ConnectionLoadingPage } from '@/components/broker/ConnectionLoadingPage';
 
 export default function Page() {
@@ -20,6 +20,8 @@ export default function Page() {
 
   // Guard against repeated redirects — only run once per mount
   const redirectedToSetup = useRef(false);
+
+  // Manual override: show broker connections page (from demo counter button)
 
   // needs-profile: redirect to onboarding
   useEffect(() => {
@@ -112,9 +114,21 @@ export default function Page() {
     return <>{debugBanner}<BrokerChoicePage onStateChanged={refreshState} /></>;
   }
 
-  // connection-options: chose to connect a broker — show broker options
+  // connection-options: chose to connect a broker — show unified broker connections page
   if (state === 'connection-options') {
-    return <>{debugBanner}<ConnectionOptionsPage onStateChanged={refreshState} /></>;
+    return (
+      <>
+        {debugBanner}
+        <BrokerConnectionsPage
+          onBack={refreshState}
+          onEnterApp={refreshState}
+          onDisconnect={async () => {
+            await fetch('/api/broker/disconnect', { method: 'POST', credentials: 'include' });
+            refreshState();
+          }}
+        />
+      </>
+    );
   }
 
   // connection-loading: broker syncing — animated spinner + polling
@@ -122,6 +136,6 @@ export default function Page() {
     return <>{debugBanner}<ConnectionLoadingPage profile={profile} onStateChanged={refreshState} /></>;
   }
 
-  // authenticated
+  // demo-counter (dismissed) / authenticated
   return <>{debugBanner}<MainApp /></>;
 }

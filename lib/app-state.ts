@@ -32,6 +32,7 @@ export type AppState =
   | 'needs-profile'
   | 'broker-selection'
   | 'connection-options'
+  | 'us-stock-brokers'
   | 'connection-loading'
   | 'authenticated';
 

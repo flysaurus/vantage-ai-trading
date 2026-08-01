@@ -15,12 +15,17 @@ export interface BrokerConnection {
   encrypted_api_key: string | null;
   encrypted_secret: string | null;
   status: ConnectionStatus;
+  trading_enabled: boolean;
+  snaptrade_broker_id: string | null;
   sync_started_at: string | null;
   sync_completed_at: string | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// Individual broker IDs available through SnapTrade
+export type SnaptradeBrokerId = 'fidelity' | 'robinhood' | 'schwab' | 'vanguard' | 'etrade' | 'tdameritrade' | 'webull' | 'coinbase';
 
 // ── User ──────────────────────────────────────────────────
 
