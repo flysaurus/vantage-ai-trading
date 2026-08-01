@@ -46,6 +46,72 @@ interface SnapTradePosition {
   currency?: string;
 }
 
+// Unified positions API response format (undocumented as of spec version).
+// Fallback: also accepts legacy flat-array format from deprecated endpoint.
+interface UnifiedPosition {
+  instrument?: {
+    kind?: string;
+    symbol?: string;
+    description?: string;
+    currency?: string;
+  };
+  symbol?: string;               // legacy flat format
+  name?: string;                 // legacy flat format
+  description?: string;          // legacy flat format
+  quantity: number;
+  price: number;
+  market_value?: number;
+  cost_basis?: number;
+  day_gain?: number;
+  day_gain_percentage?: number;
+  total_gain_percentage?: number;
+  total_pnl?: number;            // legacy
+  total_pnl_pct?: number;        // legacy
+  day_change?: number;           // legacy
+  day_change_pct?: number;       // legacy
+  asset_type?: string;           // legacy
+  currency?: string;             // legacy
+}
+
+/** Normalise a unified or legacy position into our flat SnapTradePosition shape. */
+function normalisePositions(raw: unknown): SnapTradePosition[] {
+  // Unified format: { results: [...] }
+  if (raw && typeof raw === 'object' && 'results' in (raw as Record<string, unknown>)) {
+    const list = (raw as { results: UnifiedPosition[] }).results;
+    if (!Array.isArray(list)) return [];
+    return list.map(normaliseOne);
+  }
+  // Legacy format: flat array
+  if (Array.isArray(raw)) return raw.map(normaliseOne);
+  return [];
+}
+
+function normaliseOne(p: UnifiedPosition): SnapTradePosition {
+  const inst = p.instrument;
+  const symbol = inst?.symbol || p.symbol || '';
+  const name = inst?.description || p.name || p.description;
+  const marketValue = p.market_value ?? 0;
+  const costBasis = p.cost_basis ?? 0;
+  const dayChange = p.day_gain ?? p.day_change ?? 0;
+  const dayChangePct = p.day_gain_percentage ?? p.day_change_pct ?? 0;
+  const totalPnl = p.total_pnl ?? (marketValue - costBasis);
+  const totalPnlPct = p.total_pnl_pct ?? p.total_gain_percentage ?? (costBasis > 0 ? (totalPnl / costBasis) * 100 : 0);
+  return {
+    symbol,
+    name: name || symbol,
+    quantity: p.quantity || 0,
+    price: p.price || 0,
+    market_value: marketValue,
+    cost_basis: costBasis,
+    day_change: dayChange,
+    day_change_pct: dayChangePct,
+    total_pnl: totalPnl,
+    total_pnl_pct: totalPnlPct,
+    asset_type: inst?.kind || p.asset_type || 'stock',
+    currency: inst?.currency || p.currency || 'USD',
+  };
+}
+
 // ─── Dev mode — realistic synthetic portfolio ────────────
 const DEV_POSITIONS: SnapTradePosition[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', quantity: 50, price: 192.58, market_value: 9629.00, cost_basis: 8750.00, day_change: 85.50, day_change_pct: 0.89, total_pnl: 879.00, total_pnl_pct: 10.05, asset_type: 'stock' },
@@ -133,15 +199,40 @@ export async function GET(_req: NextRequest) {
 
     for (const account of accounts) {
       try {
+        // Use the unified /positions/all endpoint (v2).
+        // The deprecated /positions endpoint may not return data.
         const posRes = await fetch(
-          `${SNAPTRADE_API}/accounts/${account.id}/positions?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
+          `${SNAPTRADE_API}/accounts/${account.id}/positions/all?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
           { headers },
         );
 
         if (posRes.ok) {
-          const rawPositions: SnapTradePosition[] = await posRes.json();
-          if (Array.isArray(rawPositions)) {
-            allPositions.push(...rawPositions);
+          const raw = await posRes.json();
+          const normalised = normalisePositions(raw);
+          if (normalised.length > 0) {
+            allPositions.push(...normalised);
+          } else {
+            // Fallback: try the legacy endpoint for backwards compat
+            const legacyRes = await fetch(
+              `${SNAPTRADE_API}/accounts/${account.id}/positions?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
+              { headers },
+            );
+            if (legacyRes.ok) {
+              const legacyRaw = await legacyRes.json();
+              const legacyNormalised = normalisePositions(legacyRaw);
+              allPositions.push(...legacyNormalised);
+            }
+          }
+        } else {
+          // Try legacy endpoint as fallback
+          const legacyRes = await fetch(
+            `${SNAPTRADE_API}/accounts/${account.id}/positions?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
+            { headers },
+          );
+          if (legacyRes.ok) {
+            const legacyRaw = await legacyRes.json();
+            const legacyNormalised = normalisePositions(legacyRaw);
+            allPositions.push(...legacyNormalised);
           }
         }
       } catch (posErr) {
