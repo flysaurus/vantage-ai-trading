@@ -2,7 +2,7 @@
 // Returns aggregated account balances across all SnapTrade-
 // connected brokerage accounts for the authenticated user.
 //
-// Dev mode (no SNAPTRADE_PARTNER_CLIENT_ID): returns synthetic
+// Dev mode (no SNAPTRADE_CLIENT_ID): returns synthetic
 // data so the adapter can be tested end-to-end.
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -71,7 +71,7 @@ export async function GET(_req: NextRequest) {
   }
 
   // ── Dev mode — return synthetic balance ─────────────────
-  const clientId = process.env.SNAPTRADE_PARTNER_CLIENT_ID;
+  const clientId = process.env.SNAPTRADE_CLIENT_ID;
   if (!clientId) {
     const brokerName = conn.snaptrade_broker_id || 'broker';
     return NextResponse.json({

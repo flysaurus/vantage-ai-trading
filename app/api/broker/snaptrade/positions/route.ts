@@ -2,7 +2,7 @@
 // Returns aggregated positions across all SnapTrade-connected
 // brokerage accounts for the authenticated user.
 //
-// Dev mode (no SNAPTRADE_PARTNER_CLIENT_ID): returns synthetic
+// Dev mode (no SNAPTRADE_CLIENT_ID): returns synthetic
 // portfolio holdings so the adapter can be tested end-to-end.
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -85,7 +85,7 @@ export async function GET(_req: NextRequest) {
   }
 
   // ── Dev mode — return synthetic portfolio ───────────────
-  const clientId = process.env.SNAPTRADE_PARTNER_CLIENT_ID;
+  const clientId = process.env.SNAPTRADE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json(DEV_POSITIONS);
   }

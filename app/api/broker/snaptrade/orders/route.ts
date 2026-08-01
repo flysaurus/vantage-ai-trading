@@ -209,7 +209,7 @@ export async function GET(_req: NextRequest) {
   }
 
   // ── Dev mode — return synthetic orders ──────────────────
-  const clientId = process.env.SNAPTRADE_PARTNER_CLIENT_ID;
+  const clientId = process.env.SNAPTRADE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json(DEV_ORDERS);
   }

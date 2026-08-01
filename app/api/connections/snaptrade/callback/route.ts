@@ -33,7 +33,7 @@ const SNAPTRADE_BROKER_TO_ID: Record<string, string> = {
 };
 
 function getSnapTradeHeaders() {
-  const clientId = process.env.SNAPTRADE_PARTNER_CLIENT_ID;
+  const clientId = process.env.SNAPTRADE_CLIENT_ID;
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY;
   if (!clientId || !consumerKey) {
     throw new Error('SnapTrade credentials not configured');

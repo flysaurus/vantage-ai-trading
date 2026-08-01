@@ -1043,23 +1043,6 @@ export function PortfolioTab() {
       {/* ── 1. Account Hero ── */}
       <AccountHero account={accountData} isConnected={isBrokerExpected} isShowingDemo={isShowingDemo} />
 
-      {/* ── TEMPORARY DIAGNOSTIC (remove after debugging) ── */}
-      <div style={{
-        margin: '0 16px 8px', padding: '8px 12px', borderRadius: 8,
-        background: '#1e293b', border: '1px solid #475569',
-        fontSize: 11, fontFamily: 'monospace', lineHeight: 1.6,
-        color: '#94a3b8', maxWidth: '100%', overflowX: 'auto',
-      }}>
-        <div><span style={{color:'#38bdf8'}}>isConnected</span>: {String(isConnected)}</div>
-        <div><span style={{color:'#38bdf8'}}>activeAccount</span>: {activeAccount?.id || 'null'} (isDemo={String(activeAccount?.isDemo ?? 'null')}, name={activeAccount?.name || 'null'})</div>
-        <div><span style={{color:'#38bdf8'}}>isShowingDemo</span>: {String(isShowingDemo)} | <span style={{color:'#38bdf8'}}>isBrokerExpected</span>: {String(isBrokerExpected)}</div>
-        <div><span style={{color:'#38bdf8'}}>brokerAccount</span>: {brokerAccount ? `${brokerAccount.equity ? '$'+brokerAccount.equity.toLocaleString() : 'has data'} (${brokerAccount.positions?.length || 0} pos)` : 'NULL'}</div>
-        <div><span style={{color:'#38bdf8'}}>liveAccount</span>: {liveAccount ? `${liveAccount.equity ? '$'+liveAccount.equity.toLocaleString() : 'has data'} (${liveAccount.positions?.length || 0} pos)` : 'NULL'}</div>
-        <div><span style={{color:'#38bdf8'}}>displayAccount</span>: {displayAccount ? `${displayAccount.equity ? '$'+displayAccount.equity.toLocaleString() : 'has data'} (${displayAccount.positions?.length || 0} pos)` : 'NULL'}</div>
-        <div><span style={{color:'#38bdf8'}}>loading</span>: {String(loading)} (brokerLoading={String(brokerLoading)}, liveLoading={String(liveLoading)})</div>
-        <div><span style={{color:'#38bdf8'}}>accountData</span>: ${accountData.equity.toLocaleString()} ({accountData.positions.length} pos)</div>
-      </div>
-
       {/* ── 2. Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>
         <PortfolioChart
