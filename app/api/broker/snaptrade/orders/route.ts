@@ -195,7 +195,7 @@ export async function GET(_req: NextRequest) {
   // ── Get SnapTrade connection + credentials ──────────────
   const { data: conn, error: connErr } = await supabase
     .from('broker_connections')
-    .select('snaptrade_user_id, snaptrade_user_secret, snaptrade_broker_id, status')
+    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, snaptrade_broker_id, status')
     .eq('user_id', authUser.id)
     .eq('connection_type', 'snaptrade')
     .eq('status', 'connected')
@@ -220,8 +220,8 @@ export async function GET(_req: NextRequest) {
   let snaptradeUserSecret = '';
 
   try {
-    snaptradeUserSecret = conn.snaptrade_user_secret
-      ? decryptSnaptradeSecret(conn.snaptrade_user_secret, authUser.id)
+    snaptradeUserSecret = conn.snaptrade_user_secret_encrypted
+      ? decryptSnaptradeSecret(conn.snaptrade_user_secret_encrypted, authUser.id)
       : authUser.id;
   } catch {
     snaptradeUserSecret = authUser.id;

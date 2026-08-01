@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
           connection_type: 'snaptrade',
           snaptrade_broker_id: brokerId,
           snaptrade_user_id: snapTradeUserId,
-          snaptrade_user_secret: encryptedSecret,
+          snaptrade_user_secret_encrypted: encryptedSecret,
           status: 'pending',
           trading_enabled: true, // Will be updated in callback
           created_at: new Date().toISOString(),
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
             connection_type: 'snaptrade',
             snaptrade_broker_id: brokerId,
             snaptrade_user_id: authUser.id,
-            snaptrade_user_secret: encryptedSecret,
+            snaptrade_user_secret_encrypted: encryptedSecret,
             status: 'pending',
             trading_enabled: true,
             created_at: new Date().toISOString(),
