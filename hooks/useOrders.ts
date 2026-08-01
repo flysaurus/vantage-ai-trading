@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOrderStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useAccounts } from '@/context/AccountContext';
 import { syncFilledOrders } from '@/lib/supabase/trades';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
@@ -20,6 +21,7 @@ export function useOrders() {
   const { orders, setOrders, addOrder, updateOrder, activeFilter } =
     useOrderStore();
   const { broker, isConnected } = useBroker();
+  const { activeAccount } = useAccounts();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,10 @@ export function useOrders() {
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const demoOrdersInitialized = useRef(false);
+
+  // Hard boundary: when Demo is the active account, NEVER fetch from broker.
+  // PortfolioContext will push demo orders into Zustand instead.
+  const isShowingDemo = activeAccount?.isDemo ?? false;
 
   // Map broker OrderStatus to app OrderStatus
   const statusMap: Record<string, Order['status']> = {
@@ -65,7 +71,8 @@ export function useOrders() {
   });
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!broker || !isConnected) return;
+    // Hard boundary: NEVER fetch broker orders when Demo is the active account
+    if (!broker || !isConnected || isShowingDemo) return;
 
     try {
       setLoading(true);
@@ -158,14 +165,14 @@ export function useOrders() {
     [broker, updateOrder]
   );
 
-  // Initial load — live data or empty (no fake seed orders in demo mode)
+  // Initial load — broker data or demo state (no fake seed orders)
   useEffect(() => {
     mountedRef.current = true;
-    if (isConnected) {
+    if (isConnected && !isShowingDemo) {
       refresh();
     } else if (user && !demoOrdersInitialized.current) {
-      // Demo mode: start with empty order list (no fake seeding).
-      // Real portfolio content only comes from real trades.
+      // Demo mode (or viewing Demo account): start with empty broker order list.
+      // PortfolioContext will push real demo orders into Zustand via its sync effect.
       setOrders([]);
       setLoading(false);
       setError(null);
@@ -177,7 +184,7 @@ export function useOrders() {
         clearTimeout(retryTimer.current);
       }
     };
-  }, [isConnected, user, refresh, setOrders]);
+  }, [isConnected, isShowingDemo, user, refresh, setOrders]);
 
   // Periodic refresh for active orders
   useEffect(() => {

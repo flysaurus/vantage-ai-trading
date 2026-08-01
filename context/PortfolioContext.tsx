@@ -21,6 +21,8 @@ import React, {
 } from 'react';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useAccounts } from '@/context/AccountContext';
+import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
@@ -244,6 +246,8 @@ const PortfolioContext = createContext<PortfolioContextValue>({
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isConnected, broker } = useBroker();
   const { user } = useAuth();
+  const { activeAccount } = useAccounts();
+  const isShowingDemo = activeAccount?.isDemo ?? false;
 
   // ── Load persisted demo state synchronously (SSR-safe lazy init) ──
   function loadPersistedDemoState(): DemoState | null {
@@ -337,6 +341,34 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [brokerSource, setBrokerSource] = useState<'demo' | 'snaptrade'>('demo');
   const [brokerMeta, setBrokerMeta] = useState<PortfolioContextValue['brokerMeta']>(null);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
+
+  // ── Bridge demo orders to Zustand OrderStore for OrdersTab rendering ──
+  // This is the ONLY path for Demo order data to reach the Orders tab.
+  // When Demo is the active account, push all demoOrders into the Zustand store.
+  // When NOT showing Demo, let useOrders() manage the store (broker data).
+  useEffect(() => {
+    if (!isShowingDemo) return;
+
+    const mappedOrders: Order[] = demoOrders.map(d => ({
+      id: d.id,
+      symbol: d.symbol,
+      side: (d.side?.toLowerCase() || 'buy') as 'buy' | 'sell',
+      type: (d.type?.toLowerCase() || 'market') as any,
+      status: (d.status?.toLowerCase() || 'filled') as any,
+      qty: d.shares || 0,
+      filledQty: d.shares || 0,
+      limitPrice: d.limitPrice,
+      stopPrice: d.stopPrice,
+      filledPrice: d.fillPrice || d.submittedPrice,
+      totalValue: d.totalCost || ((d.shares || 0) * (d.fillPrice || d.submittedPrice || 0)),
+      timeInForce: (d.timeInForce || 'day') as any,
+      createdAt: d.submittedAt || d.createdAt || new Date().toISOString(),
+      updatedAt: d.cancelledAt || d.submittedAt || d.createdAt || new Date().toISOString(),
+      bracketOrder: undefined,
+    }));
+
+    useOrderStore.getState().setOrders(mappedOrders);
+  }, [demoOrders, isShowingDemo]);
 
   // ── Clear stale demo portfolio cache on mount ──
   // Forces fresh data from Supabase instead of stale localStorage

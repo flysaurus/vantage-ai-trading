@@ -49,12 +49,13 @@ function splitCents(value: number): { dollars: string; cents: string } {
 
 // ─── Account Hero Card ────────────────────────────────────
 
-function AccountHero({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
+function AccountHero({ account, isConnected, isShowingDemo }: { account: AccountSummary; isConnected: boolean; isShowingDemo?: boolean }) {
   const { brokerSource, brokerMeta } = useLivePortfolio();
   const { dollars, cents } = splitCents(account.equity);
   
-  // Data source badge
-  const envLabel = brokerSource === 'demo'
+  // Data source badge — respect active-account scoping
+  const actualIsDemo = isShowingDemo ?? (brokerSource === 'demo');
+  const envLabel = actualIsDemo
     ? 'DEMO MODE'
     : brokerMeta?.environment === 'paper'
       ? `${brokerMeta.name} · Paper`
@@ -62,7 +63,7 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
         ? `${brokerMeta.name} · Live`
         : `${brokerMeta.name} · Read-only`;
   
-  const dataSourceStyle = brokerSource === 'demo'
+  const dataSourceStyle = actualIsDemo
     ? undefined
     : brokerMeta?.tradingEnabled
       ? { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }
@@ -72,8 +73,8 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
     <div className="hero-container" style={{ position: 'relative' }}>
       {/* Data source badge */}
       <span
-        className={brokerSource === 'demo' ? 'hero-demo-badge' : ''}
-        style={brokerSource === 'demo' ? undefined : dataSourceStyle as any}
+        className={actualIsDemo ? 'hero-demo-badge' : ''}
+        style={actualIsDemo ? undefined : dataSourceStyle as any}
       >
         {envLabel}
       </span>
@@ -895,12 +896,16 @@ export function PortfolioTab() {
   const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
   const { account: liveAccount, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
+  const { activeAccount } = useAccounts();
   const { user } = useAuth();
 
-  const displayAccount = isConnected
+  // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
+  const isShowingDemo = activeAccount?.isDemo ?? false;
+
+  const displayAccount = (isConnected && !isShowingDemo)
     ? (brokerAccount as AccountSummary | null)
     : (liveAccount as AccountSummary | null);
-  const loading = isConnected ? brokerLoading : liveLoading;
+  const loading = (isConnected && !isShowingDemo) ? brokerLoading : liveLoading;
 
   // ── Close briefs on outside click ──
   useEffect(() => {
@@ -1024,7 +1029,7 @@ export function PortfolioTab() {
   return (
     <div style={{ paddingBottom: 120 }}>
       {/* ── 1. Account Hero ── */}
-      <AccountHero account={accountData} isConnected={isConnected} />
+      <AccountHero account={accountData} isConnected={isConnected && !isShowingDemo} isShowingDemo={isShowingDemo} />
 
       {/* ── 2. Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>
