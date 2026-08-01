@@ -902,10 +902,11 @@ export function PortfolioTab() {
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
 
-  const displayAccount = (isConnected && !isShowingDemo)
+  const isBrokerExpected = isConnected && !isShowingDemo;
+  const displayAccount = isBrokerExpected
     ? (brokerAccount as AccountSummary | null)
     : (liveAccount as AccountSummary | null);
-  const loading = (isConnected && !isShowingDemo) ? brokerLoading : liveLoading;
+  const loading = isBrokerExpected ? brokerLoading : liveLoading;
 
   // ── Close briefs on outside click ──
   useEffect(() => {
@@ -1015,21 +1016,32 @@ export function PortfolioTab() {
     return displayPositions;
   }, [displayPositions, filter]);
 
-  const accountData: AccountSummary = displayAccount || {
+  // Fallback: if broker expected but not loaded yet, show zeroes (loading skeleton)
+  // If demo, use computed demo numbers ($100K starting capital)
+  const accountData: AccountSummary = displayAccount || (isBrokerExpected ? {
+    equity: 0,
+    cash: 0,
+    buyingPower: 0,
+    dayPnl: 0,
+    dayPnlPercent: 0,
+    totalPnl: 0,
+    totalPnlPercent: 0,
+    positions: [],
+  } : {
     equity: correctEquity,
     cash: cashBalance,
-    buyingPower: cashBalance, // same as cash for demo
+    buyingPower: cashBalance,
     dayPnl: totalTodayPnL,
     dayPnlPercent: correctEquity > 0 ? (totalTodayPnL / correctEquity) * 100 : 0,
     totalPnl: correctEquity - 100000,
     totalPnlPercent: ((correctEquity - 100000) / 100000) * 100,
     positions: displayPositions,
-  };
+  });
 
   return (
     <div style={{ paddingBottom: 120 }}>
       {/* ── 1. Account Hero ── */}
-      <AccountHero account={accountData} isConnected={isConnected && !isShowingDemo} isShowingDemo={isShowingDemo} />
+      <AccountHero account={accountData} isConnected={isBrokerExpected} isShowingDemo={isShowingDemo} />
 
       {/* ── 2. Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>

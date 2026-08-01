@@ -248,6 +248,14 @@ export function usePortfolio() {
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Bridge gap: when broker connects, mark loading so UI shows
+  //    skeleton (not stale demo data or $100K hardcoded fallback)
+  useEffect(() => {
+    if (isConnected) {
+      setLoading(true);
+    }
+  }, [isConnected, setLoading]);
+
   // ── Demo data when no broker connected ────────────────────
   useEffect(() => {
     if (isConnected) return;
