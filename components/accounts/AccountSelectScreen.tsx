@@ -14,7 +14,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAccounts } from '@/context/AccountContext';
 import type { AccountEntry } from '@/app/api/accounts/route';
-import { PlusCircle, Check, ArrowRight } from 'lucide-react';
+import { PlusCircle, ArrowRight } from 'lucide-react';
 
 const SKIP_KEY = 'vantage:skipAccountSelect';
 
@@ -100,7 +100,6 @@ export default function AccountSelectScreen({
   const { accounts, isLoading } = useAccounts();
   const brokerLogos = useBrokerLogos();
   const [dontShow, setDontShow] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [visible, setVisible] = useState(false);
 
   // Fade-in on mount
@@ -109,19 +108,6 @@ export default function AccountSelectScreen({
   const handleSelect = (accountId: string) => {
     if (dontShow) localStorage.setItem(SKIP_KEY, 'true');
     onSelect(accountId);
-  };
-
-  const handleDismiss = () => {
-    if (dontShow) {
-      setShowConfirm(true);
-    } else {
-      onDismiss();
-    }
-  };
-
-  const handleConfirmDismiss = () => {
-    localStorage.setItem(SKIP_KEY, 'true');
-    onDismiss();
   };
 
   // Sort: Demo first, then live/paper brokers (MUST be before any early return)
@@ -162,17 +148,6 @@ export default function AccountSelectScreen({
           Loading accounts…
         </p>
       </div>
-    );
-  }
-
-  // ── Dismiss confirmation dialog ──
-  if (showConfirm) {
-    return (
-      <DismissConfirmDialog
-        visible={visible}
-        onConfirm={handleConfirmDismiss}
-        onCancel={() => setShowConfirm(false)}
-      />
     );
   }
 
@@ -353,25 +328,6 @@ export default function AccountSelectScreen({
               Don&apos;t show this again
             </span>
           </label>
-
-          <button
-            onClick={handleDismiss}
-            style={{
-              fontSize: '13px',
-              color: textTertiary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              padding: '4px 8px',
-              borderRadius: '8px',
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = textPrimary; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = textTertiary; }}
-          >
-            Skip for now
-          </button>
         </div>
 
         {/* Bottom spacer */}
@@ -618,128 +574,6 @@ function AccountCard({
       {/* Select chevron */}
       <ArrowRight size={16} color={textTertiary} style={{ flexShrink: 0, opacity: 0.5 }} />
     </button>
-  );
-}
-
-// ─── Dismiss confirmation — matching Direction A dialog ─────
-
-function DismissConfirmDialog({
-  visible,
-  onConfirm,
-  onCancel,
-}: {
-  visible: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const [fade, setFade] = useState(false);
-  useEffect(() => { requestAnimationFrame(() => setFade(true)); }, []);
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 110,
-        background: 'rgba(5,8,16,0.8)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px',
-        transition: 'opacity 200ms',
-        opacity: fade ? 1 : 0,
-      }}
-    >
-      <div
-        style={{
-          background: '#0e1420',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '20px',
-          padding: '24px',
-          maxWidth: '360px',
-          width: '100%',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: emeraldDim,
-              border: '1px solid rgba(61,220,151,0.18)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Check size={18} color={emerald} strokeWidth={2} />
-          </div>
-          <div>
-            <h3
-              style={{
-                fontSize: '14px',
-                fontWeight: 650,
-                color: textPrimary,
-                margin: 0,
-                fontFamily: 'inherit',
-              }}
-            >
-              Got it!
-            </h3>
-            <p
-              style={{
-                fontSize: '13px',
-                color: textSecondary,
-                margin: '4px 0 0',
-                lineHeight: 1.5,
-                fontFamily: 'inherit',
-              }}
-            >
-              You can always switch or add brokers from <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Settings</strong>.
-              This screen won&apos;t appear on future logins.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={onConfirm}
-          style={{
-            width: '100%',
-            padding: '10px 0',
-            borderRadius: '12px',
-            background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: textPrimary,
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            marginBottom: '8px',
-          }}
-        >
-          Enter Vantage
-        </button>
-        <button
-          onClick={onCancel}
-          style={{
-            width: '100%',
-            padding: '10px 0',
-            borderRadius: '12px',
-            background: 'none',
-            border: 'none',
-            color: textTertiary,
-            fontSize: '13px',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          Never mind, show every time
-        </button>
-      </div>
-    </div>
   );
 }
 
