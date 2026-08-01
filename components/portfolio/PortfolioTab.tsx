@@ -54,11 +54,13 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
   const { dollars, cents } = splitCents(account.equity);
   
   // Data source badge
-  const dataSourceLabel = brokerSource === 'demo'
+  const envLabel = brokerSource === 'demo'
     ? 'DEMO MODE'
-    : brokerMeta?.tradingEnabled
-      ? `${brokerMeta.name} · Live`
-      : `${brokerMeta.name} · Read-only`;
+    : brokerMeta?.environment === 'paper'
+      ? `${brokerMeta.name} · Paper`
+      : brokerMeta?.tradingEnabled
+        ? `${brokerMeta.name} · Live`
+        : `${brokerMeta.name} · Read-only`;
   
   const dataSourceStyle = brokerSource === 'demo'
     ? undefined
@@ -73,7 +75,7 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
         className={brokerSource === 'demo' ? 'hero-demo-badge' : ''}
         style={brokerSource === 'demo' ? undefined : dataSourceStyle as any}
       >
-        {dataSourceLabel}
+        {envLabel}
       </span>
 
       {/* Label */}

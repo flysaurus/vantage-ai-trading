@@ -254,6 +254,43 @@ export function SettingsTab() {
         </div>
       </div>
 
+      {/* Switch Account */}
+      <div
+        style={{
+          margin: '0 16px 12px 16px',
+          background: '#1a2235',
+          border: '1px solid rgba(34, 211, 238, 0.15)',
+          borderRadius: '12px',
+          padding: '16px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>
+              🔄 Switch Account
+            </p>
+            <p style={{ fontSize: '11px', color: '#e2e8f0', marginTop: '2px' }}>
+              Change which account is active
+            </p>
+          </div>
+          <button
+            onClick={() => router.push('/?account-select=true')}
+            style={{
+              background: 'rgba(34, 211, 238, 0.1)',
+              border: '1px solid rgba(34, 211, 238, 0.3)',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              fontSize: '12px',
+              fontWeight: '600',
+              color: '#22d3ee',
+              cursor: 'pointer',
+            }}
+          >
+            Switch
+          </button>
+        </div>
+      </div>
+
       {/* ═══════════════════════════════════════════════════════
           PROFILE & IDENTITY
           ═══════════════════════════════════════════════════════ */}

@@ -213,7 +213,7 @@ interface PortfolioContextValue {
   /** Data source: 'demo' or 'snaptrade' */
   brokerSource: 'demo' | 'snaptrade';
   /** Broker metadata for UI badges */
-  brokerMeta: { slug: string; name: string; tradingEnabled: boolean; isDemo: boolean } | null;
+  brokerMeta: { slug: string; name: string; tradingEnabled: boolean; isDemo: boolean; environment?: 'paper' | 'live' | 'demo' } | null;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue>({
@@ -1216,6 +1216,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           name: first.name || first.broker || 'Connected Broker',
           tradingEnabled: first.tradingEnabled ?? false,
           isDemo: false,
+          environment: (first as any).environment || 'live',
         });
 
         // Fetch live portfolio data

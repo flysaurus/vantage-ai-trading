@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
@@ -24,6 +24,7 @@ import WatchlistTab from '@/components/ai/WatchlistTab';
 import { BrokerProvider, useBroker } from '@/components/providers/BrokerProvider';
 import { AccountProvider, useAccounts } from '@/context/AccountContext';
 import { AccountSwitcher } from '@/components/accounts/AccountSwitcher';
+import AccountSelectScreen from '@/components/accounts/AccountSelectScreen';
 import { PortfolioProvider, useLivePortfolio } from '@/context/PortfolioContext';
 import { useAppState } from '@/lib/app-state';
 import { InvestorStyleOnboarding } from '@/components/onboarding/InvestorStyleOnboarding';
@@ -58,6 +59,12 @@ function AppShell() {
   >([]);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ── Account Select Screen ─────────────────────────────────
+  const [showAccountSelect, setShowAccountSelect] = useState(false);
+  const [firstLoginChecked, setFirstLoginChecked] = useState(false);
+  const { setActiveAccount } = useAccounts();
 
   // Derive auth state from Supabase (new auth system)
   const isDataLoaded = state !== 'loading';
@@ -194,6 +201,38 @@ function AppShell() {
     }
   }, [setTab]);
 
+  // ── Account Select screen — first login OR Settings entry ──
+  // Reacts to both (a) initial mount and (b) ?account-select=true from Settings
+  useEffect(() => {
+    // Settings entry: show regardless of skip preference
+    if (searchParams?.get('account-select') === 'true') {
+      setShowAccountSelect(true);
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    // First login: show once unless user previously opted out
+    if (!firstLoginChecked) {
+      setFirstLoginChecked(true);
+      if (typeof window !== 'undefined' && !localStorage.getItem('vantage:skipAccountSelect')) {
+        setShowAccountSelect(true);
+      }
+    }
+  }, [searchParams, firstLoginChecked]);
+
+  // ── Account Select handlers ────────────────────────────
+  const handleAccountSelect = useCallback((accountId: string) => {
+    setActiveAccount(accountId);
+    setShowAccountSelect(false);
+  }, [setActiveAccount]);
+
+  const handleAddBroker = useCallback(() => {
+    router.push('/broker-setup');
+  }, [router]);
+
+  const handleAccountSelectDismiss = useCallback(() => {
+    setShowAccountSelect(false);
+  }, []);
+
   // ── Render guards ─────────────────────────────────────
 
   if (!isDataLoaded || !effectiveUser) return null;
@@ -258,6 +297,15 @@ function AppShell() {
       `}</style>
 
       {showGreeting && <GreetingModal onComplete={() => setShowGreeting(false)} />}
+
+      {/* Account Select overlay — full-screen, shown on first login or from Settings */}
+      {showAccountSelect && (
+        <AccountSelectScreen
+          onSelect={handleAccountSelect}
+          onAddBroker={handleAddBroker}
+          onDismiss={handleAccountSelectDismiss}
+        />
+      )}
     </div>
   );
 }

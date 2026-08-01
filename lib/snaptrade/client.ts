@@ -198,6 +198,31 @@ export async function listAccounts(
   });
 }
 
+/**
+ * Fetch per-currency cash and buying power for a single SnapTrade account.
+ * Uses GET /accounts/{accountId}/balances.
+ *
+ * Returns a list of currency balances — sum across currencies to get totals.
+ */
+export async function getAccountBalances(
+  accountId: string,
+  userId: string,
+  userSecret: string,
+): Promise<SnapTradeBalance[]> {
+  return snapTradeFetch<SnapTradeBalance[]>(
+    `/accounts/${accountId}/balances`,
+    null,
+    { userId, userSecret },
+  );
+}
+
+/** Per-currency balance entry from SnapTrade balances endpoint. */
+export interface SnapTradeBalance {
+  currency?: { code: string; name?: string; id?: string };
+  cash: number | null;
+  buying_power: number | null;
+}
+
 // ─── Higher-level helpers ────────────────────────────────────
 
 /**

@@ -8,6 +8,7 @@
 // except order execution work normally for viewing.
 
 import { snapTradeFetch } from '@/lib/snaptrade/auth';
+import { getAccountBalances } from '@/lib/snaptrade/client';
 import type {
   BrokerEngine, BrokerPosition, BrokerAccountSummary,
   BrokerOrder, BrokerBasketOrder, OrderRequest, OrderResult,
@@ -95,8 +96,26 @@ export class SnapTradeBroker implements BrokerEngine {
 
     for (const a of accounts) {
       totalValue += a.total_value ?? 0;
-      cashBalance += a.cash ?? 0;
-      buyingPower += a.buying_power ?? 0;
+      // If we already have cash/buying_power from the accounts list, use them
+      if (a.cash != null || a.buying_power != null) {
+        cashBalance += a.cash ?? 0;
+        buyingPower += a.buying_power ?? 0;
+      } else {
+        // Fall back to the dedicated balances endpoint
+        try {
+          const balances = await getAccountBalances(
+            a.id,
+            this.userId,
+            this.userSecret,
+          );
+          for (const b of balances) {
+            cashBalance += b.cash ?? 0;
+            buyingPower += b.buying_power ?? 0;
+          }
+        } catch {
+          // Balances endpoint unavailable — leave at 0
+        }
+      }
     }
 
     const summary: BrokerAccountSummary = {

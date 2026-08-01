@@ -17,6 +17,7 @@ export interface AccountEntry {
   id: string;
   name: string;
   broker: string;
+  brokerageSlug?: string; // e.g. 'ALPACA-PAPER' — for logo lookups
   isDemo: boolean;
   tradingEnabled: boolean;
   totalValue: number;
@@ -121,6 +122,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
           id: `snaptrade:${conn.id}`,
           name: accountName,
           broker: mapSlugToName(conn.brokerage_slug),
+          brokerageSlug: conn.brokerage_slug,
           isDemo: false,
           tradingEnabled: conn.trading_enabled ?? false,
           totalValue,
