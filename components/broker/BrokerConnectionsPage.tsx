@@ -671,15 +671,15 @@ export function BrokerConnectionsPage({
     ? getBrokerName(brokerId)
     : '';
 
-  // ── Build broker lists grouped by capability ────────────
-  const tradingBrokers: BrokerRow[] = [
+  // ── Build broker lists grouped by capability (filter out connected broker) ──
+  const allTradingBrokers: BrokerRow[] = [
     {
       id: 'alpaca',
       name: 'Alpaca',
       logo: '🦙',
       capability: 'trading',
       capabilityLabel: 'Trading available',
-      action: () => handleComingSoon('Alpaca'),
+      action: () => handleSnaptradeConnect('alpaca'),
     },
     {
       id: 'tastytrade',
@@ -691,7 +691,9 @@ export function BrokerConnectionsPage({
     },
   ];
 
-  const readonlyBrokers: BrokerRow[] = [
+  const tradingBrokers = allTradingBrokers.filter(b => b.id !== brokerId);
+
+  const allReadonlyBrokers: BrokerRow[] = [
     {
       id: 'fidelity',
       name: 'Fidelity',
@@ -725,6 +727,8 @@ export function BrokerConnectionsPage({
       action: () => handleSnaptradeConnect('vanguard'),
     },
   ];
+
+  const readonlyBrokers = allReadonlyBrokers.filter(b => b.id !== brokerId);
 
   const comingSoonBrands = ['IBKR', 'Chase', 'Webull', 'Coinbase'];
 

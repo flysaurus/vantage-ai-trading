@@ -1,6 +1,8 @@
-// ─── Account Select Screen ──────────────────────────────────
+// ─── Account Select Screen — Direction A visual language ──
 // Full-screen card-based account selector shown after auth.
-// Reuses /api/accounts for data + /api/connections/snaptrade-brokerages for logos.
+// Same visual grammar as BrokerConnectionsPage: square logo tiles,
+// consistent badge pills (PAPER/DEMO/trading-enabled), accent bars,
+// matching card radius/spacing.
 //
 // Flow:
 //   - Shows on first login (unless "don't show again" was checked)
@@ -12,7 +14,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAccounts } from '@/context/AccountContext';
 import type { AccountEntry } from '@/app/api/accounts/route';
-import { PlusCircle, Check, X } from 'lucide-react';
+import { PlusCircle, Check, ArrowRight } from 'lucide-react';
 
 const SKIP_KEY = 'vantage:skipAccountSelect';
 
@@ -50,6 +52,42 @@ interface AccountSelectScreenProps {
   onAddBroker: () => void;
   /** Called when user dismisses the screen (either by selecting or skipping). */
   onDismiss: () => void;
+}
+
+// ─── Design tokens (same as BrokerConnectionsPage) ──────────
+
+const bgPrimary = '#0a0e16';
+const bgRoot = '#050810';
+const cardBg = 'rgba(255,255,255,0.035)';
+const cardBorder = 'rgba(255,255,255,0.08)';
+const cardBorderHover = 'rgba(255,255,255,0.14)';
+const textPrimary = '#eef2f7';
+const textSecondary = '#8b96ab';
+const textTertiary = '#5c6579';
+const emerald = '#3ddc97';
+const emeraldDim = 'rgba(61,220,151,0.12)';
+const amber = '#f0b73f';
+const amberDim = 'rgba(240,183,63,0.12)';
+const cyan = '#38d6e8';
+const cyanDim = 'rgba(56,214,232,0.08)';
+const divider = 'rgba(255,255,255,0.06)';
+
+// ─── Badge style helper ─────────────────────────────────────
+
+function badgeStyle(bg: string, color: string): React.CSSProperties {
+  return {
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
+    fontSize: '10.5px',
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    padding: '2.5px 7px',
+    borderRadius: '6px',
+    background: bg,
+    color,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  };
 }
 
 // ─── Main component ──────────────────────────────────────────
@@ -97,11 +135,32 @@ export default function AccountSelectScreen({
   // ── Loading state ──
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-[100] bg-[#06060b] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-white/40 animate-spin" />
-          <p className="text-sm text-white/30">Loading accounts…</p>
-        </div>
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 100,
+          background: bgRoot,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '16px',
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.1)',
+            borderTopColor: 'rgba(255,255,255,0.4)',
+            animation: 'spin 0.8s linear infinite',
+          }}
+        />
+        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', fontFamily: 'inherit' }}>
+          Loading accounts…
+        </p>
       </div>
     );
   }
@@ -119,27 +178,62 @@ export default function AccountSelectScreen({
 
   return (
     <div
-      className={`fixed inset-0 z-[100] bg-[#06060b] overflow-y-auto transition-opacity duration-300 ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        background: `radial-gradient(ellipse 120% 60% at 50% -10%, rgba(34,211,238,0.18), transparent 55%), ${bgPrimary}`,
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        transition: 'opacity 300ms',
+        opacity: visible ? 1 : 0,
+      }}
     >
-      <div className="min-h-full flex flex-col max-w-2xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 mb-5">
-            <span className="text-2xl">🦊</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white mb-2">
+      <div
+        style={{
+          minHeight: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          maxWidth: '480px',
+          margin: '0 auto',
+          padding: '0 20px 32px',
+        }}
+      >
+        {/* Page Head — matching BrokerConnectionsPage */}
+        <div style={{ padding: '40px 0 16px' }}>
+          <h1
+            style={{
+              fontFamily: 'inherit',
+              fontSize: '26px',
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: textPrimary,
+              marginBottom: '6px',
+              marginTop: 0,
+            }}
+          >
             Welcome to Vantage
           </h1>
-          <p className="text-sm text-white/40 max-w-md mx-auto">
+          <p
+            style={{
+              fontFamily: 'inherit',
+              fontSize: '14.5px',
+              color: textSecondary,
+              lineHeight: 1.5,
+              maxWidth: '320px',
+              margin: 0,
+            }}
+          >
             Choose which account you&apos;d like to view. You can switch or add brokers
             anytime from Settings.
           </p>
         </div>
 
+        {/* ─── CONNECTED ACCOUNTS section ─── */}
+        <SectionHeader accent={cyan} title="Your Accounts" count={sorted.length} />
+
         {/* Account cards */}
-        <div className="space-y-3 flex-1">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {sorted.map((account) => (
             <AccountCard
               key={account.id}
@@ -149,57 +243,204 @@ export default function AccountSelectScreen({
             />
           ))}
 
-          {/* Add broker card */}
+          {/* Add broker card — matching Direction A dashed+emerald style */}
           <button
             onClick={onAddBroker}
-            className="w-full rounded-2xl border border-dashed border-white/15
-                       bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/25
-                       p-5 flex items-center gap-4 transition-all group"
+            style={{
+              width: '100%',
+              padding: '16px',
+              borderRadius: '16px',
+              border: '1.5px dashed rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.02)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '13px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              fontFamily: 'inherit',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+            }}
           >
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20
-                            flex items-center justify-center shrink-0
-                            group-hover:bg-emerald-500/15 group-hover:border-emerald-500/30
-                            transition-all">
-              <PlusCircle className="h-6 w-6 text-emerald-400" strokeWidth={1.5} />
+            <div
+              style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '11px',
+                background: emeraldDim,
+                border: '1px solid rgba(61,220,151,0.18)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <PlusCircle size={20} color={emerald} strokeWidth={1.5} />
             </div>
-            <div className="text-left">
-              <p className="font-medium text-emerald-400 group-hover:text-emerald-300 transition-colors">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: '15.5px',
+                  fontWeight: 650,
+                  letterSpacing: '-0.01em',
+                  color: emerald,
+                  marginBottom: '2px',
+                }}
+              >
                 Add a broker
-              </p>
-              <p className="text-xs text-white/30 mt-0.5">
+              </div>
+              <div
+                style={{
+                  fontSize: '12.5px',
+                  color: textTertiary,
+                  lineHeight: 1.4,
+                }}
+              >
                 Connect Alpaca, Tastytrade, E*TRADE, or others
-              </p>
+              </div>
             </div>
+            <ArrowRight size={16} color={textTertiary} style={{ flexShrink: 0 }} />
           </button>
         </div>
 
         {/* Footer: "Don't show again" + dismiss */}
-        <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
-          <label className="flex items-center gap-2.5 cursor-pointer group">
+        <div
+          style={{
+            marginTop: 'auto',
+            paddingTop: '24px',
+            borderTop: `1px solid ${divider}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}
+        >
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+            }}
+          >
             <input
               type="checkbox"
               checked={dontShow}
               onChange={(e) => setDontShow(e.target.checked)}
-              className="w-4 h-4 rounded border-white/20 bg-white/5 accent-emerald-500 cursor-pointer"
+              style={{
+                width: '16px',
+                height: '16px',
+                borderRadius: '4px',
+                border: `1px solid rgba(255,255,255,0.2)`,
+                accentColor: emerald,
+                cursor: 'pointer',
+              }}
             />
-            <span className="text-sm text-white/40 group-hover:text-white/60 transition-colors">
+            <span
+              style={{
+                fontSize: '13px',
+                color: textTertiary,
+                fontFamily: 'inherit',
+              }}
+            >
               Don&apos;t show this again
             </span>
           </label>
 
           <button
             onClick={handleDismiss}
-            className="text-sm text-white/40 hover:text-white/70 transition-colors"
+            style={{
+              fontSize: '13px',
+              color: textTertiary,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              padding: '4px 8px',
+              borderRadius: '8px',
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = textTertiary; }}
           >
             Skip for now
           </button>
         </div>
+
+        {/* Bottom spacer */}
+        <div style={{ height: '20px', flexShrink: 0 }} />
       </div>
     </div>
   );
 }
 
-// ─── Account Card ────────────────────────────────────────────
+// ─── Section Header — reusable (same as BrokerConnectionsPage) ──
+
+function SectionHeader({
+  accent,
+  title,
+  count,
+}: {
+  accent: string;
+  title: string;
+  count?: number;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        margin: '26px 0 12px',
+      }}
+    >
+      <div
+        style={{
+          width: '3px',
+          height: '13px',
+          borderRadius: '2px',
+          background: accent,
+        }}
+      />
+      <span
+        style={{
+          fontFamily: 'inherit',
+          fontSize: '12px',
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: textSecondary,
+        }}
+      >
+        {title}
+      </span>
+      {count !== undefined && (
+        <span
+          style={{
+            fontFamily: 'inherit',
+            fontSize: '11px',
+            color: textTertiary,
+            background: cardBg,
+            padding: '2px 7px',
+            borderRadius: '20px',
+            fontWeight: 600,
+          }}
+        >
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Account Card — Direction A matching card system ────────
 
 function AccountCard({
   account,
@@ -210,83 +451,177 @@ function AccountCard({
   logo: BrokerLogo | undefined;
   onSelect: () => void;
 }) {
+  const isDemo = account.isDemo;
+  const isPaper = !isDemo && account.environment === 'paper';
+  const isReadonly = !isDemo && !account.tradingEnabled;
+
+  // Left accent bar color
+  const accentColor = isDemo ? amber : (isReadonly ? amber : emerald);
+
   return (
     <button
       onClick={onSelect}
-      className="w-full rounded-2xl border border-white/10 bg-white/[0.03]
-                 hover:bg-white/[0.07] hover:border-white/20
-                 p-5 flex items-center gap-4 text-left transition-all
-                 active:scale-[0.985] group"
+      style={{
+        width: '100%',
+        padding: '16px',
+        borderRadius: '16px',
+        background: cardBg,
+        border: `1px solid ${cardBorder}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '13px',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        fontFamily: 'inherit',
+        color: textPrimary,
+        textAlign: 'left',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = cardBorderHover;
+        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = cardBorder;
+        e.currentTarget.style.background = cardBg;
+      }}
     >
-      {/* Logo / icon */}
-      {account.isDemo ? (
-        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20
-                        flex items-center justify-center shrink-0">
-          <span className="text-xl">🎮</span>
+      {/* Left accent bar */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: '3px',
+          background: accentColor,
+        }}
+      />
+
+      {/* Logo tile — square, matching BrokerConnectionsPage */}
+      {isDemo ? (
+        <div
+          style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '11px',
+            background: amberDim,
+            border: '1px solid rgba(240,183,63,0.18)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            flexShrink: 0,
+          }}
+        >
+          🎮
         </div>
       ) : logo?.logoUrl ? (
-        <div className="w-12 h-12 rounded-xl bg-white p-2 shrink-0 flex items-center justify-center">
+        <div
+          style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '11px',
+            background: '#fff',
+            padding: '7px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            overflow: 'hidden',
+          }}
+        >
           <img
             src={logo.logoUrl}
             alt={account.broker}
-            className="max-w-full max-h-full object-contain"
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
           />
         </div>
       ) : (
-        <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center
-                        text-lg font-bold shrink-0 text-white/50
-                        group-hover:bg-white/15 group-hover:text-white/70 transition-all">
+        <div
+          style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '11px',
+            background: 'rgba(255,255,255,0.07)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '17px',
+            fontWeight: 700,
+            color: 'rgba(255,255,255,0.4)',
+            flexShrink: 0,
+          }}
+        >
           {account.broker.charAt(0)}
         </div>
       )}
 
       {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-white truncate">{account.name}</span>
-          {account.isDemo && (
-            <span className="text-[10px] px-1.5 py-px rounded-md bg-amber-500/15 border border-amber-500/20 text-amber-400 shrink-0 uppercase tracking-wide font-semibold">
-              Demo
-            </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '7px',
+            marginBottom: '4px',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '15.5px',
+              fontWeight: 650,
+              letterSpacing: '-0.01em',
+              color: textPrimary,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {account.name}
+          </span>
+
+          {/* Badges — consistent pill treatment */}
+          {isDemo && (
+            <span style={badgeStyle(amberDim, amber)}>DEMO</span>
           )}
-          {!account.isDemo && account.environment === 'paper' && (
-            <span className="text-[10px] px-1.5 py-px rounded-md bg-amber-500/15 border border-amber-500/20 text-amber-400 shrink-0 uppercase tracking-wide font-semibold">
-              Paper
-            </span>
+          {isPaper && (
+            <span style={badgeStyle(amberDim, amber)}>PAPER</span>
           )}
-          {!account.tradingEnabled && !account.isDemo && (
-            <span className="text-[10px] px-1.5 py-px rounded-md bg-slate-500/15 border border-slate-500/20 text-slate-400 shrink-0 uppercase tracking-wide font-semibold">
-              Read-only
-            </span>
+          {isReadonly && (
+            <span style={badgeStyle(amberDim, amber)}>READ-ONLY</span>
+          )}
+          {!isDemo && !isReadonly && (
+            <span style={badgeStyle(emeraldDim, emerald)}>TRADING</span>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-sm text-white/60 font-mono">
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12.5px',
+            color: textTertiary,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          <span style={{ color: 'rgba(255,255,255,0.6)' }}>
             {formatCurrency(account.totalValue)}
           </span>
-          <span className="text-[11px] text-white/20">·</span>
-          <span className="text-[11px] text-white/25">{account.broker}</span>
-          {account.tradingEnabled && !account.isDemo && (
-            <>
-              <span className="text-[11px] text-white/20">·</span>
-              <span className="text-[11px] text-emerald-400/70">Trading</span>
-            </>
-          )}
+          <span style={{ opacity: 0.4 }}>·</span>
+          <span>{account.broker}</span>
         </div>
       </div>
 
-      {/* Select arrow */}
-      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center
-                      shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <svg className="w-4 h-4 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </div>
+      {/* Select chevron */}
+      <ArrowRight size={16} color={textTertiary} style={{ flexShrink: 0, opacity: 0.5 }} />
     </button>
   );
 }
 
-// ─── Dismiss confirmation ────────────────────────────────────
+// ─── Dismiss confirmation — matching Direction A dialog ─────
 
 function DismissConfirmDialog({
   visible,
@@ -301,29 +636,105 @@ function DismissConfirmDialog({
   useEffect(() => { requestAnimationFrame(() => setFade(true)); }, []);
 
   return (
-    <div className={`fixed inset-0 z-[110] bg-[#06060b]/80 backdrop-blur-sm flex items-center justify-center p-4 transition-opacity duration-200 ${fade ? 'opacity-100' : 'opacity-0'}`}>
-      <div className="bg-[#0e0e16] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-            <Check className="h-5 w-5 text-emerald-400" strokeWidth={1.5} />
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 110,
+        background: 'rgba(5,8,16,0.8)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        transition: 'opacity 200ms',
+        opacity: fade ? 1 : 0,
+      }}
+    >
+      <div
+        style={{
+          background: '#0e1420',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '20px',
+          padding: '24px',
+          maxWidth: '360px',
+          width: '100%',
+          boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '10px',
+              background: emeraldDim,
+              border: '1px solid rgba(61,220,151,0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Check size={18} color={emerald} strokeWidth={2} />
           </div>
           <div>
-            <h3 className="font-semibold text-white text-sm">Got it!</h3>
-            <p className="text-sm text-white/50 mt-1">
-              You can always switch or add brokers from <strong className="text-white/70">Settings</strong>.
+            <h3
+              style={{
+                fontSize: '14px',
+                fontWeight: 650,
+                color: textPrimary,
+                margin: 0,
+                fontFamily: 'inherit',
+              }}
+            >
+              Got it!
+            </h3>
+            <p
+              style={{
+                fontSize: '13px',
+                color: textSecondary,
+                margin: '4px 0 0',
+                lineHeight: 1.5,
+                fontFamily: 'inherit',
+              }}
+            >
+              You can always switch or add brokers from <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Settings</strong>.
               This screen won&apos;t appear on future logins.
             </p>
           </div>
         </div>
         <button
           onClick={onConfirm}
-          className="w-full py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm font-medium text-white hover:bg-white/15 transition-all active:scale-[0.98]"
+          style={{
+            width: '100%',
+            padding: '10px 0',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: textPrimary,
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            marginBottom: '8px',
+          }}
         >
           Enter Vantage
         </button>
         <button
           onClick={onCancel}
-          className="w-full py-2.5 rounded-xl mt-2 text-sm text-white/40 hover:text-white/70 transition-colors"
+          style={{
+            width: '100%',
+            padding: '10px 0',
+            borderRadius: '12px',
+            background: 'none',
+            border: 'none',
+            color: textTertiary,
+            fontSize: '13px',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
         >
           Never mind, show every time
         </button>
