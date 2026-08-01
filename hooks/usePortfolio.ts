@@ -252,6 +252,7 @@ export function usePortfolio() {
   //    set loading so UI shows skeleton (not stale demo or hardcoded fallback)
   useEffect(() => {
     if (isConnected) {
+      console.error('[usePortfolio] isConnected → true — clearing stale account, setting loading');
       clearAccount();
       setLoading(true);
     }
@@ -288,16 +289,28 @@ export function usePortfolio() {
   }, [isConnected, user?.investorStyle, setAccount]);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!broker || !isConnected) return;
+    if (!broker || !isConnected) {
+      console.error('[usePortfolio] refresh skipped — broker:', !!broker, 'isConnected:', isConnected);
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
 
+      console.error('[usePortfolio] refresh started — calling broker.getAccount() + getPositions()');
       const [brokerAccount, brokerPositions] = await Promise.all([
         broker.getAccount(),
         broker.getPositions(),
       ]);
+
+      console.error('[usePortfolio] broker data received:', {
+        equity: brokerAccount.equity,
+        cash: brokerAccount.cash,
+        buyingPower: brokerAccount.buyingPower,
+        positions: brokerPositions.length,
+        positionSymbols: brokerPositions.slice(0, 5).map(p => p.symbol),
+      });
 
       if (!mountedRef.current) return;
 
@@ -390,7 +403,7 @@ export function usePortfolio() {
 
       const message =
         err instanceof Error ? err.message : 'Failed to load portfolio';
-      console.error('[usePortfolio] Error:', message);
+      console.error('[usePortfolio] ERROR:', message, 'Stack:', (err as Error).stack);
       setError(message);
       setLoading(false);
 

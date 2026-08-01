@@ -574,8 +574,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         };
 
         setAccount(summary);
+        console.error('[portfolio context] broker-load SUCCESS — equity:', summary.equity, 'positions:', summary.positions.length);
       } catch (e) {
-        console.error('[portfolio] Failed to load broker account:', e);
+        console.error('[portfolio context] broker-load FAILED:', e);
       }
     };
 
