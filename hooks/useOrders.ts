@@ -137,7 +137,7 @@ export function useOrders() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, isConnected, setOrders]);
+  }, [broker, isConnected, isShowingDemo, setOrders]);
 
   const placeOrder = useCallback(
     async (
