@@ -28,7 +28,6 @@ export function useOrders() {
 
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const demoOrdersInitialized = useRef(false);
 
   // Hard boundary: when Demo is the active account, NEVER fetch from broker.
   // PortfolioContext will push demo orders into Zustand instead.
@@ -165,18 +164,16 @@ export function useOrders() {
     [broker, updateOrder]
   );
 
-  // Initial load — broker data or demo state (no fake seed orders)
+  // Initial load
   useEffect(() => {
     mountedRef.current = true;
     if (isConnected && !isShowingDemo) {
       refresh();
-    } else if (user && !demoOrdersInitialized.current) {
-      // Demo mode (or viewing Demo account): start with empty broker order list.
-      // PortfolioContext will push real demo orders into Zustand via its sync effect.
-      setOrders([]);
+    } else {
+      // Demo / no broker: mark loaded, don't touch Zustand orders.
+      // PortfolioContext pushes demo orders into Zustand via its sync effect.
       setLoading(false);
       setError(null);
-      demoOrdersInitialized.current = true;
     }
     return () => {
       mountedRef.current = false;

@@ -135,10 +135,47 @@ export class SnapTradeAdapter implements BrokerAdapter {
     return positions.find(p => p.symbol === symbol) || null;
   }
 
-  // ─── Orders (read-only — not supported) ─────────────────
+  // ─── Orders ─────────────────────────────────────────────
 
   async getOrders(_params?: { status?: OrderStatus; limit?: number }): Promise<BrokerOrder[]> {
-    return [];
+    const raw = await this.snaptradeFetch<Array<{
+      id: string;
+      symbol: string;
+      name: string;
+      side: 'buy' | 'sell';
+      type: string;
+      status: string;
+      qty: number;
+      filledQty: number;
+      limitPrice?: number;
+      stopPrice?: number;
+      filledPrice?: number;
+      totalValue?: number;
+      timeInForce: string;
+      createdAt: string;
+      updatedAt: string;
+    }>>('/api/broker/snaptrade/orders');
+
+    if (!Array.isArray(raw)) return [];
+
+    return raw.map((o) => ({
+      id: o.id,
+      symbol: o.symbol,
+      side: o.side,
+      type: (o.type || 'market') as BrokerOrder['type'],
+      status: (o.status || 'filled') as BrokerOrder['status'],
+      qty: o.qty || 0,
+      filledQty: o.filledQty || 0,
+      limitPrice: o.limitPrice,
+      stopPrice: o.stopPrice,
+      filledPrice: o.filledPrice,
+      totalValue: o.totalValue,
+      timeInForce: (o.timeInForce || 'day') as BrokerOrder['timeInForce'],
+      assetType: 'stock' as BrokerOrder['assetType'],
+      createdAt: o.createdAt,
+      updatedAt: o.updatedAt,
+      bracketOrder: undefined,
+    }));
   }
 
   async getOrder(_orderId: string): Promise<BrokerOrder | null> {
