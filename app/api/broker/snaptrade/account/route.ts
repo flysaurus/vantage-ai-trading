@@ -63,6 +63,15 @@ export async function GET(_req: NextRequest) {
     .eq('status', 'connected')
     .single();
 
+  console.error('[SnapTrade Account] DB lookup:', {
+    found: !!conn,
+    hasUserId: !!conn?.snaptrade_user_id,
+    hasSecretEncrypted: !!conn?.snaptrade_user_secret_encrypted,
+    secretEncryptedLen: conn?.snaptrade_user_secret_encrypted?.length,
+    brokerId: conn?.snaptrade_broker_id,
+    connErr: connErr ? String(connErr) : null,
+  });
+
   if (connErr || !conn) {
     return NextResponse.json(
       { error: 'No active SnapTrade connection found' },
@@ -72,6 +81,7 @@ export async function GET(_req: NextRequest) {
 
   // ── Dev mode — return synthetic balance ─────────────────
   const clientId = process.env.SNAPTRADE_CLIENT_ID;
+  console.error('[SnapTrade Account] SNAPTRADE_CLIENT_ID set?:', !!clientId);
   if (!clientId) {
     const brokerName = conn.snaptrade_broker_id || 'broker';
     return NextResponse.json({
@@ -93,7 +103,9 @@ export async function GET(_req: NextRequest) {
     snaptradeUserSecret = conn.snaptrade_user_secret_encrypted
       ? decryptSnaptradeSecret(conn.snaptrade_user_secret_encrypted, authUser.id)
       : authUser.id; // Fallback for existing connections without stored secret
-  } catch {
+    console.error('[SnapTrade Account] Secret decrypted — len:', snaptradeUserSecret.length, 'preview:', snaptradeUserSecret.substring(0, 8));
+  } catch (decryptErr) {
+    console.error('[SnapTrade Account] Decrypt FAILED:', decryptErr);
     snaptradeUserSecret = authUser.id;
   }
 
@@ -104,6 +116,8 @@ export async function GET(_req: NextRequest) {
       'consumerKey': consumerKey,
     };
 
+    console.error('[SnapTrade Account] Calling SnapTrade /accounts — userId:', snaptradeUserId.substring(0, 20), 'secretLen:', snaptradeUserSecret.length);
+
     // Get all accounts for this SnapTrade user
     const accountsRes = await fetch(
       `${SNAPTRADE_API}/accounts?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
@@ -112,7 +126,7 @@ export async function GET(_req: NextRequest) {
 
     if (!accountsRes.ok) {
       const errText = await accountsRes.text().catch(() => '');
-      console.error('[SnapTrade Account] Accounts fetch failed:', accountsRes.status, errText);
+      console.error('[SnapTrade Account] /accounts FAILED — status:', accountsRes.status, 'body:', errText.substring(0, 300));
 
       return NextResponse.json(
         { equity: 0, cash: 0, buying_power: 0, status: 'ACTIVE', currency: 'USD' },
@@ -120,8 +134,10 @@ export async function GET(_req: NextRequest) {
     }
 
     const accounts: SnapTradeAccount[] = await accountsRes.json();
+    console.error('[SnapTrade Account] /accounts OK — count:', accounts.length);
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
+      console.error('[SnapTrade Account] No accounts returned from SnapTrade');
       return NextResponse.json(
         { equity: 0, cash: 0, buying_power: 0, status: 'ACTIVE', currency: 'USD' },
       );
@@ -134,6 +150,7 @@ export async function GET(_req: NextRequest) {
 
     for (const account of accounts) {
       try {
+        console.error('[SnapTrade Account] Fetching balance for account:', account.id?.substring(0, 8));
         const balanceRes = await fetch(
           `${SNAPTRADE_API}/accounts/${account.id}/balances?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
           { headers },
@@ -142,24 +159,31 @@ export async function GET(_req: NextRequest) {
         if (balanceRes.ok) {
           const balance = await balanceRes.json();
           const bal = balance.data || balance;
-          totalEquity += parseFloat(String(bal.equity || bal.total_value || 0));
-          totalCash += parseFloat(String(bal.cash || 0));
+          const eq = parseFloat(String(bal.equity || bal.total_value || 0));
+          const ca = parseFloat(String(bal.cash || 0));
+          console.error('[SnapTrade Account] Balance for', account.name || account.id?.substring(0,8), '— equity:', eq, 'cash:', ca);
+          totalEquity += eq;
+          totalCash += ca;
           totalBuyingPower += parseFloat(String(bal.buying_power || bal.cash || 0));
+        } else {
+          const balErr = await balanceRes.text().catch(() => '');
+          console.error('[SnapTrade Account] Balance fetch FAILED for', account.id?.substring(0,8), '— status:', balanceRes.status, 'body:', balErr.substring(0, 200));
         }
       } catch (balanceErr) {
-        console.error(`[SnapTrade Account] Balance fetch failed for account ${account.id}:`, balanceErr);
+        console.error(`[SnapTrade Account] Balance fetch error for account ${account.id}:`, balanceErr);
       }
     }
 
+    console.error('[SnapTrade Account] FINAL — equity:', totalEquity, 'cash:', totalCash, 'buyingPower:', totalBuyingPower);
     return NextResponse.json({
       equity: totalEquity,
       cash: totalCash,
-      buying_power: totalBuyingPower,
+      buyingPower: totalBuyingPower,
       status: 'ACTIVE',
       currency: 'USD',
     });
   } catch (err) {
-    console.error('[SnapTrade Account] Error:', err);
+    console.error('[SnapTrade Account] TOP-LEVEL ERROR:', err);
     return NextResponse.json(
       { error: 'Failed to fetch SnapTrade account data' },
       { status: 502 },
