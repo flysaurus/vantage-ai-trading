@@ -26,7 +26,8 @@ import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
-import { getBroker, getBrokerAsync, resolveBroker } from '@/lib/broker/broker-factory';
+import { getBroker, getBrokerAsync } from '@/lib/broker/broker-factory';
+import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
@@ -690,11 +691,29 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       // ── Live-broker path (SnapTrade) ──────────────────────────
       if (desiredMode === 'live') {
         try {
-          const result = await resolveBroker(currentUserId, supabaseClient, user?.email);
-          brokerRef.current = result.broker;
-          console.log(`[portfolio] Active broker: ${result.brokerSource} (${brokerRef.current.name})`);
-          // Fetch live data immediately — positions, account, orders
-          await refreshStateFromBroker();
+          // Resolve via SERVER endpoint — the VAULT_ENCRYPTION_KEY is
+          // only available server-side; the client cannot decrypt credentials.
+          const res = await fetch('/api/broker/resolve', { credentials: 'include' });
+          if (!res.ok) throw new Error(`Broker resolve failed: ${res.status}`);
+          const config = await res.json();
+
+          if (config.brokerSource === 'snaptrade' && config.snaptrade) {
+            const st = config.snaptrade;
+            brokerRef.current = new SnapTradeBroker({
+              userId: st.userId,
+              userSecret: st.userSecret,
+              connectionId: st.connectionId,
+              brokerSlug: st.brokerSlug,
+              brokerName: st.brokerName,
+              tradingEnabled: st.tradingEnabled,
+            });
+            console.log(`[portfolio] SnapTradeBroker created for ${st.brokerName}`);
+            await refreshStateFromBroker();
+          } else {
+            // No SnapTrade connection — fall back to Demo
+            brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
+            await refreshStateFromBroker();
+          }
         } catch (err) {
           console.error('[portfolio] Broker resolution failed, falling back to Demo:', err);
           brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
