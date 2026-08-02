@@ -323,9 +323,9 @@ export class SnapTradeAdapter implements BrokerAdapter {
 
     // Log the raw API response for debugging
     if (url.includes('/account')) {
-      console.error('[SnapTradeAdapter] RAW account response:', JSON.stringify(data));
+      console.error('[SnapTradeAdapter] ACCOUNT response:', JSON.stringify(data));
     } else if (url.includes('/positions')) {
-      console.error('[SnapTradeAdapter] RAW positions response — count:', Array.isArray(data) ? data.length : data.results?.length ?? 'not array');
+      console.error('[SnapTradeAdapter] POSITIONS response — count:', Array.isArray(data) ? data.length : data.results?.length ?? 'not array');
     }
 
     if (data.error) {
