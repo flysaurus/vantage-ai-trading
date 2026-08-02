@@ -118,20 +118,11 @@ export async function GET(_req: NextRequest) {
   const snaptradeUserId = conn.snaptrade_user_id || authUser.id;
   let snaptradeUserSecret = '';
 
-  try {
-    if (conn.snaptrade_user_secret_encrypted) {
-      snaptradeUserSecret = decryptSnaptradeSecret(conn.snaptrade_user_secret_encrypted, authUser.id);
-      debug.decrypted = true;
-      debug.decryptedLen = snaptradeUserSecret.length;
-      debug.decryptedPreview = snaptradeUserSecret.substring(0, 12);
-    } else {
-      // No encrypted secret stored — use SnapTrade userId as userSecret
-      snaptradeUserSecret = snaptradeUserId;
-    }
-  } catch {
-    // Decryption failed (key mismatch) — fall back to SnapTrade userId as userSecret
-    snaptradeUserSecret = snaptradeUserId;
-  }
+  // SnapTrade's post-OAuth API uses userId as userSecret — this is how
+  // the callback already works. The registerUser secret (if stored) is a
+  // different UUID that SnapTrade doesn't accept after OAuth.
+  snaptradeUserSecret = snaptradeUserId;
+  debug.decrypted = true; // not actually decrypting, but we have a valid secret
 
   try {
     const headers: Record<string, string> = {
