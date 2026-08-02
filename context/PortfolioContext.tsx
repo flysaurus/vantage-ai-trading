@@ -676,30 +676,35 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const currentUserId = (user?.id as string | undefined) ?? null;
     if (!currentUserId) return;
 
-    // Guard: only run init sequence once per userId (prevents dep-loop
-    // while still allowing re-init when auth resolves from null → real id)
-    if (brokerInitDoneForUserRef.current === currentUserId) return;
-    brokerInitDoneForUserRef.current = currentUserId;
+    // Track which broker source we last initialised for this user to avoid
+    // re-running the expensive Supabase load / template seed when nothing
+    // changed — but allow re-init when switching Demo ↔ live broker.
+    const desiredMode = (isConnected && !isShowingDemo) ? 'live' : 'demo';
+    const guardKey = `${currentUserId}::${desiredMode}`;
+    if (brokerInitDoneForUserRef.current === guardKey) return;
+    brokerInitDoneForUserRef.current = guardKey;
 
     const initBroker = async () => {
       const supabaseClient = getSupabaseBrowserClient();
 
-      // Resolve the active broker: SnapTrade if a connected brokerage exists,
-      // otherwise fall back to DemoBroker.
-      if (isConnected && !isShowingDemo) {
+      // ── Live-broker path (SnapTrade) ──────────────────────────
+      if (desiredMode === 'live') {
         try {
           const result = await resolveBroker(currentUserId, supabaseClient, user?.email);
           brokerRef.current = result.broker;
           console.log(`[portfolio] Active broker: ${result.brokerSource} (${brokerRef.current.name})`);
+          // Fetch live data immediately — positions, account, orders
+          await refreshStateFromBroker();
         } catch (err) {
           console.error('[portfolio] Broker resolution failed, falling back to Demo:', err);
           brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
+          await refreshStateFromBroker();
         }
-        // For non-demo brokers, skip demo-specific init (seeding, Supabase load)
-        if (brokerRef.current.name !== 'demo') return;
-      } else {
-        brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
+        return;
       }
+
+      // ── Demo path ────────────────────────────────────────────
+      brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
 
       const b = brokerRef.current as any;
       let restoredFromSupabase = false;
@@ -713,7 +718,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (e) {
           console.error('[portfolio] Supabase load failed:', e);
-          // restoredFromSupabase stays false — will trigger seed below
         }
       }
 
@@ -721,8 +725,6 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (restoredFromSupabase || initialPersistedStateRef.current) {
         demoSeededRef.current = true;
         refreshStateFromBroker();
-        // Recovery sync: push broker's actual positions → basket_holdings
-        // Heals any corruption from stale pending syncs that overwrote FILLED positions
         if (b?.syncAllBasketPositions) {
           try { await b.syncAllBasketPositions(); } catch (e) { console.error('[portfolio] Recovery sync failed:', e); }
         }
@@ -740,13 +742,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
       demoSeededRef.current = true;
 
-      // Use investor-style portfolio template (from demo-data.ts).
-      // Falls back to "lynch" if style is not set or not recognized.
       const style: InvestorStyle = (user?.investorStyle as InvestorStyle) || 'lynch';
       const template = DEMO_PORTFOLIOS[style] || DEMO_PORTFOLIOS.lynch;
       console.log(`[portfolio] No existing data — seeding from ${style} template (${template.label}): ${template.positions.length} positions`);
       (brokerRef.current as any)?.seedFromTemplate(template.positions);
-      // Wait briefly for broker to process seeds, then sync
       setTimeout(async () => {
         await refreshStateFromBroker();
       }, 100);
