@@ -28,6 +28,8 @@ import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfo
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getBroker, getBrokerAsync } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
+import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
+import type { InvestorStyle } from '@/types';
 import type { BrokerEngine, BrokerOrder } from '@/lib/broker/engine';
 import type { AccountSummary, Position, Order } from '@/types';
 
@@ -713,15 +715,20 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Step 3: No data anywhere — seed is legitimate (first-time user)
+      // Step 3: No data anywhere — seed from investor-style template
       if (demoSeededRef.current) {
         refreshStateFromBroker();
         return;
       }
 
       demoSeededRef.current = true;
-      console.log('[portfolio] No existing data — seeding cash-only demo account ($100,000)');
-      (brokerRef.current as any)?.seedCashOnly();
+
+      // Use investor-style portfolio template (from demo-data.ts).
+      // Falls back to "lynch" if style is not set or not recognized.
+      const style: InvestorStyle = (user?.investorStyle as InvestorStyle) || 'lynch';
+      const template = DEMO_PORTFOLIOS[style] || DEMO_PORTFOLIOS.lynch;
+      console.log(`[portfolio] No existing data — seeding from ${style} template (${template.label}): ${template.positions.length} positions`);
+      (brokerRef.current as any)?.seedFromTemplate(template.positions);
       // Wait briefly for broker to process seeds, then sync
       setTimeout(async () => {
         await refreshStateFromBroker();
