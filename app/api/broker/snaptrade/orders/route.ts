@@ -1,7 +1,7 @@
 // ─── GET /api/broker/snaptrade/orders ─────────────────────
 // Returns order history across all SnapTrade-connected
 // brokerage accounts for the authenticated user.
-// Uses SnapTrade's activities endpoint filtered for trades.
+// Uses SnapTrade's activities endpoint, mapped to Vantage order format.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
@@ -10,17 +10,31 @@ import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
+import {
+  extractOrderSymbol,
+  extractOrderName,
+  mapOrderStatus,
+  mapOrderSide,
+} from '@/lib/snaptrade/mapping';
 
 interface SnapTradeActivity {
   id: string;
   account_id?: string;
   currency?: string;
+  // Documented SnapTrade schema: universal_symbol.symbol (two levels)
+  universal_symbol?: {
+    symbol: string;
+    description?: string;
+    currency?: string;
+  };
+  // Legacy fallback: symbol.symbol
   symbol?: {
     symbol: string;
     description?: string;
     currency?: string;
   };
   type: string; // BUY, SELL, DIVIDEND, INTEREST, etc.
+  status?: string; // NONE/PENDING/ACCEPTED/EXECUTED/CANCELED/PARTIAL_FILL/...
   trade_date: string;
   settlement_date?: string;
   quantity?: number;
@@ -34,19 +48,6 @@ interface SnapTradeActivity {
     underlying_symbol?: string;
   };
   order_type?: string;
-}
-
-interface SnapTradePosition {
-  symbol?: {
-    symbol?: {
-      symbol?: string;
-      description?: string;
-    };
-    description?: string;
-  };
-  units?: number;
-  average_purchase_price?: number;
-  price?: number;
 }
 
 interface BrokerOrder {
@@ -139,22 +140,22 @@ const DEV_ORDERS: BrokerOrder[] = [
 ];
 
 // ─── Map SnapTrade activity → BrokerOrder ────────────────
+// Uses shared extractOrderSymbol / mapOrderStatus / mapOrderSide
+// from lib/snaptrade/mapping.ts — single source of truth.
 function mapActivityToOrder(
   activity: SnapTradeActivity,
   accountId: string,
 ): BrokerOrder | null {
-  const symbol = activity.symbol?.symbol || '';
+  const symbol = extractOrderSymbol(activity as unknown as Record<string, unknown>);
   if (!symbol || !TRADE_TYPES.has(activity.type)) return null;
 
-  const side = activity.type === 'SELL' || activity.type === 'SELL_SHORT' ? 'sell' : 'buy';
-  const qty = activity.quantity || 0;
+  const name = extractOrderName(activity as unknown as Record<string, unknown>) || symbol;
+  const side = mapOrderSide(activity.type);
+  const qty = Math.abs(activity.quantity || 0);
   const price = activity.price || 0;
   const amount = activity.amount || qty * price;
+  const status = mapOrderStatus(activity.status || '');
 
-  let status = 'filled';
-  if (activity.type.includes('REINVEST')) status = 'filled';
-
-  // Use a more robust deduplication key: activity_id + symbol + date
   const uniqueId = activity.id
     ? `snaptrade-${accountId}-${activity.id}`
     : `snaptrade-${accountId}-${symbol}-${activity.trade_date}-${activity.type}`;
@@ -162,7 +163,7 @@ function mapActivityToOrder(
   return {
     id: uniqueId,
     symbol,
-    name: activity.symbol?.description || symbol,
+    name,
     side,
     type: activity.order_type === 'limit' ? 'limit' : 'market',
     status,
@@ -241,75 +242,6 @@ export async function GET(_req: NextRequest) {
         }
       } catch (err) {
         console.error(`[snaptrade/orders] Activities fetch failed for account ${account.id}:`,
-          (err as Error).message);
-      }
-    }
-
-    // ── Step C: Generate synthetic BUY orders for positions without trade history ──
-    // SnapTrade imports holdings but may not include the original buy activities.
-    // Every position in the portfolio should have a matching BUY order for UI completeness.
-    for (const account of accounts) {
-      try {
-        const positions = await snapTradeFetch<SnapTradePosition[]>(
-          `/accounts/${account.id}/positions`,
-          null,
-          extraParams,
-        );
-
-        if (!Array.isArray(positions)) continue;
-
-        // Flatten the triple-nested symbol: position.symbol.symbol.symbol → "TSLA"
-        const extractSymbol = (pos: SnapTradePosition): string => {
-          const sym = (pos.symbol as any)?.symbol;
-          if (typeof sym === 'string') return sym;
-          if (typeof sym?.symbol === 'string') return sym.symbol;
-          if (typeof sym?.symbol === 'object' && sym.symbol) return sym.symbol.symbol || '';
-          if (typeof (pos.symbol as any)?.symbol === 'string') return (pos.symbol as any).symbol;
-          return '';
-        };
-
-        // Build set of symbols that already have a BUY order
-        const symbolsWithOrders = new Set(
-          allOrders
-            .filter((o) => o.side === 'buy')
-            .map((o) => o.symbol.toUpperCase()),
-        );
-
-        for (const pos of positions) {
-          const posSymbol = extractSymbol(pos);
-          const units = pos.units ?? 0;
-          if (!posSymbol || units <= 0) continue;
-
-          const symbolUpper = posSymbol.toUpperCase();
-          if (symbolsWithOrders.has(symbolUpper)) continue;
-
-          const avgPrice = pos.average_purchase_price ?? pos.price ?? 0;
-          const desc = (pos.symbol as any)?.symbol?.description
-            || (pos.symbol as any)?.description
-            || posSymbol;
-
-          const syntheticOrder: BrokerOrder = {
-            id: `snaptrade-${account.id}-synth-${symbolUpper}`,
-            symbol: symbolUpper,
-            name: desc,
-            side: 'buy',
-            type: 'market',
-            status: 'filled',
-            qty: units,
-            filledQty: units,
-            filledPrice: avgPrice,
-            totalValue: units * avgPrice,
-            timeInForce: 'day',
-            assetType: 'stock',
-            createdAt: new Date(Date.now() - 86400000 * 90).toISOString(),
-            updatedAt: new Date(Date.now() - 86400000 * 90).toISOString(),
-          };
-
-          allOrders.push(syntheticOrder);
-          symbolsWithOrders.add(symbolUpper);
-        }
-      } catch (err) {
-        console.error(`[snaptrade/orders] Position fetch failed for account ${account.id}:`,
           (err as Error).message);
       }
     }

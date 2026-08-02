@@ -9,6 +9,7 @@ import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
+import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
 
 export interface SnapTradePosition {
   symbol: string;
@@ -99,17 +100,18 @@ export async function GET(_req: NextRequest) {
   }
 }
 
-// ─── Position normaliser — SnapTrade real-world schema ─────
+// ─── Position normaliser — SnapTrade confirmed schema ─────
 //
-// Actual SnapTrade response structure (from live data):
-//   position.symbol.symbol.symbol → "TSLA"        (3 levels deep!)
+// SnapTrade position shape (from live data + documentation):
+//   position.symbol.symbol.symbol   → "TSLA"     (3 levels)
 //   position.symbol.symbol.description → "Tesla, Inc."
-//   position.units → 10                            (NOT "quantity")
-//   position.price → 311.21
+//   position.units                  → 10         (NOT "quantity")
+//   position.price                  → 311.21
 //   position.average_purchase_price → cost basis
-//   position.open_pnl → unrealized P&L
+//   position.open_pnl               → unrealized P&L
 //
-// Also handles flat/legacy formats as fallback.
+// Uses shared extractPositionTicker / extractPositionName
+// from lib/snaptrade/mapping.ts — one source of truth.
 
 function flattenPositions(raw: unknown): SnapTradePosition[] {
   const list = extractArray(raw);
@@ -118,7 +120,8 @@ function flattenPositions(raw: unknown): SnapTradePosition[] {
   return list
     .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
     .map((p) => {
-      const sym = extractSymbol(p as Record<string, unknown>);
+      const symbol = extractPositionTicker(p);
+      const name = extractPositionName(p) || symbol;
       const units = Number((p as any).units || (p as any).fractional_units || (p as any).quantity || 0);
       const price = Number((p as any).price || 0);
       const costPerUnit = Number((p as any).average_purchase_price || (p as any).cost_basis || 0);
@@ -129,8 +132,8 @@ function flattenPositions(raw: unknown): SnapTradePosition[] {
       const dayChangePct = Number((p as any).day_gain_percentage || (p as any).day_change_pct || 0);
 
       return {
-        symbol: sym.symbol,
-        name: sym.description || sym.symbol,
+        symbol,
+        name,
         units,
         price,
         marketValue,
@@ -150,22 +153,4 @@ function extractArray(raw: unknown): unknown[] {
     return Array.isArray(arr) ? arr : [];
   }
   return Array.isArray(raw) ? raw : [];
-}
-
-function extractSymbol(p: Record<string, unknown>): { symbol: string; description: string } {
-  const s = (p as any).symbol;
-  if (!s || typeof s !== 'object') {
-    return { symbol: String(s || ''), description: String((p as any).name || (p as any).description || '') };
-  }
-  const inner = s.symbol;
-  if (inner && typeof inner === 'object') {
-    return {
-      symbol: String(inner.symbol || ''),
-      description: String(inner.description || s.description || ''),
-    };
-  }
-  if (typeof s.symbol === 'string') {
-    return { symbol: s.symbol, description: String(s.description || s.name || '') };
-  }
-  return { symbol: '', description: '' };
 }
