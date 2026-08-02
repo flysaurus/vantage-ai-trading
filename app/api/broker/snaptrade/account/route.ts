@@ -4,12 +4,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
+import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
-
-const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
 
 // ─── Dev mode — realistic synthetic data ─────────────────
 const DEV_ACCOUNT = {
@@ -20,38 +19,47 @@ const DEV_ACCOUNT = {
   currency: 'USD',
 };
 
+interface SnapTradeConnection {
+  id: string;
+  brokerage?: { id: string; name: string; slug: string };
+  name?: string;
+}
+
+interface SnapTradeAccount {
+  id: string;
+  name: string;
+  number?: string;
+}
+
 export async function GET(_req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
   // ── Dev mode — return synthetic data ─────────────────
-  const clientId = process.env.SNAPTRADE_CLIENT_ID;
-  if (!clientId) {
+  if (!process.env.SNAPTRADE_CLIENT_ID) {
     return NextResponse.json(DEV_ACCOUNT);
   }
 
   const debug: Record<string, unknown> = {
     step: 'start',
     supabaseUserId: authUser.id,
-    hasClientId: !!clientId,
-    hasConsumerKey: !!process.env.SNAPTRADE_CONSUMER_KEY,
   };
 
   // ── Step A: Resolve credentials ───────────────────────
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
+  let authorizationId: string;
   try {
     const creds = await resolveSnapTradeCredentials(authUser.id);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
+    authorizationId = creds.connectionId;
     debug.step = 'credentials_resolved';
     debug.snaptradeUserId = snaptradeUserId;
-    debug.secretLen = snaptradeUserSecret.length;
-    debug.connectionId = creds.connectionId;
+    debug.connectionId = authorizationId;
     debug.brokerSlug = creds.brokerSlug;
   } catch (err) {
     debug.step = 'credential_resolution_failed';
-    debug.errorName = (err as Error).name;
     debug.errorMessage = (err as Error).message;
     if (err instanceof SnapTradeAuthError) {
       return NextResponse.json(
@@ -59,44 +67,24 @@ export async function GET(_req: NextRequest) {
         { status: err.status },
       );
     }
-    debug.unexpectedError = true;
     return NextResponse.json(
       { error: 'Failed to load brokerage credentials.', _debug: debug },
       { status: 502 },
     );
   }
 
-  const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
+  const extraParams = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
 
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'clientId': clientId,
-      'consumerKey': consumerKey,
-    };
-
-    // ── Step B: Call SnapTrade /accounts ────────────────
-    const accountsUrl = `${SNAPTRADE_API}/accounts?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`;
-    debug.accountsUrl = accountsUrl.replace(snaptradeUserSecret, '***');
-    const accountsRes = await fetch(accountsUrl, { headers });
-    debug.accountsStatus = accountsRes.status;
-
-    if (!accountsRes.ok) {
-      debug.accountsErrorBody = await accountsRes.text().catch(() => 'unreadable');
-      if (accountsRes.status === 401 || accountsRes.status === 403) {
-        return NextResponse.json(
-          { error: 'Broker connection expired. Please reconnect your broker.', _debug: debug },
-          { status: 401 },
-        );
-      }
-      return NextResponse.json(
-        { error: 'Failed to load account data from brokerage.', _debug: debug },
-        { status: 502 },
-      );
-    }
-
-    const accounts = (await accountsRes.json()) as { id: string; name: string }[];
-    debug.accountCount = accounts.length;
+    // ── Step B: List accounts for this authorization ──
+    const accountsEndpoint = `/authorizations/${authorizationId}/accounts`;
+    debug.accountsEndpoint = accountsEndpoint;
+    const accounts = await snapTradeFetch<SnapTradeAccount[]>(
+      accountsEndpoint,
+      null,
+      extraParams,
+    );
+    debug.accountCount = Array.isArray(accounts) ? accounts.length : 0;
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
       debug.result = 'empty_accounts';
@@ -107,7 +95,7 @@ export async function GET(_req: NextRequest) {
       });
     }
 
-    // ── Step C: Fetch per-account balances ──────────────
+    // ── Step C: Fetch balances for each account ────────
     let totalEquity = 0;
     let totalCash = 0;
     let totalBuyingPower = 0;
@@ -115,25 +103,46 @@ export async function GET(_req: NextRequest) {
 
     for (const acct of accounts) {
       try {
-        const balanceRes = await fetch(
-          `${SNAPTRADE_API}/accounts/${acct.id}/balances?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
-          { headers },
+        const balance = await snapTradeFetch<{
+          currency?: string;
+          cash?: number;
+          buying_power?: number;
+        }[]>(
+          `/accounts/${acct.id}/balances`,
+          null,
+          extraParams,
         );
 
-        if (balanceRes.ok) {
-          const balance = await balanceRes.json();
-          const bal = balance.data || balance;
-          totalEquity += Number(bal.equity || bal.total_value || 0);
-          totalCash += Number(bal.cash || 0);
-          totalBuyingPower += Number(bal.buying_power || bal.cash || 0);
-          (debug.balanceFetches as any).succeeded++;
-        } else {
-          (debug.balanceFetches as any).failed++;
+        if (Array.isArray(balance)) {
+          for (const b of balance) {
+            totalCash += Number(b.cash || 0);
+            totalBuyingPower += Number(b.buying_power || 0);
+          }
         }
+        // SnapTrade returns total_value separately from balances for some brokers
+        (debug.balanceFetches as any).succeeded++;
       } catch {
         (debug.balanceFetches as any).failed++;
       }
     }
+
+    // ── Step D: Get account details for total equity ──
+    try {
+      const acctDetails = await snapTradeFetch<{
+        total_value?: number;
+      }>(
+        `/accounts/${accounts[0].id}`,
+        null,
+        extraParams,
+      );
+      totalEquity = Number(acctDetails.total_value || 0);
+    } catch {
+      // If details fail, estimate from cash + buying power
+      totalEquity = totalCash + totalBuyingPower;
+      debug.equityFromEstimate = true;
+    }
+
+    if (totalEquity === 0) totalEquity = totalCash + totalBuyingPower;
 
     debug.result = 'success';
     debug.finalEquity = totalEquity;
@@ -145,8 +154,19 @@ export async function GET(_req: NextRequest) {
       _debug: debug,
     });
   } catch (err) {
-    debug.result = 'unexpected_error';
+    debug.result = 'snaptrade_api_error';
     debug.errorMessage = (err as Error).message;
+
+    // Check for 401 in error message
+    const msg = (err as Error).message;
+    const statusCode = msg.includes('401') ? 401 : msg.includes('403') ? 403 : 502;
+
+    if (statusCode === 401 || statusCode === 403) {
+      return NextResponse.json(
+        { error: 'Broker connection expired. Please reconnect your broker.', _debug: debug },
+        { status: statusCode },
+      );
+    }
     return NextResponse.json(
       { error: 'Failed to load account data.', _debug: debug },
       { status: 502 },

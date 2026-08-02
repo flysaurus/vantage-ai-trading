@@ -5,12 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
+import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
-
-const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
 
 interface SnapTradeActivity {
   id: string;
@@ -171,79 +170,51 @@ export async function GET(_req: NextRequest) {
   if (authError) return authError;
 
   // ── Dev mode — return synthetic orders ──────────────────
-  const clientId = process.env.SNAPTRADE_CLIENT_ID;
-  if (!clientId) {
+  if (!process.env.SNAPTRADE_CLIENT_ID) {
     return NextResponse.json(DEV_ORDERS);
   }
 
-  // ── Resolve credentials via the ONE shared function ──
+  // ── Resolve credentials ──────────────────────────────
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
+  let authorizationId: string;
   try {
     const creds = await resolveSnapTradeCredentials(authUser.id);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
+    authorizationId = creds.connectionId;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
-      return NextResponse.json(
-        { error: err.message },
-        { status: err.status },
-      );
+      return NextResponse.json({ error: err.message }, { status: err.status });
     }
-    console.error('[snaptrade/orders] Credential resolution failed:', err);
-    return NextResponse.json(
-      { error: 'Failed to load brokerage credentials.' },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: 'Failed to load brokerage credentials.' }, { status: 502 });
   }
 
-  const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
+  const extraParams = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
 
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'clientId': clientId,
-      'consumerKey': consumerKey,
-    };
-
-    // Get all accounts
-    const accountsRes = await fetch(
-      `${SNAPTRADE_API}/accounts?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
-      { headers },
+    // ── Step A: List accounts for this authorization ──
+    const accounts = await snapTradeFetch<{ id: string }[]>(
+      `/authorizations/${authorizationId}/accounts`,
+      null,
+      extraParams,
     );
-
-    if (!accountsRes.ok) {
-      console.error('[SnapTrade Orders] Accounts fetch failed:', accountsRes.status);
-      return NextResponse.json([]);
-    }
-
-    const accounts = await accountsRes.json();
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
       return NextResponse.json([]);
     }
 
-    // Aggregate order history across all accounts
+    // ── Step B: Fetch activities for each account ──────
     const allOrders: BrokerOrder[] = [];
     const seenIds = new Set<string>();
 
     for (const account of accounts) {
       try {
-        // SnapTrade activities endpoint — limited to last 90 days by default
-        const activitiesRes = await fetch(
-          `${SNAPTRADE_API}/accounts/${account.id}/activities?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
-          { headers },
+        const activities = await snapTradeFetch<SnapTradeActivity[]>(
+          `/accounts/${account.id}/activities`,
+          null,
+          extraParams,
         );
-
-        if (!activitiesRes.ok) {
-          console.error(
-            `[SnapTrade Orders] Activities fetch failed for account ${account.id}:`,
-            activitiesRes.status,
-          );
-          continue;
-        }
-
-        const activities: SnapTradeActivity[] = await activitiesRes.json();
 
         if (!Array.isArray(activities)) continue;
 
@@ -255,21 +226,25 @@ export async function GET(_req: NextRequest) {
           }
         }
       } catch (err) {
-        console.error(`[SnapTrade Orders] Error for account ${account.id}:`, err);
+        console.error(`[snaptrade/orders] Activities fetch failed for account ${account.id}:`,
+          (err as Error).message);
       }
     }
 
-    // Sort by created date, newest first
     allOrders.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
     return NextResponse.json(allOrders);
   } catch (err) {
-    console.error('[SnapTrade Orders] Error:', err);
-    return NextResponse.json(
-      { error: 'Failed to fetch SnapTrade orders' },
-      { status: 502 },
-    );
+    const msg = (err as Error).message;
+    const statusCode = msg.includes('401') ? 401 : msg.includes('403') ? 403 : 502;
+    if (statusCode === 401 || statusCode === 403) {
+      return NextResponse.json(
+        { error: 'Broker connection expired. Please reconnect your broker.' },
+        { status: statusCode },
+      );
+    }
+    return NextResponse.json({ error: 'Failed to fetch orders.' }, { status: 502 });
   }
 }
