@@ -60,6 +60,9 @@ interface AsyncBrokerResult {
  * Returns a SnapTradeBroker if a connected SnapTrade brokerage exists,
  * otherwise falls back to DemoBroker.
  *
+ * Accepts a supabase client — call from server (service-role) or client
+ * (browser auth client) as long as RLS grants access to broker_connections.
+ *
  * Fully generic — works with ANY SnapTrade-connected brokerage.
  */
 export async function getBrokerAsync(
@@ -73,6 +76,19 @@ export async function getBrokerAsync(
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+  return resolveBroker(userId, supabase, userEmail);
+}
+
+/**
+ * Client-safe overload: takes a pre-built Supabase client (browser or admin).
+ * Used from PortfolioContext where we already have a browser client available.
+ * No environment secrets required — relies on RLS for broker_connections access.
+ */
+export async function resolveBroker(
+  userId: string,
+  supabase: any,
+  userEmail?: string,
+): Promise<AsyncBrokerResult> {
 
   // Check for active SnapTrade connection
   const { data: conn } = await supabase
@@ -112,7 +128,7 @@ export async function getBrokerAsync(
   }
 
   // Fallback to DemoBroker
-  console.error('[broker-factory] No SnapTrade connection, using DemoBroker');
+  console.log('[broker-factory] No SnapTrade connection, using DemoBroker');
   const demo = new DemoBroker(userId, supabase, userEmail);
   return { broker: demo, brokerSource: 'demo' };
 }

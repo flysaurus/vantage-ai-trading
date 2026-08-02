@@ -26,7 +26,7 @@ import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
-import { getBroker, getBrokerAsync } from '@/lib/broker/broker-factory';
+import { getBroker, getBrokerAsync, resolveBroker } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
@@ -673,20 +673,34 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // separate effects created a race where the seed could fire before
   // loadFromSupabase() resolved, wiping real data with empty defaults.
   useEffect(() => {
-    const supabaseClient = getSupabaseBrowserClient();
-    brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
-
-    // Don't initialise demo data when broker is the active view.
-    // DemoBroker ref is still set above — needed for executeTrade in any mode.
-    if (isConnected && !isShowingDemo) return;
+    const currentUserId = (user?.id as string | undefined) ?? null;
+    if (!currentUserId) return;
 
     // Guard: only run init sequence once per userId (prevents dep-loop
     // while still allowing re-init when auth resolves from null → real id)
-    const currentUserId = (user?.id as string | undefined) ?? null;
     if (brokerInitDoneForUserRef.current === currentUserId) return;
     brokerInitDoneForUserRef.current = currentUserId;
 
     const initBroker = async () => {
+      const supabaseClient = getSupabaseBrowserClient();
+
+      // Resolve the active broker: SnapTrade if a connected brokerage exists,
+      // otherwise fall back to DemoBroker.
+      if (isConnected && !isShowingDemo) {
+        try {
+          const result = await resolveBroker(currentUserId, supabaseClient, user?.email);
+          brokerRef.current = result.broker;
+          console.log(`[portfolio] Active broker: ${result.brokerSource} (${brokerRef.current.name})`);
+        } catch (err) {
+          console.error('[portfolio] Broker resolution failed, falling back to Demo:', err);
+          brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
+        }
+        // For non-demo brokers, skip demo-specific init (seeding, Supabase load)
+        if (brokerRef.current.name !== 'demo') return;
+      } else {
+        brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
+      }
+
       const b = brokerRef.current as any;
       let restoredFromSupabase = false;
 
