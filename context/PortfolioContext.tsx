@@ -742,11 +742,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       // Falls back to "lynch" if style is not set or not recognized.
       const style: InvestorStyle = (user?.investorStyle as InvestorStyle) || 'lynch';
       const template = DEMO_PORTFOLIOS[style] || DEMO_PORTFOLIOS.lynch;
-      console.log(`[portfolio] No existing data — seeding from ${style} template (${template.label}): ${template.positions.length} positions`);
+      console.error('[portfolio] SEEDING from', style, 'template —', template.positions.length, 'positions — template:', template.label);
       (brokerRef.current as any)?.seedFromTemplate(template.positions);
       // Wait briefly for broker to process seeds, then sync
       setTimeout(async () => {
         await refreshStateFromBroker();
+        console.error('[portfolio] SEED complete — demoState positions:', (demoStateRef.current as any)?.positions?.length ?? 'unknown');
       }, 100);
     };
 

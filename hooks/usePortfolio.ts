@@ -398,12 +398,14 @@ export function usePortfolio() {
         ...accountSummary,
         sectorAllocations: allocations,
       } as AccountSummary & { sectorAllocations: SectorAllocation[] });
+
+      console.error('[usePortfolio] SUCCESS — positions:', positions.length, 'account equity:', accountSummary.equity);
     } catch (err) {
       if (!mountedRef.current) return;
 
       const message =
         err instanceof Error ? err.message : 'Failed to load portfolio';
-      console.error('[usePortfolio] ERROR:', message, 'Stack:', (err as Error).stack);
+      console.error('[usePortfolio] FAIL:', message);
       setError(message);
       setLoading(false);
 

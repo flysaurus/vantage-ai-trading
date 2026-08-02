@@ -903,6 +903,21 @@ export function PortfolioTab() {
   const isShowingDemo = activeAccount?.isDemo ?? false;
 
   const isBrokerExpected = isConnected && !isShowingDemo;
+
+  // ── TRACE diagnostic ──
+  useEffect(() => {
+    console.error('[PortfolioTab]', JSON.stringify({
+      isConnected, isShowingDemo, isBrokerExpected,
+      activeAccountId: activeAccount?.id || 'none',
+      brokerLoading, liveLoading,
+      brokerEquity: brokerAccount?.equity ?? 'null',
+      brokerPos: brokerAccount?.positions?.length ?? 0,
+      liveEquity: liveAccount?.equity ?? 'null',
+      livePos: liveAccount?.positions?.length ?? 0,
+      brokerErr: brokerError || 'none',
+    }));
+  }, [isConnected, isShowingDemo, activeAccount, brokerLoading, liveLoading, brokerAccount, liveAccount, brokerError]);
+
   const displayAccount = isBrokerExpected
     ? (brokerAccount as AccountSummary | null)
     : (liveAccount as AccountSummary | null);
