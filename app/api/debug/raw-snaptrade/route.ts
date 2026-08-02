@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       accountsArr = Array.isArray(accts) ? accts as Array<{ id: string; name: string }> : [];
     } catch (e) { raw.accounts_error = (e as Error).message; }
 
-    // 3. For each account, get balances + positions
+    // 3. For each account, get balances + positions + activities + holdings
     for (const acct of accountsArr) {
       const prefix = `account_${acct.id}`;
       raw[`${prefix}_name`] = acct.name;
@@ -75,6 +75,18 @@ export async function GET(req: NextRequest) {
           `/accounts/${acct.id}/positions`, null, ep,
         );
       } catch (e) { raw[`${prefix}_positions_error`] = (e as Error).message; }
+
+      try {
+        raw[`${prefix}_activities`] = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/activities`, null, ep,
+        );
+      } catch (e) { raw[`${prefix}_activities_error`] = (e as Error).message; }
+
+      try {
+        raw[`${prefix}_holdings`] = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/holdings`, null, ep,
+        );
+      } catch (e) { raw[`${prefix}_holdings_error`] = (e as Error).message; }
     }
 
     return NextResponse.json(raw);
