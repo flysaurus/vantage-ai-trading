@@ -321,7 +321,7 @@ export function usePortfolio() {
       // Map positions to app format with sector info (hardcoded map first)
       const positions: Position[] = brokerPositions.map((bp) => ({
         symbol: bp.symbol,
-        name: bp.symbol,
+        name: bp.name || bp.symbol,
         qty: bp.qty,
         avgCost: bp.avgCost,
         currentPrice: bp.currentPrice,
