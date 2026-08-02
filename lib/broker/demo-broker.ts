@@ -447,15 +447,15 @@ export class DemoBroker implements BrokerEngine {
       console.log('[DemoBroker] loadFromSupabase — result:', { hasData: !!data, error: error?.message, basketOrdersCount: data?.basket_orders?.length, positionsCount: data?.positions?.length, cashBalance: data?.cash_balance });
 
       if (data) {
-        // ── Detect empty/ghost-row (empty arrays, zero cash, OR only empty-symbol positions) ──
+        // ── Detect ghost-row: no positions + no orders + no baskets = unusable state ──
+        // Cash alone doesn't make a trading account — seed fresh if there's nothing invested.
         const validPositions = (data.positions || []).filter((p: any) => p?.symbol && p.symbol !== '');
         const ghostPositions = (data.positions || []).length - validPositions.length;
         
         const isEmpty =
           validPositions.length === 0 &&
           (!data.order_history || data.order_history.length === 0) &&
-          (!data.basket_orders || data.basket_orders.length === 0) &&
-          (!data.cash_balance || data.cash_balance === 0);
+          (!data.basket_orders || data.basket_orders.length === 0);
 
         if (ghostPositions > 0) {
           console.warn(

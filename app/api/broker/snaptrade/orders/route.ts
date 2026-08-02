@@ -36,6 +36,19 @@ interface SnapTradeActivity {
   order_type?: string;
 }
 
+interface SnapTradePosition {
+  symbol?: {
+    symbol?: {
+      symbol?: string;
+      description?: string;
+    };
+    description?: string;
+  };
+  units?: number;
+  average_purchase_price?: number;
+  price?: number;
+}
+
 interface BrokerOrder {
   id: string;
   symbol: string;
@@ -50,6 +63,7 @@ interface BrokerOrder {
   filledPrice?: number;
   totalValue?: number;
   timeInForce: string;
+  assetType?: string;
   createdAt: string;
   updatedAt: string;
   bracketOrder?: unknown;
@@ -159,9 +173,9 @@ function mapActivityToOrder(
     filledPrice: price,
     totalValue: amount,
     timeInForce: 'day',
+    assetType: 'stock',
     createdAt: activity.trade_date,
     updatedAt: activity.settlement_date || activity.trade_date,
-    bracketOrder: undefined,
   };
 }
 
@@ -227,6 +241,75 @@ export async function GET(_req: NextRequest) {
         }
       } catch (err) {
         console.error(`[snaptrade/orders] Activities fetch failed for account ${account.id}:`,
+          (err as Error).message);
+      }
+    }
+
+    // ── Step C: Generate synthetic BUY orders for positions without trade history ──
+    // SnapTrade imports holdings but may not include the original buy activities.
+    // Every position in the portfolio should have a matching BUY order for UI completeness.
+    for (const account of accounts) {
+      try {
+        const positions = await snapTradeFetch<SnapTradePosition[]>(
+          `/accounts/${account.id}/positions`,
+          null,
+          extraParams,
+        );
+
+        if (!Array.isArray(positions)) continue;
+
+        // Flatten the triple-nested symbol: position.symbol.symbol.symbol → "TSLA"
+        const extractSymbol = (pos: SnapTradePosition): string => {
+          const sym = (pos.symbol as any)?.symbol;
+          if (typeof sym === 'string') return sym;
+          if (typeof sym?.symbol === 'string') return sym.symbol;
+          if (typeof sym?.symbol === 'object' && sym.symbol) return sym.symbol.symbol || '';
+          if (typeof (pos.symbol as any)?.symbol === 'string') return (pos.symbol as any).symbol;
+          return '';
+        };
+
+        // Build set of symbols that already have a BUY order
+        const symbolsWithOrders = new Set(
+          allOrders
+            .filter((o) => o.side === 'buy')
+            .map((o) => o.symbol.toUpperCase()),
+        );
+
+        for (const pos of positions) {
+          const posSymbol = extractSymbol(pos);
+          const units = pos.units ?? 0;
+          if (!posSymbol || units <= 0) continue;
+
+          const symbolUpper = posSymbol.toUpperCase();
+          if (symbolsWithOrders.has(symbolUpper)) continue;
+
+          const avgPrice = pos.average_purchase_price ?? pos.price ?? 0;
+          const desc = (pos.symbol as any)?.symbol?.description
+            || (pos.symbol as any)?.description
+            || posSymbol;
+
+          const syntheticOrder: BrokerOrder = {
+            id: `snaptrade-${account.id}-synth-${symbolUpper}`,
+            symbol: symbolUpper,
+            name: desc,
+            side: 'buy',
+            type: 'market',
+            status: 'filled',
+            qty: units,
+            filledQty: units,
+            filledPrice: avgPrice,
+            totalValue: units * avgPrice,
+            timeInForce: 'day',
+            assetType: 'stock',
+            createdAt: new Date(Date.now() - 86400000 * 90).toISOString(),
+            updatedAt: new Date(Date.now() - 86400000 * 90).toISOString(),
+          };
+
+          allOrders.push(syntheticOrder);
+          symbolsWithOrders.add(symbolUpper);
+        }
+      } catch (err) {
+        console.error(`[snaptrade/orders] Position fetch failed for account ${account.id}:`,
           (err as Error).message);
       }
     }
