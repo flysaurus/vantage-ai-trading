@@ -114,11 +114,23 @@ export async function GET(_req: NextRequest) {
     });
   }
 
-  // The callback uses authUser.id as both userId and userSecret for
-  // SnapTrade API calls after OAuth. The DB's snaptrade_user_id may
-  // have a 'vantage_' prefix that SnapTrade doesn't recognize.
-  const snaptradeUserId = authUser.id;
-  const snaptradeUserSecret = authUser.id;
+  // Try decrypting the stored SnapTrade secret — registerUser often returns
+  // the same UUID for both userId and userSecret.
+  let snaptradeUserId = authUser.id;
+  let snaptradeUserSecret = authUser.id;
+  try {
+    if (conn.snaptrade_user_secret_encrypted) {
+      const decrypted = decryptSnaptradeSecret(conn.snaptrade_user_secret_encrypted, authUser.id);
+      debug.decrypted = true;
+      debug.decryptedLen = decrypted.length;
+      debug.decryptedPreview = decrypted.substring(0, 12);
+      // SnapTrade's registerUser often returns the same value for both
+      snaptradeUserId = decrypted;
+      snaptradeUserSecret = decrypted;
+    }
+  } catch {
+    debug.decrypted = false;
+  }
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
 
   try {
