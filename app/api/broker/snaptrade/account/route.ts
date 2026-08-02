@@ -11,19 +11,6 @@ import {
 
 const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
 
-interface SnapTradeAccount {
-  id: string;
-  name: string;
-  number: string;
-  broker_name: string;
-  balance?: {
-    equity: number;
-    cash: number;
-    buying_power: number;
-    currency: string;
-  };
-}
-
 // ─── Dev mode — realistic synthetic data ─────────────────
 const DEV_ACCOUNT = {
   equity: 101_779.14,
@@ -43,23 +30,38 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json(DEV_ACCOUNT);
   }
 
-  // ── Resolve credentials via the ONE shared function ──
+  const debug: Record<string, unknown> = {
+    step: 'start',
+    supabaseUserId: authUser.id,
+    hasClientId: !!clientId,
+    hasConsumerKey: !!process.env.SNAPTRADE_CONSUMER_KEY,
+  };
+
+  // ── Step A: Resolve credentials ───────────────────────
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
   try {
     const creds = await resolveSnapTradeCredentials(authUser.id);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
+    debug.step = 'credentials_resolved';
+    debug.snaptradeUserId = snaptradeUserId;
+    debug.secretLen = snaptradeUserSecret.length;
+    debug.connectionId = creds.connectionId;
+    debug.brokerSlug = creds.brokerSlug;
   } catch (err) {
+    debug.step = 'credential_resolution_failed';
+    debug.errorName = (err as Error).name;
+    debug.errorMessage = (err as Error).message;
     if (err instanceof SnapTradeAuthError) {
       return NextResponse.json(
-        { error: err.message },
+        { error: err.message, _debug: debug },
         { status: err.status },
       );
     }
-    console.error('[snaptrade/account] Credential resolution failed:', err);
+    debug.unexpectedError = true;
     return NextResponse.json(
-      { error: 'Failed to load brokerage credentials. Please reconnect your broker.' },
+      { error: 'Failed to load brokerage credentials.', _debug: debug },
       { status: 502 },
     );
   }
@@ -73,51 +75,48 @@ export async function GET(_req: NextRequest) {
       'consumerKey': consumerKey,
     };
 
-    const accountsRes = await fetch(
-      `${SNAPTRADE_API}/accounts?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
-      { headers },
-    );
+    // ── Step B: Call SnapTrade /accounts ────────────────
+    const accountsUrl = `${SNAPTRADE_API}/accounts?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`;
+    debug.accountsUrl = accountsUrl.replace(snaptradeUserSecret, '***');
+    const accountsRes = await fetch(accountsUrl, { headers });
+    debug.accountsStatus = accountsRes.status;
 
     if (!accountsRes.ok) {
-      console.error(
-        '[snaptrade/account] SnapTrade accounts request failed:',
-        accountsRes.status,
-      );
-      // 401 from SnapTrade → tell the user their connection may need re-auth
+      debug.accountsErrorBody = await accountsRes.text().catch(() => 'unreadable');
       if (accountsRes.status === 401 || accountsRes.status === 403) {
         return NextResponse.json(
-          { error: 'Broker connection expired. Please reconnect your broker.' },
+          { error: 'Broker connection expired. Please reconnect your broker.', _debug: debug },
           { status: 401 },
         );
       }
       return NextResponse.json(
-        { error: 'Failed to load account data from brokerage.' },
+        { error: 'Failed to load account data from brokerage.', _debug: debug },
         { status: 502 },
       );
     }
 
-    const accounts: SnapTradeAccount[] = await accountsRes.json();
+    const accounts = (await accountsRes.json()) as { id: string; name: string }[];
+    debug.accountCount = accounts.length;
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
-      // No accounts is not an auth error — just empty. Return zero values
-      // so the consumer can distinguish "empty account" from "auth broken".
+      debug.result = 'empty_accounts';
       return NextResponse.json({
-        equity: 0,
-        cash: 0,
-        buying_power: 0,
-        status: 'ACTIVE',
-        currency: 'USD',
+        equity: 0, cash: 0, buyingPower: 0,
+        status: 'ACTIVE', currency: 'USD',
+        _debug: debug,
       });
     }
 
+    // ── Step C: Fetch per-account balances ──────────────
     let totalEquity = 0;
     let totalCash = 0;
     let totalBuyingPower = 0;
+    debug.balanceFetches = { succeeded: 0, failed: 0 };
 
-    for (const account of accounts) {
+    for (const acct of accounts) {
       try {
         const balanceRes = await fetch(
-          `${SNAPTRADE_API}/accounts/${account.id}/balances?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
+          `${SNAPTRADE_API}/accounts/${acct.id}/balances?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
           { headers },
         );
 
@@ -127,27 +126,29 @@ export async function GET(_req: NextRequest) {
           totalEquity += Number(bal.equity || bal.total_value || 0);
           totalCash += Number(bal.cash || 0);
           totalBuyingPower += Number(bal.buying_power || bal.cash || 0);
+          (debug.balanceFetches as any).succeeded++;
+        } else {
+          (debug.balanceFetches as any).failed++;
         }
-      } catch (err) {
-        console.error(
-          `[snaptrade/account] Balance fetch failed for ${account.id}:`,
-          err instanceof Error ? err.message : String(err),
-        );
-        // non-fatal — skip this account
+      } catch {
+        (debug.balanceFetches as any).failed++;
       }
     }
 
+    debug.result = 'success';
+    debug.finalEquity = totalEquity;
     return NextResponse.json({
       equity: totalEquity,
       cash: totalCash,
       buyingPower: totalBuyingPower,
-      status: 'ACTIVE',
-      currency: 'USD',
+      status: 'ACTIVE', currency: 'USD',
+      _debug: debug,
     });
   } catch (err) {
-    console.error('[snaptrade/account] Unexpected error:', err);
+    debug.result = 'unexpected_error';
+    debug.errorMessage = (err as Error).message;
     return NextResponse.json(
-      { error: 'Failed to load account data.' },
+      { error: 'Failed to load account data.', _debug: debug },
       { status: 502 },
     );
   }
