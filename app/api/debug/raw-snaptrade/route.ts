@@ -4,36 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-
-async function snapTradeFetch(
-  endpoint: string,
-  userId: string,
-  userSecret: string,
-): Promise<{ status: number; body: unknown; url: string }> {
-  const clientId = process.env.SNAPTRADE_CLIENT_ID!;
-  const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY!;
-  const crypto = await import('crypto');
-
-  const ts = Math.floor(Date.now() / 1000);
-  const signStr = clientId + userId + userSecret + endpoint + ts;
-  const sig = crypto
-    .createHmac('sha256', consumerKey)
-    .update(signStr)
-    .digest('hex');
-
-  const url = `https://api.snaptrade.com${endpoint}?clientId=${clientId}&timestamp=${ts}&userId=${userId}&userSecret=${userSecret}`;
-  const res = await fetch(url, {
-    headers: { Signature: sig, 'Content-Type': 'application/json' },
-  });
-  const text = await res.text();
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = text;
-  }
-  return { status: res.status, body, url: url.replace(userSecret, '***') };
-}
+import { snapTradeFetch } from '@/lib/snaptrade/auth';
 
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get('key');
@@ -64,39 +35,46 @@ export async function GET(req: NextRequest) {
 
     const userId = conn.snaptrade_user_id;
     const authId = conn.snaptrade_connection_id;
-
-    // Raw responses - no mapping, no transformation
-    const [accountsRes, authorizationsRes] = await Promise.all([
-      snapTradeFetch(`/authorizations/${authId}/accounts`, userId, userSecret),
-      snapTradeFetch(`/authorizations/${authId}`, userId, userSecret),
-    ]);
+    const ep = { userId, userSecret };
 
     const raw: Record<string, unknown> = {
       broker: conn.brokerage_slug,
       authorizationId: authId,
-      accountsStatus: accountsRes.status,
-      accountsUrl: accountsRes.url,
-      accounts: accountsRes.body,
-      authorizationStatus: authorizationsRes.status,
-      authorization: authorizationsRes.body,
     };
 
-    // Get balances + positions for each account
-    const accountsArr = Array.isArray(accountsRes.body) ? accountsRes.body as Array<{ id: string; name: string }> : [];
-    
-    for (const acct of accountsArr) {
-      const [balRes, posRes] = await Promise.all([
-        snapTradeFetch(`/accounts/${acct.id}/balances`, userId, userSecret),
-        snapTradeFetch(`/accounts/${acct.id}/positions`, userId, userSecret),
-      ]);
+    // 1. Get authorization detail
+    try {
+      raw.authorization = await snapTradeFetch<unknown>(
+        `/authorizations/${authId}`, null, ep,
+      );
+    } catch (e) { raw.authorization_error = (e as Error).message; }
 
-      raw[`account_${acct.id}_name`] = acct.name;
-      raw[`account_${acct.id}_balances_status`] = balRes.status;
-      raw[`account_${acct.id}_balances_url`] = balRes.url;
-      raw[`account_${acct.id}_balances`] = balRes.body;
-      raw[`account_${acct.id}_positions_status`] = posRes.status;
-      raw[`account_${acct.id}_positions_url`] = posRes.url;
-      raw[`account_${acct.id}_positions`] = posRes.body;
+    // 2. Get accounts
+    let accountsArr: Array<{ id: string; name: string }> = [];
+    try {
+      const accts = await snapTradeFetch<unknown>(
+        `/authorizations/${authId}/accounts`, null, ep,
+      );
+      raw.accounts = accts;
+      accountsArr = Array.isArray(accts) ? accts as Array<{ id: string; name: string }> : [];
+    } catch (e) { raw.accounts_error = (e as Error).message; }
+
+    // 3. For each account, get balances + positions
+    for (const acct of accountsArr) {
+      const prefix = `account_${acct.id}`;
+      raw[`${prefix}_name`] = acct.name;
+
+      try {
+        raw[`${prefix}_balances`] = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/balances`, null, ep,
+        );
+      } catch (e) { raw[`${prefix}_balances_error`] = (e as Error).message; }
+
+      try {
+        raw[`${prefix}_positions`] = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/positions`, null, ep,
+        );
+      } catch (e) { raw[`${prefix}_positions_error`] = (e as Error).message; }
     }
 
     return NextResponse.json(raw);
