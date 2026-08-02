@@ -125,10 +125,12 @@ export async function GET(_req: NextRequest) {
       debug.decryptedLen = snaptradeUserSecret.length;
       debug.decryptedPreview = snaptradeUserSecret.substring(0, 12);
     } else {
-      snaptradeUserSecret = authUser.id;
+      // No encrypted secret stored — use SnapTrade userId as userSecret
+      snaptradeUserSecret = snaptradeUserId;
     }
   } catch {
-    snaptradeUserSecret = authUser.id;
+    // Decryption failed (key mismatch) — fall back to SnapTrade userId as userSecret
+    snaptradeUserSecret = snaptradeUserId;
   }
 
   try {

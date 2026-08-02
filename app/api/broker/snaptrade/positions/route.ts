@@ -164,9 +164,9 @@ export async function GET(_req: NextRequest) {
   try {
     snaptradeUserSecret = conn.snaptrade_user_secret_encrypted
       ? decryptSnaptradeSecret(conn.snaptrade_user_secret_encrypted, authUser.id)
-      : authUser.id;
+      : snaptradeUserId;
   } catch {
-    snaptradeUserSecret = authUser.id;
+    snaptradeUserSecret = snaptradeUserId;
   }
 
   try {
