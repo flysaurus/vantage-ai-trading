@@ -7,28 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
-import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import {
+  resolveSnapTradeCredentials,
+  SnapTradeAuthError,
+} from '@/lib/snaptrade/client';
 
 const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
-const IV_LENGTH = 12;
-const AUTH_TAG_LENGTH = 16;
-const ALGORITHM = 'aes-256-gcm';
-
-function deriveUserKey(userId: string): Buffer {
-  const secret = process.env.VAULT_ENCRYPTION_KEY || 'dev-encryption-key-change-me';
-  return crypto.createHash('sha256').update(userId + secret).digest();
-}
-
-function decryptSnaptradeSecret(encrypted: string, userId: string): string {
-  const { encrypted: enc, iv, authTag } = JSON.parse(encrypted);
-  const key = deriveUserKey(userId);
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(iv, 'base64'), {
-    authTagLength: AUTH_TAG_LENGTH,
-  });
-  decipher.setAuthTag(Buffer.from(authTag, 'base64'));
-  return decipher.update(enc, 'base64', 'utf8') + decipher.final('utf8');
-}
 
 interface SnapTradePosition {
   symbol: string;
@@ -46,8 +30,6 @@ interface SnapTradePosition {
   currency?: string;
 }
 
-// Unified positions API response format (undocumented as of spec version).
-// Fallback: also accepts legacy flat-array format from deprecated endpoint.
 interface UnifiedPosition {
   instrument?: {
     kind?: string;
@@ -55,9 +37,9 @@ interface UnifiedPosition {
     description?: string;
     currency?: string;
   };
-  symbol?: string;               // legacy flat format
-  name?: string;                 // legacy flat format
-  description?: string;          // legacy flat format
+  symbol?: string;
+  name?: string;
+  description?: string;
   quantity: number;
   price: number;
   market_value?: number;
@@ -65,23 +47,20 @@ interface UnifiedPosition {
   day_gain?: number;
   day_gain_percentage?: number;
   total_gain_percentage?: number;
-  total_pnl?: number;            // legacy
-  total_pnl_pct?: number;        // legacy
-  day_change?: number;           // legacy
-  day_change_pct?: number;       // legacy
-  asset_type?: string;           // legacy
-  currency?: string;             // legacy
+  total_pnl?: number;
+  total_pnl_pct?: number;
+  day_change?: number;
+  day_change_pct?: number;
+  asset_type?: string;
+  currency?: string;
 }
 
-/** Normalise a unified or legacy position into our flat SnapTradePosition shape. */
 function normalisePositions(raw: unknown): SnapTradePosition[] {
-  // Unified format: { results: [...] }
   if (raw && typeof raw === 'object' && 'results' in (raw as Record<string, unknown>)) {
     const list = (raw as { results: UnifiedPosition[] }).results;
     if (!Array.isArray(list)) return [];
     return list.map(normaliseOne);
   }
-  // Legacy format: flat array
   if (Array.isArray(raw)) return raw.map(normaliseOne);
   return [];
 }
@@ -128,40 +107,34 @@ export async function GET(_req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-
-  // ── Get SnapTrade connection + credentials ──────────────
-  const { data: conn, error: connErr } = await supabase
-    .from('broker_connections')
-    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, snaptrade_broker_id, status')
-    .eq('user_id', authUser.id)
-    .eq('connection_type', 'snaptrade')
-    .eq('status', 'connected')
-    .single();
-
-  if (connErr || !conn) {
-    return NextResponse.json(
-      { error: 'No active SnapTrade connection found' },
-      { status: 404 },
-    );
-  }
-
-  // ── Dev mode — return synthetic portfolio ───────────────
+  // ── Dev mode — return synthetic data ─────────────────
   const clientId = process.env.SNAPTRADE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json(DEV_POSITIONS);
   }
 
-  // ── Production — call SnapTrade API ─────────────────────
+  // ── Resolve credentials via the ONE shared function ──
+  let snaptradeUserId: string;
+  let snaptradeUserSecret: string;
+  try {
+    const creds = await resolveSnapTradeCredentials(authUser.id);
+    snaptradeUserId = creds.snaptradeUserId;
+    snaptradeUserSecret = creds.snaptradeUserSecret;
+  } catch (err) {
+    if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: err.status },
+      );
+    }
+    console.error('[snaptrade/positions] Credential resolution failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to load brokerage credentials.' },
+      { status: 502 },
+    );
+  }
+
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
-  // Match callback behavior: use authUser.id for both userId and userSecret.
-  // The DB's snaptrade_user_id may have a 'vantage_' prefix SnapTrade doesn't know.
-  const snaptradeUserId = authUser.id;
-  const snaptradeUserSecret = snaptradeUserId;
 
   try {
     const headers: Record<string, string> = {
@@ -170,16 +143,23 @@ export async function GET(_req: NextRequest) {
       'consumerKey': consumerKey,
     };
 
-    // Get all accounts
     const accountsRes = await fetch(
       `${SNAPTRADE_API}/accounts?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
       { headers },
     );
 
     if (!accountsRes.ok) {
-      const errText = await accountsRes.text().catch(() => '');
-      console.error('[SnapTrade Positions] Accounts fetch failed:', accountsRes.status, errText);
-      return NextResponse.json([]);
+      console.error('[snaptrade/positions] Accounts fetch failed:', accountsRes.status);
+      if (accountsRes.status === 401 || accountsRes.status === 403) {
+        return NextResponse.json(
+          { error: 'Broker connection expired. Please reconnect your broker.' },
+          { status: 401 },
+        );
+      }
+      return NextResponse.json(
+        { error: 'Failed to load positions from brokerage.' },
+        { status: 502 },
+      );
     }
 
     const accounts = await accountsRes.json();
@@ -188,13 +168,10 @@ export async function GET(_req: NextRequest) {
       return NextResponse.json([]);
     }
 
-    // Aggregate positions across all accounts
     const allPositions: SnapTradePosition[] = [];
 
     for (const account of accounts) {
       try {
-        // Use the unified /positions/all endpoint (v2).
-        // The deprecated /positions endpoint may not return data.
         const posRes = await fetch(
           `${SNAPTRADE_API}/accounts/${account.id}/positions/all?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
           { headers },
@@ -206,15 +183,14 @@ export async function GET(_req: NextRequest) {
           if (normalised.length > 0) {
             allPositions.push(...normalised);
           } else {
-            // Fallback: try the legacy endpoint for backwards compat
+            // Fallback: legacy endpoint
             const legacyRes = await fetch(
               `${SNAPTRADE_API}/accounts/${account.id}/positions?userId=${snaptradeUserId}&userSecret=${snaptradeUserSecret}`,
               { headers },
             );
             if (legacyRes.ok) {
               const legacyRaw = await legacyRes.json();
-              const legacyNormalised = normalisePositions(legacyRaw);
-              allPositions.push(...legacyNormalised);
+              allPositions.push(...normalisePositions(legacyRaw));
             }
           }
         } else {
@@ -225,20 +201,19 @@ export async function GET(_req: NextRequest) {
           );
           if (legacyRes.ok) {
             const legacyRaw = await legacyRes.json();
-            const legacyNormalised = normalisePositions(legacyRaw);
-            allPositions.push(...legacyNormalised);
+            allPositions.push(...normalisePositions(legacyRaw));
           }
         }
       } catch (posErr) {
-        console.error(`[SnapTrade Positions] Fetch failed for account ${account.id}:`, posErr);
+        console.error(`[snaptrade/positions] Fetch failed for account ${account.id}:`, posErr);
       }
     }
 
     return NextResponse.json(allPositions);
   } catch (err) {
-    console.error('[SnapTrade Positions] Error:', err);
+    console.error('[snaptrade/positions] Unexpected error:', err);
     return NextResponse.json(
-      { error: 'Failed to fetch SnapTrade positions' },
+      { error: 'Failed to load positions.' },
       { status: 502 },
     );
   }

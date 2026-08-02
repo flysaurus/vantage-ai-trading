@@ -5,28 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
-import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import {
+  resolveSnapTradeCredentials,
+  SnapTradeAuthError,
+} from '@/lib/snaptrade/client';
 
 const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
-const IV_LENGTH = 12;
-const AUTH_TAG_LENGTH = 16;
-const ALGORITHM = 'aes-256-gcm';
-
-function deriveUserKey(userId: string): Buffer {
-  const secret = process.env.VAULT_ENCRYPTION_KEY || 'dev-encryption-key-change-me';
-  return crypto.createHash('sha256').update(userId + secret).digest();
-}
-
-function decryptSnaptradeSecret(encrypted: string, userId: string): string {
-  const { encrypted: enc, iv, authTag } = JSON.parse(encrypted);
-  const key = deriveUserKey(userId);
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(iv, 'base64'), {
-    authTagLength: AUTH_TAG_LENGTH,
-  });
-  decipher.setAuthTag(Buffer.from(authTag, 'base64'));
-  return decipher.update(enc, 'base64', 'utf8') + decipher.final('utf8');
-}
 
 interface SnapTradeActivity {
   id: string;
@@ -186,39 +170,34 @@ export async function GET(_req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-
-  // ── Get SnapTrade connection + credentials ──────────────
-  const { data: conn, error: connErr } = await supabase
-    .from('broker_connections')
-    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, snaptrade_broker_id, status')
-    .eq('user_id', authUser.id)
-    .eq('connection_type', 'snaptrade')
-    .eq('status', 'connected')
-    .single();
-
-  if (connErr || !conn) {
-    return NextResponse.json(
-      { error: 'No active SnapTrade connection found' },
-      { status: 404 },
-    );
-  }
-
   // ── Dev mode — return synthetic orders ──────────────────
   const clientId = process.env.SNAPTRADE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json(DEV_ORDERS);
   }
 
-  // ── Production — call SnapTrade API ─────────────────────
+  // ── Resolve credentials via the ONE shared function ──
+  let snaptradeUserId: string;
+  let snaptradeUserSecret: string;
+  try {
+    const creds = await resolveSnapTradeCredentials(authUser.id);
+    snaptradeUserId = creds.snaptradeUserId;
+    snaptradeUserSecret = creds.snaptradeUserSecret;
+  } catch (err) {
+    if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: err.status },
+      );
+    }
+    console.error('[snaptrade/orders] Credential resolution failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to load brokerage credentials.' },
+      { status: 502 },
+    );
+  }
+
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
-  // Match callback behavior: use authUser.id for both userId and userSecret.
-  const snaptradeUserId = authUser.id;
-  const snaptradeUserSecret = snaptradeUserId;
 
   try {
     const headers: Record<string, string> = {

@@ -26,8 +26,7 @@ import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
-import { getBroker, getBrokerAsync } from '@/lib/broker/broker-factory';
-import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { getBroker } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
 import type { InvestorStyle } from '@/types';
@@ -580,6 +579,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         console.error('[portfolio context] broker-load SUCCESS — equity:', summary.equity, 'positions:', summary.positions.length);
       } catch (e) {
         console.error('[portfolio context] broker-load FAILED:', e);
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : 'Failed to load brokerage data';
+          // Surface to the UI — never silently zero out broker display
+          setError(msg.includes('expired') || msg.includes('reconnect') || msg.includes('401')
+            ? 'Broker connection expired. Please reconnect your broker.'
+            : msg);
+        }
       }
     };
 
@@ -674,57 +680,20 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // separate effects created a race where the seed could fire before
   // loadFromSupabase() resolved, wiping real data with empty defaults.
   useEffect(() => {
-    const currentUserId = (user?.id as string | undefined) ?? null;
-    if (!currentUserId) return;
+    const supabaseClient = getSupabaseBrowserClient();
+    brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
 
-    // Track which broker source we last initialised for this user to avoid
-    // re-running the expensive Supabase load / template seed when nothing
-    // changed — but allow re-init when switching Demo ↔ live broker.
-    const desiredMode = (isConnected && !isShowingDemo) ? 'live' : 'demo';
-    const guardKey = `${currentUserId}::${desiredMode}`;
-    if (brokerInitDoneForUserRef.current === guardKey) return;
-    brokerInitDoneForUserRef.current = guardKey;
+    // Don't initialise demo data when broker is the active view.
+    // DemoBroker ref is still set above — needed for executeTrade in any mode.
+    if (isConnected && !isShowingDemo) return;
+
+    // Guard: only run init sequence once per userId (prevents dep-loop
+    // while still allowing re-init when auth resolves from null → real id)
+    const currentUserId = (user?.id as string | undefined) ?? null;
+    if (brokerInitDoneForUserRef.current === currentUserId) return;
+    brokerInitDoneForUserRef.current = currentUserId;
 
     const initBroker = async () => {
-      const supabaseClient = getSupabaseBrowserClient();
-
-      // ── Live-broker path (SnapTrade) ──────────────────────────
-      if (desiredMode === 'live') {
-        try {
-          // Resolve via SERVER endpoint — the VAULT_ENCRYPTION_KEY is
-          // only available server-side; the client cannot decrypt credentials.
-          const res = await fetch('/api/broker/resolve', { credentials: 'include' });
-          if (!res.ok) throw new Error(`Broker resolve failed: ${res.status}`);
-          const config = await res.json();
-
-          if (config.brokerSource === 'snaptrade' && config.snaptrade) {
-            const st = config.snaptrade;
-            brokerRef.current = new SnapTradeBroker({
-              userId: st.userId,
-              userSecret: st.userSecret,
-              connectionId: st.connectionId,
-              brokerSlug: st.brokerSlug,
-              brokerName: st.brokerName,
-              tradingEnabled: st.tradingEnabled,
-            });
-            console.log(`[portfolio] SnapTradeBroker created for ${st.brokerName}`);
-            await refreshStateFromBroker();
-          } else {
-            // No SnapTrade connection — fall back to Demo
-            brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
-            await refreshStateFromBroker();
-          }
-        } catch (err) {
-          console.error('[portfolio] Broker resolution failed, falling back to Demo:', err);
-          brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
-          await refreshStateFromBroker();
-        }
-        return;
-      }
-
-      // ── Demo path ────────────────────────────────────────────
-      brokerRef.current = getBroker('demo', currentUserId, supabaseClient, user?.email);
-
       const b = brokerRef.current as any;
       let restoredFromSupabase = false;
 
@@ -737,6 +706,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (e) {
           console.error('[portfolio] Supabase load failed:', e);
+          // restoredFromSupabase stays false — will trigger seed below
         }
       }
 
@@ -744,6 +714,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (restoredFromSupabase || initialPersistedStateRef.current) {
         demoSeededRef.current = true;
         refreshStateFromBroker();
+        // Recovery sync: push broker's actual positions → basket_holdings
+        // Heals any corruption from stale pending syncs that overwrote FILLED positions
         if (b?.syncAllBasketPositions) {
           try { await b.syncAllBasketPositions(); } catch (e) { console.error('[portfolio] Recovery sync failed:', e); }
         }
@@ -761,10 +733,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
       demoSeededRef.current = true;
 
+      // Use investor-style portfolio template (from demo-data.ts).
+      // Falls back to "lynch" if style is not set or not recognized.
       const style: InvestorStyle = (user?.investorStyle as InvestorStyle) || 'lynch';
       const template = DEMO_PORTFOLIOS[style] || DEMO_PORTFOLIOS.lynch;
       console.log(`[portfolio] No existing data — seeding from ${style} template (${template.label}): ${template.positions.length} positions`);
       (brokerRef.current as any)?.seedFromTemplate(template.positions);
+      // Wait briefly for broker to process seeds, then sync
       setTimeout(async () => {
         await refreshStateFromBroker();
       }, 100);

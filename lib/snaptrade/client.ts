@@ -266,3 +266,71 @@ export function encryptUserSecret(vantageUserId: string, userSecret: string): st
   const key = deriveUserKey(vantageUserId);
   return encryptData(userSecret, key);
 }
+
+// ── Shared Credential Resolution ─────────────────────────────
+// THE single entry point for resolving SnapTrade credentials
+// in any route handler. No route should ever manually construct
+// userId/userSecret from raw DB fields or authUserId.
+//
+// This is what prevents the "constructed wrong credentials" bug
+// class from recurring in every new SnapTrade route.
+
+export interface ResolvedSnapTrade {
+  snaptradeUserId: string;
+  snaptradeUserSecret: string;
+  connectionId: string;
+  brokerSlug: string;
+}
+
+export class SnapTradeAuthError extends Error {
+  status = 401;
+  constructor(message: string) {
+    super(message);
+    this.name = 'SnapTradeAuthError';
+  }
+}
+
+/**
+ * Resolve SnapTrade credentials for the authenticated user.
+ *
+ * Queries broker_connections for the first connected SnapTrade row,
+ * decrypts the stored userSecret server-side, and returns the
+ * values needed for ANY SnapTrade API call.
+ *
+ * Throws SnapTradeAuthError (401) if no connected brokerage exists.
+ */
+export async function resolveSnapTradeCredentials(
+  authUserId: string,
+): Promise<ResolvedSnapTrade> {
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  const { data: conn } = await supabase
+    .from('broker_connections')
+    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, snaptrade_connection_id, brokerage_slug')
+    .eq('user_id', authUserId)
+    .eq('connection_type', 'snaptrade')
+    .eq('status', 'connected')
+    .maybeSingle();
+
+  if (!conn?.snaptrade_user_id || !conn?.snaptrade_user_secret_encrypted || !conn?.snaptrade_connection_id) {
+    throw new SnapTradeAuthError('No connected SnapTrade brokerage found. Please connect a broker.');
+  }
+
+  const snapUser = await getOrCreateSnapTradeUser(
+    authUserId,
+    conn.snaptrade_user_id,
+    conn.snaptrade_user_secret_encrypted,
+  );
+
+  return {
+    snaptradeUserId: snapUser.userId,
+    snaptradeUserSecret: snapUser.userSecret,
+    connectionId: conn.snaptrade_connection_id,
+    brokerSlug: conn.brokerage_slug || '',
+  };
+}
