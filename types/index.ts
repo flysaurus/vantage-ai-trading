@@ -21,13 +21,18 @@ export interface MarketIndex {
 // ─── Portfolio ───
 export interface AccountSummary {
   equity: number;
-  buyingPower: number;
+  /** null = non-margin account — UI hides field entirely */
+  buyingPower: number | null;
   cash: number;
   dayPnl: number;
   dayPnlPercent: number;
   totalPnl: number;
   totalPnlPercent: number;
   positions: Position[];
+  /** Connection-level metadata (null for Demo) */
+  lastSynced?: string | null;
+  accountStatus?: 'open' | 'closed' | 'archived' | null;
+  holdingsUnavailable?: boolean;
 }
 
 export interface BasketInfo {

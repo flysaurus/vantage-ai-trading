@@ -21,10 +21,12 @@ interface BrokerContextValue {
   isInitialized: boolean;
   /** Whether the connected broker supports trading (vs read-only import). */
   tradingEnabled: boolean;
+  /** Whether the connected broker provides detailed holdings (vs total-value-only). */
+  holdingsAvailable: boolean;
   accountPreview: {
     id: string;
     equity: number;
-    buyingPower: number;
+    buyingPower: number | null;
     status: string;
   } | null;
   environment: string | null;
@@ -36,6 +38,7 @@ const BrokerContext = createContext<BrokerContextValue>({
   isConnected: false,
   isInitialized: false,
   tradingEnabled: false,
+  holdingsAvailable: true,
   accountPreview: null,
   environment: null,
 });
@@ -47,6 +50,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
   const [accountPreview, setAccountPreview] = useState<BrokerContextValue['accountPreview']>(null);
   const [environment, setEnvironment] = useState<string | null>(null);
   const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [holdingsAvailable, setHoldingsAvailable] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
   // Discover broker on mount: check /api/broker/status
@@ -97,6 +101,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
               setAccountPreview(data.accountPreview || null);
               setEnvironment(data.environment || null);
               setTradingEnabled(data.trading_enabled !== false);
+              setHoldingsAvailable(data.holdings_available !== false);
             } catch (err) {
               console.error(`[BrokerProvider] Failed to connect ${data.brokerId}:`, err);
               setIsConnected(false);
@@ -152,6 +157,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
             setAccountPreview(data.accountPreview);
             setEnvironment(data.environment || null);
             setTradingEnabled(data.trading_enabled !== false);
+            setHoldingsAvailable(data.holdings_available !== false);
           }
         }
       } catch (err) {
@@ -170,6 +176,7 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
         isConnected,
         isInitialized: initialized,
         tradingEnabled,
+        holdingsAvailable,
         accountPreview,
         environment,
       }}

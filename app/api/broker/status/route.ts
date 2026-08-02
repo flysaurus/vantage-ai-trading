@@ -38,23 +38,48 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       const brokerSlug = snapConn.snaptrade_broker_id || snapConn.brokerage_slug || '';
       const isPaper = brokerSlug.toUpperCase().includes('PAPER');
 
+      // Capabilities are read live — make a lightweight call to get sync_status
+      // This tells us holdingsUnavailable WITHOUT a full positions fetch.
+      let holdingsAvailable = true;
+      try {
+        const { resolveSnapTradeCredentials, SnapTradeAuthError } = await import(
+          '@/lib/snaptrade/client'
+        );
+        const { snapTradeFetch } = await import('@/lib/snaptrade/auth');
+        const creds = await resolveSnapTradeCredentials(userId);
+        const authAccounts = await snapTradeFetch<Array<{
+          sync_status?: { holdings?: { holdings_unavailable?: boolean } };
+        }>>(
+          `/authorizations/${creds.connectionId}/accounts`,
+          null,
+          { userId: creds.snaptradeUserId, userSecret: creds.snaptradeUserSecret },
+        );
+        if (Array.isArray(authAccounts)) {
+          holdingsAvailable = !authAccounts.some(
+            (a) => a.sync_status?.holdings?.holdings_unavailable,
+          );
+        }
+      } catch { /* keep default true */ }
+
       console.error(
         '[broker/status] SnapTrade connection detected:',
         'brokerSlug:', brokerSlug,
         'accounts:', accounts.length,
         'totalValue:', totalValue,
-        'tradingEnabled:', snapConn.trading_enabled
+        'tradingEnabled:', snapConn.trading_enabled,
+        'holdingsAvailable:', holdingsAvailable,
       );
 
       return NextResponse.json({
         connected: true,
         brokerId: 'snaptrade',
         trading_enabled: snapConn.trading_enabled !== false,
+        holdings_available: holdingsAvailable,
         underlying_broker: brokerSlug,
         accountPreview: {
           id: accounts[0]?.id || 'snaptrade',
           equity: totalValue,
-          buyingPower: buyingPower,
+          buyingPower: buyingPower || null,
           status: 'ACTIVE',
         },
         marketOpen: false,

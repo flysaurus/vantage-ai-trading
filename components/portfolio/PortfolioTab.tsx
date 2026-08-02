@@ -1036,7 +1036,7 @@ export function PortfolioTab() {
   const accountData: AccountSummary = displayAccount || (isBrokerExpected ? {
     equity: 0,
     cash: 0,
-    buyingPower: 0,
+    buyingPower: null,
     dayPnl: 0,
     dayPnlPercent: 0,
     totalPnl: 0,

@@ -26,7 +26,8 @@ export interface BrokerAccount {
   id: string;
   equity: number;
   cash: number;
-  buyingPower: number;
+  /** null = non-margin account */
+  buyingPower: number | null;
   dayTradeCount: number;
   dayPnl: number;
   dayPnlPercent: number;
@@ -35,6 +36,10 @@ export interface BrokerAccount {
   portfolioValue: number;
   currency: string;
   status: 'active' | 'closed' | 'margin_call';
+  /** Connection metadata — read live, never hardcoded */
+  lastSynced?: string | null;
+  accountStatus?: 'open' | 'closed' | 'archived' | null;
+  holdingsUnavailable?: boolean;
 }
 
 export interface BrokerPosition {

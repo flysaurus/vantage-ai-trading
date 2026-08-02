@@ -66,32 +66,39 @@ export class SnapTradeAdapter implements BrokerAdapter {
 
   async getAccount(): Promise<BrokerAccount> {
     const data = await this.snaptradeFetch<{
-      equity: number;
+      totalValue: number;
       cash: number;
-      buyingPower: number;
+      buyingPower: number | null;
       invested: number;
       marketValue: number;
       dayChange: number;
       dayChangePct: number;
       totalPnl: number;
       totalPnlPct: number;
-      status: string;
       currency: string;
+      accountStatus: 'open' | 'closed' | 'archived' | null;
+      lastSynced: string | null;
+      holdingsUnavailable: boolean;
     }>('/api/broker/snaptrade/account');
 
     return {
       id: `snaptrade-${this.underlyingBroker || 'unknown'}`,
-      equity: data.equity ?? 0,
+      equity: data.totalValue ?? 0,
       cash: data.cash ?? 0,
-      buyingPower: data.buyingPower ?? 0,
+      buyingPower: data.buyingPower ?? null,
       dayTradeCount: 0,
       dayPnl: data.dayChange ?? 0,
       dayPnlPercent: data.dayChangePct ?? 0,
       totalPnl: data.totalPnl ?? 0,
       totalPnlPercent: data.totalPnlPct ?? 0,
-      portfolioValue: data.equity ?? 0,
+      portfolioValue: data.totalValue ?? 0,
       currency: data.currency || 'USD',
-      status: data.status === 'ACTIVE' ? 'active' : 'active',
+      status: data.accountStatus === 'closed' || data.accountStatus === 'archived'
+        ? 'closed'
+        : 'active',
+      lastSynced: data.lastSynced,
+      accountStatus: data.accountStatus,
+      holdingsUnavailable: data.holdingsUnavailable,
     };
   }
 

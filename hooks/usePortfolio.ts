@@ -385,13 +385,16 @@ export function usePortfolio() {
 
       const accountSummary: AccountSummary = {
         equity: brokerAccount.equity,
-        buyingPower: brokerAccount.buyingPower,
+        buyingPower: brokerAccount.buyingPower ?? null,
         cash: brokerAccount.cash,
         dayPnl: brokerAccount.dayPnl,
         dayPnlPercent: brokerAccount.dayPnlPercent,
         totalPnl: brokerAccount.totalPnl,
         totalPnlPercent: brokerAccount.totalPnlPercent,
         positions,
+        lastSynced: brokerAccount.lastSynced,
+        accountStatus: brokerAccount.accountStatus,
+        holdingsUnavailable: brokerAccount.holdingsUnavailable,
       };
 
       setAccount({
