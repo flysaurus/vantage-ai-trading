@@ -57,9 +57,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'no connection' }, { status: 404 });
     }
 
-    // Decrypt
+    // Decrypt using Supabase user_id (NOT snaptrade_user_id)
     const { deriveUserKey, decryptData } = await import('@/lib/vault');
-    const userKey = deriveUserKey(conn.snaptrade_user_id);
+    const userKey = deriveUserKey(conn.user_id);
     const userSecret = decryptData(conn.snaptrade_user_secret_encrypted, userKey);
 
     const userId = conn.snaptrade_user_id;
