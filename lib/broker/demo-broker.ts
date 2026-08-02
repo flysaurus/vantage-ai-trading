@@ -64,8 +64,9 @@ export class DemoBroker implements BrokerEngine {
   // ─── STATE PERSISTENCE ───
 
   // ─── Single source of truth for fresh demo account seeding ───
-  // Every new/reset demo account gets $100,000 cash, nothing else.
-  // Real portfolio content only comes from real trades.
+  // Every new/reset demo account gets a populated portfolio from the
+  // investor-style template, NOT just cash.
+
   private seedCashOnly(): void {
     this.state = {
       positions: [],
@@ -76,6 +77,63 @@ export class DemoBroker implements BrokerEngine {
     };
     this.saveLocalOnly();
     console.log('[DemoBroker] Seeded cash-only account: $100,000, no positions/orders/baskets');
+  }
+
+  /** Seed the broker state from a template of position definitions.
+   *  Creates BrokerPosition entries, sets cash to $100K minus cost basis,
+   *  and generates corresponding order history for UI rendering. */
+  public seedFromTemplate(templatePositions: Array<{
+    symbol: string;
+    name: string;
+    sector: string;
+    industry?: string;
+    qty: number;
+    avgCost: number;
+    weekHigh52?: number;
+    weekLow52?: number;
+    type?: 'Stock' | 'ETF';
+    buyDate?: string;
+  }>): void {
+    const positions: BrokerPosition[] = templatePositions.map(p => ({
+      symbol: p.symbol,
+      name: p.name,
+      sector: p.sector,
+      type: p.type || (p.symbol.length <= 5 ? 'Stock' as const : 'ETF' as const),
+      shares: p.qty,
+      avgCost: p.avgCost,
+      totalCost: p.qty * p.avgCost,
+      buyDate: p.buyDate || new Date().toISOString().split('T')[0],
+    }));
+
+    const totalCost = positions.reduce((s, p) => s + p.totalCost, 0);
+    const cashBalance = Math.max(0, 100_000 - totalCost);
+
+    // Generate a single FILLED buy order per position so the Orders tab has history
+    const now = new Date();
+    const orders: BrokerOrder[] = positions.map((p, i) => ({
+      id: `demo-seed-${p.symbol}-${i}-${Date.now()}`,
+      symbol: p.symbol,
+      side: 'BUY' as const,
+      type: 'market' as const,
+      status: 'FILLED' as const,
+      shares: p.shares,
+      submittedPrice: p.avgCost,
+      fillPrice: p.avgCost,
+      totalCost: p.totalCost,
+      submittedAt: new Date(now.getTime() - (templatePositions.length - i) * 3600000).toISOString(),
+      filledAt: new Date(now.getTime() - (templatePositions.length - i) * 3600000).toISOString(),
+      timeInForce: 'day' as const,
+    }));
+
+    this.state = {
+      positions,
+      cashBalance,
+      orders,
+      basketOrders: [],
+      savedAt: Date.now(),
+    };
+    this.saveLocalOnly();
+    console.log(`[DemoBroker] Template-seeded: ${positions.length} positions, $${cashBalance.toFixed(0)} cash, $${totalCost.toFixed(0)} invested`);
   }
 
   private loadState(): DemoStateInternal {
@@ -417,6 +475,25 @@ export class DemoBroker implements BrokerEngine {
           return true;
         }
 
+        // ── Detect "never-traded empty" account (bug #1 backfill) ──
+        // Row exists with cash but no positions, no orders, no baskets.
+        // This is the signature of a cash-only seed that was synced to Supabase
+        // before template seeding was restored. Return false so PortfolioContext
+        // re-seeds from the investor-style template.
+        const isNeverTraded =
+          validPositions.length === 0 &&
+          (!data.order_history || data.order_history.length === 0) &&
+          (!data.basket_orders || data.basket_orders.length === 0);
+
+        if (isNeverTraded) {
+          console.warn(
+            '[DemoBroker] 🔄 Supabase row is never-traded empty (has cash, no positions/orders).',
+            'Returning false so PortfolioContext re-seeds from investor-style template.',
+            { userId: this.userId, cashBalance: data.cash_balance }
+          );
+          return false; // triggers template seed in PortfolioContext
+        }
+
         // Single canonical column: order_history (BrokerOrder[] format).
         // Normalize createdAt→submittedAt for legacy DemoOrder-format records.
         const rawOrders: any[] = data.order_history || [];
@@ -442,9 +519,10 @@ export class DemoBroker implements BrokerEngine {
         console.log('[DemoBroker] Restored from Supabase — positions:', this.state.positions.length, 'basketOrders:', this.state.basketOrders.length, 'orders:', this.state.orders.length);
         return true;
       } else {
-        console.log('[DemoBroker] loadFromSupabase — no row found, seeding cash-only');
-        this.seedCashOnly();
-        return true;
+        // No row exists — legitimate first-time user. Return false so
+        // PortfolioContext seeds from investor-style template (not cash-only).
+        console.log('[DemoBroker] loadFromSupabase — no row found, returning false for template seed');
+        return false;
       }
     } catch (e) {
       console.error('[DemoBroker] Supabase load:', e);
