@@ -61,30 +61,47 @@ const DEV_POSITIONS: SnapTradePosition[] = [
 ];
 
 function normalisePositions(raw: unknown): SnapTradePosition[] {
+  let list: unknown[] = [];
   if (raw && typeof raw === 'object' && 'results' in (raw as Record<string, unknown>)) {
-    const list = (raw as { results: UnifiedPosition[] }).results;
+    list = (raw as { results: unknown[] }).results;
     if (!Array.isArray(list)) return [];
-    return list.map(normaliseOne);
+  } else if (Array.isArray(raw)) {
+    list = raw;
+  } else {
+    return [];
   }
-  if (Array.isArray(raw)) return raw.map(normaliseOne);
-  return [];
+  return list
+    .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
+    .map((p) => normaliseOne(p as UnifiedPosition));
 }
 
 function normaliseOne(p: UnifiedPosition): SnapTradePosition {
   const inst = p.instrument;
-  const symbol = inst?.symbol || p.symbol || '';
-  const name = inst?.description || p.name || p.description;
-  const marketValue = p.market_value ?? 0;
-  const costBasis = p.cost_basis ?? 0;
-  const dayChange = p.day_gain ?? p.day_change ?? 0;
-  const dayChangePct = p.day_gain_percentage ?? p.day_change_pct ?? 0;
-  const totalPnl = p.total_pnl ?? (marketValue - costBasis);
-  const totalPnlPct = p.total_pnl_pct ?? p.total_gain_percentage ?? (costBasis > 0 ? (totalPnl / costBasis) * 100 : 0);
+
+  // SnapTrade can return symbol/name as nested objects — flatten them
+  const rawSymbol = inst?.symbol || p.symbol || '';
+  const symbol: string =
+    typeof rawSymbol === 'object' && rawSymbol !== null
+      ? String((rawSymbol as any).symbol || (rawSymbol as any).id || '')
+      : String(rawSymbol || '');
+
+  const rawName = inst?.description || p.name || p.description || '';
+  const name: string =
+    typeof rawName === 'object' && rawName !== null
+      ? String((rawName as any).description || (rawName as any).name || '')
+      : String(rawName || '');
+
+  const marketValue = Number(p.market_value ?? 0);
+  const costBasis = Number(p.cost_basis ?? 0);
+  const dayChange = Number(p.day_gain ?? p.day_change ?? 0);
+  const dayChangePct = Number(p.day_gain_percentage ?? p.day_change_pct ?? 0);
+  const totalPnl = Number(p.total_pnl ?? (marketValue - costBasis));
+  const totalPnlPct = Number(p.total_pnl_pct ?? p.total_gain_percentage ?? (costBasis > 0 ? (totalPnl / costBasis) * 100 : 0));
   return {
     symbol,
     name: name || symbol,
-    quantity: p.quantity || 0,
-    price: p.price || 0,
+    quantity: Number(p.quantity || 0),
+    price: Number(p.price || 0),
     market_value: marketValue,
     cost_basis: costBasis,
     day_change: dayChange,
