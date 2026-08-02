@@ -893,7 +893,7 @@ export function PortfolioTab() {
     sharesHeld: number; availableCash: number;
   } | null>(null);
 
-  const { account: brokerAccount, loading: brokerLoading } = usePortfolio();
+  const { account: brokerAccount, loading: brokerLoading, error: brokerError } = usePortfolio();
   const { account: liveAccount, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { activeAccount } = useAccounts();
@@ -1037,6 +1037,33 @@ export function PortfolioTab() {
     totalPnlPercent: ((correctEquity - 100000) / 100000) * 100,
     positions: displayPositions,
   });
+
+  // ── Loading / Error states ──
+  if (loading) {
+    return (
+      <div style={{ padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
+        <div style={{ width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ marginTop: 16, color: '#9ca3af', fontSize: 14 }}>Loading portfolio data…</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (brokerError && isBrokerExpected) {
+    return (
+      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+        <p style={{ fontSize: 16, fontWeight: 600, color: '#ef4444', marginBottom: 8 }}>Failed to load broker data</p>
+        <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>{brokerError}</p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{ padding: '8px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'pointer' }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ paddingBottom: 120 }}>

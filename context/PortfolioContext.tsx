@@ -687,12 +687,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     // Don't initialise demo data when broker is the active view.
     // DemoBroker ref is still set above — needed for executeTrade in any mode.
+    // IMPORTANT: skip BEFORE setting the init-done ref, so switching to
+    // demo later won't be blocked by a premature guard.
     if (isConnected && !isShowingDemo) return;
 
     // Guard: only run init sequence once per userId (prevents dep-loop
-    // while still allowing re-init when auth resolves from null → real id)
+    // while still allowing re-init when auth resolves from null → real id).
+    // Skip if we already have positions in demoState OR have seeded before.
     const currentUserId = (user?.id as string | undefined) ?? null;
-    if (brokerInitDoneForUserRef.current === currentUserId) return;
+    if (brokerInitDoneForUserRef.current === currentUserId && demoSeededRef.current) return;
     brokerInitDoneForUserRef.current = currentUserId;
 
     const initBroker = async () => {
