@@ -599,7 +599,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       mountedRef.current = false;
       clearInterval(interval);
     };
-  }, [demoState, recomputeAccount, fetchData]);
+    // Recompute account when switching back to Demo after viewing broker data.
+    // When isShowingDemo toggles to true, we need to restore demo account display
+    // from the persisted demoState (which was untouched during broker view).
+  }, [demoState, recomputeAccount, fetchData, isShowingDemo]);
 
   // ── refreshStateFromBroker: sync broker state → React state ──
   const refreshStateFromBroker = useCallback(async () => {
