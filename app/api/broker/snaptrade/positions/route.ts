@@ -158,10 +158,9 @@ export async function GET(_req: NextRequest) {
 
   // ── Production — call SnapTrade API ─────────────────────
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
-  const snaptradeUserId = conn.snaptrade_user_id || authUser.id;
-  // SnapTrade post-OAuth: userId doubles as userSecret for API calls.
-  // The registerUser secret (if stored) is a different UUID that SnapTrade
-  // rejects after OAuth — the callback already uses this pattern successfully.
+  // Match callback behavior: use authUser.id for both userId and userSecret.
+  // The DB's snaptrade_user_id may have a 'vantage_' prefix SnapTrade doesn't know.
+  const snaptradeUserId = authUser.id;
   const snaptradeUserSecret = snaptradeUserId;
 
   try {

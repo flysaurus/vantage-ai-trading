@@ -216,8 +216,8 @@ export async function GET(_req: NextRequest) {
 
   // ── Production — call SnapTrade API ─────────────────────
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
-  const snaptradeUserId = conn.snaptrade_user_id || authUser.id;
-  // SnapTrade post-OAuth: userId doubles as userSecret for API calls.
+  // Match callback behavior: use authUser.id for both userId and userSecret.
+  const snaptradeUserId = authUser.id;
   const snaptradeUserSecret = snaptradeUserId;
 
   try {

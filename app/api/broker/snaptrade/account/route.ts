@@ -114,15 +114,12 @@ export async function GET(_req: NextRequest) {
     });
   }
 
+  // The callback uses authUser.id as both userId and userSecret for
+  // SnapTrade API calls after OAuth. The DB's snaptrade_user_id may
+  // have a 'vantage_' prefix that SnapTrade doesn't recognize.
+  const snaptradeUserId = authUser.id;
+  const snaptradeUserSecret = authUser.id;
   const consumerKey = process.env.SNAPTRADE_CONSUMER_KEY || '';
-  const snaptradeUserId = conn.snaptrade_user_id || authUser.id;
-  let snaptradeUserSecret = '';
-
-  // SnapTrade's post-OAuth API uses userId as userSecret — this is how
-  // the callback already works. The registerUser secret (if stored) is a
-  // different UUID that SnapTrade doesn't accept after OAuth.
-  snaptradeUserSecret = snaptradeUserId;
-  debug.decrypted = true; // not actually decrypting, but we have a valid secret
 
   try {
     const headers: Record<string, string> = {
