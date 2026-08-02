@@ -439,19 +439,19 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (!demoState) return;
 
       const positions = demoState.positions.map((p) => {
+        const pqty = (p as any).shares ?? (p as any).qty ?? 0;
         const quote = quotes?.[p.symbol];
         const hasLivePrice = quote && typeof quote.price === 'number' && quote.price > 0;
-        console.log('[recomputeAccount] position:', p.symbol, 'quote received:', JSON.stringify(quote), 'hasLivePrice:', hasLivePrice, 'currentPrice used:', hasLivePrice ? quote.price : p.avgCost);
         const currentPrice = hasLivePrice ? quote.price : p.avgCost;
-        const dayChange = hasLivePrice ? (quote.change || 0) * p.qty : 0;
+        const dayChange = hasLivePrice ? (quote.change || 0) * pqty : 0;
         const dayChangePercent = hasLivePrice && currentPrice > 0
           ? ((quote.change || 0) / quote.previousClose) * 100
           : 0;
-        const marketValue = p.qty * currentPrice;
-        const totalPnl = marketValue - (p.qty * p.avgCost);
-        const totalPnlPercent = p.avgCost > 0 ? (totalPnl / (p.qty * p.avgCost)) * 100 : 0;
+        const marketValue = pqty * currentPrice;
+        const totalPnl = marketValue - (pqty * p.avgCost);
+        const totalPnlPercent = p.avgCost > 0 ? (totalPnl / (pqty * p.avgCost)) * 100 : 0;
         const totalEquity = demoState.positions.reduce(
-          (sum, pos) => sum + pos.qty * currentPrice, 0
+          (sum, pos) => sum + ((pos as any).shares ?? (pos as any).qty ?? 0) * currentPrice, 0
         ) + demoState.cashBalance;
         const portfolioPercent = totalEquity > 0 ? (marketValue / totalEquity) * 100 : 0;
 
@@ -472,7 +472,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       });
 
       const totalEquity = positions.reduce((sum, p) => sum + p.marketValue, 0) + demoState.cashBalance;
-      const totalCost = positions.reduce((sum, p) => sum + p.qty * p.avgCost, 0);
+      const totalCost = positions.reduce((sum, p) => sum + ((p as any).shares ?? p.qty ?? 0) * p.avgCost, 0);
       const totalPnl = totalEquity - totalCost - demoState.cashBalance;
       // TOTAL % vs $100K starting capital (not invested cost basis)
       const totalPnlPercent = (totalPnl / INITIAL_CAPITAL) * 100;
@@ -634,11 +634,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
     const ctxPositions = bPositions.map((bp: any) => ({
       symbol: bp.symbol, name: bp.name && bp.name !== bp.symbol ? bp.name : prevNames.get(bp.symbol) || bp.name || bp.symbol,
-      sector: bp.sector || prevSectors.get(bp.symbol) || '', qty: bp.shares, avgCost: bp.avgCost,
-      currentPrice: bp.avgCost, marketValue: bp.shares * bp.avgCost,
-      dayChange: 0, dayChangePercent: 0, totalPnl: 0, totalPnlPercent: 0,
+      sector: bp.sector || prevSectors.get(bp.symbol) || '', qty: bp.shares ?? bp.qty ?? 0, avgCost: bp.avgCost,
+      currentPrice: (bp as any).currentPrice || bp.avgCost, marketValue: (bp.shares ?? bp.qty ?? 0) * ((bp as any).currentPrice || bp.avgCost),
+      dayChange: (bp as any).dayChange || 0, dayChangePercent: (bp as any).dayChangePercent || 0,
+      totalPnl: (bp as any).totalPnl || 0, totalPnlPercent: (bp as any).totalPnlPercent || 0,
       portfolioPercent: 0, type: bp.type,
       basketId: bp.basketId, basketName: bp.basketName, basketEmoji: bp.basketEmoji,
+      reservedShares: 0,
     }));
     // Compute reserved shares from OPEN sell orders for each position
     const reservedBySymbol = new Map<string, number>();

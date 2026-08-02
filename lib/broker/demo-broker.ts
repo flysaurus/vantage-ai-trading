@@ -95,16 +95,16 @@ export class DemoBroker implements BrokerEngine {
     type?: 'Stock' | 'ETF';
     buyDate?: string;
   }>): void {
-    const positions: BrokerPosition[] = templatePositions.map(p => ({
+    const positions = templatePositions.map(p => ({
       symbol: p.symbol,
       name: p.name,
       sector: p.sector,
-      type: p.type || (p.symbol.length <= 5 ? 'Stock' as const : 'ETF' as const),
+      type: (p.type || (p.symbol.length <= 5 ? 'Stock' : 'ETF')) as 'Stock' | 'ETF',
       shares: p.qty,
       avgCost: p.avgCost,
       totalCost: p.qty * p.avgCost,
       buyDate: p.buyDate || new Date().toISOString().split('T')[0],
-    }));
+    } as BrokerPosition));
 
     const totalCost = positions.reduce((s, p) => s + p.totalCost, 0);
     const cashBalance = Math.max(0, 100_000 - totalCost);
@@ -537,12 +537,12 @@ export class DemoBroker implements BrokerEngine {
     const positionInputs: PositionInput[] = this.state.positions.map(p => ({
       symbol: p.symbol,
       name: p.name || p.symbol,
-      units: p.qty,
-      price: p.currentPrice,
+      units: p.shares,
+      price: (p as any).currentPrice || p.avgCost,
       costBasisPerUnit: p.avgCost,
-      dayChange: p.dayChange,
-      dayChangePct: p.dayChangePercent,
-      openPnl: p.totalPnl,
+      dayChange: (p as any).dayChange ?? 0,
+      dayChangePct: (p as any).dayChangePercent ?? 0,
+      openPnl: (p as any).totalPnl ?? 0,
     }));
 
     const totals = computeAccountSummary(
