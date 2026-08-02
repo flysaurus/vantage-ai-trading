@@ -1,6 +1,7 @@
 // ─── GET /api/broker/snaptrade/account ────────────────────
-// Returns aggregated account balances across all SnapTrade-
-// connected brokerage accounts for the authenticated user.
+// Returns account summary for the authenticated user's
+// SnapTrade-connected brokerage, using the shared
+// computeAccountSummary function for BOTH SnapTrade and Demo paths.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
@@ -9,6 +10,7 @@ import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
+import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
 
 // ─── Dev mode — realistic synthetic data ─────────────────
 const DEV_ACCOUNT = {
@@ -19,33 +21,15 @@ const DEV_ACCOUNT = {
   currency: 'USD',
 };
 
-interface SnapTradeConnection {
-  id: string;
-  brokerage?: { id: string; name: string; slug: string };
-  name?: string;
-}
-
-interface SnapTradeAccount {
-  id: string;
-  name: string;
-  number?: string;
-}
-
 export async function GET(_req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
-  // ── Dev mode — return synthetic data ─────────────────
   if (!process.env.SNAPTRADE_CLIENT_ID) {
     return NextResponse.json(DEV_ACCOUNT);
   }
 
-  const debug: Record<string, unknown> = {
-    step: 'start',
-    supabaseUserId: authUser.id,
-  };
-
-  // ── Step A: Resolve credentials ───────────────────────
+  // ── Resolve credentials ────────────────────────────────
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
   let authorizationId: string;
@@ -54,122 +38,170 @@ export async function GET(_req: NextRequest) {
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     authorizationId = creds.connectionId;
-    debug.step = 'credentials_resolved';
-    debug.snaptradeUserId = snaptradeUserId;
-    debug.connectionId = authorizationId;
-    debug.brokerSlug = creds.brokerSlug;
   } catch (err) {
-    debug.step = 'credential_resolution_failed';
-    debug.errorMessage = (err as Error).message;
     if (err instanceof SnapTradeAuthError) {
-      return NextResponse.json(
-        { error: err.message, _debug: debug },
-        { status: err.status },
-      );
+      return NextResponse.json({ error: err.message }, { status: err.status });
     }
-    return NextResponse.json(
-      { error: 'Failed to load brokerage credentials.', _debug: debug },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: 'Failed to load brokerage credentials.' }, { status: 502 });
   }
 
-  const extraParams = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
+  const ep = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
 
   try {
-    // ── Step B: List accounts for this authorization ──
-    const accountsEndpoint = `/authorizations/${authorizationId}/accounts`;
-    debug.accountsEndpoint = accountsEndpoint;
-    const accounts = await snapTradeFetch<SnapTradeAccount[]>(
-      accountsEndpoint,
-      null,
-      extraParams,
-    );
-    debug.accountCount = Array.isArray(accounts) ? accounts.length : 0;
+    // ── Step A: List accounts (already has balance.total.amount) ──
+    const accounts = await snapTradeFetch<Array<{
+      id: string;
+      name: string;
+      number?: string;
+      balance?: { total?: { amount?: number; currency?: string } };
+    }>>(`/authorizations/${authorizationId}/accounts`, null, ep);
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
-      debug.result = 'empty_accounts';
       return NextResponse.json({
         equity: 0, cash: 0, buyingPower: 0,
         status: 'ACTIVE', currency: 'USD',
-        _debug: debug,
       });
     }
 
-    // ── Step C: Fetch balances for each account ────────
-    let totalEquity = 0;
+    // ── Step B: Fetch balances & positions for each account ──
     let totalCash = 0;
     let totalBuyingPower = 0;
-    debug.balanceFetches = { succeeded: 0, failed: 0 };
+    let totalEquityFromSnap = 0;
+    const allPositions: PositionInput[] = [];
 
     for (const acct of accounts) {
+      // Use pre-computed total from SnapTrade if available
+      totalEquityFromSnap += Number(acct.balance?.total?.amount || 0);
+
       try {
-        const balance = await snapTradeFetch<{
-          currency?: string;
+        const balances = await snapTradeFetch<Array<{
+          currency?: { code?: string };
           cash?: number;
           buying_power?: number;
-        }[]>(
-          `/accounts/${acct.id}/balances`,
-          null,
-          extraParams,
-        );
+        }>>(`/accounts/${acct.id}/balances`, null, ep);
 
-        if (Array.isArray(balance)) {
-          for (const b of balance) {
+        if (Array.isArray(balances)) {
+          for (const b of balances) {
             totalCash += Number(b.cash || 0);
             totalBuyingPower += Number(b.buying_power || 0);
           }
         }
-        // SnapTrade returns total_value separately from balances for some brokers
-        (debug.balanceFetches as any).succeeded++;
-      } catch {
-        (debug.balanceFetches as any).failed++;
-      }
+      } catch { /* partial failure OK */ }
+
+      try {
+        const rawPositions = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/positions`, null, ep,
+        );
+        const positions = normalisePositions(rawPositions);
+        allPositions.push(...positions);
+      } catch { /* partial failure OK */ }
     }
 
-    // ── Step D: Get account details for total equity ──
-    try {
-      const acctDetails = await snapTradeFetch<{
-        total_value?: number;
-      }>(
-        `/accounts/${accounts[0].id}`,
-        null,
-        extraParams,
-      );
-      totalEquity = Number(acctDetails.total_value || 0);
-    } catch {
-      // If details fail, estimate from cash + buying power
-      totalEquity = totalCash + totalBuyingPower;
-      debug.equityFromEstimate = true;
-    }
+    // ── Step C: Compute using the SHARED function ───────
+    const summary = computeAccountSummary(totalCash, totalBuyingPower, allPositions);
 
-    if (totalEquity === 0) totalEquity = totalCash + totalBuyingPower;
+    // Prefer the broker-reported total (more accurate for complex accounts)
+    // but fall back to computed if it's zero or missing
+    const finalEquity = totalEquityFromSnap > 0 ? totalEquityFromSnap : summary.totalValue;
 
-    debug.result = 'success';
-    debug.finalEquity = totalEquity;
     return NextResponse.json({
-      equity: totalEquity,
-      cash: totalCash,
-      buyingPower: totalBuyingPower,
-      status: 'ACTIVE', currency: 'USD',
-      _debug: debug,
+      equity: finalEquity,
+      cash: summary.cash,
+      buyingPower: summary.buyingPower,
+      invested: summary.invested,
+      marketValue: summary.marketValue,
+      dayChange: summary.dayChange,
+      dayChangePct: summary.dayChangePct,
+      totalPnl: summary.totalPnl,
+      totalPnlPct: summary.totalPnlPct,
+      status: 'ACTIVE',
+      currency: 'USD',
+      _debug: {
+        equitySource: totalEquityFromSnap > 0 ? 'snaptrade_balance_total' : 'computed',
+        snapEquity: totalEquityFromSnap,
+        computedEquity: summary.totalValue,
+        positionCount: allPositions.length,
+      },
     });
   } catch (err) {
-    debug.result = 'snaptrade_api_error';
-    debug.errorMessage = (err as Error).message;
-
-    // Check for 401 in error message
     const msg = (err as Error).message;
     const statusCode = msg.includes('401') ? 401 : msg.includes('403') ? 403 : 502;
-
     if (statusCode === 401 || statusCode === 403) {
       return NextResponse.json(
-        { error: 'Broker connection expired. Please reconnect your broker.', _debug: debug },
+        { error: 'Broker connection expired. Please reconnect your broker.' },
         { status: statusCode },
       );
     }
     return NextResponse.json(
-      { error: 'Failed to load account data.', _debug: debug },
+      { error: 'Failed to load account data.' },
       { status: 502 },
     );
   }
+}
+
+// ─── Position normaliser — handles SnapTrade's triple-nested symbol ───
+// raw: position.symbol.symbol.symbol → "TSLA"
+// raw: position.symbol.symbol.description → "Tesla, Inc."
+// raw: position.units → 10 (NOT "quantity")
+// raw: position.price → 311.21
+// raw: position.average_purchase_price → cost basis per unit
+// raw: position.open_pnl → unrealized P&L
+
+function normalisePositions(raw: unknown): PositionInput[] {
+  const list = extractArray(raw);
+  if (!list.length) return [];
+
+  return list
+    .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
+    .map((p) => {
+      const sym = extractSymbol(p);
+      const units = Number((p as any).units || (p as any).fractional_units || 0);
+      const price = Number((p as any).price || 0);
+      const costPerUnit = Number((p as any).average_purchase_price || 0);
+      const openPnl = Number((p as any).open_pnl || 0);
+
+      return {
+        symbol: sym.symbol,
+        name: sym.description || sym.symbol,
+        units,
+        price,
+        costBasisPerUnit: costPerUnit,
+        openPnl,
+      };
+    });
+}
+
+function extractArray(raw: unknown): unknown[] {
+  if (raw && typeof raw === 'object' && 'results' in (raw as Record<string, unknown>)) {
+    const arr = (raw as { results: unknown[] }).results;
+    return Array.isArray(arr) ? arr : [];
+  }
+  return Array.isArray(raw) ? raw : [];
+}
+
+function extractSymbol(p: Record<string, unknown>): { symbol: string; description: string } {
+  const s = (p as any).symbol;
+  if (!s || typeof s !== 'object') {
+    // flat format: position.symbol = "TSLA"
+    return { symbol: String(s || ''), description: String((p as any).name || (p as any).description || '') };
+  }
+
+  // SnapTrade nested: position.symbol.symbol.symbol
+  const inner = s.symbol;
+  if (inner && typeof inner === 'object') {
+    return {
+      symbol: String(inner.symbol || ''),
+      description: String(inner.description || s.description || ''),
+    };
+  }
+
+  // position.symbol.symbol = "TSLA" (string)
+  if (typeof s.symbol === 'string') {
+    return {
+      symbol: s.symbol,
+      description: String(s.description || s.name || ''),
+    };
+  }
+
+  return { symbol: '', description: '' };
 }

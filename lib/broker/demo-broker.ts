@@ -16,6 +16,7 @@ import {
 import { evaluateOpenOrder } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getMarketStatus } from '@/lib/market-hours';
+import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
 
 
 const STORAGE_KEY = 'vantage_demo_state_v3';
@@ -533,16 +534,32 @@ export class DemoBroker implements BrokerEngine {
   // ─── ACCOUNT ───
 
   async getAccount(): Promise<BrokerAccountSummary> {
-    const totalInvested = this.state.positions.reduce((sum, p) => sum + p.totalCost, 0);
+    const positionInputs: PositionInput[] = this.state.positions.map(p => ({
+      symbol: p.symbol,
+      name: p.name || p.symbol,
+      units: p.qty,
+      price: p.currentPrice,
+      costBasisPerUnit: p.avgCost,
+      dayChange: p.dayChange,
+      dayChangePct: p.dayChangePercent,
+      openPnl: p.totalPnl,
+    }));
+
+    const totals = computeAccountSummary(
+      this.state.cashBalance,
+      this.state.cashBalance, // demo: buyingPower = cash (no margin)
+      positionInputs,
+    );
+
     return {
-      totalValue: totalInvested + this.state.cashBalance,
-      cashBalance: this.state.cashBalance,
-      buyingPower: this.state.cashBalance,
-      totalInvested,
-      totalPnL: 0,
-      totalPnLPct: 0,
-      todayPnL: 0,
-      todayPnLPct: 0,
+      totalValue: totals.totalValue,
+      cashBalance: totals.cash,
+      buyingPower: totals.buyingPower,
+      totalInvested: totals.invested,
+      totalPnL: totals.totalPnl,
+      totalPnLPct: totals.totalPnlPct,
+      todayPnL: totals.dayChange,
+      todayPnLPct: totals.dayChangePct,
     };
   }
 

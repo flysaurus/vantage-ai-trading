@@ -68,7 +68,13 @@ export class SnapTradeAdapter implements BrokerAdapter {
     const data = await this.snaptradeFetch<{
       equity: number;
       cash: number;
-      buying_power: number;
+      buyingPower: number;
+      invested: number;
+      marketValue: number;
+      dayChange: number;
+      dayChangePct: number;
+      totalPnl: number;
+      totalPnlPct: number;
       status: string;
       currency: string;
     }>('/api/broker/snaptrade/account');
@@ -77,12 +83,12 @@ export class SnapTradeAdapter implements BrokerAdapter {
       id: `snaptrade-${this.underlyingBroker || 'unknown'}`,
       equity: data.equity ?? 0,
       cash: data.cash ?? 0,
-      buyingPower: data.buying_power ?? 0,
+      buyingPower: data.buyingPower ?? 0,
       dayTradeCount: 0,
-      dayPnl: 0,
-      dayPnlPercent: 0,
-      totalPnl: 0,
-      totalPnlPercent: 0,
+      dayPnl: data.dayChange ?? 0,
+      dayPnlPercent: data.dayChangePct ?? 0,
+      totalPnl: data.totalPnl ?? 0,
+      totalPnlPercent: data.totalPnlPct ?? 0,
       portfolioValue: data.equity ?? 0,
       currency: data.currency || 'USD',
       status: data.status === 'ACTIVE' ? 'active' : 'active',
@@ -95,37 +101,37 @@ export class SnapTradeAdapter implements BrokerAdapter {
     const raw = await this.snaptradeFetch<Array<{
       symbol: string;
       name?: string;
-      quantity: number;
+      units: number;
       price: number;
-      market_value: number;
-      cost_basis: number;
-      day_change: number;
-      day_change_pct: number;
-      total_pnl: number;
-      total_pnl_pct: number;
-      asset_type?: string;
+      marketValue: number;
+      costBasis: number;
+      openPnl: number;
+      dayChange: number;
+      dayChangePct: number;
+      assetType?: string;
+      currency?: string;
     }>>('/api/broker/snaptrade/positions');
 
     if (!Array.isArray(raw) || raw.length === 0) return [];
 
-    const totalValue = raw.reduce((sum, p) => sum + (p.market_value || 0), 0) || 1;
+    const totalValue = raw.reduce((sum, p) => sum + (p.marketValue || 0), 0) || 1;
 
     return raw.map((p) => ({
       symbol: p.symbol || '',
       name: p.name || p.symbol || '',
-      assetType: p.asset_type === 'crypto' ? 'crypto' : 'stock',
-      qty: p.quantity || 0,
-      avgCost: p.price || 0,
+      assetType: p.assetType === 'crypto' ? 'crypto' : 'stock',
+      qty: p.units || 0,
+      avgCost: p.costBasis > 0 && p.units > 0 ? p.costBasis / p.units : p.price || 0,
       currentPrice: p.price || 0,
-      marketValue: p.market_value || 0,
-      costBasis: p.cost_basis || 0,
-      dayChange: p.day_change || 0,
-      dayChangePercent: p.day_change_pct || 0,
-      totalPnl: p.total_pnl || 0,
-      totalPnlPercent: p.total_pnl_pct || 0,
-      portfolioPercent: (p.market_value || 0) / totalValue * 100,
+      marketValue: p.marketValue || 0,
+      costBasis: p.costBasis || 0,
+      dayChange: p.dayChange || 0,
+      dayChangePercent: p.dayChangePct || 0,
+      totalPnl: p.openPnl || 0,
+      totalPnlPercent: p.costBasis > 0 ? (p.openPnl / p.costBasis) * 100 : 0,
+      portfolioPercent: (p.marketValue || 0) / totalValue * 100,
       sector: undefined,
-      currency: 'USD',
+      currency: p.currency || 'USD',
       exchange: undefined,
     }));
   }
