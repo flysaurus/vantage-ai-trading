@@ -217,12 +217,44 @@ export function OrdersTab() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — distinct for different scenarios */}
       {orders.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-          {activeFilter === 'open'
-            ? 'No open orders — ready to place your first trade?'
-            : `No ${activeFilter} orders`}
+          {error ? (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📡</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#f87171', marginBottom: 4 }}>
+                Order History Unavailable
+              </div>
+              <div style={{ fontSize: 11, marginBottom: 12 }}>
+                Could not reach your broker to load orders. Check your connection and try again.
+              </div>
+            </>
+          ) : activeFilter !== 'all' ? (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                No {activeFilter} orders
+              </div>
+              <div style={{ fontSize: 11 }}>
+                {activeFilter === 'open'
+                  ? 'No pending orders — ready to place your first trade?'
+                  : activeFilter === 'filled'
+                  ? 'No filled orders yet — your completed trades will appear here'
+                  : `No ${activeFilter} orders found`}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                No Orders Yet
+              </div>
+              <div style={{ fontSize: 11 }}>
+                Your order history will appear here once you start trading
+              </div>
+            </>
+          )}
         </div>
       )}
 

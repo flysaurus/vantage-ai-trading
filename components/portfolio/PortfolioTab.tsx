@@ -47,6 +47,22 @@ function splitCents(value: number): { dollars: string; cents: string } {
   return { dollars: parts[0] || '0', cents: parts[1] || '00' };
 }
 
+// ─── Helpers ──────────────────────────────────────────────────
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return date.toLocaleDateString();
+}
+
 // ─── Account Hero Card ────────────────────────────────────
 
 function AccountHero({ account, isConnected, isShowingDemo }: { account: AccountSummary; isConnected: boolean; isShowingDemo?: boolean }) {
@@ -110,6 +126,18 @@ function AccountHero({ account, isConnected, isShowingDemo }: { account: Account
           </div>
         </div>
       </div>
+
+      {/* Last synced indicator */}
+      {account.lastSynced && (
+        <div style={{
+          marginTop: 8,
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          opacity: 0.6,
+        }}>
+          Last synced {formatRelativeTime(account.lastSynced)}
+        </div>
+      )}
     </div>
   );
 }
@@ -1299,9 +1327,25 @@ export function PortfolioTab() {
 
         const hasBasketsOrPositions = allBasketRows.length > 0 || filteredPositions.length > 0;
         if (!hasBasketsOrPositions) {
+          const isUnavailable = accountData?.holdingsUnavailable || false;
           return (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 14 }}>
-              {filter !== 'all' ? 'No positions match this filter' : 'No positions yet'}
+              {isUnavailable ? (
+                <>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🔒</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f87171', marginBottom: 4 }}>
+                    Holdings Unavailable
+                  </div>
+                  <div style={{ fontSize: 11, maxWidth: 280, margin: '0 auto' }}>
+                    Your broker did not return position data. This may happen during maintenance windows
+                    or if your account type restricts third-party data access.
+                  </div>
+                </>
+              ) : filter !== 'all' ? (
+                'No positions match this filter'
+              ) : (
+                'No positions yet'
+              )}
             </div>
           );
         }
