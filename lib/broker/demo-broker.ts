@@ -554,12 +554,16 @@ export class DemoBroker implements BrokerEngine {
     return {
       totalValue: totals.totalValue,
       cashBalance: totals.cash,
-      buyingPower: totals.buyingPower,
+      buyingPower: null, // Demo: no margin concept → always null
       totalInvested: totals.invested,
       totalPnL: totals.totalPnl,
       totalPnLPct: totals.totalPnlPct,
       todayPnL: totals.dayChange,
       todayPnLPct: totals.dayChangePct,
+      // Demo-specific metadata: always live, no status, no locked holdings
+      lastSynced: null,
+      accountStatus: null,
+      holdingsUnavailable: false,
     };
   }
 

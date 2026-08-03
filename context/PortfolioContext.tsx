@@ -285,13 +285,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     });
     return {
       equity: totalEquity,
-      buyingPower: state.cashBalance,
+      buyingPower: null, // Demo: no margin concept
       cash: state.cashBalance,
       dayPnl: 0,
       dayPnlPercent: 0,
       totalPnl: 0,
       totalPnlPercent: 0,
       positions,
+      lastSynced: null,           // Demo: always live
+      accountStatus: null,        // Demo: not meaningful
+      holdingsUnavailable: false, // Demo: always available
     };
   }
 
@@ -314,13 +317,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // Cash-only default — no fake positions/orders. Real data only from trades.
     return {
       equity: 100_000,
-      buyingPower: 100_000,
+      buyingPower: null, // Demo: no margin concept
       cash: 100_000,
       dayPnl: 0,
       dayPnlPercent: 0,
       totalPnl: 0,
       totalPnlPercent: 0,
       positions: [],
+      lastSynced: null,           // Demo: always live
+      accountStatus: null,        // Demo: not meaningful
+      holdingsUnavailable: false, // Demo: always available
     };
   });
   const [loading, setLoading] = useState(false);
@@ -483,16 +489,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
       const summary: AccountSummary = {
         equity: totalEquity,
-        buyingPower: demoState.cashBalance,
+        buyingPower: null, // Demo: no margin concept
         cash: demoState.cashBalance,
         dayPnl,
         dayPnlPercent,
         totalPnl,
         totalPnlPercent,
         positions,
+        lastSynced: null,           // Demo: always live
+        accountStatus: null,        // Demo: not meaningful
+        holdingsUnavailable: false, // Demo: always available
       };
-
-      console.log('[recomputeAccount] account set, sample position currentPrice:', summary.positions?.[0]?.currentPrice);
       setAccount(summary);
     },
     [demoState]
@@ -573,6 +580,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             sector: p.sector,
             type: p.assetType === 'etf' ? 'ETF' as const : 'Stock' as const,
           })),
+          lastSynced: ba.lastSynced ?? null,
+          accountStatus: ba.accountStatus ?? null,
+          holdingsUnavailable: ba.holdingsUnavailable ?? false,
         };
 
         setAccount(summary);

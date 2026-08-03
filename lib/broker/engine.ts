@@ -82,12 +82,17 @@ export interface BrokerPosition {
 export interface BrokerAccountSummary {
   totalValue: number;
   cashBalance: number;
-  buyingPower: number;
+  /** null = non-margin account — UI hides field, never renders "$0.00" */
+  buyingPower: number | null;
   totalInvested: number;
   totalPnL: number;
   totalPnLPct: number;
   todayPnL: number;
   todayPnLPct: number;
+  /** Connection-level metadata — null for Demo */
+  lastSynced: string | null;
+  accountStatus: 'open' | 'closed' | 'archived' | null;
+  holdingsUnavailable: boolean;
 }
 
 export interface BrokerOrder {

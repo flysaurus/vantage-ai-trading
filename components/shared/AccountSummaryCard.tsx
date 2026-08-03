@@ -17,7 +17,7 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
   maximumFractionDigits: 2,
 };
 
-export function AccountSummaryCard({ account, isShowingDemo }: { account: AccountSummary; isShowingDemo?: boolean }) {
+export function AccountSummaryCard({ account }: { account: AccountSummary }) {
   const router = useRouter();
   const fmt = (n: number) => `$${Math.abs(n).toLocaleString('en-US', DOLLAR_FMT)}`;
   const pct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
@@ -53,8 +53,8 @@ export function AccountSummaryCard({ account, isShowingDemo }: { account: Accoun
           )}
         </div>
 
-        {/* Account status badge — only for closed/archived, silent for open */}
-        {!isShowingDemo && account.accountStatus && account.accountStatus !== 'open' && (
+        {/* Account status badge — only for closed/archived, silent for open or null (Demo) */}
+        {account.accountStatus && account.accountStatus !== 'open' && (
           <div style={{
             display: 'inline-block', marginTop: 4, padding: '2px 8px',
             borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
@@ -101,14 +101,20 @@ export function AccountSummaryCard({ account, isShowingDemo }: { account: Accoun
           <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
             Cash
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>
-            ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
-          </div>
+          {account.holdingsUnavailable ? (
+            <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              not shared
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* "as of" label — broker accounts only, never Demo */}
-      {!isShowingDemo && account.lastSynced && (
+      {/* "as of" label — shows when lastSynced is present (broker accounts), hidden for Demo (null) */}
+      {account.lastSynced && (
         <div style={{ marginTop: 6, fontSize: 10, color: '#64748b' }}>
           as of {new Date(account.lastSynced).toLocaleString()}
         </div>

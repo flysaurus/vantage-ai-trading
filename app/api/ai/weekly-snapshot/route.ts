@@ -237,7 +237,7 @@ export async function GET(req: NextRequest) {
     // ─── forceRegen: generate fresh snapshot ───
     const { data: portfolioState } = await (supabase as any)
       .from('demo_portfolio_state')
-      .select('positions, cash_balance')
+      .select('positions, cash_balance, holdings_unavailable')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -251,6 +251,7 @@ export async function GET(req: NextRequest) {
         riskLevel: null,
         weekStart: weekStartStr,
         generatedAt: null,
+        reason: portfolioState?.holdings_unavailable ? 'holdings_unavailable' : 'no_positions',
         cached: false,
       });
     }

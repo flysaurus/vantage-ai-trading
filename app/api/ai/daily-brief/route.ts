@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
     // 3. Get live portfolio state from demo_portfolio_state
     const { data: portfolioState } = await (supabase as any)
       .from('demo_portfolio_state')
-      .select('positions, cash_balance')
+      .select('positions, cash_balance, holdings_unavailable')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -145,6 +145,7 @@ export async function GET(req: NextRequest) {
     if (!positions || positions.length === 0) {
       return NextResponse.json({
         content: null,
+        reason: portfolioState?.holdingsUnavailable ? 'holdings_unavailable' : 'no_positions',
         cached: false,
         generatedAt: new Date().toISOString(),
       });

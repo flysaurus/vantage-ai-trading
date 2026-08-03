@@ -167,7 +167,7 @@ export async function GET(_req: NextRequest) {
         name: p.name,
         quantity: p.units,
         price: p.price,
-        costBasis: p.units > 0 && p.costBasisPerUnit ? p.units * p.costBasisPerUnit : null,
+        costBasis: p.units > 0 && p.costBasisPerUnit ? p.units * p.costBasisPerUnit : p.price,
         marketValue: p.units * p.price,
         openPnl: p.openPnl,
         dayChange: 0,

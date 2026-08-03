@@ -42,7 +42,7 @@ export interface CanonicalPosition {
   quantity: number;
   price: number;
   /** computed as average_purchase_price × quantity — never trust open_pnl directly per SnapTrade docs */
-  costBasis: number | null;
+  costBasis: number;
   marketValue: number;
   openPnl: number;
   dayChange: number;

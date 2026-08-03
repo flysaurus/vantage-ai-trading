@@ -23,6 +23,7 @@ interface PortfolioContext {
   cash: number
   investorStyle: string
   riskTolerance: string
+  holdingsUnavailable?: boolean
   positions: Position[]
 }
 
@@ -41,11 +42,15 @@ export function buildPortfolioContext(portfolio: PortfolioContext): string {
     .map(p => `${p.symbol}: $${p.currentPrice.toFixed(2)} (as of now)`)
     .join(' | ')
 
+  const holdingsWarning = portfolio.holdingsUnavailable
+    ? '⚠️ NOTE: Holdings data is NOT available for this account (broker restriction). Positions shown may be incomplete or empty. Do NOT make recommendations based on current position data.'
+    : '';
+
   return `
 ⚠️ CURRENT MARKET PRICES (use these, ignore training data):
 ${priceAnchor}
 
-PORTFOLIO CONTEXT (as of now):
+${holdingsWarning}PORTFOLIO CONTEXT (as of now):
 Total Value: $${portfolio.totalValue.toLocaleString()}
 Today P&L: ${portfolio.todayPnl >= 0 ? '+' : ''}$${Math.abs(portfolio.todayPnl).toFixed(0)} (${portfolio.todayPnlPct.toFixed(1)}%)
 Total P&L: ${portfolio.totalPnl >= 0 ? '+' : ''}$${Math.abs(portfolio.totalPnl).toFixed(0)} (${portfolio.totalPnlPct.toFixed(1)}%)

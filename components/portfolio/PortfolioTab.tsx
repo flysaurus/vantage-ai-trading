@@ -65,23 +65,25 @@ function formatRelativeTime(dateStr: string): string {
 
 // ─── Account Hero Card ────────────────────────────────────
 
-function AccountHero({ account, isConnected, isShowingDemo }: { account: AccountSummary; isConnected: boolean; isShowingDemo?: boolean }) {
+function AccountHero({ account, isConnected }: { account: AccountSummary; isConnected: boolean }) {
   const { brokerSource, brokerMeta } = useLivePortfolio();
   const { dollars, cents } = splitCents(account.equity);
   
-  // Data source badge — respect active-account scoping
-  const actualIsDemo = isShowingDemo ?? (brokerSource === 'demo');
-  const envLabel = actualIsDemo
-    ? 'DEMO MODE'
+  // Label badge — driven by broker metadata + canonical fields, never a hardcoded isDemo bool
+  const isDemo = brokerSource === 'demo';
+  const isReadOnly = account.holdingsUnavailable === true;
+
+  const envLabel = isDemo
+    ? 'Demo Portfolio · Demo'
     : brokerMeta?.environment === 'paper'
       ? `${brokerMeta?.name ?? 'Broker'} · Paper`
-      : brokerMeta?.tradingEnabled
-        ? `${brokerMeta?.name ?? 'Broker'} · Live`
-        : `${brokerMeta?.name ?? 'Broker'} · Read-only`;
+      : isReadOnly
+        ? `${brokerMeta?.name ?? 'Broker'} · Read-only`
+        : `${brokerMeta?.name ?? 'Broker'} · Live`;
   
-  const dataSourceStyle = actualIsDemo
-    ? undefined
-    : brokerMeta?.tradingEnabled
+  const dataSourceStyle = isDemo
+    ? { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }
+    : brokerMeta?.tradingEnabled && !isReadOnly
       ? { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }
       : { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' };
   
@@ -89,8 +91,8 @@ function AccountHero({ account, isConnected, isShowingDemo }: { account: Account
     <div className="hero-container" style={{ position: 'relative' }}>
       {/* Data source badge */}
       <span
-        className={actualIsDemo ? 'hero-demo-badge' : ''}
-        style={actualIsDemo ? undefined : dataSourceStyle as any}
+        className={isDemo ? 'hero-demo-badge' : ''}
+        style={isDemo ? undefined : dataSourceStyle as any}
       >
         {envLabel}
       </span>
@@ -1111,7 +1113,7 @@ export function PortfolioTab() {
   return (
     <div style={{ paddingBottom: 120 }}>
       {/* ── 1. Account Hero ── */}
-      <AccountHero account={accountData} isConnected={isBrokerExpected} isShowingDemo={isShowingDemo} />
+      <AccountHero account={accountData} isConnected={isBrokerExpected} />
 
       {/* ── 2. Portfolio Chart ── */}
       <div style={{ padding: '0 20px 16px' }}>
