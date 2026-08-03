@@ -132,20 +132,70 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 3. Get live portfolio state from demo_portfolio_state
-    const { data: portfolioState } = await (supabase as any)
-      .from('demo_portfolio_state')
-      .select('positions, cash_balance, holdings_unavailable')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // 3. Get live portfolio state
+    // Check both demo_portfolio_state and broker-backed positions
+    let positions: any[] = [];
+    let cashBalance = 0;
+    let holdingsUnavailable = false;
+    let isBrokerConnected = false;
 
-    const positions: any[] = portfolioState?.positions || [];
-    const cashBalance = portfolioState?.cash_balance ?? 0;
+    // Check if user has a connected broker
+    try {
+      const { data: vault } = await (supabase as any)
+        .from('vault')
+        .select('provider')
+        .eq('user_id', userId)
+        .maybeSingle();
+      isBrokerConnected = !!vault?.provider;
+
+      if (isBrokerConnected) {
+        // For broker users, positions are in the positions table
+        const { data: brokerPositions } = await (supabase as any)
+          .from('positions')
+          .select('*')
+          .eq('user_id', userId)
+          .neq('qty', 0);
+        positions = brokerPositions || [];
+        cashBalance = 0; // Will be computed below if we have positions
+
+        // Check if broker holdings are unavailable (from account status)
+        const { data: brokerAccounts } = await (supabase as any)
+          .from('broker_accounts')
+          .select('sync_status')
+          .eq('user_id', userId);
+        if (brokerAccounts?.length) {
+          holdingsUnavailable = brokerAccounts.some(
+            (a: any) => a.sync_status?.holdings?.holdings_unavailable === true
+          );
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Fallback to demo state
+    if (!isBrokerConnected) {
+      const { data: demoState } = await (supabase as any)
+        .from('demo_portfolio_state')
+        .select('positions, cash_balance')
+        .eq('user_id', userId)
+        .maybeSingle();
+      positions = demoState?.positions || [];
+      cashBalance = demoState?.cash_balance ?? 0;
+    }
+
+    if (holdingsUnavailable) {
+      return NextResponse.json({
+        content: null,
+        reason: 'holdings_unavailable',
+        message: 'I can see your total value but not individual holdings for this account.',
+        cached: false,
+        generatedAt: new Date().toISOString(),
+      });
+    }
 
     if (!positions || positions.length === 0) {
       return NextResponse.json({
         content: null,
-        reason: portfolioState?.holdingsUnavailable ? 'holdings_unavailable' : 'no_positions',
+        reason: 'no_positions',
         cached: false,
         generatedAt: new Date().toISOString(),
       });

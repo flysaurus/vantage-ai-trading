@@ -145,6 +145,23 @@ async function processUser(
     .neq('qty', 0);
 
   if (!positions || positions.length === 0) {
+    // Distinguish "no positions" from "positions unavailable"
+    // A connected broker with zero positions may have holdingsUnavailable=true
+    let connectedBroker: string | null = null;
+    try {
+      const { data: vault } = await supabase
+        .from('vault')
+        .select('provider')
+        .eq('user_id', userId)
+        .maybeSingle();
+      connectedBroker = vault?.provider || null;
+    } catch { /* ignore */ }
+
+    if (connectedBroker) {
+      console.log(`[portfolio-agent] User ${userId.slice(0, 8)} has broker ${connectedBroker} but 0 positions — skipping (may be holdingsUnavailable)`);
+    } else {
+      console.log(`[portfolio-agent] User ${userId.slice(0, 8)} has 0 positions (demo, genuinely empty) — skipping`);
+    }
     return { triggers: 0, haikuGenerated: 0, skippedBudget: false };
   }
 

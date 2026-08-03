@@ -21,7 +21,7 @@ export interface AccountEntry {
   isDemo: boolean;
   tradingEnabled: boolean;
   totalValue: number;
-  buyingPower: number;
+  buyingPower: number | null;
   cash: number;
   environment: 'demo' | 'paper' | 'live';
   connectionId?: string; // broker_connections UUID, only for live accounts
@@ -84,7 +84,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       for (const conn of connections) {
         let totalValue = 0;
         let cash = 0;
-        let buyingPower = 0;
+        let buyingPower: number | null = null;
         let accountName = mapSlugToName(conn.brokerage_slug);
 
         // Try to fetch live account data from SnapTrade

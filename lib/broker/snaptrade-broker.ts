@@ -127,6 +127,10 @@ export class SnapTradeBroker implements BrokerEngine {
       totalPnLPct: 0,
       todayPnL: 0,
       todayPnLPct: 0,
+      // Connection-level metadata (populated by full account route, not simple balance fetch)
+      lastSynced: null,
+      accountStatus: null,
+      holdingsUnavailable: false,
     };
 
     this.accountCache = { data: summary, fetchedAt: Date.now() };
