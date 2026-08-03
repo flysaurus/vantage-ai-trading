@@ -230,13 +230,16 @@ export async function GET(_req: NextRequest) {
 
     for (const account of accounts) {
       try {
-        const activities = await snapTradeFetch<SnapTradeActivity[]>(
+        const raw = await snapTradeFetch<{ data?: SnapTradeActivity[] } | SnapTradeActivity[]>(
           `/accounts/${account.id}/activities`,
           null,
           extraParams,
         );
 
-        if (!Array.isArray(activities)) continue;
+        // SnapTrade wraps activities in { data: [...] } (paginated response)
+        const activities = Array.isArray(raw) ? raw : (raw?.data ?? []);
+
+        if (!Array.isArray(activities) || activities.length === 0) continue;
 
         for (const activity of activities) {
           const order = mapActivityToOrder(activity, account.id);

@@ -114,11 +114,14 @@ export async function GET(_req: NextRequest) {
 
     for (const account of accounts) {
       try {
-        const activities = await snapTradeFetch<Record<string, unknown>[]>(
+        const rawResp = await snapTradeFetch<{ data?: Record<string, unknown>[] } | Record<string, unknown>[]>(
           `/accounts/${account.id}/activities`,
           null,
           extraParams,
         );
+
+        // SnapTrade wraps activities in { data: [...] }
+        const activities = Array.isArray(rawResp) ? rawResp : (rawResp?.data ?? []);
 
         rawActivityCounts[account.id] = Array.isArray(activities) ? activities.length : 0;
         const skipped: { type: string; reason: string }[] = [];
