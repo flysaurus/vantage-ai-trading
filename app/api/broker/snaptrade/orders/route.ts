@@ -13,7 +13,6 @@ import {
 import {
   extractOrderSymbol,
   extractOrderName,
-  mapOrderStatus,
   mapOrderSide,
 } from '@/lib/snaptrade/mapping';
 
@@ -34,20 +33,22 @@ interface SnapTradeActivity {
     currency?: string;
   };
   type: string; // BUY, SELL, DIVIDEND, INTEREST, etc.
-  status?: string; // NONE/PENDING/ACCEPTED/EXECUTED/CANCELED/PARTIAL_FILL/...
   trade_date: string;
   settlement_date?: string;
-  quantity?: number;
+  // ⚠️ SnapTrade returns `units` (signed: +BUY/-SELL), NOT `quantity`
+  units?: number;
   price?: number;
+  // ⚠️ amount is signed (snaptrade convention)
   amount?: number;
   description?: string;
+  fee?: number;
   option_details?: {
     option_type?: string;
     strike_price?: number;
     expiration_date?: string;
     underlying_symbol?: string;
   };
-  order_type?: string;
+  institution?: string;
 }
 
 interface BrokerOrder {
@@ -140,7 +141,7 @@ const DEV_ORDERS: BrokerOrder[] = [
 ];
 
 // ─── Map SnapTrade activity → BrokerOrder ────────────────
-// Uses shared extractOrderSymbol / mapOrderStatus / mapOrderSide
+// Uses shared extractOrderSymbol / mapOrderSide
 // from lib/snaptrade/mapping.ts — single source of truth.
 function mapActivityToOrder(
   activity: SnapTradeActivity,
@@ -151,10 +152,13 @@ function mapActivityToOrder(
 
   const name = extractOrderName(activity as unknown as Record<string, unknown>) || symbol;
   const side = mapOrderSide(activity.type);
-  const qty = Math.abs(activity.quantity || 0);
+  // SnapTrade activities use `units` (signed: +BUY/-SELL), NOT `quantity`
+  const qty = Math.abs(activity.units || 0);
   const price = activity.price || 0;
+  // amount is signed (snaptrade convention); totalValue must be absolute
   const amount = activity.amount || qty * price;
-  const status = mapOrderStatus(activity.status || '');
+  // Activities ARE completed trades — SnapTrade doesn't expose `status` here
+  const status = 'filled';
 
   const uniqueId = activity.id
     ? `snaptrade-${accountId}-${activity.id}`
@@ -165,14 +169,15 @@ function mapActivityToOrder(
     symbol,
     name,
     side,
-    type: activity.order_type === 'limit' ? 'limit' : 'market',
+    // Activities don't carry order_type — always market since it's historical
+    type: 'market' as const,
     status,
     qty,
     filledQty: qty,
-    limitPrice: activity.order_type === 'limit' ? price : undefined,
-    stopPrice: activity.order_type === 'stop' ? price : undefined,
+    limitPrice: undefined,
+    stopPrice: undefined,
     filledPrice: price,
-    totalValue: amount,
+    totalValue: Math.abs(amount || 0),
     timeInForce: 'day',
     assetType: 'stock',
     createdAt: activity.trade_date,
