@@ -1068,7 +1068,7 @@ export function TradeTab() {
           const coveredBasketIds = new Set(filteredBasketOrders.map((b: any) => b.basketId));
           const soloOrders = filteredOrders.filter((o: any) => {
             if (o.basketOrderId) return false;
-            if (o.id?.toString().includes('-b')) return false;
+            if (o.id?.toString().startsWith('basket-grp-')) return false;
             if (groupedOrderIds.has(o.id)) return false;
             if (o.basketId && coveredBasketIds.has(o.basketId)) return false;
             return true;
@@ -1177,7 +1177,8 @@ export function TradeTab() {
           // Solo orders: exclude basket-covered orders + already-grouped
           const soloOrders = filteredOrders.filter((o: any) => {
             if (o.basketOrderId) return false;
-            if (o.id?.toString().includes('-b')) return false;
+            // Only exclude IDs that START with basket-group pattern, not any UUID containing '-b'
+            if (o.id?.toString().startsWith('basket-grp-')) return false;
             if (groupedOrderIds.has(o.id)) return false;
             if (o.basketId && coveredBasketIds.has(o.basketId)) return false;
             return true;
