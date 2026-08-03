@@ -169,9 +169,10 @@ export class SnapTradeAdapter implements BrokerAdapter {
       updatedAt: string;
     }>>('/api/broker/snaptrade/orders');
 
+    console.error('[SnapTradeAdapter] ORDERS raw:', Array.isArray(raw) ? `${raw.length} orders` : `NOT an array, type=${typeof raw}`);
     if (!Array.isArray(raw)) return [];
 
-    return raw.map((o) => ({
+    const mapped = raw.map((o) => ({
       id: o.id,
       symbol: o.symbol,
       side: o.side,
@@ -189,6 +190,9 @@ export class SnapTradeAdapter implements BrokerAdapter {
       updatedAt: o.updatedAt,
       bracketOrder: undefined,
     }));
+
+    console.error('[SnapTradeAdapter] ORDERS mapped:', mapped.length, 'orders — symbols:', mapped.map(o => o.symbol).join(', ') || '(none)');
+    return mapped;
   }
 
   async getOrder(_orderId: string): Promise<BrokerOrder | null> {

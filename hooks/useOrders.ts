@@ -71,7 +71,10 @@ export function useOrders() {
 
   const refresh = useCallback(async (): Promise<void> => {
     // Hard boundary: NEVER fetch broker orders when Demo is the active account
-    if (!broker || !isConnected || isShowingDemo) return;
+    if (!broker || !isConnected || isShowingDemo) {
+      console.error('[useOrders] refresh BLOCKED — broker:', !!broker, 'connected:', isConnected, 'isDemo:', isShowingDemo);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -106,6 +109,7 @@ export function useOrders() {
             new Date(a.createdAt).getTime()
         );
 
+      console.error('[useOrders] refresh DONE —', mappedOrders.length, 'orders loaded, symbols:', mappedOrders.map(o => o.symbol).join(', ') || '(none)');
       setOrders(mappedOrders);
       setLoading(false);
 
