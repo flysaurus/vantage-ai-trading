@@ -1042,6 +1042,33 @@ export function TradeTab() {
           ORDER HISTORY
         </div>
 
+        {/* DEBUG BANNER: shows pipeline state — remove after fix */}
+        {(() => {
+          const dbg = {
+            storeOrders: brokerOrders?.length ?? 'null',
+            demoOrders: liveOrders?.length ?? 'null',
+            isShowingDemo,
+            displaySource: isShowingDemo ? 'demoOrders' : 'brokerOrders (store)',
+            displayCount: displayOrders?.length ?? 0,
+            historyTab,
+            filteredCount: normalizedOrders.filter((o: any) => historyTab === 'all' ? true : o.status === historyTab).length,
+            sample: normalizedOrders.slice(0, 3).map((o: any) => ({ id: o.id?.slice(0,16), symbol: o.symbol, status: o.status, side: o.side, price: o.price, date: o.date })),
+          };
+          return (
+            <div style={{
+              background: '#0f172a', border: '1px solid #fbbf24', borderRadius: 8, padding: '8px 10px',
+              marginBottom: 10, fontFamily: 'monospace', fontSize: 10, lineHeight: 1.5,
+              maxHeight: 200, overflowY: 'auto', color: '#e2e8f0'
+            }}>
+              <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: 4 }}>🔍 PIPELINE DEBUG</div>
+              <div>storeOrders: <b>{dbg.storeOrders}</b> | demoOrders: <b>{dbg.demoOrders}</b> | isDemo: <b style={{color: dbg.isShowingDemo ? '#ef4444' : '#4ade80'}}>{String(dbg.isShowingDemo)}</b></div>
+              <div>source: <b>{dbg.displaySource}</b> → displayCount: <b>{dbg.displayCount}</b></div>
+              <div>historyTab: <b>{dbg.historyTab}</b> → after filter: <b>{dbg.filteredCount}</b></div>
+              <div style={{ marginTop: 4 }}>sample: {JSON.stringify(dbg.sample, null, 1)}</div>
+            </div>
+          );
+        })()}
+
         {/* History tabs */}
         <div style={{ display: 'flex', marginBottom: '12px' }}>
           {([
