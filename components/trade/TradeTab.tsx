@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLivePortfolio } from '@/context/PortfolioContext';
-import { useTabStore } from '@/store';
+import { useTabStore, useOrderStore } from '@/store';
+import { useAccounts } from '@/context/AccountContext';
 import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
@@ -83,6 +84,9 @@ export function TradeTab() {
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast } = useLivePortfolio();
+  const { orders: brokerOrders } = useOrderStore();
+  const { activeAccount } = useAccounts();
+  const isShowingDemo = activeAccount?.isDemo ?? false;
 
   // Fetch quote when symbol selected
   useEffect(() => {
@@ -156,7 +160,7 @@ export function TradeTab() {
   }, [searchQuery]);
 
   // Use live orders from PortfolioContext
-  const displayOrders = liveOrders;
+  const displayOrders = isShowingDemo ? liveOrders : (brokerOrders || []);
   
   // Execute pending orders on tab mount + periodic check while market is open
   // Two-pronged: local DemoBroker (fast, primary) + server API (reliable fallback)
@@ -272,25 +276,25 @@ export function TradeTab() {
     // No localStorage writes — broker in-memory state is the source of truth
   }, [pendingBaskets, liveOrders, liveBasketOrders]); // re-check when broker orders change
 
-  // ── Normalize orders for rendering ──
+  // ── Normalize orders for rendering (handles both demo + broker orders) ──
   const normalizedOrders = displayOrders.map((o: any) => ({
     id: o.id,
     symbol: o.symbol,
     side: (o.side || '').toUpperCase(),
     status: (o.status || '').toLowerCase(),
-    shares: o.shares ?? o.qty ?? 0,
-    price: o.fillPrice ?? o.price ?? 0,
-    submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.price ?? 0,
+    shares: o.shares ?? o.qty ?? o.filledQty ?? 0,
+    price: o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
+    submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     date: o.createdAt ?? o.date ?? '',
     note: o.note ?? '',
-    reservedCost: o.reservedCost,
-    fillPrice: o.fillPrice,
-    totalCost: o.totalCost,
+    reservedCost: o.reservedCost ?? 0,
+    fillPrice: o.fillPrice ?? o.filledPrice ?? 0,
+    totalCost: o.totalCost ?? o.totalValue ?? 0,
     basketId: o.basketId,
     basketOrderId: o.basketOrderId,
     basketName: o.basketName,
     basketEmoji: o.basketEmoji,
-    submittedAt: o.submittedAt,
+    submittedAt: o.submittedAt ?? o.createdAt ?? '',
   }));
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
