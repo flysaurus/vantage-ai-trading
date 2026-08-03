@@ -1051,20 +1051,40 @@ export function TradeTab() {
             displaySource: isShowingDemo ? 'demoOrders' : 'brokerOrders (store)',
             displayCount: displayOrders?.length ?? 0,
             historyTab,
+            normalizedCount: normalizedOrders.length,
             filteredCount: normalizedOrders.filter((o: any) => historyTab === 'all' ? true : o.status === historyTab).length,
-            sample: normalizedOrders.slice(0, 3).map((o: any) => ({ id: o.id?.slice(0,16), symbol: o.symbol, status: o.status, side: o.side, price: o.price, date: o.date })),
           };
+          // Compute soloOrders (same logic as render block)
+          const filteredOrders = normalizedOrders.filter((o: any) => historyTab === 'all' ? true : o.status === historyTab);
+          const ordersWithBasketId = filteredOrders.filter((o: any) => o.basketId && !o.basketOrderId);
+          const groupMap = new Map<string, any[]>();
+          for (const order of ordersWithBasketId) {
+            if (!groupMap.has(order.basketId!)) groupMap.set(order.basketId!, []);
+            groupMap.get(order.basketId!)!.push(order);
+          }
+          const basketOrderGroups = Array.from(groupMap.entries());
+          const groupedOrderIds = new Set(basketOrderGroups.flatMap(([_, orders]) => orders.map((o: any) => o.id)));
+          const filteredBasketOrders = (liveBasketOrders || []).filter((bo: any) => historyTab === 'all' ? true : bo.status === historyTab.toUpperCase());
+          const coveredBasketIds = new Set(filteredBasketOrders.map((b: any) => b.basketId));
+          const soloOrders = filteredOrders.filter((o: any) => {
+            if (o.basketOrderId) return false;
+            if (o.id?.toString().includes('-b')) return false;
+            if (groupedOrderIds.has(o.id)) return false;
+            if (o.basketId && coveredBasketIds.has(o.basketId)) return false;
+            return true;
+          });
+          const showEmpty = filteredBasketOrders.length === 0 && groupMap.size === 0 && soloOrders.length === 0;
           return (
             <div style={{
               background: '#0f172a', border: '1px solid #fbbf24', borderRadius: 8, padding: '8px 10px',
               marginBottom: 10, fontFamily: 'monospace', fontSize: 10, lineHeight: 1.5,
-              maxHeight: 200, overflowY: 'auto', color: '#e2e8f0'
+              maxHeight: 300, overflowY: 'auto', color: '#e2e8f0'
             }}>
               <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: 4 }}>🔍 PIPELINE DEBUG</div>
-              <div>storeOrders: <b>{dbg.storeOrders}</b> | demoOrders: <b>{dbg.demoOrders}</b> | isDemo: <b style={{color: dbg.isShowingDemo ? '#ef4444' : '#4ade80'}}>{String(dbg.isShowingDemo)}</b></div>
-              <div>source: <b>{dbg.displaySource}</b> → displayCount: <b>{dbg.displayCount}</b></div>
-              <div>historyTab: <b>{dbg.historyTab}</b> → after filter: <b>{dbg.filteredCount}</b></div>
-              <div style={{ marginTop: 4 }}>sample: {JSON.stringify(dbg.sample, null, 1)}</div>
+              <div>storeOrders: <b>{dbg.storeOrders}</b> | normalized: <b>{dbg.normalizedCount}</b> | afterFilter: <b>{dbg.filteredCount}</b></div>
+              <div>soloOrders: <b style={{color: soloOrders.length > 0 ? '#4ade80' : '#ef4444', fontSize: 13}}>{soloOrders.length}</b> | basketGroups: <b>{basketOrderGroups.length}</b> | filteredBasket: <b>{filteredBasketOrders.length}</b></div>
+              <div>showEmpty: <b style={{color: showEmpty ? '#ef4444' : '#4ade80'}}>{String(showEmpty)}</b> | historyTab: <b>{dbg.historyTab}</b> | isDemo: <b style={{color: dbg.isShowingDemo ? '#ef4444' : '#4ade80'}}>{String(dbg.isShowingDemo)}</b></div>
+              <div style={{ marginTop: 2 }}>sample: {JSON.stringify(filteredOrders.slice(0, 2).map((o: any) => ({ id: o.id, symbol: o.symbol, status: o.status, side: o.side })))}</div>
             </div>
           );
         })()}
