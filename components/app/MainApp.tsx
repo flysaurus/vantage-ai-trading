@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
+import { useOrders } from '@/hooks/useOrders';
 import { MarketBar } from '@/components/layout/MarketBar';
 import { WatchlistBar } from '@/components/layout/WatchlistBar';
 import { InvestorStyleBadge } from '@/components/layout/InvestorStyleBadge';
@@ -137,6 +138,9 @@ function AppShell() {
 
   // ── Auto-execute pending orders ──
   const { executePendingOrders } = useLivePortfolio();
+  // Mount useOrders at app level so broker orders populate the Zustand store
+  // regardless of which tab the user visits first (TradeTab reads from the store).
+  useOrders();
   useEffect(() => {
     const triggerExec = () => {
       executePendingOrders();
