@@ -728,7 +728,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       // Step 2: If Supabase had data (or localStorage persisted), skip seed
       if (restoredFromSupabase || initialPersistedStateRef.current) {
         demoSeededRef.current = true;
-        refreshStateFromBroker();
+        await refreshStateFromBroker();
+        // Regenerate missing seed orders if positions exist but order history is empty/stale
+        if (b?.regenerateMissingOrders) {
+          b.regenerateMissingOrders();
+          // Re-sync to pull regenerated orders into demoOrders
+          await refreshStateFromBroker();
+        }
         // Recovery sync: push broker's actual positions → basket_holdings
         // Heals any corruption from stale pending syncs that overwrote FILLED positions
         if (b?.syncAllBasketPositions) {

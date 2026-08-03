@@ -137,6 +137,45 @@ export class DemoBroker implements BrokerEngine {
     console.log(`[DemoBroker] Template-seeded: ${positions.length} positions, $${cashBalance.toFixed(0)} cash, $${totalCost.toFixed(0)} invested`);
   }
 
+  /** Regenerate FILLED buy orders for positions that lack order history.
+   *  Called when demo state loads from localStorage/Supabase with positions
+   *  but stale/missing orders (e.g. after a seed-order clear). */
+  public regenerateMissingOrders(): void {
+    const positions = this.state.positions;
+    const orders = this.state.orders || [];
+
+    if (positions.length === 0) return;
+
+    // Build set of symbols that already have at least one BUY order
+    const symbolsWithOrders = new Set(
+      orders.filter((o: any) => o.side === 'BUY' || o.side === 'buy').map((o: any) => o.symbol),
+    );
+
+    // Only generate orders for positions missing a BUY
+    const missing = positions.filter(p => !symbolsWithOrders.has(p.symbol));
+    if (missing.length === 0) return;
+
+    const now = new Date();
+    const newOrders: BrokerOrder[] = missing.map((p, i) => ({
+      id: `demo-seed-${p.symbol}-regen-${Date.now()}-${i}`,
+      symbol: p.symbol,
+      side: 'BUY' as const,
+      type: 'market' as const,
+      status: 'FILLED' as const,
+      shares: p.shares,
+      submittedPrice: p.avgCost,
+      fillPrice: p.avgCost,
+      totalCost: p.totalCost,
+      submittedAt: new Date(now.getTime() - (missing.length - i) * 3600000).toISOString(),
+      filledAt: new Date(now.getTime() - (missing.length - i) * 3600000).toISOString(),
+      timeInForce: 'day' as const,
+    }));
+
+    this.state.orders = [...orders, ...newOrders];
+    this.saveLocalOnly();
+    console.log(`[DemoBroker] Regenerated ${newOrders.length} missing buy orders for: ${missing.map(p => p.symbol).join(', ')}`);
+  }
+
   private loadState(): DemoStateInternal {
     if (typeof window === 'undefined') {
       this.seedCashOnly();
