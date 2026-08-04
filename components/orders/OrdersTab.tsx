@@ -118,31 +118,6 @@ export function OrdersTab() {
         </div>
       )}
 
-      {/* DEBUG BANNER — remove after fix */}
-      {(() => {
-        const dbg = {
-          allOrdersCount: allOrders.length,
-          filteredOrdersCount: orders.length,
-          activeFilter,
-          loading,
-          error,
-          isConnected,
-          sample: allOrders.slice(0, 3).map((o: any) => ({ id: o.id?.slice(0,16), symbol: o.symbol, status: o.status, filledPrice: o.filledPrice, createdAt: o.createdAt?.slice(0,16) })),
-        };
-        return (
-          <div style={{
-            background: '#0f172a', border: '1px solid #fbbf24', borderRadius: 8, padding: '8px 10px',
-            marginBottom: 10, fontFamily: 'monospace', fontSize: 10, lineHeight: 1.5,
-            maxHeight: 200, overflowY: 'auto', color: '#e2e8f0'
-          }}>
-            <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: 4 }}>🔍 ORDERS TAB DEBUG</div>
-            <div>allOrders: <b>{dbg.allOrdersCount}</b> | filtered: <b>{dbg.filteredOrdersCount}</b> | filter: <b>{dbg.activeFilter}</b></div>
-            <div>loading: <b style={{color: dbg.loading ? '#fbbf24' : '#4ade80'}}>{String(dbg.loading)}</b> | error: <b style={{color: dbg.error ? '#ef4444' : '#4ade80'}}>{dbg.error || 'none'}</b> | connected: <b style={{color: dbg.isConnected ? '#4ade80' : '#ef4444'}}>{String(dbg.isConnected)}</b></div>
-            <div style={{ marginTop: 4 }}>sample: {JSON.stringify(dbg.sample, null, 1)}</div>
-          </div>
-        );
-      })()}
-
       {/* ── holdingsUnavailable — locked state replaces entire orders section ── */}
       {account?.holdingsUnavailable && (
         <div style={{
