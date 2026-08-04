@@ -5,6 +5,7 @@
 // Run: npx tsx tests/validate-recommendations.test.ts
 
 import { validateRecommendations, extractBudget } from '../lib/validate-recommendations';
+import { detectResponseIncoherence, stripTrailingQuestions } from '../app/api/chat/route';
 
 // Mock US symbol cache for test environment (no Finnhub API key)
 const MOCK_SYMBOLS = new Set([
@@ -263,12 +264,14 @@ Bottom line: $500 VOO + $300 QQQ + $200 SCHD = $1,000 total.
     const hasDupe = r.failures.some(f => f.check === 'duplicate_company');
     if (!hasDupe) throw new Error('Expected duplicate_company. Failures: ' + JSON.stringify(r.failures));
   });
-  await test('passes at edge of budget tolerance ($1,019 = +1.9%)', async () => {
+  await test('rejects over budget ($1,019 = +1.9% — exact match required)', async () => {
     const near = '[SUMMARY_TLDR:$1,019]\nQQQ [RECOMMEND:QQQ:BUY:$600]\nVGT [RECOMMEND:VGT:BUY:$419]\n';
     const r = await v(near, 1000);
-    if (!r.ok) throw new Error('Expected OK (1.9% within 2% tolerance). Failures: ' + JSON.stringify(r.failures));
+    if (r.ok) throw new Error('Expected rejection (1.9% over — exact match required). Got OK');
+    const hasBudget = r.failures.some(f => f.check === 'budget_reconciliation');
+    if (!hasBudget) throw new Error('Expected budget_reconciliation. Failures: ' + JSON.stringify(r.failures));
   });
-  await test('rejects over 2% budget deviation ($1,050 = +5.0%)', async () => {
+  await test('rejects over budget ($1,050 = +5.0%)', async () => {
     const over = '[SUMMARY_TLDR:$1,050]\nQQQ [RECOMMEND:QQQ:BUY:$600]\nVGT [RECOMMEND:VGT:BUY:$450]\n';
     const r = await v(over, 1000);
     if (r.ok) throw new Error('Expected rejection (5% over). Got OK');
@@ -298,6 +301,238 @@ Bottom line: $500 VOO + $300 QQQ + $200 SCHD = $1,000 total.
     const bf = r.failures.find(f => f.check === 'budget_reconciliation');
     if (!bf) throw new Error('Expected budget_reconciliation');
     if (!bf.detail.includes('under')) throw new Error('Expected "under" in detail: ' + bf.detail);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Pattern 7: detectResponseIncoherence — CLARIFY contract enforcement
+  // ───────────────────────────────────────────────────────────────────
+  console.log('\n📋 Pattern 7 — Prose questions outside [CLARIFY:...] blocks:');
+
+  // ── PATTERN 7a: Question mark outside CLARIFY blocks ──
+  // This fixture has NO RECOMMEND markers — it's an AI asking a prose
+  // question instead of using [CLARIFY:{...}] format. Should be rejected.
+  const FIXTURE_P7A = `Here's my analysis of the tech sector. NVDA looks strong on AI demand, MSFT has cloud momentum, and GOOGL is undervalued relative to earnings growth.
+
+Do you want me to focus on AI plays or diversify across the whole sector?`;
+
+  await test('P7a: rejects question mark outside CLARIFY block', async () => {
+    const result = detectResponseIncoherence(FIXTURE_P7A);
+    if (!result) throw new Error('Expected rejection for prose question');
+    if (!result.includes('Prose question detected')) throw new Error('Expected prose question message. Got: ' + result);
+  });
+
+  await test('P7a: correctly identifies the question context', async () => {
+    const result = detectResponseIncoherence(FIXTURE_P7A);
+    if (!result) throw new Error('Expected rejection');
+    if (!result.includes('diversify across')) throw new Error('Expected context to include "diversify across". Got: ' + result);
+  });
+
+  // ── PATTERN 7b: 3+ alternatives with decision-word ──
+  const FIXTURE_P7B = `Here's the portfolio. You could deploy fresh cash, rebalance existing positions, or replace underperformers — let me know.`;
+
+  await test('P7b: rejects 3+ alternatives with decision-word', async () => {
+    const result = detectResponseIncoherence(FIXTURE_P7B);
+    if (!result) throw new Error('Expected rejection for decision alternatives');
+    if (!result.includes('Decision alternatives')) throw new Error('Expected alternatives message. Got: ' + result);
+  });
+
+  // ── PATTERN 7b FALSE POSITIVE PREVENTION: single "or" + decision word ──
+  // These are normal financial prose, NOT user-facing decision prompts.
+  // The tightened regex (2+ "or" connectors) should NOT flag these.
+
+  await test('P7b FP: allows conditional financial prose (could or pull back)', async () => {
+    const text = `[SUMMARY_TLDR:$50,000 across 5 growth positions]
+
+NVDA [RECOMMEND:NVDA:BUY:$15000] — NVDA could rally on AI earnings or pull back near support, but the multi-year capex cycle gives us asymmetric upside.`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (single "or" is not a decision prompt). Got: ' + result);
+  });
+
+  await test('P7b FP: allows swap/adjust prose (can swap or add)', async () => {
+    const text = `[RECOMMEND:SCHD:BUY:$5000]
+[RECOMMEND:VYM:BUY:$5000]
+
+We can swap SCHD for VYM or add JEPI for higher yield if you prefer income over total return. Bottom line: $10,000 in dividend ETFs.`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (single "or" is contextual analysis). Got: ' + result);
+  });
+
+  await test('P7b FP: allows portfolio adjustment offer (let me know if you want changes)', async () => {
+    const text = `[RECOMMEND:AAPL:BUY:$10000]
+[RECOMMEND:MSFT:BUY:$10000]
+
+Here it is. Let me know if you want me to adjust any position sizes or tweak the allocation.`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (single "or" is polite offer). Got: ' + result);
+  });
+
+  // ── CLARIFY BLOCK STRIPPING ──
+  await test('P7: strips [CLARIFY:...] blocks correctly and allows them', async () => {
+    const text = `[CLARIFY:{"question":"Growth or value focus?","options":["Growth","Value","50/50"]}]
+
+Based on your choice, I can build a targeted portfolio. This is the key decision before we proceed.`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (valid CLARIFY block, no prose question). Got: ' + result);
+  });
+
+  // ── POST-CLARIFY TURN: Valid portfolio after user answers CLARIFY question ──
+  // Regression test for the exact bug: turn after user answers a CLARIFY question
+  const POST_CLARIFY_PORTFOLIO = `[SUMMARY_TLDR:$100,000 across 8 positions — 50/50 growth/value split, Lynch-style GARP]
+
+**Growth ($50,000 / 50%):**
+| Ticker | Company | Amount |
+|--------|---------|--------|
+| NVDA | NVIDIA | $15,000 |
+| MSFT | Microsoft | $12,500 |
+| GOOGL | Alphabet | $12,500 |
+| AMZN | Amazon | $10,000 |
+
+**Value ($50,000 / 50%):**
+| Ticker | Company | Amount |
+|--------|---------|--------|
+| JPM | JPMorgan | $15,000 |
+| JNJ | Johnson & Johnson | $12,500 |
+| PG | Procter & Gamble | $12,500 |
+| UNH | UnitedHealth | $10,000 |
+
+[RECOMMEND:NVDA:BUY:$15000]
+[RECOMMEND:MSFT:BUY:$12500]
+[RECOMMEND:GOOGL:BUY:$12500]
+[RECOMMEND:AMZN:BUY:$10000]
+[RECOMMEND:JPM:BUY:$15000]
+[RECOMMEND:JNJ:BUY:$12500]
+[RECOMMEND:PG:BUY:$12500]
+[RECOMMEND:UNH:BUY:$10000]
+
+The 50/50 split gives you balanced exposure — growth names ride the AI capex cycle while value positions provide defensive yield and capital preservation. NVDA leads the growth basket on AI compute demand, JPM anchors value with a 2.1% yield at 13x forward P/E.`;
+
+  await test('P7: post-CLARIFY portfolio prose passes coherence check', async () => {
+    const result = detectResponseIncoherence(POST_CLARIFY_PORTFOLIO);
+    if (result) throw new Error('Expected pass for valid post-CLARIFY portfolio. Got: ' + result);
+  });
+
+  await test('P7: post-CLARIFY portfolio has no question marks outside CLARIFY', async () => {
+    const result = detectResponseIncoherence(POST_CLARIFY_PORTFOLIO);
+    if (result) throw new Error('Expected pass. Got: ' + result);
+  });
+
+  // ── EDGE CASE: Question mark inside CLARIFY block is fine ──
+  await test('P7: allows question marks inside [CLARIFY:...] blocks', async () => {
+    const text = `[CLARIFY:{"question":"Growth or value?","options":["Growth","Value"]}]
+
+Let me know.`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (question mark is inside CLARIFY block). Got: ' + result);
+  });
+
+  // ── EDGE CASE: URL with query string (http?...) is not a question ──
+  await test('P7: ignores question marks in URLs (http query strings)', async () => {
+    const text = `[SUMMARY_TLDR:$10,000 AAPL position]
+
+Based on Apple's latest filing at https://investor.apple.com/sec-filings?doc=10-K, the company has strong free cash flow.
+
+[RECOMMEND:AAPL:BUY:$10000]`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (URL query string is not a question). Got: ' + result);
+  });
+
+  // ── TRAILING SIGN-OFF TOLERANCE: portfolio markers present + trailing ? ──
+  // Regression test for the "Ready to scale this in?" bug — Haiku appends
+  // a polite sign-off after a complete portfolio with RECOMMEND markers.
+  // The portfolio is valid; the trailing question should be tolerated.
+
+  await test('P7 trailing: tolerates "Sound good?" after RECOMMEND markers', async () => {
+    const text = `[SUMMARY_TLDR:$100,000 across 5 growth positions]
+
+[RECOMMEND:NVDA:BUY:$25000]
+[RECOMMEND:MSFT:BUY:$25000]
+[RECOMMEND:GOOGL:BUY:$20000]
+[RECOMMEND:AMZN:BUY:$15000]
+[RECOMMEND:TSM:BUY:$15000]
+
+Sound good?`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (trailing sign-off with markers should be tolerated). Got: ' + result);
+  });
+
+  await test('P7 trailing: tolerates "Ready to scale this in?" after markers', async () => {
+    const text = `[SUMMARY_TLDR:$100,000 across 7 positions]
+
+**Growth:** NVDA, MSFT, GOOGL, AMZN...
+
+[RECOMMEND:NVDA:BUY:$15000]
+[RECOMMEND:MSFT:BUY:$12500]
+[RECOMMEND:GOOGL:BUY:$12500]
+[RECOMMEND:AMZN:BUY:$10000]
+
+Execution plan: Buy ETFs first, then layer in individual stocks over 2-3 days.
+Ready to scale this in?`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (trailing sign-off with markers should be tolerated). Got: ' + result);
+  });
+
+  await test('P7 trailing: tolerates "Want me to adjust anything?" after markers', async () => {
+    const text = `[RECOMMEND:AAPL:BUY:$10000]
+[RECOMMEND:MSFT:BUY:$10000]
+
+Want me to adjust anything?`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (trailing sign-off tolerated). Got: ' + result);
+  });
+
+  await test('P7 trailing: STILL rejects question BEFORE markers (not trailing)', async () => {
+    const text = `I have a few questions. Would you prefer growth or value? Let me know and I'll build the portfolio.
+
+[RECOMMEND:NVDA:BUY:$10000]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection (question BEFORE markers is not a trailing sign-off)');
+    if (!result.includes('Prose question detected')) throw new Error('Expected prose question message. Got: ' + result);
+  });
+
+  await test('P7 trailing: rejects question without RECOMMEND markers (clarify-format violation)', async () => {
+    const text = `Here's what I think. Sound good?`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection (no markers, question outside CLARIFY)');
+  });
+
+  // ── stripTrailingQuestions helper ──
+  console.log('\n📋 stripTrailingQuestions — Remove sign-off questions from portfolio output:');
+
+  await test('stripTrailing: removes "Ready to scale this in?" after last marker', async () => {
+    const text = `[RECOMMEND:NVDA:BUY:$15000]
+[RECOMMEND:MSFT:BUY:$12500]
+
+Execution plan: Buy ETFs first. Ready to scale this in?`;
+    const cleaned = stripTrailingQuestions(text);
+    if (cleaned.includes('Ready to scale this in?')) throw new Error('Trailing question should be stripped. Got: ' + cleaned);
+    if (!cleaned.includes('[RECOMMEND:NVDA')) throw new Error('Markers should be preserved. Got: ' + cleaned);
+    if (!cleaned.includes('Execution plan: Buy ETFs first.')) throw new Error('Prose before question should be preserved. Got: ' + cleaned);
+  });
+
+  await test('stripTrailing: removes "Sound good?" from end', async () => {
+    const text = `[RECOMMEND:AAPL:BUY:$10000]
+
+Sound good?`;
+    const cleaned = stripTrailingQuestions(text);
+    if (cleaned.includes('Sound good?')) throw new Error('Trailing question should be stripped. Got: ' + cleaned);
+    if (!cleaned.includes('[RECOMMEND:AAPL')) throw new Error('Markers should be preserved. Got: ' + cleaned);
+  });
+
+  await test('stripTrailing: no-op on text without trailing question', async () => {
+    const text = `[SUMMARY_TLDR:$50,000 across 5 positions]
+
+[RECOMMEND:NVDA:BUY:$15000]
+[RECOMMEND:MSFT:BUY:$12500]
+
+The 50/50 split gives balanced exposure.`;
+    const cleaned = stripTrailingQuestions(text);
+    if (cleaned !== text.trim()) throw new Error('Should be no-op when no trailing question. Got: ' + cleaned);
+  });
+
+  await test('stripTrailing: no-op on text without RECOMMEND markers', async () => {
+    const text = `Here's some analysis. Sound good?`;
+    const cleaned = stripTrailingQuestions(text);
+    if (cleaned !== text) throw new Error('Should be no-op without markers. Got: ' + cleaned);
   });
 
   // ── Summary ──

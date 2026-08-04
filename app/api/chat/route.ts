@@ -444,7 +444,7 @@ function validateBudgetGate(userMessage: string, aiResponse: string, contextBudg
  *
  * Returns a detail string if incoherence is detected, null if clean.
  */
-function detectResponseIncoherence(response: string): string | null {
+export function detectResponseIncoherence(response: string): string | null {
   // ── Pattern 1: Multiple markdown portfolio tables ──
   // Two "| **Total** |" lines with different dollar amounts
   const totalLines = [...response.matchAll(/\|\s*\*{0,2}Total\*{0,2}\s*\|[^|]*\|\s*\*{0,2}\$?([\d,]+)/gi)];
@@ -591,6 +591,54 @@ function detectResponseIncoherence(response: string): string | null {
   const qCheckText = strippedForClarifyCheck.replace(/https?:\/\/\S+/g, ''); // strip URLs
   const qMarkMatch = qCheckText.match(/\?/);
   if (qMarkMatch) {
+    // ── Trailing sign-off tolerance ──
+    // If the response has valid [RECOMMEND:...] markers AND the question mark
+    // appears in trailing prose (after all markers, in the last paragraph),
+    // treat it as a conversational sign-off ("Ready to scale this in?") rather
+    // than a missing CLARIFY block. The portfolio is complete — don't reject it.
+    const hasRecommendMarkersForQ = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(response);
+    if (hasRecommendMarkersForQ) {
+      const lastMarkerIdx = response.lastIndexOf('[RECOMMEND:');
+      if (lastMarkerIdx >= 0) {
+        // Find the end of the last marker
+        const markerEndBracket = response.indexOf(']', lastMarkerIdx);
+        const afterMarkers = markerEndBracket >= 0 ? response.slice(markerEndBracket + 1) : '';
+        // Check if the ONLY question mark in the response is in trailing prose
+        // (after all markers, within the last sentence/paragraph)
+        const qInAfterMarkers = afterMarkers.indexOf('?');
+        if (qInAfterMarkers >= 0 && qInAfterMarkers < 250) {
+          // Verify no question mark appears BEFORE the markers (mid-response question)
+          const beforeMarkers = response.slice(0, lastMarkerIdx);
+          // Strip [CLARIFY:...] blocks from beforeMarkers too
+          let bmStripped = '';
+          let bmIdx = 0;
+          while (bmIdx < beforeMarkers.length) {
+            const cs = beforeMarkers.indexOf('[CLARIFY:', bmIdx);
+            if (cs === -1) { bmStripped += beforeMarkers.slice(bmIdx); break; }
+            bmStripped += beforeMarkers.slice(bmIdx, cs);
+            let depth = 0, inStr = false, esc = false;
+            let p = cs + 1;
+            for (; p < beforeMarkers.length; p++) {
+              const ch = beforeMarkers[p];
+              if (esc) { esc = false; continue; }
+              if (ch === '\\') { esc = true; continue; }
+              if (ch === '"') { inStr = !inStr; continue; }
+              if (inStr) continue;
+              if (ch === '{') { depth++; continue; }
+              if (ch === '}') { if (depth > 0) depth--; continue; }
+              if (ch === ']' && depth === 0) break;
+            }
+            bmIdx = p + 1;
+          }
+          const hasQBeforeMarkers = /\?/.test(bmStripped.replace(/https?:\/\/\S+/g, ''));
+          if (!hasQBeforeMarkers) {
+            // Only trailing sign-off — tolerate it. Caller will strip it from output.
+            console.log('[chat] Tolerating trailing sign-off question (portfolio markers present)');
+            return null;
+          }
+        }
+      }
+    }
     // Extract surrounding context for the error detail
     const qIdx = qMarkMatch.index!;
     const context = qCheckText.slice(Math.max(0, qIdx - 40), Math.min(qCheckText.length, qIdx + 40)).replace(/\n/g, ' ').trim();
@@ -602,18 +650,69 @@ function detectResponseIncoherence(response: string): string | null {
   // wrapping it in a structured [CLARIFY:...] block. These are invisible to
   // the UI (no chips render) and violate the one-format contract.
   const altCheckText = strippedForClarifyCheck.replace(/https?:\/\/\S+/g, '');
-  // Decision-word phrase + at least one "or" connector within 200 chars.
-  // Catches "could X, Y, or Z" / "pick A, B, or C" / "want P, Q, or R".
-  // Minimal FP: the only known false positive is "could drop 5% or 10%" which
-  // is harmless — one extra regeneration attempt, same text, graceful fallback.
-  const altPattern = /(choose|pick|want|prefer|could|can|may|let me know|tell me|would you|should i|do you)\s.{10,200}?\bor\s/i;
+  // Two sub-patterns catch alternative presentations while avoiding false
+  // positives on normal financial prose like "NVDA could rally or pull back":
+  //   (a) Comma-separated list + "or" last item: "X, Y, or Z"
+  //   (b) 2+ "or" connectors (3+ alternatives): "X or Y or Z"
+  // Both require a decision-word within 250 chars. Single-"or" conditional
+  // prose ("could drop 5% or 10%") is excluded — these are analysis, not
+  // user-facing choice prompts.
+  const altPattern = /(?:choose|pick|select|want|prefer|let me know|tell me|would you|should i|do you|could|can|may)\s.{10,250}?(?:,.{2,80},|\bor\s.{10,150}?\bor\s)/i;
   const altMatch = altCheckText.match(altPattern);
   if (altMatch) {
-    const context = altMatch[0].slice(0, 100).replace(/\n/g, ' ').trim();
+    const context = altMatch[0].slice(0, 120).replace(/\n/g, ' ').trim();
     return `Decision alternatives presented outside [CLARIFY:...] block: "${context}...". Use [CLARIFY:{"question":"...","options":["A","B","C"]}] format instead of listing alternatives in prose.`;
   }
 
   return null;
+}
+
+/**
+ * Strip trailing conversational sign-off questions from a response that has
+ * valid [RECOMMEND:...] markers. Haiku often appends "Ready to scale this in?",
+ * "Sound good?", "Want me to adjust anything?" after a complete portfolio.
+ * These are harmless conversational noise — don't reject the portfolio over it.
+ */
+export function stripTrailingQuestions(text: string): string {
+  // Only strip if there are RECOMMEND markers (portfolio response)
+  if (!/\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(text)) return text;
+
+  // Find the last RECOMMEND marker position
+  const lastMarkerIdx = text.lastIndexOf('[RECOMMEND:');
+  if (lastMarkerIdx < 0) return text;
+  const markerEndBracket = text.indexOf(']', lastMarkerIdx);
+  if (markerEndBracket < 0) return text;
+
+  const afterMarkers = text.slice(markerEndBracket + 1);
+  const qIdx = afterMarkers.indexOf('?');
+  if (qIdx < 0 || qIdx > 300) return text; // No question or too far from markers
+
+  // Find the start of the sentence containing the question mark
+  const beforeQ = afterMarkers.slice(0, qIdx);
+  // Walk back to find sentence start (period+space, newline, or start of after-markers)
+  let sentenceStart = 0;
+  for (let i = beforeQ.length - 1; i >= 0; i--) {
+    if (beforeQ[i] === '\n') { sentenceStart = i + 1; break; }
+    if (beforeQ[i] === '.' && (i + 1 >= beforeQ.length || beforeQ[i + 1] === ' ')) {
+      sentenceStart = i + 1;
+      break;
+    }
+  }
+
+  // Find the end of the question (next newline or end of text)
+  let questionEnd = afterMarkers.indexOf('\n', qIdx);
+  if (questionEnd < 0) questionEnd = afterMarkers.length;
+  // Include trailing newline if present
+  if (questionEnd < afterMarkers.length && afterMarkers[questionEnd] === '\n') questionEnd++;
+
+  // Build cleaned text: everything before the trailing question sentence
+  const before = text.slice(0, markerEndBracket + 1);
+  const afterBeforeQ = afterMarkers.slice(0, sentenceStart);
+  const afterQ = afterMarkers.slice(questionEnd);
+
+  const cleaned = before + afterBeforeQ + afterQ;
+  // Clean up double newlines and trailing whitespace
+  return cleaned.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /**
@@ -1252,6 +1351,13 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // root cause of ghost tickers (exchange codes), contradictory buttons,
         // and duplicate positions across foreign listings.
 
+        // ── Strip trailing conversational sign-offs ──
+        // After RECOMMEND markers are validated, remove trailing questions like
+        // "Ready to scale this in?" / "Sound good?" — Haiku's polite sign-off habit.
+        // This prevents them from appearing in the rendered output while keeping
+        // the complete portfolio intact.
+        responseText = stripTrailingQuestions(responseText);
+
         // ── Response Coherence Check ──
         // Detects AI producing two contradictory portfolios in one response,
         // raw "NVDA or or or or" marker-decision chains, and internal monologue
@@ -1261,7 +1367,32 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         const coherenceFailure = detectResponseIncoherence(responseText);
         if (coherenceFailure) {
           console.warn('[chat] ⚠️ Response coherence check FAILED:', coherenceFailure);
+          console.warn('[chat] Raw response (first 3000 chars):', responseText.slice(0, 3000));
           sendChecklist(controller, encoder, 'coherence_check', 'failed', 'Dual portfolios or leaked monologue');
+
+          // Log coherence failure to DB for debugging observability
+          try {
+            if (userId && userId !== 'anonymous') {
+              const supabase = createServerClient();
+              const rawMarkers = [...responseText.matchAll(/\[RECOMMEND:[^\]]*\]/g)].map(m => m[0]);
+              await (supabase as any)
+                .from('validation_failures')
+                .insert({
+                  user_id: userId,
+                  attempt: (retryAttempt || 0) + 1,
+                  prompt: lastMessage.slice(0, 2000),
+                  raw_response: responseText.slice(0, 5000),
+                  raw_markers: rawMarkers.length > 0 ? rawMarkers : null,
+                  failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }],
+                  budget: requestedBudget,
+                  allocation: 0,
+                });
+              console.log('[chat] Coherence failure logged to DB');
+            }
+          } catch (logErr) {
+            console.error('[chat] Coherence failure DB log error:', logErr);
+          }
+
           if (retryAttempt >= 1) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }] })}\n\n`)

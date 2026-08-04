@@ -120,23 +120,31 @@ export function parseClarifyingOptions(markdownContent: string): ClarifyingOptio
 // ── Chip renderer (shared by single-question and stepper) ───
 
 const CHIP_STYLE: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)',
-  backdropFilter: 'blur(8px)',
-  WebkitBackdropFilter: 'blur(8px)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '20px',
-  padding: '7px 16px',
+  background: 'rgba(34,211,238,0.06)',
+  border: '1px solid rgba(34,211,238,0.2)',
+  borderRadius: '10px',
+  padding: '10px 18px',
   cursor: 'pointer',
-  color: 'rgba(255,255,255,0.85)',
+  color: '#ffffff',
   fontFamily: 'var(--font-sans, inherit)',
-  fontSize: '12.5px',
-  fontWeight: 500,
+  fontSize: '13.5px',
+  fontWeight: 600,
   lineHeight: '1.4',
   textAlign: 'left' as const,
-  transition: 'all 0.2s ease',
+  transition: 'all 0.15s ease',
   whiteSpace: 'normal' as const,
   wordBreak: 'break-word' as const,
   opacity: 1,
+  letterSpacing: '0.01em',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+};
+
+const CHIP_TAPPED_STYLE: React.CSSProperties = {
+  background: 'rgba(34,211,238,0.2)',
+  borderColor: 'rgba(34,211,238,0.6)',
+  color: '#22d3ee',
+  transform: 'scale(0.97)',
+  boxShadow: '0 1px 4px rgba(34,211,238,0.25)',
 };
 
 interface ChipRowProps {
@@ -159,7 +167,7 @@ function ChipRow({ options, onSelect }: ChipRowProps) {
     label === 'Let me adjust ✎' || label === 'Let me adjust something';
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
       {options.map((opt, i) => {
         const isTapped = tapped === i;
         const isAdjust = isAdjustChip(opt.label);
@@ -170,18 +178,33 @@ function ChipRow({ options, onSelect }: ChipRowProps) {
             disabled={tapped !== null}
             style={{
               ...CHIP_STYLE,
-              background: isTapped
-                ? 'rgba(34,211,238,0.15)'
-                : isAdjust ? 'rgba(250,204,21,0.06)' : CHIP_STYLE.background,
-              borderColor: isTapped
-                ? 'rgba(34,211,238,0.4)'
-                : isAdjust ? 'rgba(250,204,21,0.25)' : 'rgba(255,255,255,0.1)',
-              color: isTapped
-                ? '#22d3ee'
-                : isAdjust ? 'rgba(250,204,21,0.9)' : 'rgba(255,255,255,0.85)',
+              ...(isTapped
+                ? CHIP_TAPPED_STYLE
+                : {}),
+              ...((isAdjust && !isTapped)
+                ? {
+                    background: 'rgba(250,204,21,0.06)',
+                    borderColor: 'rgba(250,204,21,0.25)',
+                    color: 'rgba(250,204,21,0.9)',
+                  }
+                : {}),
               cursor: tapped !== null ? 'default' : 'pointer',
-              opacity: isTapped ? 0.7 : 1,
-              transform: isTapped ? 'scale(0.97)' : 'scale(1)',
+            }}
+            onMouseEnter={(e) => {
+              if (tapped !== null) return;
+              const t = e.currentTarget;
+              t.style.background = isAdjust ? 'rgba(250,204,21,0.12)' : 'rgba(34,211,238,0.14)';
+              t.style.borderColor = isAdjust ? 'rgba(250,204,21,0.4)' : 'rgba(34,211,238,0.45)';
+              t.style.boxShadow = '0 2px 8px rgba(34,211,238,0.15)';
+              t.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              if (tapped !== null) return;
+              const t = e.currentTarget;
+              t.style.background = isAdjust ? 'rgba(250,204,21,0.06)' : CHIP_STYLE.background as string;
+              t.style.borderColor = isAdjust ? 'rgba(250,204,21,0.25)' : (CHIP_STYLE.borderColor as string);
+              t.style.boxShadow = (CHIP_STYLE.boxShadow as string) || 'none';
+              t.style.transform = 'translateY(0)';
             }}
           >
             {opt.label}
@@ -245,31 +268,40 @@ export function ClarifyStepper({ questions, step, onChipTap }: ClarifyStepperPro
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: '8px',
-      marginTop: '4px',
-      marginBottom: '4px',
+      gap: '10px',
+      marginTop: '6px',
+      marginBottom: '6px',
       alignSelf: 'flex-start',
       maxWidth: '92%',
+      background: 'rgba(34,211,238,0.03)',
+      border: '1px solid rgba(34,211,238,0.12)',
+      borderRadius: '12px',
+      padding: '14px 16px',
     }}>
       {/* Step indicator */}
       {isMulti && (
         <div style={{
           fontSize: '10.5px',
-          fontWeight: 600,
-          color: 'rgba(34,211,238,0.7)',
-          letterSpacing: '0.04em',
+          fontWeight: 700,
+          color: 'rgba(34,211,238,0.8)',
+          letterSpacing: '0.06em',
           textTransform: 'uppercase',
+          background: 'rgba(34,211,238,0.08)',
+          borderRadius: '4px',
+          padding: '2px 8px',
+          display: 'inline-block',
+          alignSelf: 'flex-start',
         }}>
-          Question {step + 1} of {total}
+          Step {step + 1} of {total}
         </div>
       )}
 
-      {/* Question text */}
+      {/* Question text — prominent, easy to scan */}
       <div style={{
-        fontSize: '13.5px',
-        color: 'rgba(255,255,255,0.85)',
+        fontSize: '14.5px',
+        color: '#ffffff',
         lineHeight: '1.5',
-        fontWeight: 500,
+        fontWeight: 700,
       }}>
         {currentQ.question}
       </div>
