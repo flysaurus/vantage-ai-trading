@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePortfolioStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { apiPost } from '@/lib/api-client';
 import { getDemoAccount, getDemoSectorAllocations, getDemoSymbols } from '@/lib/demo-data';
 import type {
   AccountSummary,
@@ -403,6 +404,13 @@ export function usePortfolio() {
       } as AccountSummary & { sectorAllocations: SectorAllocation[] });
 
       console.error('[usePortfolio] SUCCESS — positions:', positions.length, 'account equity:', accountSummary.equity);
+
+      // Sync broker positions to Supabase for AI routes (daily-brief, weekly-snapshot)
+      if (brokerPositions.length > 0 && isConnected) {
+        apiPost('/api/positions/sync', { positions: brokerPositions }).catch((e) =>
+          console.warn('[usePortfolio] positions sync skipped:', e?.message)
+        );
+      }
     } catch (err) {
       if (!mountedRef.current) return;
 

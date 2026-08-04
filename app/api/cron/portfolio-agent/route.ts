@@ -149,12 +149,13 @@ async function processUser(
     // A connected broker with zero positions may have holdingsUnavailable=true
     let connectedBroker: string | null = null;
     try {
-      const { data: vault } = await supabase
-        .from('vault')
-        .select('provider')
+      const { data: brokerConn } = await supabase
+        .from('broker_connections')
+        .select('connection_type')
         .eq('user_id', userId)
+        .eq('status', 'connected')
         .maybeSingle();
-      connectedBroker = vault?.provider || null;
+      connectedBroker = brokerConn?.connection_type || null;
     } catch { /* ignore */ }
 
     if (connectedBroker) {

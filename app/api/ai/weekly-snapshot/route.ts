@@ -235,14 +235,37 @@ export async function GET(req: NextRequest) {
     }
 
     // ─── forceRegen: generate fresh snapshot ───
-    const { data: portfolioState } = await (supabase as any)
-      .from('demo_portfolio_state')
-      .select('positions, cash_balance, holdings_unavailable')
+    // Check broker positions first, fall back to demo
+    let positions: any[] = [];
+    let cashBalance = 0;
+    let holdingsUnavailable = false;
+
+    const { data: brokerConn } = await (supabase as any)
+      .from('broker_connections')
+      .select('connection_type, status')
       .eq('user_id', userId)
+      .eq('status', 'connected')
       .maybeSingle();
 
-    const positions: any[] = portfolioState?.positions || [];
-    const cashBalance = portfolioState?.cash_balance ?? 0;
+    if (brokerConn?.connection_type) {
+      const { data: brokerPositions } = await (supabase as any)
+        .from('positions')
+        .select('*')
+        .eq('user_id', userId)
+        .neq('qty', 0);
+      positions = brokerPositions || [];
+    }
+
+    if (positions.length === 0) {
+      const { data: portfolioState } = await (supabase as any)
+        .from('demo_portfolio_state')
+        .select('positions, cash_balance, holdings_unavailable')
+        .eq('user_id', userId)
+        .maybeSingle();
+      positions = portfolioState?.positions || [];
+      cashBalance = portfolioState?.cash_balance ?? 0;
+      holdingsUnavailable = portfolioState?.holdings_unavailable;
+    }
 
     if (!positions || positions.length === 0) {
       return NextResponse.json({
@@ -251,7 +274,7 @@ export async function GET(req: NextRequest) {
         riskLevel: null,
         weekStart: weekStartStr,
         generatedAt: null,
-        reason: portfolioState?.holdings_unavailable ? 'holdings_unavailable' : 'no_positions',
+        reason: holdingsUnavailable ? 'holdings_unavailable' : 'no_positions',
         cached: false,
       });
     }

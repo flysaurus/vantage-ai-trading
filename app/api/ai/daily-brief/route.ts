@@ -139,14 +139,15 @@ export async function GET(req: NextRequest) {
     let holdingsUnavailable = false;
     let isBrokerConnected = false;
 
-    // Check if user has a connected broker
+    // Check if user has a connected broker (broker_connections, not vault)
     try {
-      const { data: vault } = await (supabase as any)
-        .from('vault')
-        .select('provider')
+      const { data: brokerConn } = await (supabase as any)
+        .from('broker_connections')
+        .select('connection_type, status')
         .eq('user_id', userId)
+        .eq('status', 'connected')
         .maybeSingle();
-      isBrokerConnected = !!vault?.provider;
+      isBrokerConnected = !!brokerConn?.connection_type;
 
       if (isBrokerConnected) {
         // For broker users, positions are in the positions table
