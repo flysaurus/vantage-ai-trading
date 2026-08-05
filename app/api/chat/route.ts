@@ -1704,11 +1704,17 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // ONLY runs when response contains RECOMMEND markers. Responses without markers
         // (clarifying questions, informational replies, "I can't recommend X" prose) are
         // skipped — they aren't recommendations and shouldn't be validated as such.
+        // ALSO skip for multi-strategy: PORTFOLIO blocks validated per-block by
+        // validatePortfolioBlocks (each block independently checks against budget).
+        // Global marker-sum would be N × budget, which is expected and correct.
+        const portfolioBlocks = parsePortfolioBlocks(responseText);
+        const isMultiStrategy = portfolioBlocks.length > 1;
+
         let validationRejected = false;
         if (requestedBudget !== null && hasRecommendMarkers) {
           sendChecklist(controller, encoder, 'symbol_verification', 'in_progress');
           try {
-            const strictValidation = await validateRecommendations(responseText, requestedBudget);
+            const strictValidation = await validateRecommendations(responseText, requestedBudget, undefined, isMultiStrategy);
             if (!strictValidation.ok) {
               console.warn('[chat] ⚠️ Strict validation FAILED:', JSON.stringify(strictValidation.failures, null, 2));
               validationRejected = true;

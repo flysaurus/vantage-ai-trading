@@ -77,6 +77,7 @@ export async function validateRecommendations(
   rawText: string,
   requestedBudget: number | null,
   symbolCacheOverride?: Set<string>,
+  isMultiStrategy?: boolean,
 ): Promise<ValidationResult> {
   const failures: ValidationFailure[] = [];
 
@@ -230,7 +231,10 @@ export async function validateRecommendations(
     // EXACT match required on the aggregate portfolio total — no tolerance.
     // Rounding is only acceptable when converting individual positions to
     // whole shares downstream; the top-line $ figure must reconcile exactly.
-    if (total !== requestedBudget) {
+    // Skip for multi-strategy: global marker sum = N × budget (each strategy
+    // independently totals the budget). Per-block validation handled by
+    // validatePortfolioBlocks in the route layer.
+    if (!isMultiStrategy && total !== requestedBudget) {
       const direction = total < requestedBudget ? 'under' : 'over';
       const pctOff = Math.abs(((total - requestedBudget) / requestedBudget) * 100).toFixed(1);
       failures.push({
