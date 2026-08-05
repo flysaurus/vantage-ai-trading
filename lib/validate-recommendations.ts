@@ -326,5 +326,14 @@ export function extractBudget(message: string): number | null {
     if (!isNaN(num) && num > 0) return num * 1000;
   }
 
+  // Fallback: bare $N anywhere in message — catches "$10,000, show me strategies"
+  // and other formats where $ precedes keywords or stands alone.
+  // Constrained to round amounts ≥ $50 to avoid catching stock prices.
+  const bareDollar = message.match(/\$([\d,]+(?:\.\d+)?)\b/);
+  if (bareDollar) {
+    const val = parseFloat(bareDollar[1].replace(/,/g, ''));
+    if (!isNaN(val) && val >= 50 && val <= 100_000_000) return val;
+  }
+
   return null;
 }
