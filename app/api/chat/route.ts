@@ -383,6 +383,108 @@ function sendChecklist(
   );
 }
 
+/** Emit a radar-sweep animation update (screening progress, dot lighting). */
+function sendScreenResult(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  stage: string,
+  detail?: string,
+  dots?: Array<{ x: number; y: number; size: number; lit: boolean; symbol?: string }>
+) {
+  controller.enqueue(
+    encoder.encode(`data: ${JSON.stringify({ screenResult: { stage, stageLabel: stage, detail, dots } })}\n\n`)
+  );
+}
+
+/** Extract screening criteria from a natural-language user message. */
+function extractScreeningCriteria(message: string): Record<string, any> | null {
+  const criteria: Record<string, any> = {};
+  const m = message.toLowerCase();
+
+  // Sector mapping
+  const sectorMap: Record<string, string> = {
+    tech: 'technology', technology: 'technology', software: 'technology', ai: 'technology',
+    health: 'healthcare', healthcare: 'healthcare', pharma: 'healthcare', biotech: 'healthcare', medical: 'healthcare',
+    finance: 'financial_services', financial: 'financial_services', banking: 'financial_services', banks: 'financial_services',
+    energy: 'energy', oil: 'energy', gas: 'energy', renewable: 'energy', solar: 'energy',
+    consumer: 'consumer_cyclical', retail: 'consumer_cyclical',
+    industrial: 'industrials', industrials: 'industrials', manufacturing: 'industrials', aerospace: 'industrials', defense: 'industrials',
+    materials: 'basic_materials', basic_materials: 'basic_materials', mining: 'basic_materials', minerals: 'basic_materials', metals: 'basic_materials',
+    real_estate: 'real_estate', reit: 'real_estate', property: 'real_estate',
+    utilities: 'utilities', utility: 'utilities',
+    communication: 'communication_services', telecom: 'communication_services', media: 'communication_services',
+  };
+  for (const [keyword, sector] of Object.entries(sectorMap)) {
+    if (m.includes(keyword)) { criteria.sector = sector; break; }
+  }
+
+  // Market cap: "under $10B", ">$50B", "market cap > N billion", "mid-cap", "large-cap", "small-cap"
+  const mktCapBillion = m.match(/(?:market\s*cap|mkt\s*cap|cap)\s*(?:>|>=|over|above|at least)\s*\$?(\d+(?:\.\d+)?)\s*(?:b|bn|billion)/i);
+  const mktCapUnder = m.match(/(?:market\s*cap|mkt\s*cap|cap)\s*(?:<|<=|under|below|less than|at most)\s*\$?(\d+(?:\.\d+)?)\s*(?:b|bn|billion)/i);
+  if (mktCapBillion) criteria.market_cap_min = Math.round(parseFloat(mktCapBillion[1]) * 1_000_000_000);
+  if (mktCapUnder) criteria.market_cap_max = Math.round(parseFloat(mktCapUnder[1]) * 1_000_000_000);
+  if (m.includes('large-cap') || m.includes('large cap')) { criteria.market_cap_min = 10_000_000_000; }
+  if (m.includes('mid-cap') || m.includes('mid cap')) { criteria.market_cap_min = 2_000_000_000; criteria.market_cap_max = 10_000_000_000; }
+  if (m.includes('small-cap') || m.includes('small cap')) { criteria.market_cap_max = 2_000_000_000; }
+
+  // PE: "P/E under 30", "PE < 25"
+  const peMatch = m.match(/(?:p\/?e|pe)\s*(?:<|<=|under|below|less than|max)\s*(\d+(?:\.\d+)?)/i);
+  if (peMatch) criteria.pe_max = parseFloat(peMatch[1]);
+
+  // Growth: "growth > 15%", "EPS growth over 10%"
+  const growthMatch = m.match(/(?:growth|eps\s*growth)\s*(?:>|>=|over|above|at least|min)\s*(\d+(?:\.\d+)?)\s*%/i);
+  if (growthMatch) criteria.min_growth_rate = parseFloat(growthMatch[1]) / 100;
+
+  // Volume: "volume > 1M"
+  const volMatch = m.match(/volume\s*(?:>|>=|over|above)\s*(\d+(?:\.\d+)?)\s*(?:m|mil|million)/i);
+  if (volMatch) criteria.volume_min = Math.round(parseFloat(volMatch[1]) * 1_000_000);
+
+  return Object.keys(criteria).length > 0 ? criteria : null;
+}
+
+/** Call the screener service and return results. */
+async function runScreening(criteria: Record<string, any>): Promise<{ results: any[]; provider: string; error?: string }> {
+  try {
+    const res = await fetch('http://127.0.0.1:8766/screen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...criteria, limit: 30 }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return { results: [], provider: 'error', error: `HTTP ${res.status}` };
+    return await res.json();
+  } catch (e: any) {
+    return { results: [], provider: 'error', error: e.message };
+  }
+}
+
+/** Format screening results as context for the AI system prompt. */
+function formatScreeningContext(results: any[], criteria: Record<string, any>, count: number): string {
+  if (!results || results.length === 0) {
+    const critDesc = Object.entries(criteria)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
+    return `\nSCREENED UNIVERSE: No US-listed candidates matched criteria (${critDesc}). ` +
+      `You MUST say so honestly (e.g., "Only 0 matches for those criteria — want me to widen?") ` +
+      `and offer to relax the filters. Do NOT substitute familiar tickers from memory.`;
+  }
+
+  const tickers = results.map(r => r.symbol).join(', ');
+  const summary = results.slice(0, 5).map(r => {
+    const parts = [`${r.symbol} (${r.name || '?'})`];
+    if (r.market_cap) parts.push(`MCap:$${(r.market_cap/1e9).toFixed(1)}B`);
+    if (r.pe_forward) parts.push(`PE:${r.pe_forward.toFixed(1)}`);
+    if (r.sector) parts.push(`Sector:${r.sector}`);
+    return parts.join(' ');
+  }).join('; ');
+
+  return `\nSCREENED UNIVERSE: ${count} US-listed candidates from real-time screening.\n` +
+    `Available tickers: ${tickers}\n` +
+    `Top matches: ${summary}\n` +
+    `You MUST build your portfolio ONLY from these screened candidates. ` +
+    `If you need a ticker not in this list, say so — don't substitute from memory.`;
+}
+
 /** Validate portfolio totals against requested budget (exact match).
  *  Accepts an optional pre-computed budget from conversation history.
  *  When provided, skips the greedy extractRequestedBudget() which would
@@ -1179,6 +1281,33 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     });
     const dateContext = `\nAUTHORITATIVE CURRENT DATE: ${currentDate} (in user's timezone). Treat this as ground truth. Never assert a specific date or recency claim ("today", "just happened", "recently", "IPO'd on [date]") that conflicts with this date. If you are unsure about the timing of an event, hedge with "reportedly" or "according to recent coverage" rather than fabricating a specific date.`;
 
+    // ── Retry prompt injection (for validation-driven regeneration) ──
+    const requestedBudget = extractBudgetFromHistory(messages);
+
+    // ── Stock Screening: real-time candidate universe ──
+    // Only screens when: a) portfolio request (budget present), b) screening criteria
+    // detectable from the user's natural-language request. Non-portfolio messages skip.
+    let screeningContext = '';
+    let screeningResults: Awaited<ReturnType<typeof runScreening>> | null = null;
+    let screeningCriteria: Record<string, any> | null = null;
+    if (requestedBudget !== null) {
+      const criteria = extractScreeningCriteria(lastMessage);
+      if (criteria) {
+        screeningCriteria = criteria;
+        console.log('[chat] 🔍 Running screener with criteria:', JSON.stringify(criteria));
+        screeningResults = await runScreening(criteria);
+        screeningContext = formatScreeningContext(
+          screeningResults.results,
+          criteria,
+          screeningResults.results?.length || 0
+        );
+        console.log(`[chat] 🔍 Screener returned ${screeningResults.results?.length || 0} results (${screeningResults.provider})`);
+        if (screeningResults.error) {
+          console.error('[chat] 🔍 Screener error:', screeningResults.error);
+        }
+      }
+    }
+
     const systemBlocks: SystemBlock[] = [
       {
         type: 'text' as const,
@@ -1187,12 +1316,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       },
       {
         type: 'text' as const,
-        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext].filter(Boolean).join('\n\n'),
+        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext, screeningContext].filter(Boolean).join('\n\n'),
       },
     ];
 
-    // ── Retry prompt injection (for validation-driven regeneration) ──
-    const requestedBudget = extractBudgetFromHistory(messages);
     if (retryAttempt >= 1 && retryFailures && retryFailures.length > 0) {
       console.log(`[chat] Retry attempt ${retryAttempt} — injecting stricter prompt. Failures:`, retryFailures.length);
       systemBlocks.push({
@@ -1292,9 +1419,47 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
 
-        // ── Checklist: Tickers resolved (pre-flight already completed) ──
-        sendChecklist(controller, encoder, 'tickers_resolved', 'done',
-          preResolvedCount > 0 ? `${preResolvedCount} resolved` : 'None needed');
+        // ── Screening results (radar sweep + checklist) ──
+        if (screeningResults && screeningCriteria) {
+          const count = screeningResults.results?.length || 0;
+          const criteriaDesc = Object.entries(screeningCriteria)
+            .map(([k, v]) => {
+              if (k === 'market_cap_min') return `MCap > $${(v/1e9).toFixed(1)}B`;
+              if (k === 'market_cap_max') return `MCap < $${(v/1e9).toFixed(1)}B`;
+              if (k === 'pe_max') return `PE < ${v}`;
+              if (k === 'min_growth_rate') return `Growth > ${(v*100).toFixed(0)}%`;
+              if (k === 'sector') return `${v}`;
+              if (k === 'volume_min') return `Vol > ${(v/1e6).toFixed(1)}M`;
+              return '';
+            })
+            .filter(Boolean)
+            .join(', ');
+
+          if (count > 0) {
+            // Emit radar sweep dot data
+            const dots = screeningResults.results.slice(0, 24).map((r: any, i: number) => ({
+              symbol: r.symbol,
+              x: 50 + Math.cos(i * 2.39996) * (15 + (i / 24) * 38),
+              y: 50 + Math.sin(i * 2.39996) * (15 + (i / 24) * 38) * 0.85,
+              size: 1.5 + (i / 24) * 2.5,
+              lit: true,
+            }));
+            sendScreenResult(controller, encoder, 'Screening complete',
+              `Screening: ${criteriaDesc} — ${count} matches`, dots);
+            sendChecklist(controller, encoder, 'tickers_resolved', 'done',
+              `${count} screened from ${criteriaDesc}${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
+          } else {
+            // No results — show failed state
+            sendScreenResult(controller, encoder, 'No matches',
+              `Screening: ${criteriaDesc} — 0 matches found`);
+            sendChecklist(controller, encoder, 'tickers_resolved', 'failed',
+              `0 results for ${criteriaDesc} — try wider criteria`);
+          }
+        } else {
+          // ── Checklist: Tickers resolved (pre-flight only, no screening) ──
+          sendChecklist(controller, encoder, 'tickers_resolved', 'done',
+            preResolvedCount > 0 ? `${preResolvedCount} resolved` : 'None needed');
+        }
 
         // ── Checklist: Building recommendations ──
         sendChecklist(controller, encoder, 'recommendations_built', 'in_progress');

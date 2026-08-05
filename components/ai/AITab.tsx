@@ -16,6 +16,7 @@ import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSumm
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
+import { RadarSweep, type ScreeningDot } from '@/components/ai/RadarSweep';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
 import { useLearningMoment } from '@/hooks/useLearningMoment';
@@ -169,6 +170,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  // Radar sweep state — drives the animated loading visual
+  const [screeningStage, setScreeningStage] = useState<string | undefined>(undefined);
+  const [screeningDetail, setScreeningDetail] = useState<string | undefined>(undefined);
+  const [screeningDots, setScreeningDots] = useState<ScreeningDot[] | undefined>(undefined);
   const [lastMessageTime, setLastMessageTime] = useState(0);
   // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
   const getCachedGreeting = (): { opener: string; hook: string } | null => {
@@ -954,6 +959,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
     setMessages(newMessages);
     setInput('');
     setLoading(true);
+    // Reset radar sweep state for new generation
+    setScreeningStage(undefined);
+    setScreeningDetail(undefined);
+    setScreeningDots(undefined);
 
     // Send last 10 messages to cap context window, but ALWAYS include
     // the first user message which carries the original portfolio budget.
@@ -1027,6 +1036,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 // reasoning hidden behind the checklist
                 continue;
               }
+              // Radar sweep: screening stage updates (dot lighting + detail)
+              if (data.screenResult) {
+                const sr = data.screenResult;
+                setScreeningStage(sr.stageLabel || sr.stage || 'Screening markets');
+                setScreeningDetail(sr.detail || undefined);
+                if (sr.dots && Array.isArray(sr.dots)) {
+                  setScreeningDots(sr.dots.map((d: any) => ({
+                    x: d.x, y: d.y, size: d.size || 1.5, lit: d.lit ?? true, symbol: d.symbol,
+                  })));
+                }
+                continue;
+              }
               if (data.text) {
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
@@ -1070,6 +1091,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       // ── Progress complete: transition from progress indicator to final content ──
       setChecklistItems([]);
+      setScreeningStage(undefined);
+      setScreeningDetail(undefined);
+      setScreeningDots(undefined);
 
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
@@ -1169,7 +1193,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           // Let the failed checklist remain visible for 3 seconds before
           // replacing with error text — makes the failure legible
           await new Promise(r => setTimeout(r, 3000));
-          setChecklistItems([]); // clear progress for error display
+          setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); // clear progress
           // Both attempts failed — show fallback with failure details for debugging
           const failureDetails = (rejectData.failures || [])
             .map((f: any) => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`)
@@ -1189,7 +1213,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalStreamError) {
-          setChecklistItems([]); // clear progress for error display
+          setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); // clear progress
           // Server-side stream crashed — surface the actual error
           console.error('[chat] Handling fatal stream error:', rejectData.message);
           setMessages(prev => {
@@ -1207,7 +1231,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       // Scroll suppressed — user controls position
     } catch (error: any) {
-      setChecklistItems([]); // clear progress for error display
+      setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); // clear progress
       console.error('Chat error:', error);
       setToast(null);
       if (error?.status === 429) {
@@ -1647,24 +1671,11 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
         {/* ======== Greeting loading state ======== */}
         {!greetingLoaded && (
-          <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-            <div style={{
-              position: 'relative',
-              background: 'rgba(255,255,255,0.05)',
-              borderRadius: '18px',
-              padding: '20px',
-              overflow: 'hidden',
-              backdropFilter: BACKDROP_BLUR,
-            }}>
-              <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '4px 0' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0s' }} />
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ACCENT, animation: 'vantagePulse 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
-                </div>
-              </div>
-            </div>
-          </div>
+          <RadarSweep
+            active={true}
+            stageLabel="Initializing Vantage AI"
+            ambientCount={36}
+          />
         )}
 
         <div
@@ -1682,6 +1693,21 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         {messages.length === 0 && !loading && (
           <div style={{ flex: 1 }} />
         )}
+
+        {/* ── Radar sweep during AI generation (before text arrives) ── */}
+        {loading && messages.length > 0 && (() => {
+          const lastMsg = messages[messages.length - 1];
+          const hasContent = lastMsg?.role === 'ai' && lastMsg?.content && lastMsg.content.length > 0;
+          return (
+            <RadarSweep
+              active={!hasContent}
+              stageLabel={screeningStage || "Analyzing your request"}
+              stageDetail={screeningDetail}
+              dots={screeningDots}
+              ambientCount={screeningDots ? 36 : 48}
+            />
+          );
+        })()}
 
         {/* Messages */}
         {messages.map((msg, i) => {
