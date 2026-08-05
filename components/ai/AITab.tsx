@@ -12,7 +12,10 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type Suggestion, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import StrategyCards from '@/components/ai/StrategyCards';
+import { parsePortfolioBlocks } from '@/app/api/chat/route';
+import type { PortfolioBlock } from '@/lib/portfolio-types';
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
@@ -169,6 +172,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  // Screening meta for strategy-card transparency (criteria, match count, provider)
+  const [screeningMeta, setScreeningMeta] = useState<{
+    criteria: Record<string, any>;
+    criteriaDescription: string;
+    matchCount: number;
+    provider: string;
+  } | null>(null);
   const [lastMessageTime, setLastMessageTime] = useState(0);
   // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
   const getCachedGreeting = (): { opener: string; hook: string } | null => {
@@ -212,6 +222,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
   const stepperMsgIdRef = useRef<string | null>(null); // tracks which message initialized the stepper
   const bypassStepperRef = useRef(false); // bypasses stepper intercept when submitting combined answers
+
+  // ── Multi-strategy selection: messageId → selected block index ──
+  const [selectedStrategies, setSelectedStrategies] = useState<Record<string, number>>({});
 
   // ── Inline trade buttons — TradeTicket state ──
   const [tradeTicket, setTradeTicket] = useState<{
@@ -1027,6 +1040,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 // reasoning hidden behind the checklist
                 continue;
               }
+              if (data.screeningMeta) {
+                setScreeningMeta(data.screeningMeta);
+                continue;
+              }
               if (data.text) {
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
@@ -1070,7 +1087,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       // ── Progress complete: transition from progress indicator to final content ──
       setChecklistItems([]);
-      
+      setScreeningMeta(null);
 
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
@@ -1809,8 +1826,35 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;
-                const suggestions = parseSuggestions(msg.content, validSymbols);
-                const choices = parseChoiceSuggestions(msg.content);
+
+                // ── Multi-strategy detection ──
+                const msgBlocks = parsePortfolioBlocks(msg.content);
+                const isMultiStrategy = msgBlocks.length > 1;
+                const selectedBlockIdx = msg.id ? selectedStrategies[msg.id] : undefined;
+                const hasSelection = selectedBlockIdx !== undefined && selectedBlockIdx >= 0 && selectedBlockIdx < msgBlocks.length;
+
+                let suggestions: Suggestion[];
+                let choices: ChoiceSuggestion[];
+
+                if (isMultiStrategy && hasSelection) {
+                  // Use the selected block's positions directly — PORTFOLIO block IS the source of truth.
+                  // No RECOMMEND marker parsing, no regeneration.
+                  const block = msgBlocks[selectedBlockIdx];
+                  suggestions = block.positions.map(p => ({
+                    symbol: p.symbol,
+                    side: 'BUY' as const,
+                    suggestedAmount: p.amount,
+                  }));
+                  choices = [];
+                } else if (isMultiStrategy) {
+                  // Multi-strategy but nothing selected — hide trade buttons, show cards below
+                  return null;
+                } else {
+                  // Normal single-strategy behavior
+                  suggestions = parseSuggestions(msg.content, validSymbols);
+                  choices = parseChoiceSuggestions(msg.content);
+                }
+
                 if (suggestions.length === 0 && choices.length === 0) return null;
                 // Build executedMap for this message from global state + localStorage
                 const msgExecutedMap: Record<string, { shares: number; amount: number; side: string }> = {};
@@ -1833,19 +1877,49 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                   }
                 }
                 return (
-                  <InlineTradeButtons
-                    suggestions={suggestions}
-                    choiceSuggestions={choices}
-                    enabled={tier !== 'silver'}
-                    onTrade={(sym, sd, sh, am) => handleTradeAction(sym, sd, sh, am, msg.id)}
-                    executedMap={msgExecutedMap}
-                  />
+                  <>
+                    {isMultiStrategy && hasSelection && (
+                      <div style={{
+                        fontSize: '11px', fontWeight: 600, color: '#22d3ee',
+                        marginBottom: '8px', letterSpacing: '0.05em',
+                        textTransform: 'uppercase', paddingTop: '4px',
+                      }}>
+                        ✓ Selected: {msgBlocks[selectedBlockIdx!].strategy || `Strategy ${Number(selectedBlockIdx) + 1}`}
+                      </div>
+                    )}
+                    <InlineTradeButtons
+                      suggestions={suggestions}
+                      choiceSuggestions={choices}
+                      enabled={tier !== 'silver'}
+                      onTrade={(sym, sd, sh, am) => handleTradeAction(sym, sd, sh, am, msg.id)}
+                      executedMap={msgExecutedMap}
+                    />
+                  </>
                 );
               })()}
                 {loading && i === messages.length - 1 && checklistItems.length === 0 && (
                   <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#22d3ee', marginLeft: '2px', verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
                 )}
             </div>
+            {/* Multi-strategy cards — BELOW the bubble, never inside */}
+            {(() => {
+              if (!msg.id) return null;
+              if (tier === 'silver') return null;
+              const msgBlocks = parsePortfolioBlocks(msg.content);
+              if (msgBlocks.length <= 1) return null;
+              const selectedBlockIdx = selectedStrategies[msg.id];
+              if (selectedBlockIdx !== undefined) return null; // already selected
+              return (
+                <StrategyCards
+                  blocks={msgBlocks}
+                  screeningMeta={screeningMeta}
+                  onBuildThis={(block) => {
+                    const blockIdx = msgBlocks.indexOf(block);
+                    setSelectedStrategies(prev => ({ ...prev, [msg.id!]: blockIdx }));
+                  }}
+                />
+              );
+            })()}
             {/* Clarifying options chips — BELOW the bubble, never inside */}
             {/* Stepper mode: sequential one-at-a-time for multi-question messages */}
             {isStepperActive && (

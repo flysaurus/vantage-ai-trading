@@ -512,18 +512,9 @@ function validateBudgetGate(userMessage: string, aiResponse: string, contextBudg
 
 // ─── PORTFOLIO Block Types ───────────────────────────
 
-interface PortfolioPosition {
-  symbol: string;
-  amount: number;
-}
+import { type PortfolioBlock, type PortfolioPosition } from '@/lib/portfolio-types';
 
-interface PortfolioBlock {
-  total: number;
-  strategy?: string;
-  positions: PortfolioPosition[];
-  raw: string;
-  parseError?: string;
-}
+export { type PortfolioBlock, type PortfolioPosition };
 
 /** Parse all [PORTFOLIO:{...}] JSON blocks from the AI response. */
 export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
@@ -591,11 +582,13 @@ export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
  *
  * Returns null if all blocks valid, or an error string describing the first failure.
  */
-export function validatePortfolioBlocks(response: string): string | null {
+export function validatePortfolioBlocks(response: string, requestedBudget?: number | null): string | null {
   const blocks = parsePortfolioBlocks(response);
 
   // No PORTFOLIO blocks — caller should fall through to remaining prose checks
   if (blocks.length === 0) return null;
+
+  const isMultiBlock = blocks.length > 1;
 
   // ── Check for parse errors ──
   for (const block of blocks) {
@@ -645,8 +638,17 @@ export function validatePortfolioBlocks(response: string): string | null {
     }
   }
 
-  // ── Multi-strategy: multiple valid blocks = pass (show as cards in UI) ──
-  // No further coherence checks needed — each block is structurally valid.
+  // ── Multi-strategy per-block budget check ──
+  // Each block independently totals to the user's requested budget.
+  // Skip this check if no budget is available (single-block responses handle it downstream).
+  if (isMultiBlock && requestedBudget && requestedBudget > 0) {
+    for (const block of blocks) {
+      if (Math.abs(block.total - requestedBudget) > 0.01) {
+        const label = block.strategy ? `"${block.strategy}" ` : '';
+        return `[PORTFOLIO:...] ${label}block total ($${block.total.toLocaleString()}) does not match requested budget ($${requestedBudget.toLocaleString()}). In a multi-strategy response, every strategy must use the full requested budget.`;
+      }
+    }
+  }
 
   // ── Cross-check with RECOMMEND markers ──
   const hasRecommendMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+/i.test(response);
@@ -658,10 +660,10 @@ export function validatePortfolioBlocks(response: string): string | null {
     return null;
   }
 
-  // Extract RECOMMEND positions with amounts — dedupe identical (symbol, amount) pairs.
-  // The model sometimes double-emits the exact same marker set (inline + clustered),
-  // which would cause false positives in the amount-match check below.
-  const recommendPositions = new Map<string, number>();
+  // Extract RECOMMEND positions — dedupe identical (symbol, amount) markers.
+  // Multi-block: symbols may appear in multiple blocks with DIFFERENT amounts.
+  // We collect ALL (symbol, amount) pairs, then match per-block below.
+  const recommendPairs: { symbol: string; amount: number }[] = [];
   const seenMarkers = new Set<string>(); // dedupe identical markers
   const mkrRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d]+)?)\]/gi;
   let mkMatch: RegExpExecArray | null;
@@ -676,26 +678,38 @@ export function validatePortfolioBlocks(response: string): string | null {
     const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
     const cleanSymbol = suffix.length >= 2 && suffix.length <= 3 ? rawSymbol.slice(0, dotIdx) : rawSymbol;
     if (FOREIGN_EXCHANGE_SUFFIXES.has(suffix.toUpperCase())) continue;
-    recommendPositions.set(cleanSymbol, (recommendPositions.get(cleanSymbol) || 0) + amount);
+    recommendPairs.push({ symbol: cleanSymbol, amount });
   }
 
-  // Check every PORTFOLIO position has a matching RECOMMEND marker
-  const allPortfolioPositions = blocks.flatMap(b => b.positions);
+  // Build a lookup: symbol → set of amounts from RECOMMEND markers
+  const recommendBySymbol = new Map<string, Set<number>>();
+  for (const pair of recommendPairs) {
+    if (!recommendBySymbol.has(pair.symbol)) {
+      recommendBySymbol.set(pair.symbol, new Set());
+    }
+    recommendBySymbol.get(pair.symbol)!.add(pair.amount);
+  }
+
+  // Validate all PORTFOLIO positions against RECOMMEND markers
+  const allPortfolioPositions = blocks.flatMap((b, bi) =>
+    b.positions.map(p => ({ ...p, blockIndex: bi, strategy: b.strategy }))
+  );
   for (const pos of allPortfolioPositions) {
-    const recAmount = recommendPositions.get(pos.symbol.toUpperCase());
-    if (recAmount === undefined) {
-      return `[PORTFOLIO:...] position "${pos.symbol}" has no matching [RECOMMEND:${pos.symbol}:BUY:$${pos.amount}] marker. Every portfolio position MUST have a corresponding RECOMMEND marker with the same dollar amount.`;
+    const recAmounts = recommendBySymbol.get(pos.symbol.toUpperCase());
+    if (!recAmounts || recAmounts.size === 0) {
+      return `[PORTFOLIO:...] position "${pos.symbol}" has no matching [RECOMMEND:${pos.symbol}:BUY:$${pos.amount}] marker. Every portfolio position MUST have a corresponding RECOMMEND marker.`;
     }
-    if (Math.abs(recAmount - pos.amount) > 0.01) {
-      return `[PORTFOLIO:...] position "${pos.symbol}" amount mismatch: PORTFOLIO says $${pos.amount.toLocaleString()} but [RECOMMEND:${pos.symbol}:BUY:$${recAmount.toLocaleString()}] says $${recAmount.toLocaleString()}. Amounts must match exactly.`;
-    }
-  }
 
-  // Cross-check totals: PORTFOLIO sum ≈ RECOMMEND sum
-  const portfolioTotal = allPortfolioPositions.reduce((acc, p) => acc + p.amount, 0);
-  const recommendTotal = [...recommendPositions.values()].reduce((a, b) => a + b, 0);
-  if (recommendPositions.size > 0 && Math.abs(portfolioTotal - recommendTotal) > 0.01) {
-    return `[PORTFOLIO:...] RECOMMEND marker total ($${recommendTotal.toLocaleString()}) does not match PORTFOLIO block total ($${portfolioTotal.toLocaleString()}). All amounts must be consistent.`;
+    if (!isMultiBlock) {
+      // Single-block: strict amount match — the RECOMMEND amount must match the PORTFOLIO amount exactly
+      if (!recAmounts.has(pos.amount)) {
+        const recList = [...recAmounts].map(a => `$${a.toLocaleString()}`).join(', ');
+        return `[PORTFOLIO:...] position "${pos.symbol}" amount mismatch: PORTFOLIO says $${pos.amount.toLocaleString()} but RECOMMEND marker says ${recList}. Amounts must match exactly.`;
+      }
+    }
+    // Multi-block: skip amount check — symbols may appear in multiple blocks at different amounts.
+    // The PORTFOLIO block JSON is the source of truth; the client reads positions directly from it.
+    // We only verify that a RECOMMEND marker EXISTS for the symbol (trade button availability).
   }
 
   return null; // All blocks valid
@@ -711,11 +725,11 @@ export function validatePortfolioBlocks(response: string): string | null {
  *
  * Returns a detail string if incoherence is detected, null if clean.
  */
-export function detectResponseIncoherence(response: string): string | null {
+export function detectResponseIncoherence(response: string, requestedBudget?: number | null): string | null {
   // ── PRIMARY: PORTFOLIO block validation (replaces Patterns 1-3 and 6) ──
   // If PORTFOLIO blocks are present, they are the ONLY source of truth.
   // Prose is authoritative only when no PORTFOLIO blocks exist.
-  const portfolioResult = validatePortfolioBlocks(response);
+  const portfolioResult = validatePortfolioBlocks(response, requestedBudget);
   const hasPortfolioBlocks = parsePortfolioBlocks(response).length > 0;
   if (hasPortfolioBlocks) {
     if (portfolioResult !== null) return portfolioResult;
@@ -1423,6 +1437,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             .join(', ');
 
           if (count > 0) {
+            // Send screening meta for transparency on strategy cards
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              screeningMeta: { criteria: screeningCriteria, criteriaDescription: criteriaDesc, matchCount: count, provider: screeningResults.provider }
+            })}\n\n`));
             sendChecklist(controller, encoder, 'screening', 'done',
               `${count} US-listed candidates matched (${screeningResults.provider}) — ${criteriaDesc}`);
             sendChecklist(controller, encoder, 'tickers_resolved', 'done',
@@ -1608,7 +1626,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // leaking into user-facing text. These indicate a broken generation that
         // should be regenerated — no partial render.
         sendChecklist(controller, encoder, 'coherence_check', 'in_progress');
-        const coherenceFailure = detectResponseIncoherence(responseText);
+        const coherenceFailure = detectResponseIncoherence(responseText, requestedBudget);
         if (coherenceFailure) {
           console.warn('[chat] ⚠️ Response coherence check FAILED:', coherenceFailure);
           console.warn('[chat] Raw response (first 3000 chars):', responseText.slice(0, 3000));
