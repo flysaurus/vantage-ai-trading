@@ -569,11 +569,17 @@ export function validatePortfolioBlocks(response: string): string | null {
     return null;
   }
 
-  // Extract RECOMMEND positions with amounts
+  // Extract RECOMMEND positions with amounts — dedupe identical (symbol, amount) pairs.
+  // The model sometimes double-emits the exact same marker set (inline + clustered),
+  // which would cause false positives in the amount-match check below.
   const recommendPositions = new Map<string, number>();
+  const seenMarkers = new Set<string>(); // dedupe identical markers
   const mkrRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d]+)?)\]/gi;
   let mkMatch: RegExpExecArray | null;
   while ((mkMatch = mkrRe.exec(response)) !== null) {
+    const raw = mkMatch[0];
+    if (seenMarkers.has(raw)) continue; // skip duplicate markers
+    seenMarkers.add(raw);
     const rawSymbol = mkMatch[1].toUpperCase();
     const amount = parseFloat(mkMatch[2].replace(/,/g, ''));
     // Strip foreign exchange suffix if present
