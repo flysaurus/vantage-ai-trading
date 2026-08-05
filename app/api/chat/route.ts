@@ -358,32 +358,16 @@ function extractRequestedBudget(message: string): number | null {
   return null;
 }
 
-/** Extract total portfolio value from the AI's response. */
+/** Extract total(s) from [PORTFOLIO:{...}] blocks in the AI's response.
+ *  PORTFOLIO blocks are authoritative — prose is never parsed for numbers.
+ *  Returns the first block's total, or null if no blocks found.
+ *  For multi-strategy, each block's total is independently validated upstream. */
 function extractResponseTotal(response: string): number | null {
-  // Pattern 1: Explicit total line — "Total: $800", "**Total** $800", "TOTAL: $1,234.56"
-  const totalMatch = response.match(/(?:total|TOTAL|Total Portfolio|Sum|Portfolio Value|Grand Total|portfolio total)\s*(?:[:$]|is)\s*\$?([\d,]+(?:\.\d+)?)/i);
-  if (totalMatch) return parseFloat(totalMatch[1].replace(/,/g, ''));
-
-  // Pattern 2: "Total:" preceded by "6 positions totaling $800"
-  const positionsMatch = response.match(/(?:positions?|stocks?|holdings?)\s*(?:totaling|totalling|worth|valued? at|at)\s*\$?([\d,]+(?:\.\d+)?)\b/i);
-  if (positionsMatch) return parseFloat(positionsMatch[1].replace(/,/g, ''));
-
-  // Pattern 3: Sum all dollar amounts in table rows and take the largest
-  // (the total is usually the largest figure in a portfolio response)
-  const dollarAmounts = [...response.matchAll(/\$([\d,]+(?:\.\d+)?)\b/g)];
-  if (dollarAmounts.length >= 3) {
-    const amounts = dollarAmounts.map(m => parseFloat(m[1].replace(/,/g, '')));
-    const sorted = [...amounts].sort((a, b) => b - a);
-    // Skip obvious stock prices (>5% of max for individual positions)
-    const max = sorted[0];
-    // Count how many amounts are close to the max — if there's a clear top value
-    // that's >2x the next value, it's likely the total
-    if (sorted.length >= 4 && max > sorted[1] * 1.5) {
-      return max;
-    }
-  }
-
-  return null;
+  const blocks = parsePortfolioBlocks(response);
+  if (blocks.length === 0) return null;
+  // Return the first block's total (for single-block responses)
+  // Multi-strategy validation happens in validatePortfolioBlocks
+  return blocks[0].total;
 }
 
 // ─── Checklist event helper ───
@@ -437,93 +421,218 @@ function validateBudgetGate(userMessage: string, aiResponse: string, contextBudg
   };
 }
 
+// ─── PORTFOLIO Block Types ───────────────────────────
+
+interface PortfolioPosition {
+  symbol: string;
+  amount: number;
+}
+
+interface PortfolioBlock {
+  total: number;
+  strategy?: string;
+  positions: PortfolioPosition[];
+  raw: string;
+  parseError?: string;
+}
+
+/** Parse all [PORTFOLIO:{...}] JSON blocks from the AI response. */
+export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
+  const blocks: PortfolioBlock[] = [];
+  const prefix = '[PORTFOLIO:';
+  let idx = 0;
+
+  while (idx < response.length) {
+    const start = response.indexOf(prefix, idx);
+    if (start === -1) break;
+
+    // Bracket-count to find the matching ] (handles nested { and } in JSON)
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    let pos = start + 1; // skip opening [
+    for (; pos < response.length; pos++) {
+      const ch = response[pos];
+      if (escapeNext) { escapeNext = false; continue; }
+      if (ch === '\\') { escapeNext = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') { depth++; continue; }
+      if (ch === '}') { if (depth > 0) depth--; continue; }
+      if (ch === ']' && depth === 0) break;
+    }
+
+    if (pos >= response.length) {
+      // Unclosed bracket — skip this match and continue
+      const raw = response.slice(start);
+      blocks.push({ total: NaN, positions: [], raw, parseError: 'Unclosed PORTFOLIO block — missing closing ]' });
+      break;
+    }
+
+    const raw = response.slice(start, pos + 1);
+    const jsonStr = raw.slice(prefix.length, -1); // strip [PORTFOLIO: and ]
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      blocks.push({
+        total: parsed.total,
+        strategy: parsed.strategy,
+        positions: Array.isArray(parsed.positions) ? parsed.positions : [],
+        raw,
+      });
+    } catch (e: any) {
+      blocks.push({
+        total: NaN,
+        positions: [],
+        raw,
+        parseError: `Invalid JSON: ${e.message || 'unknown parse error'}`,
+      });
+    }
+
+    idx = pos + 1;
+  }
+
+  return blocks;
+}
+
 /**
- * Detect AI response incoherence: two contradictory portfolio tables,
- * malformed marker-decision chains ("NVDA or or or or"), or internal
- * monologue leaking into user-facing text.
+ * Validate all [PORTFOLIO:{...}] blocks for internal consistency and
+ * cross-check against [RECOMMEND:...] markers. PORTFOLIO blocks are the
+ * authoritative source of truth — prose is NEVER parsed for numbers.
+ *
+ * Returns null if all blocks valid, or an error string describing the first failure.
+ */
+export function validatePortfolioBlocks(response: string): string | null {
+  const blocks = parsePortfolioBlocks(response);
+
+  // No PORTFOLIO blocks — caller should fall through to remaining prose checks
+  if (blocks.length === 0) return null;
+
+  // ── Check for parse errors ──
+  for (const block of blocks) {
+    if (block.parseError) {
+      return `[PORTFOLIO:...] block parse error: ${block.parseError}. Use the exact format: [PORTFOLIO:{"total":10000,"positions":[{"symbol":"QQQ","amount":3000}]}]`;
+    }
+  }
+
+  // ── Validate each block's internal consistency ──
+  for (const block of blocks) {
+    const label = block.strategy ? `"${block.strategy}" ` : '';
+
+    // total must be a positive number
+    if (typeof block.total !== 'number' || isNaN(block.total) || block.total <= 0) {
+      return `[PORTFOLIO:...] ${label}block has invalid total: ${JSON.stringify(block.total)}. Total must be a positive integer.`;
+    }
+
+    // positions must be a non-empty array
+    if (!Array.isArray(block.positions) || block.positions.length === 0) {
+      return `[PORTFOLIO:...] ${label}block has missing or empty positions array. Include at least one {symbol, amount} object.`;
+    }
+
+    // Each position must have symbol and amount
+    for (const pos of block.positions) {
+      if (!pos.symbol || typeof pos.symbol !== 'string') {
+        return `[PORTFOLIO:...] ${label}block has a position with missing or invalid symbol: ${JSON.stringify(pos)}`;
+      }
+      if (typeof pos.amount !== 'number' || isNaN(pos.amount) || pos.amount <= 0) {
+        return `[PORTFOLIO:...] ${label}block position "${pos.symbol}" has invalid amount: ${pos.amount}. Amount must be a positive number.`;
+      }
+    }
+
+    // Sum of position amounts must equal total
+    const sum = block.positions.reduce((acc, p) => acc + p.amount, 0);
+    if (Math.abs(sum - block.total) > 0.01) {
+      return `[PORTFOLIO:...] ${label}block position sum ($${sum.toLocaleString()}) does not match total ($${block.total.toLocaleString()}). Adjust positions or total so they match exactly.`;
+    }
+
+    // No duplicate symbols within a block
+    const symbols = block.positions.map(p => p.symbol.toUpperCase());
+    const seen = new Set<string>();
+    for (const sym of symbols) {
+      if (seen.has(sym)) {
+        return `[PORTFOLIO:...] ${label}block has duplicate symbol "${sym}". Each symbol may appear only once per block.`;
+      }
+      seen.add(sym);
+    }
+  }
+
+  // ── Multi-strategy: multiple valid blocks = pass (show as cards in UI) ──
+  // No further coherence checks needed — each block is structurally valid.
+
+  // ── Cross-check with RECOMMEND markers ──
+  const hasRecommendMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+/i.test(response);
+  if (!hasRecommendMarkers) {
+    // No RECOMMEND markers at all — but PORTFOLIO blocks exist and are valid.
+    // This is a warning situation: the blocks define positions, but there are
+    // no trade buttons. Graceful degradation — not a rejection.
+    console.log('[validatePortfolioBlocks] ⚠️ PORTFOLIO blocks present but no RECOMMEND markers — trade buttons will be missing');
+    return null;
+  }
+
+  // Extract RECOMMEND positions with amounts
+  const recommendPositions = new Map<string, number>();
+  const mkrRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d]+)?)\]/gi;
+  let mkMatch: RegExpExecArray | null;
+  while ((mkMatch = mkrRe.exec(response)) !== null) {
+    const rawSymbol = mkMatch[1].toUpperCase();
+    const amount = parseFloat(mkMatch[2].replace(/,/g, ''));
+    // Strip foreign exchange suffix if present
+    const dotIdx = rawSymbol.lastIndexOf('.');
+    const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
+    const cleanSymbol = suffix.length >= 2 && suffix.length <= 3 ? rawSymbol.slice(0, dotIdx) : rawSymbol;
+    if (FOREIGN_EXCHANGE_SUFFIXES.has(suffix.toUpperCase())) continue;
+    recommendPositions.set(cleanSymbol, (recommendPositions.get(cleanSymbol) || 0) + amount);
+  }
+
+  // Check every PORTFOLIO position has a matching RECOMMEND marker
+  const allPortfolioPositions = blocks.flatMap(b => b.positions);
+  for (const pos of allPortfolioPositions) {
+    const recAmount = recommendPositions.get(pos.symbol.toUpperCase());
+    if (recAmount === undefined) {
+      return `[PORTFOLIO:...] position "${pos.symbol}" has no matching [RECOMMEND:${pos.symbol}:BUY:$${pos.amount}] marker. Every portfolio position MUST have a corresponding RECOMMEND marker with the same dollar amount.`;
+    }
+    if (Math.abs(recAmount - pos.amount) > 0.01) {
+      return `[PORTFOLIO:...] position "${pos.symbol}" amount mismatch: PORTFOLIO says $${pos.amount.toLocaleString()} but [RECOMMEND:${pos.symbol}:BUY:$${recAmount.toLocaleString()}] says $${recAmount.toLocaleString()}. Amounts must match exactly.`;
+    }
+  }
+
+  // Cross-check totals: PORTFOLIO sum ≈ RECOMMEND sum
+  const portfolioTotal = allPortfolioPositions.reduce((acc, p) => acc + p.amount, 0);
+  const recommendTotal = [...recommendPositions.values()].reduce((a, b) => a + b, 0);
+  if (recommendPositions.size > 0 && Math.abs(portfolioTotal - recommendTotal) > 0.01) {
+    return `[PORTFOLIO:...] RECOMMEND marker total ($${recommendTotal.toLocaleString()}) does not match PORTFOLIO block total ($${portfolioTotal.toLocaleString()}). All amounts must be consistent.`;
+  }
+
+  return null; // All blocks valid
+}
+
+/**
+ * Detect AI response incoherence.
+ *
+ * PORTFOLIO blocks are the authoritative source — if present and valid,
+ * prose scanning is skipped entirely. If no PORTFOLIO blocks exist,
+ * fall through to remaining prose checks (internal monologue, duplicate
+ * SUMMARY_TLDR, prose questions outside CLARIFY).
  *
  * Returns a detail string if incoherence is detected, null if clean.
  */
 export function detectResponseIncoherence(response: string): string | null {
-  // ── Pattern 1: Multiple markdown portfolio tables ──
-  // Two "| **Total** |" lines with different dollar amounts
-  const totalLines = [...response.matchAll(/\|\s*\*{0,2}Total\*{0,2}\s*\|[^|]*\|\s*\*{0,2}\$?([\d,]+)/gi)];
-  if (totalLines.length >= 2) {
-    const amounts = totalLines.map(m => ({ amount: parseFloat(m[1].replace(/,/g, '')), index: m.index! }));
-    const unique = new Set(amounts.map(a => a.amount));
-    if (unique.size >= 2) {
-      // Multi-strategy tolerance: check if each total row is preceded by
-      // a section/strategy header (bold text, "Strategy", "Option", "Approach")
-      // within 500 chars. If so, different strategies — not contradictions.
-      const allHeaded = amounts.every(a => {
-        const before = response.slice(Math.max(0, a.index - 500), a.index);
-        return /\*\*.+?\*\*/.test(before) || /\b(?:strategy|option|approach|plan|scenario|alternative)\s*\d/i.test(before);
-      });
-      if (allHeaded) {
-        return null; // Multiple labeled strategies — not a contradiction
-      }
-      return `Two contradictory portfolio totals found: ${[...unique].map(a => `$${a.toLocaleString()}`).join(' and ')}. Regenerate a single coherent response.`;
-    }
-    // Same total twice — still suspicious (duplicate table), unless under
-    // separate strategy headers (multi-strategy comparison)
-    if (totalLines.length >= 2) {
-      const allHeadedSame = amounts.every(a => {
-        const before = response.slice(Math.max(0, a.index - 500), a.index);
-        return /\*\*.+?\*\*/.test(before) || /\b(?:strategy|option|approach|plan|scenario|alternative)\s*\d/i.test(before);
-      });
-      if (!allHeadedSame) {
-        return 'Duplicate portfolio table detected — two "Total" rows in one response. Regenerate a single clean table.';
-      }
-    }
+  // ── PRIMARY: PORTFOLIO block validation (replaces Patterns 1-3 and 6) ──
+  // If PORTFOLIO blocks are present, they are the ONLY source of truth.
+  // Prose is authoritative only when no PORTFOLIO blocks exist.
+  const portfolioResult = validatePortfolioBlocks(response);
+  const hasPortfolioBlocks = parsePortfolioBlocks(response).length > 0;
+  if (hasPortfolioBlocks) {
+    if (portfolioResult !== null) return portfolioResult;
+    // PORTFOLIO blocks present and valid — skip all prose scanning below.
+    return null;
   }
 
-  // ── Pattern 2: Multiple position-count summaries ──
-  // "6 positions totaling $2,000" + later "8 positions totaling $2,700"
-  const posCounts = [...response.matchAll(/(\d+)\s+positions?\s+(?:totaling|totalling|worth|at)\s+\$?([\d,]+)/gi)];
-  if (posCounts.length >= 2) {
-    const counts = posCounts.map(m => ({ count: parseInt(m[1]), total: parseFloat(m[2].replace(/,/g, '')), index: m.index! }));
-    const uniqueCounts = new Set(counts.map(c => c.count));
-    const uniqueTotals = new Set(counts.map(c => c.total));
-    if (uniqueCounts.size >= 2 || uniqueTotals.size >= 2) {
-      // Multi-strategy tolerance: check if each position summary is preceded
-      // by a section/strategy header (bold text, "Strategy", "Option", "Approach")
-      // within 200 chars. If so, these are different strategy options — not contradictions.
-      const allHeaded = counts.every(c => {
-        const before = response.slice(Math.max(0, c.index - 200), c.index);
-        return /\*\*.+?\*\*/.test(before) || /\b(?:strategy|option|approach|plan|scenario|alternative)\s*\d/i.test(before);
-      });
-      if (allHeaded) {
-        return null; // Multiple labeled strategies — not a contradiction
-      }
-      return `Two contradictory position summaries: ${counts.map(c => `${c.count} pos / $${c.total.toLocaleString()}`).join(' and ')}. Regenerate a single coherent response.`;
-    }
-  }
-
-  // ── Pattern 3: Malformed marker-decision chains ──
-  // Two sub-patterns: (A) consecutive "or or or or" (AI deliberating aloud),
-  // and (B) "or TICKER or TICKER or TICKER" (listing alternatives instead of picking).
-  // Strip markdown bold/italic first to normalize the text for matching.
-  const strippedForOrCheck = response.replace(/\*\*/g, '').replace(/\*/g, '');
-  // Sub-pattern A: consecutive "or or or or" after a ticker (e.g. "JNJ or or or or")
-  const orChain = strippedForOrCheck.match(/\b([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+(?:or\s+){2,}/gi);
-  if (orChain) {
-    return `Malformed marker-decision chain detected: "${orChain[0].trim()}". AI is waffling instead of making decisions. Regenerate with definitive picks.`;
-  }
-  // Sub-pattern B: "or TICKER or TICKER or TICKER" — 3+ tickers alternating with "or"
-  const tickerOrChain = strippedForOrCheck.match(/\bor\s+([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+or\s+([A-Z]{1,5})\s*\(?\$?[\d,]*\)?\s+or\s+([A-Z]{1,5})/gi);
-  if (tickerOrChain) {
-    const tickers = [...tickerOrChain[0].matchAll(/\b([A-Z]{2,5})\b/g)].map(m => m[1]).filter(t => t !== 'or' && t !== 'OR');
-    return `Marker-decision chain with tickers detected: ${tickers.join(' or ')}. AI is listing alternatives instead of making definitive picks. Regenerate with definitive [RECOMMEND:...] markers.`;
-  }
-
-  // ── Pattern 4: Internal monologue leaking ──
-  // "Confirmed tickers", "All buttons are live", "Validating symbols..."
+  // ── Pattern 4 (reduced): Internal monologue leaking ──
+  // Only catch the most egregious phrases — PORTFOLIO blocks handle the rest.
   const internalPhrases = [
     /confirmed\s+tickers/i,
     /all\s+buttons\s+are\s+live/i,
-    /checking\s+ticker/i,
-    /validating\s+symbols/i,
-    /(?:ticker|symbol)\s+(?:lookup|check|verify|confirm)/i,
   ];
   for (const phrase of internalPhrases) {
     if (phrase.test(response)) {
@@ -531,66 +640,10 @@ export function detectResponseIncoherence(response: string): string | null {
     }
   }
 
-  // ── Pattern 5: "TL;DR" appearing twice (two summaries = two different portfolios) ──
+  // ── Pattern 5: "[SUMMARY_TLDR:" appearing twice ──
   const tldrCount = (response.match(/\[SUMMARY_TLDR:/gi) || []).length;
   if (tldrCount >= 2) {
     return `Two [SUMMARY_TLDR:...] markers found — indicates two separate recommendation blocks. Regenerate one coherent response.`;
-  }
-
-  // ── Pattern 6: Narrative table describes positions with $ amounts but no [RECOMMEND:...] markers ──
-  // The AI sometimes describes positions in markdown tables with dollar amounts
-  // but forgets to emit a [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker for every one.
-  // This causes those positions to silently drop from the rendered summary table
-  // and trade buttons. Example: "| GEHC | GE HealthCare | $1,800 | 18% |" in
-  // the narrative without a [RECOMMEND:GEHC:BUY:$1800] marker → GEHC missing from UI.
-  const narrativeTickerSet = new Set<string>();
-  const tableRowRe = /^\|.*?\$[\d,]+.*\|/gm;
-  let trMatch: RegExpExecArray | null;
-  tableRowRe.lastIndex = 0;
-  while ((trMatch = tableRowRe.exec(response)) !== null) {
-    const row = trMatch[0];
-    // Skip total/summary rows
-    if (/\b(?:total|sum|portfolio value|grand total)\b/i.test(row)) continue;
-    // Extract ticker from the FIRST column of the table row only.
-    // This avoids false positives like extracting "GE" from "GE HealthCare"
-    // in the company name column.
-    const firstCellMatch = row.match(/^\|\s*([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\s*\|/);
-    if (firstCellMatch) {
-      const word = firstCellMatch[1].toUpperCase();
-      if (isFilteredWord(word)) continue;
-      if (/^(?:BUY|SELL|TOTAL|NAME|TICKER|SYMBOL|SECTOR|ALLOCATION|CATEGORY|WEIGHT|SHARES|PRICE|VALUE|AMOUNT|CORE|GROWTH|YIELD|RATIO|NOTE|TRANCHE|COST|LOT|TYPE|PICK|HOLD)$/.test(word)) continue;
-      narrativeTickerSet.add(word);
-    }
-  }
-  // Extract tickers from [RECOMMEND:...] markers
-  const markerTickerSet = new Set<string>();
-  const mkrRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(?:BUY|SELL)/gi;
-  let mkMatch: RegExpExecArray | null;
-  mkrRe.lastIndex = 0;
-  while ((mkMatch = mkrRe.exec(response)) !== null) {
-    const rawSymbol = mkMatch[1].toUpperCase();
-    const dotIdx = rawSymbol.lastIndexOf('.');
-    const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
-    markerTickerSet.add(suffix.length >= 2 ? rawSymbol.slice(0, dotIdx) : rawSymbol);
-  }
-  const missingTickers = [...narrativeTickerSet].filter(t => !markerTickerSet.has(t));
-  if (missingTickers.length > 0) {
-    // Multi-strategy tolerance: if the response has a CLARIFY block for strategy
-    // selection AND the narrative tables are under labeled section headers, the
-    // dollar amounts are strategy PREVIEWS — no markers needed until user picks.
-    const hasClarifyStrategy = /\[CLARIFY:\s*\{"question":"[^"]*[Ss]trateg[^"]*"/.test(response)
-      || /\[CLARIFY:\s*\{"question":"[^"]*[Pp]ick[^"]*"/.test(response)
-      || /\[CLARIFY:\s*\{"question":"[^"]*[Cc]hoos[^"]*"/.test(response)
-      || /\[CLARIFY:\s*\{"question":"[^"]*[Oo]ption[^"]*"/.test(response);
-    if (hasClarifyStrategy) {
-      // Check if there are strategy-style section headers
-      const hasHeaders = /\*\*[^*]+\*\*/g.test(response)
-        || /\b(?:strategy|option|approach|plan|scenario)\s*\d/i.test(response);
-      if (hasHeaders) {
-        return null; // Strategy previews with CLARIFY — not missing markers
-      }
-    }
-    return `Narrative describes position(s) for ${missingTickers.join(', ')} with $ amounts but no corresponding [RECOMMEND:...] marker found. Every portfolio position MUST be tagged with a [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker.`;
   }
 
   // ── Pattern 7: Prose questions outside [CLARIFY:...] blocks ──

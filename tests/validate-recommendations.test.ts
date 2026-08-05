@@ -5,7 +5,7 @@
 // Run: npx tsx tests/validate-recommendations.test.ts
 
 import { validateRecommendations, extractBudget } from '../lib/validate-recommendations';
-import { detectResponseIncoherence, stripTrailingQuestions } from '../app/api/chat/route';
+import { detectResponseIncoherence, stripTrailingQuestions, validatePortfolioBlocks, parsePortfolioBlocks } from '../app/api/chat/route';
 
 // Mock US symbol cache for test environment (no Finnhub API key)
 const MOCK_SYMBOLS = new Set([
@@ -496,74 +496,200 @@ Want me to adjust anything?`;
   });
 
   // ── MULTI-STRATEGY TOLERANCE ──
-  // Pattern 1 + 2: when user asks for "different strategies", the AI may
-  // present multiple labeled strategy sections with different position counts
-  // and totals. These are NOT contradictions — they're separate options.
+  // PORTFOLIO blocks with strategy labels are valid — multiple blocks = multiple strategies.
 
-  await test('P1 FP: allows multiple totals under labeled strategy headers', async () => {
-    const text = `Here are 3 strategies:
+  console.log('\n📋 PORTFOLIO Block Validation:');
 
-**Strategy 1 — Growth Aggressive**
-| Ticker | Name | Allocation |
-|---|---|---|
-| NVDA | NVIDIA | $4,000 |
-| MSFT | Microsoft | $3,000 |
-| QQQ | Invesco QQQ | $3,000 |
-| **Total** | | **$10,000** |
+  // ── Single valid PORTFOLIO block ──
+  await test('PORTFOLIO: single valid block passes', async () => {
+    const text = `[SUMMARY_TLDR:$1,000 across 2 positions]
+[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":600},{"symbol":"NVDA","amount":400}]}]
+[RECOMMEND:QQQ:BUY:$600]
+[RECOMMEND:NVDA:BUY:$400]
+`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass. Got: ' + result);
+  });
 
-**Strategy 2 — Balanced Core**
-| Ticker | Name | Allocation |
-|---|---|---|
-| VOO | Vanguard S&P 500 | $6,000 |
-| SCHD | Schwab Dividend | $2,000 |
-| MSFT | Microsoft | $2,000 |
-| **Total** | | **$10,000** |
-
+  // ── Multiple valid blocks (multi-strategy) ──
+  await test('PORTFOLIO: multiple valid blocks pass (multi-strategy)', async () => {
+    const text = `[PORTFOLIO:{"total":10000,"strategy":"Growth Aggressive","positions":[{"symbol":"QQQ","amount":6000},{"symbol":"NVDA","amount":4000}]}]
+[PORTFOLIO:{"total":10000,"strategy":"Balanced Core","positions":[{"symbol":"VOO","amount":6000},{"symbol":"SCHD","amount":4000}]}]
+[RECOMMEND:QQQ:BUY:$6000]
+[RECOMMEND:NVDA:BUY:$4000]
+[RECOMMEND:VOO:BUY:$6000]
+[RECOMMEND:SCHD:BUY:$4000]
 [CLARIFY:{"question":"Which strategy?","options":["Growth Aggressive","Balanced Core"]}]`;
     const result = detectResponseIncoherence(text);
-    if (result) throw new Error('Expected pass (labeled strategy tables are not contradictions). Got: ' + result);
+    if (result) throw new Error('Expected pass for multi-strategy. Got: ' + result);
   });
 
-  await test('P2 FP: allows different position counts under labeled strategy headers', async () => {
-    const text = `**Option 1 — Concentrated**: 4 positions totaling $10,000
-
-NVDA, MSFT, GOOGL, AMZN — high conviction tech only.
-
-**Option 2 — Diversified**: 8 positions totaling $9,500
-
-VOO, QQQ, NVDA, MSFT, JPM, PG, UNH, CAT — broad exposure with downside protection.
-
-[CLARIFY:{"question":"Which approach?","options":["Concentrated","Diversified"]}]`;
+  // ── Block with mismatched total vs position sum ──
+  await test('PORTFOLIO: rejects mismatched total vs position sum', async () => {
+    const text = `[PORTFOLIO:{"total":10000,"positions":[{"symbol":"QQQ","amount":3000},{"symbol":"NVDA","amount":2000}]}]`;
     const result = detectResponseIncoherence(text);
-    if (result) throw new Error('Expected pass (labeled strategy options with different counts are not contradictions). Got: ' + result);
+    if (!result) throw new Error('Expected rejection for total/sum mismatch');
+    if (!result.includes('does not match total')) throw new Error('Expected sum mismatch message. Got: ' + result);
   });
 
-  await test('P1: STILL rejects multiple totals without strategy headers', async () => {
-    const text = `Here's your portfolio:
+  // ── Block with duplicate symbols ──
+  await test('PORTFOLIO: rejects duplicate symbols in block', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":500},{"symbol":"QQQ","amount":500}]}]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for duplicate symbols');
+    if (!result.includes('duplicate symbol')) throw new Error('Expected duplicate message. Got: ' + result);
+  });
+
+  // ── Block with missing positions array ──
+  await test('PORTFOLIO: rejects missing positions array', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[]}]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for empty positions');
+    if (!result.includes('empty positions')) throw new Error('Expected empty positions message. Got: ' + result);
+  });
+
+  // ── Block with malformed JSON ──
+  await test('PORTFOLIO: rejects malformed JSON', async () => {
+    const text = `[PORTFOLIO:{total: 1000, positions: [broken]}]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for malformed JSON');
+    if (!result.includes('Invalid JSON')) throw new Error('Expected parse error message. Got: ' + result);
+  });
+
+  // ── RECOMMEND markers matching PORTFOLIO block ──
+  await test('PORTFOLIO: RECOMMEND markers matching PORTFOLIO block pass', async () => {
+    const text = `[SUMMARY_TLDR:$2,000 across 3 positions]
+[PORTFOLIO:{"total":2000,"positions":[{"symbol":"VOO","amount":1000},{"symbol":"QQQ","amount":600},{"symbol":"NVDA","amount":400}]}]
+[RECOMMEND:VOO:BUY:$1000]
+[RECOMMEND:QQQ:BUY:$600]
+[RECOMMEND:NVDA:BUY:$400]
+`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass. Got: ' + result);
+  });
+
+  // ── RECOMMEND markers NOT matching PORTFOLIO block (rejection) ──
+  await test('PORTFOLIO: rejects RECOMMEND marker amount mismatch', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":500},{"symbol":"NVDA","amount":500}]}]
+[RECOMMEND:QQQ:BUY:$500]
+[RECOMMEND:NVDA:BUY:$300]
+`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for amount mismatch');
+    if (!result.includes('amount mismatch')) throw new Error('Expected mismatch message. Got: ' + result);
+  });
+
+  await test('PORTFOLIO: rejects missing RECOMMEND marker for PORTFOLIO position', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":600},{"symbol":"NVDA","amount":400}]}]
+[RECOMMEND:QQQ:BUY:$600]
+`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for missing RECOMMEND marker');
+    if (!result.includes('no matching')) throw new Error('Expected missing marker message. Got: ' + result);
+  });
+
+  // ── Budget validation via PORTFOLIO block ──
+  await test('PORTFOLIO: parsePortfolioBlocks extracts correct amounts', async () => {
+    const text = `[PORTFOLIO:{"total":5000,"positions":[{"symbol":"VOO","amount":3000},{"symbol":"QQQ","amount":2000}]}]`;
+    const blocks = parsePortfolioBlocks(text);
+    if (blocks.length !== 1) throw new Error(`Expected 1 block, got ${blocks.length}`);
+    if (blocks[0].total !== 5000) throw new Error(`Expected 5000, got ${blocks[0].total}`);
+    if (blocks[0].positions.length !== 2) throw new Error(`Expected 2 positions, got ${blocks[0].positions.length}`);
+  });
+
+  await test('PORTFOLIO: parsePortfolioBlocks handles multiple blocks', async () => {
+    const text = `[PORTFOLIO:{"total":10000,"strategy":"Growth","positions":[{"symbol":"QQQ","amount":3000}]}]
+[PORTFOLIO:{"total":10000,"strategy":"Value","positions":[{"symbol":"VOO","amount":3000}]}]`;
+    const blocks = parsePortfolioBlocks(text);
+    if (blocks.length !== 2) throw new Error(`Expected 2 blocks, got ${blocks.length}`);
+    if (blocks[0].strategy !== 'Growth') throw new Error(`Expected Growth, got ${blocks[0].strategy}`);
+    if (blocks[1].strategy !== 'Value') throw new Error(`Expected Value, got ${blocks[1].strategy}`);
+  });
+
+  // ── No PORTFOLIO block but RECOMMEND markers present (graceful degradation) ──
+  await test('PORTFOLIO: no PORTFOLIO block but RECOMMEND markers passes (graceful degradation)', async () => {
+    const text = `[SUMMARY_TLDR:$1,000 across 2 positions]
+[RECOMMEND:QQQ:BUY:$600]
+[RECOMMEND:NVDA:BUY:$400]
+Bottom line: $1,000 split between QQQ and NVDA.`;
+    const result = detectResponseIncoherence(text);
+    // No PORTFOLIO blocks → fall through to prose checks (Pattern 4, 5, 7).
+    // With no questions or internal monologue, should pass.
+    if (result) throw new Error('Expected graceful pass (no PORTFOLIO but clean prose). Got: ' + result);
+  });
+
+  // ── No PORTFOLIO block, no RECOMMEND markers, no questions = passes ──
+  await test('PORTFOLIO: no PORTFOLIO, no RECOMMEND, no questions — passes', async () => {
+    const text = `Here's some general market context. The S&P 500 is up today, tech is leading.`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass for informational text. Got: ' + result);
+  });
+
+  // ── PORTFOLIO blocks skip prose scanning entirely ──
+  // Regression: even if prose contains things that would trigger old Patterns 1-6,
+  // a valid PORTFOLIO block should make them irrelevant.
+  await test('PORTFOLIO: valid blocks skip prose scanning (old P1 table in prose ignored)', async () => {
+    const text = `[SUMMARY_TLDR:$1,000 across 2 positions]
+[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":600},{"symbol":"NVDA","amount":400}]}]
+[RECOMMEND:QQQ:BUY:$600]
+[RECOMMEND:NVDA:BUY:$400]
+
+Here's your portfolio:
 
 | Ticker | Name | Allocation |
 |---|---|---|
-| NVDA | NVIDIA | $4,000 |
-| **Total** | | **$10,000** |
+| QQQ | Invesco QQQ | $600 |
+| **Total** | | **$800** |
 
-[RECOMMEND:NVDA:BUY:$4000]
-
-Wait, let me adjust that. Here's the revised version:
+Wait, let me revise.
 
 | Ticker | Name | Allocation |
 |---|---|---|
-| NVDA | NVIDIA | $3,800 |
-| MSFT | Microsoft | $3,200 |
-| QQQ | Invesco QQQ | $2,500 |
-| **Total** | | **$9,500** |
-
-[RECOMMEND:NVDA:BUY:$3800]
-[RECOMMEND:MSFT:BUY:$3200]
-[RECOMMEND:QQQ:BUY:$2500]`;
+| QQQ | Invesco QQQ | $600 |
+| MSFT | Microsoft | $400 |
+| **Total** | | **$1,000** |`;
     const result = detectResponseIncoherence(text);
-    if (!result) throw new Error('Expected rejection (two totals without strategy headers is a contradiction)');
-    if (!result.includes('contradictory portfolio totals')) throw new Error('Expected contradiction message. Got: ' + result);
+    // Old Pattern 1 would flag two contradictory totals ($800 and $1,000).
+    // With valid PORTFOLIO blocks present, prose is NEVER parsed — should pass.
+    if (result) throw new Error('Expected pass (PORTFOLIO blocks → skip prose). Got: ' + result);
   });
+
+  // ── PORTFOLIO invalid JSON with prose still scanned ──
+  await test('PORTFOLIO: invalid block returns error even with clean prose', async () => {
+    const text = `[PORTFOLIO:{broken json]]
+Here is some clean prose without any issues.`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for broken JSON block');
+    if (!result.includes('parse error')) throw new Error('Expected parse error message. Got: ' + result);
+  });
+
+  // ── Unclosed PORTFOLIO block ──
+  await test('PORTFOLIO: rejects unclosed PORTFOLIO block', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":600}`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for unclosed block');
+    if (!result.includes('Unclosed')) throw new Error('Expected unclosed message. Got: ' + result);
+  });
+
+  // ── Invalid position field (non-numeric amount) ──
+  await test('PORTFOLIO: rejects non-numeric position amount', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[{"symbol":"QQQ","amount":"a lot"}]}]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for non-numeric amount');
+    if (!result.includes('invalid amount')) throw new Error('Expected invalid amount message. Got: ' + result);
+  });
+
+  // ── Missing symbol in position ──
+  await test('PORTFOLIO: rejects position with missing symbol', async () => {
+    const text = `[PORTFOLIO:{"total":1000,"positions":[{"amount":500}]}]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection for missing symbol');
+    if (!result.includes('missing or invalid symbol')) throw new Error('Expected missing symbol message. Got: ' + result);
+  });
+
+  console.log('\n📋 Multi-Strategy Tolerance (PORTFOLIO blocks):');
+
+  // Multi-strategy: multiple valid PORTFOLIO blocks with RECOMMEND markers
 
   // ── stripTrailingQuestions helper ──
   console.log('\n📋 stripTrailingQuestions — Remove sign-off questions from portfolio output:');

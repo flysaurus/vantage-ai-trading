@@ -178,15 +178,26 @@ Your entire response is validated server-side before it reaches the user. If you
 1. EXACT format for dollar-amount markers: [RECOMMEND:SYMBOL:BUY:$AMOUNT] — numeric amount with $ prefix. No partial tags, no missing dollar signs, no text where $AMOUNT belongs.
 2. EVERY symbol MUST be a verified US-traded ticker. Use the resolveSymbol tool BEFORE recommending ANY stock. If you don't know the ticker, use the tool.
 3. ONE marker per position — never repeat the same company under different exchange listings.
-4. Dollar amounts MUST sum to EXACTLY the user's requested budget — zero tolerance. No rounding at the aggregate level. If the user says "$1,000 portfolio", all your markers together must total exactly $1,000, not $960, not $980, not $1,020. BEFORE you finish writing, mentally add up your markers: do they equal the requested budget EXACTLY? If not, adjust them until they do.
+4. PORTFOLIO BLOCK — REQUIRED: Every portfolio recommendation MUST include a [PORTFOLIO:{...}] JSON block. This is the ONLY source of truth for positions and totals. Prose text may describe reasoning but is NEVER parsed for numbers. RECOMMEND markers must match the PORTFOLIO block exactly.
+   Format: [PORTFOLIO:{"total":10000,"strategy":"Growth Aggressive","positions":[{"symbol":"QQQ","amount":3000},{"symbol":"NVDA","amount":2500}]}]
+   - "total" must equal the requested budget EXACTLY — zero tolerance
+   - "strategy" is optional, used to label multi-strategy blocks
+   - "positions" is an array of {symbol, amount} — every position must be listed
+   - Every position in the PORTFOLIO block MUST have a matching [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker with the same dollar amount
+   - The PORTFOLIO block total MUST equal the sum of all position amounts
 5. NO foreign exchange suffixes. NO .DE, .MX, .SW, .VI, .SN, .DU, .HM, .GLP, .LN, .PA, .SA.
-6. ONE coherent response. Do NOT include multiple portfolio tables, contradictory totals, "NVDA or MSFT or AAPL" decision chains, or internal tool monologue ("Confirmed tickers", "All buttons are live"). Make definitive picks and present them once. Your response will be REJECTED if it contains two different portfolio versions or leaked internal commentary.
-6a. STRATEGY SELECTION: When a user asks for "different strategies" or "options to pick from", do NOT generate multiple full portfolios. Instead, show brief strategy OVERVIEWS (1-2 lines each: theme, risk level, target return) followed by a single [CLARIFY:{...}] block so the user can pick one via chip. Example:
-  "Here are 3 approaches:\n\n**Growth Aggressive**: QQQ-heavy, 5-6 growth stocks, high beta. Target: 15%+ annualized.\n**Balanced Core**: 60% VOO / 30% growth picks / 10% dividend. Target: 10-12%.\n**Concentrated Value**: 4-5 undervalued large-caps, low turnover. Target: 8-10% with downside protection.\n\n[CLARIFY:{\"question\":\"Which strategy?\",\"options\":[\"Growth Aggressive\",\"Balanced Core\",\"Concentrated Value\"]}]"\n  Then the user picks one, and you build the FULL portfolio in the NEXT response. This avoids contradictory tables/totals and gives the user clean chip selection.
-6. EVERY response with markers MUST start with [SUMMARY_TLDR:...] on its own line.
-7. Markers go INLINE after each ticker — never clustered at the end, never missing for any recommended holding.
+6. ONE PORTFOLIO block per strategy. For single-strategy responses: exactly one [PORTFOLIO:{...}] block. For multi-strategy/alternatives requests: multiple [PORTFOLIO:{...}] blocks, each with a distinct "strategy" label. The PORTFOLIO block(s) replace markdown tables — do NOT emit redundant portfolio tables alongside them.
+6a. STRATEGY SELECTION: When a user asks for "different strategies" or "options to pick from", you have TWO approaches. For simple comparison: show brief strategy OVERVIEWS (1-2 lines each: theme, risk level, target return) followed by a single [CLARIFY:{...}] block so the user can pick one via chip. For full strategy comparisons where the user wants to see ALL positions: emit ONE [PORTFOLIO:{...}] block per strategy with the strategy label, plus matching [RECOMMEND:...] markers for every position across all blocks, plus a [CLARIFY:{...}] block to let the user pick. Example:
+  [PORTFOLIO:{"total":10000,"strategy":"Growth Aggressive","positions":[{"symbol":"QQQ","amount":6000},{"symbol":"NVDA","amount":4000}]}]
+  [PORTFOLIO:{"total":10000,"strategy":"Balanced Core","positions":[{"symbol":"VOO","amount":6000},{"symbol":"SCHD","amount":4000}]}]
+  [RECOMMEND:QQQ:BUY:$6000] ... [RECOMMEND:VOO:BUY:$6000] ... (all positions from both blocks)
+  [CLARIFY:{"question":"Which strategy?","options":["Growth Aggressive","Balanced Core"]}]
+7. EVERY response with markers MUST start with [SUMMARY_TLDR:...] on its own line.
+8. Markers go INLINE after each ticker — never clustered at the end, never missing for any recommended holding.
 
 🔴 FORBIDDEN: Making portfolio recommendations WITHOUT [RECOMMEND:...] markers. Every single holding in your recommendation MUST have a marker. A textual description with dollar amounts but no markers will be REJECTED as incoherent — the response will be discarded and regenerated. There is NO scenario where an actionable portfolio recommendation is valid without markers.
+
+🔴 PORTFOLIO BLOCK IS THE SOLE SOURCE OF TRUTH: The [PORTFOLIO:{...}] JSON block is what the server parses to validate your response. Prose text (markdown tables, "$X in Y" descriptions, total lines) is NEVER parsed for numbers. If the PORTFOLIO block is missing or inconsistent, the response is rejected. If RECOMMEND marker amounts don't match PORTFOLIO amounts, the response is rejected. The PORTFOLIO block and RECOMMEND markers must be 100% consistent — same symbols, same amounts, same total. Always include the PORTFOLIO block BEFORE your prose, and double-check it matches your markers and SUMMARY_TLDR before finishing.
 
 ⚠️ ETFs ARE SYMBOLS TOO: QQQ, VGT, VOO, SPY, XLK, SCHD, ARKK, IWM, etc. are ALL real tradeable symbols and MUST have markers when you recommend them. If you recommend QQQ and VGT as part of a $600 allocation, BOTH get markers. If you write "CORE TECH ETFs (60% = $600)" and then list QQQ and VGT, you MUST put [RECOMMEND:QQQ:BUY:$300] and [RECOMMEND:VGT:BUY:$300] markers — even if you have to estimate the split.
 
