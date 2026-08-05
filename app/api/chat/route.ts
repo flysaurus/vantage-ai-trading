@@ -429,6 +429,42 @@ function extractScreeningCriteria(message: string): Record<string, any> | null {
   return Object.keys(criteria).length > 0 ? criteria : null;
 }
 
+/**
+ * Derive screening criteria from the investor's stored style when no explicit
+ * sector/PE/growth keywords appear in the user's message. This prevents the
+ * "familiar ticker shortlist" problem — without a screen, the AI falls back
+ * to trained-in stocks (VOO, NVDA, LLY, MSFT, TSLA, AVGO) every time.
+ *
+ * Style defaults are conservative baselines that the AI can tighten or relax
+ * based on conversation context. The screener runs with these defaults so the
+ * AI always has a REAL candidate universe to pick from, not training data.
+ */
+function getStyleScreeningDefaults(investorStyle: string): Record<string, any> {
+  const s = investorStyle.toLowerCase();
+  if (s.includes('lynch')) {
+    // GARP: Growth At a Reasonable Price — earnings growth matters but don't overpay
+    return { market_cap_min: 2_000_000_000, pe_max: 30, min_growth_rate: 0.10 };
+  }
+  if (s.includes('buffett')) {
+    // Value + quality — low P/E, large established companies
+    return { market_cap_min: 10_000_000_000, pe_max: 20 };
+  }
+  if (s.includes('livermore')) {
+    // Momentum — high growth, high volume, P/E is secondary
+    return { market_cap_min: 1_000_000_000, min_growth_rate: 0.20, volume_min: 500_000 };
+  }
+  if (s.includes('munger')) {
+    // Quality + rational valuation — reasonable P/E, large caps
+    return { market_cap_min: 5_000_000_000, pe_max: 25 };
+  }
+  if (s.includes('soros')) {
+    // Contrarian — wide net, let the AI find the diamonds
+    return { market_cap_min: 500_000_000 };  // include small caps for undiscovered gems
+  }
+  // Default: broad mid+ cap US equities
+  return { market_cap_min: 2_000_000_000 };
+}
+
 /** Call the screener service and return results. */
 async function runScreening(criteria: Record<string, any>): Promise<{ results: any[]; provider: string; error?: string }> {
   try {
@@ -1291,11 +1327,22 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     let screeningContext = '';
     let screeningResults: Awaited<ReturnType<typeof runScreening>> | null = null;
     let screeningCriteria: Record<string, any> | null = null;
+    let screeningSource: 'explicit' | 'style_defaults' | null = null;
     if (requestedBudget !== null) {
-      const criteria = extractScreeningCriteria(lastMessage);
-      if (criteria) {
+      let criteria = extractScreeningCriteria(lastMessage);
+      screeningSource = 'explicit';
+      if (!criteria) {
+        // No explicit sector/PE/growth keywords — derive from stored investor style.
+        // Without this fallback, generic "Give me a portfolio for $X" requests skip
+        // screening entirely and the AI falls back to trained-in familiar tickers
+        // (VOO, NVDA, LLY, MSFT, TSLA, AVGO) every single time.
+        criteria = getStyleScreeningDefaults(profile.investorStyle);
+        screeningSource = 'style_defaults';
+        console.log(`[chat] 🔍 No explicit criteria in message — using ${profile.investorStyle} style defaults:`, JSON.stringify(criteria));
+      }
+      if (criteria && Object.keys(criteria).length > 0) {
         screeningCriteria = criteria;
-        console.log('[chat] 🔍 Running screener with criteria:', JSON.stringify(criteria));
+        console.log(`[chat] 🔍 Running screener with criteria (source=${screeningSource}):`, JSON.stringify(criteria));
         screeningResults = await runScreening(criteria);
         screeningContext = formatScreeningContext(
           screeningResults.results,
@@ -1437,12 +1484,13 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             .join(', ');
 
           if (count > 0) {
+            const sourceLabel = screeningSource === 'style_defaults' ? ` (${profile.investorStyle} defaults)` : '';
             // Send screening meta for transparency on strategy cards
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              screeningMeta: { criteria: screeningCriteria, criteriaDescription: criteriaDesc, matchCount: count, provider: screeningResults.provider }
+              screeningMeta: { criteria: screeningCriteria, criteriaDescription: criteriaDesc + sourceLabel, matchCount: count, provider: screeningResults.provider, source: screeningSource }
             })}\n\n`));
             sendChecklist(controller, encoder, 'screening', 'done',
-              `${count} US-listed candidates matched (${screeningResults.provider}) — ${criteriaDesc}`);
+              `${count} US-listed candidates${sourceLabel} via ${screeningResults.provider} — ${criteriaDesc}`);
             sendChecklist(controller, encoder, 'tickers_resolved', 'done',
               `${count} screened from ${criteriaDesc}${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
           } else {
