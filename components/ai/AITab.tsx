@@ -174,6 +174,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [screeningStage, setScreeningStage] = useState<string | undefined>(undefined);
   const [screeningDetail, setScreeningDetail] = useState<string | undefined>(undefined);
   const [screeningDots, setScreeningDots] = useState<ScreeningDot[] | undefined>(undefined);
+  // Persisted screening criteria for "Screened for…" tag on response card
+  const [screeningMeta, setScreeningMeta] = useState<{ criteriaDescription: string; matchCount: number; provider: string } | null>(null);
   const [lastMessageTime, setLastMessageTime] = useState(0);
   // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
   const getCachedGreeting = (): { opener: string; hook: string } | null => {
@@ -962,7 +964,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     // Reset radar sweep state for new generation
     setScreeningStage(undefined);
     setScreeningDetail(undefined);
-    setScreeningDots(undefined);
+    setScreeningDots(undefined); setScreeningMeta(null);
 
     // Send last 10 messages to cap context window, but ALWAYS include
     // the first user message which carries the original portfolio budget.
@@ -1048,6 +1050,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 }
                 continue;
               }
+              if (data.screeningMeta) {
+                setScreeningMeta(data.screeningMeta);
+                continue;
+              }
               if (data.text) {
                 charQueueRef.current.push(...data.text.split(''));
                 lastAiResponseRef.current = displayedContentRef.current + charQueueRef.current.join('');
@@ -1093,7 +1099,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setChecklistItems([]);
       setScreeningStage(undefined);
       setScreeningDetail(undefined);
-      setScreeningDots(undefined);
+      setScreeningDots(undefined); setScreeningMeta(null);
 
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
@@ -1193,7 +1199,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           // Let the failed checklist remain visible for 3 seconds before
           // replacing with error text — makes the failure legible
           await new Promise(r => setTimeout(r, 3000));
-          setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); // clear progress
+          setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); setScreeningMeta(null); // clear progress
           // Both attempts failed — show fallback with failure details for debugging
           const failureDetails = (rejectData.failures || [])
             .map((f: any) => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`)
@@ -1213,7 +1219,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
 
         if (rejectData.fatalStreamError) {
-          setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); // clear progress
+          setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); setScreeningMeta(null); // clear progress
           // Server-side stream crashed — surface the actual error
           console.error('[chat] Handling fatal stream error:', rejectData.message);
           setMessages(prev => {
@@ -1231,7 +1237,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
       // Scroll suppressed — user controls position
     } catch (error: any) {
-      setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); // clear progress
+      setChecklistItems([]); setScreeningStage(undefined); setScreeningDetail(undefined); setScreeningDots(undefined); setScreeningMeta(null); // clear progress
       console.error('Chat error:', error);
       setToast(null);
       if (error?.status === 429) {
@@ -1754,6 +1760,27 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#22d3ee', marginBottom: '6px', letterSpacing: '0.03em' }}>
                 VANTAGE AI
               </div>
+              {/* ── Screened for… tag ── */}
+              {screeningMeta && i === messages.length - 1 && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(34,211,238,0.08)',
+                  border: '1px solid rgba(34,211,238,0.18)',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  marginBottom: '8px',
+                  fontSize: '11px',
+                  color: 'rgba(34,211,238,0.85)',
+                  fontFamily: 'var(--font-mono, monospace)',
+                }}>
+                  <span style={{ opacity: 0.5 }}>🔍</span>
+                  <span>Screened for: <strong>{screeningMeta.criteriaDescription}</strong></span>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span>{screeningMeta.matchCount} matches via {screeningMeta.provider}</span>
+                </div>
+              )}
               {(() => {
                 // ── Show progress indicator while AI is generating ──
                 // Replaces raw reasoning text with branded pipeline stages

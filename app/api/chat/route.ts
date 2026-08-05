@@ -1436,6 +1436,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             .join(', ');
 
           if (count > 0) {
+            // Emit checklist: screening stage
+            sendChecklist(controller, encoder, 'screening', 'done',
+              `${count} US-listed candidates matched (${screeningResults.provider})`);
             // Emit radar sweep dot data
             const dots = screeningResults.results.slice(0, 24).map((r: any, i: number) => ({
               symbol: r.symbol,
@@ -1446,10 +1449,16 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             }));
             sendScreenResult(controller, encoder, 'Screening complete',
               `Screening: ${criteriaDesc} — ${count} matches`, dots);
+            // Persist criteria for the "Screened for…" tag
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ screeningMeta: { criteria: { ...screeningCriteria }, criteriaDescription: criteriaDesc, matchCount: count, provider: screeningResults.provider } })}\n\n`)
+            );
             sendChecklist(controller, encoder, 'tickers_resolved', 'done',
               `${count} screened from ${criteriaDesc}${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
           } else {
             // No results — show failed state
+            sendChecklist(controller, encoder, 'screening', 'failed',
+              `0 matches for ${criteriaDesc}`);
             sendScreenResult(controller, encoder, 'No matches',
               `Screening: ${criteriaDesc} — 0 matches found`);
             sendChecklist(controller, encoder, 'tickers_resolved', 'failed',
@@ -1457,6 +1466,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           }
         } else {
           // ── Checklist: Tickers resolved (pre-flight only, no screening) ──
+          sendChecklist(controller, encoder, 'screening', 'skipped', 'No screening criteria detected');
           sendChecklist(controller, encoder, 'tickers_resolved', 'done',
             preResolvedCount > 0 ? `${preResolvedCount} resolved` : 'None needed');
         }

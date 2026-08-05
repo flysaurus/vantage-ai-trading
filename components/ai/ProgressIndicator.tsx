@@ -15,6 +15,7 @@ export interface ChecklistItem {
 }
 
 const STAGE_CONFIG: Record<string, string> = {
+  screening:             'Screening candidates',
   tickers_resolved:      'Resolving tickers',
   recommendations_built: 'Building recommendations',
   marker_format:         'Validating marker format',
@@ -24,6 +25,7 @@ const STAGE_CONFIG: Record<string, string> = {
 };
 
 const STAGE_ORDER = [
+  'screening',
   'tickers_resolved',
   'recommendations_built',
   'marker_format',
