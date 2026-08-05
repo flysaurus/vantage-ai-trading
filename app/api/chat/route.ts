@@ -1613,6 +1613,20 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // root cause of ghost tickers (exchange codes), contradictory buttons,
         // and duplicate positions across foreign listings.
 
+        // ── Strip markers from CLARIFY responses ──
+        // CLARIFY responses ([CLARIFY:{...}] blocks) are information-gathering
+        // only — they must never contain actionable [RECOMMEND:...] markers.
+        // If the model leaks markers into a CLARIFY response, strip them here
+        // to prevent amount-less buttons from rendering in the client.
+        if (/\[CLARIFY:/.test(responseText)) {
+          const stripped = responseText.replace(/\[RECOMMEND:[^\]]*\]/g, '');
+          const removedCount = (responseText.match(/\[RECOMMEND:[^\]]*\]/g) || []).length;
+          if (removedCount > 0) {
+            console.warn(`[chat] ⚠️ Stripped ${removedCount} RECOMMEND markers from CLARIFY response`);
+            responseText = stripped;
+          }
+        }
+
         // ── Strip trailing conversational sign-offs ──
         // After RECOMMEND markers are validated, remove trailing questions like
         // "Ready to scale this in?" / "Sound good?" — Haiku's polite sign-off habit.

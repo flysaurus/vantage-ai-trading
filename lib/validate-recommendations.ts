@@ -91,6 +91,21 @@ export async function validateRecommendations(
   const validMarkers: Array<{ raw: string; symbol: string; amount: number; canonical: string }> = [];
 
   // First: find ALL [RECOMMEND:...] tags and check each one
+  // CLARIFY guard: if the response has CLARIFY blocks (asking the user to
+  // pick a direction), markers without dollar amounts are intentional —
+  // they're attention markers, not allocation instructions. Skip marker-
+  // format validation for CLARIFY responses and let the CLARIFY chip
+  // handle the UX flow. The model will emit proper $AMOUNT markers in
+  // the follow-up single-strategy response after user selection.
+  const hasClarifyBlocks = /\[CLARIFY:/.test(rawText);
+  if (hasClarifyBlocks) {
+    // Skip strict marker validation for CLARIFY responses.
+    // CLARIFY responses are intentionally non-final — markers (if any) are
+    // attention hints, not allocation instructions. The model will emit
+    // proper $AMOUNT markers in the follow-up after user selection.
+    return { ok: true, result: { suggestions: [], total: 0, count: 0 } };
+  }
+
   for (const match of rawText.matchAll(ANY_MARKER_LIKE)) {
     const raw = match[0];
     // Test if it matches strict format by creating a fresh regex (avoid lastIndex issues)
