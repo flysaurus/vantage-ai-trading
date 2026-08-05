@@ -495,6 +495,76 @@ Want me to adjust anything?`;
     if (!result) throw new Error('Expected rejection (no markers, question outside CLARIFY)');
   });
 
+  // ── MULTI-STRATEGY TOLERANCE ──
+  // Pattern 1 + 2: when user asks for "different strategies", the AI may
+  // present multiple labeled strategy sections with different position counts
+  // and totals. These are NOT contradictions — they're separate options.
+
+  await test('P1 FP: allows multiple totals under labeled strategy headers', async () => {
+    const text = `Here are 3 strategies:
+
+**Strategy 1 — Growth Aggressive**
+| Ticker | Name | Allocation |
+|---|---|---|
+| NVDA | NVIDIA | $4,000 |
+| MSFT | Microsoft | $3,000 |
+| QQQ | Invesco QQQ | $3,000 |
+| **Total** | | **$10,000** |
+
+**Strategy 2 — Balanced Core**
+| Ticker | Name | Allocation |
+|---|---|---|
+| VOO | Vanguard S&P 500 | $6,000 |
+| SCHD | Schwab Dividend | $2,000 |
+| MSFT | Microsoft | $2,000 |
+| **Total** | | **$10,000** |
+
+[CLARIFY:{"question":"Which strategy?","options":["Growth Aggressive","Balanced Core"]}]`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (labeled strategy tables are not contradictions). Got: ' + result);
+  });
+
+  await test('P2 FP: allows different position counts under labeled strategy headers', async () => {
+    const text = `**Option 1 — Concentrated**: 4 positions totaling $10,000
+
+NVDA, MSFT, GOOGL, AMZN — high conviction tech only.
+
+**Option 2 — Diversified**: 8 positions totaling $9,500
+
+VOO, QQQ, NVDA, MSFT, JPM, PG, UNH, CAT — broad exposure with downside protection.
+
+[CLARIFY:{"question":"Which approach?","options":["Concentrated","Diversified"]}]`;
+    const result = detectResponseIncoherence(text);
+    if (result) throw new Error('Expected pass (labeled strategy options with different counts are not contradictions). Got: ' + result);
+  });
+
+  await test('P1: STILL rejects multiple totals without strategy headers', async () => {
+    const text = `Here's your portfolio:
+
+| Ticker | Name | Allocation |
+|---|---|---|
+| NVDA | NVIDIA | $4,000 |
+| **Total** | | **$10,000** |
+
+[RECOMMEND:NVDA:BUY:$4000]
+
+Wait, let me adjust that. Here's the revised version:
+
+| Ticker | Name | Allocation |
+|---|---|---|
+| NVDA | NVIDIA | $3,800 |
+| MSFT | Microsoft | $3,200 |
+| QQQ | Invesco QQQ | $2,500 |
+| **Total** | | **$9,500** |
+
+[RECOMMEND:NVDA:BUY:$3800]
+[RECOMMEND:MSFT:BUY:$3200]
+[RECOMMEND:QQQ:BUY:$2500]`;
+    const result = detectResponseIncoherence(text);
+    if (!result) throw new Error('Expected rejection (two totals without strategy headers is a contradiction)');
+    if (!result.includes('contradictory portfolio totals')) throw new Error('Expected contradiction message. Got: ' + result);
+  });
+
   // ── stripTrailingQuestions helper ──
   console.log('\n📋 stripTrailingQuestions — Remove sign-off questions from portfolio output:');
 

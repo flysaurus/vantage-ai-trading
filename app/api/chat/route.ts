@@ -449,14 +449,31 @@ export function detectResponseIncoherence(response: string): string | null {
   // Two "| **Total** |" lines with different dollar amounts
   const totalLines = [...response.matchAll(/\|\s*\*{0,2}Total\*{0,2}\s*\|[^|]*\|\s*\*{0,2}\$?([\d,]+)/gi)];
   if (totalLines.length >= 2) {
-    const amounts = totalLines.map(m => parseFloat(m[1].replace(/,/g, '')));
-    const unique = new Set(amounts);
+    const amounts = totalLines.map(m => ({ amount: parseFloat(m[1].replace(/,/g, '')), index: m.index! }));
+    const unique = new Set(amounts.map(a => a.amount));
     if (unique.size >= 2) {
+      // Multi-strategy tolerance: check if each total row is preceded by
+      // a section/strategy header (bold text, "Strategy", "Option", "Approach")
+      // within 500 chars. If so, different strategies — not contradictions.
+      const allHeaded = amounts.every(a => {
+        const before = response.slice(Math.max(0, a.index - 500), a.index);
+        return /\*\*.+?\*\*/.test(before) || /\b(?:strategy|option|approach|plan|scenario|alternative)\s*\d/i.test(before);
+      });
+      if (allHeaded) {
+        return null; // Multiple labeled strategies — not a contradiction
+      }
       return `Two contradictory portfolio totals found: ${[...unique].map(a => `$${a.toLocaleString()}`).join(' and ')}. Regenerate a single coherent response.`;
     }
-    // Same total twice — still suspicious (duplicate table)
+    // Same total twice — still suspicious (duplicate table), unless under
+    // separate strategy headers (multi-strategy comparison)
     if (totalLines.length >= 2) {
-      return 'Duplicate portfolio table detected — two "Total" rows in one response. Regenerate a single clean table.';
+      const allHeadedSame = amounts.every(a => {
+        const before = response.slice(Math.max(0, a.index - 500), a.index);
+        return /\*\*.+?\*\*/.test(before) || /\b(?:strategy|option|approach|plan|scenario|alternative)\s*\d/i.test(before);
+      });
+      if (!allHeadedSame) {
+        return 'Duplicate portfolio table detected — two "Total" rows in one response. Regenerate a single clean table.';
+      }
     }
   }
 
@@ -464,10 +481,20 @@ export function detectResponseIncoherence(response: string): string | null {
   // "6 positions totaling $2,000" + later "8 positions totaling $2,700"
   const posCounts = [...response.matchAll(/(\d+)\s+positions?\s+(?:totaling|totalling|worth|at)\s+\$?([\d,]+)/gi)];
   if (posCounts.length >= 2) {
-    const counts = posCounts.map(m => ({ count: parseInt(m[1]), total: parseFloat(m[2].replace(/,/g, '')) }));
+    const counts = posCounts.map(m => ({ count: parseInt(m[1]), total: parseFloat(m[2].replace(/,/g, '')), index: m.index! }));
     const uniqueCounts = new Set(counts.map(c => c.count));
     const uniqueTotals = new Set(counts.map(c => c.total));
     if (uniqueCounts.size >= 2 || uniqueTotals.size >= 2) {
+      // Multi-strategy tolerance: check if each position summary is preceded
+      // by a section/strategy header (bold text, "Strategy", "Option", "Approach")
+      // within 200 chars. If so, these are different strategy options — not contradictions.
+      const allHeaded = counts.every(c => {
+        const before = response.slice(Math.max(0, c.index - 200), c.index);
+        return /\*\*.+?\*\*/.test(before) || /\b(?:strategy|option|approach|plan|scenario|alternative)\s*\d/i.test(before);
+      });
+      if (allHeaded) {
+        return null; // Multiple labeled strategies — not a contradiction
+      }
       return `Two contradictory position summaries: ${counts.map(c => `${c.count} pos / $${c.total.toLocaleString()}`).join(' and ')}. Regenerate a single coherent response.`;
     }
   }
@@ -548,6 +575,21 @@ export function detectResponseIncoherence(response: string): string | null {
   }
   const missingTickers = [...narrativeTickerSet].filter(t => !markerTickerSet.has(t));
   if (missingTickers.length > 0) {
+    // Multi-strategy tolerance: if the response has a CLARIFY block for strategy
+    // selection AND the narrative tables are under labeled section headers, the
+    // dollar amounts are strategy PREVIEWS — no markers needed until user picks.
+    const hasClarifyStrategy = /\[CLARIFY:\s*\{"question":"[^"]*[Ss]trateg[^"]*"/.test(response)
+      || /\[CLARIFY:\s*\{"question":"[^"]*[Pp]ick[^"]*"/.test(response)
+      || /\[CLARIFY:\s*\{"question":"[^"]*[Cc]hoos[^"]*"/.test(response)
+      || /\[CLARIFY:\s*\{"question":"[^"]*[Oo]ption[^"]*"/.test(response);
+    if (hasClarifyStrategy) {
+      // Check if there are strategy-style section headers
+      const hasHeaders = /\*\*[^*]+\*\*/g.test(response)
+        || /\b(?:strategy|option|approach|plan|scenario)\s*\d/i.test(response);
+      if (hasHeaders) {
+        return null; // Strategy previews with CLARIFY — not missing markers
+      }
+    }
     return `Narrative describes position(s) for ${missingTickers.join(', ')} with $ amounts but no corresponding [RECOMMEND:...] marker found. Every portfolio position MUST be tagged with a [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker.`;
   }
 
