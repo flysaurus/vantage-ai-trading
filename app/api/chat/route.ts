@@ -383,19 +383,6 @@ function sendChecklist(
   );
 }
 
-/** Emit a radar-sweep animation update (screening progress, dot lighting). */
-function sendScreenResult(
-  controller: ReadableStreamDefaultController,
-  encoder: TextEncoder,
-  stage: string,
-  detail?: string,
-  dots?: Array<{ x: number; y: number; size: number; lit: boolean; symbol?: string }>
-) {
-  controller.enqueue(
-    encoder.encode(`data: ${JSON.stringify({ screenResult: { stage, stageLabel: stage, detail, dots } })}\n\n`)
-  );
-}
-
 /** Extract screening criteria from a natural-language user message. */
 function extractScreeningCriteria(message: string): Record<string, any> | null {
   const criteria: Record<string, any> = {};
@@ -1419,7 +1406,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         const convMessages: Array<{ role: 'user' | 'assistant'; content: any }> =
           [...initialMessages];
 
-        // ── Screening results (radar sweep + checklist) ──
+        // ── Screening results checklist ──
         if (screeningResults && screeningCriteria) {
           const count = screeningResults.results?.length || 0;
           const criteriaDesc = Object.entries(screeningCriteria)
@@ -1436,36 +1423,17 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             .join(', ');
 
           if (count > 0) {
-            // Emit checklist: screening stage
             sendChecklist(controller, encoder, 'screening', 'done',
-              `${count} US-listed candidates matched (${screeningResults.provider})`);
-            // Emit radar sweep dot data
-            const dots = screeningResults.results.slice(0, 24).map((r: any, i: number) => ({
-              symbol: r.symbol,
-              x: 50 + Math.cos(i * 2.39996) * (15 + (i / 24) * 38),
-              y: 50 + Math.sin(i * 2.39996) * (15 + (i / 24) * 38) * 0.85,
-              size: 1.5 + (i / 24) * 2.5,
-              lit: true,
-            }));
-            sendScreenResult(controller, encoder, 'Screening complete',
-              `Screening: ${criteriaDesc} — ${count} matches`, dots);
-            // Persist criteria for the "Screened for…" tag
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ screeningMeta: { criteria: { ...screeningCriteria }, criteriaDescription: criteriaDesc, matchCount: count, provider: screeningResults.provider } })}\n\n`)
-            );
+              `${count} US-listed candidates matched (${screeningResults.provider}) — ${criteriaDesc}`);
             sendChecklist(controller, encoder, 'tickers_resolved', 'done',
               `${count} screened from ${criteriaDesc}${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
           } else {
-            // No results — show failed state
             sendChecklist(controller, encoder, 'screening', 'failed',
               `0 matches for ${criteriaDesc}`);
-            sendScreenResult(controller, encoder, 'No matches',
-              `Screening: ${criteriaDesc} — 0 matches found`);
             sendChecklist(controller, encoder, 'tickers_resolved', 'failed',
               `0 results for ${criteriaDesc} — try wider criteria`);
           }
         } else {
-          // ── Checklist: Tickers resolved (pre-flight only, no screening) ──
           sendChecklist(controller, encoder, 'screening', 'skipped', 'No screening criteria detected');
           sendChecklist(controller, encoder, 'tickers_resolved', 'done',
             preResolvedCount > 0 ? `${preResolvedCount} resolved` : 'None needed');
