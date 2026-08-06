@@ -767,8 +767,13 @@ export function validatePortfolioBlocks(response: string, requestedBudget?: numb
   }
 
   // ── Cross-check with RECOMMEND markers ──
-  const hasRecommendMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+/i.test(response);
-  if (!hasRecommendMarkers) {
+  // Supports both BUY and SELL markers. BUY markers describe new positions
+  // (amount = PORTFOLIO position amount). SELL markers describe trim/reduce
+  // operations on existing holdings (amount = sell amount, NOT the PORTFOLIO
+  // position amount which reflects the post-trim holding).
+  const hasBuyMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+/i.test(response);
+  const hasSellMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:SELL:\$?[\d,]+/i.test(response);
+  if (!hasBuyMarkers && !hasSellMarkers) {
     // No RECOMMEND markers at all — but PORTFOLIO blocks exist and are valid.
     // This is a warning situation: the blocks define positions, but there are
     // no trade buttons. Graceful degradation — not a rejection.
@@ -776,56 +781,81 @@ export function validatePortfolioBlocks(response: string, requestedBudget?: numb
     return null;
   }
 
-  // Extract RECOMMEND positions — dedupe identical (symbol, amount) markers.
-  // Multi-block: symbols may appear in multiple blocks with DIFFERENT amounts.
-  // We collect ALL (symbol, amount) pairs, then match per-block below.
-  const recommendPairs: { symbol: string; amount: number }[] = [];
-  const seenMarkers = new Set<string>(); // dedupe identical markers
-  const mkrRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d]+)?)\]/gi;
+  // ── Extract BUY markers (amount = PORTFOLIO position amount) ──
+  const buyPairs: { symbol: string; amount: number }[] = [];
+  const seenMarkers = new Set<string>();
+  const buyRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d]+)?)\]/gi;
   let mkMatch: RegExpExecArray | null;
-  while ((mkMatch = mkrRe.exec(response)) !== null) {
+  while ((mkMatch = buyRe.exec(response)) !== null) {
     const raw = mkMatch[0];
-    if (seenMarkers.has(raw)) continue; // skip duplicate markers
+    if (seenMarkers.has(raw)) continue;
     seenMarkers.add(raw);
     const rawSymbol = mkMatch[1].toUpperCase();
     const amount = parseFloat(mkMatch[2].replace(/,/g, ''));
-    // Strip foreign exchange suffix if present
     const dotIdx = rawSymbol.lastIndexOf('.');
     const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
     const cleanSymbol = suffix.length >= 2 && suffix.length <= 3 ? rawSymbol.slice(0, dotIdx) : rawSymbol;
     if (FOREIGN_EXCHANGE_SUFFIXES.has(suffix.toUpperCase())) continue;
-    recommendPairs.push({ symbol: cleanSymbol, amount });
+    buyPairs.push({ symbol: cleanSymbol, amount });
   }
 
-  // Build a lookup: symbol → set of amounts from RECOMMEND markers
-  const recommendBySymbol = new Map<string, Set<number>>();
-  for (const pair of recommendPairs) {
-    if (!recommendBySymbol.has(pair.symbol)) {
-      recommendBySymbol.set(pair.symbol, new Set());
+  // ── Extract SELL markers (amount = how much to sell, not PORTFOLIO position amount) ──
+  const sellSymbols = new Set<string>();
+  const sellRe = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):SELL(?::\$?[\d,]+(?:\.[\d]+)?)?\]/gi;
+  while ((mkMatch = sellRe.exec(response)) !== null) {
+    const raw = mkMatch[0];
+    if (seenMarkers.has(raw)) continue;
+    seenMarkers.add(raw);
+    const rawSymbol = mkMatch[1].toUpperCase();
+    const dotIdx = rawSymbol.lastIndexOf('.');
+    const suffix = dotIdx >= 0 ? rawSymbol.slice(dotIdx + 1) : '';
+    const cleanSymbol = suffix.length >= 2 && suffix.length <= 3 ? rawSymbol.slice(0, dotIdx) : rawSymbol;
+    if (FOREIGN_EXCHANGE_SUFFIXES.has(suffix.toUpperCase())) continue;
+    sellSymbols.add(cleanSymbol);
+  }
+
+  // Build a lookup: symbol → set of BUY amounts
+  const buyBySymbol = new Map<string, Set<number>>();
+  for (const pair of buyPairs) {
+    if (!buyBySymbol.has(pair.symbol)) {
+      buyBySymbol.set(pair.symbol, new Set());
     }
-    recommendBySymbol.get(pair.symbol)!.add(pair.amount);
+    buyBySymbol.get(pair.symbol)!.add(pair.amount);
   }
 
-  // Validate all PORTFOLIO positions against RECOMMEND markers
+  // ── Validate all PORTFOLIO positions against RECOMMEND markers ──
   const allPortfolioPositions = blocks.flatMap((b, bi) =>
     b.positions.map(p => ({ ...p, blockIndex: bi, strategy: b.strategy }))
   );
   for (const pos of allPortfolioPositions) {
-    const recAmounts = recommendBySymbol.get(pos.symbol.toUpperCase());
-    if (!recAmounts || recAmounts.size === 0) {
-      return `[PORTFOLIO:...] position "${pos.symbol}" has no matching [RECOMMEND:${pos.symbol}:BUY:$${pos.amount}] marker. Every portfolio position MUST have a corresponding RECOMMEND marker.`;
+    const sym = pos.symbol.toUpperCase();
+
+    // Check BUY markers first (new money being deployed into this position)
+    const buyAmounts = buyBySymbol.get(sym);
+
+    // Check SELL markers (existing position being trimmed — still appears in PORTFOLIO)
+    const hasSellMarker = sellSymbols.has(sym);
+
+    if ((!buyAmounts || buyAmounts.size === 0) && !hasSellMarker) {
+      return `[PORTFOLIO:...] position "${pos.symbol}" has no matching [RECOMMEND:${pos.symbol}:BUY:$${pos.amount}] or [RECOMMEND:${pos.symbol}:SELL] marker. Every portfolio position MUST have a corresponding RECOMMEND marker.`;
     }
 
-    if (!isMultiBlock) {
-      // Single-block: strict amount match — the RECOMMEND amount must match the PORTFOLIO amount exactly
-      if (!recAmounts.has(pos.amount)) {
-        const recList = [...recAmounts].map(a => `$${a.toLocaleString()}`).join(', ');
-        return `[PORTFOLIO:...] position "${pos.symbol}" amount mismatch: PORTFOLIO says $${pos.amount.toLocaleString()} but RECOMMEND marker says ${recList}. Amounts must match exactly.`;
+    // Contradiction check: same symbol with both BUY and SELL markers
+    if (buyAmounts && buyAmounts.size > 0 && hasSellMarker) {
+      return `[PORTFOLIO:...] position "${pos.symbol}" has BOTH a BUY and SELL marker — this is contradictory. If you're trimming this position, use SELL only. The PORTFOLIO block should show the post-trim holding amount.`;
+    }
+
+    // For BUY-matched positions: strict amount check (single-block only)
+    if (buyAmounts && buyAmounts.size > 0 && !isMultiBlock) {
+      if (!buyAmounts.has(pos.amount)) {
+        const recList = [...buyAmounts].map(a => `$${a.toLocaleString()}`).join(', ');
+        return `[PORTFOLIO:...] position "${pos.symbol}" amount mismatch: PORTFOLIO says $${pos.amount.toLocaleString()} but RECOMMEND:BUY marker says ${recList}. Amounts must match exactly.`;
       }
     }
-    // Multi-block: skip amount check — symbols may appear in multiple blocks at different amounts.
-    // The PORTFOLIO block JSON is the source of truth; the client reads positions directly from it.
-    // We only verify that a RECOMMEND marker EXISTS for the symbol (trade button availability).
+
+    // For SELL-matched positions: skip amount check — the SELL amount describes
+    // how much to sell, and the PORTFOLIO amount is the post-trim holding.
+    // These are by definition different numbers and cannot be compared.
   }
 
   return null; // All blocks valid
@@ -916,7 +946,7 @@ export function detectResponseIncoherence(response: string, requestedBudget?: nu
     // appears in trailing prose (after all markers, in the last paragraph),
     // treat it as a conversational sign-off ("Ready to scale this in?") rather
     // than a missing CLARIFY block. The portfolio is complete — don't reject it.
-    const hasRecommendMarkersForQ = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(response);
+    const hasRecommendMarkersForQ = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL)/i.test(response);
     if (hasRecommendMarkersForQ) {
       const lastMarkerIdx = response.lastIndexOf('[RECOMMEND:');
       if (lastMarkerIdx >= 0) {
@@ -995,7 +1025,7 @@ export function detectResponseIncoherence(response: string, requestedBudget?: nu
  */
 export function stripTrailingQuestions(text: string): string {
   // Only strip if there are RECOMMEND markers (portfolio response)
-  if (!/\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(text)) return text;
+  if (!/\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL)/i.test(text)) return text;
 
   // Find the last RECOMMEND marker position
   const lastMarkerIdx = text.lastIndexOf('[RECOMMEND:');
@@ -1742,7 +1772,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           // ── Turn-exhaustion warning: inject a system message when model is burning
           // through turns without producing any RECOMMEND markers yet ──
           const accumulatedText = fullResponse.join('');
-          const hasAnyRecs = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(accumulatedText);
+          const hasAnyRecs = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL)/i.test(accumulatedText);
           if (!hasAnyRecs) {
             const remaining = MAX_TOOL_TURNS - turn;
             if (remaining === 3) {
@@ -1769,7 +1799,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         responseText = stripForeignSuffixes(responseText);
 
         // ── Guard: tool-loop exhaustion detection ──
-        const hasMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:BUY:\$?[\d,]+\]/i.test(responseText);
+        const hasMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL):\$?[\d,]+\]/i.test(responseText);
         if (!hasMarkers && turn >= MAX_TOOL_TURNS) {
           console.warn(`[chat] ⚠️ Tool-loop exhausted after ${turn} turns — no RECOMMEND markers produced. Response starts with: "${responseText.slice(0, 100)}"`);
         }
@@ -1873,7 +1903,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           return;
         }
         // ── Precompute marker presence BEFORE any gate code references it ──
-        const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:BUY/i.test(responseText);
+        const hasRecommendMarkers = /\[RECOMMEND:[A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL)/i.test(responseText);
 
         // ── Budget Coherence Gate (marker-less recommendations) ──
         // If the user requested a budget, the response has NO [RECOMMEND:...] markers,

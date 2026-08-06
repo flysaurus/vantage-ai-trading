@@ -3,7 +3,7 @@
 // screen without passing these checks. Called from /api/chat route.
 //
 // Checks (in order):
-//   1. STRICT MARKER PARSING — only [RECOMMEND:SYMBOL:BUY:$AMOUNT]
+//   1. STRICT MARKER PARSING — only [RECOMMEND:SYMBOL:BUY:$AMOUNT] or [RECOMMEND:SYMBOL:SELL:$AMOUNT]
 //   2. EXACT-MATCH SYMBOL RESOLUTION — symbol must exist in Finnhub US cache
 //   3. DEDUPE BY CANONICAL SYMBOL — no same-company duplicates
 //   4. BUDGET RECONCILIATION — sum must be within 2% of requested budget
@@ -32,7 +32,7 @@ export interface ValidationFailure {
 
 export interface ValidatedSuggestion {
   symbol: string;
-  side: 'BUY';
+  side: 'BUY' | 'SELL';
   amount: number;
 }
 
@@ -85,10 +85,10 @@ export async function validateRecommendations(
   // CHECK 1: Strict marker parsing
   // ────────────────────────────────────────────────────────
   // Dollar sign is optional per client regex; amounts allow commas
-  const STRICT_MARKER = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d,]+)?)\]/g;
+  const STRICT_MARKER = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL):\$?([\d,]+(?:\.[\d,]+)?)\]/g;
   const ANY_MARKER_LIKE = /\[RECOMMEND:[^\]]*\]/g;
 
-  const validMarkers: Array<{ raw: string; symbol: string; amount: number; canonical: string }> = [];
+  const validMarkers: Array<{ raw: string; symbol: string; side: "BUY" | "SELL"; amount: number; canonical: string }> = [];
 
   // First: find ALL [RECOMMEND:...] tags and check each one
   // CLARIFY guard: if the response has CLARIFY blocks (asking the user to
@@ -109,15 +109,17 @@ export async function validateRecommendations(
   for (const match of rawText.matchAll(ANY_MARKER_LIKE)) {
     const raw = match[0];
     // Test if it matches strict format by creating a fresh regex (avoid lastIndex issues)
-    const STRICT_FORMAT = /^\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):BUY:\$?([\d,]+(?:\.[\d,]+)?)\]$/;
+    const STRICT_FORMAT = /^\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):(BUY|SELL):\$?([\d,]+(?:\.[\d,]+)?)\]$/;
     if (STRICT_FORMAT.test(raw)) {
       const strictMatch = raw.match(STRICT_FORMAT);
       if (strictMatch) {
         const symbol = strictMatch[1];
-        const amount = parseFloat(strictMatch[2].replace(/,/g, ''));
+        const side = strictMatch[2] as 'BUY' | 'SELL';
+        const amount = parseFloat(strictMatch[3].replace(/,/g, ''));
         validMarkers.push({
           raw,
           symbol,
+          side,
           amount,
           canonical: canonicalSymbol(symbol),
         });
@@ -125,7 +127,7 @@ export async function validateRecommendations(
     } else {
       failures.push({
         check: 'marker_format',
-        detail: `Malformed or imprecise marker: "${raw}". Use exact format [RECOMMEND:SYMBOL:BUY:$AMOUNT] with dollar sign and numeric amount.`,
+        detail: `Malformed or imprecise marker: "${raw}". Use exact format [RECOMMEND:SYMBOL:BUY:$AMOUNT] or [RECOMMEND:SYMBOL:SELL:$AMOUNT] with dollar sign and numeric amount.`,
         offendingMarkers: [raw],
       });
     }
@@ -267,7 +269,7 @@ export async function validateRecommendations(
   return {
     ok: true,
     result: {
-      suggestions: validMarkers.map(m => ({ symbol: m.symbol, side: 'BUY' as const, amount: m.amount })),
+      suggestions: validMarkers.map(m => ({ symbol: m.symbol, side: m.side, amount: m.amount })),
       total: validMarkers.reduce((sum, m) => sum + m.amount, 0),
       count: validMarkers.length,
     },
@@ -290,7 +292,7 @@ export function buildRetryPrompt(failures: ValidationFailure[]): string {
   }
 
   lines.push('CRITICAL RULES (these MUST be followed — your response will be rejected otherwise):');
-  lines.push('1. EXACTLY one [RECOMMEND:SYMBOL:BUY:$AMOUNT] marker per position. No variations, no alternatives.');
+  lines.push('1. EXACTLY one [RECOMMEND:SYMBOL:BUY:$AMOUNT] or [RECOMMEND:SYMBOL:SELL:$AMOUNT] marker per position. No variations, no alternatives.');
   lines.push('2. EVERY symbol must be a US primary listing — use the resolveSymbol tool to verify before recommending.');
   lines.push('3. Dollar amounts must sum to EXACTLY the requested budget (no tolerance, no rounding at the aggregate level).');
   lines.push('4. No exchange suffixes (.DE, .MX, .SW, etc.) — US listings only.');
