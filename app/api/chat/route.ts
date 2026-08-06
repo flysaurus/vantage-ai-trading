@@ -430,6 +430,87 @@ function extractScreeningCriteria(message: string): Record<string, any> | null {
 }
 
 /**
+ * Extract MULTI-SECTOR screening criteria — collects ALL detected sectors
+ * instead of just the first match. Each sector gets its own criteria object
+ * with shared filters (PE, growth, market cap, volume, style defaults) applied.
+ *
+ * Returns null when no sectors are detected at all (single-pool fallback).
+ * Returns an array with one entry for single-sector requests (degrades to
+ * current single-pool behavior). Returns 2+ entries for multi-sector requests. 
+ */
+function extractMultiSectorCriteria(
+  message: string,
+  styleDefaults?: Record<string, any>
+): Array<{ criteria: Record<string, any>; label: string }> | null {
+  const m = message.toLowerCase();
+
+  // Sector mapping — same as extractScreeningCriteria
+  const sectorMap: Record<string, string> = {
+    tech: 'technology', technology: 'technology', software: 'technology', ai: 'technology',
+    health: 'healthcare', healthcare: 'healthcare', pharma: 'healthcare', biotech: 'healthcare', medical: 'healthcare',
+    finance: 'financial_services', financial: 'financial_services', banking: 'financial_services', banks: 'financial_services',
+    energy: 'energy', oil: 'energy', gas: 'energy', renewable: 'energy', solar: 'energy',
+    consumer: 'consumer_cyclical', retail: 'consumer_cyclical',
+    industrial: 'industrials', industrials: 'industrials', manufacturing: 'industrials', aerospace: 'industrials', defense: 'industrials',
+    materials: 'basic_materials', basic_materials: 'basic_materials', mining: 'basic_materials', minerals: 'basic_materials', metals: 'basic_materials',
+    real_estate: 'real_estate', reit: 'real_estate', property: 'real_estate',
+    utilities: 'utilities', utility: 'utilities',
+    communication: 'communication_services', telecom: 'communication_services', media: 'communication_services',
+  };
+
+  // Collect all sector matches (deduped by sector value, preserving order)
+  const seen = new Set<string>();
+  const sectors: Array<{ sector: string; keyword: string }> = [];
+  for (const [keyword, sector] of Object.entries(sectorMap)) {
+    if (m.includes(keyword) && !seen.has(sector)) {
+      seen.add(sector);
+      sectors.push({ sector, keyword });
+    }
+  }
+
+  if (sectors.length === 0) return null;
+
+  // Shared criteria — same extraction logic as extractScreeningCriteria
+  const shared: Record<string, any> = {};
+
+  // Market cap
+  const mktCapBillion = m.match(/(?:market\s*cap|mkt\s*cap|cap)\s*(?:>|>=|over|above|at least)\s*\$?(\d+(?:\.\d+)?)\s*(?:b|bn|billion)/i);
+  const mktCapUnder = m.match(/(?:market\s*cap|mkt\s*cap|cap)\s*(?:<|<=|under|below|less than|at most)\s*\$?(\d+(?:\.\d+)?)\s*(?:b|bn|billion)/i);
+  if (mktCapBillion) shared.market_cap_min = Math.round(parseFloat(mktCapBillion[1]) * 1_000_000_000);
+  if (mktCapUnder) shared.market_cap_max = Math.round(parseFloat(mktCapUnder[1]) * 1_000_000_000);
+  if (m.includes('large-cap') || m.includes('large cap')) { shared.market_cap_min = 10_000_000_000; }
+  if (m.includes('mid-cap') || m.includes('mid cap')) { shared.market_cap_min = 2_000_000_000; shared.market_cap_max = 10_000_000_000; }
+  if (m.includes('small-cap') || m.includes('small cap')) { shared.market_cap_max = 2_000_000_000; }
+
+  // PE
+  const peMatch = m.match(/(?:p\/?e|pe)\s*(?:<|<=|under|below|less than|max)\s*(\d+(?:\.\d+)?)/i);
+  if (peMatch) shared.pe_max = parseFloat(peMatch[1]);
+
+  // Growth
+  const growthMatch = m.match(/(?:growth|eps\s*growth)\s*(?:>|>=|over|above|at least|min)\s*(\d+(?:\.\d+)?)\s*%/i);
+  if (growthMatch) shared.min_growth_rate = parseFloat(growthMatch[1]) / 100;
+
+  // Volume
+  const volMatch = m.match(/volume\s*(?:>|>=|over|above)\s*(\d+(?:\.\d+)?)\s*(?:m|mil|million)/i);
+  if (volMatch) shared.volume_min = Math.round(parseFloat(volMatch[1]) * 1_000_000);
+
+  // Apply style defaults as base, then shared criteria override
+  const defaults = styleDefaults || {};
+
+  const labelMap: Record<string, string> = {
+    technology: 'Technology', healthcare: 'Healthcare', financial_services: 'Financials',
+    energy: 'Energy', consumer_cyclical: 'Consumer Cyclical', industrials: 'Industrials',
+    basic_materials: 'Basic Materials', real_estate: 'Real Estate', utilities: 'Utilities',
+    communication_services: 'Communication Services',
+  };
+
+  return sectors.map(({ sector }) => ({
+    label: labelMap[sector] || sector.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    criteria: { ...defaults, ...shared, sector },
+  }));
+}
+
+/**
  * Derive screening criteria from the investor's stored style when no explicit
  * sector/PE/growth keywords appear in the user's message. This prevents the
  * "familiar ticker shortlist" problem — without a screen, the AI falls back
@@ -506,6 +587,47 @@ function formatScreeningContext(results: any[], criteria: Record<string, any>, c
     `Top matches: ${summary}\n` +
     `You MUST build your portfolio ONLY from these screened candidates. ` +
     `If you need a ticker not in this list, say so — don't substitute from memory.`;
+}
+
+/** Format MULTI-SECTOR screening results — one labeled candidate pool per sector.
+ *  The system prompt instructs the model to build each sector/bucket's allocation
+ *  ONLY from its matching labeled pool — never cross-allocate (no tech stocks in
+ *  healthcare bucket).  This produces genuinely varied prose because each bucket
+ *  has completely different underlying data, not one merged universe. */
+function formatMultiSectorContext(
+  pools: Array<{ label: string; results: any[]; count: number }>
+): string {
+  if (pools.length === 0) return '';
+
+  const sections = pools.map(pool => {
+    if (!pool.results || pool.results.length === 0) {
+      return `### ${pool.label.toUpperCase()} CANDIDATES (0 matches)\n` +
+        `⚠️ No candidates matched in this sector. Skip this bucket entirely ` +
+        `and tell the user explicitly that ${pool.label} returned 0 results with ` +
+        `these criteria. Do NOT fabricate tickers.`;
+    }
+
+    const tickers = pool.results.map((r: any) => r.symbol).join(', ');
+    const summary = pool.results.slice(0, 5).map((r: any) => {
+      const parts = [`${r.symbol} (${r.name || '?'})`];
+      if (r.market_cap) parts.push(`MCap:$${(r.market_cap/1e9).toFixed(1)}B`);
+      if (r.pe_forward) parts.push(`PE:${r.pe_forward.toFixed(1)}`);
+      if (r.sector) parts.push(`Sector:${r.sector}`);
+      return parts.join(' ');
+    }).join('; ');
+
+    return `### ${pool.label.toUpperCase()} CANDIDATES (${pool.count})\n` +
+      `Available: ${tickers}\n` +
+      `Top: ${summary}`;
+  });
+
+  return `\n─── PER-SECTOR SCREENED UNIVERSES ───\n` +
+    `⚠️ CRITICAL: Build each sector's allocation ONLY from its own labeled candidate pool below. ` +
+    `NEVER cross-allocate — a tech candidate goes ONLY in the technology bucket, ` +
+    `a healthcare candidate goes ONLY in the healthcare bucket. ` +
+    `If a pool has 0 candidates, skip that bucket entirely and tell the user.\n\n` +
+    sections.join('\n\n') +
+    `\n\n─── END SCREENED UNIVERSES ───`;
 }
 
 /** Validate portfolio totals against requested budget (exact match).
@@ -1328,21 +1450,46 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     let screeningResults: Awaited<ReturnType<typeof runScreening>> | null = null;
     let screeningCriteria: Record<string, any> | null = null;
     let screeningSource: 'explicit' | 'style_defaults' | null = null;
+    // Multi-sector state — when the user names multiple sectors in one request,
+    // we run separate screening per sector so every bucket has its own real candidate pool.
+    let multiSectorPools: Array<{ label: string; criteria: Record<string, any>; results: any[]; count: number; provider: string }> | null = null;
+
     if (requestedBudget !== null) {
-      let criteria = extractScreeningCriteria(lastMessage);
-      screeningSource = 'explicit';
-      if (!criteria) {
-        // No explicit sector/PE/growth keywords — derive from stored investor style.
-        // Without this fallback, generic "Give me a portfolio for $X" requests skip
-        // screening entirely and the AI falls back to trained-in familiar tickers
-        // (VOO, NVDA, LLY, MSFT, TSLA, AVGO) every single time.
-        criteria = getStyleScreeningDefaults(profile.investorStyle);
-        screeningSource = 'style_defaults';
-        console.log(`[chat] 🔍 No explicit criteria in message — using ${profile.investorStyle} style defaults:`, JSON.stringify(criteria));
-      }
-      if (criteria && Object.keys(criteria).length > 0) {
+      // Step 1: try multi-sector screening (collects ALL sector keywords, not just the first)
+      const styleDefaults = getStyleScreeningDefaults(profile.investorStyle);
+      let multiCriteria = extractMultiSectorCriteria(lastMessage, styleDefaults);
+
+      if (multiCriteria && multiCriteria.length >= 2) {
+        // ── MULTI-SECTOR PATH: run parallel screening per detected sector ──
+        screeningSource = 'explicit';
+        console.log(`[chat] 🔍 Multi-sector detected: ${multiCriteria.map(c => c.label).join(', ')}`);
+
+        const poolPromises = multiCriteria.map(async ({ label, criteria }) => {
+          const result = await runScreening(criteria);
+          return { label, criteria, results: result.results || [], count: result.results?.length || 0, provider: result.provider };
+        });
+        multiSectorPools = await Promise.all(poolPromises);
+
+        // Build multi-sector context for system prompt
+        screeningContext = formatMultiSectorContext(multiSectorPools);
+
+        // For checklist/meta: set screeningResults to a merged view
+        const totalCount = multiSectorPools.reduce((sum, p) => sum + p.count, 0);
+        const allResults = multiSectorPools.flatMap(p => p.results);
+        const providers = [...new Set(multiSectorPools.map(p => p.provider))];
+        screeningResults = { results: allResults, provider: providers.join('+'), error: undefined };
+
+        // Build composite criteria description for the checklist
+        screeningCriteria = Object.fromEntries(multiSectorPools.map(p => [p.label, p.count]));
+        screeningCriteria._multi = true;
+
+        console.log(`[chat] 🔍 Multi-sector: ${multiSectorPools.length} pools, ${totalCount} total candidates`);
+      } else if (multiCriteria && multiCriteria.length === 1) {
+        // ── SINGLE-SECTOR PATH: degrade to classic single-pool screening ──
+        screeningSource = 'explicit';
+        const { label, criteria } = multiCriteria[0];
         screeningCriteria = criteria;
-        console.log(`[chat] 🔍 Running screener with criteria (source=${screeningSource}):`, JSON.stringify(criteria));
+        console.log(`[chat] 🔍 Single sector (${label}) — running screener:`, JSON.stringify(criteria));
         screeningResults = await runScreening(criteria);
         screeningContext = formatScreeningContext(
           screeningResults.results,
@@ -1352,6 +1499,24 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         console.log(`[chat] 🔍 Screener returned ${screeningResults.results?.length || 0} results (${screeningResults.provider})`);
         if (screeningResults.error) {
           console.error('[chat] 🔍 Screener error:', screeningResults.error);
+        }
+      } else {
+        // ── NO SECTOR detected — fall back to style defaults (single pool) ──
+        screeningSource = 'style_defaults';
+        const criteria = styleDefaults;
+        console.log(`[chat] 🔍 No explicit criteria in message — using ${profile.investorStyle} style defaults:`, JSON.stringify(criteria));
+        if (criteria && Object.keys(criteria).length > 0) {
+          screeningCriteria = criteria;
+          screeningResults = await runScreening(criteria);
+          screeningContext = formatScreeningContext(
+            screeningResults.results,
+            criteria,
+            screeningResults.results?.length || 0
+          );
+          console.log(`[chat] 🔍 Screener returned ${screeningResults.results?.length || 0} results (${screeningResults.provider})`);
+          if (screeningResults.error) {
+            console.error('[chat] 🔍 Screener error:', screeningResults.error);
+          }
         }
       }
     }
@@ -1469,35 +1634,54 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
         // ── Screening results checklist ──
         if (screeningResults && screeningCriteria) {
-          const count = screeningResults.results?.length || 0;
-          const criteriaDesc = Object.entries(screeningCriteria)
-            .map(([k, v]) => {
-              if (k === 'market_cap_min') return `MCap > $${(v/1e9).toFixed(1)}B`;
-              if (k === 'market_cap_max') return `MCap < $${(v/1e9).toFixed(1)}B`;
-              if (k === 'pe_max') return `PE < ${v}`;
-              if (k === 'min_growth_rate') return `Growth > ${(v*100).toFixed(0)}%`;
-              if (k === 'sector') return `${v}`;
-              if (k === 'volume_min') return `Vol > ${(v/1e6).toFixed(1)}M`;
-              return '';
-            })
-            .filter(Boolean)
-            .join(', ');
+          const isMulti = screeningCriteria._multi === true && multiSectorPools && multiSectorPools.length > 0;
 
-          if (count > 0) {
-            const sourceLabel = screeningSource === 'style_defaults' ? ` (${profile.investorStyle} defaults)` : '';
-            // Send screening meta for transparency on strategy cards
+          if (isMulti && multiSectorPools) {
+            // ── MULTI-SECTOR checklist: one entry per sector pool ──
+            const pools = multiSectorPools; // narrow type
+            const count = screeningResults.results?.length || 0;
+            const perSector = pools.map(p => `${p.label}: ${p.count}`).join(', ');
+            const providers = [...new Set(pools.map(p => p.provider))].join('+');
+
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              screeningMeta: { criteria: screeningCriteria, criteriaDescription: criteriaDesc + sourceLabel, matchCount: count, provider: screeningResults.provider, source: screeningSource }
+              screeningMeta: { criteria: screeningCriteria, criteriaDescription: perSector, matchCount: count, provider: providers, source: screeningSource, multiSector: true }
             })}\n\n`));
             sendChecklist(controller, encoder, 'screening', 'done',
-              `${count} US-listed candidates${sourceLabel} via ${screeningResults.provider} — ${criteriaDesc}`);
+              `${perSector} via ${providers}`);
             sendChecklist(controller, encoder, 'tickers_resolved', 'done',
-              `${count} screened from ${criteriaDesc}${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
+              `${count} candidates across ${pools.length} sectors${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
           } else {
-            sendChecklist(controller, encoder, 'screening', 'failed',
-              `0 matches for ${criteriaDesc}`);
-            sendChecklist(controller, encoder, 'tickers_resolved', 'failed',
-              `0 results for ${criteriaDesc} — try wider criteria`);
+            // ── SINGLE-POOL checklist: original behavior ──
+            const count = screeningResults.results?.length || 0;
+            const criteriaDesc = Object.entries(screeningCriteria)
+              .map(([k, v]) => {
+                if (k === '_multi') return '';
+                if (k === 'market_cap_min') return `MCap > $${(v/1e9).toFixed(1)}B`;
+                if (k === 'market_cap_max') return `MCap < $${(v/1e9).toFixed(1)}B`;
+                if (k === 'pe_max') return `PE < ${v}`;
+                if (k === 'min_growth_rate') return `Growth > ${(v*100).toFixed(0)}%`;
+                if (k === 'sector') return `${v}`;
+                if (k === 'volume_min') return `Vol > ${(v/1e6).toFixed(1)}M`;
+                return '';
+              })
+              .filter(Boolean)
+              .join(', ');
+
+            if (count > 0) {
+              const sourceLabel = screeningSource === 'style_defaults' ? ` (${profile.investorStyle} defaults)` : '';
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                screeningMeta: { criteria: screeningCriteria, criteriaDescription: criteriaDesc + sourceLabel, matchCount: count, provider: screeningResults.provider, source: screeningSource }
+              })}\n\n`));
+              sendChecklist(controller, encoder, 'screening', 'done',
+                `${count} US-listed candidates${sourceLabel} via ${screeningResults.provider} — ${criteriaDesc}`);
+              sendChecklist(controller, encoder, 'tickers_resolved', 'done',
+                `${count} screened from ${criteriaDesc}${preResolvedCount > 0 ? ` + ${preResolvedCount} pre-resolved` : ''}`);
+            } else {
+              sendChecklist(controller, encoder, 'screening', 'failed',
+                `0 matches for ${criteriaDesc}`);
+              sendChecklist(controller, encoder, 'tickers_resolved', 'failed',
+                `0 results for ${criteriaDesc} — try wider criteria`);
+            }
           }
         } else {
           sendChecklist(controller, encoder, 'screening', 'skipped', 'No screening criteria detected');
