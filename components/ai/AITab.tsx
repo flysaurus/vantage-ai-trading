@@ -222,6 +222,34 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
   const stepperMsgIdRef = useRef<string | null>(null); // tracks which message initialized the stepper
   const bypassStepperRef = useRef(false); // bypasses stepper intercept when submitting combined answers
+  // Persist resolved CLARIFY message IDs so re-login doesn't re-activate them.
+  // Key: message ID → value: '1'. Cleared on new session or after 24h.
+  const resolvedClarifyRef = useRef<Set<string>>(new Set());
+  // Lazily load resolved CLARIFY IDs from localStorage on first use
+  const getResolvedClarify = useCallback(() => {
+    if (resolvedClarifyRef.current.size > 0) return resolvedClarifyRef.current;
+    try {
+      const raw = localStorage.getItem('vantage:resolved-clarify');
+      if (raw) {
+        const { ids, ts } = JSON.parse(raw);
+        if (Date.now() - ts < 24 * 60 * 60 * 1000) {
+          resolvedClarifyRef.current = new Set<string>(ids);
+        }
+      }
+    } catch {}
+    return resolvedClarifyRef.current;
+  }, []);
+  const markClarifyResolved = useCallback((msgId: string) => {
+    const next = new Set(resolvedClarifyRef.current);
+    next.add(msgId);
+    resolvedClarifyRef.current = next;
+    try {
+      localStorage.setItem('vantage:resolved-clarify', JSON.stringify({
+        ids: [...next],
+        ts: Date.now()
+      }));
+    } catch {}
+  }, []);
 
   // ── Multi-strategy selection: messageId → selected block index ──
   const [selectedStrategies, setSelectedStrategies] = useState<Record<string, number>>({});
@@ -292,6 +320,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setClarifyQueue([]);
       setClarifyStep(0);
       setClarifyAnswers([]);
+      // Persist that this CLARIFY message was resolved — prevents
+      // re-activation on page reload / re-login.
+      if (stepperMsgIdRef.current) markClarifyResolved(stepperMsgIdRef.current);
       stepperMsgIdRef.current = null;
 
       // Submit as a normal chat message (bypass ref prevents stepper intercept)
@@ -307,6 +338,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
     if (loading) return;
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg || lastMsg.role !== 'ai' || lastMsg.id === stepperMsgIdRef.current) return;
+    // Skip messages whose CLARIFY has already been resolved — prevents
+    // stale CLARIFY questions from re-activating on re-login / page reload.
+    if (lastMsg.id && getResolvedClarify().has(lastMsg.id)) {
+      console.log('[ClarifyStepper] Skipping resolved message:', lastMsg.id);
+      return;
+    }
 
     const questions = parseClarifyMarkers(lastMsg.content);
     if (questions.length > 0) {
@@ -492,17 +529,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
       const batch = charQueueRef.current.splice(0, 3).join('');
       displayedContentRef.current += batch;
 
-      setMessages(prev => {
-        const updated = [...prev];
-        if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            role: 'ai' as const,
-            content: displayedContentRef.current,
-          };
-        }
-        return updated;
-      });
+      // Do NOT write to setMessages during streaming — content stays hidden
+      // behind the progress indicator (checklist) until validation passes.
+      // This prevents the unvalidated first attempt from flashing on screen
+      // before the validator rejects it and triggers a retry.
 
       setTimeout(drain, 12);
     };
@@ -1085,18 +1115,15 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       streamDoneRef.current = true;
 
-      // ── Progress complete: transition from progress indicator to final content ──
-      setChecklistItems([]);
-      setScreeningMeta(null);
-
+      // Wait for drainer to finish accumulating text into displayedContentRef.
+      // Content is NOT committed to the visible message yet — it stays hidden
+      // behind the progress indicator until validation passes.
       while (isDrainingRef.current || charQueueRef.current.length > 0) {
         await new Promise(r => setTimeout(r, 50));
       }
 
       // If server-side marker validation corrected hallucinated tickers,
       // use the corrected text instead of the streamed version.
-      // Also add corrected symbols to validSymbols so OTC/ADR tickers (like SKHYV)
-      // pass client-side validation — they aren't in the exchange=US symbol cache.
       const finalContent = correctedTextRef.current || displayedContentRef.current;
 
       // Always sync marker symbols to validSymbols — prevents legitimate markers
@@ -1104,7 +1131,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       // AI response (not gap-fill) and validSymbols was populated from Finnhub.
       const ALL_MARKER_REGEX = /\[RECOMMEND:([A-Z]{1,5}(?:\.[A-Z]{1,2})?):/g;
       for (const m of finalContent.matchAll(ALL_MARKER_REGEX)) {
-        // Strip exchange-code suffixes (.DE, .MX, etc.) — keep single-char (.B = BRK.B)
         const raw = m[1].toUpperCase();
         const dotIdx = raw.lastIndexOf('.');
         const suffix = dotIdx >= 0 ? raw.slice(dotIdx + 1) : '';
@@ -1119,6 +1145,67 @@ export function AITab({ messages, setMessages }: AITabProps) {
         : null;
       correctedTextRef.current = null;
       correctedSymbolsRef.current = new Set();
+
+      // ── Handle validation rejection (regenerate / fatal) FIRST —
+      // BEFORE committing content to the visible message. This prevents
+      // the unvalidated first attempt from flashing on screen. ──
+      if (validationRejectRef.current) {
+        const rejectData = validationRejectRef.current;
+        validationRejectRef.current = null;
+
+        if (rejectData.regenerate && !rejectData.fatalValidationFailure) {
+          // Auto-retry: keep the progress indicator (checklist) visible,
+          // remove the empty AI message stub, and retry silently.
+          console.log('[chat] Validation failed — auto-regenerating (content hidden)...');
+          setMessages(prev => prev.slice(0, -1)); // Remove empty AI message stub
+          setLoading(false);
+          await new Promise(r => setTimeout(r, 50));
+          try {
+            await sendMessage(content, 'chat', undefined, {
+              retryAttempt: 1,
+              retryFailures: rejectData.failures,
+            });
+          } catch (retryErr) {
+            console.error('[chat] Auto-retry failed:', retryErr);
+          }
+          return;
+        }
+
+        if (rejectData.fatalValidationFailure) {
+          // Fatal: both attempts failed — show error to user
+          const failures = (rejectData.failures || []) as Array<{ check: string; detail: string }>;
+          const errorMarkdown = [
+            '⚠️ **Portfolio generation failed validation**',
+            '',
+            ...failures.map(f => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`),
+            '',
+            '_Try rephrasing your request or adjusting your budget._'
+          ].join('\n');
+          setMessages(prev => prev.slice(0, -1)); // Remove empty AI stub
+          setMessages(prev => [...prev, { role: 'ai', content: errorMarkdown }]);
+          // Clear progress indicator — show the error
+          setChecklistItems([]);
+          setScreeningMeta(null);
+          setLoading(false);
+          return;
+        }
+
+        if (rejectData.fatalStreamError) {
+          // Server-side stream crashed — surface the actual error
+          console.error('[chat] Handling fatal stream error:', rejectData.message);
+          setMessages(prev => prev.slice(0, -1)); // Remove empty AI stub
+          setMessages(prev => [...prev, {
+            role: 'ai',
+            content: `I hit an internal error processing your request: **${rejectData.message || 'Unknown streaming error'}**\n\nThis has been logged. Could you try again? If it persists, try a simpler query.`,
+          }]);
+          setChecklistItems([]);
+          setScreeningMeta(null);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // ── Validation passed — commit content to visible message ──
       if (symbolsToAdd && symbolsToAdd.size > 0) {
         console.log('[chat] Adding symbols to validSymbols:', [...symbolsToAdd]);
         setValidSymbols(prev => {
@@ -1127,8 +1214,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
           console.log('[chat] validSymbols size after add:', next.size);
           return next;
         });
-        // Fetch missing names for newly-discovered symbols (ETFs like SCHD often
-        // have names that slipped through the initial /api/symbols/all cache)
         fetch(`/api/symbols/names?symbols=${encodeURIComponent([...symbolsToAdd].join(','))}`)
           .then(r => r.json())
           .then(data => {
@@ -1143,8 +1228,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
               });
             }
           })
-          .catch(() => {}); // Silently degrade — names are cosmetic
+          .catch(() => {});
       }
+
+      // Commit validated content to the AI message bubble
       setMessages(prev => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === 'ai') {
@@ -1153,74 +1240,12 @@ export function AITab({ messages, setMessages }: AITabProps) {
         return updated;
       });
 
-      // ── Handle validation rejection (regenerate / fatal) ──
-      if (validationRejectRef.current) {
-        const rejectData = validationRejectRef.current;
-        validationRejectRef.current = null;
+      // ── Clear progress indicator — content is now visible and valid ──
+      setChecklistItems([]);
+      setScreeningMeta(null);
 
-        if (rejectData.regenerate && !rejectData.fatalValidationFailure) {
-          // Auto-retry: remove the rejected message, resend with retry params
-          console.log('[chat] Validation failed — auto-regenerating...');
-          setMessages(prev => prev.slice(0, -1)); // Remove rejected AI message
-          // Reset loading so the recursive sendMessage call passes its guard check
-          // NOTE: Don't clear checklistItems — keep failed items visible until
-          // the new stream overwrites them (makes failure visible per spec)
-          setLoading(false);
-          // Small delay to let React flush the loading state
-          await new Promise(r => setTimeout(r, 50));
-          try {
-            // Recursively call send with retry params
-            await sendMessage(content, 'chat', undefined, {
-              retryAttempt: 1,
-              retryFailures: rejectData.failures,
-            });
-          } catch (retryErr) {
-            console.error('[chat] Auto-retry failed:', retryErr);
-          }
-          // IMPORTANT: return BEFORE the finally block below runs,
-          // so the failed first attempt doesn't count against limits.
-          // The retry's own finally block will handle counting + saving.
-          return;
-        }
-
-        if (rejectData.fatalValidationFailure) {
-          // Let the failed checklist remain visible for 3 seconds before
-          // replacing with error text — makes the failure legible
-          await new Promise(r => setTimeout(r, 3000));
-          // Both attempts failed — show fallback with failure details for debugging
-          const failureDetails = (rejectData.failures || [])
-            .map((f: any) => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`)
-            .join('\n');
-          console.warn('[chat] Fatal validation failure after retry:', rejectData.failures);
-          setMessages(prev => {
-            const next = [...prev];
-            if (next.length > 0 && next[next.length - 1].role === 'ai') {
-              next[next.length - 1] = {
-                ...next[next.length - 1],
-                role: 'ai' as const,
-                content: `My recommendation didn't pass validation after two attempts. Here's what went wrong:\n\n${failureDetails}\n\nCould you rephrase your request or try a different approach?`,
-              };
-            }
-            return next;
-          });
-        }
-
-        if (rejectData.fatalStreamError) {
-          // Server-side stream crashed — surface the actual error
-          console.error('[chat] Handling fatal stream error:', rejectData.message);
-          setMessages(prev => {
-            const next = [...prev];
-            if (next.length > 0 && next[next.length - 1].role === 'ai') {
-              next[next.length - 1] = {
-                ...next[next.length - 1],
-                role: 'ai' as const,
-                content: `I hit an internal error processing your request: **${rejectData.message || 'Unknown streaming error'}**\n\nThis has been logged. Could you try again? If it persists, try a simpler query.`,
-              };
-            }
-            return next;
-          });
-        }
-      }
+      // Store validated content for save/replay
+      lastAiResponseRef.current = finalContent;
       // Scroll suppressed — user controls position
     } catch (error: any) {
       console.error('Chat error:', error);
@@ -1722,7 +1747,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           // AI message — accent left border, same 14px font as user messages
           // Compute clarifying options from [CLARIFY:...] markers for chips BELOW the bubble
           const isLastAiMsg = !loading && !messages.slice(i + 1).some(m => m.role === 'ai');
-          const clarifyQuestions = isLastAiMsg ? parseClarifyMarkers(msg.content) : [];
+          const isClarifyResolved = !!(msg.id && getResolvedClarify().has(msg.id));
+          // Only show CLARIFY chips if this is the last AI message AND the CLARIFY hasn't been resolved
+          const clarifyQuestions = (isLastAiMsg && !isClarifyResolved) ? parseClarifyMarkers(msg.content) : [];
           // Stepper mode: multi-question queue active for this message
           const isStepperActive = clarifyQueue.length > 0 && msg.id === stepperMsgIdRef.current;
           // Single-question mode: fallback for 1 question or no stepper
@@ -1943,6 +1970,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                     setTimeout(() => inputRef.current?.focus(), 100);
                     return;
                   }
+                  // Mark this CLARIFY message as resolved so it won't re-activate on page reload
+                  if (msg.id) markClarifyResolved(msg.id);
                   sendMessage(opt.fullText, 'chat');
                 }}
               />
