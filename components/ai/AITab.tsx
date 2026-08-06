@@ -14,7 +14,7 @@ import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
 import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type Suggestion, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import StrategyCards from '@/components/ai/StrategyCards';
-import { parsePortfolioBlocks } from '@/app/api/chat/route';
+import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import type { PortfolioBlock } from '@/lib/portfolio-types';
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
