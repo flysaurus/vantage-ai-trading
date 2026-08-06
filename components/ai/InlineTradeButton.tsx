@@ -191,9 +191,29 @@ function stripClarifyMarkers(text: string): string {
   return result;
 }
 
+/** Strip [PORTFOLIO:{...}] blocks with bracket counting — same technique as stripClarifyMarkers. */
+function stripPortfolioMarkers(text: string): string {
+  let result = text;
+  const prefix = '[PORTFOLIO:{';
+  let idx = 0;
+  while ((idx = result.indexOf(prefix, idx)) !== -1) {
+    let depth = 1;
+    let pos = idx + prefix.length;
+    while (pos < result.length && depth > 0) {
+      if (result[pos] === '{') depth++;
+      else if (result[pos] === '}') depth--;
+      pos++;
+    }
+    while (pos < result.length && (result[pos] === ' ' || result[pos] === '\n')) pos++;
+    if (pos < result.length && result[pos] === ']') pos++;
+    result = result.slice(0, idx) + result.slice(pos);
+  }
+  return result;
+}
+
 /** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
-  let result = stripClarifyMarkers(text)
+  let result = stripPortfolioMarkers(stripClarifyMarkers(text))
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
     .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text

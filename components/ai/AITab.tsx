@@ -620,12 +620,24 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const targetSession = todaySession || allSessions[0];
         if (targetSession.messages.length > 0) {
           // Load only last 10 messages (5 user/AI exchange pairs) on session start
-          const lastMessages = targetSession.messages.slice(-10);
-          setMessages(lastMessages.map(m => ({
-            role: m.role as 'user' | 'ai',
-            content: m.content,
-          })));
-          setCurrentSessionId(targetSession.id);
+          let lastMessages = targetSession.messages.slice(-10);
+          // 🔴 CRITICAL: Ensure conversation ends with an AI response, not a user
+          // message. If the last message is a user message, the AI will re-answer it
+          // on the next request — generating duplicate responses and wasting tokens.
+          // This happens when an AI response failed to save, or when the slice(-10)
+          // cuts off the AI answer to the last user question. Strip trailing user
+          // messages to prevent re-submission of already-answered questions.
+          while (lastMessages.length > 0 && lastMessages[lastMessages.length - 1].role === 'user') {
+            console.warn('[chat] Stripping trailing user message from session load to prevent re-submission:', lastMessages[lastMessages.length - 1].content?.slice(0, 80));
+            lastMessages = lastMessages.slice(0, -1);
+          }
+          if (lastMessages.length > 0) {
+            setMessages(lastMessages.map(m => ({
+              role: m.role as 'user' | 'ai',
+              content: m.content,
+            })));
+            setCurrentSessionId(targetSession.id);
+          }
         }
       }
     }).catch(() => {});
