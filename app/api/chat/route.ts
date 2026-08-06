@@ -578,6 +578,7 @@ function formatScreeningContext(results: any[], criteria: Record<string, any>, c
     const parts = [`${r.symbol} (${r.name || '?'})`];
     if (r.market_cap) parts.push(`MCap:$${(r.market_cap/1e9).toFixed(1)}B`);
     if (r.pe_forward) parts.push(`PE:${r.pe_forward.toFixed(1)}`);
+    if (r.eps_growth_5y != null) parts.push(`Grow:${(r.eps_growth_5y*100).toFixed(0)}%`);
     if (r.sector) parts.push(`Sector:${r.sector}`);
     return parts.join(' ');
   }).join('; ');
@@ -586,7 +587,14 @@ function formatScreeningContext(results: any[], criteria: Record<string, any>, c
     `Available tickers: ${tickers}\n` +
     `Top matches: ${summary}\n` +
     `You MUST build your portfolio ONLY from these screened candidates. ` +
-    `If you need a ticker not in this list, say so — don't substitute from memory.`;
+    `If you need a ticker not in this list, say so — don't substitute from memory.\n` +
+    `\n🏷️ STYLE CLASSIFICATION: When building allocation buckets (growth, value, momentum, core), ` +
+    `classify candidates using their PE and growth metrics FROM THE SCREENED DATA ABOVE — ` +
+    `not from your training data. Low PE (<20) + solid earnings = Value. High growth rate (>15%) + ` +
+    `reasonable PE = Growth. High growth + high volume + strong recent price action = Momentum. ` +
+    `A stock classified as \"growth\" must be backed by the screener data (PE, growth rate) shown above. ` +
+    `NEVER place a high-PE (>30) stock in a Value bucket, or a low-growth stock in a Growth bucket. ` +
+    `If a screened candidate doesn't fit any style bucket cleanly, put it in Core or skip it.`;
 }
 
 /** Format MULTI-SECTOR screening results — one labeled candidate pool per sector.
@@ -612,6 +620,7 @@ function formatMultiSectorContext(
       const parts = [`${r.symbol} (${r.name || '?'})`];
       if (r.market_cap) parts.push(`MCap:$${(r.market_cap/1e9).toFixed(1)}B`);
       if (r.pe_forward) parts.push(`PE:${r.pe_forward.toFixed(1)}`);
+      if (r.eps_growth_5y != null) parts.push(`Grow:${(r.eps_growth_5y*100).toFixed(0)}%`);
       if (r.sector) parts.push(`Sector:${r.sector}`);
       return parts.join(' ');
     }).join('; ');
@@ -625,7 +634,13 @@ function formatMultiSectorContext(
     `⚠️ CRITICAL: Build each sector's allocation ONLY from its own labeled candidate pool below. ` +
     `NEVER cross-allocate — a tech candidate goes ONLY in the technology bucket, ` +
     `a healthcare candidate goes ONLY in the healthcare bucket. ` +
-    `If a pool has 0 candidates, skip that bucket entirely and tell the user.\n\n` +
+    `If a pool has 0 candidates, skip that bucket entirely and tell the user.\n` +
+    `\n🏷️ STYLE CLASSIFICATION: When building allocation buckets within a sector ` +
+    `(growth, value, momentum, core), classify candidates using their PE and growth ` +
+    `metrics FROM THE SCREENED DATA above. Low PE (<20) + solid earnings → Value. ` +
+    `High growth rate (>15%) + reasonable PE → Growth. High growth + strong price ` +
+    `action → Momentum. NEVER place a high-PE stock in Value or a low-growth stock ` +
+    `in Growth. Use the screener-provided PE/growth data — not training data.\n\n` +
     sections.join('\n\n') +
     `\n\n─── END SCREENED UNIVERSES ───`;
 }

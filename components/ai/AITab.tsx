@@ -505,6 +505,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const validationRejectRef = useRef<any>(null); // stores regenerate/fatalValidationFailure event
   // Symbols corrected by server-side validator — force-allow in client validation
   const correctedSymbolsRef = useRef<Set<string>>(new Set());
+  // Frame stagger counter for checklist SSE updates — prevents React 18 batching
+  // all checklist stage transitions into one render frame (which appears frozen)
+  const checklistFrameRef = useRef(0);
 
   const startDrainer = useCallback(() => {
     if (isDrainingRef.current) return;
@@ -1051,6 +1054,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
       correctedTextRef.current = null;
       validationRejectRef.current = null;
       correctedSymbolsRef.current = new Set();
+      checklistFrameRef.current = 0; // reset checklist animation stagger
 
       setMessages(prev => [...prev, { role: 'ai', content: '', id: crypto.randomUUID() }]);
 
@@ -1067,17 +1071,28 @@ export function AITab({ messages, setMessages }: AITabProps) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.checklist) {
-                setChecklistItems(prev => {
-                  const item: ChecklistItem = {
-                    stage: data.checklist.stage,
-                    status: data.checklist.status as ChecklistItem['status'],
-                    detail: data.checklist.detail,
-                    label: '', // filled by ProgressIndicator from STAGE_CONFIG
-                  };
-                  const next = prev.filter(i => i.stage !== item.stage);
-                  next.push(item);
-                  return next;
-                });
+                // 🔴 React 18 batches all setState calls within one synchronous
+                // event-loop tick. SSE events arrive in rapid bursts — without
+                // frame staggering, the checklist jumps from all-pending to
+                // all-done in a single render, appearing frozen to users.
+                // Schedule each stage update 16ms apart (1 frame at 60fps)
+                // so the ProgressIndicator animates through each real stage.
+                const stageUpdate = data.checklist;
+                checklistFrameRef.current += 16;
+                const delay = checklistFrameRef.current;
+                setTimeout(() => {
+                  setChecklistItems(prev => {
+                    const item: ChecklistItem = {
+                      stage: stageUpdate.stage,
+                      status: stageUpdate.status as ChecklistItem['status'],
+                      detail: stageUpdate.detail,
+                      label: '', // filled by ProgressIndicator from STAGE_CONFIG
+                    };
+                    const next = prev.filter(i => i.stage !== item.stage);
+                    next.push(item);
+                    return next;
+                  });
+                }, delay);
                 // Don't start the text drainer during checklist — keep raw
                 // reasoning hidden behind the checklist
                 continue;
@@ -1170,6 +1185,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           // remove the empty AI message stub, and retry silently.
           console.log('[chat] Validation failed — auto-regenerating (content hidden)...');
           setMessages(prev => prev.slice(0, -1)); // Remove empty AI message stub
+          setChecklistItems([]); // Clear stale checklist so new stages animate fresh
           setLoading(false);
           await new Promise(r => setTimeout(r, 50));
           try {
