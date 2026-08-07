@@ -344,11 +344,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const submittingBasketRef = useRef(false); // double-submit guard
   // Track which userId we've already initialized for (prevents re-init loops)
   const brokerInitDoneForUserRef = useRef<string | null>(null);
+  // Guard: block real-money trade execution until Option C (SnapTrade order routing) ships.
+  // Ref avoids stale-closure bugs in the executeTrade useCallback.
+  const realBrokerConnectedRef = useRef(false);
   // Degradation flag: Supabase unreachable → show warning, use localStorage cache
   const [supabaseDegraded, setSupabaseDegraded] = useState(false);
   const [brokerSource, setBrokerSource] = useState<'demo' | 'snaptrade'>('demo');
   const [brokerMeta, setBrokerMeta] = useState<PortfolioContextValue['brokerMeta']>(null);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
+  // Keep the trade-execution guard ref in sync with connection state.
+  // When a real broker is connected (not demo), block executeTrade().
+  useEffect(() => { realBrokerConnectedRef.current = isConnected && !isShowingDemo; }, [isConnected, isShowingDemo]);
 
   // ── Bridge demo orders to Zustand OrderStore for OrdersTab rendering ──
   // This is the ONLY path for Demo order data to reach the Orders tab.
@@ -777,6 +783,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         console.log('[executeTrade] Already submitting — ignoring duplicate call');
         return { success: false, error: 'Order already in progress' };
       }
+
+      // ── Guard: real-broker order execution not yet available ──
+      if (realBrokerConnectedRef.current) {
+        const brokerName = brokerMeta?.name || 'your connected broker';
+        const msg = `⚠️ Real order execution not yet available for ${brokerName}. Trades are paper-only (demo simulation). Switch to Demo mode to trade, or wait for Phase 2b SnapTrade order routing.`;
+        setToast({ message: msg, type: 'error' });
+        setTimeout(() => setToast(null), 8000);
+        console.error('[executeTrade] BLOCKED — real broker connected, order routing not implemented');
+        return { success: false, error: `Order execution not available for ${brokerName} — use Demo mode for paper trading.` };
+      }
+
       submittingTradeRef.current = true;
       try {
       const b = brokerRef.current;
@@ -849,7 +866,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         submittingTradeRef.current = false;
       }
     },
-    [brokerRef, refreshStateFromBroker],
+    [brokerRef, refreshStateFromBroker, brokerMeta],
   );
 
   const dismissToast = useCallback(() => setToast(null), []);

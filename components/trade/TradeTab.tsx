@@ -305,6 +305,24 @@ export function TradeTab() {
   return (
     <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
 
+      {/* ── Real-broker trade warning ── */}
+      {!isShowingDemo && (
+        <div style={{
+          margin: '0 16px 16px 16px',
+          padding: '10px 14px',
+          background: 'rgba(245,158,11,0.08)',
+          border: '1px solid rgba(245,158,11,0.2)',
+          borderRadius: '10px',
+          fontSize: '12px',
+          color: '#f59e0b',
+          textAlign: 'center',
+          lineHeight: 1.4,
+        }}>
+          ⚠️ Real order execution not yet available for connected brokers.<br/>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>Orders from this panel run paper-only demo simulations — no orders are sent to your broker.</span>
+        </div>
+      )}
+
       {/* ─── Symbol Search ─── */}
       <div style={{ margin: '0 16px 16px 16px', position: 'relative' }}>
         <input

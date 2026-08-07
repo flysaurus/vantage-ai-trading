@@ -2094,6 +2094,24 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
 
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
+        {/* ── Real-broker trade warning — block execution is in executeTrade(), this is visual ── */}
+        {isConnected && (
+          <div style={{
+            fontSize: '11px',
+            color: WARNING,
+            textAlign: 'center',
+            marginBottom: '10px',
+            background: 'rgba(245,158,11,0.08)',
+            padding: '8px 12px',
+            borderRadius: '10px',
+            border: '1px solid rgba(245,158,11,0.2)',
+            lineHeight: 1.4,
+          }}>
+            ⚠️ Real order execution not yet available for connected brokers.<br/>
+            <span style={{ color: TEXT_DIM, fontSize: '10px' }}>Trade buttons run paper-only demo simulations — no orders are sent to your broker.</span>
+          </div>
+        )}
+
         {/* Usage counter — chat + deep (only shown after real data loads, never flashes defaults) */}
         {chatRemaining !== null && deepRemaining !== null && (
         <div style={{
