@@ -7,7 +7,7 @@
 // realistic dummy data so the app is fully functional out of the box.
 //
 // SINGLE SOURCE OF TRUTH for all demo portfolio data:
-// 5 investor-style portfolios, each with 2-3 starter positions + orders.
+// 5 investor-style portfolios, each with 10 positions + buy/sell orders.
 // Each portfolio totals exactly $100,000 — ~15-25% invested, ~75-85% cash.
 
 import type {
@@ -43,55 +43,98 @@ interface PositionDef {
 
 export const DEMO_PORTFOLIOS: Record<InvestorStyle, DemoPortfolio> = {
 
-  // ── buffett: Patient Builder — quality, low volatility ─────
+  // ── buffett: Patient Builder — quality value, low volatility, wide moats ──
+  // Math: total cost $41,430, cash $58,570, equity $100,000
   buffett: {
     label: 'Patient Builder',
     description: 'Quality value — steady compounders at fair prices',
     positions: [
-      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 20, avgCost: 479.22, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2025-08-15' },
-      { symbol: 'KO', name: 'The Coca-Cola Company', sector: 'Consumer Defensive', industry: 'Beverages', qty: 80, avgCost: 71.22, weekHigh52: 72, weekLow52: 58, type: 'Stock', buyDate: '2025-10-22' },
-      { symbol: 'AXP', name: 'American Express Company', sector: 'Financial Services', industry: 'Credit Services', qty: 20, avgCost: 375.61, weekHigh52: 310, weekLow52: 245, type: 'Stock', buyDate: '2026-01-10' },
+      { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', industry: 'Consumer Electronics', qty: 30, avgCost: 195.00, weekHigh52: 250, weekLow52: 165, type: 'Stock', buyDate: '2025-06-12' },
+      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 15, avgCost: 420.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2025-08-15' },
+      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', industry: 'Banks', qty: 25, avgCost: 210.00, weekHigh52: 265, weekLow52: 180, type: 'Stock', buyDate: '2025-09-03' },
+      { symbol: 'KO', name: 'The Coca-Cola Company', sector: 'Consumer Defensive', industry: 'Beverages', qty: 60, avgCost: 65.00, weekHigh52: 75, weekLow52: 58, type: 'Stock', buyDate: '2025-10-22' },
+      { symbol: 'AXP', name: 'American Express Company', sector: 'Financial Services', industry: 'Credit Services', qty: 15, avgCost: 275.00, weekHigh52: 310, weekLow52: 240, type: 'Stock', buyDate: '2026-01-10' },
+      { symbol: 'PG', name: 'Procter & Gamble Co.', sector: 'Consumer Defensive', industry: 'Household Products', qty: 30, avgCost: 170.00, weekHigh52: 185, weekLow52: 155, type: 'Stock', buyDate: '2025-11-05' },
+      { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', industry: 'Pharmaceuticals', qty: 25, avgCost: 160.00, weekHigh52: 175, weekLow52: 145, type: 'Stock', buyDate: '2025-07-18' },
+      { symbol: 'WMT', name: 'Walmart Inc.', sector: 'Consumer Defensive', industry: 'Retail', qty: 25, avgCost: 85.00, weekHigh52: 105, weekLow52: 75, type: 'Stock', buyDate: '2025-12-01' },
+      { symbol: 'BAC', name: 'Bank of America Corp.', sector: 'Financial Services', industry: 'Banks', qty: 40, avgCost: 42.00, weekHigh52: 48, weekLow52: 35, type: 'Stock', buyDate: '2026-02-14' },
+      { symbol: 'CVX', name: 'Chevron Corporation', sector: 'Energy', industry: 'Oil & Gas', qty: 20, avgCost: 155.00, weekHigh52: 175, weekLow52: 140, type: 'Stock', buyDate: '2025-10-08' },
     ],
   },
 
-  // ── lynch: Growth Spotter — growth at reasonable price ─────
+  // ── lynch: Growth Spotter — GARP: growth at reasonable price ──
+  // Math: total cost $45,340, cash $54,660, equity $100,000
   lynch: {
     label: 'Growth Spotter',
     description: 'Growth at a reasonable price — quietly compounding winners',
     positions: [
-      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 25, avgCost: 165.00, weekHigh52: 210, weekLow52: 155, type: 'Stock', buyDate: '2025-09-05' },
-      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer Defensive', industry: 'Wholesale Retail', qty: 10, avgCost: 875.00, weekHigh52: 1020, weekLow52: 780, type: 'Stock', buyDate: '2025-11-14' },
-      { symbol: 'META', name: 'Meta Platforms Inc.', sector: 'Technology', industry: 'Social Media', qty: 12, avgCost: 580.00, weekHigh52: 610, weekLow52: 470, type: 'Stock', buyDate: '2026-01-22' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 20, avgCost: 175.00, weekHigh52: 210, weekLow52: 155, type: 'Stock', buyDate: '2025-09-05' },
+      { symbol: 'META', name: 'Meta Platforms Inc.', sector: 'Technology', industry: 'Social Media', qty: 10, avgCost: 550.00, weekHigh52: 650, weekLow52: 470, type: 'Stock', buyDate: '2026-01-22' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer Defensive', industry: 'Wholesale Retail', qty: 8, avgCost: 880.00, weekHigh52: 1020, weekLow52: 780, type: 'Stock', buyDate: '2025-11-14' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Software', qty: 12, avgCost: 430.00, weekHigh52: 470, weekLow52: 380, type: 'Stock', buyDate: '2025-08-01' },
+      { symbol: 'ADBE', name: 'Adobe Inc.', sector: 'Technology', industry: 'Software', qty: 10, avgCost: 520.00, weekHigh52: 590, weekLow52: 460, type: 'Stock', buyDate: '2025-10-15' },
+      { symbol: 'CRM', name: 'Salesforce Inc.', sector: 'Technology', industry: 'Software', qty: 15, avgCost: 290.00, weekHigh52: 340, weekLow52: 250, type: 'Stock', buyDate: '2025-12-03' },
+      { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'Consumer Cyclical', industry: 'E-Commerce', qty: 10, avgCost: 210.00, weekHigh52: 240, weekLow52: 175, type: 'Stock', buyDate: '2026-01-15' },
+      { symbol: 'NFLX', name: 'Netflix Inc.', sector: 'Media & Entertainment', industry: 'Streaming', qty: 8, avgCost: 680.00, weekHigh52: 780, weekLow52: 580, type: 'Stock', buyDate: '2025-11-28' },
+      { symbol: 'NOW', name: 'ServiceNow Inc.', sector: 'Technology', industry: 'Software', qty: 5, avgCost: 850.00, weekHigh52: 980, weekLow52: 720, type: 'Stock', buyDate: '2026-02-05' },
+      { symbol: 'UNH', name: 'UnitedHealth Group Inc.', sector: 'Healthcare', industry: 'Managed Care', qty: 5, avgCost: 560.00, weekHigh52: 630, weekLow52: 500, type: 'Stock', buyDate: '2025-09-20' },
     ],
   },
 
-  // ── livermore: Momentum Rider — high momentum plays ────────
+  // ── livermore: Momentum Rider — high momentum, trending plays ──
+  // Math: total cost $39,220, cash $60,780, equity $100,000
   livermore: {
     label: 'Momentum Rider',
     description: 'Ride the trend — high-conviction momentum plays',
     positions: [
-      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 60, avgCost: 110.00, weekHigh52: 155, weekLow52: 110, type: 'Stock', buyDate: '2025-09-19' },
-      { symbol: 'TSLA', name: 'Tesla Inc.', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers', qty: 30, avgCost: 250.00, weekHigh52: 320, weekLow52: 220, type: 'Stock', buyDate: '2026-01-05' },
+      { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology', industry: 'Semiconductors', qty: 40, avgCost: 115.00, weekHigh52: 155, weekLow52: 95, type: 'Stock', buyDate: '2025-09-19' },
+      { symbol: 'TSLA', name: 'Tesla Inc.', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers', qty: 20, avgCost: 260.00, weekHigh52: 350, weekLow52: 210, type: 'Stock', buyDate: '2026-01-05' },
+      { symbol: 'PLTR', name: 'Palantir Technologies', sector: 'Technology', industry: 'Software', qty: 100, avgCost: 38.00, weekHigh52: 85, weekLow52: 28, type: 'Stock', buyDate: '2025-08-12' },
+      { symbol: 'AVGO', name: 'Broadcom Inc.', sector: 'Technology', industry: 'Semiconductors', qty: 5, avgCost: 1850.00, weekHigh52: 2200, weekLow52: 1400, type: 'Stock', buyDate: '2025-11-08' },
+      { symbol: 'AMD', name: 'Advanced Micro Devices', sector: 'Technology', industry: 'Semiconductors', qty: 25, avgCost: 160.00, weekHigh52: 210, weekLow52: 130, type: 'Stock', buyDate: '2025-10-20' },
+      { symbol: 'COIN', name: 'Coinbase Global Inc.', sector: 'Financial Services', industry: 'Crypto Exchange', qty: 15, avgCost: 220.00, weekHigh52: 350, weekLow52: 170, type: 'Stock', buyDate: '2026-01-30' },
+      { symbol: 'SNOW', name: 'Snowflake Inc.', sector: 'Technology', industry: 'Data Platform', qty: 12, avgCost: 175.00, weekHigh52: 230, weekLow52: 140, type: 'Stock', buyDate: '2025-12-15' },
+      { symbol: 'NET', name: 'Cloudflare Inc.', sector: 'Technology', industry: 'Internet Services', qty: 20, avgCost: 115.00, weekHigh52: 160, weekLow52: 85, type: 'Stock', buyDate: '2026-02-10' },
+      { symbol: 'DDOG', name: 'Datadog Inc.', sector: 'Technology', industry: 'Monitoring', qty: 15, avgCost: 130.00, weekHigh52: 170, weekLow52: 105, type: 'Stock', buyDate: '2025-10-01' },
+      { symbol: 'CRWD', name: 'CrowdStrike Holdings', sector: 'Technology', industry: 'Cybersecurity', qty: 8, avgCost: 340.00, weekHigh52: 420, weekLow52: 260, type: 'Stock', buyDate: '2026-01-08' },
     ],
   },
 
-  // ── munger: Rational Thinker — quality moats ───────────────
+  // ── munger: Rational Thinker — quality moats, durable advantages ──
+  // Math: total cost $39,230, cash $60,770, equity $100,000
   munger: {
     label: 'Rational Thinker',
     description: 'Quality moats — rationally priced durable advantages',
     positions: [
-      { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', industry: 'Consumer Electronics', qty: 25, avgCost: 220.00, weekHigh52: 230, weekLow52: 165, type: 'Stock', buyDate: '2025-08-28' },
-      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 15, avgCost: 410.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2025-12-18' },
+      { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', industry: 'Consumer Electronics', qty: 20, avgCost: 225.00, weekHigh52: 250, weekLow52: 165, type: 'Stock', buyDate: '2025-08-28' },
+      { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', industry: 'Conglomerate', qty: 12, avgCost: 440.00, weekHigh52: 480, weekLow52: 375, type: 'Stock', buyDate: '2025-12-18' },
+      { symbol: 'COST', name: 'Costco Wholesale', sector: 'Consumer Defensive', industry: 'Wholesale Retail', qty: 6, avgCost: 850.00, weekHigh52: 1020, weekLow52: 780, type: 'Stock', buyDate: '2025-11-14' },
+      { symbol: 'V', name: 'Visa Inc.', sector: 'Financial Services', industry: 'Payment Processing', qty: 15, avgCost: 300.00, weekHigh52: 330, weekLow52: 265, type: 'Stock', buyDate: '2025-09-10' },
+      { symbol: 'MA', name: 'Mastercard Inc.', sector: 'Financial Services', industry: 'Payment Processing', qty: 10, avgCost: 480.00, weekHigh52: 530, weekLow52: 410, type: 'Stock', buyDate: '2025-10-05' },
+      { symbol: 'MCO', name: "Moody's Corporation", sector: 'Financial Services', industry: 'Credit Ratings', qty: 8, avgCost: 450.00, weekHigh52: 510, weekLow52: 380, type: 'Stock', buyDate: '2026-02-01' },
+      { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology', industry: 'Software', qty: 10, avgCost: 415.00, weekHigh52: 470, weekLow52: 380, type: 'Stock', buyDate: '2025-07-22' },
+      { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', industry: 'Internet Services', qty: 10, avgCost: 180.00, weekHigh52: 210, weekLow52: 155, type: 'Stock', buyDate: '2025-11-01' },
+      { symbol: 'UNP', name: 'Union Pacific Corp.', sector: 'Industrials', industry: 'Railroads', qty: 10, avgCost: 250.00, weekHigh52: 275, weekLow52: 215, type: 'Stock', buyDate: '2026-01-15' },
+      { symbol: 'SPGI', name: 'S&P Global Inc.', sector: 'Financial Services', industry: 'Market Data', qty: 6, avgCost: 500.00, weekHigh52: 550, weekLow52: 430, type: 'Stock', buyDate: '2025-12-05' },
     ],
   },
 
-  // ── soros: Contrarian — out-of-favor large caps ────────────
+  // ── soros: Contrarian — out-of-favor value, macro catalysts ──
+  // Math: total cost $45,995, cash $54,005, equity $100,000
   soros: {
     label: 'Contrarian',
     description: 'Against the crowd — out-of-favor value with macro catalysts',
     positions: [
-      { symbol: 'XOM', name: 'Exxon Mobil Corp.', sector: 'Energy', industry: 'Oil & Gas', qty: 45, avgCost: 110.00, weekHigh52: 130, weekLow52: 100, type: 'Stock', buyDate: '2025-10-08' },
+      { symbol: 'XOM', name: 'Exxon Mobil Corp.', sector: 'Energy', industry: 'Oil & Gas', qty: 50, avgCost: 112.00, weekHigh52: 135, weekLow52: 100, type: 'Stock', buyDate: '2025-10-08' },
       { symbol: 'GLD', name: 'SPDR Gold Shares', sector: 'Commodities', industry: 'Gold ETF', qty: 30, avgCost: 215.00, weekHigh52: 250, weekLow52: 190, type: 'ETF', buyDate: '2026-01-15' },
+      { symbol: 'CVX', name: 'Chevron Corporation', sector: 'Energy', industry: 'Oil & Gas', qty: 25, avgCost: 155.00, weekHigh52: 175, weekLow52: 140, type: 'Stock', buyDate: '2025-09-20' },
+      { symbol: 'SLB', name: 'Schlumberger Ltd.', sector: 'Energy', industry: 'Oil Services', qty: 50, avgCost: 48.00, weekHigh52: 58, weekLow52: 40, type: 'Stock', buyDate: '2025-11-10' },
+      { symbol: 'FCX', name: 'Freeport-McMoRan Inc.', sector: 'Materials', industry: 'Copper Mining', qty: 50, avgCost: 42.00, weekHigh52: 55, weekLow52: 35, type: 'Stock', buyDate: '2026-02-20' },
+      { symbol: 'NEM', name: 'Newmont Corporation', sector: 'Materials', industry: 'Gold Mining', qty: 35, avgCost: 48.00, weekHigh52: 60, weekLow52: 38, type: 'Stock', buyDate: '2025-12-01' },
+      { symbol: 'DVN', name: 'Devon Energy Corp.', sector: 'Energy', industry: 'Oil & Gas', qty: 40, avgCost: 45.00, weekHigh52: 55, weekLow52: 38, type: 'Stock', buyDate: '2026-01-05' },
+      { symbol: 'OXY', name: 'Occidental Petroleum', sector: 'Energy', industry: 'Oil & Gas', qty: 35, avgCost: 55.00, weekHigh52: 68, weekLow52: 48, type: 'Stock', buyDate: '2025-10-30' },
+      { symbol: 'BHP', name: 'BHP Group Ltd.', sector: 'Materials', industry: 'Diversified Mining', qty: 25, avgCost: 58.00, weekHigh52: 68, weekLow52: 50, type: 'Stock', buyDate: '2025-08-15' },
+      { symbol: 'KMI', name: 'Kinder Morgan Inc.', sector: 'Energy', industry: 'Pipelines', qty: 60, avgCost: 22.00, weekHigh52: 27, weekLow52: 19, type: 'Stock', buyDate: '2025-11-22' },
     ],
   },
 };
@@ -111,26 +154,80 @@ interface DemoOrderDef {
 
 export const DEMO_ORDERS: Record<string, DemoOrderDef[]> = {
   buffett: [
-    { symbol: 'BRK.B', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2025-08-15T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'KO', qty: 80, side: 'buy', type: 'market', status: 'filled', filledPrice: 62.50, filledAt: new Date('2025-10-22T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'AXP', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 265.00, filledAt: new Date('2026-01-10T14:30:00Z'), timeInForce: 'day' },
+    // Buys (oldest → newest)
+    { symbol: 'AAPL', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2025-06-12T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'JNJ', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 160.00, filledAt: new Date('2025-07-18T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'BRK.B', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 420.00, filledAt: new Date('2025-08-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 25, side: 'buy', type: 'limit', status: 'filled', filledPrice: 210.00, filledAt: new Date('2025-09-03T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'CVX', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 155.00, filledAt: new Date('2025-10-08T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'KO', qty: 60, side: 'buy', type: 'limit', status: 'filled', filledPrice: 65.00, filledAt: new Date('2025-10-22T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'PG', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 170.00, filledAt: new Date('2025-11-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'WMT', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 85.00, filledAt: new Date('2025-12-01T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'AXP', qty: 15, side: 'buy', type: 'limit', status: 'filled', filledPrice: 275.00, filledAt: new Date('2026-01-10T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'BAC', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 42.00, filledAt: new Date('2026-02-14T14:30:00Z'), timeInForce: 'day' },
+    // Sells (partial profit-taking on specific holdings)
+    { symbol: 'KO', qty: 15, side: 'sell', type: 'market', status: 'filled', filledPrice: 69.50, filledAt: new Date('2026-03-20T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'JPM', qty: 5, side: 'sell', type: 'limit', status: 'filled', filledPrice: 245.00, filledAt: new Date('2026-05-01T14:30:00Z'), timeInForce: 'gtc' },
   ],
   lynch: [
-    { symbol: 'GOOGL', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 165.00, filledAt: new Date('2025-09-05T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'COST', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 875.00, filledAt: new Date('2025-11-14T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'META', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 580.00, filledAt: new Date('2026-01-22T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 430.00, filledAt: new Date('2025-08-01T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 175.00, filledAt: new Date('2025-09-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'UNH', qty: 5, side: 'buy', type: 'limit', status: 'filled', filledPrice: 560.00, filledAt: new Date('2025-09-20T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'ADBE', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 520.00, filledAt: new Date('2025-10-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'COST', qty: 8, side: 'buy', type: 'limit', status: 'filled', filledPrice: 880.00, filledAt: new Date('2025-11-14T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'NFLX', qty: 8, side: 'buy', type: 'market', status: 'filled', filledPrice: 680.00, filledAt: new Date('2025-11-28T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'CRM', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 290.00, filledAt: new Date('2025-12-03T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'AMZN', qty: 10, side: 'buy', type: 'limit', status: 'filled', filledPrice: 210.00, filledAt: new Date('2026-01-15T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'META', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 550.00, filledAt: new Date('2026-01-22T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'NOW', qty: 5, side: 'buy', type: 'market', status: 'filled', filledPrice: 850.00, filledAt: new Date('2026-02-05T14:30:00Z'), timeInForce: 'day' },
+    // Sells
+    { symbol: 'GOOGL', qty: 5, side: 'sell', type: 'market', status: 'filled', filledPrice: 195.00, filledAt: new Date('2026-03-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'NFLX', qty: 3, side: 'sell', type: 'limit', status: 'filled', filledPrice: 750.00, filledAt: new Date('2026-04-28T14:30:00Z'), timeInForce: 'gtc' },
   ],
   livermore: [
-    { symbol: 'NVDA', qty: 60, side: 'buy', type: 'market', status: 'filled', filledPrice: 110.00, filledAt: new Date('2025-09-19T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'TSLA', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 250.00, filledAt: new Date('2026-01-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'PLTR', qty: 100, side: 'buy', type: 'market', status: 'filled', filledPrice: 38.00, filledAt: new Date('2025-08-12T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'NVDA', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 115.00, filledAt: new Date('2025-09-19T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'DDOG', qty: 15, side: 'buy', type: 'limit', status: 'filled', filledPrice: 130.00, filledAt: new Date('2025-10-01T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'AMD', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 160.00, filledAt: new Date('2025-10-20T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'AVGO', qty: 5, side: 'buy', type: 'limit', status: 'filled', filledPrice: 1850.00, filledAt: new Date('2025-11-08T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'SNOW', qty: 12, side: 'buy', type: 'market', status: 'filled', filledPrice: 175.00, filledAt: new Date('2025-12-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'TSLA', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 260.00, filledAt: new Date('2026-01-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'CRWD', qty: 8, side: 'buy', type: 'limit', status: 'filled', filledPrice: 340.00, filledAt: new Date('2026-01-08T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'COIN', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 220.00, filledAt: new Date('2026-01-30T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'NET', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 115.00, filledAt: new Date('2026-02-10T14:30:00Z'), timeInForce: 'day' },
+    // Sells (momentum profit-taking)
+    { symbol: 'PLTR', qty: 30, side: 'sell', type: 'limit', status: 'filled', filledPrice: 65.00, filledAt: new Date('2026-04-05T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'NVDA', qty: 10, side: 'sell', type: 'market', status: 'filled', filledPrice: 148.00, filledAt: new Date('2026-05-20T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'AMD', qty: 8, side: 'sell', type: 'market', status: 'filled', filledPrice: 185.00, filledAt: new Date('2026-06-10T14:30:00Z'), timeInForce: 'day' },
   ],
   munger: [
-    { symbol: 'AAPL', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 220.00, filledAt: new Date('2025-08-28T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'BRK.B', qty: 15, side: 'buy', type: 'market', status: 'filled', filledPrice: 410.00, filledAt: new Date('2025-12-18T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'MSFT', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 415.00, filledAt: new Date('2025-07-22T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'AAPL', qty: 20, side: 'buy', type: 'market', status: 'filled', filledPrice: 225.00, filledAt: new Date('2025-08-28T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'V', qty: 15, side: 'buy', type: 'limit', status: 'filled', filledPrice: 300.00, filledAt: new Date('2025-09-10T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'MA', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 480.00, filledAt: new Date('2025-10-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'GOOGL', qty: 10, side: 'buy', type: 'limit', status: 'filled', filledPrice: 180.00, filledAt: new Date('2025-11-01T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'COST', qty: 6, side: 'buy', type: 'market', status: 'filled', filledPrice: 850.00, filledAt: new Date('2025-11-14T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'SPGI', qty: 6, side: 'buy', type: 'market', status: 'filled', filledPrice: 500.00, filledAt: new Date('2025-12-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'BRK.B', qty: 12, side: 'buy', type: 'limit', status: 'filled', filledPrice: 440.00, filledAt: new Date('2025-12-18T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'UNP', qty: 10, side: 'buy', type: 'market', status: 'filled', filledPrice: 250.00, filledAt: new Date('2026-01-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'MCO', qty: 8, side: 'buy', type: 'limit', status: 'filled', filledPrice: 450.00, filledAt: new Date('2026-02-01T14:30:00Z'), timeInForce: 'gtc' },
+    // Sells (rare — Munger rarely sells, but trims overvalued holdings)
+    { symbol: 'AAPL', qty: 3, side: 'sell', type: 'limit', status: 'filled', filledPrice: 245.00, filledAt: new Date('2026-06-15T14:30:00Z'), timeInForce: 'gtc' },
   ],
   soros: [
-    { symbol: 'XOM', qty: 45, side: 'buy', type: 'market', status: 'filled', filledPrice: 110.00, filledAt: new Date('2025-10-08T14:30:00Z'), timeInForce: 'day' },
-    { symbol: 'GLD', qty: 30, side: 'buy', type: 'market', status: 'filled', filledPrice: 215.00, filledAt: new Date('2026-01-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'BHP', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 58.00, filledAt: new Date('2025-08-15T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'CVX', qty: 25, side: 'buy', type: 'market', status: 'filled', filledPrice: 155.00, filledAt: new Date('2025-09-20T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'XOM', qty: 50, side: 'buy', type: 'limit', status: 'filled', filledPrice: 112.00, filledAt: new Date('2025-10-08T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'OXY', qty: 35, side: 'buy', type: 'market', status: 'filled', filledPrice: 55.00, filledAt: new Date('2025-10-30T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'SLB', qty: 50, side: 'buy', type: 'market', status: 'filled', filledPrice: 48.00, filledAt: new Date('2025-11-10T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'KMI', qty: 60, side: 'buy', type: 'limit', status: 'filled', filledPrice: 22.00, filledAt: new Date('2025-11-22T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'NEM', qty: 35, side: 'buy', type: 'market', status: 'filled', filledPrice: 48.00, filledAt: new Date('2025-12-01T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'DVN', qty: 40, side: 'buy', type: 'market', status: 'filled', filledPrice: 45.00, filledAt: new Date('2026-01-05T14:30:00Z'), timeInForce: 'day' },
+    { symbol: 'GLD', qty: 30, side: 'buy', type: 'limit', status: 'filled', filledPrice: 215.00, filledAt: new Date('2026-01-15T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'FCX', qty: 50, side: 'buy', type: 'market', status: 'filled', filledPrice: 42.00, filledAt: new Date('2026-02-20T14:30:00Z'), timeInForce: 'day' },
+    // Sells (contrarian exit on strength)
+    { symbol: 'XOM', qty: 15, side: 'sell', type: 'limit', status: 'filled', filledPrice: 128.00, filledAt: new Date('2026-03-10T14:30:00Z'), timeInForce: 'gtc' },
+    { symbol: 'OXY', qty: 10, side: 'sell', type: 'market', status: 'filled', filledPrice: 62.00, filledAt: new Date('2026-05-05T14:30:00Z'), timeInForce: 'day' },
   ],
 };
 
@@ -534,7 +631,14 @@ export function isUserInDemo(user: any): boolean {
  * 10-position diversified portfolio: $95,545 value, +$3,130 total P&L.
  */
 export const demoPositions = [
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', qty: 25, currentPrice: 178.50, avgCost: 175.00, marketValue: 4462.50, totalPnl: 87.50, totalPnlPct: 2.0, todayChange: 13.75, todayChangePct: 0.31, pctOfAccount: 4.5, sector: 'Technology' },
-  { symbol: 'COST', name: 'Costco Wholesale', qty: 10, currentPrice: 912.00, avgCost: 900.00, marketValue: 9120.00, totalPnl: 120.00, totalPnlPct: 1.3, todayChange: 18.00, todayChangePct: 0.20, pctOfAccount: 9.1, sector: 'Consumer Defensive' },
-  { symbol: 'MSFT', name: 'Microsoft Corp.', qty: 10, currentPrice: 437.80, avgCost: 430.00, marketValue: 4378.00, totalPnl: 78.00, totalPnlPct: 1.8, todayChange: 12.00, todayChangePct: 0.27, pctOfAccount: 4.4, sector: 'Technology' },
+  { symbol: 'AAPL', name: 'Apple Inc.', qty: 20, currentPrice: 238.00, avgCost: 225.00, marketValue: 4760.00, totalPnl: 260.00, totalPnlPct: 5.8, todayChange: 12.00, todayChangePct: 0.25, pctOfAccount: 4.8, sector: 'Technology' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', qty: 20, currentPrice: 180.00, avgCost: 175.00, marketValue: 3600.00, totalPnl: 100.00, totalPnlPct: 2.9, todayChange: 15.00, todayChangePct: 0.42, pctOfAccount: 3.6, sector: 'Technology' },
+  { symbol: 'MSFT', name: 'Microsoft Corp.', qty: 12, currentPrice: 440.00, avgCost: 430.00, marketValue: 5280.00, totalPnl: 120.00, totalPnlPct: 2.3, todayChange: 18.00, todayChangePct: 0.34, pctOfAccount: 5.3, sector: 'Technology' },
+  { symbol: 'COST', name: 'Costco Wholesale', qty: 8, currentPrice: 915.00, avgCost: 880.00, marketValue: 7320.00, totalPnl: 280.00, totalPnlPct: 4.0, todayChange: 24.00, todayChangePct: 0.33, pctOfAccount: 7.3, sector: 'Consumer Defensive' },
+  { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', qty: 15, currentPrice: 455.00, avgCost: 420.00, marketValue: 6825.00, totalPnl: 525.00, totalPnlPct: 8.3, todayChange: 22.50, todayChangePct: 0.33, pctOfAccount: 6.8, sector: 'Financial Services' },
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', qty: 25, currentPrice: 248.00, avgCost: 210.00, marketValue: 6200.00, totalPnl: 950.00, totalPnlPct: 18.1, todayChange: 20.00, todayChangePct: 0.32, pctOfAccount: 6.2, sector: 'Financial Services' },
+  { symbol: 'NVDA', name: 'NVIDIA Corp.', qty: 30, currentPrice: 138.00, avgCost: 115.00, marketValue: 4140.00, totalPnl: 690.00, totalPnlPct: 20.0, todayChange: 15.00, todayChangePct: 0.36, pctOfAccount: 4.1, sector: 'Technology' },
+  { symbol: 'XOM', name: 'Exxon Mobil Corp.', qty: 35, currentPrice: 118.00, avgCost: 112.00, marketValue: 4130.00, totalPnl: 210.00, totalPnlPct: 5.4, todayChange: 10.50, todayChangePct: 0.25, pctOfAccount: 4.1, sector: 'Energy' },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', qty: 25, currentPrice: 165.00, avgCost: 160.00, marketValue: 4125.00, totalPnl: 125.00, totalPnlPct: 3.1, todayChange: 7.50, todayChangePct: 0.18, pctOfAccount: 4.1, sector: 'Healthcare' },
+  { symbol: 'GLD', name: 'SPDR Gold Shares', qty: 25, currentPrice: 232.00, avgCost: 215.00, marketValue: 5800.00, totalPnl: 425.00, totalPnlPct: 7.9, todayChange: 20.00, todayChangePct: 0.43, pctOfAccount: 5.8, sector: 'Commodities' },
 ];

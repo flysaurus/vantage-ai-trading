@@ -9,6 +9,13 @@
 // For company profiles:  Finnhub → Yahoo (Alpaca lacks profile data)
 // For candles (bars):    Alpaca → Yahoo → Finnhub
 // For fundamentals:      Finnhub only
+//
+// Caching:
+//   - 60s TTL during market hours (09:30-16:00 ET)
+//   - 300s TTL outside market hours (after-hours, weekends, holidays)
+//   - In-memory cache; cleared on server restart
+
+import { isMarketOpen } from '@/lib/market-hours';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -558,11 +565,53 @@ export async function getQuote(symbol: string): Promise<Quote | null> {
  * Tries each source for the full batch, falling back for symbols
  * that didn't resolve. Final pass uses Yahoo.
  */
+// ─── Quote Cache ─────────────────────────────────────────
+// TTL: 60s during market hours, 300s outside
+const _quoteCache = new Map<string, { data: Quote; timestamp: number }>();
+
+function _cacheTtlMs(): number {
+  return isMarketOpen() ? 60_000 : 300_000;
+}
+
+function _getCached(symbol: string): Quote | null {
+  const entry = _quoteCache.get(symbol.toUpperCase());
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > _cacheTtlMs()) {
+    _quoteCache.delete(symbol.toUpperCase());
+    return null;
+  }
+  return entry.data;
+}
+
+function _setCache(symbol: string, data: Quote): void {
+  _quoteCache.set(symbol.toUpperCase(), { data, timestamp: Date.now() });
+}
+
 export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quote>> {
   if (symbols.length === 0) return new Map();
 
-  const remaining = new Set(symbols.map(s => s.toUpperCase()));
+  const remaining = new Set<string>();
   const results = new Map<string, Quote>();
+  let cacheHits = 0;
+
+  // Check cache first
+  for (const sym of symbols) {
+    const cached = _getCached(sym);
+    if (cached) {
+      results.set(sym.toUpperCase(), cached);
+      cacheHits++;
+    } else {
+      remaining.add(sym.toUpperCase());
+    }
+  }
+
+  if (cacheHits > 0) {
+    console.log(`[quotes] cache hits: ${cacheHits}/${symbols.length} (TTL: ${_cacheTtlMs() / 1000}s)`);
+  }
+
+  if (remaining.size === 0) return results;
+
+  const fetched = new Map<string, Quote>();
 
   // 1. Try Finnhub in concurrent batches (rate limit: 60/min)
   const fhKey = finnhubKey();
@@ -578,7 +627,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
       );
       for (const r of batchResults) {
         if (r.status === 'fulfilled' && r.value && r.value.price > 0) {
-          results.set(r.value.symbol, r.value);
+          fetched.set(r.value.symbol, r.value);
           remaining.delete(r.value.symbol);
           fhResolved++;
         } else {
@@ -600,7 +649,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
     let apResolved = 0;
     for (const [sym, quote] of apResults) {
       if (quote.price > 0) {
-        results.set(sym, quote);
+        fetched.set(sym, quote);
         remaining.delete(sym);
         apResolved++;
       }
@@ -616,7 +665,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
     let yhResolved = 0;
     for (const [sym, quote] of yhResults) {
       if (quote.price > 0) {
-        results.set(sym, quote);
+        fetched.set(sym, quote);
         remaining.delete(sym);
         yhResolved++;
       }
@@ -629,13 +678,13 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
   // 4. Enrich: fetch 52-week range for all resolved symbols
   //    Primary: Finnhub /stock/metric (fast, official)
   //    Fallback: Yahoo v8/chart meta (free, no key, always works)
-  if (results.size > 0) {
-    const symArr = [...results.keys()];
+  if (fetched.size > 0) {
+    const symArr = [...fetched.keys()];
     let enriched = 0;
     let yahooFallback = 0;
     for (let i = 0; i < symArr.length; i++) {
       const sym = symArr[i];
-      const q = results.get(sym)!;
+      const q = fetched.get(sym)!;
       // Skip if quote already has valid 52-week range
       if (q.high52w != null && q.high52w > 0) continue;
 
@@ -644,7 +693,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
         if (fhKey) {
           const metric = await finnhubFundamentals(sym, 4000);
           if (metric?.high52w != null && metric.high52w > 0) {
-            results.set(sym, { ...q, high52w: metric.high52w, low52w: metric.low52w ?? q.low52w });
+            fetched.set(sym, { ...q, high52w: metric.high52w, low52w: metric.low52w ?? q.low52w });
             enriched++;
             continue;
           }
@@ -660,7 +709,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
             const yData = await yRes.json();
             const yMeta = yData?.chart?.result?.[0]?.meta;
             if (yMeta?.fiftyTwoWeekHigh != null && yMeta.fiftyTwoWeekHigh > 0) {
-              results.set(sym, {
+              fetched.set(sym, {
                 ...q,
                 high52w: yMeta.fiftyTwoWeekHigh,
                 low52w: yMeta.fiftyTwoWeekLow ?? 0,
@@ -673,6 +722,12 @@ export async function getBatchQuotes(symbols: string[]): Promise<Map<string, Quo
       if (i < symArr.length - 1) await new Promise(r => setTimeout(r, 50));
     }
     console.log('[quotes] 52-week enrichment: finnhub=' + enriched + ' yahoo=' + yahooFallback + ' total=' + symArr.length);
+  }
+
+  // Merge fetched results into main results + update cache
+  for (const [sym, quote] of fetched) {
+    _setCache(sym, quote);
+    results.set(sym, quote);
   }
 
   return results;
