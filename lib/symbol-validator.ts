@@ -125,6 +125,9 @@ export async function loadSymbolCache(): Promise<Set<string>> {
       'XLV': 'Health Care Select Sector SPDR Fund',
       'XLF': 'Financial Select Sector SPDR Fund',
       'SMH': 'VanEck Semiconductor ETF',
+      'VYM': 'Vanguard High Dividend Yield ETF',
+      'JEPI': 'JPMorgan Equity Premium Income ETF',
+      'PFF': 'iShares Preferred & Income Securities ETF',
     };
     let missingEtfs = 0;
     let hardcodedEtfs = 0;
