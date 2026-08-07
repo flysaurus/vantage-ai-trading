@@ -780,7 +780,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
       submittingTradeRef.current = true;
       try {
-      const b = brokerRef.current;
+      // Use the real broker when viewing a connected account, DemoBroker otherwise.
+      // brokerRef.current is always DemoBroker; broker from useBroker() is the real one.
+      const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
       if (!b) return { success: false, error: 'Broker not initialized' };
       const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
       if (!result.success) {
@@ -870,14 +872,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         submittingTradeRef.current = false;
       }
     },
-    [brokerRef, refreshStateFromBroker, brokerMeta, user?.email],
+    [brokerRef, refreshStateFromBroker, brokerMeta, user?.email, broker, isShowingDemo],
   );
 
   const dismissToast = useCallback(() => setToast(null), []);
 
   // ── cancelOrder ──
   const cancelOrder = useCallback(async (orderId: string) => {
-    const b = brokerRef.current;
+    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
     if (!b) return;
     const order = demoOrders.find(o => o.id === orderId);
     const symbol = order?.symbol || 'Unknown';
@@ -890,7 +892,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── cancelBasketOrder ──
   const cancelBasketOrder = useCallback(async (basketId: string) => {
-    const b = brokerRef.current;
+    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
     if (!b) return;
     const result = await b.cancelBasketOrder(basketId);
     if (!result.success) {
@@ -901,20 +903,20 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     await refreshStateFromBroker();
     setToast({ message: '🛑 Basket order cancelled. Cash returned to buying power.', type: 'success' });
     setTimeout(() => setToast(null), 4000);
-  }, [brokerRef, refreshStateFromBroker]);
+  }, [brokerRef, refreshStateFromBroker, broker, isShowingDemo]);
 
   // ── executePendingOrders ──
   const executePendingOrders = useCallback(async () => {
-    const b = brokerRef.current;
+    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
     if (!b) return;
     const filled = await b.executePendingOrders();
     if (filled > 0) {
       await refreshStateFromBroker();
-      await loadBasketsRef.current(); // Refresh basket state from BASKET_POSITIONS_KEY
+      await loadBasketsRef.current();
       setToast({ message: `🔔 Executed ${filled} pending orders`, type: 'success' });
       setTimeout(() => setToast(null), 4000);
     }
-  }, [brokerRef, refreshStateFromBroker]);
+  }, [brokerRef, refreshStateFromBroker, broker, isShowingDemo]);
 
   const loadBasketsRef = useRef<() => Promise<void>>(async () => {});
 
@@ -1144,7 +1146,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
     submittingBasketRef.current = true;
     try {
-    const b = brokerRef.current;
+    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
     if (!b) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Broker not initialized' };
     const result = await b.placeBasketOrder({
       basketId,

@@ -154,7 +154,7 @@ const PLACEHOLDERS = [
 ];
 
 export function AITab({ messages, setMessages }: AITabProps) {
-  const { account: liveAccount, executeTrade } = useLivePortfolio();
+  const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : null;
@@ -2095,7 +2095,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
       {/* ======== 3. INPUT ZONE — fixed at bottom with separator ======== */}
       <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.015)', padding: '18px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', position: 'relative', zIndex: 10 }}>
         {/* ── Real-broker trade warning — block execution is in executeTrade(), this is visual ── */}
-        {isConnected && (
+        {isConnected && brokerMeta && !brokerMeta.tradingEnabled && (
           <div style={{
             fontSize: '11px',
             color: WARNING,

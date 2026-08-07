@@ -83,7 +83,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast, brokerMeta } = useLivePortfolio();
   const { orders: brokerOrders } = useOrderStore();
   const { activeAccount } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -305,8 +305,8 @@ export function TradeTab() {
   return (
     <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
 
-      {/* ── Real-broker trade warning ── */}
-      {!isShowingDemo && (
+      {/* ── Real-broker trade warning (only when broker can't execute trades) ── */}
+      {!isShowingDemo && brokerMeta && !brokerMeta.tradingEnabled && (
         <div style={{
           margin: '0 16px 16px 16px',
           padding: '10px 14px',
