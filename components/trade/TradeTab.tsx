@@ -764,13 +764,13 @@ export function TradeTab() {
                 ? parseFloat(qty) / price
                 : parseFloat(qty);
               const estCost = shares * price;
-              const bp = account?.buyingPower ?? 0;
+              const bp = account?.buyingPower ?? account?.cash ?? 0;
               if (side === 'buy' && estCost > bp) return '#ef4444';
               return '#94a3b8';
             })(),
             fontSize: '13px'
           }}>
-            ${(account?.buyingPower ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${(account?.buyingPower ?? account?.cash ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
 
@@ -784,7 +784,7 @@ export function TradeTab() {
             ? parseFloat(qty) / price
             : parseFloat(qty);
           const estCost = shares * price;
-          const bp = account?.buyingPower ?? 0;
+          const bp = account?.buyingPower ?? account?.cash ?? 0;
           if (estCost > bp) {
             return (
               <div style={{
@@ -880,7 +880,7 @@ export function TradeTab() {
             // Pre-check buying power for BUY orders
             if (side === 'buy') {
               const estCost = shares * price;
-              const bp = account?.buyingPower ?? 0;
+              const bp = account?.buyingPower ?? account?.cash ?? 0;
               if (estCost > bp) return; // Blocked by buy warning — don't submit
             }
 
@@ -931,7 +931,7 @@ export function TradeTab() {
                 ? parseFloat(qty) / price : parseFloat(qty);
               if (!shares || shares <= 0) return 'not-allowed';
               if (side === 'buy') {
-                if (shares * price > (account?.buyingPower ?? 0)) return 'not-allowed';
+                if (shares * price > (account?.buyingPower ?? account?.cash ?? 0)) return 'not-allowed';
               }
               if (side === 'sell') {
                 const pos = account?.positions?.find(p => p.symbol === selectedSymbol);
@@ -949,7 +949,7 @@ export function TradeTab() {
                 ? parseFloat(qty) / price : parseFloat(qty);
               if (!shares || shares <= 0) return 0.5;
               if (side === 'buy') {
-                if (shares * price > (account?.buyingPower ?? 0)) return 0.5;
+                if (shares * price > (account?.buyingPower ?? account?.cash ?? 0)) return 0.5;
               }
               if (side === 'sell') {
                 const pos = account?.positions?.find(p => p.symbol === selectedSymbol);
