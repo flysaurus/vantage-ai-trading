@@ -812,6 +812,24 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => setToast(null), 4000);
           return { success: false, error: 'Broker communication failed', status: 'REJECTED' };
         }
+        // ── Phase 6: Persist order to Zustand immediately → appears in Open tab ──
+        try {
+          useOrderStore.getState().addOrder({
+            id: result.orderId || `snaptrade-${Date.now()}`,
+            symbol,
+            side: side === 'BUY' ? 'buy' as const : 'sell' as const,
+            type: (orderType || 'market') as 'market' | 'limit' | 'stop' | 'stop_limit',
+            status: 'open' as const,
+            qty: shares,
+            limitPrice,
+            stopPrice,
+            timeInForce: (timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
+            createdAt: new Date().toISOString(),
+          });
+        } catch (orderPersistErr) {
+          console.error('[executeTrade] Failed to persist order to store:', orderPersistErr);
+        }
+
         // Refresh live account after successful trade
         try {
           const [ba, baPositions] = await Promise.all([

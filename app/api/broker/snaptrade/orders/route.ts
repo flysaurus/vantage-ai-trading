@@ -1,187 +1,92 @@
 // ─── GET /api/broker/snaptrade/orders ─────────────────────
-// Returns order history across all SnapTrade-connected
-// brokerage accounts for the authenticated user.
-// Uses SnapTrade's activities endpoint, mapped to Vantage order format.
+// Fetches orders from SnapTrade's recentOrders endpoint via
+// SnapTradeBroker.getOrders(). Returns BOTH open and filled
+// orders with correct status (was previously activities-only,
+// hardcoded to 'filled').
+//
+// Phase 6: Open→filled lifecycle tracking.
+// Client polls this every 30s — orders transition automatically.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
-import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
-import {
-  extractOrderSymbol,
-  extractOrderName,
-  mapOrderSide,
-} from '@/lib/snaptrade/mapping';
+import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 
-interface SnapTradeActivity {
-  id: string;
-  account_id?: string;
-  currency?: string;
-  // Documented SnapTrade schema: universal_symbol.symbol (two levels)
-  universal_symbol?: {
-    symbol: string;
-    description?: string;
-    currency?: string;
-  };
-  // Legacy fallback: symbol.symbol
-  symbol?: {
-    symbol: string;
-    description?: string;
-    currency?: string;
-  };
-  type: string; // BUY, SELL, DIVIDEND, INTEREST, etc.
-  trade_date: string;
-  settlement_date?: string;
-  // ⚠️ SnapTrade returns `units` (signed: +BUY/-SELL), NOT `quantity`
-  units?: number;
-  price?: number;
-  // ⚠️ amount is signed (snaptrade convention)
-  amount?: number;
-  description?: string;
-  fee?: number;
-  option_details?: {
-    option_type?: string;
-    strike_price?: number;
-    expiration_date?: string;
-    underlying_symbol?: string;
-  };
-  institution?: string;
+function formatBrokerName(slug: string | null): string {
+  if (!slug) return 'Unknown';
+  return slug
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
-interface BrokerOrder {
-  id: string;
-  symbol: string;
-  name: string;
-  side: 'buy' | 'sell';
-  type: 'market' | 'limit' | 'stop' | 'stop_limit';
-  status: string;
-  qty: number;
-  filledQty: number;
-  limitPrice?: number;
-  stopPrice?: number;
-  filledPrice?: number;
-  totalValue?: number;
-  timeInForce: string;
-  assetType?: string;
-  createdAt: string;
-  updatedAt: string;
-  bracketOrder?: unknown;
-}
-
-// Trade types from SnapTrade activities
-const TRADE_TYPES = new Set(['BUY', 'SELL', 'SELL_SHORT', 'BUY_TO_COVER', 'DIVIDEND_REINVEST']);
-
-// ─── Dev mode — realistic synthetic orders ─────────────────
-const DEV_ORDERS: BrokerOrder[] = [
+// ─── Dev mode — realistic orders with mixed status ─────────
+const DEV_ORDERS = [
   {
-    id: 'dev-order-001',
-    symbol: 'AAPL',
-    name: 'Apple Inc.',
-    side: 'buy',
-    type: 'market',
-    status: 'filled',
-    qty: 10,
-    filledQty: 10,
-    filledPrice: 188.45,
-    totalValue: 1884.50,
-    timeInForce: 'day',
-    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    id: 'dev-order-001', symbol: 'AAPL', name: 'Apple Inc.',
+    side: 'buy' as const, type: 'market' as const, status: 'filled' as const,
+    qty: 10, filledQty: 10, filledPrice: 188.45, totalValue: 1884.50,
+    timeInForce: 'day', createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
     updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
   },
   {
-    id: 'dev-order-002',
-    symbol: 'MSFT',
-    name: 'Microsoft Corp.',
-    side: 'buy',
-    type: 'limit',
-    status: 'filled',
-    qty: 5,
-    filledQty: 5,
-    limitPrice: 420.00,
-    filledPrice: 419.75,
-    totalValue: 2098.75,
-    timeInForce: 'gtc',
-    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    id: 'dev-order-002', symbol: 'MSFT', name: 'Microsoft Corp.',
+    side: 'buy' as const, type: 'limit' as const, status: 'filled' as const,
+    qty: 5, filledQty: 5, limitPrice: 420.00, filledPrice: 419.75, totalValue: 2098.75,
+    timeInForce: 'gtc', createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
     updatedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
   },
   {
-    id: 'dev-order-003',
-    symbol: 'NVDA',
-    name: 'NVIDIA Corp.',
-    side: 'sell',
-    type: 'limit',
-    status: 'cancelled',
-    qty: 3,
-    filledQty: 0,
-    limitPrice: 128.00,
-    stopPrice: 0,
-    totalValue: 0,
-    timeInForce: 'gtc',
-    createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
+    id: 'dev-order-003', symbol: 'NVDA', name: 'NVIDIA Corp.',
+    side: 'sell' as const, type: 'limit' as const, status: 'cancelled' as const,
+    qty: 3, filledQty: 0, limitPrice: 128.00, totalValue: 0,
+    timeInForce: 'gtc', createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
     updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
   },
   {
-    id: 'dev-order-004',
-    symbol: 'SPY',
-    name: 'SPDR S&P 500 ETF',
-    side: 'sell',
-    type: 'market',
-    status: 'filled',
-    qty: 2,
-    filledQty: 2,
-    filledPrice: 538.20,
-    totalValue: 1076.40,
-    timeInForce: 'day',
-    createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+    id: 'dev-order-005', symbol: 'SPY', name: 'SPDR S&P 500 ETF',
+    side: 'buy' as const, type: 'market' as const, status: 'open' as const,
+    qty: 2, filledQty: 0, totalValue: 0,
+    timeInForce: 'day', createdAt: new Date(Date.now() - 3600000).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000).toISOString(),
   },
 ];
 
-// ─── Map SnapTrade activity → BrokerOrder ────────────────
-// Uses shared extractOrderSymbol / mapOrderSide
-// from lib/snaptrade/mapping.ts — single source of truth.
-function mapActivityToOrder(
-  activity: SnapTradeActivity,
-  accountId: string,
-): BrokerOrder | null {
-  const symbol = extractOrderSymbol(activity as unknown as Record<string, unknown>);
-  if (!symbol || !TRADE_TYPES.has(activity.type)) return null;
-
-  const name = extractOrderName(activity as unknown as Record<string, unknown>) || symbol;
-  const side = mapOrderSide(activity.type);
-  // SnapTrade activities use `units` (signed: +BUY/-SELL), NOT `quantity`
-  const qty = Math.abs(activity.units || 0);
-  const price = activity.price || 0;
-  // amount is signed (snaptrade convention); totalValue must be absolute
-  const amount = activity.amount || qty * price;
-  // Activities ARE completed trades — SnapTrade doesn't expose `status` here
-  const status = 'filled';
-
-  const uniqueId = activity.id
-    ? `snaptrade-${accountId}-${activity.id}`
-    : `snaptrade-${accountId}-${symbol}-${activity.trade_date}-${activity.type}`;
-
+/**
+ * Map SnapTradeBroker's BrokerOrder (lib/broker/types.ts format) →
+ * the format expected by the client adapter (types/broker.ts format).
+ *
+ * SnapTradeBroker returns: { shares, submittedPrice, fillPrice, totalCost, submittedAt, filledAt }
+ * Client adapter expects:   { qty, filledQty, filledPrice, totalValue, timeInForce, createdAt, updatedAt }
+ */
+function mapToClientFormat(raw: {
+  id: string; symbol: string; side: string; type: string;
+  status: string; shares: number;
+  submittedPrice: number; limitPrice?: number; stopPrice?: number;
+  fillPrice?: number; totalCost: number;
+  submittedAt: string; filledAt?: string; cancelledAt?: string;
+}) {
+  const statusLower = raw.status.toLowerCase();
+  const isFilled = statusLower === 'filled';
   return {
-    id: uniqueId,
-    symbol,
-    name,
-    side,
-    // Activities don't carry order_type — always market since it's historical
-    type: 'market' as const,
-    status,
-    qty,
-    filledQty: qty,
-    limitPrice: undefined,
-    stopPrice: undefined,
-    filledPrice: price,
-    totalValue: Math.abs(amount || 0),
+    id: raw.id,
+    symbol: raw.symbol,
+    name: raw.symbol, // name not available from SnapTradeBroker format
+    side: raw.side.toLowerCase() as 'buy' | 'sell',
+    type: raw.type,
+    status: statusLower,
+    qty: raw.shares || 0,
+    filledQty: isFilled ? (raw.shares || 0) : 0,
+    limitPrice: raw.limitPrice,
+    stopPrice: raw.stopPrice,
+    filledPrice: raw.fillPrice,
+    totalValue: raw.totalCost || 0,
     timeInForce: 'day',
-    assetType: 'stock',
-    createdAt: activity.trade_date,
-    updatedAt: activity.settlement_date || activity.trade_date,
+    createdAt: raw.submittedAt,
+    updatedAt: raw.filledAt || raw.submittedAt,
   };
 }
 
@@ -197,12 +102,14 @@ export async function GET(_req: NextRequest) {
   // ── Resolve credentials ──────────────────────────────
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
-  let authorizationId: string;
+  let connectionId: string;
+  let brokerSlug: string;
   try {
     const creds = await resolveSnapTradeCredentials(authUser.id);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
-    authorizationId = creds.connectionId;
+    connectionId = creds.connectionId;
+    brokerSlug = creds.brokerSlug;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
@@ -210,57 +117,25 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: 'Failed to load brokerage credentials.' }, { status: 502 });
   }
 
-  const extraParams = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
-
   try {
-    // ── Step A: List accounts for this authorization ──
-    const accounts = await snapTradeFetch<{ id: string }[]>(
-      `/authorizations/${authorizationId}/accounts`,
-      null,
-      extraParams,
-    );
+    const broker = new SnapTradeBroker({
+      userId: snaptradeUserId,
+      userSecret: snaptradeUserSecret,
+      connectionId,
+      brokerSlug,
+      brokerName: formatBrokerName(brokerSlug),
+      tradingEnabled: true, // orders always visible even if read-only
+    });
 
-    if (!Array.isArray(accounts) || accounts.length === 0) {
-      return NextResponse.json([]);
-    }
+    const rawOrders = await broker.getOrders();
 
-    // ── Step B: Fetch activities for each account ──────
-    const allOrders: BrokerOrder[] = [];
-    const seenIds = new Set<string>();
+    // Map from SnapTradeBroker format → client adapter format
+    const mapped = rawOrders.map(mapToClientFormat);
 
-    for (const account of accounts) {
-      try {
-        const raw = await snapTradeFetch<{ data?: SnapTradeActivity[] } | SnapTradeActivity[]>(
-          `/accounts/${account.id}/activities`,
-          null,
-          extraParams,
-        );
-
-        // SnapTrade wraps activities in { data: [...] } (paginated response)
-        const activities = Array.isArray(raw) ? raw : (raw?.data ?? []);
-
-        if (!Array.isArray(activities) || activities.length === 0) continue;
-
-        for (const activity of activities) {
-          const order = mapActivityToOrder(activity, account.id);
-          if (order && !seenIds.has(order.id)) {
-            seenIds.add(order.id);
-            allOrders.push(order);
-          }
-        }
-      } catch (err) {
-        console.error(`[snaptrade/orders] Activities fetch failed for account ${account.id}:`,
-          (err as Error).message);
-      }
-    }
-
-    allOrders.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-
-    return NextResponse.json(allOrders);
+    return NextResponse.json(mapped);
   } catch (err) {
     const msg = (err as Error).message;
+    console.error('[snaptrade/orders] Error:', msg);
     const statusCode = msg.includes('401') ? 401 : msg.includes('403') ? 403 : 502;
     if (statusCode === 401 || statusCode === 403) {
       return NextResponse.json(
