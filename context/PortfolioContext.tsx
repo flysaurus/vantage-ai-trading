@@ -550,10 +550,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     const loadBrokerAccount = async () => {
       try {
+        console.error('[portfolio context] loadBrokerAccount START — isConnected:', isConnected, 'isShowingDemo:', isShowingDemo);
         const [ba, positions] = await Promise.all([
           broker.getAccount(),
           broker.getPositions(),
         ]);
+        console.error('[portfolio context] loadBrokerAccount DATA — equity:', ba.equity, 'cash:', ba.cash, 'positions:', positions?.length ?? 0);
 
         if (cancelled) return;
 
@@ -781,16 +783,72 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       submittingTradeRef.current = true;
       try {
       // Use the real broker when viewing a connected account, DemoBroker otherwise.
-      // brokerRef.current is always DemoBroker; broker from useBroker() is the real one.
-      const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
-      if (!b) return { success: false, error: 'Broker not initialized' };
-      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
+      // brokerRef.current is always DemoBroker; broker from useBroker() is the real one,
+      // but its .placeOrder() is a read-only stub. For real brokers we proxy through
+      // the server-side /api/broker/execute-trade endpoint which creates a live SnapTradeBroker.
+      let result: { success: boolean; status: string; orderId: string; message?: string; fillPrice?: number; totalCost?: number; filledShares?: number; filledAt?: string; nextOpenLabel?: string; error?: string; };
+      const b: any = (isShowingDemo || !broker) ? brokerRef.current : null;
+      if (!isShowingDemo && broker) {
+        // ── Real broker (SnapTrade): proxy through server API ──
+        const res = await fetch('/api/broker/execute-trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol, side, shares,
+            orderType: orderType || 'market',
+            limitPrice, stopPrice, timeInForce,
+          }),
+        });
+        try {
+          const data = await res.json();
+          if (data.error || !data.success) {
+            setToast({ message: `❌ ${data.error || data.message || 'Order failed'}`, type: 'error' });
+            setTimeout(() => setToast(null), 4000);
+            return { success: false, error: data.error || data.message || 'Order failed', status: 'REJECTED' };
+          }
+          result = data;
+        } catch (parseErr) {
+          setToast({ message: `❌ Broker communication failed`, type: 'error' });
+          setTimeout(() => setToast(null), 4000);
+          return { success: false, error: 'Broker communication failed', status: 'REJECTED' };
+        }
+        // Refresh live account after successful trade
+        try {
+          const [ba, baPositions] = await Promise.all([
+            broker.getAccount(),
+            broker.getPositions(),
+          ]);
+          setAccount({
+            equity: ba.equity, buyingPower: ba.buyingPower, cash: ba.cash,
+            dayPnl: ba.dayPnl ?? 0, dayPnlPercent: ba.dayPnlPercent ?? 0,
+            totalPnl: ba.totalPnl ?? 0, totalPnlPercent: ba.totalPnlPercent ?? 0,
+            positions: baPositions.map((p: any) => ({
+              symbol: p.symbol, name: p.name, qty: p.qty ?? 0, avgCost: p.avgCost,
+              currentPrice: p.currentPrice, marketValue: p.marketValue,
+              dayChange: p.dayChange ?? 0, dayChangePercent: p.dayChangePercent ?? 0,
+              totalPnl: p.totalPnl ?? 0, totalPnlPercent: p.totalPnlPercent ?? 0,
+              portfolioPercent: p.portfolioPercent ?? 0, sector: p.sector ?? '',
+              type: (p.type === 'ETF' || (p as any).assetType === 'etf') ? 'ETF' as const : 'Stock' as const,
+            })),
+            lastSynced: ba.lastSynced ?? null,
+            accountStatus: ba.accountStatus ?? null,
+            holdingsUnavailable: ba.holdingsUnavailable ?? false,
+          });
+        } catch (refreshErr) {
+          console.error('[executeTrade] Post-trade account refresh failed:', refreshErr);
+        }
+      } else {
+        // ── Demo broker: use direct BrokerEngine call ──
+        const demoB = b || brokerRef.current;
+        if (!demoB) return { success: false, error: 'Broker not initialized' };
+        result = await demoB.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
+      }
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);
         return { success: false, error: result.message || 'Order failed', status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
       }
-      await refreshStateFromBroker();
+      if (isShowingDemo || !broker) await refreshStateFromBroker();
       const fillPx = result.fillPrice ?? price;
       if (result.status === 'OPEN') {
         let orderNote = '';
