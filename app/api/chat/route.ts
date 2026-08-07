@@ -1130,6 +1130,81 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
   return total
 }
 
+/**
+ * Extract sector keywords from the FULL conversation history (not just last message).
+ * This prevents CLARIFY follow-ups like "widen filters" from losing the original
+ * sector context (e.g., "healthcare") that was in the first user message.
+ *
+ * Returns null if no sector keywords found anywhere in the conversation.
+ */
+function extractSectorsFromHistory(
+  messages: Array<{ role: string; content: string }>,
+): string[] | null {
+  const sectorMap: Record<string, string> = {
+    tech: 'technology', technology: 'technology', software: 'technology', ai: 'technology',
+    health: 'healthcare', healthcare: 'healthcare', pharma: 'healthcare', biotech: 'healthcare', medical: 'healthcare',
+    finance: 'financial_services', financial: 'financial_services', banking: 'financial_services', banks: 'financial_services',
+    energy: 'energy', oil: 'energy', gas: 'energy', renewable: 'energy', solar: 'energy',
+    consumer: 'consumer_cyclical', retail: 'consumer_cyclical',
+    industrial: 'industrials', industrials: 'industrials', manufacturing: 'industrials', aerospace: 'industrials', defense: 'industrials',
+    materials: 'basic_materials', basic_materials: 'basic_materials', mining: 'basic_materials', minerals: 'basic_materials', metals: 'basic_materials',
+    real_estate: 'real_estate', reit: 'real_estate', property: 'real_estate',
+    utilities: 'utilities', utility: 'utilities',
+    communication: 'communication_services', telecom: 'communication_services', media: 'communication_services',
+  };
+
+  // Walk backward through user messages, collect ALL sectors mentioned anywhere
+  const seen = new Set<string>();
+  const sectors: string[] = [];
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== 'user') continue;
+    const m = msg.content.toLowerCase();
+
+    for (const [keyword, sector] of Object.entries(sectorMap)) {
+      if (m.includes(keyword) && !seen.has(sector)) {
+        seen.add(sector);
+        sectors.unshift(sector); // preserve original order
+      }
+    }
+
+    // Once we've found a budget-bearing message, stop scanning further back.
+    // The sectors in/after the budget message are the relevant ones.
+    if (extractBudget(msg.content) !== null && sectors.length > 0) {
+      break;
+    }
+  }
+
+  return sectors.length > 0 ? sectors : null;
+}
+
+/**
+ * Detects if the user is asking to widen/relax screening criteria (from a CLARIFY follow-up).
+ * Returns relaxed criteria overrides: removes PE cap, lowers growth floor, lowers mkt cap floor.
+ */
+function detectWidenRequest(messages: Array<{ role: string; content: string }>): boolean {
+  // Check the last user message for widen/relax signals
+  const lastUser = [...messages].reverse().find(m => m.role === 'user');
+  if (!lastUser) return false;
+  const m = lastUser.content.toLowerCase();
+  const widenRe = new RegExp('widen|relax|loosen|drop.*filter|remove.*filter|expand|broaden|any (p/e|price)|all candidates', 'i');
+  return widenRe.test(m);
+}
+
+/**
+ * Apply criteria relaxation for "widen filters" follow-up.
+ * Drops PE cap, lowers growth floor to 0, removes min market cap.
+ */
+function relaxCriteria(criteria: Record<string, any>): Record<string, any> {
+  const relaxed = { ...criteria };
+  delete relaxed.pe_max;         // Accept any P/E ratio
+  delete relaxed.min_growth_rate; // Accept any growth rate
+  relaxed.market_cap_min = Math.min(relaxed.market_cap_min || 500_000_000, 500_000_000); // Lower mkt cap floor
+  console.log('[chat] 🔍 Criteria relaxed for widen request:', JSON.stringify(relaxed));
+  return relaxed;
+}
+
 // ── Known foreign exchange suffixes the AI hallucinates despite prompt forbidding ──
 const FOREIGN_EXCHANGE_SUFFIXES = new Set([
   'DE', 'DU', 'F', 'HM', 'GLP',   // German exchanges (XETRA, Frankfurt, Hamburg, etc.)
@@ -1450,6 +1525,41 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       const styleDefaults = getStyleScreeningDefaults(profile.investorStyle);
       let multiCriteria = extractMultiSectorCriteria(lastMessage, styleDefaults);
 
+      // ── CLARIFY follow-up fallback ──
+      // If the current message found no sector keywords but the conversation history
+      // DOES contain sector keywords (e.g., user said "healthcare" in the first message
+      // but the CLARIFY follow-up just says "widen filters"), carry forward the original
+      // sector context so the screener doesn't lose the sector filter entirely.
+      const isWiden = detectWidenRequest(messages);
+      if (multiCriteria === null || multiCriteria.length === 0) {
+        const historicSectors = extractSectorsFromHistory(messages);
+        if (historicSectors && historicSectors.length > 0) {
+          console.log(`[chat] 🔍 Last message has no sector — falling back to history: ${historicSectors.join(', ')}`);
+          const labelMap: Record<string, string> = {
+            technology: 'Technology', healthcare: 'Healthcare', financial_services: 'Financials',
+            energy: 'Energy', consumer_cyclical: 'Consumer Cyclical', industrials: 'Industrials',
+            basic_materials: 'Basic Materials', real_estate: 'Real Estate', utilities: 'Utilities',
+            communication_services: 'Communication Services',
+          };
+          multiCriteria = historicSectors.map(sector => ({
+            label: labelMap[sector] || sector.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            criteria: { ...styleDefaults, sector },
+          }));
+        }
+      }
+
+      // ── Widen/relax detection ──
+      // When the user says "widen filters" / "relax criteria", actually drop the
+      // restrictive numeric filters (PE cap, growth floor) so the screener returns
+      // real candidates instead of 0 matches. The AI is still told to prefer quality.
+      if (isWiden && multiCriteria) {
+        console.log('[chat] 🔍 Widen request detected — relaxing criteria');
+        multiCriteria = multiCriteria.map(mc => ({
+          ...mc,
+          criteria: relaxCriteria(mc.criteria),
+        }));
+      }
+
       if (multiCriteria && multiCriteria.length >= 2) {
         // ── MULTI-SECTOR PATH: run parallel screening per detected sector ──
         screeningSource = 'explicit';
@@ -1494,8 +1604,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       } else {
         // ── NO SECTOR detected — fall back to style defaults (single pool) ──
         screeningSource = 'style_defaults';
-        const criteria = styleDefaults;
-        console.log(`[chat] 🔍 No explicit criteria in message — using ${profile.investorStyle} style defaults:`, JSON.stringify(criteria));
+        const criteria = isWiden ? relaxCriteria(styleDefaults) : styleDefaults;
+        console.log(`[chat] 🔍 No explicit criteria in message — using ${profile.investorStyle} style defaults${isWiden ? ' (relaxed)' : ''}:`, JSON.stringify(criteria));
         if (criteria && Object.keys(criteria).length > 0) {
           screeningCriteria = criteria;
           screeningResults = await runScreening(criteria);
