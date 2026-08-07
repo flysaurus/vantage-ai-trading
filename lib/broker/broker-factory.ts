@@ -2,7 +2,7 @@
 // Single entry point for getting the active broker engine.
 // PortfolioContext calls getBroker() — never imports DemoBroker directly.
 
-import { BrokerEngine } from './engine';
+import { BrokerEngine } from './types';
 import { DemoBroker } from './demo-broker';
 
 let activeBroker: BrokerEngine | null = null;

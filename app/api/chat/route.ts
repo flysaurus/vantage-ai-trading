@@ -573,8 +573,10 @@ function formatScreeningContext(results: any[], criteria: Record<string, any>, c
       `and offer to relax the filters. Do NOT substitute familiar tickers from memory.`;
   }
 
-  const tickers = results.map(r => r.symbol).join(', ');
-  const summary = results.slice(0, 5).map(r => {
+  // Sort by market_cap descending so top matches are the biggest/most relevant
+  const sorted = [...results].sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0));
+  const tickers = sorted.map((r: any) => r.symbol).join(', ');
+  const summary = sorted.slice(0, 5).map((r: any) => {
     const parts = [`${r.symbol} (${r.name || '?'})`];
     if (r.market_cap) parts.push(`MCap:$${(r.market_cap/1e9).toFixed(1)}B`);
     if (r.pe_forward) parts.push(`PE:${r.pe_forward.toFixed(1)}`);
@@ -615,8 +617,9 @@ function formatMultiSectorContext(
         `these criteria. Do NOT fabricate tickers.`;
     }
 
-    const tickers = pool.results.map((r: any) => r.symbol).join(', ');
-    const summary = pool.results.slice(0, 5).map((r: any) => {
+    const sorted = [...pool.results].sort((a: any, b: any) => (b.market_cap || 0) - (a.market_cap || 0));
+    const tickers = sorted.map((r: any) => r.symbol).join(', ');
+    const summary = sorted.slice(0, 5).map((r: any) => {
       const parts = [`${r.symbol} (${r.name || '?'})`];
       if (r.market_cap) parts.push(`MCap:$${(r.market_cap/1e9).toFixed(1)}B`);
       if (r.pe_forward) parts.push(`PE:${r.pe_forward.toFixed(1)}`);

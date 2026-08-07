@@ -7,12 +7,12 @@
 // swaps DemoBroker → AlpacaBroker with zero UI changes.
 
 import {
-  BrokerEngine, OrderRequest, OrderResult,
+  BrokerEngine, BrokerMeta, OrderRequest, OrderResult,
   BasketOrderRequest, BasketOrderResult,
   BrokerPosition, BrokerOrder, BrokerBasketOrder,
   BrokerAccountSummary, OrderStatus,
-  DemoStateInternal,
-} from './engine';
+  DemoStateInternal, OrderImpactPreview,
+} from './types';
 import { evaluateOpenOrder } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
 import { getMarketStatus } from '@/lib/market-hours';
@@ -26,6 +26,18 @@ export class DemoBroker implements BrokerEngine {
   readonly name = 'Demo';
   readonly isDemo = true;
   readonly supportsTrading = true;
+
+  getMeta(): BrokerMeta {
+    return {
+      slug: 'demo',
+      name: 'Demo',
+      isDemo: true,
+      tradingEnabled: true,
+      environment: 'demo',
+      isConnected: true,
+      brokerDisplayName: 'Demo Account',
+    };
+  }
 
   private state: DemoStateInternal;
   private supabase: any;
@@ -379,16 +391,16 @@ export class DemoBroker implements BrokerEngine {
       // Step 2: recompute container status from synced children
       const allStatuses = basket.orders.map((o: any) => o.status);
       const uniqueStatuses = [...new Set(allStatuses)];
-      let computedStatus: string;
+      let computedStatus: OrderStatus;
       if (uniqueStatuses.length === 1) {
         computedStatus = uniqueStatuses[0];
       } else {
         const hasFilled = uniqueStatuses.includes('FILLED');
         const hasCancelled = uniqueStatuses.includes('CANCELLED');
         const hasOpen = uniqueStatuses.includes('OPEN');
-        if (hasFilled && hasCancelled) computedStatus = 'PARTIAL';
+        if (hasFilled && hasCancelled) computedStatus = 'PARTIALLY_FILLED';
         else if (hasOpen) computedStatus = 'OPEN';
-        else computedStatus = 'PARTIAL';
+        else computedStatus = 'PARTIALLY_FILLED';
       }
 
       const oldStatus = basket.status;
@@ -1097,6 +1109,22 @@ export class DemoBroker implements BrokerEngine {
     return { success: true };
   }
 
+  // ── Preview Order ───────────────────────────────────────
+
+  async previewOrder(req: OrderRequest): Promise<OrderImpactPreview> {
+    const quote = await this.fetchQuote(req.symbol);
+    const price = quote?.price || 0;
+    const shares = req.shares || (req.dollarAmount ? req.dollarAmount / (price || 1) : 0);
+    const total = shares * price;
+    return {
+      estimatedTotal: total,
+      commission: 0,
+      buyingPowerAfter: null,
+      hasSufficientFunds: true,
+      warnings: price === 0 ? ['Unable to fetch live price — estimate may be inaccurate'] : [],
+    };
+  }
+
   // ─── EXECUTE PENDING ORDERS (market opens) ───
 
   async executePendingOrders(): Promise<number> {
@@ -1178,7 +1206,7 @@ export class DemoBroker implements BrokerEngine {
       } else if (cancelledCount > 0 && filledCount === 0) {
         basket.status = 'CANCELLED';
       } else {
-        basket.status = 'PARTIAL';
+        basket.status = 'PARTIALLY_FILLED';
       }
       basket.filledAt = new Date().toISOString();
       newlyFilledBaskets.push(basket);

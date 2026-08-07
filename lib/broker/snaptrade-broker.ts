@@ -9,11 +9,13 @@
 
 import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import { getAccountBalances } from '@/lib/snaptrade/client';
+import { toStandardSymbol, toBrokerSymbol } from './symbol-resolver';
 import type {
-  BrokerEngine, BrokerPosition, BrokerAccountSummary,
+  BrokerEngine, BrokerMeta, BrokerPosition, BrokerAccountSummary,
   BrokerOrder, BrokerBasketOrder, OrderRequest, OrderResult,
-  BasketOrderRequest, BasketOrderResult, OrderStatus,
-} from './engine';
+  BasketOrderRequest, BasketOrderResult, OrderStatus, OrderSide, OrderType,
+  OrderImpactPreview,
+} from './types';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -40,6 +42,70 @@ interface SnapPosition {
   sector?: string;
 }
 
+/** Raw order from SnapTrade recentOrders / placeOrder responses */
+interface SnapOrder {
+  brokerage_order_id?: string;
+  brokerage_group_order_id?: string | null;
+  order_role?: string | null;
+  status?: string;
+  symbol?: string;
+  universal_symbol?: {
+    id?: string;
+    symbol?: string;
+    description?: string;
+    currency?: { code?: string };
+    type?: { code?: string };
+  } | null;
+  option_symbol?: unknown;
+  action?: string;
+  order_type?: string;
+  time_in_force?: string;
+  price?: number;
+  stop_price?: number;
+  quantity?: number;
+  filled_quantity?: number;
+  average_fill_price?: number;
+  total_cost?: number;
+  fees?: number;
+  trade_date?: string;
+  create_date?: string;
+}
+
+// ─── Module-level helpers ──────────────────────────────────────
+
+/** Map SnapTrade's verbose status enum to our simplified OrderStatus */
+function _mapSnapTradeStatusToOrderStatus(rawStatus: string | undefined): OrderStatus {
+  if (!rawStatus) return 'OPEN';
+  const s = rawStatus.toUpperCase();
+  if (['EXECUTED', 'FILLED'].includes(s)) return 'FILLED';
+  if (['PENDING', 'ACCEPTED', 'QUEUED', 'TRIGGERED', 'ACTIVATED', 'CONTINGENT_ORDER', 'REPLACE_PENDING'].includes(s)) return 'OPEN';
+  if (s === 'PARTIAL') return 'PARTIALLY_FILLED';
+  if (['CANCELED', 'PARTIAL_CANCELED', 'CANCEL_PENDING'].includes(s)) return 'CANCELLED';
+  if (['REJECTED', 'FAILED'].includes(s)) return 'REJECTED';
+  if (s === 'EXPIRED') return 'CANCELLED';
+  return 'OPEN';
+}
+
+function _mapOrderTypeToSnapTrade(type: import('./types').OrderType): string {
+  switch (type) {
+    case 'market': return 'Market';
+    case 'limit': return 'Limit';
+    case 'stop': return 'Stop';
+    case 'stop_limit': return 'StopLimit';
+    default: return 'Market';
+  }
+}
+
+function _mapTimeInForceToSnapTrade(tif: string): string {
+  switch (tif.toLowerCase()) {
+    case 'day': return 'Day';
+    case 'gtc': return 'GTC';
+    case 'fok': return 'FOK';
+    case 'ioc': return 'IOC';
+    default: return 'Day';
+  }
+}
+
 // ─── Cache ────────────────────────────────────────────────────
 
 interface CacheEntry<T> {
@@ -61,6 +127,7 @@ export class SnapTradeBroker implements BrokerEngine {
   private connectionId: string;
   private brokerSlug: string;
   private brokerName: string;
+  private tradingEnabled: boolean;
 
   private accountCache: CacheEntry<BrokerAccountSummary> | null = null;
   private positionsCache: CacheEntry<BrokerPosition[]> | null = null;
@@ -78,7 +145,25 @@ export class SnapTradeBroker implements BrokerEngine {
     this.connectionId = params.connectionId;
     this.brokerSlug = params.brokerSlug;
     this.brokerName = params.brokerName;
+    this.tradingEnabled = params.tradingEnabled;
     this.supportsTrading = params.tradingEnabled;
+  }
+
+  // ── Meta ─────────────────────────────────────────────────
+
+  getMeta(): BrokerMeta {
+    return {
+      slug: 'snaptrade',
+      name: 'SnapTrade',
+      isDemo: false,
+      tradingEnabled: this.tradingEnabled,
+      tradingDisabledReason: this.tradingEnabled
+        ? undefined
+        : `${this.brokerName} is read-only — re-authorize with trading access`,
+      environment: this.tradingEnabled ? 'live' : 'paper',
+      isConnected: true,
+      brokerDisplayName: `${this.brokerName} via SnapTrade`,
+    };
   }
 
   // ── Account ───────────────────────────────────────────────
@@ -188,36 +273,292 @@ export class SnapTradeBroker implements BrokerEngine {
   // ── Orders ────────────────────────────────────────────────
 
   async getOrders(_status?: OrderStatus): Promise<BrokerOrder[]> {
-    // Phase 2b: query SnapTrade order history
-    return [];
+    if (!this.tradingEnabled) {
+      console.log('[SnapTradeBroker] getOrders: trading not enabled, returning []');
+      return [];
+    }
+
+    try {
+      const accountId = await this._getPrimaryAccountId();
+      if (!accountId) return [];
+
+      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
+        `/accounts/${accountId}/recentOrders`,
+        null,
+        {
+          userId: this.userId,
+          userSecret: this.userSecret,
+          only_executed: 'false',
+        },
+      );
+
+      const rawOrders = response.orders || [];
+      const mapped = rawOrders.map((o) => this._mapOrder(o));
+      console.log(
+        `[SnapTradeBroker] getOrders: ${mapped.length} orders for ${this.brokerName}`,
+      );
+      return mapped;
+    } catch (err) {
+      console.error(
+        '[SnapTradeBroker] getOrders failed:',
+        err instanceof Error ? err.message : 'Unknown',
+      );
+      return [];
+    }
   }
 
   async getBasketOrders(): Promise<BrokerBasketOrder[]> {
     return [];
   }
 
-  // ── Trading (Phase 2b) ────────────────────────────────────
+  // ── Trading ───────────────────────────────────────────────
 
-  async placeOrder(_req: OrderRequest): Promise<OrderResult> {
-    // Phase 2b: route to SnapTrade order execution
-    throw new Error(
-      `Order execution for ${this.brokerName} is not yet available — coming in Phase 2b. ` +
-      'Use your Demo account for trading in the meantime.'
-    );
+  async placeOrder(req: OrderRequest): Promise<OrderResult> {
+    if (!this.tradingEnabled) {
+      return {
+        success: false,
+        orderId: 'readonly',
+        status: 'REJECTED',
+        message: `${this.brokerName} is read-only — re-authorize with trading access to place orders.`,
+      };
+    }
+
+    const accountId = await this._getPrimaryAccountId();
+    if (!accountId) {
+      return {
+        success: false,
+        orderId: 'no-account',
+        status: 'REJECTED',
+        message: 'No trading account found for this connection.',
+      };
+    }
+
+    // Validate and normalize the symbol
+    const symbol = toBrokerSymbol(req.symbol, 'snaptrade');
+    if (!symbol) {
+      return {
+        success: false,
+        orderId: 'bad-symbol',
+        status: 'REJECTED',
+        message: 'Invalid symbol.',
+      };
+    }
+
+    // Map our OrderType → SnapTrade order_type
+    const orderType = _mapOrderTypeToSnapTrade(req.type);
+    const timeInForce = _mapTimeInForceToSnapTrade(req.timeInForce || 'day');
+
+    const body: Record<string, unknown> = {
+      account_id: accountId,
+      action: req.side, // our OrderSide (BUY|SELL) matches SnapTrade action
+      order_type: orderType,
+      time_in_force: timeInForce,
+      symbol,
+      trading_session: 'REGULAR',
+    };
+
+    // Units (shares) vs notional_value (dollar amount)
+    if (req.shares != null && req.shares > 0) {
+      body.units = req.shares;
+    } else if (req.dollarAmount != null && req.dollarAmount > 0) {
+      body.notional_value = req.dollarAmount;
+    } else {
+      return {
+        success: false,
+        orderId: 'no-qty',
+        status: 'REJECTED',
+        message: 'Order must specify shares or dollar amount.',
+      };
+    }
+
+    if (req.limitPrice != null && req.limitPrice > 0) {
+      body.price = req.limitPrice;
+    }
+    if (req.stopPrice != null && req.stopPrice > 0) {
+      body.stop = req.stopPrice;
+    }
+
+    try {
+      console.log(
+        `[SnapTradeBroker] placeOrder: ${req.side} ${req.shares || '$' + req.dollarAmount} ${symbol} ` +
+        `(${orderType}, ${timeInForce}) in ${this.brokerName}`,
+      );
+
+      const result = await snapTradeFetch<any>(
+        '/trade/place',
+        body,
+        { userId: this.userId, userSecret: this.userSecret },
+      );
+
+      // SnapTrade returns: { brokerage_order_id, status, universal_symbol, ... }
+      const orderId = result.brokerage_order_id || 'unknown';
+      const status = _mapSnapTradeStatusToOrderStatus(result.status);
+
+      console.log(
+        `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (${result.status || 'no raw status'})`,
+      );
+
+      return {
+        success: status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED',
+        orderId,
+        status,
+        fillPrice: result.filled_price || result.price,
+        totalCost: result.total_cost || (result.filled_price || result.price || 0) * (req.shares || 0),
+        filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
+        nextOpenLabel: this.getNextOpenLabel(),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[SnapTradeBroker] placeOrder failed:', msg);
+      return {
+        success: false,
+        orderId: 'error',
+        status: 'REJECTED',
+        message: msg,
+      };
+    }
   }
 
   async placeBasketOrder(_req: BasketOrderRequest): Promise<BasketOrderResult> {
-    throw new Error(
-      `Basket orders for ${this.brokerName} are not yet available — coming in Phase 2b.`
-    );
+    return {
+      success: false,
+      basketOrderId: 'not-implemented',
+      status: 'REJECTED',
+      orders: [],
+      totalReserved: 0,
+      message: 'Basket orders are not supported via SnapTrade — place individual orders instead.',
+    };
   }
 
-  async cancelOrder(_orderId: string): Promise<{ success: boolean; message?: string }> {
-    throw new Error('Order cancellation not yet available — coming in Phase 2b.');
+  async cancelOrder(orderId: string): Promise<{ success: boolean; message?: string }> {
+    if (!this.tradingEnabled) {
+      return { success: false, message: 'Trading not enabled for this connection.' };
+    }
+
+    const accountId = await this._getPrimaryAccountId();
+    if (!accountId) {
+      return { success: false, message: 'No trading account found.' };
+    }
+
+    try {
+      console.log(`[SnapTradeBroker] cancelOrder: ${orderId}`);
+
+      await snapTradeFetch(
+        `/accounts/${accountId}/trading/cancel`,
+        { brokerage_order_id: orderId },
+        { userId: this.userId, userSecret: this.userSecret },
+      );
+
+      return { success: true, message: `Order ${orderId} cancelled.` };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[SnapTradeBroker] cancelOrder failed:', msg);
+      return { success: false, message: msg };
+    }
   }
 
   async cancelBasketOrder(_basketOrderId: string): Promise<{ success: boolean; message?: string }> {
-    throw new Error('Basket cancellation not yet available — coming in Phase 2b.');
+    return { success: false, message: 'Basket orders are not supported via SnapTrade.' };
+  }
+
+  // ── Trade Impact Preview ─────────────────────────────────
+
+  async previewOrder(req: OrderRequest): Promise<OrderImpactPreview> {
+    if (!this.tradingEnabled) {
+      return {
+        estimatedTotal: 0,
+        commission: 0,
+        buyingPowerAfter: null,
+        hasSufficientFunds: false,
+        warnings: ['Trading not enabled for this connection.'],
+      };
+    }
+
+    const accountId = await this._getPrimaryAccountId();
+    if (!accountId) {
+      return {
+        estimatedTotal: 0,
+        commission: 0,
+        buyingPowerAfter: null,
+        hasSufficientFunds: false,
+        warnings: ['No trading account found.'],
+      };
+    }
+
+    const symbol = toBrokerSymbol(req.symbol, 'snaptrade');
+    const orderType = _mapOrderTypeToSnapTrade(req.type);
+    const timeInForce = _mapTimeInForceToSnapTrade(req.timeInForce || 'day');
+
+    const body: Record<string, unknown> = {
+      account_id: accountId,
+      action: req.side,
+      order_type: orderType,
+      time_in_force: timeInForce,
+      universal_symbol_id: symbol, // SnapTrade impact endpoint uses symbol_id not ticker
+    };
+
+    if (req.shares != null && req.shares > 0) body.units = req.shares;
+    else if (req.dollarAmount != null && req.dollarAmount > 0) body.notional_value = req.dollarAmount;
+    if (req.limitPrice != null && req.limitPrice > 0) body.price = req.limitPrice;
+    if (req.stopPrice != null && req.stopPrice > 0) body.stop = req.stopPrice;
+
+    try {
+      const result = await snapTradeFetch<any>(
+        '/trade/impact',
+        body,
+        { userId: this.userId, userSecret: this.userSecret },
+      );
+
+      const trade = result.trade || result;
+      const commission = trade.commission || trade.total_commission || 0;
+      const estimatedTotal = trade.total || trade.estimated_total || 0;
+
+      // Extract buying power from the trade leg or account data
+      const buyingPowerAfter =
+        trade.remaining_cash !== undefined ? trade.remaining_cash :
+        trade.buying_power !== undefined ? trade.buying_power :
+        null;
+
+      const hasSufficientFunds =
+        trade.has_sufficient_funds !== undefined
+          ? trade.has_sufficient_funds
+          : trade.error === undefined;
+
+      const warnings: string[] = [];
+      if (trade.warnings && Array.isArray(trade.warnings)) {
+        warnings.push(...trade.warnings);
+      }
+      if (trade.error) {
+        warnings.push(String(trade.error));
+      }
+      if (!hasSufficientFunds) {
+        warnings.push('Insufficient funds for this order.');
+      }
+
+      console.log(
+        `[SnapTradeBroker] previewOrder: ${req.side} ${req.shares || '$' + req.dollarAmount} ${symbol} → ` +
+        `est $${estimatedTotal.toFixed(2)}, commission $${commission.toFixed(2)}, ` +
+        `sufficient=${hasSufficientFunds}`,
+      );
+
+      return {
+        estimatedTotal,
+        commission,
+        buyingPowerAfter,
+        hasSufficientFunds,
+        warnings,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[SnapTradeBroker] previewOrder failed:', msg);
+      return {
+        estimatedTotal: 0,
+        commission: 0,
+        buyingPowerAfter: null,
+        hasSufficientFunds: false,
+        warnings: [msg],
+      };
+    }
   }
 
   // ── Market hours ──────────────────────────────────────────
@@ -246,12 +587,145 @@ export class SnapTradeBroker implements BrokerEngine {
     return Promise.resolve(0);
   }
 
+  // ── Order Status Polling ───────────────────────────────
+
+  /**
+   * Poll SnapTrade recentOrders to sync status of in-flight orders.
+   * Returns order IDs whose status changed (for UI refresh).
+   */
+  async syncOrderStatus(trackedOrders: Map<string, OrderStatus>): Promise<string[]> {
+    if (!this.tradingEnabled || trackedOrders.size === 0) return [];
+
+    try {
+      const accountId = await this._getPrimaryAccountId();
+      if (!accountId) return [];
+
+      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
+        `/accounts/${accountId}/recentOrders`,
+        null,
+        {
+          userId: this.userId,
+          userSecret: this.userSecret,
+          only_executed: 'false',
+        },
+      );
+
+      const changed: string[] = [];
+      for (const raw of response.orders || []) {
+        const orderId = raw.brokerage_order_id;
+        if (!orderId || !trackedOrders.has(orderId)) continue;
+
+        const prevStatus = trackedOrders.get(orderId);
+        const newStatus = _mapSnapTradeStatusToOrderStatus(raw.status);
+
+        if (prevStatus !== newStatus) {
+          changed.push(orderId);
+          console.log(
+            `[SnapTradeBroker] Order ${orderId.slice(0, 8)}: ${prevStatus} → ${newStatus} (raw: ${raw.status})`,
+          );
+        }
+      }
+
+      return changed;
+    } catch (err) {
+      console.error(
+        '[SnapTradeBroker] syncOrderStatus failed:',
+        err instanceof Error ? err.message : 'Unknown',
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Refresh account positions after a fill. Polls recent orders for fills,
+   * then re-fetches positions/account summary if any fills are detected.
+   */
+  async refreshAfterTrade(): Promise<void> {
+    if (!this.tradingEnabled) return;
+
+    try {
+      const accountId = await this._getPrimaryAccountId();
+      if (!accountId) return;
+
+      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
+        `/accounts/${accountId}/recentOrders`,
+        null,
+        {
+          userId: this.userId,
+          userSecret: this.userSecret,
+          only_executed: 'false',
+        },
+      );
+
+      const hasFill = (response.orders || []).some(
+        (o) => _mapSnapTradeStatusToOrderStatus(o.status) === 'FILLED',
+      );
+
+      if (hasFill) {
+        console.log('[SnapTradeBroker] Fill detected — refreshing positions & account');
+        // Bust caches so next getPositions/getAccount hits live API
+        this.positionsCache = null;
+        this.accountCache = null;
+      }
+    } catch (err) {
+      console.error(
+        '[SnapTradeBroker] refreshAfterTrade failed:',
+        err instanceof Error ? err.message : 'Unknown',
+      );
+    }
+  }
+
   async loadFromSupabase?(): Promise<boolean> {
     // SnapTrade broker pulls from live API, not Supabase
     return false;
   }
 
   // ── Internals ─────────────────────────────────────────────
+
+  private async _getPrimaryAccountId(): Promise<string | null> {
+    try {
+      const accounts = await this._fetchAccounts();
+      if (accounts.length === 0) return null;
+      // Prefer a margin/cash account; fall back to first
+      const primary = accounts.find((a) => a.type?.toUpperCase()?.includes('MARGIN'))
+        || accounts.find((a) => a.type?.toUpperCase()?.includes('CASH'))
+        || accounts[0];
+      return primary.id;
+    } catch {
+      return null;
+    }
+  }
+
+  private _mapOrder(raw: SnapOrder): BrokerOrder {
+    const symbol =
+      raw.symbol
+      || raw.universal_symbol?.symbol
+      || raw.universal_symbol?.description
+      || 'UNKNOWN';
+
+    const qty = raw.quantity || raw.filled_quantity || 0;
+    const fillPx = raw.average_fill_price || raw.price || 0;
+    const isFilled = _mapSnapTradeStatusToOrderStatus(raw.status) === 'FILLED';
+
+    return {
+      id: raw.brokerage_order_id || '',
+      symbol: toStandardSymbol(symbol),
+      side: (raw.action?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as OrderSide,
+      type: 'market' as OrderType,
+      status: _mapSnapTradeStatusToOrderStatus(raw.status),
+      shares: qty,
+      submittedPrice: fillPx || 0,
+      limitPrice: raw.price ?? undefined,
+      stopPrice: raw.stop_price ?? undefined,
+      fillPrice: fillPx || undefined,
+      totalCost: raw.total_cost || (fillPx * qty) || 0,
+      submittedAt: raw.create_date || raw.trade_date || new Date().toISOString(),
+      filledAt: isFilled ? (raw.trade_date || new Date().toISOString()) : undefined,
+      cancelledAt: _mapSnapTradeStatusToOrderStatus(raw.status) === 'CANCELLED'
+        ? new Date().toISOString() : undefined,
+      note: raw.order_role || undefined,
+    };
+  }
 
   private async _fetchAccounts(): Promise<SnapAccount[]> {
     const raw = await snapTradeFetch<any[]>(
