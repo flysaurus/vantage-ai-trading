@@ -2,9 +2,11 @@
 // Shared module — safe for both server (route.ts) and client (AITab.tsx).
 // Extracted from route.ts to avoid client-components importing server-only
 // modules (next/headers, supabase, etc.) transitively.
+//
+// Phase 1: handles CASH/reserve positions and explicit side (BUY/SELL).
 // ─────────────────────────────────────────────────────
 
-import { type PortfolioBlock } from '@/lib/portfolio-types';
+import { type PortfolioBlock, type PortfolioPosition } from '@/lib/portfolio-types';
 
 /** Parse all [PORTFOLIO:{...}] JSON blocks from the AI response. */
 export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
@@ -33,7 +35,6 @@ export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
     }
 
     if (pos >= response.length) {
-      // Unclosed bracket — skip this match and continue
       const raw = response.slice(start);
       blocks.push({ total: NaN, positions: [], raw, parseError: 'Unclosed PORTFOLIO block — missing closing ]' });
       break;
@@ -44,10 +45,19 @@ export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
 
     try {
       const parsed = JSON.parse(jsonStr);
+      const positions: PortfolioPosition[] = Array.isArray(parsed.positions)
+        ? parsed.positions.map((p: any) => ({
+            symbol: p.symbol || 'CASH',
+            amount: typeof p.amount === 'number' ? p.amount : 0,
+            side: p.side === 'sell' ? 'sell' as const : 'buy' as const,
+            isReserve: p.symbol === 'CASH' || p.isReserve === true,
+          }))
+        : [];
+
       blocks.push({
         total: parsed.total,
         strategy: parsed.strategy,
-        positions: Array.isArray(parsed.positions) ? parsed.positions : [],
+        positions,
         raw,
       });
     } catch (e: any) {

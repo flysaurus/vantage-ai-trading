@@ -11,6 +11,7 @@ import { callChatAI } from '@/lib/ai-provider';
 import { checkUsageLimit } from '@/lib/ai-guard';
 import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/risk-narrative';
 import type { SystemBlock } from '@/lib/ai-provider';
+import { PORTFOLIO_AGENT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
 
 // ── Config ──
 const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:8765';
@@ -350,7 +351,7 @@ export async function generateObservations(
   try {
     const res = await callChatAI({
       messages: [{ role: 'user', content: triggerPrompt }],
-      systemBlocks: [NOTICED_SYSTEM],
+      systemBlocks: [NOTICED_SYSTEM, ...PORTFOLIO_AGENT_SAFETY_BLOCKS],
       maxTokens: 400,
       temperature: 0.4,
     });

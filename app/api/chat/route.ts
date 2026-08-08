@@ -3,6 +3,7 @@ import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-pro
 import { validateRecommendationMarkers } from '@/lib/validate-markers'
 import { resolveSymbol } from '@/lib/tools/resolve-symbol'
 import type { SystemBlock } from '@/lib/ai-provider'
+import { CHAT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone, checkAbuseCooldown } from '@/lib/ai-guard'
@@ -1623,6 +1624,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     }
 
     const systemBlocks: SystemBlock[] = [
+    ...CHAT_SAFETY_BLOCKS,
       {
         type: 'text' as const,
         text: systemPrompt,
