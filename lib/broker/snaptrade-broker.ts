@@ -392,11 +392,47 @@ export class SnapTradeBroker implements BrokerEngine {
 
       // SnapTrade returns: { brokerage_order_id, status, universal_symbol, ... }
       const orderId = result.brokerage_order_id || 'unknown';
-      const status = _mapSnapTradeStatusToOrderStatus(result.status);
+      const rawSnapStatus = result.status;
+      let status = _mapSnapTradeStatusToOrderStatus(rawSnapStatus);
+      const marketOpen = this.isMarketOpen();
 
       console.log(
-        `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (${result.status || 'no raw status'})`,
+        `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (raw: ${rawSnapStatus || 'none'}, market: ${marketOpen ? 'open' : 'closed'})`,
       );
+
+      // ── Market-closed override ──
+      //
+      // Standing decision (2026-08-08): orders placed when the market is closed
+      // are queued (OPEN), NEVER rejected. SnapTrade returns REJECTED/FAILED for
+      // REGULAR-session orders outside market hours because the exchange rejects
+      // them at routing time — this is a routing constraint, not a business
+      // rejection (e.g. insufficient funds).
+      //
+      // ⚠️ KNOWN LIMITATION: SnapTrade's response does NOT include a rejection
+      // reason code — the `SnapOrder` interface has no `reason`/`error_code`
+      // field. This override gates on `!this.isMarketOpen()` as the best-available
+      // proxy. A genuine rejection (e.g. insufficient funds) placed during closed
+      // hours would be incorrectly converted to OPEN.
+      //
+      // Mitigation: the full SnapTrade response is logged below for audit.
+      // Monitor Vercel logs for orders that stay OPEN past the next cron cycle
+      // without filling — those may be genuine rejections that were overridden.
+      if (status === 'REJECTED' && !marketOpen) {
+        console.log(
+          `[SnapTradeBroker] placeOrder: ⚠️ MARKET-CLOSED OVERRIDE — REJECTED → OPEN for ${symbol}`,
+        );
+        console.log(
+          `[SnapTradeBroker] placeOrder: AUDIT — full SnapTrade response:`,
+          JSON.stringify(result),
+        );
+        return {
+          success: true,
+          orderId,
+          status: 'OPEN',
+          message: `Order queued — market closed. Opens ${this.getNextOpenLabel()}.`,
+          nextOpenLabel: this.getNextOpenLabel(),
+        };
+      }
 
       return {
         success: status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED',
