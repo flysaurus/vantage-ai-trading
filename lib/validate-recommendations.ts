@@ -10,7 +10,7 @@
 //
 // Fail = reject and regenerate. Never partial render.
 
-import { loadSymbolCache } from '@/lib/symbol-validator';
+import { loadSymbolCache } from '@/lib/symbol-resolution';
 import { getCompanyProfile } from '@/lib/finnhub';
 
 // Exchange/country-code suffixes that indicate non-US listings

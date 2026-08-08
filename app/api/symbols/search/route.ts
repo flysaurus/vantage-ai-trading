@@ -104,7 +104,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // when searching by company name (e.g. "SK Hynix" → no results).
     // Fall back to the cached symbol→name map for substring matches.
     if (filtered.length === 0 && q.length >= 2) {
-      const { searchSymbolsByName } = await import('@/lib/symbol-validator');
+      const { searchSymbolsByName } = await import('@/lib/symbol-resolution');
       const nameMatches = await searchSymbolsByName(q, 10);
       for (const m of nameMatches) {
         if (seen.has(m.symbol)) continue;

@@ -1,4 +1,8 @@
-// ─── Marker Validator ──────────────────────────────────────────
+// ─── DEPRECATED: Marker Validator ──────────────────────────────
+// This module is superseded by lib/symbol-resolution.ts (single authority).
+// All imports should be redirected to @/lib/symbol-resolution.
+// DO NOT add new features here — add them to symbol-resolution.ts instead.
+// ───────────────────────────────────────────────────────────────
 // Post-processes AI responses to validate [RECOMMEND:SYMBOL:BUY/SELL]
 // markers against Finnhub company profiles. Catches hallucinated ADR
 // tickers (e.g. SKM ≠ SK Hynix) before the user sees them.

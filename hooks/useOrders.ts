@@ -10,7 +10,7 @@ import { useOrderStore } from '@/store';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useAccounts } from '@/context/AccountContext';
-import { syncFilledOrders } from '@/lib/supabase/trades';
+import { syncFilledOrders, getTrades } from '@/lib/supabase/trades';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -80,24 +80,75 @@ export function useOrders() {
       setLoading(true);
       setError(null);
 
-      // Fetch all order statuses in one call
-      const [allOpenOrders, filledOrders] = await Promise.all([
+      // Fetch from three sources in parallel:
+      // 1) Broker (SnapTrade recentOrders) — open + recent filled
+      // 2) Supabase trade_history — ALL filled orders (no 30-day restriction)
+      // 3) public.orders — ALL broker orders persisted by execute-trade route
+      const uid = (user?.id as string | undefined) ?? null;
+      const [allOpenOrders, filledOrders, tradeHistory, dbOrdersPayload] = await Promise.all([
         broker.getOrders({ status: 'open' }),
         broker
           .getOrders({ status: 'filled', limit: 20 })
           .catch(() => []),
+        uid
+          ? getTrades(uid, 500, 0).catch(() => ({ trades: [] as any[], total: 0 }))
+          : Promise.resolve({ trades: [] as any[], total: 0 }),
+        fetch('/api/orders?limit=500').then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
       ]);
 
       if (!mountedRef.current) return;
 
-      const allOrders = [
+      // Map trade_history entries to Order format
+      const tradeHistoryOrders: Order[] = (tradeHistory.trades || []).map((trade): Order => ({
+        id: trade.id,
+        symbol: trade.symbol,
+        side: trade.action,
+        type: 'market',
+        status: 'filled',
+        qty: trade.quantity,
+        filledQty: trade.quantity,
+        filledPrice: trade.price,
+        totalValue: trade.totalValue,
+        timeInForce: 'day',
+        createdAt: trade.executedAt || trade.createdAt,
+        updatedAt: trade.createdAt,
+      }));
+
+      // Map public.orders entries to Order format
+      const dbOrders: Order[] = ((dbOrdersPayload?.orders || []) as any[]).map((o: any): Order => ({
+        id: o.id,
+        symbol: o.symbol,
+        side: (o.side === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
+        type: (o.orderType || 'market') as 'market' | 'limit' | 'stop' | 'stop_limit',
+        status: (o.status || 'filled') as Order['status'],
+        qty: o.qty || 0,
+        filledQty: o.filledQty || 0,
+        filledPrice: o.filledPrice,
+        totalValue: (o.filledQty || o.qty || 0) * (o.filledPrice || 0),
+        timeInForce: (o.timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
+        createdAt: o.createdAt,
+        updatedAt: o.createdAt,
+      }));
+
+      const brokerOrders = [
         ...allOpenOrders,
         ...filledOrders,
       ];
 
+      const mappedBrokerOrders = brokerOrders
+        .map(mapToAppOrder);
+
+      // Merge broker orders + trade_history + db orders, deduplicate by ID.
+      // Priority: broker > trade_history > public.orders.
+      const brokerOrderIds = new Set(mappedBrokerOrders.map(o => o.id));
+      const uniqueTradeHistory = tradeHistoryOrders.filter(o => !brokerOrderIds.has(o.id));
+      const existingIds = new Set([...brokerOrderIds, ...uniqueTradeHistory.map(o => o.id)]);
+      const uniqueDbOrders = dbOrders.filter(o => !existingIds.has(o.id));
+
+      const allOrders = [...mappedBrokerOrders, ...uniqueTradeHistory, ...uniqueDbOrders];
+
       const mappedOrders = allOrders
-        .map(mapToAppOrder)
-        // Deduplicate by ID
+        // Deduplicate by ID (safety net)
         .filter(
           (order, idx, arr) =>
             arr.findIndex((o) => o.id === order.id) === idx
@@ -109,14 +160,28 @@ export function useOrders() {
             new Date(a.createdAt).getTime()
         );
 
-      console.error('[useOrders] refresh DONE —', mappedOrders.length, 'orders loaded, symbols:', mappedOrders.map(o => o.symbol).join(', ') || '(none)');
-      setOrders(mappedOrders);
+      // ── Merge with existing Zustand orders to preserve immediate adds ──
+      // PortfolioContext.executeTrade calls addOrder() instantly, but the order
+      // may not yet appear in broker.getOrders() or trade_history. We must not
+      // wipe those temp entries. Merging ensures the order survives refresh cycles.
+      const currentZustandOrders = useOrderStore.getState().orders;
+      const newIds = new Set(mappedOrders.map(o => o.id));
+      const orphanOrders = currentZustandOrders.filter(o => !newIds.has(o.id));
+      const mergedOrders = [...mappedOrders, ...orphanOrders]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      if (orphanOrders.length > 0) {
+        console.log('[useOrders] Preserved', orphanOrders.length, 'orphan orders from Zustand during refresh:', orphanOrders.map(o => o.id).join(', '));
+      }
+
+      console.error('[useOrders] refresh DONE —', mergedOrders.length, 'orders loaded (', mappedBrokerOrders.length, 'from broker +', uniqueTradeHistory.length, 'from trade_history +', uniqueDbOrders.length, 'from db +', orphanOrders.length, 'orphan), symbols:', mergedOrders.map(o => o.symbol).join(', ') || '(none)');
+      setOrders(mergedOrders);
       setLoading(false);
 
       // Sync filled orders to trade_history table (fire-and-forget, deduplicated)
-      if (user?.id && filledOrders.length > 0) {
+      if (uid && filledOrders.length > 0) {
         syncFilledOrders(
-          user.id,
+          uid,
           filledOrders.map(o => ({
             id: o.id,
             symbol: o.symbol,
@@ -141,7 +206,7 @@ export function useOrders() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, isConnected, isShowingDemo, setOrders]);
+  }, [broker, isConnected, isShowingDemo, setOrders, user]);
 
   const placeOrder = useCallback(
     async (

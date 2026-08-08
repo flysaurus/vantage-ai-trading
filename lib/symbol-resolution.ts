@@ -43,6 +43,8 @@ export interface ResolvedSymbol {
 export interface MarkerValidationResult {
   ok: boolean;
   correctedText?: string;
+  /** Backward-compatible alias for correctedText (used by chat route). */
+  corrected?: string;
   issues: Array<{
     symbol: string;
     raw: string;
@@ -113,7 +115,7 @@ function nameOverlapRatio(name1: string, name2: string): number {
 // ── Tier 0: Symbol Cache ──────────────────────────────────
 
 /** Load the full US-symbol cache from Finnhub (24h TTL). */
-async function loadSymbolCache(apiKey: string): Promise<{ symbols: Set<string>; nameMap: Map<string, string> }> {
+async function loadSymbolCacheInternal(apiKey: string): Promise<{ symbols: Set<string>; nameMap: Map<string, string> }> {
   const now = Date.now();
   if (_cache && _nameMap && (now - _lastFetchTime) < CACHE_TTL_MS) {
     return { symbols: _cache, nameMap: _nameMap };
@@ -335,7 +337,7 @@ export async function validateSymbol(symbol: string): Promise<ResolvedSymbol | n
 
   // Tier 0: Cache
   if (key) {
-    const { symbols, nameMap } = await loadSymbolCache(key);
+    const { symbols, nameMap } = await loadSymbolCacheInternal(key);
     if (symbols.has(clean)) {
       const name = nameMap.get(clean);
 
@@ -557,6 +559,7 @@ export async function validateRecommendationMarkers(
   return {
     ok: issues.length === 0,
     correctedText: hasCorrections ? correctedText : undefined,
+    corrected: hasCorrections ? correctedText : undefined,
     issues,
     hasCorrections,
   };
@@ -606,7 +609,7 @@ export async function lookupSymbolNames(
   const key = getApiKey();
 
   if (key) {
-    const { nameMap } = await loadSymbolCache(key);
+    const { nameMap } = await loadSymbolCacheInternal(key);
     for (const sym of symbols) {
       const name = nameMap.get(sym.toUpperCase());
       if (name) result.set(sym.toUpperCase(), name);
@@ -633,7 +636,7 @@ export async function lookupSymbolNames(
 export async function getCachedSymbolSet(): Promise<Set<string>> {
   const key = getApiKey();
   if (!key) return new Set();
-  const { symbols } = await loadSymbolCache(key);
+  const { symbols } = await loadSymbolCacheInternal(key);
   return symbols;
 }
 
@@ -683,6 +686,150 @@ function extractContextName(text: string, symbol: string): string | null {
   return nameCandidates.length > 0 ? nameCandidates[nameCandidates.length - 1] : null;
 }
 
+// ── Public API: backward-compatible with symbol-validator.ts ──
+
+/**
+ * Load the US-symbol cache (public wrapper).
+ * Returns the Set of valid US symbols — an empty set means "skip validation".
+ * Equivalent to symbol-validator.ts loadSymbolCache.
+ */
+export async function loadSymbolCache(): Promise<Set<string>> {
+  const key = getApiKey();
+  if (!key) return new Set();
+  const { symbols } = await loadSymbolCacheInternal(key);
+  return symbols;
+}
+
+/**
+ * Get the full symbol cache with name mappings (for client-side one-time loading).
+ * Equivalent to symbol-validator.ts getCachedSymbols.
+ */
+export async function getCachedSymbols(): Promise<{
+  symbols: string[];
+  symbolNames: Map<string, string>;
+}> {
+  const key = getApiKey();
+  if (!key) return { symbols: [], symbolNames: new Map() };
+  const { symbols, nameMap } = await loadSymbolCacheInternal(key);
+  return { symbols: Array.from(symbols).sort(), symbolNames: nameMap };
+}
+
+/**
+ * Search the cached symbol list by company name / description substring.
+ * Falls back when Finnhub /search returns empty (e.g. "SK Hynix" → SKHYV).
+ * Equivalent to symbol-validator.ts searchSymbolsByName.
+ */
+export async function searchSymbolsByName(
+  query: string,
+  limit: number = 10,
+): Promise<Array<{ symbol: string; name: string; score: number }>> {
+  const key = getApiKey();
+  if (key) await loadSymbolCacheInternal(key); // warm cache
+  if (!_nameMap || _nameMap.size === 0) return [];
+
+  const q = query.toLowerCase().trim();
+  const words = q.split(/\s+/).filter(w => w.length >= 2);
+  if (words.length === 0) return [];
+
+  const results: Array<{ symbol: string; name: string; score: number }> = [];
+
+  for (const [symbol, name] of _nameMap) {
+    const nameLower = name.toLowerCase();
+    let score = 0;
+
+    if (nameLower === q) {
+      score = 100;
+    } else if (nameLower.startsWith(q)) {
+      score = 80;
+    } else if (nameLower.includes(q)) {
+      score = 60;
+    } else {
+      let matchedWords = 0;
+      for (const word of words) {
+        if (nameLower.includes(word)) matchedWords++;
+      }
+      if (matchedWords === 0) continue;
+      score = matchedWords * 15;
+    }
+
+    if (symbol.toLowerCase().startsWith(q)) {
+      score += 10;
+    }
+
+    results.push({ symbol, name, score });
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit);
+}
+
 // ── Re-export FALLBACK_SYMBOLS for consumers that need the list ──
 
 export { FALLBACK_SYMBOLS };
+
+// ═══════════════════════════════════════════════════════════════
+// Shared symbol filters — single authority for the entire codebase.
+// Previously duplicated across chat route, validate-markers, and
+// symbol-resolution itself. Now exported from here only.
+// ═══════════════════════════════════════════════════════════════
+
+/** Common words/abbreviations that match ticker regex but aren't stocks. */
+export const NOT_TICKERS = new Set([
+  'IPO', 'ETF', 'REIT', 'CEO', 'CFO', 'GDP', 'API', 'AI', 'ML', 'ITM', 'OTM',
+  'THE', 'AND', 'FOR', 'NOT', 'BUT', 'WAS', 'HAS', 'CAN', 'ARE', 'YOU', 'OUR',
+  'HOW', 'WHAT', 'WHEN', 'WHY', 'WHO', 'NEW', 'OUT', 'ALL', 'ANY', 'ONE', 'TWO',
+  'ITS', 'HIS', 'HER', 'THEM', 'THEY', 'FROM', 'THAT', 'THIS', 'WITH', 'WILL',
+  'JUST', 'NOW', 'VERY', 'MUCH', 'WELL', 'ALSO', 'THEN', 'SOME', 'LIKE', 'GET',
+  'SEE', 'GOOD', 'BAD', 'BIG', 'PUT', 'CALL', 'IN', 'ON', 'IT', 'AT', 'TO',
+  'BE', 'IS', 'SO', 'ME', 'MY', 'WE', 'HE', 'NO', 'GO', 'DO', 'UP', 'AM',
+  'A', 'I', 'O', 'USD', 'EST', 'LTD', 'INC', 'CORP', 'PLC', 'LLC', 'NYSE',
+  'NASDAQ', 'SVS', 'USA', 'EUR', 'GBP', 'JPY', 'YTD', 'NYSEARCA',
+  'BUY', 'SELL', 'HOLD', 'PUT', 'CALL',
+  // Exchange/country-code suffixes — prevent ghost buttons from foreign listings
+  'DE', 'MX', 'SW', 'VI', 'SN', 'DU', 'HM', 'GLP', 'LN', 'L', 'PA', 'SA',
+  'TO', 'CN', 'HK', 'JP', 'KR', 'BR', 'IN', 'AU', 'AS', 'AX', 'TA', 'OL',
+]);
+
+/** Known foreign exchange suffixes the AI hallucinates despite prompt forbidding. */
+export const FOREIGN_EXCHANGE_SUFFIXES = new Set([
+  'DE', 'DU', 'F', 'HM', 'GLP',   // German exchanges (XETRA, Frankfurt, Hamburg, etc.)
+  'MX',                           // Mexico
+  'SW', 'VI',                     // Swiss, Vienna
+  'SN',                           // Santiago
+  'AX',                           // Australia
+  'LN', 'L', 'IL',                // London, London Intl
+  'PA',                           // Paris
+  'SA',                           // Saudi / Sao Paulo
+  'AS', 'BR',                     // Amsterdam, Brussels
+  'CN', 'HK', 'KS', 'KQ', 'T',   // Canada, Hong Kong, Korea, Tokyo
+  'MC', 'MI',                     // Madrid, Milan
+  'MU', 'NE',                     // Munich, New Zealand?
+  'NX', 'OL', 'RG', 'SG',        // Various exchange suffixes
+  'SS', 'ST',                     // Stockholm, Singapore derivatives?
+  'TO', 'V', 'VN',                // Toronto, Vienna alt, Vietnam
+]);
+
+/** Words commonly appearing in financial text that aren't company names. */
+export const NOT_COMPANIES = new Set([
+  'NYSE', 'NASDAQ', 'STOCK', 'STOCKS', 'SHARE', 'SHARES', 'PRICE', 'PRICES',
+  'TRADE', 'TRADING', 'MARKET', 'MARKETS', 'INVEST', 'INVESTING', 'ANALYST',
+  'FUTURE', 'FUTURES', 'TODAY', 'QUARTERLY', 'ANNUAL', 'REPORT', 'REPORTS',
+  'GROWTH', 'VALUE', 'PROFIT', 'REVENUE', 'EARNINGS', 'DIVIDEND', 'YIELD',
+  'TECH', 'HEALTH', 'FINANCE', 'ENERGY', 'SECTOR', 'SECTORS', 'INDUSTRY',
+  'YAHOO', 'BLOOMBERG', 'REUTERS', 'BARRONS', 'FIDELITY', 'VANGUARD',
+  'RECOMMEND', 'RECOMMENDATION', 'ANALYSIS', 'OUTLOOK', 'FORECAST',
+  'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY',
+  'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
+  'PORTFOLIO', 'ALLOCATION', 'BUDGET', 'STRATEGY', 'RISK', 'BALANCE',
+  'COMPANY', 'CORPORATION', 'HOLDINGS', 'LIMITED', 'GROUP', 'LTD', 'CORP', 'INC',
+  'INTERNATIONAL', 'RESEARCH', 'MANAGEMENT', 'CAPITAL', 'PARTNERS',
+]);
+
+/** Common proper nouns / question words that aren't company names. */
+export const FILTERED_COMMON_WORDS = /^(This|That|What|When|Where|Why|Which|Whose|How|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never|Tell|Show|Find|Look|Check|Search|Give|Make|Take|Know|Think|Want|Need|Like|Love|Can|Will|Just|Also|Only|Even|Then|Than|Its|His|Her|Our|Been|Being|Having|Doing|Going|Getting)$/;
+
+/** Check if a word is a filtered common word (not a company name). */
+export function isFilteredCommonWord(word: string): boolean {
+  return FILTERED_COMMON_WORDS.test(word);
+}

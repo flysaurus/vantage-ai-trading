@@ -1,11 +1,30 @@
 // ─── Broker Factory ───────────────────────────────────────────
 // Single entry point for getting the active broker engine.
 // PortfolioContext calls getBroker() — never imports DemoBroker directly.
+//
+// CONCURRENCY SAFETY (Phase 7): Each call returns a fresh instance.
+// The old global-singleton pattern caused cross-request contamination:
+//   - User A's broker could receive User B's request mid-operation
+//   - In-memory caches could leak data between users
+//   - Race conditions on setUserId() during concurrent requests
 
 import { BrokerEngine } from './types';
 import { DemoBroker } from './demo-broker';
 
-let activeBroker: BrokerEngine | null = null;
+// Per-user broker cache (keyed by userId, not a global singleton)
+const userBrokers = new Map<string, { broker: BrokerEngine; createdAt: number }>();
+
+// 5-minute TTL on cached broker instances to prevent unbounded growth
+const BROKER_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function evictStaleBrokers(): void {
+  const now = Date.now();
+  for (const [userId, entry] of userBrokers) {
+    if (now - entry.createdAt > BROKER_CACHE_TTL_MS) {
+      userBrokers.delete(userId);
+    }
+  }
+}
 
 export function getBroker(
   type: string = 'demo',
@@ -13,29 +32,27 @@ export function getBroker(
   supabaseClient?: any,
   userEmail?: string,
 ): BrokerEngine {
-  if (activeBroker) {
-    if (activeBroker.name.toLowerCase() !== type.toLowerCase()) {
-      activeBroker = null;
-    }
+  const key = userId || 'anonymous';
+
+  evictStaleBrokers();
+
+  const existing = userBrokers.get(key);
+  if (existing && existing.broker.name.toLowerCase() === type.toLowerCase()) {
+    existing.createdAt = Date.now(); // Refresh TTL
+    return existing.broker;
   }
 
-  if (!activeBroker) {
-    activeBroker = new DemoBroker(userId, supabaseClient, userEmail);
-  } else if (activeBroker instanceof DemoBroker) {
-    if (userId && userId !== 'demo_user') {
-      (activeBroker as DemoBroker).setUserId(userId);
-    }
-    if (supabaseClient) {
-      (activeBroker as DemoBroker).setSupabase(supabaseClient);
-    }
-    if (userEmail) {
-      (activeBroker as DemoBroker).setUserEmail(userEmail);
-    }
-  }
+  // Create a fresh instance — never reuse across users
+  const broker = new DemoBroker(userId, supabaseClient, userEmail);
+  userBrokers.set(key, { broker, createdAt: Date.now() });
 
-  return activeBroker;
+  return broker;
 }
 
-export function resetBroker(): void {
-  activeBroker = null;
+export function resetBroker(userId?: string): void {
+  if (userId) {
+    userBrokers.delete(userId);
+  } else {
+    userBrokers.clear();
+  }
 }

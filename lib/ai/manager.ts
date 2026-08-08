@@ -1,0 +1,343 @@
+// ─── AI Advisor Manager / Triager ──────────────────────────────────
+// Phase 2: Conversation classification, state tracking, and duplicate detection.
+//
+// Responsibilities:
+//   1. Classify incoming messages into intent categories
+//   2. Track CLARIFY conversation state (open/closed/resolved)
+//   3. Detect stale or duplicate requests
+//   4. Route to appropriate handler (orchestrator, direct reply, etc.)
+//
+// This is NEW infrastructure — Phase 0 audit found zero existing
+// classification or conversation-state tracking.
+// ──────────────────────────────────────────────────────────────────
+
+// ── Types ─────────────────────────────────────────────────
+
+export type IntentCategory =
+  | 'portfolio_build'      // user wants a portfolio recommendation
+  | 'portfolio_rebalance'  // user wants to rebalance existing holdings
+  | 'stock_analysis'       // user wants analysis of specific stock(s)
+  | 'market_question'      // user asks a general market question
+  | 'clarify_response'     // user is responding to a CLARIFY prompt
+  | 'greeting'             // casual conversation
+  | 'unknown';             // fallback
+
+export interface Classification {
+  intent: IntentCategory;
+  confidence: number;       // 0–1
+  subIntent?: string;       // e.g. "growth", "dividend", "momentum"
+  requestedBudget?: number | null;
+  mentionedTickers: string[];
+  mentionedSectors: string[];
+  isStaleDuplicate: boolean;
+  needsClarify: boolean;    // AI should ask for clarification
+  clarifyReason?: string;
+}
+
+export interface ConversationState {
+  clarifyOpen: boolean;
+  clarifyId?: string;
+  clarifyQuestion?: string;
+  clarifyOptions?: string[];
+  lastIntent?: IntentCategory;
+  lastRequestHash?: string;
+  requestsSinceLastBuild: number;
+  lastBuildSectors?: string[];
+  lastBuildBudget?: number;
+}
+
+// ── Default state ────────────────────────────────────────
+
+export function createConversationState(): ConversationState {
+  return {
+    clarifyOpen: false,
+    requestsSinceLastBuild: 0,
+  };
+}
+
+// ── Intent classification ─────────────────────────────────────
+
+// Quick regex-based classification (lightweight, no AI needed for triage).
+// Deep classification (screenMessage via DeepSeek) is reserved for
+// determining whether to fire web search — that's a different concern.
+
+const PORTFOLIO_BUILD_PATTERNS = [
+  /build\s+(?:me\s+)?(?:a|an)\s*(?:new\s+)?portfolio/i,
+  /recommend\s+(?:some\s+)?(?:stocks|picks|investments|positions)/i,
+  /what\s+should\s+(?:I|we)\s+(?:buy|invest\s+in|pick)/i,
+  /I\s+have\s+\$?[\d,.]+\s+(?:to\s+invest|in\s+cash|available)/i,
+  /suggest\s+(?:some\s+)?(?:stocks|investments|picks)/i,
+  /looking\s+for\s+(?:stocks|ideas|picks|plays|investments)/i,
+  /best\s+(?:stocks|picks|plays)\s+(?:in|for)\s+(?:tech|healthcare|energy|finance|ai|semiconductor)/i,
+  /show\s+me\s+(?:some\s+)?(?:stocks|picks|ideas)/i,
+  /pick\s+(?:me\s+)?(?:some\s+)?(?:stocks|winners)/i,
+];
+
+const PORTFOLIO_REBALANCE_PATTERNS = [
+  /rebalance\s+(?:my|the)\s+portfolio/i,
+  /should\s+I\s+(?:sell|trim|exit|reduce)\s+(?:my\s+)?(?:position|shares|stake)/i,
+  /what\s+should\s+I\s+(?:sell|exit|trim)/i,
+  /reallocat(?:e|ing)/i,
+  /my\s+portfolio\s+(?:is\s+)?(?:too|overly)\s+(?:concentrated|tech|heavy|risky)/i,
+  /review\s+my\s+(?:holdings|portfolio|positions)/i,
+];
+
+const STOCK_ANALYSIS_PATTERNS = [
+  /analy(?:ze|sis|ze)\s+(?:stock\s+)?([A-Z]{1,5})/i,
+  /what\s+(?:do\s+you\s+)?think\s+(?:about|of)\s+([A-Z]{1,5})/i,
+  /tell\s+me\s+about\s+([A-Z]{1,5})/i,
+  /should\s+I\s+(?:buy|sell)\s+([A-Z]{1,5})/i,
+  /how\s+(?:is|are)\s+([A-Z]{1,5})\s+(?:doing|looking|performing)/i,
+  /is\s+([A-Z]{1,5})\s+(?:a\s+)?(?:good|bad|buy|sell)/i,
+  /(?:what|how)\s+(?:about|do\s+you\s+(?:feel|think)\s+about)\s+([A-Z]{1,5})/i,
+];
+
+const MARKET_QUESTION_PATTERNS = [
+  /^what(?:'s|\s+is)\s+(?:a|an|the)\s+(?:p\/e|pe|eps|roe|beta|market\s+cap|dividend\s+yield|sharpe\s+ratio)/i,
+  /^(?:what|how)\s+(?:is|are|does|do)\s+(?:a|an|the|you)\s+(?:define|calculate|measure|use)/i,
+  /^(?:explain|define|describe|tell\s+me\s+(?:more\s+)?about)\s+(?:a|an|the|what)\s+(?:p\/e|pe|eps|roe|dividend|yield|ratio)/i,
+  /what(?:'s|\s+is)\s+(?:going\s+on|happening)\s+(?:in\s+)?(?:the\s+)?(?:market|economy)/i,
+  /why\s+(?:is|are)\s+(?:the\s+)?(?:market|stocks|spy|s&p)\s+(?:up|down|falling|rising)/i,
+  /how\s+(?:is|was)\s+(?:the\s+)?(?:market|economy)\s+(?:doing|looking|today)/i,
+  /market\s+(?:outlook|prediction|forecast|summary)/i,
+  /macro\s+(?:outlook|view|picture|environment)/i,
+  /fed\s+(?:rate|interest|decision|meeting)/i,
+  /(?:cpi|inflation|jobs\s+report|gdp)\s+(?:data|report|numbers)/i,
+  /tell\s+me\s+(?:more\s+)?about\s+(?:the\s+)?(?:economy|inflation|rates|tariffs|trade\s+war)/i,
+];
+
+const CLARIFY_RESPONSE_PATTERNS = [
+  /^(?:yes|no|maybe|sure|ok|okay|yep|nope|alright|fine|go\s+ahead|cool|got\s+it|understood)\b/i,
+  /^(?:option|number|choice)\s*[123]/i,
+  /^(?:the|I'll\s+go\s+with|let's\s+do|pick)\s+(?:the\s+)?(?:first|second|third|last|option)/i,
+  /^(?:I\s+)?(?:want|prefer|like|choose|select|go\s+for)\b/i,
+  /^(?:more\s+|less\s+)?(?:aggressive|conservative|balanced|growth|value|income|tech|defensive)/i,
+];
+
+// ── Sector detection ──────────────────────────────────────────
+
+const SECTOR_KEYWORDS: Record<string, string[]> = {
+  technology: ['tech', 'technology', 'software', 'hardware', 'ai', 'artificial intelligence', 'semiconductor', 'cloud', 'saas', 'cyber', 'cybersecurity', 'it '],
+  healthcare: ['healthcare', 'health', 'biotech', 'pharma', 'medical', 'drug', 'gene', 'therapeutics'],
+  financial_services: ['financial', 'finance', 'bank', 'banking', 'insurance', 'fintech', 'payment'],
+  energy: ['energy', 'oil', 'gas', 'solar', 'renewable', 'clean energy', 'utilities'],
+  consumer_cyclical: ['consumer', 'retail', 'ecommerce', 'e-commerce', 'auto', 'restaurant', 'travel', 'luxury'],
+  industrials: ['industrial', 'manufacturing', 'aerospace', 'defense', 'transport', 'logistics'],
+  communication_services: ['communication', 'media', 'telecom', 'entertainment', 'streaming', 'social media'],
+  basic_materials: ['material', 'mining', 'chemical', 'metal', 'steel', 'gold', 'copper'],
+  real_estate: ['real estate', 'reit', 'property', 'housing'],
+  utilities: ['utility', 'electric', 'water', 'power grid'],
+};
+
+// ── Public API ────────────────────────────────────────────────
+
+/**
+ * Classify a user message into an intent category without calling an LLM.
+ * Regex-only triage — fast, free, and covers >90% of real-world inputs.
+ *
+ * @param message - The user's raw message text
+ * @param state - Current conversation state (for CLARIFY detection)
+ * @returns Classification with intent, confidence, and extracted metadata
+ */
+export function classifyIntent(message: string, state?: ConversationState): Classification {
+  // Default classification
+  const classification: Classification = {
+    intent: 'unknown',
+    confidence: 0,
+    mentionedTickers: extractTickersFromText(message),
+    mentionedSectors: detectSectors(message),
+    isStaleDuplicate: false,
+    needsClarify: false,
+  };
+
+  // ── CLARIFY response detection (must check FIRST if clarify is open) ──
+  if (state?.clarifyOpen) {
+    for (const pattern of CLARIFY_RESPONSE_PATTERNS) {
+      if (pattern.test(message.trim())) {
+        classification.intent = 'clarify_response';
+        classification.confidence = 0.85;
+        classification.mentionedSectors = classification.mentionedSectors.length > 0
+          ? classification.mentionedSectors
+          : state.lastBuildSectors || [];
+        return classification;
+      }
+    }
+    // If clarify is open but response doesn't match, could be a redirect
+    // Keep the old intent if the user is providing new info
+  }
+
+  // ── Explicit portfolio building ──
+  for (const pattern of PORTFOLIO_BUILD_PATTERNS) {
+    if (pattern.test(message)) {
+      classification.confidence = 0.9;
+      classification.requestedBudget = extractBudgetFromText(message);
+      classification.intent = 'portfolio_build';
+      break;
+    }
+  }
+
+  // ── Portfolio rebalancing ──
+  if (classification.confidence < 0.5) {
+    for (const pattern of PORTFOLIO_REBALANCE_PATTERNS) {
+      if (pattern.test(message)) {
+        classification.confidence = 0.85;
+        classification.intent = 'portfolio_rebalance';
+        break;
+      }
+    }
+  }
+
+  // ── Stock analysis ──
+  if (classification.confidence < 0.5) {
+    for (const pattern of STOCK_ANALYSIS_PATTERNS) {
+      const match = pattern.exec(message);
+      if (match) {
+        classification.confidence = 0.9;
+        classification.intent = 'stock_analysis';
+        break;
+      }
+    }
+  }
+
+  // ── Market question ──
+  if (classification.confidence < 0.5) {
+    for (const pattern of MARKET_QUESTION_PATTERNS) {
+      if (pattern.test(message)) {
+        classification.confidence = 0.8;
+        classification.intent = 'market_question';
+        break;
+      }
+    }
+  }
+
+  // ── Fallback: check for budget mentions that imply portfolio build ──
+  if (classification.intent === 'unknown' && classification.requestedBudget !== null) {
+    classification.intent = 'portfolio_build';
+    classification.confidence = 0.6;
+  }
+
+  // ── Sub-intent detection ──
+  if (classification.intent === 'portfolio_build' || classification.intent === 'stock_analysis') {
+    if (/\b(growth|growing|expansion)\b/i.test(message)) classification.subIntent = 'growth';
+    else if (/\b(dividend|income|yield|payout)\b/i.test(message)) classification.subIntent = 'dividend';
+    else if (/\b(value|undervalued|cheap|bargain|discount)\b/i.test(message)) classification.subIntent = 'value';
+    else if (/\b(momentum|breakout|trending|hot|surging)\b/i.test(message)) classification.subIntent = 'momentum';
+    else if (/\b(safe|stable|defensive|conservative|recession)\b/i.test(message)) classification.subIntent = 'defensive';
+  }
+
+  // ── Check if this needs clarification ──
+  if (classification.intent === 'portfolio_build' && classification.mentionedSectors.length === 0) {
+    classification.needsClarify = true;
+    classification.clarifyReason = 'No sector preference detected — user may need to specify';
+  }
+
+  return classification;
+}
+
+/**
+ * Update conversation state based on a new message and its classification.
+ * Returns the new state (immutable).
+ */
+export function updateConversationState(
+  prevState: ConversationState,
+  classification: Classification,
+  message: string,
+): ConversationState {
+  const hash = simpleHash(message.trim().slice(0, 200));
+
+  const state: ConversationState = {
+    ...prevState,
+    lastIntent: classification.intent,
+    lastRequestHash: hash,
+    requestsSinceLastBuild: prevState.requestsSinceLastBuild + 1,
+  };
+
+  // Reset build counter on new portfolio build
+  if (classification.intent === 'portfolio_build') {
+    state.requestsSinceLastBuild = 1;
+    state.lastBuildSectors = classification.mentionedSectors;
+    state.lastBuildBudget = classification.requestedBudget ?? undefined;
+    state.clarifyOpen = classification.needsClarify;
+    if (!classification.needsClarify) {
+      state.clarifyId = undefined;
+      state.clarifyQuestion = undefined;
+      state.clarifyOptions = undefined;
+    }
+  }
+
+  // CLARIFY response: close the clarify loop
+  if (classification.intent === 'clarify_response') {
+    state.clarifyOpen = false;
+  }
+
+  return state;
+}
+
+/**
+ * Detect if the current message is a stale duplicate of the previous request.
+ * Compares message hashes and sector/budget similarity.
+ */
+export function detectStaleDuplicate(
+  current: Classification,
+  prevState: ConversationState,
+): boolean {
+  if (!prevState.lastBuildSectors || !prevState.lastBuildBudget) return false;
+
+  // Same sectors + same budget + within last 3 messages = stale
+  const sameSectors = arraysEqual(current.mentionedSectors.sort(), prevState.lastBuildSectors.sort());
+  const sameBudget = current.requestedBudget === prevState.lastBuildBudget;
+  const withinWindow = prevState.requestsSinceLastBuild <= 3;
+
+  return sameSectors && sameBudget && withinWindow;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+
+function extractTickersFromText(text: string): string[] {
+  const matches = text.match(/\$?\b([A-Z]{2,5})\b/g);
+  if (!matches) return [];
+  return [...new Set(matches.map(m => m.replace('$', '').toUpperCase()))];
+}
+
+function detectSectors(text: string): string[] {
+  const found: string[] = [];
+  const lower = text.toLowerCase();
+  for (const [sector, keywords] of Object.entries(SECTOR_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      found.push(sector);
+    }
+  }
+  return found;
+}
+
+function extractBudgetFromText(text: string): number | null {
+  // Match patterns like "$5000", "$5,000", "$5k", "5000 dollars", "5 grand"
+  const dollarMatch = text.match(/\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)/);
+  if (dollarMatch) return parseFloat(dollarMatch[1].replace(/,/g, ''));
+
+  const kMatch = text.match(/\$(\d+(?:\.\d+)?)\s*k\b/i);
+  if (kMatch) return parseFloat(kMatch[1]) * 1000;
+
+  const numberWord = text.match(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:dollars|bucks|grand)/i);
+  if (numberWord) return parseFloat(numberWord[1].replace(/,/g, ''));
+
+  return null;
+}
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const chr = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return hash.toString(36);
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}

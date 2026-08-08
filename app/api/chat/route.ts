@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
-import { validateRecommendationMarkers } from '@/lib/validate-markers'
+import { withFallback, stageLog, createTimeoutBudget, startStage, endStage } from '@/lib/ai/resilience'
 import { resolveSymbol } from '@/lib/tools/resolve-symbol'
 import type { SystemBlock } from '@/lib/ai-provider'
 import { CHAT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
@@ -8,7 +8,6 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone, checkAbuseCooldown } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
-import { loadSymbolCache } from '@/lib/symbol-validator'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
 import { createServerClient } from '@/lib/supabase'
@@ -18,6 +17,20 @@ import {
   extractBudget,
   type ValidationFailure,
 } from '@/lib/validate-recommendations'
+import {
+  validateRecommendationMarkers,
+  loadSymbolCache,
+  NOT_TICKERS,
+  FOREIGN_EXCHANGE_SUFFIXES,
+  NOT_COMPANIES,
+  FILTERED_COMMON_WORDS,
+  isFilteredCommonWord,
+} from '@/lib/symbol-resolution'
+import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults'
+import {
+  classifyIntent,
+} from '@/lib/ai/manager'
+import { validateResponse } from '@/lib/ai/validator'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -28,25 +41,7 @@ const client = new Anthropic({
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888'
 
-// ─── Common words that look like tickers but aren't ──
-const NOT_TICKERS = new Set([
-  'IPO', 'ETF', 'REIT', 'CEO', 'CFO', 'GDP', 'API', 'AI', 'ML', 'ITM', 'OTM',
-  'THE', 'AND', 'FOR', 'NOT', 'BUT', 'WAS', 'HAS', 'CAN', 'ARE', 'YOU', 'OUR',
-  'HOW', 'WHAT', 'WHEN', 'WHY', 'WHO', 'NEW', 'OUT', 'ALL', 'ANY', 'ONE', 'TWO',
-  'ITS', 'HIS', 'HER', 'THEM', 'THEY', 'FROM', 'THAT', 'THIS', 'WITH', 'WILL',
-  'JUST', 'NOW', 'VERY', 'MUCH', 'WELL', 'ALSO', 'THEN', 'SOME', 'LIKE', 'GET',
-  'SEE', 'GOOD', 'BAD', 'BIG', 'PUT', 'CALL', 'IN', 'ON', 'IT', 'AT', 'TO',
-  'BE', 'IS', 'SO', 'ME', 'MY', 'WE', 'HE', 'NO', 'GO', 'DO', 'UP', 'AM',
-  'A', 'I', 'O', 'USD', 'EST', 'LTD', 'INC', 'CORP', 'PLC', 'LLC', 'NYSE',
-  'NASDAQ', 'SVS', 'USA', 'EUR', 'GBP', 'JPY', 'YTD', 'NYSEARCA',
-  'BUY', 'SELL', 'HOLD', 'PUT', 'CALL', // trading verbs/options that look like 3-4 char tickers
-  // Exchange/country-code suffixes — prevent ghost buttons from foreign listings
-  'DE', 'MX', 'SW', 'VI', 'SN', 'DU', 'HM', 'GLP', 'LN', 'L', 'PA', 'SA',
-  'TO', 'CN', 'HK', 'JP', 'KR', 'BR', 'IN', 'AU', 'AS', 'AX', 'TA', 'OL',
-  // Note: "TO" is already blocked — a common preposition AND Toronto exchange suffix
-]);
-
-// ─── Ticker extraction ──
+// ─── Ticker extraction (filters from shared symbol-resolution module) ──
 function extractTickers(text: string): string[] {
   // Match: $SPCX, SPCX (2-5 uppercase letters, standalone)
   const matches = text.match(/\$?\b([A-Z]{2,5})\b/g);
@@ -97,14 +92,14 @@ function extractSearchTerm(text: string): string | null {
   if (multiWord) {
     // Pick the longest match — most likely to be a company name
     const longest = multiWord.reduce((a, b) => b.length > a.length ? b : a);
-    if (!isFilteredWord(longest)) return longest;
+    if (!isFilteredCommonWord(longest)) return longest;
   }
   
   // Try: ALL capitalized words, skip filtered ones, pick the first real name
   const allCapWords = cleaned.match(/\b([A-Z][a-z]{2,})\b/g);
   if (allCapWords) {
     for (const word of allCapWords) {
-      if (!isFilteredWord(word)) return word;
+      if (!isFilteredCommonWord(word)) return word;
     }
   }
   
@@ -117,32 +112,7 @@ function extractSearchTerm(text: string): string | null {
 // suffixes like DE/MX/SN), contradictory buttons (SPY when VOO is recommended),
 // and duplicate positions across foreign exchange listings.
 
-// ─── Common non-company capitalized words ──
-const FILTERED_PROPER_NOUNS = /^(This|That|What|When|Where|Why|Which|Whose|How|There|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Could|Would|Should|About|Your|Their|Some|Many|More|Less|Each|Every|Other|After|Before|During|Still|Already|Always|Never|Tell|Show|Find|Look|Check|Search|Give|Make|Take|Know|Think|Want|Need|Like|Love|Can|Will|Just|Also|Only|Even|Then|Than|Its|His|Her|Our|Been|Being|Having|Doing|Going|Getting)$/;
 
-function isFilteredWord(word: string): boolean {
-  return FILTERED_PROPER_NOUNS.test(word);
-}
-
-// ─── Pre-flight company name extraction + resolution ───
-// Words that commonly appear in financial text but aren't company names
-const NOT_COMPANIES = new Set([
-  'NYSE', 'NASDAQ', 'STOCK', 'STOCKS', 'SHARE', 'SHARES', 'PRICE', 'PRICES',
-  'TRADE', 'TRADING', 'MARKET', 'MARKETS', 'INVEST', 'INVESTING', 'ANALYST',
-  'FUTURE', 'FUTURES', 'TODAY', 'QUARTERLY', 'ANNUAL', 'REPORT', 'REPORTS',
-  'GROWTH', 'VALUE', 'PROFIT', 'REVENUE', 'EARNINGS', 'DIVIDEND', 'YIELD',
-  'TECH', 'HEALTH', 'FINANCE', 'ENERGY', 'SECTOR', 'SECTORS', 'INDUSTRY',
-  'YAHOO', 'BLOOMBERG', 'REUTERS', 'BARRONS', 'FIDELITY', 'VANGUARD',
-  'RECOMMEND', 'RECOMMENDATION', 'ANALYSIS', 'OUTLOOK', 'FORECAST',
-  'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
-  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY',
-  'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
-  'PORTFOLIO', 'ALLOCATION', 'BUDGET', 'STRATEGY', 'RISK', 'BALANCE',
-  'COMPANY', 'CORPORATION', 'HOLDINGS', 'LIMITED', 'GROUP', 'LTD', 'CORP', 'INC',
-  'INTERNATIONAL', 'RESEARCH', 'MANAGEMENT', 'CAPITAL', 'PARTNERS',
-])
-
-/** Extract potential company names from text (search results, user message). */
 function extractCompanyNames(text: string): string[] {
   const names = new Set<string>()
   if (!text) return []
@@ -150,7 +120,7 @@ function extractCompanyNames(text: string): string[] {
   const multiWord = text.match(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){1,2})\b/g)
   if (multiWord) {
     for (const m of multiWord) {
-      if (!NOT_COMPANIES.has(m.toUpperCase()) && !FILTERED_PROPER_NOUNS.test(m) && m.length > 5) {
+      if (!NOT_COMPANIES.has(m.toUpperCase()) && !FILTERED_COMMON_WORDS.test(m) && m.length > 5) {
         names.add(m)
       }
     }
@@ -164,7 +134,7 @@ function extractCompanyNames(text: string): string[] {
   const singleWord = text.match(/\b([A-Z][a-z]{3,})\b/g)
   if (singleWord) {
     for (const m of singleWord) {
-      if (!NOT_COMPANIES.has(m.toUpperCase()) && !FILTERED_PROPER_NOUNS.test(m) && m.length > 4) {
+      if (!NOT_COMPANIES.has(m.toUpperCase()) && !FILTERED_COMMON_WORDS.test(m) && m.length > 4) {
         names.add(m)
       }
     }
@@ -511,43 +481,7 @@ function extractMultiSectorCriteria(
   }));
 }
 
-/**
- * Derive screening criteria from the investor's stored style when no explicit
- * sector/PE/growth keywords appear in the user's message. This prevents the
- * "familiar ticker shortlist" problem — without a screen, the AI falls back
- * to trained-in stocks (VOO, NVDA, LLY, MSFT, TSLA, AVGO) every time.
- *
- * Style defaults are conservative baselines that the AI can tighten or relax
- * based on conversation context. The screener runs with these defaults so the
- * AI always has a REAL candidate universe to pick from, not training data.
- */
-function getStyleScreeningDefaults(investorStyle: string): Record<string, any> {
-  const s = investorStyle.toLowerCase();
-  if (s.includes('lynch')) {
-    // GARP: Growth At a Reasonable Price — earnings growth matters but don't overpay
-    return { market_cap_min: 2_000_000_000, pe_max: 30, min_growth_rate: 0.10 };
-  }
-  if (s.includes('buffett')) {
-    // Value + quality — low P/E, large established companies
-    return { market_cap_min: 10_000_000_000, pe_max: 20 };
-  }
-  if (s.includes('livermore')) {
-    // Momentum — high growth, high volume, P/E is secondary
-    return { market_cap_min: 1_000_000_000, min_growth_rate: 0.20, volume_min: 500_000 };
-  }
-  if (s.includes('munger')) {
-    // Quality + rational valuation — reasonable P/E, large caps
-    return { market_cap_min: 5_000_000_000, pe_max: 25 };
-  }
-  if (s.includes('soros')) {
-    // Contrarian — wide net, let the AI find the diamonds
-    return { market_cap_min: 500_000_000 };  // include small caps for undiscovered gems
-  }
-  // Default: broad mid+ cap US equities
-  return { market_cap_min: 2_000_000_000 };
-}
 
-/** Call the screener service and return results. */
 async function runScreening(criteria: Record<string, any>): Promise<{ results: any[]; provider: string; error?: string }> {
   try {
     const res = await fetch('http://127.0.0.1:8766/screen', {
@@ -1206,24 +1140,7 @@ function relaxCriteria(criteria: Record<string, any>): Record<string, any> {
   return relaxed;
 }
 
-// ── Known foreign exchange suffixes the AI hallucinates despite prompt forbidding ──
-const FOREIGN_EXCHANGE_SUFFIXES = new Set([
-  'DE', 'DU', 'F', 'HM', 'GLP',   // German exchanges (XETRA, Frankfurt, Hamburg, etc.)
-  'MX',                           // Mexico
-  'SW', 'VI',                     // Swiss, Vienna
-  'SN',                           // Santiago
-  'AX',                           // Australia
-  'LN', 'L', 'IL',                // London, London Intl
-  'PA',                           // Paris
-  'SA',                           // Saudi / Sao Paulo
-  'AS', 'BR',                     // Amsterdam, Brussels
-  'CN', 'HK', 'KS', 'KQ', 'T',   // Canada, Hong Kong, Korea, Tokyo
-  'MC', 'MI',                     // Madrid, Milan
-  'MU', 'NE',                     // Munich, New Zealand?
-  'NX', 'OL', 'RG', 'SG',        // Various exchange suffixes
-  'SS', 'ST',                     // Stockholm, Singapore derivatives?
-  'TO', 'V', 'VN',                // Toronto, Vienna alt, Vietnam
-]);
+// ── Foreign exchange suffixes (from shared symbol-resolution module) ──
 
 /**
  * Strip known foreign exchange suffixes from RECOMMEND markers.
@@ -1318,6 +1235,10 @@ export async function POST(req: Request) {
     const systemPrompt = mode === 'alerts'
       ? ALERTS_SYSTEM_PROMPT
       : VANTAGE_SYSTEM_PROMPT
+
+    // ── Manager / Triager (Phase 2): classify intent ──
+    const classification = classifyIntent(lastMessage);
+    console.log(`[chat] ===> MANAGER intent=${classification.intent} confidence=${classification.confidence.toFixed(2)} sectors=[${classification.mentionedSectors.join(',') || 'none'}] tickers=[${classification.mentionedTickers.join(',') || 'none'}]${classification.needsClarify ? ' CLARIFY_NEEDED:' + classification.clarifyReason : ''}`);
 
     // ── Deviation facts: inject history so AI knows not to repeat ──
     let deviationContext = '';
@@ -1510,119 +1431,21 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     // ── Retry prompt injection (for validation-driven regeneration) ──
     const requestedBudget = extractBudgetFromHistory(messages);
 
-    // ── Stock Screening: real-time candidate universe ──
-    // Only screens when: a) portfolio request (budget present), b) screening criteria
-    // detectable from the user's natural-language request. Non-portfolio messages skip.
-    let screeningContext = '';
-    let screeningResults: Awaited<ReturnType<typeof runScreening>> | null = null;
-    let screeningCriteria: Record<string, any> | null = null;
-    let screeningSource: 'explicit' | 'style_defaults' | null = null;
-    // Multi-sector state — when the user names multiple sectors in one request,
-    // we run separate screening per sector so every bucket has its own real candidate pool.
-    let multiSectorPools: Array<{ label: string; criteria: Record<string, any>; results: any[]; count: number; provider: string }> | null = null;
+    // ── Stock Screening: delegated to Phase 3 orchestrator ──
+    const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
+    const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
+    const screeningContext = screeningOrch.context;
+    let screeningResults: Awaited<ReturnType<typeof import('@/lib/ai/orchestrator').runScreening>> | null = screeningOrch.results;
+    let screeningCriteria: Record<string, any> | null = screeningOrch.criteria;
+    let screeningSource = screeningOrch.source;
+    let multiSectorPools = screeningOrch.multiSectorPools;
 
-    if (requestedBudget !== null) {
-      // Step 1: try multi-sector screening (collects ALL sector keywords, not just the first)
-      const styleDefaults = getStyleScreeningDefaults(profile.investorStyle);
-      let multiCriteria = extractMultiSectorCriteria(lastMessage, styleDefaults);
-
-      // ── CLARIFY follow-up fallback ──
-      // If the current message found no sector keywords but the conversation history
-      // DOES contain sector keywords (e.g., user said "healthcare" in the first message
-      // but the CLARIFY follow-up just says "widen filters"), carry forward the original
-      // sector context so the screener doesn't lose the sector filter entirely.
-      const isWiden = detectWidenRequest(messages);
-      if (multiCriteria === null || multiCriteria.length === 0) {
-        const historicSectors = extractSectorsFromHistory(messages);
-        if (historicSectors && historicSectors.length > 0) {
-          console.log(`[chat] 🔍 Last message has no sector — falling back to history: ${historicSectors.join(', ')}`);
-          const labelMap: Record<string, string> = {
-            technology: 'Technology', healthcare: 'Healthcare', financial_services: 'Financials',
-            energy: 'Energy', consumer_cyclical: 'Consumer Cyclical', industrials: 'Industrials',
-            basic_materials: 'Basic Materials', real_estate: 'Real Estate', utilities: 'Utilities',
-            communication_services: 'Communication Services',
-          };
-          multiCriteria = historicSectors.map(sector => ({
-            label: labelMap[sector] || sector.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-            criteria: { ...styleDefaults, sector },
-          }));
-        }
-      }
-
-      // ── Widen/relax detection ──
-      // When the user says "widen filters" / "relax criteria", actually drop the
-      // restrictive numeric filters (PE cap, growth floor) so the screener returns
-      // real candidates instead of 0 matches. The AI is still told to prefer quality.
-      if (isWiden && multiCriteria) {
-        console.log('[chat] 🔍 Widen request detected — relaxing criteria');
-        multiCriteria = multiCriteria.map(mc => ({
-          ...mc,
-          criteria: relaxCriteria(mc.criteria),
-        }));
-      }
-
-      if (multiCriteria && multiCriteria.length >= 2) {
-        // ── MULTI-SECTOR PATH: run parallel screening per detected sector ──
-        screeningSource = 'explicit';
-        console.log(`[chat] 🔍 Multi-sector detected: ${multiCriteria.map(c => c.label).join(', ')}`);
-
-        const poolPromises = multiCriteria.map(async ({ label, criteria }) => {
-          const result = await runScreening(criteria);
-          return { label, criteria, results: result.results || [], count: result.results?.length || 0, provider: result.provider };
-        });
-        multiSectorPools = await Promise.all(poolPromises);
-
-        // Build multi-sector context for system prompt
-        screeningContext = formatMultiSectorContext(multiSectorPools);
-
-        // For checklist/meta: set screeningResults to a merged view
-        const totalCount = multiSectorPools.reduce((sum, p) => sum + p.count, 0);
-        const allResults = multiSectorPools.flatMap(p => p.results);
-        const providers = [...new Set(multiSectorPools.map(p => p.provider))];
-        screeningResults = { results: allResults, provider: providers.join('+'), error: undefined };
-
-        // Build composite criteria description for the checklist
-        screeningCriteria = Object.fromEntries(multiSectorPools.map(p => [p.label, p.count]));
-        screeningCriteria._multi = true;
-
-        console.log(`[chat] 🔍 Multi-sector: ${multiSectorPools.length} pools, ${totalCount} total candidates`);
-      } else if (multiCriteria && multiCriteria.length === 1) {
-        // ── SINGLE-SECTOR PATH: degrade to classic single-pool screening ──
-        screeningSource = 'explicit';
-        const { label, criteria } = multiCriteria[0];
-        screeningCriteria = criteria;
-        console.log(`[chat] 🔍 Single sector (${label}) — running screener:`, JSON.stringify(criteria));
-        screeningResults = await runScreening(criteria);
-        screeningContext = formatScreeningContext(
-          screeningResults.results,
-          criteria,
-          screeningResults.results?.length || 0
-        );
-        console.log(`[chat] 🔍 Screener returned ${screeningResults.results?.length || 0} results (${screeningResults.provider})`);
-        if (screeningResults.error) {
-          console.error('[chat] 🔍 Screener error:', screeningResults.error);
-        }
-      } else {
-        // ── NO SECTOR detected — fall back to style defaults (single pool) ──
-        screeningSource = 'style_defaults';
-        const criteria = isWiden ? relaxCriteria(styleDefaults) : styleDefaults;
-        console.log(`[chat] 🔍 No explicit criteria in message — using ${profile.investorStyle} style defaults${isWiden ? ' (relaxed)' : ''}:`, JSON.stringify(criteria));
-        if (criteria && Object.keys(criteria).length > 0) {
-          screeningCriteria = criteria;
-          screeningResults = await runScreening(criteria);
-          screeningContext = formatScreeningContext(
-            screeningResults.results,
-            criteria,
-            screeningResults.results?.length || 0
-          );
-          console.log(`[chat] 🔍 Screener returned ${screeningResults.results?.length || 0} results (${screeningResults.provider})`);
-          if (screeningResults.error) {
-            console.error('[chat] 🔍 Screener error:', screeningResults.error);
-          }
-        }
+    if (!screeningOrch.skipped) {
+      console.log(`[chat] 🔍 Orchestrator: source=${screeningOrch.source} pools=${screeningOrch.multiSectorPools?.length || 0} results=${screeningOrch.results?.results?.length || 0}`);
+      if (screeningOrch.results?.error) {
+        console.error('[chat] 🔍 Screener error:', screeningOrch.results.error);
       }
     }
-
     const systemBlocks: SystemBlock[] = [
     ...CHAT_SAFETY_BLOCKS,
       {
@@ -1908,10 +1731,12 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
         let responseText = fullResponse.join('');
 
-        // ── Strip hallucinated foreign exchange suffixes from markers ──
-        // Despite explicit system-prompt forbidding, the AI sometimes hallucinates
-        // tickers like JNJ.DE, PFE.MX, NVDA.VI. Strip these before validation.
-        responseText = stripForeignSuffixes(responseText);
+        // ── Unified pass 1: sanitization + incoherence detection ──
+        const validationReport = validateResponse(responseText, requestedBudget);
+        responseText = validationReport.sanitizedText;
+        if (validationReport.suffixesStripped > 0) {
+          console.warn(`[chat] 🔧 Stripped ${validationReport.suffixesStripped} foreign exchange suffixes`);
+        }
 
         // ── Guard: tool-loop exhaustion detection ──
         const hasMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL):\$?[\d,]+\]/i.test(responseText);
@@ -1925,20 +1750,28 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           markerCount > 0 ? `${markerCount} markers` : 'No markers');
 
         // ── Validate RECOMMEND markers (catch hallucinated ADR tickers like SKM≠SK Hynix) ──
+        // Phase 7: Finnhub validation runs through circuit breaker + fallback
         sendChecklist(controller, encoder, 'marker_format', 'in_progress');
         let correctedCount = 0;
         try {
-          const validation = await validateRecommendationMarkers(responseText);
+          const { result: validation, source } = await withFallback(
+            'finnhub',
+            () => validateRecommendationMarkers(responseText),
+            'marker_format',
+          );
+          if (source === 'fallback') {
+            stageLog('warn', 'marker_format', 'Finnhub validation skipped — circuit open, using raw markers', { dependency: 'finnhub' });
+          }
           if (validation.hasCorrections) {
             correctedCount = validation.issues.length;
             console.warn('[chat] ⚠️ Marker corrections:', JSON.stringify(validation.issues, null, 2));
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ corrections: validation.issues, correctedText: validation.corrected })}\n\n`)
             );
-            responseText = validation.corrected;
+            responseText = validation.corrected!; // guarded by hasCorrections above
           }
         } catch (valErr) {
-          console.error('[chat] Marker validation error:', valErr);
+          stageLog('error', 'marker_format', 'Marker validation failed', { dependency: 'finnhub', data: { error: String(valErr) } });
         }
         sendChecklist(controller, encoder, 'marker_format', 'done',
           correctedCount > 0 ? `${correctedCount} corrected` : `${markerCount || 0} valid`);
@@ -1962,20 +1795,13 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           }
         }
 
-        // ── Strip trailing conversational sign-offs ──
-        // After RECOMMEND markers are validated, remove trailing questions like
-        // "Ready to scale this in?" / "Sound good?" — Haiku's polite sign-off habit.
-        // This prevents them from appearing in the rendered output while keeping
-        // the complete portfolio intact.
-        responseText = stripTrailingQuestions(responseText);
-
         // ── Response Coherence Check ──
         // Detects AI producing two contradictory portfolios in one response,
         // raw "NVDA or or or or" marker-decision chains, and internal monologue
         // leaking into user-facing text. These indicate a broken generation that
         // should be regenerated — no partial render.
         sendChecklist(controller, encoder, 'coherence_check', 'in_progress');
-        const coherenceFailure = detectResponseIncoherence(responseText, requestedBudget);
+        const coherenceFailure = validationReport.issues.find(i => i.pass === 'incoherence' && i.severity === 'fatal')?.message || null;
         if (coherenceFailure) {
           console.warn('[chat] ⚠️ Response coherence check FAILED:', coherenceFailure);
           console.warn('[chat] Raw response (first 3000 chars):', responseText.slice(0, 3000));

@@ -118,32 +118,24 @@ export function OrdersTab() {
         </div>
       )}
 
-      {/* ── holdingsUnavailable — locked state replaces entire orders section ── */}
+      {/* ── holdingsUnavailable notice (info only — does not block orders) ── */}
+      {/* Orders are fetched independently from holdings; a broker not sharing position
+          data may still have accessible order history. */}
       {account?.holdingsUnavailable && (
         <div style={{
-          textAlign: 'center', padding: '40px 20px',
+          textAlign: 'center', padding: '10px 20px',
           border: '1px dashed rgba(245,158,11,0.25)',
-          borderRadius: 13, margin: '0 4px 16px',
+          borderRadius: 10, margin: '0 4px 12px',
           background: 'rgba(245,158,11,0.04)',
         }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🔒</div>
-          <div style={{
-            fontSize: 13, fontWeight: 650, color: 'var(--text-primary)',
-            marginBottom: 4,
-          }}>
-            Order history unavailable
-          </div>
-          <div style={{
-            fontSize: 11, color: 'var(--text-muted)',
-            maxWidth: 280, margin: '0 auto', lineHeight: 1.4,
-          }}>
-            Not shared by this connection.
+          <div style={{ fontSize: 11, color: '#f59e0b' }}>
+            ⚠️ Holdings data is not shared by this connection. Orders may still be available below.
           </div>
         </div>
       )}
 
-      {/* ── orders-visible content (hidden when holdingsUnavailable) ── */}
-      {!account?.holdingsUnavailable && (<>
+      {/* ── Orders content ── */}
+      <>
 
       {/* New Order */}
       <button
@@ -476,7 +468,7 @@ export function OrdersTab() {
         .action-btn:active { opacity: 0.7; }
       `}</style>
 
-      </>)}
+      </>
     </div>
   );
 }

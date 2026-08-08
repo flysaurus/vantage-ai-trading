@@ -85,7 +85,12 @@ function incrementMessageCount(): number {
 }
 
 function getLocalRemaining(): number {
-  return Math.max(0, 25 - getMessageCount());
+  // Return a large safe value to effectively disable the local fallback.
+  // The SERVER enforces real limits via ai-guard.ts checkUsageLimit().
+  // Client-side pre-checks are a UX optimization, not a security boundary.
+  // If the API is unreachable, let the request go through — the server will
+  // return 429 if the limit is actually reached.
+  return 999;
 }
 
 const DOLLAR_FMT: Intl.NumberFormatOptions = {
@@ -981,7 +986,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }
     }
 
-    if ((chatRemaining ?? 0) <= 0) {
+    // Only block when chatRemaining is explicitly 0 (confirmed loaded + depleted).
+    // null = not yet loaded → allow through (server enforces the real limit).
+    if (chatRemaining === 0) {
       const resetMsg = usageStats?.chat?.monthly
         ? `Monthly chat limit reached — resets on the 1st. Upgrade to Gold for more messages.`
         : `Daily chat limit reached — resets tomorrow.`;
@@ -2190,12 +2197,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  if ((chatRemaining ?? 0) > 0) sendMessage(input);
+                  if (chatRemaining !== 0) sendMessage(input);
                 }
               }}
               placeholder={chatPlaceholder}
               maxLength={500}
-              disabled={(chatRemaining ?? 0) <= 0}
+              disabled={chatRemaining === 0}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -2208,19 +2215,19 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               }}
             />
             <div
-              onClick={() => { if ((chatRemaining ?? 0) > 0 && input.trim()) sendMessage(input); }}
+              onClick={() => { if (chatRemaining !== 0 && input.trim()) sendMessage(input); }}
               style={{
                 width: '34px',
                 height: '34px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: input.trim() && (chatRemaining ?? 0) > 0 ? ACCENT : 'rgba(255,255,255,0.12)',
+                background: input.trim() && chatRemaining !== 0 ? ACCENT : 'rgba(255,255,255,0.12)',
                 borderRadius: '50%',
                 fontSize: '15px',
-                color: input.trim() && (chatRemaining ?? 0) > 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
+                color: input.trim() && chatRemaining !== 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
                 flexShrink: 0,
-                cursor: input.trim() && (chatRemaining ?? 0) > 0 ? 'pointer' : 'default',
+                cursor: input.trim() && chatRemaining !== 0 ? 'pointer' : 'default',
                 fontWeight: 700,
               }}
             >
@@ -2695,7 +2702,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         onConfirm={async (params) => {
           if (!tradeTicket) return;
           const price = (params.type === 'limit' || params.type === 'stop_limit') && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;
-          const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce);
+          const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce, undefined, undefined, undefined, tradeTicket.messageId);
           if (!result.success) {
             throw new Error(result.error || 'Order failed');
           }

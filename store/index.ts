@@ -142,7 +142,7 @@ interface OrderStore {
 
 export const useOrderStore = create<OrderStore>((set) => ({
   orders: [],
-  activeFilter: 'open',
+  activeFilter: 'all',
   setOrders: (orders) => set({ orders }),
   addOrder: (order) => set((s) => ({ orders: [order, ...s.orders] })),
   updateOrder: (id, updates) =>

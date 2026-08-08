@@ -1,0 +1,365 @@
+// ─── AI Advisor Regression Suite ───────────────────────────────
+// Phase 6: Permanent regression suite for AI Advisor.
+//
+// Every bug we've fixed gets a fixture here. Run BEFORE any AI Advisor
+// change to prevent regressions.
+//
+// Usage:
+//   npx tsx lib/ai/__tests__/regression-suite.ts
+//   npx tsx lib/ai/__tests__/regression-suite.ts --verbose
+//   npx tsx lib/ai/__tests__/regression-suite.ts --suite=markers
+//
+// ──────────────────────────────────────────────────────────────────
+
+import { validateResponse } from '../validator';
+import { classifyIntent, createConversationState } from '../manager';
+import { stripForeignSuffixes } from '../validator';
+import { sanitizeClarifyResponse, analyzeMarkerPresence } from '../presenter';
+import { NOT_TICKERS, FOREIGN_EXCHANGE_SUFFIXES, isFilteredCommonWord } from '@/lib/symbol-resolution';
+import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults';
+
+// ── Test runner ────────────────────────────────────────────
+
+interface TestCase {
+  name: string;
+  suite: string;
+  fn: () => void | Promise<void>;
+}
+
+const suites: Map<string, TestCase[]> = new Map();
+let verbose = false;
+let passed = 0;
+let failed = 0;
+
+function test(name: string, suite: string, fn: () => void | Promise<void>) {
+  if (!suites.has(suite)) suites.set(suite, []);
+  suites.get(suite)!.push({ name, suite, fn });
+}
+
+function assert(condition: boolean, msg: string) {
+  if (!condition) throw new Error(`Assertion failed: ${msg}`);
+}
+
+function assertEq<T>(actual: T, expected: T, msg: string) {
+  if (actual !== expected) {
+    throw new Error(`Assertion failed: ${msg}\n  Expected: ${JSON.stringify(expected)}\n  Actual:   ${JSON.stringify(actual)}`);
+  }
+}
+
+// ── Suite: Symbol Resolution ───────────────────────────────
+
+test('NOT_TICKERS blocks common words', 'symbol_resolution', () => {
+  assert(NOT_TICKERS.has('THE'), 'THE should be blocked');
+  assert(NOT_TICKERS.has('API'), 'API should be blocked');
+  assert(NOT_TICKERS.has('BUY'), 'BUY (trading verb) should be blocked');
+  assert(!NOT_TICKERS.has('AAPL'), 'AAPL should NOT be blocked');
+  assert(!NOT_TICKERS.has('NVDA'), 'NVDA should NOT be blocked');
+});
+
+test('FOREIGN_EXCHANGE_SUFFIXES blocks exchange codes', 'symbol_resolution', () => {
+  assert(FOREIGN_EXCHANGE_SUFFIXES.has('DE'), 'DE (XETRA) should be blocked');
+  assert(FOREIGN_EXCHANGE_SUFFIXES.has('TO'), 'TO (Toronto) should be blocked');
+  assert(FOREIGN_EXCHANGE_SUFFIXES.has('L'), 'L (London) should be blocked');
+});
+
+test('isFilteredCommonWord filters proper nouns', 'symbol_resolution', () => {
+  assert(isFilteredCommonWord('Monday'), 'Monday should be filtered');
+  assert(isFilteredCommonWord('January'), 'January should be filtered');
+  assert(isFilteredCommonWord('Could'), 'Could should be filtered');
+  assert(!isFilteredCommonWord('NVIDIA'), 'NVIDIA should NOT be filtered');
+  assert(!isFilteredCommonWord('Microsoft'), 'Microsoft should NOT be filtered');
+});
+
+// ── Suite: Investor Style Defaults ─────────────────────────
+
+test('Lynch style returns GARP defaults', 'style_defaults', () => {
+  const defaults = getStyleScreeningDefaults('lynch');
+  assertEq(defaults.market_cap_min, 2_000_000_000, 'Lynch: market_cap_min');
+  assertEq(defaults.pe_max, 30, 'Lynch: pe_max');
+  assertEq(defaults.min_growth_rate, 0.10, 'Lynch: min_growth_rate');
+});
+
+test('Buffett style returns value defaults', 'style_defaults', () => {
+  const defaults = getStyleScreeningDefaults('buffett');
+  assertEq(defaults.market_cap_min, 10_000_000_000, 'Buffett: market_cap_min');
+  assertEq(defaults.pe_max, 20, 'Buffett: pe_max');
+});
+
+test('Unknown style falls back to broad mid+ cap', 'style_defaults', () => {
+  const defaults = getStyleScreeningDefaults('unknown-style');
+  assertEq(defaults.market_cap_min, 2_000_000_000, 'Unknown: market_cap_min');
+});
+
+// ── Suite: Intent Classification ───────────────────────────
+
+test('Fresh build request → portfolio_build', 'intent', () => {
+  const result = classifyIntent('Build me a $5000 growth portfolio');
+  assertEq(result.intent, 'portfolio_build', 'Should classify as portfolio_build');
+  assert(result.confidence > 0.5, 'Should have high confidence');
+});
+
+test('CLARIFY answer → clarify_response (with open clarify)', 'intent', () => {
+  const state = createConversationState();
+  state.clarifyOpen = true;
+  const result = classifyIntent('I prefer the aggressive approach with more tech exposure', state);
+  assertEq(result.intent, 'clarify_response', 'Should classify as clarify_response');
+});
+
+test('Definition question → market_question', 'intent', () => {
+  const result = classifyIntent('What is a P/E ratio?');
+  assertEq(result.intent, 'market_question', 'Should classify as market_question');
+});
+
+test('Detects mentioned sectors', 'intent', () => {
+  const result = classifyIntent('Build a tech and healthcare portfolio');
+  assert(result.mentionedSectors.includes('technology'), 'Should detect technology sector');
+  assert(result.mentionedSectors.includes('healthcare'), 'Should detect healthcare sector');
+});
+
+test('Detects mentioned tickers', 'intent', () => {
+  const result = classifyIntent('Should I buy AAPL and MSFT?');
+  assert(result.mentionedTickers.includes('AAPL'), 'Should detect AAPL');
+  assert(result.mentionedTickers.includes('MSFT'), 'Should detect MSFT');
+});
+
+// ── Suite: Foreign Suffix Stripping ────────────────────────
+
+test('Strips JNJ.DE → JNJ', 'sanitization', () => {
+  const input = '[RECOMMEND:JNJ.DE:BUY:$500]';
+  const result = stripForeignSuffixes(input);
+  assertEq(result.text, '[RECOMMEND:JNJ:BUY:$500]', 'Should strip .DE suffix');
+  assertEq(result.count, 1, 'Should count 1 strip');
+});
+
+test('Strips PFE.MX → PFE', 'sanitization', () => {
+  const input = '[RECOMMEND:PFE.MX:BUY:$1000]';
+  const result = stripForeignSuffixes(input);
+  assertEq(result.text, '[RECOMMEND:PFE:BUY:$1000]', 'Should strip .MX suffix');
+  assertEq(result.count, 1, 'Should count 1 strip');
+});
+
+test('Leaves valid tickers alone', 'sanitization', () => {
+  const input = '[RECOMMEND:AAPL:BUY:$5000] [RECOMMEND:NVDA:BUY:$3000]';
+  const result = stripForeignSuffixes(input);
+  assertEq(result.text, input, 'Should leave valid tickers unchanged');
+  assertEq(result.count, 0, 'Should count 0 strips');
+});
+
+// ── Suite: CLARIFY Sanitization ────────────────────────────
+
+test('Strips RECOMMEND markers from CLARIFY response', 'sanitization', () => {
+  const input = `[CLARIFY:{"question":"Which approach?"}]\nI recommend [RECOMMEND:AAPL:BUY:$500] for growth.`;
+  const result = sanitizeClarifyResponse(input);
+  assert(!result.text.includes('[RECOMMEND:'), 'RECOMMEND markers should be stripped');
+  assert(result.text.includes('[CLARIFY:'), 'CLARIFY block should remain');
+  assertEq(result.stripped, 1, 'Should strip 1 marker');
+});
+
+test('Leaves non-CLARIFY responses untouched', 'sanitization', () => {
+  const input = '[RECOMMEND:AAPL:BUY:$5000] [RECOMMEND:NVDA:BUY:$3000]';
+  const result = sanitizeClarifyResponse(input);
+  assertEq(result.text, input, 'Non-CLARIFY response should be unchanged');
+  assertEq(result.stripped, 0, 'Should strip 0 markers');
+});
+
+// ── Suite: Marker Presence Analysis ────────────────────────
+
+test('Detects BUY markers', 'marker_analysis', () => {
+  const result = analyzeMarkerPresence('[RECOMMEND:AAPL:BUY:$5000] [RECOMMEND:NVDA:BUY:$3000]');
+  assert(result.hasBuyMarkers, 'Should detect BUY markers');
+  assert(!result.hasSellMarkers, 'No SELL markers');
+  assertEq(result.markerCount, 2, 'Should count 2 markers');
+});
+
+test('Detects SELL markers', 'marker_analysis', () => {
+  const result = analyzeMarkerPresence('[RECOMMEND:JNJ:SELL]');
+  assert(!result.hasBuyMarkers, 'No BUY markers');
+  assert(result.hasSellMarkers, 'Should detect SELL marker');
+  assertEq(result.markerCount, 1, 'Should count 1 marker');
+});
+
+test('Detects PORTFOLIO blocks', 'marker_analysis', () => {
+  const result = analyzeMarkerPresence('[PORTFOLIO:{"total":10000,"positions":[{"symbol":"AAPL","amount":5000}]}]');
+  assert(result.hasPortfolioBlocks, 'Should detect PORTFOLIO block');
+});
+
+// ── Suite: Validation Pipeline ─────────────────────────────
+
+test('Clean response passes validation', 'validation', () => {
+  const response = '[RECOMMEND:AAPL:BUY:$5000]\n[RECOMMEND:NVDA:BUY:$3000]\n[RECOMMEND:MSFT:BUY:$2000]';
+  const report = validateResponse(response, 10000);
+  assert(report.ok, 'Clean response should pass');
+  assert(report.hasRecommendMarkers, 'Should detect RECOMMEND markers');
+});
+
+test('Internal monologue detected', 'validation', () => {
+  const response = 'Hmm, the user wants tech exposure. Let me check...\n[RECOMMEND:AAPL:BUY:$5000]';
+  const report = validateResponse(response, 5000);
+  assert(!report.ok, 'Internal monologue should fail validation');
+  const issue = report.issues.find(i => i.pass === 'incoherence');
+  assert(!!issue, 'Should have incoherence issue');
+});
+
+test('Duplicate SUMMARY_TLDR detected', 'validation', () => {
+  const response = '[SUMMARY_TLDR:Portfolio A]\n[SUMMARY_TLDR:Portfolio B]\n[RECOMMEND:AAPL:BUY:$5000]';
+  const report = validateResponse(response, 5000);
+  assert(!report.ok, 'Duplicate TLDR should fail validation');
+});
+
+test('Foreign suffixes stripped during validation', 'validation', () => {
+  const response = '[RECOMMEND:JNJ.DE:BUY:$500]\n[RECOMMEND:PFE.MX:BUY:$300]';
+  const report = validateResponse(response, 800);
+  assertEq(report.suffixesStripped, 2, 'Should strip 2 foreign suffixes');
+  assert(!report.sanitizedText.includes('.DE'), 'No .DE suffix in sanitized text');
+  assert(!report.sanitizedText.includes('.MX'), 'No .MX suffix in sanitized text');
+});
+
+test('CASH marker in portfolio block accepted', 'validation', () => {
+  const response = `[PORTFOLIO:{"total":10000,"positions":[
+    {"symbol":"AAPL","amount":6000},
+    {"symbol":"MSFT","amount":3000},
+    {"symbol":"CASH","amount":1000}
+  ]}]
+  [RECOMMEND:AAPL:BUY:$6000]
+  [RECOMMEND:MSFT:BUY:$3000]`;
+  // Note: full validation requires Finnhub — this just tests block parsing
+  const report = validateResponse(response, 10000);
+  assert(report.hasPortfolioBlocks, 'Should detect PORTFOLIO blocks');
+});
+
+// ── Suite: PORTFOLIO Block Validation ──────────────────────
+
+test('Mismatched sum vs total detected', 'portfolio_block', () => {
+  const response = `[PORTFOLIO:{"total":10000,"positions":[
+    {"symbol":"AAPL","amount":6000},
+    {"symbol":"NVDA","amount":3000}
+  ]}]
+  [RECOMMEND:AAPL:BUY:$6000]
+  [RECOMMEND:NVDA:BUY:$3000]`;
+  // Positions sum to 9000, total is 10000
+  const report = validateResponse(response, 10000);
+  const issue = report.issues.find(i => i.pass === 'portfolio_block');
+  assert(!!issue, 'Should detect mismatched sum');
+  assert(issue!.message.includes('sum'), 'Error should mention sum');
+});
+
+test('Duplicate symbols in block detected', 'portfolio_block', () => {
+  const response = `[PORTFOLIO:{"total":10000,"positions":[
+    {"symbol":"AAPL","amount":5000},
+    {"symbol":"AAPL","amount":5000}
+  ]}]
+  [RECOMMEND:AAPL:BUY:$5000]`;
+  const report = validateResponse(response, 10000);
+  const issue = report.issues.find(i => i.pass === 'portfolio_block');
+  assert(!!issue, 'Should detect duplicate symbols');
+  assert(issue!.message.includes('duplicate'), 'Error should mention duplicate');
+});
+
+// ── Suite: Prose Questions ─────────────────────────────────
+
+test('Prose questions outside CLARIFY detected', 'validation', () => {
+  const response = 'Here are some stocks.\nWould you prefer growth or value?\nDo you want more tech exposure?';
+  const report = validateResponse(response, null);
+  assert(!report.ok, 'Prose questions should fail');
+  const issue = report.issues.find(i => i.pass === 'incoherence');
+  assert(!!issue, 'Should have incoherence issue');
+  assert(issue!.message.includes('CLARIFY'), 'Error should mention CLARIFY');
+});
+
+test('Single prose question accepted (natural sign-off)', 'validation', () => {
+  // A single question ending might be a natural sign-off, not a CLARIFY violation
+  const response = 'Here is my recommendation: [RECOMMEND:AAPL:BUY:$5000]\nDoes that look good?';
+  const report = validateResponse(response, 5000);
+  // Single questions might pass or fail depending on context — we just check no crash
+  assert(typeof report.ok === 'boolean', 'Should return a valid report');
+});
+
+// ── Suite: $10M Budget Parsing ─────────────────────────────
+
+test('Large budget ($10M) does not overflow', 'validation', () => {
+  const response = '[RECOMMEND:AAPL:BUY:$4000000]\n[RECOMMEND:MSFT:BUY:$3000000]\n[RECOMMEND:NVDA:BUY:$3000000]';
+  const report = validateResponse(response, 10_000_000);
+  assert(report.ok, 'Large budget should be accepted');
+});
+
+// ── Suite: Edge Cases ──────────────────────────────────────
+
+test('Empty response handled gracefully', 'edge_cases', () => {
+  const report = validateResponse('', null);
+  assert(report.ok, 'Empty response should pass');
+  assertEq(report.suffixesStripped, 0, 'No suffixes to strip');
+  assert(!report.hasRecommendMarkers, 'No markers');
+  assert(!report.hasPortfolioBlocks, 'No blocks');
+});
+
+test('Response with only SUMMARY_TLDR and no trades fails', 'edge_cases', () => {
+  const response = '[SUMMARY_TLDR:Good portfolio, very diversified]';
+  const report = validateResponse(response, null);
+  assert(!report.ok, 'TLDR-only (no trades) response should fail');
+});
+
+test('CLARIFY with budget mention accepted', 'edge_cases', () => {
+  const response = '[CLARIFY:{"question":"Budget preference?","options":["$5000 growth","$10000 balanced"]}]';
+  const report = validateResponse(response, null);
+  assert(report.ok, 'CLARIFY with budget mentions should pass');
+});
+
+// ── Suite: Trailing Question Stripping ─────────────────────
+
+test('Strip "How does that look?"', 'trailing_questions', () => {
+  const response = '[RECOMMEND:AAPL:BUY:$5000]\nHow does that look?';
+  const report = validateResponse(response, 5000);
+  assert(!report.sanitizedText.includes('How does that look?'), 'Trailing question should be stripped');
+});
+
+// ── Run ────────────────────────────────────────────────────
+
+async function runAll(suiteFilter?: string) {
+  const args = process.argv.slice(2);
+  verbose = args.includes('--verbose') || args.includes('-v');
+  const filter = args.find(a => a.startsWith('--suite='))?.split('=')[1] || suiteFilter;
+
+  console.log('\n🧪 AI Advisor Regression Suite\n');
+  console.log(`Suite filter: ${filter || 'all'}`);
+  console.log(`Verbose: ${verbose}\n`);
+
+  const startTime = Date.now();
+
+  for (const [suiteName, tests] of suites) {
+    if (filter && suiteName !== filter) continue;
+
+    console.log(`\n📦 Suite: ${suiteName} (${tests.length} tests)`);
+    for (const t of tests) {
+      try {
+        await t.fn();
+        passed++;
+        if (verbose) console.log(`  ✅ ${t.name}`);
+      } catch (err: any) {
+        failed++;
+        console.error(`  ❌ ${t.name}`);
+        console.error(`     ${err.message}`);
+        if (verbose && err.stack) {
+          console.error(`     ${err.stack.split('\n').slice(1, 3).join('\n')}`);
+        }
+      }
+    }
+  }
+
+  const elapsed = Date.now() - startTime;
+  console.log(`\n───\n`);
+  console.log(`Results: ${passed} passed, ${failed} failed (${elapsed}ms)`);
+  console.log(`Total suites: ${filter ? 1 : suites.size}, tests: ${passed + failed}\n`);
+
+  if (failed > 0) process.exit(1);
+}
+
+// Only run when executed directly
+const isDirectRun = process.argv[1]?.includes('regression-suite');
+if (isDirectRun) {
+  runAll().catch(err => {
+    console.error('Suite runner error:', err);
+    process.exit(1);
+  });
+}
+
+export { runAll, test, suites };

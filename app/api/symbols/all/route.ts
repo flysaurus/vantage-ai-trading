@@ -3,7 +3,7 @@
 // Response: { symbols: string[], symbolNames: Record<string, string>, count: number }
 
 import { NextResponse } from 'next/server';
-import { getCachedSymbols } from '@/lib/symbol-validator';
+import { getCachedSymbols } from '@/lib/symbol-resolution';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

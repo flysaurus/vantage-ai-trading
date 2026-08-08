@@ -176,6 +176,8 @@ interface PortfolioContextValue {
     basketId?: string,
     basketName?: string,
     basketEmoji?: string,
+    messageId?: string | null,
+    expectedCompanyName?: string | null,
   ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
@@ -509,7 +511,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const fetchData = useCallback(async () => {
     // Fetch live quotes for demo positions as long as demo state exists.
     // Don't block on isConnected — user may switch to Demo while broker is connected.
-    if (!demoState) return;
+    // Guard against demo contamination of broker account data.
+    if (!isShowingDemo || !demoState) return;
 
     try {
       setError(null);
@@ -605,8 +608,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [isConnected, broker, isShowingDemo]);
 
-  // Fetch on mount and when state changes
+  // Fetch on mount and when state changes (Demo only).
+  // CRITICAL: This effect MUST guard against isShowingDemo to prevent
+  // demo holdings (LLY, MRK, UNH, JNJ) from overwriting real broker
+  // account state (TSLA) via recomputeAccount / fetchData every 60s.
   useEffect(() => {
+    if (!isShowingDemo) return;
     mountedRef.current = true;
     if (demoState) {
       console.log('[portfolio init] demoState loaded, positions:', demoState.positions.length, 'cash:', demoState.cashBalance);
@@ -774,7 +781,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string, messageId?: string | null, expectedCompanyName?: string | null): Promise<TradeResult> => {
       if (submittingTradeRef.current) {
         console.log('[executeTrade] Already submitting — ignoring duplicate call');
         return { success: false, error: 'Order already in progress' };
@@ -797,6 +804,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             symbol, side, shares,
             orderType: orderType || 'market',
             limitPrice, stopPrice, timeInForce,
+            messageId: messageId || null,
+            expectedCompanyName: expectedCompanyName || null,
           }),
         });
         try {
@@ -813,19 +822,29 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           return { success: false, error: 'Broker communication failed', status: 'REJECTED' };
         }
         // ── Phase 6: Persist order to Zustand immediately → appears in Open tab ──
+        // Use dbOrderId when available so the Zustand entry matches the persisted DB row.
+        // This prevents duplicates when useOrders.refresh() later fetches from /api/orders.
+        const zustandOrderId: string = (result as any).dbOrderId || result.orderId || `broker-${Date.now()}`;
         try {
           useOrderStore.getState().addOrder({
-            id: result.orderId || `snaptrade-${Date.now()}`,
+            id: zustandOrderId,
             symbol,
             side: side === 'BUY' ? 'buy' as const : 'sell' as const,
             type: (orderType || 'market') as 'market' | 'limit' | 'stop' | 'stop_limit',
-            status: 'open' as const,
+            status: (result.status === 'FILLED' ? 'filled' : 'open') as 'filled' | 'open',
             qty: shares,
+            filledQty: result.filledShares || (result.status === 'FILLED' ? shares : undefined),
+            filledPrice: result.fillPrice,
+            totalValue: result.totalCost || (result.fillPrice || price) * shares,
             limitPrice,
             stopPrice,
             timeInForce: (timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
-            createdAt: new Date().toISOString(),
+            createdAt: result.filledAt || new Date().toISOString(),
           });
+          // Surface DB persistence warning if any (order EXISTS at broker even if local DB failed)
+          if ((result as any).dbWarnMsg) {
+            console.warn('[executeTrade] ⚠️', (result as any).dbWarnMsg);
+          }
         } catch (orderPersistErr) {
           console.error('[executeTrade] Failed to persist order to store:', orderPersistErr);
         }

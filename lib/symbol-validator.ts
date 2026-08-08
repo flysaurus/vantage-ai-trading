@@ -1,4 +1,8 @@
-// ─── Symbol Validator — Cached US Stock Ticker List ──────────────────────
+// ─── DEPRECATED: Symbol Validator — Cached US Stock Ticker List ────────
+// This module is superseded by lib/symbol-resolution.ts (single authority).
+// All imports should be redirected to @/lib/symbol-resolution.
+// DO NOT add new features here — add them to symbol-resolution.ts instead.
+// ───────────────────────────────────────────────────────────────────────
 // Fetches all US-listed stock symbols from Finnhub once, caches in memory
 // for 24 hours. Used to validate candidate symbols before rendering trade
 // buttons — eliminates false positives from "I", "A", common words, etc.

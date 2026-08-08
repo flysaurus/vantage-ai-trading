@@ -2,7 +2,7 @@
 // Accepts ?symbols=SCHD,QQQ,VTI and returns { names: { SCHD: "Schwab...", ... } }
 
 import { NextRequest, NextResponse } from 'next/server';
-import { lookupSymbolNames } from '@/lib/symbol-validator';
+import { lookupSymbolNames } from '@/lib/symbol-resolution';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

@@ -3,6 +3,15 @@
 // SnapTradeBroker, and calls placeOrder(). This keeps SnapTrade
 // credentials server-side while allowing the client to execute
 // real trades through the NEW broker engine (not the old stub).
+//
+// ═══════════════════════════════════════════════════════════════
+// HARD BOUNDARY CHECK (2026-08-08):
+// Before ANY order fires, verifyTradeSymbol() re-verifies the
+// symbol against Finnhub and confirms the company name matches
+// what was shown to the user in the chat. If mismatch → BLOCKED.
+// This is defense-in-depth. The primary defense is the merged
+// symbol-resolution system; this gate is the permanent last line.
+// ═══════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
@@ -11,6 +20,8 @@ import {
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
+import { createClient } from '@supabase/supabase-js';
 
 function formatBrokerName(slug: string | null): string {
   if (!slug) return 'Unknown';
@@ -29,11 +40,15 @@ export async function POST(req: NextRequest) {
     side: 'BUY' | 'SELL';
     shares: number;
     orderType?: 'market' | 'limit' | 'stop' | 'stop_limit';
-    /** Optional dollar amount (AI trades default to $500)*/
+    /** Optional dollar amount (AI trades default to $500) */
     dollarAmount?: number;
     limitPrice?: number;
     stopPrice?: number;
     timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
+    /** Chat message ID — enables trade-gate company-name verification */
+    messageId?: string | null;
+    /** Company name displayed in chat — passed directly for max reliability */
+    expectedCompanyName?: string | null;
   };
 
   try {
@@ -45,7 +60,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { symbol, side, shares, orderType, dollarAmount, limitPrice, stopPrice, timeInForce } = body;
+  const { symbol, side, shares, orderType, dollarAmount, limitPrice, stopPrice, timeInForce, messageId, expectedCompanyName } = body;
 
   if (!symbol || !side || (shares == null && dollarAmount == null)) {
     return NextResponse.json(
@@ -53,6 +68,36 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  // ── Supabase client (used for credential lookup + trade gate) ──
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // GATE 1: Trade-gate — re-verify symbol before money moves
+  // ═══════════════════════════════════════════════════════════════
+  const gateResult = await verifyTradeSymbol(symbol, messageId, supabase, expectedCompanyName);
+
+  if (!gateResult.allowed) {
+    console.error(
+      `[execute-trade] 🚫 BLOCKED by trade-gate: ${symbol} for user ${authUser!.id}\n` +
+      `  Detail: ${gateResult.detail || gateResult.reason}`,
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        error: gateResult.reason,
+        status: 'BLOCKED',
+        blockedBy: 'trade-gate',
+      },
+      { status: 422 },
+    );
+  }
+
+  console.log(`[execute-trade] trade-gate passed: ${gateResult.reason}`);
 
   // --- Resolve credentials + connection metadata ---
   let snaptradeUserId: string;
@@ -67,14 +112,6 @@ export async function POST(req: NextRequest) {
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;
     brokerSlug = creds.brokerSlug;
-
-    // Also query the trading_enabled flag from the DB
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    );
 
     const { data: conn } = await supabase
       .from('broker_connections')
@@ -120,6 +157,44 @@ export async function POST(req: NextRequest) {
       timeInForce: timeInForce || 'day',
     });
 
+    // ── Persist order to database (Phase 6: real broker order lifecycle) ──
+    // Writes to public.orders immediately so the order survives page refresh
+    // and appears in the Orders tab regardless of SnapTrade recentOrders window.
+    let dbOrderId: string | null = null;
+    let dbWarnMsg: string | null = null;
+    try {
+      const now = new Date().toISOString();
+      const { data: dbOrder, error: dbErr } = await supabase
+        .from('orders')
+        .insert({
+          user_id: authUser!.id,
+          symbol: symbol.toUpperCase(),
+          qty: shares,
+          filled_qty: result.status === 'FILLED' ? (result.filledShares || shares) : 0,
+          side: side.toLowerCase(),
+          order_type: (orderType || 'market').toLowerCase(),
+          status: (result.status || 'OPEN').toLowerCase(),
+          filled_price: result.fillPrice || null,
+          filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
+          time_in_force: (timeInForce || 'day').toLowerCase(),
+          is_demo: false,
+          created_at: now,
+        })
+        .select('id')
+        .single();
+      dbOrderId = dbOrder?.id || null;
+      if (dbErr) {
+        console.error('[execute-trade] ⚠️ DB order persist failed:', JSON.stringify(dbErr, null, 2));
+        dbWarnMsg = `Order executed at ${formatBrokerName(brokerSlug)} but could not be saved locally — it may not appear in history until the next sync.`;
+      } else {
+        console.log(`[execute-trade] 💾 Order persisted to DB: ${dbOrder?.id} (broker: ${formatBrokerName(brokerSlug)}, gate: ${gateResult.reason})`);
+      }
+    } catch (persistErr) {
+      console.error('[execute-trade] ⚠️ DB persist exception:', persistErr);
+      dbWarnMsg = `Order executed at ${formatBrokerName(brokerSlug)} but local persist failed — check broker directly if it doesn't appear.`;
+      // Order EXISTS at broker — don't fail the response, just warn
+    }
+
     return NextResponse.json({
       success: result.success,
       status: result.status,
@@ -129,6 +204,8 @@ export async function POST(req: NextRequest) {
       totalCost: result.totalCost,
       filledShares: result.filledShares,
       filledAt: result.filledAt,
+      dbOrderId,
+      dbWarnMsg,
     });
   } catch (err) {
     const msg = (err as Error).message || 'Trade execution failed';
