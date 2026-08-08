@@ -7,7 +7,7 @@
 // Read-only brokers have supportsTrading=false, but ALL methods
 // except order execution work normally for viewing.
 
-import { snapTradeFetch } from '@/lib/snaptrade/auth';
+import { snapTradeFetch, snapTradeFetchSafe } from '@/lib/snaptrade/auth';
 import { getAccountBalances } from '@/lib/snaptrade/client';
 import { toStandardSymbol, toBrokerSymbol } from './symbol-resolver';
 import type {
@@ -377,52 +377,64 @@ export class SnapTradeBroker implements BrokerEngine {
       body.stop = req.stopPrice;
     }
 
-    try {
-      console.log(
-        `[SnapTradeBroker] placeOrder: ${req.side} ${req.shares || '$' + req.dollarAmount} ${symbol} ` +
-        `(${orderType}, ${timeInForce}) in ${this.brokerName}`,
-      );
+    console.log(
+      `[SnapTradeBroker] placeOrder: ${req.side} ${req.shares || '$' + req.dollarAmount} ${symbol} ` +
+      `(${orderType}, ${timeInForce}) in ${this.brokerName}`,
+    );
 
-      const result = await snapTradeFetch<any>(
-        '/trade/place',
-        body,
-        { userId: this.userId, userSecret: this.userSecret },
-      );
+    const response = await snapTradeFetchSafe<any>(
+      '/trade/place',
+      body,
+      { userId: this.userId, userSecret: this.userSecret },
+    );
 
-      // SnapTrade returns: { brokerage_order_id, status, universal_symbol, ... }
-      const orderId = result.brokerage_order_id || 'unknown';
-      const rawSnapStatus = result.status;
-      const status = _mapSnapTradeStatusToOrderStatus(rawSnapStatus);
+    // ── Handle non-2xx (SnapTrade or broker rejection) ──
+    if (!response.ok) {
+      const statusCode = response.status;
+      // Try to extract a brokerage_order_id even from error responses (some
+      // brokers still report the order ID on rejection).
+      const brokerOrderId: string | undefined =
+        response.data?.brokerage_order_id || undefined;
+      const errorMsg = response.error || `SnapTrade returned HTTP ${statusCode}`;
 
-      console.log(
-        `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (raw: ${rawSnapStatus || 'none'})`,
-      );
-
-      // All orders are sent to the broker immediately, 24/7.
-      // Brokers (Alpaca, Tastytrade, etc.) queue orders placed outside market hours.
-      // We return the status as-is — no market-closed faking.
-      return {
-        success: status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED',
-        orderId,
-        status,
-        fillPrice: result.filled_price || result.price,
-        totalCost: result.total_cost || (result.filled_price || result.price || 0) * (req.shares || 0),
-        filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
-        nextOpenLabel: this.getNextOpenLabel(),
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
       console.error(
-        `[SnapTradeBroker] placeOrder failed:`,
-        msg,
+        `[SnapTradeBroker] placeOrder REJECTED (HTTP ${statusCode}):`,
+        errorMsg,
+        'body:', JSON.stringify(response.data).slice(0, 300),
       );
+
       return {
         success: false,
-        orderId: 'error',
-        status: 'REJECTED',
-        message: msg,
+        orderId: brokerOrderId || 'error',
+        status: 'REJECTED' as const,
+        message: errorMsg,
       };
     }
+
+    // ── 2xx success — SnapTrade accepted the order and forwarded to broker ──
+    const result = response.data!;
+
+    // SnapTrade returns: { brokerage_order_id, status, universal_symbol, ... }
+    const orderId = result.brokerage_order_id || 'unknown';
+    const rawSnapStatus = result.status;
+    const status = _mapSnapTradeStatusToOrderStatus(rawSnapStatus);
+
+    console.log(
+      `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (raw: ${rawSnapStatus || 'none'})`,
+    );
+
+    // All orders are sent to the broker immediately, 24/7.
+    // Brokers (Alpaca, Tastytrade, etc.) queue orders placed outside market hours.
+    // We return the status as-is — no market-closed faking.
+    return {
+      success: status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED',
+      orderId,
+      status,
+      fillPrice: result.filled_price || result.price,
+      totalCost: result.total_cost || (result.filled_price || result.price || 0) * (req.shares || 0),
+      filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
+      nextOpenLabel: this.getNextOpenLabel(),
+    };
   }
 
   async placeBasketOrder(_req: BasketOrderRequest): Promise<BasketOrderResult> {

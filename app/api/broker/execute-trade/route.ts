@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
     // ── Persist order to database (Phase 6: real broker order lifecycle) ──
     //
     // Decision tree for orderId:
-    //   Real UUID       → reached broker    → INSERT with brokerage_order_id
-    //   'queued'        → market closed     → INSERT (open, null broker ID) so cron can execute
-    //   'error' / other → pre-broker failure → SKIP (phantom order, never reached SnapTrade)
+    //   Real UUID / 'error'  → reached broker  → INSERT with brokerage_order_id (or null for 'error')
+    //   Pre-broker sentinels  → never reached SnapTrade → SKIP (phantom)
     //
-    const PHANTOM_ORDER_IDS = new Set(['error', 'readonly', 'no-account', 'bad-symbol', 'no-qty', 'unknown']);
+    // Pre-broker sentinels are orderIds returned by placeOrder() for validation
+    // failures that happen before any HTTP call to SnapTrade.
+    const PHANTOM_ORDER_IDS = new Set(['readonly', 'no-account', 'bad-symbol', 'no-qty', 'unknown']);
     const isPhantom = PHANTOM_ORDER_IDS.has(result.orderId || '');
-    const isQueued = result.orderId === 'queued';
-    const shouldPersist = !isPhantom; // persist both real and queued orders
+    const shouldPersist = !isPhantom; // persist real broker orders (including rejected ones)
     let dbOrderId: string | null = null;
     let dbWarnMsg: string | null = null;
 
@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
             filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
             time_in_force: (timeInForce || 'day').toLowerCase(),
             is_demo: false,
-            brokerage_order_id: isQueued ? null : result.orderId,
+            brokerage_order_id: result.orderId || null,
             created_at: now,
           })
           .select('id')
@@ -196,10 +196,9 @@ export async function POST(req: NextRequest) {
         dbOrderId = dbOrder?.id || null;
         if (dbErr) {
           console.error('[execute-trade] ⚠️ DB order persist failed:', JSON.stringify(dbErr, null, 2));
-          dbWarnMsg = `Order queued at ${formatBrokerName(brokerSlug)} but could not be saved locally — it may not appear in history until the next sync.`;
+          dbWarnMsg = `Order at ${formatBrokerName(brokerSlug)} but could not be saved locally — it may not appear in history until the next sync.`;
         } else {
-          const tag = isQueued ? 'QUEUED (market closed)' : result.orderId;
-          console.log(`[execute-trade] 💾 Order persisted to DB: ${dbOrder?.id} (${tag})`);
+          console.log(`[execute-trade] 💾 Order persisted to DB: ${dbOrder?.id} (${result.orderId})`);
         }
       } catch (persistErr) {
         console.error('[execute-trade] ⚠️ DB persist exception:', persistErr);
@@ -208,7 +207,7 @@ export async function POST(req: NextRequest) {
     } else {
       console.warn(
         `[execute-trade] ⚠️ SKIPPED DB persist — phantom order (orderId: "${result.orderId}"). ` +
-        `Order never reached SnapTrade. Failure: ${result.message || 'unknown'}`
+        `Pre-broker validation failure: ${result.message || 'unknown'}`
       );
     }
 

@@ -115,6 +115,18 @@ export function buildSnapTradeRequest(
 }
 
 /**
+ * Structured response from snapTradeFetchSafe — never throws on HTTP errors.
+ */
+export interface SnapTradeSafeResponse<T = unknown> {
+  ok: boolean;
+  status: number;
+  data: T | null;
+  error: string | null;
+  /** Raw response body (for non-JSON errors or debugging). */
+  rawBody?: string;
+}
+
+/**
  * Make an authenticated request to the SnapTrade API.
  *
  * @returns Parsed JSON response
@@ -168,6 +180,102 @@ export async function snapTradeFetch<T = unknown>(
   if (response.status === 204) return null as T;
 
   return response.json() as Promise<T>;
+}
+
+/**
+ * Make an authenticated request to the SnapTrade API.
+ *
+ * **Never throws on HTTP errors.** Returns a structured response so callers
+ * can inspect the status code and parsed body for both success and failure cases.
+ *
+ * Only throws on network errors (DNS, connection refused, timeout).
+ */
+export async function snapTradeFetchSafe<T = unknown>(
+  path: string,
+  body: Record<string, unknown> | null = null,
+  extraParams: Record<string, string> = {},
+  options: { method?: string } = {},
+): Promise<SnapTradeSafeResponse<T>> {
+  const { url, headers } = buildSnapTradeRequest(path, body, extraParams);
+
+  const method = body !== null ? 'POST' : options.method || 'GET';
+
+  const fetchOptions: RequestInit = {
+    method,
+    headers,
+  };
+
+  if (body !== null) {
+    fetchOptions.body = JSON.stringify(body);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      error: `SnapTrade network error: ${err instanceof Error ? err.message : 'Unknown'}`,
+    };
+  }
+
+  // Parse the body regardless of status code
+  let data: T | null = null;
+  let rawBody: string | undefined;
+  let parseError: string | null = null;
+
+  try {
+    if (response.status === 204) {
+      data = null as T;
+    } else {
+      const text = await response.text();
+      rawBody = text;
+      if (text) {
+        try {
+          data = JSON.parse(text) as T;
+        } catch {
+          parseError = text.slice(0, 500);
+        }
+      }
+    }
+  } catch (err) {
+    parseError = `Body read failed: ${err instanceof Error ? err.message : 'Unknown'}`;
+  }
+
+  if (!response.ok) {
+    // Extract error detail from the (possibly parsed) body
+    let detail: string;
+    if (data && typeof data === 'object') {
+      const d = data as Record<string, unknown>;
+      detail =
+        (d.default_detail as string) ||
+        (d.detail as string) ||
+        (d.error as string) ||
+        parseError ||
+        response.statusText ||
+        'Unknown error';
+    } else {
+      detail = parseError || response.statusText || 'Unknown error';
+    }
+
+    return {
+      ok: false,
+      status: response.status,
+      data,
+      error: `SnapTrade API ${response.status}: ${detail}`,
+      rawBody,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    data,
+    error: null,
+    rawBody,
+  };
 }
 
 // ─── Safe context for route handlers ─────────────────────────
