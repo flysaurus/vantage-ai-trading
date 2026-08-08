@@ -449,7 +449,35 @@ export class SnapTradeBroker implements BrokerEngine {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[SnapTradeBroker] placeOrder failed:', msg);
+
+      // ── Market-closed override in catch block ──
+      // snapTradeFetch() throws on non-2xx responses, so the try-block
+      // override NEVER fires when SnapTrade returns 4xx (REGULAR-session
+      // orders rejected outside market hours). This catch-block override
+      // mirrors the try-block logic: if the market is closed, treat any
+      // rejection as a queueable order, not a real error.
+      const marketOpen = this.isMarketOpen();
+      if (!marketOpen) {
+        console.log(
+          `[SnapTradeBroker] placeOrder: ⚠️ MARKET-CLOSED OVERRIDE (catch) — 4xx/exception → OPEN for ${symbol}`,
+        );
+        console.log(
+          `[SnapTradeBroker] placeOrder: AUDIT — SnapTrade error (market closed):`,
+          msg,
+        );
+        return {
+          success: true,
+          orderId: 'queued',
+          status: 'OPEN',
+          message: `Order queued — market closed. Opens ${this.getNextOpenLabel()}.`,
+          nextOpenLabel: this.getNextOpenLabel(),
+        };
+      }
+
+      console.error(
+        `[SnapTradeBroker] placeOrder: AUDIT — REAL rejection (market OPEN):`,
+        msg,
+      );
       return {
         success: false,
         orderId: 'error',

@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     // Only persist if the order actually reached the broker.
     // Sentinel orderId values ('error', 'no-account', etc.) mean the order
     // failed BEFORE reaching SnapTrade — these must NOT create phantom DB rows.
-    const SENTINEL_ORDER_IDS = new Set(['error', 'readonly', 'no-account', 'bad-symbol', 'no-qty', 'unknown']);
+    const SENTINEL_ORDER_IDS = new Set(['error', 'readonly', 'no-account', 'bad-symbol', 'no-qty', 'unknown', 'queued']);
     const hasRealBrokerId = result.orderId && !SENTINEL_ORDER_IDS.has(result.orderId);
     let dbOrderId: string | null = null;
     let dbWarnMsg: string | null = null;
