@@ -417,7 +417,11 @@ export class SnapTradeBroker implements BrokerEngine {
       // Mitigation: the full SnapTrade response is logged below for audit.
       // Monitor Vercel logs for orders that stay OPEN past the next cron cycle
       // without filling — those may be genuine rejections that were overridden.
-      if (status === 'REJECTED' && !marketOpen) {
+      // Only override if SnapTrade actually received the order.
+      // Sentinel orderIds ('unknown', etc.) mean the call failed before
+      // reaching the broker — overriding those would create phantom OPEN orders.
+      const hasRealBrokerId = orderId && orderId !== 'unknown';
+      if (status === 'REJECTED' && !marketOpen && hasRealBrokerId) {
         console.log(
           `[SnapTradeBroker] placeOrder: ⚠️ MARKET-CLOSED OVERRIDE — REJECTED → OPEN for ${symbol}`,
         );

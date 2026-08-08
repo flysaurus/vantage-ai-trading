@@ -158,41 +158,52 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Persist order to database (Phase 6: real broker order lifecycle) ──
-    // Writes to public.orders immediately so the order survives page refresh
-    // and appears in the Orders tab regardless of SnapTrade recentOrders window.
+    // Only persist if the order actually reached the broker.
+    // Sentinel orderId values ('error', 'no-account', etc.) mean the order
+    // failed BEFORE reaching SnapTrade — these must NOT create phantom DB rows.
+    const SENTINEL_ORDER_IDS = new Set(['error', 'readonly', 'no-account', 'bad-symbol', 'no-qty', 'unknown']);
+    const hasRealBrokerId = result.orderId && !SENTINEL_ORDER_IDS.has(result.orderId);
     let dbOrderId: string | null = null;
     let dbWarnMsg: string | null = null;
-    try {
-      const now = new Date().toISOString();
-      const { data: dbOrder, error: dbErr } = await supabase
-        .from('orders')
-        .insert({
-          user_id: authUser!.id,
-          symbol: symbol.toUpperCase(),
-          qty: shares,
-          filled_qty: result.status === 'FILLED' ? (result.filledShares || shares) : 0,
-          side: side.toLowerCase(),
-          order_type: (orderType || 'market').toLowerCase(),
-          status: (result.status || 'OPEN').toLowerCase(),
-          filled_price: result.fillPrice || null,
-          filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
-          time_in_force: (timeInForce || 'day').toLowerCase(),
-          is_demo: false,
-          created_at: now,
-        })
-        .select('id')
-        .single();
-      dbOrderId = dbOrder?.id || null;
-      if (dbErr) {
-        console.error('[execute-trade] ⚠️ DB order persist failed:', JSON.stringify(dbErr, null, 2));
-        dbWarnMsg = `Order executed at ${formatBrokerName(brokerSlug)} but could not be saved locally — it may not appear in history until the next sync.`;
-      } else {
-        console.log(`[execute-trade] 💾 Order persisted to DB: ${dbOrder?.id} (broker: ${formatBrokerName(brokerSlug)}, gate: ${gateResult.reason})`);
+
+    if (hasRealBrokerId) {
+      try {
+        const now = new Date().toISOString();
+        const { data: dbOrder, error: dbErr } = await supabase
+          .from('orders')
+          .insert({
+            user_id: authUser!.id,
+            symbol: symbol.toUpperCase(),
+            qty: shares,
+            filled_qty: result.status === 'FILLED' ? (result.filledShares || shares) : 0,
+            side: side.toLowerCase(),
+            order_type: (orderType || 'market').toLowerCase(),
+            status: (result.status || 'OPEN').toLowerCase(),
+            filled_price: result.fillPrice || null,
+            filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
+            time_in_force: (timeInForce || 'day').toLowerCase(),
+            is_demo: false,
+            brokerage_order_id: result.orderId,
+            created_at: now,
+          })
+          .select('id')
+          .single();
+        dbOrderId = dbOrder?.id || null;
+        if (dbErr) {
+          console.error('[execute-trade] ⚠️ DB order persist failed:', JSON.stringify(dbErr, null, 2));
+          dbWarnMsg = `Order executed at ${formatBrokerName(brokerSlug)} but could not be saved locally — it may not appear in history until the next sync.`;
+        } else {
+          console.log(`[execute-trade] 💾 Order persisted to DB: ${dbOrder?.id} (broker: ${formatBrokerName(brokerSlug)}, snapId: ${result.orderId})`);
+        }
+      } catch (persistErr) {
+        console.error('[execute-trade] ⚠️ DB persist exception:', persistErr);
+        dbWarnMsg = `Order executed at ${formatBrokerName(brokerSlug)} but local persist failed — check broker directly if it doesn't appear.`;
       }
-    } catch (persistErr) {
-      console.error('[execute-trade] ⚠️ DB persist exception:', persistErr);
-      dbWarnMsg = `Order executed at ${formatBrokerName(brokerSlug)} but local persist failed — check broker directly if it doesn't appear.`;
-      // Order EXISTS at broker — don't fail the response, just warn
+    } else {
+      console.warn(
+        `[execute-trade] ⚠️ SKIPPED DB persist — no real broker ID (orderId: "${result.orderId}"). ` +
+        `Order never reached SnapTrade. Failure: ${result.message || 'unknown'}`
+      );
     }
 
     return NextResponse.json({
