@@ -354,7 +354,6 @@ export class SnapTradeBroker implements BrokerEngine {
       order_type: orderType,
       time_in_force: timeInForce,
       symbol,
-      trading_session: 'REGULAR',
     };
 
     // Units (shares) vs notional_value (dollar amount)
@@ -393,51 +392,15 @@ export class SnapTradeBroker implements BrokerEngine {
       // SnapTrade returns: { brokerage_order_id, status, universal_symbol, ... }
       const orderId = result.brokerage_order_id || 'unknown';
       const rawSnapStatus = result.status;
-      let status = _mapSnapTradeStatusToOrderStatus(rawSnapStatus);
-      const marketOpen = this.isMarketOpen();
+      const status = _mapSnapTradeStatusToOrderStatus(rawSnapStatus);
 
       console.log(
-        `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (raw: ${rawSnapStatus || 'none'}, market: ${marketOpen ? 'open' : 'closed'})`,
+        `[SnapTradeBroker] placeOrder result: ${orderId} → ${status} (raw: ${rawSnapStatus || 'none'})`,
       );
 
-      // ── Market-closed override ──
-      //
-      // Standing decision (2026-08-08): orders placed when the market is closed
-      // are queued (OPEN), NEVER rejected. SnapTrade returns REJECTED/FAILED for
-      // REGULAR-session orders outside market hours because the exchange rejects
-      // them at routing time — this is a routing constraint, not a business
-      // rejection (e.g. insufficient funds).
-      //
-      // ⚠️ KNOWN LIMITATION: SnapTrade's response does NOT include a rejection
-      // reason code — the `SnapOrder` interface has no `reason`/`error_code`
-      // field. This override gates on `!this.isMarketOpen()` as the best-available
-      // proxy. A genuine rejection (e.g. insufficient funds) placed during closed
-      // hours would be incorrectly converted to OPEN.
-      //
-      // Mitigation: the full SnapTrade response is logged below for audit.
-      // Monitor Vercel logs for orders that stay OPEN past the next cron cycle
-      // without filling — those may be genuine rejections that were overridden.
-      // Only override if SnapTrade actually received the order.
-      // Sentinel orderIds ('unknown', etc.) mean the call failed before
-      // reaching the broker — overriding those would create phantom OPEN orders.
-      const hasRealBrokerId = orderId && orderId !== 'unknown';
-      if (status === 'REJECTED' && !marketOpen && hasRealBrokerId) {
-        console.log(
-          `[SnapTradeBroker] placeOrder: ⚠️ MARKET-CLOSED OVERRIDE — REJECTED → OPEN for ${symbol}`,
-        );
-        console.log(
-          `[SnapTradeBroker] placeOrder: AUDIT — full SnapTrade response:`,
-          JSON.stringify(result),
-        );
-        return {
-          success: true,
-          orderId,
-          status: 'OPEN',
-          message: `Order queued — market closed. Opens ${this.getNextOpenLabel()}.`,
-          nextOpenLabel: this.getNextOpenLabel(),
-        };
-      }
-
+      // All orders are sent to the broker immediately, 24/7.
+      // Brokers (Alpaca, Tastytrade, etc.) queue orders placed outside market hours.
+      // We return the status as-is — no market-closed faking.
       return {
         success: status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED',
         orderId,
@@ -449,33 +412,8 @@ export class SnapTradeBroker implements BrokerEngine {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-
-      // ── Market-closed override in catch block ──
-      // snapTradeFetch() throws on non-2xx responses, so the try-block
-      // override NEVER fires when SnapTrade returns 4xx (REGULAR-session
-      // orders rejected outside market hours). This catch-block override
-      // mirrors the try-block logic: if the market is closed, treat any
-      // rejection as a queueable order, not a real error.
-      const marketOpen = this.isMarketOpen();
-      if (!marketOpen) {
-        console.log(
-          `[SnapTradeBroker] placeOrder: ⚠️ MARKET-CLOSED OVERRIDE (catch) — 4xx/exception → OPEN for ${symbol}`,
-        );
-        console.log(
-          `[SnapTradeBroker] placeOrder: AUDIT — SnapTrade error (market closed):`,
-          msg,
-        );
-        return {
-          success: true,
-          orderId: 'queued',
-          status: 'OPEN',
-          message: `Order queued — market closed. Opens ${this.getNextOpenLabel()}.`,
-          nextOpenLabel: this.getNextOpenLabel(),
-        };
-      }
-
       console.error(
-        `[SnapTradeBroker] placeOrder: AUDIT — REAL rejection (market OPEN):`,
+        `[SnapTradeBroker] placeOrder failed:`,
         msg,
       );
       return {
