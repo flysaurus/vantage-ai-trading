@@ -1935,10 +1935,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             console.error('[chat] Coherence failure DB log error:', logErr);
           }
 
-          if (retryAttempt >= 1) {
-            // Instead of a fatal error, send a CLARIFY that asks the user to rephrase
+          if (retryAttempt >= 2) {
+            // 3 failed attempts — show CLARIFY instead of infinite retry loop
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ clarify: { question: "I got confused generating this — let's try again. Would you like me to:", options: ["Regenerate with your original request", "Simplify the request", "Try a different approach"] } })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ clarify: { question: "I'm having trouble generating this — let's try a fresh approach. What would you prefer?", options: ["Regenerate with your original request", "Simplify the request", "Cancel"] } })}\n\n`)
             );
           } else {
             controller.enqueue(

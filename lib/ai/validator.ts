@@ -174,10 +174,16 @@ const PROSE_QUESTION_PATTERNS = [
  * outside CLARIFY blocks, alternatives outside CLARIFY blocks.
  */
 export function detectIncoherence(response: string, requestedBudget?: number | null): string | null {
-  // Check for internal monologue leakage
-  for (const pattern of INTERNAL_MONOLOGUE_PATTERNS) {
-    if (pattern.test(response)) {
-      return `Internal monologue leaking in response. Remove all meta-commentary about your reasoning process.`;
+  // ── Internal monologue check ──
+  // Only reject monologue leakage when the response has NO actionable markers.
+  // If the AI already produced RECOMMEND or PORTFOLIO blocks, a casual "Hmm"
+  // or "Let me" prefix is harmless — rejecting it just breaks valid single-stock buys.
+  const hasActionableMarkers = /\[RECOMMEND:|\[PORTFOLIO:\{/i.test(response);
+  if (!hasActionableMarkers) {
+    for (const pattern of INTERNAL_MONOLOGUE_PATTERNS) {
+      if (pattern.test(response)) {
+        return `Internal monologue leaking in response. Remove all meta-commentary about your reasoning process.`;
+      }
     }
   }
 
@@ -192,7 +198,9 @@ export function detectIncoherence(response: string, requestedBudget?: number | n
   }
 
   // Check for prose/alternative questions outside CLARIFY blocks
-  if (!/\[CLARIFY:\{/i.test(response)) {
+  // Same guard as monologue: if actionable markers exist, prose questions are harmless.
+  // The model might add "Want me to use a limit order?" after a [RECOMMEND:...] marker.
+  if (!/\[CLARIFY:\{/i.test(response) && !hasActionableMarkers) {
     for (const pattern of PROSE_QUESTION_PATTERNS) {
       if (pattern.test(response)) {
         return `Prose question detected outside [CLARIFY:{...}] block. All questions MUST use the CLARIFY contract: [CLARIFY:{"question":"...","options":[...]}]`;
