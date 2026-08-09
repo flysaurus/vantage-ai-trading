@@ -348,36 +348,10 @@ export class SnapTradeBroker implements BrokerEngine {
     let orderType = _mapOrderTypeToSnapTrade(req.type);
     let timeInForce = _mapTimeInForceToSnapTrade(req.timeInForce || 'day');
     let effectiveLimitPrice = req.limitPrice;
-    let correctionNote: string | null = null;
 
-    // ── After-hours auto-correction ──
-    // Market orders can't execute outside market hours — the broker has no
-    // price to execute against. Convert to limit order with a small buffer.
-    //
-    // NOTE: We do NOT convert Day→GTC. Fractional-share accounts (Alpaca)
-    // require DAY time-in-force; GTC would be rejected. Day orders placed
-    // when the market is closed queue for the next open naturally.
-    if (!this.isMarketOpen()) {
-      if (orderType === 'Market') {
-        orderType = 'Limit';
-        // Use explicit limit price if set; otherwise fall back to currentPrice
-        // (which the client should always pass for the trade ticket).
-        effectiveLimitPrice = effectiveLimitPrice || req.currentPrice;
-        if (!effectiveLimitPrice || effectiveLimitPrice <= 0) {
-          return {
-            success: false,
-            orderId: 'no-qty',
-            status: 'REJECTED',
-            message: 'Market orders outside market hours require a limit price. Please re-submit with a limit or wait until market open.',
-          };
-        }
-        // Add a 2% buffer so the limit is slightly above market (BUY) / below market (SELL)
-        // to increase fill probability at open.
-        const buffer = req.side === 'BUY' ? 1.02 : 0.98;
-        effectiveLimitPrice = Math.round(effectiveLimitPrice * buffer * 100) / 100;
-        correctionNote = `Market→Limit ($${effectiveLimitPrice.toFixed(2)}, queued for ${this.getNextOpenLabel()})`;
-      }
-    }
+    // NOTE: Alpaca (via SnapTrade) accepts market orders 24/7.
+    // Orders placed outside market hours queue naturally for the next open.
+    // No conversion is needed — market orders stay as market orders.
 
     const body: Record<string, unknown> = {
       account_id: accountId,
@@ -466,20 +440,17 @@ export class SnapTradeBroker implements BrokerEngine {
 
     // All orders are sent to the broker immediately, 24/7.
     // Brokers (Alpaca, Tastytrade, etc.) queue orders placed outside market hours.
-    // We return the status as-is — no market-closed faking.
+    // We return the status as-is.
     const isSuccess = status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED';
-    const brokerMsg = correctionNote
-      ? `${correctionNote}. ${this.getNextOpenLabel()} execution.`
-      : undefined;
+    const nextOpen = !this.isMarketOpen() ? this.getNextOpenLabel() : undefined;
     return {
       success: isSuccess,
       orderId,
       status,
-      message: brokerMsg || undefined,
       fillPrice: result.filled_price || result.price,
       totalCost: result.total_cost || (result.filled_price || result.price || 0) * (req.shares || 0),
       filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
-      nextOpenLabel: this.getNextOpenLabel(),
+      nextOpenLabel: nextOpen,
     };
   }
 
