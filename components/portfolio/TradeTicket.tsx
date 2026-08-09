@@ -246,8 +246,9 @@ export default function TradeTicket({
 
         {/* ── AI variant: locked Market · Day badge ── */}
         {isAIVariant && (
+          <>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
             padding: '8px 12px', borderRadius: 10,
             background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.18)',
           }}>
@@ -258,6 +259,25 @@ export default function TradeTicket({
               All AI Advisor orders use market orders with day time-in-force
             </span>
           </div>
+          {/* After-hours warning: market orders become limit orders */}
+          {!marketOpen && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 14,
+              padding: '10px 12px', borderRadius: 10,
+              background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)',
+            }}>
+              <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24', marginBottom: 2 }}>
+                  Market Closed — {nextOpenLabel}
+                </div>
+                <div style={{ fontSize: 11, color: '#fcd34d', lineHeight: 1.5 }}>
+                  Market orders can't execute while the market is closed. Your order will be placed as a <strong style={{ color: '#fbbf24' }}>limit order with a 2% buffer</strong> and queued for the next market open.
+                </div>
+              </div>
+            </div>
+          )}
+          </>
         )}
 
         {/* Order type — hidden in AI variant (Market only) */}

@@ -412,7 +412,7 @@ export class SnapTradeBroker implements BrokerEngine {
 
     console.log(
       `[SnapTradeBroker] placeOrder: ${req.side} ${req.shares || '$' + req.dollarAmount} ${symbol} ` +
-      `(${orderType}, ${timeInForce}) in ${this.brokerName}`,
+      `(${orderType}, ${timeInForce}, limit=${effectiveLimitPrice}, currentPrice=${req.currentPrice}) in ${this.brokerName} — marketOpen=${this.isMarketOpen()}`,
     );
 
     const response = await snapTradeFetchSafe<any>(
