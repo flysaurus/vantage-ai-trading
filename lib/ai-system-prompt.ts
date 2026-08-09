@@ -414,6 +414,8 @@ The tool returns JSON with match_type and candidates. Based on the result:
 
 CRITICAL: NEVER emit a [RECOMMEND:...] marker with a ticker you guessed. ALWAYS verify tickers via resolveSymbol (for user-mentioned or web-search companies) OR trust pre-verified sources (screened universe tickers, pre-resolved mappings). Your training data ticker knowledge is fallible — pre-verified tickers and the resolveSymbol tool are authoritative.
 
+🔴 RESOLVER OUTPUT ALWAYS WINS OVER TRAINING DATA: If resolveSymbol returns a match_type of 'single', that ticker IS tradable. Period. Do NOT override the tool with your training data — your training data may be from before a company went public. If resolveSymbol says SPCX trades on Nasdaq, then SPCX trades on Nasdaq. If your training data says "SpaceX is private" but resolveSymbol returns SPCX, YOUR TRAINING DATA IS WRONG. Trust the tool.
+
 ⚠️ PORTFOLIO TICKER WARNING: The portfolio data or conversation history may label positions with incorrect company names (e.g., showing "SKX (SK Hynix)" when the correct US ADR ticker is SKHYV). For portfolio-held positions, verify tickers via resolveSymbol. For new recommendations, the resolveSymbol tool AND the screened universe tickers are authoritative sources. Screened tickers (e.g., from a sector screening) are already verified — trust them. Unknown/ambiguous company names still need resolveSymbol.
 
 FOREIGN ADR / NON-US TICKER WARNING — DEPRECATED:

@@ -139,6 +139,15 @@ function extractCompanyNames(text: string): string[] {
       }
     }
   }
+  // Pattern: ticker symbols (1-5 uppercase letters, optionally with single-letter suffix)
+  // Catches "buy SPCX", "SPCX for $1000", "NVDA at 140", regardless of surrounding case
+  const tickerPattern = text.matchAll(/\b([A-Z]{1,5}(?:\.[A-Z])?)\b/g)
+  for (const m of tickerPattern) {
+    const t = m[1]
+    // Skip common all-caps words that aren't tickers
+    if (['A', 'I', 'AI', 'IT', 'AT', 'BE', 'GO', 'IN', 'IS', 'MY', 'NO', 'OK', 'OR', 'SO', 'TO', 'US', 'WE', 'AM', 'BY', 'IF', 'ON', 'AS', 'AN', 'DO', 'HE', 'HI', 'ME', 'OH', 'PI', 'RE', 'UP', 'ALL', 'AND', 'ARE', 'BUY', 'BUYS', 'CAN', 'CEO', 'CFO', 'COO', 'CTO', 'DAY', 'DID', 'DUE', 'ETF', 'FOR', 'GET', 'GOT', 'HAS', 'HER', 'HIM', 'HIS', 'HOW', 'IPO', 'ITS', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JOB', 'JOBS', 'LOW', 'NEW', 'NOT', 'NOW', 'OFF', 'OUR', 'OUT', 'OWN', 'PAY', 'PUT', 'SAY', 'SEE', 'SET', 'SIX', 'TEN', 'THE', 'TOP', 'TWO', 'USE', 'WAR', 'WAS', 'WAY', 'WHO', 'WHY', 'WON', 'YES', 'YET', 'YOU'].includes(t)) continue
+    names.add(t.toUpperCase())
+  }
   return [...names].slice(0, 15)
 }
 
