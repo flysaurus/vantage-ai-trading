@@ -176,6 +176,7 @@ interface PortfolioContextValue {
     basketId?: string,
     basketName?: string,
     basketEmoji?: string,
+    dollarAmount?: number,
   ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
@@ -780,6 +781,48 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       submittingTradeRef.current = true;
       try {
       // Use the real broker when viewing a connected account, DemoBroker otherwise
+      // SnapTrade trades MUST go through the server-side proxy (SnapTradeAdapter is read-only)
+      const isRealSnapTrade = !isShowingDemo && brokerMeta?.slug === 'snaptrade';
+      if (isRealSnapTrade) {
+        const proxyResult = await fetch('/api/broker/execute-trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol,
+            side,
+            shares,
+            orderType,
+            dollarAmount,
+            limitPrice,
+            stopPrice,
+            timeInForce,
+            currentPrice: price,
+          }),
+        }).then(r => r.json());
+        if (!proxyResult.success) {
+          setToast({ message: `❌ ${proxyResult.error || proxyResult.message}`, type: 'error' });
+          setTimeout(() => setToast(null), 4000);
+          return { success: false, error: proxyResult.error || proxyResult.message || 'Order failed', status: proxyResult.status as 'FILLED' | 'OPEN' | 'REJECTED' };
+        }
+        await refreshStateFromBroker();
+        const fillPx = proxyResult.fillPrice ?? price;
+        const status = proxyResult.status as string;
+        const pShares = proxyResult.filledShares || shares;
+        if (status === 'OPEN') {
+          let orderNote = '';
+          if (orderType === 'stop') orderNote = ` (stop $${(stopPrice || price).toFixed(2)})`;
+          else if (orderType === 'stop_limit') orderNote = ` (stop $${(stopPrice || price).toFixed(2)} limit $${(limitPrice || price).toFixed(2)})`;
+          else if (orderType === 'limit') orderNote = ` (limit $${price.toFixed(2)})`;
+          setToast({ message: `⏳ ${side} ${pShares} ${symbol}${orderNote} queued`, type: 'success' });
+        } else {
+          const sideLabel = side === 'BUY' ? 'Bought' : 'Sold';
+          setToast({ message: `✅ ${sideLabel} ${pShares} ${symbol} at $${fillPx.toFixed(2)}`, type: 'success' });
+        }
+        setTimeout(() => setToast(null), status === 'FILLED' ? 3000 : 4000);
+        submittingTradeRef.current = false;
+        return { success: true, status: status as 'FILLED' | 'OPEN' | 'REJECTED', orderId: proxyResult.orderId };
+      }
+
       const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
       if (!b) return { success: false, error: 'Broker not initialized' };
       const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji, dollarAmount });

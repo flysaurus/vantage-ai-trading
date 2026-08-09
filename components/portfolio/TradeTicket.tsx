@@ -64,11 +64,12 @@ export default function TradeTicket({
   const forceDollarMode = isAIVariant || !!(initialAmount && initialAmount > 0);
   const isLockedInput = !isAIVariant && (!!(initialAmount && initialAmount > 0) || !!(initialShares && initialShares > 0));
   
-  // AI variant: always market+day, locked. Manual: defaults to market+day.
-  const effectiveOrderType: 'market' | 'limit' | 'stop' | 'stop_limit' = isAIVariant ? 'market' : orderType;
-  const effectiveTimeInForce: TimeInForce = isAIVariant ? 'day' : timeInForce;
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
+  
+  // AI variant: always market+day, locked. Manual: uses state selectors above.
+  const effectiveOrderType: 'market' | 'limit' | 'stop' | 'stop_limit' = isAIVariant ? 'market' : orderType;
+  const effectiveTimeInForce: TimeInForce = isAIVariant ? 'day' : timeInForce;
   
   const [quantity, setQuantity] = useState<string>(() => {
     if (initialAmount && initialAmount > 0) return String(initialAmount);
