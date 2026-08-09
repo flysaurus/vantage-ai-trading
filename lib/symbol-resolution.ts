@@ -85,6 +85,8 @@ const FALLBACK_SYMBOLS: Record<string, string> = {
   'VYM': 'Vanguard High Dividend Yield ETF',
   'JEPI': 'JPMorgan Equity Premium Income ETF',
   'PFF': 'iShares Preferred & Income Securities ETF',
+  // Public companies Finnhub free tier might miss (verified via Yahoo Finance)
+  'SPCX': 'Space Exploration Technologies Corp.',
 };
 
 // ── Helpers ───────────────────────────────────────────────
@@ -409,6 +411,20 @@ export async function resolveCompanyName(
   }
 
   const max = opts?.maxCandidates ?? 5;
+
+  // Phase 0: Direct ticker lookup — if input looks like a US ticker symbol,
+  // check Finnhub profile directly before trying name-based search.
+  // Catches tickers that Finnhub's search index might miss (newer IPOs, etc.)
+  if (/^[A-Z]{1,5}$/i.test(companyName.trim())) {
+    const ticker = companyName.trim().toUpperCase();
+    const profile = await lookupFinnhubProfile(ticker, key);
+    if (profile) {
+      console.log(`[symbol-res] ✅ Phase 0: Direct ticker lookup "${ticker}" → ${profile.name} (${profile.exchange})`);
+      return [profile];
+    }
+    // Ticker not found via profile — still try name search as fallback
+    console.log(`[symbol-res] 🔍 Phase 0: "${ticker}" no profile match — falling back to name search`);
+  }
 
   // Phase 1: Direct Finnhub company-name search
   let searchResults = await searchFinnhubCompany(companyName, key);

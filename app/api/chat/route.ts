@@ -156,6 +156,20 @@ async function resolveOneFast(name: string): Promise<{ symbol: string; name: str
   const key = process.env.FINNHUB_IO_API_KEY
   if (!key) return null
   try {
+    // Phase 0: If input looks like a ticker, check profile directly
+    if (/^[A-Z]{1,5}$/i.test(name.trim())) {
+      const ticker = name.trim().toUpperCase();
+      const pRes = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(ticker)}&token=${key}`)
+      if (pRes.ok) {
+        const p = await pRes.json()
+        if (p.name && p.ticker && p.exchange) {
+          console.log(`[chat] ✅ resolveOneFast: direct ticker lookup "${ticker}" → ${p.name} (${p.exchange})`)
+          return { symbol: ticker, name: p.name }
+        }
+      }
+      console.log(`[chat] 🔍 resolveOneFast: "${ticker}" no profile match — falling back to search`)
+    }
+    // Phase 1: Finnhub search
     const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(name)}&token=${key}`)
     if (!res.ok) return null
     const data = await res.json()
