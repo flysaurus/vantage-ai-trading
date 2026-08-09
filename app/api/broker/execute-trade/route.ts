@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
     limitPrice?: number;
     stopPrice?: number;
     timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok';
+    /** Current market price — enables after-hours market→limit conversion */
+    currentPrice?: number;
     /** Chat message ID — enables trade-gate company-name verification */
     messageId?: string | null;
     /** Company name displayed in chat — passed directly for max reliability */
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { symbol, side, shares, orderType, dollarAmount, limitPrice, stopPrice, timeInForce, messageId, expectedCompanyName } = body;
+  const { symbol, side, shares, orderType, dollarAmount, limitPrice, stopPrice, timeInForce, currentPrice, messageId, expectedCompanyName } = body;
 
   if (!symbol || !side || (shares == null && dollarAmount == null)) {
     return NextResponse.json(
@@ -155,6 +157,7 @@ export async function POST(req: NextRequest) {
       limitPrice,
       stopPrice,
       timeInForce: timeInForce || 'day',
+      currentPrice,
     });
 
     // ── Persist order to database (Phase 6: real broker order lifecycle) ──

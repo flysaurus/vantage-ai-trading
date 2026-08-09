@@ -804,6 +804,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             symbol, side, shares,
             orderType: orderType || 'market',
             limitPrice, stopPrice, timeInForce,
+            currentPrice: limitPrice || price, // forward price for after-hours market→limit conversion
             messageId: messageId || null,
             expectedCompanyName: expectedCompanyName || null,
           }),

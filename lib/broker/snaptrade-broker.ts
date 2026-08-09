@@ -345,8 +345,43 @@ export class SnapTradeBroker implements BrokerEngine {
     }
 
     // Map our OrderType → SnapTrade order_type
-    const orderType = _mapOrderTypeToSnapTrade(req.type);
-    const timeInForce = _mapTimeInForceToSnapTrade(req.timeInForce || 'day');
+    let orderType = _mapOrderTypeToSnapTrade(req.type);
+    let timeInForce = _mapTimeInForceToSnapTrade(req.timeInForce || 'day');
+    let effectiveLimitPrice = req.limitPrice;
+    let correctionNote: string | null = null;
+
+    // ── After-hours auto-correction ──
+    // Market orders can't execute outside market hours — the broker has no
+    // price to execute against. Day orders expire at close (which already
+    // passed). Auto-correct both so the order reaches the broker immediately
+    // and queues for the next open.
+    if (!this.isMarketOpen()) {
+      if (orderType === 'Market') {
+        orderType = 'Limit';
+        // Use explicit limit price if set; otherwise fall back to currentPrice
+        // (which the client should always pass for the trade ticket).
+        effectiveLimitPrice = effectiveLimitPrice || req.currentPrice;
+        if (!effectiveLimitPrice || effectiveLimitPrice <= 0) {
+          return {
+            success: false,
+            orderId: 'no-qty',
+            status: 'REJECTED',
+            message: 'Market orders outside market hours require a limit price. Please re-submit with a limit or wait until market open.',
+          };
+        }
+        // Add a 2% buffer so the limit is slightly above market (BUY) / below market (SELL)
+        // to increase fill probability at open.
+        const buffer = req.side === 'BUY' ? 1.02 : 0.98;
+        effectiveLimitPrice = Math.round(effectiveLimitPrice * buffer * 100) / 100;
+        correctionNote = `Market→Limit ($${effectiveLimitPrice.toFixed(2)}, market closed)`;
+      }
+      if (timeInForce === 'Day') {
+        timeInForce = 'GTC';
+        correctionNote = correctionNote
+          ? correctionNote.replace('market closed', 'Day→GTC, market closed')
+          : 'Day→GTC (market closed)';
+      }
+    }
 
     const body: Record<string, unknown> = {
       account_id: accountId,
@@ -370,8 +405,8 @@ export class SnapTradeBroker implements BrokerEngine {
       };
     }
 
-    if (req.limitPrice != null && req.limitPrice > 0) {
-      body.price = req.limitPrice;
+    if (effectiveLimitPrice != null && effectiveLimitPrice > 0) {
+      body.price = effectiveLimitPrice;
     }
     if (req.stopPrice != null && req.stopPrice > 0) {
       body.stop = req.stopPrice;
@@ -426,10 +461,15 @@ export class SnapTradeBroker implements BrokerEngine {
     // All orders are sent to the broker immediately, 24/7.
     // Brokers (Alpaca, Tastytrade, etc.) queue orders placed outside market hours.
     // We return the status as-is — no market-closed faking.
+    const isSuccess = status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED';
+    const brokerMsg = correctionNote
+      ? `${correctionNote}. ${this.getNextOpenLabel()} execution.`
+      : undefined;
     return {
-      success: status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED',
+      success: isSuccess,
       orderId,
       status,
+      message: brokerMsg || undefined,
       fillPrice: result.filled_price || result.price,
       totalCost: result.total_cost || (result.filled_price || result.price || 0) * (req.shares || 0),
       filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),

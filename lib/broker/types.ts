@@ -39,6 +39,8 @@ export interface OrderRequest {
   limitPrice?: number;
   stopPrice?: number;
   timeInForce?: TimeInForce;
+  /** Current market price — used for after-hours market→limit conversion. */
+  currentPrice?: number;
   basketId?: string;
   basketName?: string;
   basketEmoji?: string;
