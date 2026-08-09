@@ -782,7 +782,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       try {
       // Use the real broker when viewing a connected account, DemoBroker otherwise
       // SnapTrade trades MUST go through the server-side proxy (SnapTradeAdapter is read-only)
-      const isRealSnapTrade = !isShowingDemo && brokerMeta?.slug === 'snaptrade';
+      const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
       if (isRealSnapTrade) {
         const proxyResult = await fetch('/api/broker/execute-trade', {
           method: 'POST',
@@ -893,7 +893,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         submittingTradeRef.current = false;
       }
     },
-    [brokerRef, refreshStateFromBroker, broker, isShowingDemo],
+    [brokerRef, refreshStateFromBroker, broker, isShowingDemo, brokerSource],
   );
 
   const dismissToast = useCallback(() => setToast(null), []);
