@@ -61,6 +61,7 @@ export function useOrders() {
     timeInForce: raw.timeInForce,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    notional: (raw as any).notional ?? null,
     bracketOrder: raw.bracketOrder
       ? {
           stopLoss: raw.bracketOrder.stopLoss?.stopPrice,
@@ -128,6 +129,7 @@ export function useOrders() {
         timeInForce: (o.timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
         createdAt: o.createdAt,
         updatedAt: o.createdAt,
+        notional: o.notional ?? null,
       }));
 
       const brokerOrders = [

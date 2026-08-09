@@ -295,11 +295,11 @@ export function OrdersTab() {
                 <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
               </div>
               <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
-                {order.type} · {order.qty} shares
+                {order.type} · {order.notional && order.notional > 0 ? `$${order.notional.toFixed(2)}` : `${order.qty} share${order.qty === 1 ? '' : 's'}`}
               </div>
               {order.status === 'filled' && order.filledPrice != null && (
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Total Cost: ${((order.filledQty ?? order.qty) * order.filledPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  Total Cost: ${order.notional && order.notional > 0 ? order.notional.toFixed(2) : ((order.filledQty ?? order.qty) * order.filledPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               )}
             </div>
@@ -384,7 +384,7 @@ export function OrdersTab() {
               <DetailRow label="Status" value={order.status.toUpperCase()} />
               <DetailRow label="Side" value={order.side.toUpperCase()} />
               <DetailRow label="Type" value={order.type.toUpperCase()} />
-              <DetailRow label="Qty Ordered" value={String(order.qty)} />
+              <DetailRow label={order.notional && order.notional > 0 ? 'Notional' : 'Qty Ordered'} value={order.notional && order.notional > 0 ? `$${order.notional.toFixed(2)}` : String(order.qty)} />
               {order.filledQty !== undefined && order.filledQty !== order.qty && (
                 <DetailRow label="Qty Filled" value={String(order.filledQty)} />
               )}

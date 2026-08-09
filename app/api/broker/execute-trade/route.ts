@@ -177,12 +177,17 @@ export async function POST(req: NextRequest) {
     if (shouldPersist) {
       try {
         const now = new Date().toISOString();
+        // When dollarAmount is set, use it as the primary display qty (so orders
+        // show "$500.00" not "0.1209599380685117 shares"). Store the fractional
+        // share estimate separately.
+        const isNotionalOrder = dollarAmount != null && dollarAmount > 0;
+        const displayQty = isNotionalOrder ? dollarAmount : (shares || 0);
         const { data: dbOrder, error: dbErr } = await supabase
           .from('orders')
           .insert({
             user_id: authUser!.id,
             symbol: symbol.toUpperCase(),
-            qty: shares,
+            qty: displayQty,
             filled_qty: result.status === 'FILLED' ? (result.filledShares || shares) : 0,
             side: side.toLowerCase(),
             order_type: (orderType || 'market').toLowerCase(),
@@ -193,6 +198,7 @@ export async function POST(req: NextRequest) {
             is_demo: false,
             brokerage_order_id: result.orderId || null,
             created_at: now,
+            notional: isNotionalOrder ? dollarAmount : null,
           })
           .select('id')
           .single();

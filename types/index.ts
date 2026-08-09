@@ -93,6 +93,8 @@ export interface Order {
   timeInForce: TimeInForce;
   createdAt: string;
   updatedAt?: string;
+  /** Dollar amount for notional_value orders (null for share-based orders) */
+  notional?: number | null;
   bracketOrder?: {
     stopLoss?: number;
     takeProfit?: number;
