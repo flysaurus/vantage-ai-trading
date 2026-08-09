@@ -1040,6 +1040,41 @@ function extractBudgetFromHistory(messages: Array<{ role: string; content: strin
   let baseBudget: number | null = null
   let incrementalTotal = 0
 
+  // ── Direct buy/sell detection ──
+  // When the most recent user message is an explicit "buy $X of Y" or
+  // "sell N shares of Z", use $X as the budget for THIS turn — ignoring
+  // any previous portfolio budget. This prevents "buy $10 of AAPL" from
+  // being validated against a $5,000 portfolio budget from earlier in the chat.
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+  if (lastUserMsg) {
+    // Pattern A: "buy $X of Y", "sell $X worth of Z", "add $X in ABC"
+    const directBuyA = lastUserMsg.content.match(
+      /(?:buy|sell|add)\s+\$?([\d,]+(?:\.[\d]{2})?)\s*(?:of|worth|in)\s+([a-z]{1,5})/i
+    );
+    // Pattern B: "buy XYZ for $X", "add ABC at $X"
+    const directBuyB = lastUserMsg.content.match(
+      /(?:buy|sell|add)\s+([a-z]{1,5})\s+(?:for|at)\s+\$?([\d,]+(?:\.[\d]{2})?)/i
+    );
+    // Pattern C: "$X (as stated)", bare "$X" after CLARIFY about amount
+    // Also catches "10", "$10", "10 dollars"
+    const directBuyC = lastUserMsg.content.match(
+      /^\s*\$?([\d,]+(?:\.[\d]{2})?)\s*(?:\(?as\s+stated\)?|dollars?|bucks?)?\s*$/i
+    );
+    const dollarAmount =
+      directBuyA?.[1] ||
+      directBuyB?.[2] ||
+      directBuyC?.[1] ||
+      null;
+    if (dollarAmount) {
+      const val = parseFloat(dollarAmount.replace(/,/g, ''));
+      if (!isNaN(val) && val >= 5 && val <= 500000) {
+        console.log(`[chat] Direct buy detected: budget=$${val} ("${lastUserMsg.content.trim().slice(0, 80)}")`);
+        return val;
+      }
+    }
+  }
+  // ── End direct buy detection ──
+
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg.role !== 'user') continue
