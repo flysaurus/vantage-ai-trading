@@ -295,7 +295,12 @@ export function OrdersTab() {
                 <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
               </div>
               <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
-                {order.type} · {order.notional && order.notional > 0 ? `$${order.notional.toFixed(2)}` : `${order.qty} share${order.qty === 1 ? '' : 's'}`}
+                {order.type} · {order.notional && order.notional > 0
+                  ? `$${Number(order.notional).toFixed(2)}`
+                  : order.qty > 0
+                    ? `${Number(order.qty).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')} share${order.qty === 1 ? '' : 's'}`
+                    : `—`
+                }
               </div>
               {order.status === 'filled' && order.filledPrice != null && (
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>

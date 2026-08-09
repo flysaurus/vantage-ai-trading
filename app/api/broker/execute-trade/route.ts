@@ -177,29 +177,31 @@ export async function POST(req: NextRequest) {
     if (shouldPersist) {
       try {
         const now = new Date().toISOString();
-        // When dollarAmount is set, use it as the primary display qty (so orders
-        // show "$500.00" not "0.1209599380685117 shares"). Store the fractional
-        // share estimate separately.
+        // notional=null if column doesn't exist yet (migration 042 pending).
+        // qty always stores the share estimate so it's meaningful even without notional.
         const isNotionalOrder = dollarAmount != null && dollarAmount > 0;
-        const displayQty = isNotionalOrder ? dollarAmount : (shares || 0);
+        const effectiveQty = shares || 0;
+        const insertRow: Record<string, unknown> = {
+          user_id: authUser!.id,
+          symbol: symbol.toUpperCase(),
+          qty: effectiveQty,
+          filled_qty: result.status === 'FILLED' ? (result.filledShares || effectiveQty) : 0,
+          side: side.toLowerCase(),
+          order_type: (orderType || 'market').toLowerCase(),
+          status: (result.status || 'OPEN').toLowerCase(),
+          filled_price: result.fillPrice || null,
+          filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
+          time_in_force: (timeInForce || 'day').toLowerCase(),
+          is_demo: false,
+          brokerage_order_id: result.orderId || null,
+          created_at: now,
+        };
+        if (isNotionalOrder) {
+          insertRow.notional = dollarAmount;
+        }
         const { data: dbOrder, error: dbErr } = await supabase
           .from('orders')
-          .insert({
-            user_id: authUser!.id,
-            symbol: symbol.toUpperCase(),
-            qty: displayQty,
-            filled_qty: result.status === 'FILLED' ? (result.filledShares || shares) : 0,
-            side: side.toLowerCase(),
-            order_type: (orderType || 'market').toLowerCase(),
-            status: (result.status || 'OPEN').toLowerCase(),
-            filled_price: result.fillPrice || null,
-            filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
-            time_in_force: (timeInForce || 'day').toLowerCase(),
-            is_demo: false,
-            brokerage_order_id: result.orderId || null,
-            created_at: now,
-            notional: isNotionalOrder ? dollarAmount : null,
-          })
+          .insert(insertRow)
           .select('id')
           .single();
         dbOrderId = dbOrder?.id || null;
