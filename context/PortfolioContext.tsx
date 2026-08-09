@@ -772,7 +772,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string, dollarAmount?: number): Promise<TradeResult> => {
       if (submittingTradeRef.current) {
         console.log('[executeTrade] Already submitting — ignoring duplicate call');
         return { success: false, error: 'Order already in progress' };
@@ -782,7 +782,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       // Use the real broker when viewing a connected account, DemoBroker otherwise
       const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
       if (!b) return { success: false, error: 'Broker not initialized' };
-      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
+      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji, dollarAmount });
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);

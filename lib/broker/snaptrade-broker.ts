@@ -388,10 +388,12 @@ export class SnapTradeBroker implements BrokerEngine {
     };
 
     // Units (shares) vs notional_value (dollar amount)
-    if (req.shares != null && req.shares > 0) {
-      body.units = req.shares;
-    } else if (req.dollarAmount != null && req.dollarAmount > 0) {
+    // When dollarAmount is explicitly set (AI Advisor dollar-first mode), prefer notional_value
+    // to preserve exact dollar intent rather than converting to shares where rounding can skew.
+    if (req.dollarAmount != null && req.dollarAmount > 0) {
       body.notional_value = req.dollarAmount;
+    } else if (req.shares != null && req.shares > 0) {
+      body.units = req.shares;
     } else {
       return {
         success: false,

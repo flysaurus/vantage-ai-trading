@@ -2701,8 +2701,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         supportsFractional={true}
         onConfirm={async (params) => {
           if (!tradeTicket) return;
-          const price = (params.type === 'limit' || params.type === 'stop_limit') && params.limitPrice ? params.limitPrice : tradeTicket.currentPrice;
-          const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce, undefined, undefined, undefined, tradeTicket.messageId);
+          const price = tradeTicket.currentPrice;
+          const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce, undefined, undefined, undefined, tradeTicket.messageId, params.dollarAmount);
           if (!result.success) {
             throw new Error(result.error || 'Order failed');
           }

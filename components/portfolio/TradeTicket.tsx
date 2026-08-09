@@ -43,6 +43,8 @@ interface TradeTicketProps {
     limitPrice?: number;
     stopPrice?: number;
     timeInForce?: TimeInForce;
+    /** Raw dollar input from UI (for notional_value orders). Only set for AI variant dollar-mode. */
+    dollarAmount?: number;
   }) => Promise<void>;
 }
 
@@ -57,11 +59,14 @@ export default function TradeTicket({
   
   const isAIVariant = variant === 'ai';
   
-  // ── AI variant: always dollar-first, editable amount, derived shares ──
+  // ── AI variant: always dollar-first, editable amount, derived shares, locked market+day ──
   // ── Manual variant: smart detection from initialAmount/initialShares ──
   const forceDollarMode = isAIVariant || !!(initialAmount && initialAmount > 0);
   const isLockedInput = !isAIVariant && (!!(initialAmount && initialAmount > 0) || !!(initialShares && initialShares > 0));
   
+  // AI variant: always market+day, locked. Manual: defaults to market+day.
+  const effectiveOrderType: 'market' | 'limit' | 'stop' | 'stop_limit' = isAIVariant ? 'market' : orderType;
+  const effectiveTimeInForce: TimeInForce = isAIVariant ? 'day' : timeInForce;
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
   const [timeInForce, setTimeInForce] = useState<TimeInForce>('day');
   
@@ -161,10 +166,11 @@ export default function TradeTicket({
     try {
       await onConfirm({
         shares: supportsFractional ? rawShares : qty,
-        type: orderType,
-        limitPrice: (orderType === 'limit' || orderType === 'stop_limit') && limit > 0 ? limit : undefined,
-        stopPrice: (orderType === 'stop' || orderType === 'stop_limit') && stop > 0 ? stop : undefined,
-        timeInForce,
+        type: effectiveOrderType,
+        limitPrice: (effectiveOrderType === 'limit' || effectiveOrderType === 'stop_limit') && limit > 0 ? limit : undefined,
+        stopPrice: (effectiveOrderType === 'stop' || effectiveOrderType === 'stop_limit') && stop > 0 ? stop : undefined,
+        timeInForce: effectiveTimeInForce,
+        dollarAmount: forceDollarMode ? rawInput : undefined,
       });
       // Success — confirmed state, then close
       setTradeError(null);
@@ -177,7 +183,7 @@ export default function TradeTicket({
       const msg = err instanceof Error ? err.message : 'Order submission failed';
       setTradeError(msg);
     }
-  }, [canClick, qty, rawShares, supportsFractional, orderType, limit, stop, timeInForce, onConfirm, onClose]);
+  }, [canClick, qty, rawShares, rawInput, supportsFractional, effectiveOrderType, limit, stop, effectiveTimeInForce, forceDollarMode, onConfirm, onClose]);
 
   if (!isOpen) return null;
 
@@ -237,7 +243,23 @@ export default function TradeTicket({
           </button>
         </div>
 
-        {/* Order type — hidden in AI variant (Market only), except via Advanced */}
+        {/* ── AI variant: locked Market · Day badge ── */}
+        {isAIVariant && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+            padding: '8px 12px', borderRadius: 10,
+            background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.18)',
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#22d3ee', fontFamily: 'var(--font-mono, monospace)' }}>
+              Market · Day
+            </span>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              All AI Advisor orders use market orders with day time-in-force
+            </span>
+          </div>
+        )}
+
+        {/* Order type — hidden in AI variant (Market only) */}
         {!isAIVariant && (
           <>
             <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Order Type</div>
@@ -265,7 +287,7 @@ export default function TradeTicket({
           </>
         )}
 
-        {/* Time in Force — hidden in AI variant */}
+        {/* Time in Force — hidden in AI variant (Day only) */}
         {!isAIVariant && (
           <>
         <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Time in Force</div>
@@ -302,68 +324,7 @@ export default function TradeTicket({
           </>
         )}
 
-        {/* AI variant: Advanced order options disclosure */}
-        {isAIVariant && (
-          <div style={{ marginBottom: 14 }}>
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              style={{
-                background: 'none', border: 'none',
-                fontSize: 11, fontWeight: 600, color: '#64748b',
-                cursor: 'pointer', padding: 0,
-                display: 'flex', alignItems: 'center', gap: '4px',
-              }}
-            >
-              {showAdvanced ? '▾' : '▸'} Advanced order options
-            </button>
-            {showAdvanced && (
-              <div style={{ marginTop: 10, padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-                {/* Order type */}
-                <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Order Type</div>
-                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 3, marginBottom: 10 }}>
-                  {(['market', 'limit', 'stop', 'stop_limit'] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setOrderType(t)}
-                      style={{
-                        flex: 1, padding: '8px 0',
-                        border: 'none', borderRadius: 8,
-                        background: orderType === t ? 'rgba(34,211,238,0.15)' : 'transparent',
-                        color: orderType === t ? '#22d3ee' : '#94a3b8',
-                        fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                        fontFamily: 'var(--font-sans)',
-                      }}
-                    >
-                      {t === 'market' ? 'Market' : t === 'limit' ? 'Limit' : t === 'stop' ? 'Stop' : 'StopLimit'}
-                    </button>
-                  ))}
-                </div>
-                {/* TIF */}
-                <div className="section-label" style={{ fontSize: 10, marginBottom: 6 }}>Time in Force</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
-                  {(Object.entries(TIF_LABELS) as [TimeInForce, { label: string; desc: string }][]) .map(([tif, { label, desc }]) => (
-                    <button
-                      key={tif}
-                      onClick={() => setTimeInForce(tif)}
-                      title={desc}
-                      style={{
-                        padding: '6px 2px',
-                        border: timeInForce === tif ? '1px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 8,
-                        background: timeInForce === tif ? 'rgba(34,211,238,0.12)' : 'rgba(255,255,255,0.02)',
-                        color: timeInForce === tif ? '#22d3ee' : 'rgba(255,255,255,0.5)',
-                        fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        fontFamily: 'var(--font-sans)',
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* AI variant: no advanced options — Market · Day is always locked */}
 
         {/* Quantity / Dollar Amount */}
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -626,7 +587,7 @@ export default function TradeTicket({
                 : isReadOnlyBroker
                   ? `🔒 Read-only — ${activeAccount?.broker || 'broker'} does not support trading`
                   : isAIVariant
-                  ? `${sideLabel} $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈${rawShares.toFixed(supportsFractional ? 4 : 0)} shares)`
+                  ? `${sideLabel} ~$${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈${rawShares.toFixed(supportsFractional ? 4 : 0)} shares)`
                   : forceDollarMode
                     ? `${sideLabel} $${rawInput.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} (${qty || 0} shares)`
                     : `${sideLabel} ${qty || 0} shares`}
