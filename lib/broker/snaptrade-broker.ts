@@ -431,18 +431,26 @@ export class SnapTradeBroker implements BrokerEngine {
       const brokerOrderId: string | undefined =
         response.data?.brokerage_order_id || undefined;
       const errorMsg = response.error || `SnapTrade returned HTTP ${statusCode}`;
+      // Include the raw body for debugging — sometimes SnapTrade errors are
+      // HTML pages or have non-standard JSON keys.
+      const rawDetail = response.rawBody
+        ? ` | RAW: ${response.rawBody.slice(0, 200)}`
+        : '';
 
       console.error(
         `[SnapTradeBroker] placeOrder REJECTED (HTTP ${statusCode}):`,
-        errorMsg,
-        'body:', JSON.stringify(response.data).slice(0, 300),
+        errorMsg + rawDetail,
+      );
+      console.error(
+        `[SnapTradeBroker] placeOrder SENT body:`,
+        JSON.stringify(body),
       );
 
       return {
         success: false,
         orderId: brokerOrderId || 'error',
         status: 'REJECTED' as const,
-        message: errorMsg,
+        message: errorMsg + rawDetail,
       };
     }
 

@@ -252,7 +252,9 @@ export async function snapTradeFetchSafe<T = unknown>(
       detail =
         (d.default_detail as string) ||
         (d.detail as string) ||
+        (d.message as string) ||
         (d.error as string) ||
+        (d.reason as string) ||
         parseError ||
         response.statusText ||
         'Unknown error';

@@ -80,6 +80,7 @@ export default function TradeTicket({
   const [stopPrice, setStopPrice] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [tradeError, setTradeError] = useState<string | null>(null);
   const [marketOpen, setMarketOpen] = useState(true);
   const [nextOpenLabel, setNextOpenLabel] = useState('');
 
@@ -105,6 +106,7 @@ export default function TradeTicket({
     setStopPrice('');
     setSubmitting(false);
     setConfirmed(false);
+    setTradeError(null);
     return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
@@ -165,12 +167,15 @@ export default function TradeTicket({
         timeInForce,
       });
       // Success — confirmed state, then close
+      setTradeError(null);
       setConfirmed(true);
       setSubmitting(false);
       setTimeout(() => onClose(), 1500);
-    } catch {
-      // Submission failed — reactivate button immediately
+    } catch (err) {
+      // Submission failed — reactivate button immediately and show error
       setSubmitting(false);
+      const msg = err instanceof Error ? err.message : 'Order submission failed';
+      setTradeError(msg);
     }
   }, [canClick, qty, rawShares, supportsFractional, orderType, limit, stop, timeInForce, onConfirm, onClose]);
 
@@ -576,6 +581,21 @@ export default function TradeTicket({
           borderTop: '1px solid rgba(255,255,255,0.06)',
           background: '#0f172a',
         }}>
+
+        {/* Submission error */}
+        {tradeError && (
+          <div style={{
+            marginBottom: '10px', padding: '10px 12px',
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: '8px',
+            color: '#fca5a5',
+            fontSize: '12px', fontWeight: 500,
+            lineHeight: 1.4,
+          }}>
+            ⚠️ {tradeError}
+          </div>
+        )}
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 10 }}>
