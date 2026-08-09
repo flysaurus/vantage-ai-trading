@@ -352,9 +352,11 @@ export class SnapTradeBroker implements BrokerEngine {
 
     // ── After-hours auto-correction ──
     // Market orders can't execute outside market hours — the broker has no
-    // price to execute against. Day orders expire at close (which already
-    // passed). Auto-correct both so the order reaches the broker immediately
-    // and queues for the next open.
+    // price to execute against. Convert to limit order with a small buffer.
+    //
+    // NOTE: We do NOT convert Day→GTC. Fractional-share accounts (Alpaca)
+    // require DAY time-in-force; GTC would be rejected. Day orders placed
+    // when the market is closed queue for the next open naturally.
     if (!this.isMarketOpen()) {
       if (orderType === 'Market') {
         orderType = 'Limit';
@@ -373,13 +375,7 @@ export class SnapTradeBroker implements BrokerEngine {
         // to increase fill probability at open.
         const buffer = req.side === 'BUY' ? 1.02 : 0.98;
         effectiveLimitPrice = Math.round(effectiveLimitPrice * buffer * 100) / 100;
-        correctionNote = `Market→Limit ($${effectiveLimitPrice.toFixed(2)}, market closed)`;
-      }
-      if (timeInForce === 'Day') {
-        timeInForce = 'GTC';
-        correctionNote = correctionNote
-          ? correctionNote.replace('market closed', 'Day→GTC, market closed')
-          : 'Day→GTC (market closed)';
+        correctionNote = `Market→Limit ($${effectiveLimitPrice.toFixed(2)}, queued for ${this.getNextOpenLabel()})`;
       }
     }
 
