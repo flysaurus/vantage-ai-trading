@@ -232,7 +232,12 @@ async function searchFinnhubCompany(query: string, apiKey: string): Promise<Finn
     );
     if (!res.ok) return [];
     const data = await res.json();
-    return (data.result || []).filter(isUSLookup);
+    const raw = (data.result || []);
+    const filtered = raw.filter(isUSLookup);
+    if (raw.length > 0 && filtered.length === 0) {
+      console.warn(`[symbol-res] 🔍 Finnhub search for "${query}": ${raw.length} raw results but 0 passed isUSLookup. Raw types: ${raw.slice(0,5).map((r:any) => `${r.symbol}(${r.type})`).join(', ')}`);
+    }
+    return filtered;
   } catch {
     return [];
   }

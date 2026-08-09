@@ -160,15 +160,21 @@ async function resolveOneFast(name: string): Promise<{ symbol: string; name: str
     if (!res.ok) return null
     const data = await res.json()
     if (data.result?.length > 0) {
-      // Prefer US-exchange results
+      // Prefer US-exchange results — match at start of exchange string
+      // (e.g. "NasdaqGS", "Nasdaq Global Select", "NYSE American")
       const usResult = data.result.find((r: any) =>
-        /^(NASDAQ|NYSE|AMEX|OTC|BATS|IEX)\b/i.test(r.exchange || '') &&
+        /^(NASDAQ|Nasdaq|NYSE|AMEX|OTC|BATS|IEX)/i.test(r.exchange || '') &&
         /^[A-Z]{1,5}(\.[A-Z])?$/.test(r.symbol)
       )
       if (usResult) return { symbol: usResult.symbol, name: usResult.description }
-      // Fallback: first result with valid US ticker format
+      // Log when US exchange check fails but symbol format is valid
       const valid = data.result.find((r: any) => /^[A-Z]{1,5}(\.[A-Z])?$/.test(r.symbol))
+      if (valid && valid.symbol.toUpperCase() === name.toUpperCase()) {
+        console.log(`[chat] 🔍 resolveOneFast: "${name}" found with exchange="${valid.exchange}", type="${valid.type}" — exchange didn't match US pattern`)
+      }
       if (valid) return { symbol: valid.symbol, name: valid.description }
+      // Log when no results pass the US ticker format check
+      console.warn(`[chat] 🔍 resolveOneFast: "${name}" — ${data.result.length} Finnhub results, 0 passed US format check. Raw: ${data.result.slice(0,3).map((r:any) => `${r.symbol}(${r.exchange})`).join(', ')}`)
     }
     return null
   } catch { return null }
