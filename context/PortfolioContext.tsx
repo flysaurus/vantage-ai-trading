@@ -176,8 +176,6 @@ interface PortfolioContextValue {
     basketId?: string,
     basketName?: string,
     basketEmoji?: string,
-    messageId?: string | null,
-    expectedCompanyName?: string | null,
   ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
@@ -511,8 +509,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const fetchData = useCallback(async () => {
     // Fetch live quotes for demo positions as long as demo state exists.
     // Don't block on isConnected — user may switch to Demo while broker is connected.
-    // Guard against demo contamination of broker account data.
-    if (!isShowingDemo || !demoState) return;
+    if (!demoState) return;
 
     try {
       setError(null);
@@ -553,12 +550,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     const loadBrokerAccount = async () => {
       try {
-        console.error('[portfolio context] loadBrokerAccount START — isConnected:', isConnected, 'isShowingDemo:', isShowingDemo);
         const [ba, positions] = await Promise.all([
           broker.getAccount(),
           broker.getPositions(),
         ]);
-        console.error('[portfolio context] loadBrokerAccount DATA — equity:', ba.equity, 'cash:', ba.cash, 'positions:', positions?.length ?? 0);
 
         if (cancelled) return;
 
@@ -608,12 +603,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [isConnected, broker, isShowingDemo]);
 
-  // Fetch on mount and when state changes (Demo only).
-  // CRITICAL: This effect MUST guard against isShowingDemo to prevent
-  // demo holdings (LLY, MRK, UNH, JNJ) from overwriting real broker
-  // account state (TSLA) via recomputeAccount / fetchData every 60s.
+  // Fetch on mount and when state changes
   useEffect(() => {
-    if (!isShowingDemo) return;
     mountedRef.current = true;
     if (demoState) {
       console.log('[portfolio init] demoState loaded, positions:', demoState.positions.length, 'cash:', demoState.cashBalance);
@@ -781,112 +772,23 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string, messageId?: string | null, expectedCompanyName?: string | null): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string): Promise<TradeResult> => {
       if (submittingTradeRef.current) {
         console.log('[executeTrade] Already submitting — ignoring duplicate call');
         return { success: false, error: 'Order already in progress' };
       }
-
       submittingTradeRef.current = true;
       try {
-      // Use the real broker when viewing a connected account, DemoBroker otherwise.
-      // brokerRef.current is always DemoBroker; broker from useBroker() is the real one,
-      // but its .placeOrder() is a read-only stub. For real brokers we proxy through
-      // the server-side /api/broker/execute-trade endpoint which creates a live SnapTradeBroker.
-      let result: { success: boolean; status: string; orderId: string; message?: string; fillPrice?: number; totalCost?: number; filledShares?: number; filledAt?: string; nextOpenLabel?: string; error?: string; };
-      const b: any = (isShowingDemo || !broker) ? brokerRef.current : null;
-      if (!isShowingDemo && broker) {
-        // ── Real broker (SnapTrade): proxy through server API ──
-        const res = await fetch('/api/broker/execute-trade', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol, side, shares,
-            orderType: orderType || 'market',
-            limitPrice, stopPrice, timeInForce,
-            currentPrice: limitPrice || price, // forward price for after-hours market→limit conversion
-            messageId: messageId || null,
-            expectedCompanyName: expectedCompanyName || null,
-          }),
-        });
-        try {
-          const data = await res.json();
-          if (data.error || !data.success) {
-            setToast({ message: `❌ ${data.error || data.message || 'Order failed'}`, type: 'error' });
-            setTimeout(() => setToast(null), 4000);
-            return { success: false, error: data.error || data.message || 'Order failed', status: 'REJECTED' };
-          }
-          result = data;
-        } catch (parseErr) {
-          setToast({ message: `❌ Broker communication failed`, type: 'error' });
-          setTimeout(() => setToast(null), 4000);
-          return { success: false, error: 'Broker communication failed', status: 'REJECTED' };
-        }
-        // ── Phase 6: Persist order to Zustand immediately → appears in Open tab ──
-        // Use dbOrderId when available so the Zustand entry matches the persisted DB row.
-        // This prevents duplicates when useOrders.refresh() later fetches from /api/orders.
-        const zustandOrderId: string = (result as any).dbOrderId || result.orderId || `broker-${Date.now()}`;
-        try {
-          useOrderStore.getState().addOrder({
-            id: zustandOrderId,
-            symbol,
-            side: side === 'BUY' ? 'buy' as const : 'sell' as const,
-            type: (orderType || 'market') as 'market' | 'limit' | 'stop' | 'stop_limit',
-            status: (result.status === 'FILLED' ? 'filled' : 'open') as 'filled' | 'open',
-            qty: shares,
-            filledQty: result.filledShares || (result.status === 'FILLED' ? shares : undefined),
-            filledPrice: result.fillPrice,
-            totalValue: result.totalCost || (result.fillPrice || price) * shares,
-            limitPrice,
-            stopPrice,
-            timeInForce: (timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
-            createdAt: result.filledAt || new Date().toISOString(),
-          });
-          // Surface DB persistence warning if any (order EXISTS at broker even if local DB failed)
-          if ((result as any).dbWarnMsg) {
-            console.warn('[executeTrade] ⚠️', (result as any).dbWarnMsg);
-          }
-        } catch (orderPersistErr) {
-          console.error('[executeTrade] Failed to persist order to store:', orderPersistErr);
-        }
-
-        // Refresh live account after successful trade
-        try {
-          const [ba, baPositions] = await Promise.all([
-            broker.getAccount(),
-            broker.getPositions(),
-          ]);
-          setAccount({
-            equity: ba.equity, buyingPower: ba.buyingPower, cash: ba.cash,
-            dayPnl: ba.dayPnl ?? 0, dayPnlPercent: ba.dayPnlPercent ?? 0,
-            totalPnl: ba.totalPnl ?? 0, totalPnlPercent: ba.totalPnlPercent ?? 0,
-            positions: baPositions.map((p: any) => ({
-              symbol: p.symbol, name: p.name, qty: p.qty ?? 0, avgCost: p.avgCost,
-              currentPrice: p.currentPrice, marketValue: p.marketValue,
-              dayChange: p.dayChange ?? 0, dayChangePercent: p.dayChangePercent ?? 0,
-              totalPnl: p.totalPnl ?? 0, totalPnlPercent: p.totalPnlPercent ?? 0,
-              portfolioPercent: p.portfolioPercent ?? 0, sector: p.sector ?? '',
-              type: (p.type === 'ETF' || (p as any).assetType === 'etf') ? 'ETF' as const : 'Stock' as const,
-            })),
-            lastSynced: ba.lastSynced ?? null,
-            accountStatus: ba.accountStatus ?? null,
-            holdingsUnavailable: ba.holdingsUnavailable ?? false,
-          });
-        } catch (refreshErr) {
-          console.error('[executeTrade] Post-trade account refresh failed:', refreshErr);
-        }
-      } else {
-        // ── Demo broker: use direct BrokerEngine call ──
-        const demoB = b || brokerRef.current;
-        if (!demoB) return { success: false, error: 'Broker not initialized' };
-        result = await demoB.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
-      }
+      // Use the real broker when viewing a connected account, DemoBroker otherwise
+      const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+      if (!b) return { success: false, error: 'Broker not initialized' };
+      const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji });
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);
         return { success: false, error: result.message || 'Order failed', status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
       }
-      if (isShowingDemo || !broker) await refreshStateFromBroker();
+      await refreshStateFromBroker();
       const fillPx = result.fillPrice ?? price;
       if (result.status === 'OPEN') {
         let orderNote = '';
@@ -943,32 +845,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }).catch(() => {});
       }
 
-      // Fire-and-forget: order confirmation email
-      const userEmail = user?.email as string | undefined;
-      if (userEmail) {
-        import('@/lib/order-emails').then(({ sendOrderConfirmation }) => {
-          sendOrderConfirmation({
-            userEmail,
-            brokerName: brokerMeta?.name || 'Demo',
-            symbol,
-            side,
-            shares,
-            type: orderType || 'market',
-            limitPrice,
-            stopPrice,
-            estimatedTotal: shares * price,
-            orderId: result.orderId,
-            isLive: brokerMeta ? !brokerMeta.isDemo : false,
-          }).catch(() => {});
-        }).catch(() => {});
-      }
-
       return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED', orderId: result.orderId };
       } finally {
         submittingTradeRef.current = false;
       }
     },
-    [brokerRef, refreshStateFromBroker, brokerMeta, user?.email, broker, isShowingDemo],
+    [brokerRef, refreshStateFromBroker, broker, isShowingDemo],
   );
 
   const dismissToast = useCallback(() => setToast(null), []);
@@ -984,7 +866,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     await refreshStateFromBroker();
     setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
     setTimeout(() => setToast(null), 4000);
-  }, [demoOrders, brokerRef, refreshStateFromBroker]);
+  }, [demoOrders, brokerRef, refreshStateFromBroker, broker, isShowingDemo]);
 
   // ── cancelBasketOrder ──
   const cancelBasketOrder = useCallback(async (basketId: string) => {
@@ -1008,7 +890,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const filled = await b.executePendingOrders();
     if (filled > 0) {
       await refreshStateFromBroker();
-      await loadBasketsRef.current();
+      await loadBasketsRef.current(); // Refresh basket state from BASKET_POSITIONS_KEY
       setToast({ message: `🔔 Executed ${filled} pending orders`, type: 'success' });
       setTimeout(() => setToast(null), 4000);
     }
@@ -1270,7 +1152,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     } finally {
       submittingBasketRef.current = false;
     }
-  }, [brokerRef, refreshStateFromBroker, loadBaskets]);
+  }, [brokerRef, refreshStateFromBroker, loadBaskets, broker, isShowingDemo]);
 
   // ── sellBasketPositions ──
   const sellBasketPositions = useCallback(async (
