@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
         timeInForce: o.time_in_force,
         isDemo: o.is_demo,
         createdAt: o.created_at,
+        brokerageOrderId: o.brokerage_order_id,
+        notional: o.notional ? Number(o.notional) : undefined,
       })),
       total: count || 0,
     });

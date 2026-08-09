@@ -44,24 +44,28 @@ export function useOrders() {
     expired: 'cancelled',
   };
 
+  // Accept any broker order shape — at runtime the broker returns lib/broker/types.BrokerOrder
+  // (shares, submittedAt, totalCost) but BrokerAdapter types it as types/broker.BrokerOrder
+  // (qty, createdAt, totalValue). We read runtime-safe fields to bridge the gap.
   const mapToAppOrder = (
-    raw: import('@/types/broker').BrokerOrder
+    raw: Record<string, any>
   ): Order => ({
     id: raw.id,
     symbol: raw.symbol,
-    side: raw.side,
+    side: (typeof raw.side === 'string' ? raw.side.toLowerCase() : raw.side) as Order['side'],
     type: raw.type,
     status: statusMap[raw.status] || 'open',
-    qty: raw.qty,
-    filledQty: raw.filledQty,
+    qty: raw.shares ?? raw.qty ?? 0,
+    filledQty: raw.filledQty ?? 0,
     limitPrice: raw.limitPrice,
     stopPrice: raw.stopPrice,
-    filledPrice: raw.filledPrice,
-    totalValue: raw.totalValue,
-    timeInForce: raw.timeInForce,
-    createdAt: raw.createdAt,
-    updatedAt: raw.updatedAt,
-    notional: (raw as any).notional ?? null,
+    filledPrice: raw.fillPrice ?? raw.filledPrice,
+    totalValue: raw.totalCost ?? raw.totalValue ?? 0,
+    timeInForce: raw.timeInForce || 'day',
+    createdAt: raw.submittedAt ?? raw.createdAt ?? new Date().toISOString(),
+    updatedAt: raw.submittedAt ?? raw.updatedAt ?? raw.createdAt,
+    notional: raw.notional ?? null,
+    brokerageOrderId: raw.brokerageOrderId ?? raw.brokerage_order_id ?? raw.id,
     bracketOrder: raw.bracketOrder
       ? {
           stopLoss: raw.bracketOrder.stopLoss?.stopPrice,
@@ -129,7 +133,8 @@ export function useOrders() {
         timeInForce: (o.timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
         createdAt: o.createdAt,
         updatedAt: o.createdAt,
-        notional: o.notional ?? null,
+        notional: (o.notional ?? (o as any).notional) ?? null,
+        brokerageOrderId: (o as any).brokerageOrderId,
       }));
 
       const brokerOrders = [
@@ -142,10 +147,19 @@ export function useOrders() {
 
       // Merge broker orders + trade_history + db orders, deduplicate by ID.
       // Priority: broker > trade_history > public.orders.
+      // Also dedup DB orders whose brokerageOrderId matches a broker order's id
+      // (same order reached the broker AND was persisted to our DB).
       const brokerOrderIds = new Set(mappedBrokerOrders.map(o => o.id));
+      const brokerOrderIdsLower = new Set([...brokerOrderIds].map(id => id.toLowerCase()));
       const uniqueTradeHistory = tradeHistoryOrders.filter(o => !brokerOrderIds.has(o.id));
       const existingIds = new Set([...brokerOrderIds, ...uniqueTradeHistory.map(o => o.id)]);
-      const uniqueDbOrders = dbOrders.filter(o => !existingIds.has(o.id));
+      const uniqueDbOrders = dbOrders.filter(o => {
+        if (existingIds.has(o.id)) return false;
+        // Also match by brokerageOrderId — broker order's id IS the brokerage_order_id
+        const dbBrokerId = o.brokerageOrderId;
+        if (dbBrokerId && brokerOrderIdsLower.has(dbBrokerId.toLowerCase())) return false;
+        return true;
+      });
 
       const allOrders = [...mappedBrokerOrders, ...uniqueTradeHistory, ...uniqueDbOrders];
 

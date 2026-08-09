@@ -134,6 +134,33 @@ interface NoticedItem {
   dismissedUntil: string | null;
 }
 
+/** Build a CLARIFY block payload from old-style validation failures.
+ *  Used as client-side fallback when the server sends legacy fatalValidationFailure. */
+function buildClarifyFromValidation(
+  failures: Array<{ check: string; detail: string }>
+): { question: string; options: string[] } | null {
+  if (!failures || failures.length === 0) return null;
+  const budgetFailure = failures.find(f => f.check === 'budget_reconciliation');
+  const symbolFailure = failures.find(f => f.check === 'symbol_resolution');
+
+  if (budgetFailure) {
+    return {
+      question: 'The portfolio totals don\'t match your budget. How should I fix this?',
+      options: ['Use my original budget', 'Use whatever the AI recommended', 'Let me adjust the request'],
+    };
+  }
+  if (symbolFailure) {
+    return {
+      question: 'Some ticker symbols were not recognized. How would you like to proceed?',
+      options: ['Re-run with corrected symbols', 'Skip unrecognized ones', 'Let me fix the symbols myself'],
+    };
+  }
+  return {
+    question: 'The portfolio needs a small fix. Should I correct it and try again?',
+    options: ['Yes, fix and regenerate', 'Let me rephrase my request', 'Cancel'],
+  };
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -1125,14 +1152,18 @@ export function AITab({ messages, setMessages }: AITabProps) {
                 }
                 console.log('[chat] Marker corrections applied:', data.corrections);
               }
-              if (data.regenerate || data.fatalValidationFailure) {
-                // Server-side strict validation rejected the response
-                // Store regeneration state — processed after stream ends
+              if (data.regenerate || data.fatalValidationFailure || data.clarify) {
+                // Server-side validation rejected the response or wants to clarify
+                // Store state — processed after stream ends
                 validationRejectRef.current = data;
-                console.log('[chat] Validation rejection received:', data.regenerate ? 'regenerate' : 'fatal');
+                if (data.clarify) {
+                  console.log('[chat] Validation CLARIFY received:', data.clarify.question);
+                } else {
+                  console.log('[chat] Validation rejection received:', data.regenerate ? 'regenerate' : 'fatal');
+                }
               }
               if (data.fatalStreamError) {
-                // Server-side stream crashed — store error for display
+                // Old-style error — convert to clarify on client side for graceful handling
                 validationRejectRef.current = data;
                 console.error('[chat] Fatal stream error received:', data.message);
               }
@@ -1206,33 +1237,26 @@ export function AITab({ messages, setMessages }: AITabProps) {
           return;
         }
 
-        if (rejectData.fatalValidationFailure) {
-          // Fatal: both attempts failed — show error to user
-          const failures = (rejectData.failures || []) as Array<{ check: string; detail: string }>;
-          const errorMarkdown = [
-            '⚠️ **Portfolio generation failed validation**',
-            '',
-            ...failures.map(f => `• **${f.check.replace(/_/g, ' ')}**: ${f.detail}`),
-            '',
-            '_Try rephrasing your request or adjusting your budget._'
-          ].join('\n');
-          setMessages(prev => prev.slice(0, -1)); // Remove empty AI stub
-          setMessages(prev => [...prev, { role: 'ai', content: errorMarkdown }]);
-          // Clear progress indicator — show the error
-          setChecklistItems([]);
-          setScreeningMeta(null);
-          setLoading(false);
+        if (rejectData.fatalValidationFailure || rejectData.clarify) {
+          // Both old fatal errors and new clarify events → inject a CLARIFY block
+          const data = rejectData.clarify || buildClarifyFromValidation(rejectData.failures || []);
+          if (data) {
+            const clarifyBlock = `\n[CLARIFY:{"question":"${data.question.replace(/"/g, '\\"')}","options":${JSON.stringify(data.options)}}]`;
+            setMessages(prev => prev.slice(0, -1)); // Remove empty AI stub
+            setMessages(prev => [...prev, { role: 'ai', content: clarifyBlock }]);
+            setChecklistItems([]);
+            setScreeningMeta(null);
+            setLoading(false);
+          }
           return;
         }
 
         if (rejectData.fatalStreamError) {
-          // Server-side stream crashed — surface the actual error
+          // Old-style server crash → CLARIFY block
+          const clarifyBlock = `\n[CLARIFY:{"question":"I hit a hiccup processing your request. What should I do?","options":["Try again","Simplify my request","Cancel"]}]`;
           console.error('[chat] Handling fatal stream error:', rejectData.message);
-          setMessages(prev => prev.slice(0, -1)); // Remove empty AI stub
-          setMessages(prev => [...prev, {
-            role: 'ai',
-            content: `I hit an internal error processing your request: **${rejectData.message || 'Unknown streaming error'}**\n\nThis has been logged. Could you try again? If it persists, try a simpler query.`,
-          }]);
+          setMessages(prev => prev.slice(0, -1));
+          setMessages(prev => [...prev, { role: 'ai', content: clarifyBlock }]);
           setChecklistItems([]);
           setScreeningMeta(null);
           setLoading(false);

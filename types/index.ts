@@ -95,6 +95,8 @@ export interface Order {
   updatedAt?: string;
   /** Dollar amount for notional_value orders (null for share-based orders) */
   notional?: number | null;
+  /** SnapTrade/Alpaca brokerage_order_id — allows dedup against broker-fetched orders */
+  brokerageOrderId?: string;
   bracketOrder?: {
     stopLoss?: number;
     takeProfit?: number;

@@ -230,14 +230,19 @@ export async function validateRecommendations(
 
   const duplicates = [...seen.entries()].filter(([_, syms]) => syms.length > 1);
   if (duplicates.length > 0) {
+    // Auto-resolve: keep highest-allocation marker per company, log the merge
     for (const [canon, syms] of duplicates) {
-      failures.push({
-        check: 'duplicate_company',
-        detail: `Same company "${canon}" appears ${syms.length} times (${syms.join(', ')}). Each position gets exactly one marker.`,
-        offendingMarkers: validMarkers.filter(m => m.canonical === canon).map(m => m.raw),
-      });
+      const markers = validMarkers.filter(m => m.canonical === canon);
+      const best = markers.reduce((a, b) => a.amount >= b.amount ? a : b);
+      const dropped = markers.filter(m => m !== best);
+      console.warn(`[validate] Auto-merged duplicate company "${canon}": keeping ${best.symbol} ($${best.amount}), dropping ${dropped.map(m => `${m.symbol} ($${m.amount})`).join(', ')}`);
+      // Remove dropped markers from validMarkers for downstream checks
+      for (const m of dropped) {
+        const idx = validMarkers.indexOf(m);
+        if (idx >= 0) validMarkers.splice(idx, 1);
+      }
     }
-    return { ok: false, failures };
+    // Don't fail — auto-merged. Continue to budget reconciliation.
   }
 
   // ────────────────────────────────────────────────────────

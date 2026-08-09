@@ -354,6 +354,66 @@ function sendChecklist(
   );
 }
 
+/** Build a CLARIFY event from validation failures, replacing fatal errors with
+ *  user-facing questions. */
+function buildClarifyFromFailures(
+  failures: Array<{ check: string; detail: string }>,
+  budget: number | null,
+): { clarify: { question: string; options: string[] } } {
+  const budgetFailure = failures.find(f => f.check === 'budget_reconciliation');
+  const symbolFailure = failures.find(f => f.check === 'symbol_resolution');
+  const formatFailure = failures.find(f => f.check === 'marker_format');
+  const dupeFailure = failures.find(f => f.check === 'duplicate_company');
+
+  if (budgetFailure && budget) {
+    return {
+      clarify: {
+        question: `The portfolio totals don't match your $${budget.toLocaleString()} budget. How should I fix this?`,
+        options: [
+          `Use $${budget.toLocaleString()} — match my budget`,
+          'Use whatever the AI recommended',
+          'Let me adjust the request',
+        ],
+      },
+    };
+  }
+  if (symbolFailure) {
+    return {
+      clarify: {
+        question: 'Some ticker symbols were not recognized. How would you like to proceed?',
+        options: [
+          'Re-run with corrected symbols',
+          'Skip unrecognized ones — use the rest',
+          'Let me fix the symbols myself',
+        ],
+      },
+    };
+  }
+  if (formatFailure || dupeFailure) {
+    return {
+      clarify: {
+        question: 'The portfolio needs a small fix. Should I correct it and try again?',
+        options: [
+          'Yes, fix and regenerate',
+          'Let me rephrase my request',
+          'Cancel',
+        ],
+      },
+    };
+  }
+  // Generic fallback
+  return {
+    clarify: {
+      question: 'Something went wrong generating your portfolio. What should I do?',
+      options: [
+        'Try again with the same request',
+        'Simplify my request',
+        'Cancel',
+      ],
+    },
+  };
+}
+
 /** Extract screening criteria from a natural-language user message. */
 function extractScreeningCriteria(message: string): Record<string, any> | null {
   const criteria: Record<string, any> = {};
@@ -1773,6 +1833,16 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           console.warn(`[chat] 🔧 Stripped ${validationReport.suffixesStripped} foreign exchange suffixes`);
         }
 
+        // ── Budget trust: LLM's PORTFOLIO_BLOCK budget wins ──
+        // The LLM has full conversation context — when it emits a [PORTFOLIO:$X]
+        // block, that $X reflects its contextual judgment (new request vs continuation).
+        // Always trust the LLM over history-based extraction.
+        const llmBudget = extractResponseTotal(responseText);
+        const effectiveBudget = llmBudget ?? requestedBudget;
+        if (llmBudget && llmBudget !== requestedBudget) {
+          console.log(`[chat] 🎯 LLM budget override: $${llmBudget} (history had $${requestedBudget})`);
+        }
+
         // ── Guard: tool-loop exhaustion detection ──
         const hasMarkers = /\[RECOMMEND:[A-Z]{1,5}(?:\.[A-Z]{1,2})?:(BUY|SELL):\$?[\d,]+\]/i.test(responseText);
         if (!hasMarkers && turn >= MAX_TOOL_TURNS) {
@@ -1856,7 +1926,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
                   raw_response: responseText.slice(0, 5000),
                   raw_markers: rawMarkers.length > 0 ? rawMarkers : null,
                   failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }],
-                  budget: requestedBudget,
+                  budget: effectiveBudget,
                   allocation: 0,
                 });
               console.log('[chat] Coherence failure logged to DB');
@@ -1866,12 +1936,13 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           }
 
           if (retryAttempt >= 1) {
+            // Instead of a fatal error, send a CLARIFY that asks the user to rephrase
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }] })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ clarify: { question: "I got confused generating this — let's try again. Would you like me to:", options: ["Regenerate with your original request", "Simplify the request", "Try a different approach"] } })}\n\n`)
             );
           } else {
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }], budget: requestedBudget })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'response_coherence', detail: coherenceFailure, offendingMarkers: [] }], budget: effectiveBudget })}\n\n`)
             );
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -1888,18 +1959,19 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // with proper markers AND correct budget.
         // SKIP for [CLARIFY:...] responses — frameworks with budget numbers are fine.
         const hasClarifyMarkers = /\[CLARIFY:/.test(responseText);
-        if (requestedBudget !== null && !hasRecommendMarkers && !hasClarifyMarkers) {
-          const budgetGate = validateBudgetGate(lastMessage, responseText, requestedBudget);
+        if (effectiveBudget !== null && !hasRecommendMarkers && !hasClarifyMarkers) {
+          const budgetGate = validateBudgetGate(lastMessage, responseText, effectiveBudget);
           if (budgetGate.hasViolation && budgetGate.responseTotal !== null) {
             console.warn('[chat] ⚠️ Budget coherence gate FAILED:', budgetGate.message);
-            sendChecklist(controller, encoder, 'coherence_check', 'failed', `Budget mismatch: $${budgetGate.responseTotal.toLocaleString()} vs $${requestedBudget.toLocaleString()}`);
+            sendChecklist(controller, encoder, 'coherence_check', 'failed', `Budget mismatch: $${budgetGate.responseTotal.toLocaleString()} vs $${effectiveBudget.toLocaleString()}`);
             if (retryAttempt >= 1) {
+              // CLARIFY instead of fatal error
               controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: [{ check: 'budget_reconciliation', detail: budgetGate.message, offendingMarkers: [] }] })}\n\n`)
+                encoder.encode(`data: ${JSON.stringify({ clarify: { question: `The AI mentioned $${budgetGate.responseTotal.toLocaleString()} but your budget is $${effectiveBudget.toLocaleString()}. Which should we use?`, options: [`Use $${effectiveBudget.toLocaleString()} (your budget)`, `Use $${budgetGate.responseTotal.toLocaleString()} (the AI's total)`, "Let me adjust the request"] } })}\n\n`)
               );
             } else {
               controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'budget_reconciliation', detail: budgetGate.message + ' Regenerate with correct [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers that sum to exactly $' + requestedBudget.toLocaleString() + '.', offendingMarkers: [] }], budget: requestedBudget })}\n\n`)
+                encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: [{ check: 'budget_reconciliation', detail: budgetGate.message + ' Regenerate with correct [RECOMMEND:SYMBOL:BUY:$AMOUNT] markers that sum to exactly $' + effectiveBudget.toLocaleString() + '.', offendingMarkers: [] }], budget: effectiveBudget })}\n\n`)
               );
             }
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -1921,10 +1993,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         const isMultiStrategy = portfolioBlocks.length > 1;
 
         let validationRejected = false;
-        if (requestedBudget !== null && hasRecommendMarkers) {
+        if (effectiveBudget !== null && hasRecommendMarkers) {
           sendChecklist(controller, encoder, 'symbol_verification', 'in_progress');
           try {
-            const strictValidation = await validateRecommendations(responseText, requestedBudget, undefined, isMultiStrategy);
+            const strictValidation = await validateRecommendations(responseText, effectiveBudget, undefined, isMultiStrategy);
             if (!strictValidation.ok) {
               console.warn('[chat] ⚠️ Strict validation FAILED:', JSON.stringify(strictValidation.failures, null, 2));
               validationRejected = true;
@@ -1947,7 +2019,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
                 sendChecklist(controller, encoder, 'budget_reconciliation', 'skipped', 'Skipped — earlier check failed');
               }
 
-              // ... DB logging omitted for brevity (unchanged)
+              // ... DB logging (unchanged)
               try {
                 if (userId && userId !== 'anonymous') {
                   const supabase = createServerClient();
@@ -1961,7 +2033,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
                       raw_response: responseText.slice(0, 5000),
                       raw_markers: rawMarkers.length > 0 ? rawMarkers : null,
                       failures: JSON.parse(JSON.stringify(strictValidation.failures)),
-                      budget: requestedBudget,
+                      budget: effectiveBudget,
                       allocation: 0,
                     });
                   console.log('[chat] Validation failure logged to DB');
@@ -1971,12 +2043,13 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               }
 
               if (retryAttempt >= 1) {
+                // Instead of a fatal error, send a CLARIFY with the specific issue
                 controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({ fatalValidationFailure: true, failures: strictValidation.failures })}\n\n`)
+                  encoder.encode(`data: ${JSON.stringify(buildClarifyFromFailures(strictValidation.failures, effectiveBudget))}\n\n`)
                 );
               } else {
                 controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: strictValidation.failures, budget: requestedBudget })}\n\n`)
+                  encoder.encode(`data: ${JSON.stringify({ regenerate: true, failures: strictValidation.failures, budget: effectiveBudget })}\n\n`)
                 );
               }
             } else {
@@ -1984,23 +2057,22 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               sendChecklist(controller, encoder, 'symbol_verification', 'done',
                 `${strictValidation.result.count} symbols verified`);
               sendChecklist(controller, encoder, 'budget_reconciliation', 'done',
-                `$${strictValidation.result.total.toLocaleString()} / $${requestedBudget.toLocaleString()}`);
+                `$${strictValidation.result.total.toLocaleString()} / $${effectiveBudget?.toLocaleString() ?? 'auto'}`);
             }
           } catch (strictValErr) {
             console.error('[chat] Strict validation error:', strictValErr);
           }
-        } else if (requestedBudget !== null && !hasRecommendMarkers) {
+        } else if (effectiveBudget !== null && !hasRecommendMarkers) {
           console.log('[chat] ⏭️ Skipped validation — no RECOMMEND markers in response (likely a question or informational reply)');
           sendChecklist(controller, encoder, 'symbol_verification', 'skipped', 'Non-recommendation response');
           sendChecklist(controller, encoder, 'budget_reconciliation', 'skipped', 'No budget to reconcile');
         }
 
         // ── Budget reconciliation gate (secondary guard) ──
-        // Only fire if validation didn't already reject (avoid confusing users with
-        // budget warnings on top of symbol/format failures — client already shows those).
+        // Only fire if validation didn't already reject.
         if (!validationRejected) {
         try {
-          const budgetGate = validateBudgetGate(lastMessage, responseText, requestedBudget);
+          const budgetGate = validateBudgetGate(lastMessage, responseText, effectiveBudget);
           if (budgetGate.hasViolation) {
             console.warn('[chat] ⚠️ Budget gate violation:', JSON.stringify(budgetGate, null, 2));
             controller.enqueue(
@@ -2081,8 +2153,10 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             if (streamError?.stack) console.error('[chat] Stack trace:', streamError.stack);
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
-                fatalStreamError: true,
-                message: 'Server error: An unexpected internal error occurred. Our team has been notified. Please try again — if this persists, try a simpler or rephrased query.',
+                clarify: {
+                  question: 'I hit an internal hiccup processing your request. What should I do?',
+                  options: ['Try again with the same request', 'Simplify my request', 'Cancel'],
+                },
               })}\n\n`)
             );
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
