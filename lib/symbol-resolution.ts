@@ -89,6 +89,13 @@ const FALLBACK_SYMBOLS: Record<string, string> = {
   'SPCX': 'Space Exploration Technologies Corp.',
 };
 
+// Tickers that Finnhub free tier may not index (newer IPOs, etc.)
+// Phase -1: these bypass Finnhub entirely and resolve authoritatively.
+const PREVERIFIED_TICKERS: Record<string, { name: string; exchange: string }> = {
+  'SPCX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
+  'SPACEX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
+};
+
 // ── Helpers ───────────────────────────────────────────────
 
 function isUSLookup(r: any): boolean {
@@ -411,6 +418,21 @@ export async function resolveCompanyName(
   }
 
   const max = opts?.maxCandidates ?? 5;
+
+  // Phase -1: Pre-verified tickers — bypass Finnhub entirely for stocks
+  // we know exist but Finnhub's free tier might not index (e.g., newer IPOs).
+  const upperQuery = companyName.trim().toUpperCase();
+  if (PREVERIFIED_TICKERS[upperQuery]) {
+    const pv = PREVERIFIED_TICKERS[upperQuery];
+    console.log(`[symbol-res] ✅ Phase -1: Pre-verified ticker "${upperQuery}" → ${pv.name} (${pv.exchange})`);
+    return [{
+      symbol: upperQuery,
+      name: pv.name,
+      source: 'cache_fallback',
+      confidence: 'high',
+      exchange: pv.exchange,
+    }];
+  }
 
   // Phase 0: Direct ticker lookup — if input looks like a US ticker symbol,
   // check Finnhub profile directly before trying name-based search.

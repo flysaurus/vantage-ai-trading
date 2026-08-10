@@ -139,9 +139,9 @@ function extractCompanyNames(text: string): string[] {
       }
     }
   }
-  // Pattern: ticker symbols (1-5 uppercase letters, optionally with single-letter suffix)
-  // Catches "buy SPCX", "SPCX for $1000", "NVDA at 140", regardless of surrounding case
-  const tickerPattern = text.matchAll(/\b([A-Z]{1,5}(?:\.[A-Z])?)\b/g)
+  // Pattern: ticker symbols (1-5 letters, optionally with single-letter suffix)
+  // Catches "buy SPCX", "spcx for $1000", "NVDA at 140", regardless of case
+  const tickerPattern = text.matchAll(/\b([A-Z]{1,5}(?:\.[A-Z])?)\b/gi)
   for (const m of tickerPattern) {
     const t = m[1]
     // Skip common all-caps words that aren't tickers
@@ -154,6 +154,17 @@ function extractCompanyNames(text: string): string[] {
 /** Resolve a company name to its US ticker via Finnhub search (fast Phase 1 only). */
 async function resolveOneFast(name: string): Promise<{ symbol: string; name: string } | null> {
   const key = process.env.FINNHUB_IO_API_KEY
+  // Phase -1: Pre-verified tickers bypass Finnhub entirely
+  const PREVERIFIED: Record<string, { name: string }> = {
+    'SPCX': { name: 'Space Exploration Technologies Corp.' },
+    'SPACEX': { name: 'Space Exploration Technologies Corp.' },
+    'SPACE EXPLORATION': { name: 'Space Exploration Technologies Corp.' },
+  };
+  const upper = name.trim().toUpperCase();
+  if (PREVERIFIED[upper]) {
+    console.log(`[chat] ✅ resolveOneFast: pre-verified "${upper}" → ${PREVERIFIED[upper].name}`);
+    return { symbol: upper, name: PREVERIFIED[upper].name };
+  }
   if (!key) return null
   try {
     // Phase 0: If input looks like a ticker, check profile directly
@@ -1640,14 +1651,15 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     const resolveSymbolTool: Anthropic.Tool = {
       name: 'resolveSymbol',
       description:
-        'Resolve a company name to its authoritative stock ticker symbol(s). ' +
+        'Resolve a company name OR ticker symbol to its authoritative stock ticker details. ' +
+        'Pass the ticker directly if the user provided one (e.g., user says "buy spcx" → resolveSymbol("SPCX")). ' +
         'Use this BEFORE recommending any stock to verify the correct ticker.',
       input_schema: {
         type: 'object' as const,
         properties: {
           companyName: {
             type: 'string',
-            description: 'The company name to look up (e.g., "SK Hynix", "Apple")',
+            description: 'The company name OR ticker symbol to look up (e.g., "SK Hynix", "SPCX", "AAPL")',
           },
         },
         required: ['companyName'],

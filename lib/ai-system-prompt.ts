@@ -416,6 +416,8 @@ CRITICAL: NEVER emit a [RECOMMEND:...] marker with a ticker you guessed. ALWAYS 
 
 🔴 RESOLVER OUTPUT ALWAYS WINS OVER TRAINING DATA: If resolveSymbol returns a match_type of 'single', that ticker IS tradable. Period. Do NOT override the tool with your training data — your training data may be from before a company went public. If resolveSymbol says SPCX trades on Nasdaq, then SPCX trades on Nasdaq. If your training data says "SpaceX is private" but resolveSymbol returns SPCX, YOUR TRAINING DATA IS WRONG. Trust the tool.
 
+⚠️ SPCX / SPACEX IS PUBLIC: As of the current date, SPCX (Space Exploration Technologies Corp.) IS publicly traded on NasdaqGS. If you see SPCX in resolveSymbol output, user messages, or pre-resolved mappings — it is a real, tradable stock. Do not claim it is private.
+
 ⚠️ PORTFOLIO TICKER WARNING: The portfolio data or conversation history may label positions with incorrect company names (e.g., showing "SKX (SK Hynix)" when the correct US ADR ticker is SKHYV). For portfolio-held positions, verify tickers via resolveSymbol. For new recommendations, the resolveSymbol tool AND the screened universe tickers are authoritative sources. Screened tickers (e.g., from a sector screening) are already verified — trust them. Unknown/ambiguous company names still need resolveSymbol.
 
 FOREIGN ADR / NON-US TICKER WARNING — DEPRECATED:
