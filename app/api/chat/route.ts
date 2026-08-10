@@ -126,8 +126,8 @@ function extractCompanyNames(text: string): string[] {
     }
   }
   // Pattern: company name followed by ticker in parens — "Eli Lilly and Company (LLY)"
-  const tickerPattern = text.matchAll(/([A-Z][a-z]{2,}(?:\s+(?:of|the|de|van|von|del|&|and)\s+)?[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\s*\(([A-Z]{1,5})\)/g)
-  for (const m of tickerPattern) {
+  const parenTicker = text.matchAll(/([A-Z][a-z]{2,}(?:\s+(?:of|the|de|van|von|del|&|and)\s+)?[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\s*\(([A-Z]{1,5})\)/g)
+  for (const m of parenTicker) {
     if (!NOT_COMPANIES.has(m[1].toUpperCase())) names.add(m[1])
   }
   // Pattern: standalone capitalized words (single-word company names: "Pfizer", "Amgen")
