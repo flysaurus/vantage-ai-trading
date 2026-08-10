@@ -20,11 +20,13 @@ import {
 import {
   validateRecommendationMarkers,
   loadSymbolCache,
+  validateSymbol,
   NOT_TICKERS,
   FOREIGN_EXCHANGE_SUFFIXES,
   NOT_COMPANIES,
   FILTERED_COMMON_WORDS,
   isFilteredCommonWord,
+  FALLBACK_SYMBOLS,
 } from '@/lib/symbol-resolution'
 import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults'
 import {
@@ -43,8 +45,8 @@ const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888'
 
 // ─── Ticker extraction (filters from shared symbol-resolution module) ──
 function extractTickers(text: string): string[] {
-  // Match: $SPCX, SPCX (2-5 uppercase letters, standalone)
-  const matches = text.match(/\$?\b([A-Z]{2,5})\b/g);
+  // Match: $SPCX, SPCX (2-5 letters, standalone, case-insensitive)
+  const matches = text.match(/\$?\b([A-Z]{2,5})\b/gi);
   if (!matches) {
     // Try single-letter tickers: only when explicitly in stock context
     // e.g., "F stock", "C price quote", "T shares"
@@ -1443,19 +1445,48 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       try {
         const usSymbols = await loadSymbolCache()
         if (usSymbols.size > 0) {
+          const validTickers: string[] = []
           const foreignFiltered: string[] = []
-          tickers = tickers.filter(t => {
+          const liveVerified: string[] = []
+
+          for (const t of tickers) {
             const upper = t.toUpperCase()
+            // Reject: non-US format (dots, foreign suffixes, bad length)
             if (upper.includes('.') || !/^[A-Z]{1,5}$/.test(upper)) {
               foreignFiltered.push(t)
-              return false // not even a valid US ticker format
+              continue
             }
-            const isUS = usSymbols.has(upper)
-            if (!isUS) foreignFiltered.push(t)
-            return isUS
-          })
+            // Accept: in cache (fast path)
+            if (usSymbols.has(upper)) {
+              validTickers.push(upper)
+              continue
+            }
+            // Accept: in FALLBACK_SYMBOLS allowlist (safety net for ETFs Finnhub misses)
+            if (FALLBACK_SYMBOLS[upper]) {
+              console.log(`[chat] 🛡️ US-only filter: keeping "${upper}" via FALLBACK_SYMBOLS allowlist`)
+              validTickers.push(upper)
+              continue
+            }
+            // Try live verification: Finnhub profile2 lookup for cache-miss tickers
+            try {
+              const resolved = await validateSymbol(upper)
+              if (resolved && resolved.confidence !== 'low') {
+                console.log(`[chat] 🛡️ US-only filter: keeping "${upper}" via live verification (${resolved.source}, ${resolved.name})`)
+                liveVerified.push(upper)
+                validTickers.push(upper)
+                continue
+              }
+            } catch { /* live check failed — filter out below */ }
+            // Reject: not in cache, not in fallback, live check failed
+            foreignFiltered.push(t)
+          }
+
+          tickers = validTickers
           if (foreignFiltered.length > 0) {
             console.log(`[chat] 🛡️ US-only filter: removed ${foreignFiltered.length} non-US ticker(s): ${foreignFiltered.join(', ')}`)
+          }
+          if (liveVerified.length > 0) {
+            console.log(`[chat] 🛡️ US-only filter: live-verified ${liveVerified.length} ticker(s): ${liveVerified.join(', ')}`)
           }
           if (tickers.length === 0) {
             console.log('[chat] 🛡️ US-only filter: NO US-traded tickers found for this query — model will receive empty live data')

@@ -828,6 +828,12 @@ export const NOT_TICKERS = new Set([
   'A', 'I', 'O', 'USD', 'EST', 'LTD', 'INC', 'CORP', 'PLC', 'LLC', 'NYSE',
   'NASDAQ', 'SVS', 'USA', 'EUR', 'GBP', 'JPY', 'YTD', 'NYSEARCA',
   'BUY', 'SELL', 'HOLD', 'PUT', 'CALL',
+  // Common words that match {2,5} uppercase pattern (false positives with /i regex)
+  'STOCK', 'STOCKS', 'WORTH', 'ABOUT', 'THINK', 'SHARE', 'SHARES', 'QUOTE',
+  'PRICE', 'MAYBE', 'SHOULD', 'COULD', 'WOULD', 'WANT', 'NEED',
+  'HERE', 'THERE', 'WHICH', 'RIGHT', 'STILL', 'OTHER', 'AFTER', 'FIRST',
+  'WHERE', 'EVERY', 'DON', 'DOES', 'MORE', 'LESS', 'ONLY', 'MOST', 'LAST',
+  'ADD', 'SHOW', 'OF', 'VS', 'CHART', 'MAKE', 'TAKE', 'GIVE', 'FIND', 'HIGH',
   // Exchange/country-code suffixes — prevent ghost buttons from foreign listings
   'DE', 'MX', 'SW', 'VI', 'SN', 'DU', 'HM', 'GLP', 'LN', 'L', 'PA', 'SA',
   'TO', 'CN', 'HK', 'JP', 'KR', 'BR', 'IN', 'AU', 'AS', 'AX', 'TA', 'OL',
