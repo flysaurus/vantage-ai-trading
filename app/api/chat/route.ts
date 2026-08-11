@@ -165,7 +165,7 @@ function extractCompanyNames(text: string): string[] {
   for (const m of tickerPattern) {
     const t = m[1]
     // Skip common all-caps words that aren't tickers
-    if (['A', 'I', 'AI', 'IT', 'AT', 'BE', 'GO', 'IN', 'IS', 'MY', 'NO', 'OK', 'OR', 'SO', 'TO', 'US', 'WE', 'AM', 'BY', 'IF', 'ON', 'AS', 'AN', 'DO', 'HE', 'HI', 'ME', 'OH', 'PI', 'RE', 'UP', 'ALL', 'AND', 'ARE', 'BUY', 'BUYS', 'CAN', 'CEO', 'CFO', 'COO', 'CTO', 'DAY', 'DID', 'DUE', 'ETF', 'FOR', 'GET', 'GOT', 'HAS', 'HER', 'HIM', 'HIS', 'HOW', 'IPO', 'ITS', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JOB', 'JOBS', 'LOW', 'NEW', 'NOT', 'NOW', 'OFF', 'OUR', 'OUT', 'OWN', 'PAY', 'PUT', 'SAY', 'SEE', 'SET', 'SIX', 'TEN', 'THE', 'TOP', 'TWO', 'USE', 'WAR', 'WAS', 'WAY', 'WHO', 'WHY', 'WON', 'YES', 'YET', 'YOU'].includes(t)) continue
+    if (['A', 'I', 'AI', 'IT', 'AT', 'BE', 'GO', 'IN', 'IS', 'MY', 'NO', 'OK', 'OR', 'SO', 'TO', 'US', 'WE', 'AM', 'BY', 'IF', 'ON', 'AS', 'AN', 'DO', 'HE', 'HI', 'ME', 'OH', 'PI', 'RE', 'UP', 'ALL', 'AND', 'ARE', 'BUY', 'BUYS', 'CAN', 'CEO', 'CFO', 'COO', 'CTO', 'DAY', 'DID', 'DUE', 'ETF', 'FOR', 'GET', 'GOT', 'HAS', 'HER', 'HIM', 'HIS', 'HOW', 'IPO', 'ITS', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JOB', 'JOBS', 'LOW', 'NEW', 'NOT', 'NOW', 'OFF', 'OUR', 'OUT', 'OWN', 'PAY', 'PUT', 'SAY', 'SEE', 'SET', 'SIX', 'TEN', 'THE', 'TOP', 'TWO', 'USE', 'WAR', 'WAS', 'WAY', 'WHO', 'WHY', 'WON', 'WORTH', 'YES', 'YET', 'YOU'].includes(t.toUpperCase())) continue
     names.add(t.toUpperCase())
   }
   return [...names].slice(0, 15)

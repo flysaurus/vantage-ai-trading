@@ -427,6 +427,21 @@ async function processTier2(
 
       case 'company_name': {
         tier2Used = true;
+        // Check PREVERIFIED_TICKERS first — newer IPOs (SPCX, etc.) may not be in Finnhub free tier
+        const upperPhrase = item.phrase.toUpperCase().replace(/\s+/g, ' ');
+        const upperCleaned = item.cleanedQuery.toUpperCase().replace(/\s+/g, ' ');
+        const pvMatch = PREVERIFIED_TICKERS[upperPhrase] || PREVERIFIED_TICKERS[upperCleaned];
+        if (pvMatch) {
+          results.push({
+            symbol: upperPhrase,
+            name: pvMatch.name,
+            exchange: pvMatch.exchange,
+            confidence: 'high',
+            source: 'preverified',
+            tier: 2,
+          });
+          break;
+        }
         const searchResults = await finnhubSearch(item.cleanedQuery, fKey);
         if (searchResults.length === 1) {
           results.push({
