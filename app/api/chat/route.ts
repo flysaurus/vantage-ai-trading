@@ -2192,15 +2192,19 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           // Without this, the ReadableStream crashes silently → browser sees
           // a closed connection → client throws generic "API error" → user
           // sees "Sorry — I encountered an error" with zero context.
-          console.error('[chat] 🔴 STREAM FATAL ERROR:', streamError?.message || streamError);
+          const errorSummary = streamError?.status 
+            ? `Anthropic ${streamError.status}: ${streamError?.error?.error?.message || streamError.message}`
+            : (streamError?.message || String(streamError)).slice(0, 200);
+          console.error('[chat] 🔴 STREAM FATAL ERROR:', errorSummary);
           if (streamError?.stack) console.error('[chat] Stack trace:', streamError.stack);
           try {
-            // Attempt to send diagnostic SSE event before the stream dies.
-            // NEVER leak raw JS error text to the user — the full trace is logged below.
+            // Send diagnostic SSE event with error summary for debugging.
+            // Includes the error type but NOT raw JS traces.
             console.error('[chat] 🔴 STREAM FATAL ERROR (full):', streamError);
             if (streamError?.stack) console.error('[chat] Stack trace:', streamError.stack);
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
+                error: errorSummary,
                 clarify: {
                   question: 'I hit an internal hiccup processing your request. What should I do?',
                   options: ['Try again with the same request', 'Simplify my request', 'Cancel'],
@@ -2209,8 +2213,14 @@ Use these for any market-direction questions ("how are markets today?", "any sel
             );
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           } catch (_) {
-            // Stream is already broken — nothing we can do
-            console.error('[chat] Could not send error event — stream already closed');
+            // Stream is already broken — try an emergency one-liner
+            console.error('[chat] Could not send clarify — trying emergency error event');
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errorSummary })}\n\n`));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            } catch (__) {
+              console.error('[chat] Stream fully dead — no recovery possible');
+            }
           }
         }
       }

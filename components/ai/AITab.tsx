@@ -203,6 +203,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── state ──
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false); // breaks stale closure — auto-retry reads this, not state
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   // Screening meta for strategy-card transparency (criteria, match count, provider)
   const [screeningMeta, setScreeningMeta] = useState<{
@@ -975,7 +976,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     additionalContext?: string,
     retryOpts?: { retryAttempt: number; retryFailures: any[] },
   ) => {
-    if (!content.trim() || loading) return;
+    if (!content.trim() || loadingRef.current) return;
 
     // ── Stepper intercept: if a multi-question stepper is active ──
     // Free-text answers (for open-ended questions without options) are
@@ -1045,7 +1046,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput('');
-    setLoading(true);
+    setLoading(true); loadingRef.current = true;
 
     // Send last 10 messages to cap context window, but ALWAYS include
     // the first user message which carries the original portfolio budget.
@@ -1232,11 +1233,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
           console.log('[chat] Validation failed — auto-regenerating (content hidden)...');
           setMessages(prev => prev.slice(0, -1)); // Remove empty AI message stub
           setChecklistItems([]); // Clear stale checklist so new stages animate fresh
-          setLoading(false);
+          setLoading(false); loadingRef.current = false;
           await new Promise(r => setTimeout(r, 50));
           try {
             await sendMessage(content, 'chat', undefined, {
-              retryAttempt: 1,
+              retryAttempt: (retryOpts?.retryAttempt ?? 0) + 1,
               retryFailures: rejectData.failures,
             });
           } catch (retryErr) {
@@ -1254,7 +1255,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             setMessages(prev => [...prev, { role: 'ai', content: clarifyBlock }]);
             setChecklistItems([]);
             setScreeningMeta(null);
-            setLoading(false);
+            setLoading(false); loadingRef.current = false;
           }
           return;
         }
@@ -1267,7 +1268,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
           setMessages(prev => [...prev, { role: 'ai', content: clarifyBlock }]);
           setChecklistItems([]);
           setScreeningMeta(null);
-          setLoading(false);
+          setLoading(false); loadingRef.current = false;
           return;
         }
       }
@@ -1352,7 +1353,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
       }
     } finally {
-      setLoading(false);
+      setLoading(false); loadingRef.current = false;
       refreshRemaining();
       if (userId) {
         try {
@@ -2696,7 +2697,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 setMessages([]);
                 setCurrentSessionId(null);
                 setShowClearConfirm(false);
-                setLoading(false);
+                setLoading(false); loadingRef.current = false;
                 setToast(null);
                 greetingFetchedRef.current = false;
                 setGreetingLoaded(false);
