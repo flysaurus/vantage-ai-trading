@@ -231,11 +231,14 @@ async function preResolveTickers(
   userMessage: string,
   searchContext: string
 ): Promise<Array<{ name: string; symbol: string }>> {
-  const fromSearch = extractCompanyNames(searchContext || '')
+  // Only extract company names from the USER MESSAGE.
+  // Web search context is for market data enrichment, NOT named entity extraction.
+  // Random capitalized words from news snippets ("Prediction", "Street", "Source")
+  // are noise — they waste Finnhub calls and produce zero resolutions.
   const fromUser = extractCompanyNames(userMessage)
   // Deduplicate, sort longest-first (more specific names first)
   const seen = new Set<string>()
-  const unique = [...fromSearch, ...fromUser].filter(n => {
+  const unique = [...fromUser].filter(n => {
     const upper = n.toUpperCase()
     if (seen.has(upper)) return false
     seen.add(upper)
@@ -1432,11 +1435,17 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       const resolution = await resolveTickers(lastMessage)
       tickers = resolution.resolved.map(r => r.symbol)
 
-      if (resolution.resolved.length > 0) {
-        console.log(`[chat] 🔍 Tiered resolver: ${resolution.resolved.length} resolved (tier0=${resolution.resolved.filter(r=>r.tier===0).length} tier2=${resolution.resolved.filter(r=>r.tier===2).length})`)
-      }
-      if (resolution.tier2Required) {
-        console.log(`[chat] 🔍 Tier 2 (live search) was required`)
+      // Always log resolver outcome — silence hides failures
+      const tier0Count = resolution.resolved.filter(r=>r.tier===0).length;
+      const tier2Count = resolution.resolved.filter(r=>r.tier===2).length;
+      if (resolution.emptyInput) {
+        console.log(`[chat] 🔍 Tiered resolver: EMPTY INPUT — tokenizer found zero candidates`);
+      } else if (resolution.resolved.length > 0) {
+        console.log(`[chat] 🔍 Tiered resolver: ${resolution.resolved.length} resolved (tier0=${tier0Count} tier2=${tier2Count})${resolution.notFound.length > 0 ? `, notFound=${resolution.notFound.length}` : ''}${resolution.tier2Required ? ', tier2=required' : ''}`);
+      } else if (resolution.notFound.length > 0) {
+        console.log(`[chat] 🔍 Tiered resolver: 0 resolved, ${resolution.notFound.length} notFound${resolution.tier2Required ? ', tier2=required' : ''}`);
+      } else {
+        console.log(`[chat] 🔍 Tiered resolver: 0 resolved, 0 notFound — nothing to resolve`);
       }
 
       // Build resolver context for system prompt enrichment

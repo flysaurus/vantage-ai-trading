@@ -3,7 +3,9 @@
 // with a multi-tier system that handles company names, descriptive
 // references, and misspelled tickers.
 //
-// TIER 0 — Fast path (regex + cache)
+// TIER 0 — Fast path (regex + cache validation). PURE OPTIMIZATION.
+//          NEVER a gate — if regex finds nothing, we fall through to
+//          Tier 1 with broader entity extraction.
 // TIER 1 — Classify (cheap LLM pass via DeepSeek)
 // TIER 2 — Ground in live data (Finnhub + SearXNG)
 // TIER 3 — Confidence branch (resolve / clarify / notFound)
@@ -37,6 +39,8 @@ export interface ResolverOutput {
   clarificationOptions?: Array<{ symbol: string; name: string; exchange: string }>;
   notFound: string[]; // phrases that couldn't be resolved
   tier2Required: boolean; // whether Tier 2 (live search) was needed
+  /** Phrases that passed through Tier 0 but were never sent to classification — true "nothing to resolve" */
+  emptyInput: boolean;
 }
 
 // ── Tier 1 classification types ───────────────────────────
@@ -55,15 +59,6 @@ interface Tier1Phrase {
   cleanedQuery: string;
 }
 
-// ── Finnhub search result ─────────────────────────────────
-
-interface FinnhubSearchHit {
-  symbol: string;
-  description: string;
-  type?: string;
-  exchange?: string;
-}
-
 // ── Helpers ───────────────────────────────────────────────
 
 function apiKey(options?: { finnhubKey?: string }): string {
@@ -76,6 +71,93 @@ function searxngUrl(options?: { searxngUrl?: string }): string {
 
 function deepseekKey(options?: { deepseekKey?: string }): string {
   return options?.deepseekKey || process.env.DEEPSEEK_API_KEY || '';
+}
+
+// ── Common English words that are never tickers or company names ─
+const STOP_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her',
+  'was', 'one', 'our', 'out', 'has', 'have', 'from', 'they', 'that', 'with',
+  'this', 'what', 'when', 'your', 'which', 'there', 'their', 'about', 'would',
+  'could', 'should', 'after', 'before', 'still', 'other', 'every', 'first',
+  'where', 'those', 'these', 'being', 'doing', 'going', 'very', 'much', 'many',
+  'some', 'any', 'just', 'more', 'most', 'only', 'also', 'then', 'than', 'into',
+  'over', 'under', 'again', 'once', 'here', 'want', 'need', 'like', 'make',
+  'take', 'give', 'find', 'show', 'tell', 'know', 'think', 'thing', 'well',
+  'back', 'good', 'great', 'right', 'even', 'same', 'last', 'next', 'part',
+  'look', 'come', 'work', 'down', 'away', 'market', 'stock', 'stocks', 'price',
+  'share', 'shares', 'trade', 'trading', 'buy', 'sell', 'worth', 'invest',
+  'portfolio', 'money', 'cash', 'fund', 'funds', 'etf', 'etfs', 'index',
+  'sector', 'growth', 'value', 'dividend', 'yield', 'risk', 'profit', 'loss',
+  'high', 'low', 'open', 'close', 'change', 'volume', 'option', 'options',
+  'call', 'put', 'strike', 'expiry', 'ipo', 'news', 'report', 'data', 'analysis',
+  'million', 'billion', 'trillion', 'percent', 'rate', 'cost', 'fee',
+  'account', 'order', 'orders', 'position', 'holding', 'holdings',
+]);
+
+// ── Tokenizer: extract ALL candidate entities from a message ──
+// Regex tickers are a fast path. This function extracts EVERYTHING
+// that COULD be a ticker, company name, or descriptive reference.
+// Tier 0 validates the easy ones; Tier 1 classifies the rest.
+
+export function tokenizeMessage(message: string): string[] {
+  const candidates = new Set<string>();
+
+  // 1. Regex ticker patterns (2-5 letter sequences — could be tickers)
+  const tickerMatches = message.match(/\$?\b([A-Z]{2,5})\b/gi);
+  if (tickerMatches) {
+    for (const m of tickerMatches) {
+      const upper = m.replace('$', '').toUpperCase();
+      if (!NOT_TICKERS.has(upper)) candidates.add(upper);
+    }
+  }
+
+  // 2. Single-word candidates: alphabetical, 3+ chars, not stop words
+  const words = message.split(/[\s,;:!?()\[\]{}"']+/);
+  for (const w of words) {
+    if (w.length < 3) continue;
+    if (!/^[A-Za-z]+$/.test(w)) continue; // skip numbers, symbols
+    const lower = w.toLowerCase();
+    if (STOP_WORDS.has(lower)) continue;
+    if (NOT_TICKERS.has(w.toUpperCase())) continue;
+    candidates.add(w);
+  }
+
+  // 3. Multi-word candidates: 2-3 consecutive non-stop-words
+  const filtered = words.filter(w => {
+    if (w.length < 2) return false;
+    if (!/^[A-Za-z]+$/.test(w)) return false;
+    if (STOP_WORDS.has(w.toLowerCase())) return false;
+    return true;
+  });
+
+  for (let i = 0; i < filtered.length; i++) {
+    // Bigram
+    if (i + 1 < filtered.length) {
+      const bigram = `${filtered[i]} ${filtered[i + 1]}`;
+      // Only if at least one word looks like a proper noun (starts with capital)
+      if (/[A-Z]/.test(filtered[i][0]) || /[A-Z]/.test(filtered[i + 1][0])) {
+        candidates.add(bigram);
+      }
+    }
+    // Trigram
+    if (i + 2 < filtered.length) {
+      const trigram = `${filtered[i]} ${filtered[i + 1]} ${filtered[i + 2]}`;
+      if (/[A-Z]/.test(filtered[i][0]) || /[A-Z]/.test(filtered[i + 1][0]) || /[A-Z]/.test(filtered[i + 2][0])) {
+        candidates.add(trigram);
+      }
+    }
+  }
+
+  // 4. Descriptive reference patterns: "the X Y" where X is capital
+  const descMatches = message.match(/\bthe\s+([A-Z][a-z]+\s+[a-z]+(?:\s+[a-z]+)?)\b/g);
+  if (descMatches) {
+    for (const m of descMatches) {
+      candidates.add(m);
+    }
+  }
+
+  // Deduplicate, sort by length descending (longer = more specific)
+  return [...candidates].sort((a, b) => b.length - a.length).slice(0, 25);
 }
 
 /** Extract uppercase 2-5 letter sequences — same regex as chat route's extractTickers */
@@ -111,6 +193,11 @@ async function quickValidate(symbol: string, usSymbols: Set<string>): Promise<Ti
   return null;
 }
 
+/** Is this phrase ticker-shaped? (2-5 chars, all alpha, uppercase) */
+function isTickerShaped(phrase: string): boolean {
+  return /^[A-Z]{2,5}$/.test(phrase);
+}
+
 // ── Tier 1: Classify via DeepSeek ─────────────────────────
 
 const TIER1_CLASSIFY_PROMPT = `Classify each phrase below. Reply with a JSON array. For each phrase provide:
@@ -143,7 +230,7 @@ async function classifyPhrases(
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
-        max_tokens: 100,
+        max_tokens: 200,
         temperature: 0,
         messages: [{
           role: 'user',
@@ -208,18 +295,9 @@ async function finnhubSearch(
     const data = await res.json();
     if (!data.result?.length) return [];
 
-    // Filter: US exchanges only (or blank exchange — common for ETFs)
-    const usExchanges = new Set(['NASDAQ NMS - GLOBAL MARKET', 'NASDAQ GLOBAL MARKET',
-      'NEW YORK STOCK EXCHANGE', 'NYSE', 'NASDAQ', 'NYSE ARCA', 'NYSE MKT', 'BATS',
-      'OTC MARKETS', 'OTC US', 'NASDAQ CAPITAL MARKET', 'NASDAQ GLOBAL SELECT',
-      'NASDAQ GS', 'NASDAQ GM', 'NYSE American', 'Cboe US', 'Cboe BZX',
-    ]);
-
     return data.result
       .filter((r: any) => {
-        // Allow symbols matching US ticker pattern; exchange filtering is lenient
         if (/^[A-Z]{1,5}$/.test(r.symbol)) {
-          // If exchange is specified, prefer US exchanges
           if (r.exchange && r.exchangeDisplay) {
             return !r.exchangeDisplay.toLowerCase().includes('london') &&
               !r.exchangeDisplay.toLowerCase().includes('toronto') &&
@@ -239,7 +317,7 @@ async function finnhubSearch(
         name: r.description || r.symbol,
         exchange: r.exchangeDisplay || r.exchange || '',
         type: r.type || 'Common Stock',
-        score: 0, // will be set below
+        score: 0,
       }));
   } catch (err: any) {
     console.error('[ticker-resolver] Finnhub search error:', err.message);
@@ -282,7 +360,6 @@ async function webSearch(
     const data = await res.json();
     if (!data.results?.length) return [];
 
-    // Extract potential company names from titles + snippets
     const names = new Set<string>();
     const companyPattern = /\b([A-Z][a-z]{2,}(?:\s+(?:of|the|de|van|von|del|&|and)\s+)?[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\b/g;
 
@@ -315,7 +392,6 @@ async function processTier2(
   for (const item of classified) {
     switch (item.category) {
       case 'ticker_candidate': {
-        // Try direct profile lookup first
         tier2Used = true;
         const profile = await finnhubProfile(item.phrase, fKey);
         if (profile) {
@@ -328,7 +404,6 @@ async function processTier2(
             tier: 2,
           });
         } else {
-          // Try search as fallback
           const searchResults = await finnhubSearch(item.cleanedQuery, fKey);
           if (searchResults.length === 1) {
             results.push({
@@ -373,11 +448,9 @@ async function processTier2(
       }
 
       case 'descriptive_reference': {
-        // Web search first, then Finnhub on extracted names
         tier2Used = true;
         const extractedNames = await webSearch(item.cleanedQuery, sxngUrl);
         if (extractedNames.length > 0) {
-          // Search Finnhub for each extracted name
           let found = false;
           for (const name of extractedNames.slice(0, 3)) {
             const searchResults = await finnhubSearch(name, fKey);
@@ -402,7 +475,6 @@ async function processTier2(
           }
           if (!found) notFound.push(item.phrase);
         } else {
-          // Direct Finnhub search as fallback
           const searchResults = await finnhubSearch(item.cleanedQuery, fKey);
           if (searchResults.length === 1) {
             results.push({
@@ -425,7 +497,6 @@ async function processTier2(
       }
 
       case 'time_sensitive_factual': {
-        // Web search FIRST (model cannot be trusted for "latest")
         tier2Used = true;
         const extractedNames = await webSearch(item.cleanedQuery, sxngUrl);
         if (extractedNames.length > 0) {
@@ -453,7 +524,6 @@ async function processTier2(
       }
 
       case 'time_sensitive_contested': {
-        // Web search runs but ALWAYS routes to Tier 3 clarification
         tier2Used = true;
         const extractedNames = await webSearch(item.cleanedQuery, sxngUrl);
         if (extractedNames.length > 0) {
@@ -469,7 +539,6 @@ async function processTier2(
       }
 
       case 'category_too_broad':
-        // Route to Tier 3 ask — too vague to resolve automatically
         notFound.push(item.phrase);
         break;
     }
@@ -483,8 +552,10 @@ async function processTier2(
 /**
  * Resolve ticker symbols from a user message using a 5-tier system:
  *
- * TIER 0 — Regex extraction + cache validation (fast, synchronous cache check)
- * TIER 1 — DeepSeek classification of unmatched phrases
+ * TIER 0 — Fast-path regex + cache (PURE OPTIMIZATION, never a gate).
+ *          Ticker-shaped candidates get quick-validated. All unmatched
+ *          and non-ticker candidates ALWAYS fall through to Tier 1.
+ * TIER 1 — DeepSeek classification of all unmatched phrases
  * TIER 2 — Live data grounding (Finnhub + SearXNG)
  * TIER 3 — Confidence branching (resolve / clarify / notFound)
  * TIER 4 — Trade-Gate (unmodified, in existing order pipeline)
@@ -503,41 +574,80 @@ export async function resolveTickers(
   const sxngUrl = searxngUrl(options);
   const dkKey = deepseekKey(options);
 
-  // ── TIER 0: Fast regex + cache validation ──────────────
-  const regexTickers = extractRegexTickers(userMessage);
+  // ── Tokenize: extract ALL candidate entities ────────────
+  const allCandidates = tokenizeMessage(userMessage);
+
+  if (allCandidates.length === 0) {
+    return {
+      resolved: [],
+      needsClarification: false,
+      notFound: [],
+      tier2Required: false,
+      emptyInput: true,
+    };
+  }
+
+  console.log(`[ticker-resolver] Tokenized ${allCandidates.length} candidates: ${allCandidates.slice(0, 10).join(', ')}${allCandidates.length > 10 ? '...' : ''}`);
+
+  // ── TIER 0: Fast-path validation for ticker-shaped candidates ──
   const unmatchedTier0: string[] = [];
+  let usSymbols: Set<string> = new Set();
+  try {
+    usSymbols = await loadSymbolCache();
+  } catch {
+    // Cache unavailable — all go to Tier 1
+  }
 
-  if (regexTickers.length > 0) {
-    let usSymbols: Set<string> = new Set();
-    try {
-      usSymbols = await loadSymbolCache();
-    } catch {
-      // Cache unavailable — all tickers go to Tier 1
-    }
-
-    for (const ticker of regexTickers) {
-      const validated = await quickValidate(ticker, usSymbols);
+  for (const candidate of allCandidates) {
+    // Only quick-validate ticker-shaped candidates in Tier 0
+    // Non-ticker phrases (company names, descriptive refs) skip Tier 0 entirely
+    if (isTickerShaped(candidate)) {
+      const validated = await quickValidate(candidate, usSymbols);
       if (validated) {
         resolved.push(validated);
       } else {
-        unmatchedTier0.push(ticker);
+        unmatchedTier0.push(candidate);
       }
+    } else {
+      // Non-ticker phrase — always goes to Tier 1 classification
+      unmatchedTier0.push(candidate);
     }
   }
 
-  // If ALL resolved in Tier 0, return immediately
+  console.log(`[ticker-resolver] Tier 0: ${resolved.length} resolved, ${unmatchedTier0.length} → Tier 1`);
+
+  // CRITICAL: Never return early. Even if Tier 0 resolved everything it could,
+  // unmatched candidates ALWAYS go to Tier 1. The only early return is when
+  // there were literally zero candidates to begin with (handled above).
+
   if (unmatchedTier0.length === 0) {
-    return { resolved, needsClarification: false, notFound: [], tier2Required: false };
+    // Everything resolved in Tier 0 — genuine success
+    return {
+      resolved,
+      needsClarification: false,
+      notFound: [],
+      tier2Required: false,
+      emptyInput: false,
+    };
   }
 
   // ── TIER 1: Classify unmatched phrases ─────────────────
   const classifyResult = await classifyPhrases(unmatchedTier0, dkKey);
 
   if (classifyResult.length === 0) {
-    // Classification failed — unmatched tickers become notFound
+    // Classification failed — unmatched phrases become notFound (honest failure)
+    console.warn(`[ticker-resolver] Tier 1 classification returned empty for ${unmatchedTier0.length} candidates: ${unmatchedTier0.join(', ')}`);
     unmatchedTier0.forEach(t => notFound.push(t));
-    return { resolved, needsClarification: false, notFound, tier2Required: false };
+    return {
+      resolved,
+      needsClarification: notFound.length > 0,
+      notFound,
+      tier2Required: false,
+      emptyInput: false,
+    };
   }
+
+  console.log(`[ticker-resolver] Tier 1 classified ${classifyResult.length} phrases: ${classifyResult.map(p => `${p.phrase}→${p.category}`).join(', ')}`);
 
   // ── TIER 2: Ground in live data ────────────────────────
   const tier2 = await processTier2(classifyResult, fKey, sxngUrl);
@@ -547,7 +657,6 @@ export async function resolveTickers(
   tier2Required = tier2.tier2Used;
 
   // ── TIER 3: Confidence branch ──────────────────────────
-  // Multiple plausible matches → CLARIFY
   if (clarificationOptions.length > 0) {
     needsClarification = true;
   }
@@ -562,11 +671,14 @@ export async function resolveTickers(
     }
   }
 
+  console.log(`[ticker-resolver] Done: ${deduped.length} resolved, ${notFound.length} notFound, clarify=${needsClarification}, tier2=${tier2Required}`);
+
   return {
     resolved: deduped,
     needsClarification,
     clarificationOptions: needsClarification ? clarificationOptions : undefined,
     notFound,
     tier2Required,
+    emptyInput: false,
   };
 }
