@@ -8,6 +8,7 @@
 
 import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
+import { AGENT_PRINCIPLES } from '@/lib/ai-principles';
 import { checkUsageLimit } from '@/lib/ai-guard';
 import { STYLE_SECTOR_TARGETS, NON_SECTOR_BUCKETS } from '@/lib/risk-narrative';
 import type { SystemBlock } from '@/lib/ai-provider';
@@ -351,7 +352,7 @@ export async function generateObservations(
   try {
     const res = await callChatAI({
       messages: [{ role: 'user', content: triggerPrompt }],
-      systemBlocks: [NOTICED_SYSTEM, ...PORTFOLIO_AGENT_SAFETY_BLOCKS],
+      systemBlocks: [NOTICED_SYSTEM, ...AGENT_PRINCIPLES, ...PORTFOLIO_AGENT_SAFETY_BLOCKS],
       maxTokens: 400,
       temperature: 0.4,
     });

@@ -13,6 +13,7 @@ import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { DAILY_BRIEF_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
+import { BRIEF_PRINCIPLES } from '@/lib/ai-principles';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
@@ -438,7 +439,7 @@ export async function GET(req: NextRequest) {
           content: dataBlock,
         },
       ],
-      systemBlocks: [DAILY_BRIEF_STATIC, ...DAILY_BRIEF_SAFETY_BLOCKS],
+      systemBlocks: [DAILY_BRIEF_STATIC, ...BRIEF_PRINCIPLES, ...DAILY_BRIEF_SAFETY_BLOCKS],
       maxTokens: 200,
       temperature: 0.2,
     });

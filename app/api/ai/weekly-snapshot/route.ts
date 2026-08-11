@@ -11,6 +11,7 @@ import { createServerClient } from '@/lib/supabase';
 import { callChatAI } from '@/lib/ai-provider';
 import type { SystemBlock } from '@/lib/ai-provider';
 import { WEEKLY_SNAPSHOT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
+import { BRIEF_PRINCIPLES } from '@/lib/ai-principles';
 import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
@@ -141,6 +142,7 @@ async function writeSnapshotFacts(
   } catch (err) {
     // Facts writing is non-critical — don't fail the snapshot
     console.error('[weekly-snapshot] writeSnapshotFacts error:', err);
+    return written;
   }
 }
 
@@ -411,7 +413,7 @@ export async function GET(req: NextRequest) {
           content: fullUserContent,
         },
       ],
-      systemBlocks: [SNAPSHOT_STATIC, ...WEEKLY_SNAPSHOT_SAFETY_BLOCKS],
+      systemBlocks: [SNAPSHOT_STATIC, ...BRIEF_PRINCIPLES, ...WEEKLY_SNAPSHOT_SAFETY_BLOCKS],
       maxTokens: 2000,
       temperature: 0.2,
     });

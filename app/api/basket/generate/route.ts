@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { BRIEF_PRINCIPLES } from '@/lib/ai-principles';
 import { NextRequest, NextResponse } from 'next/server'
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: [
+        ...BRIEF_PRINCIPLES,
         {
           type: 'text' as const,
           text: BASKET_SYSTEM_PROMPT,

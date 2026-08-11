@@ -273,10 +273,8 @@ export class SnapTradeBroker implements BrokerEngine {
   // ── Orders ────────────────────────────────────────────────
 
   async getOrders(_status?: OrderStatus): Promise<BrokerOrder[]> {
-    if (!this.tradingEnabled) {
-      console.log('[SnapTradeBroker] getOrders: trading not enabled, returning []');
-      return [];
-    }
+    // Orders are historical data — always visible regardless of trading permissions.
+    // (placeOrder/cancelOrder remain gated behind tradingEnabled.)
 
     try {
       const accountId = await this._getPrimaryAccountId();

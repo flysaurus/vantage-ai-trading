@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { CHAT_PRINCIPLES } from '@/lib/ai-principles';
 import { writeFact } from '@/lib/ai/facts';
 import { beginGenLog } from '@/lib/ai/generation-log';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
@@ -368,6 +369,7 @@ Opener to use: "${market.opener}"
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
       system: [
+        ...CHAT_PRINCIPLES,
         {
           type: 'text' as const,
           text: GREETING_SYSTEM,

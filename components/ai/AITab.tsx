@@ -1069,6 +1069,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
         retryAttempt: retryOpts?.retryAttempt ?? 0,
         validationFailures: retryOpts?.retryFailures ?? null,
+        // Account context — prevents AI from presenting Demo holdings as real
+        accountMeta: {
+          isDemo: brokerMeta?.isDemo ?? false,
+          brokerSource: brokerMeta?.slug ?? 'demo',
+          brokerName: brokerMeta?.name ?? 'Demo Portfolio',
+          environment: brokerMeta?.environment ?? 'demo',
+          tradingEnabled: brokerMeta?.tradingEnabled ?? false,
+        },
       });
 
       if (!res.ok) {

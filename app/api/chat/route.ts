@@ -4,6 +4,8 @@ import { withFallback, stageLog, createTimeoutBudget, startStage, endStage } fro
 import { resolveSymbol } from '@/lib/tools/resolve-symbol'
 import type { SystemBlock } from '@/lib/ai-provider'
 import { CHAT_SAFETY_BLOCKS } from '@/lib/ai/shared-safety-blocks';
+import { CHAT_PRINCIPLES } from '@/lib/ai-principles';
+import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone, checkAbuseCooldown } from '@/lib/ai-guard'
@@ -42,6 +44,22 @@ const client = new Anthropic({
 })
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888'
+
+// ─── Account context builder — prevents AI from confusing Demo with real holdings ──
+function buildAccountContext(meta: {
+  isDemo: boolean;
+  brokerSource: string;
+  brokerName: string;
+  environment: string;
+  tradingEnabled: boolean;
+}): string {
+  if (meta.isDemo) {
+    return `⚠️ ACCOUNT CONTEXT: You are viewing a DEMO / paper-trading portfolio. All positions, cash, and P&L are simulated. NOT real money. The user cannot execute real trades from this account.`;
+  }
+  const envLabel = meta.environment === 'paper' ? 'paper trading' : 'live';
+  const tradeNote = meta.tradingEnabled ? ' Trading is enabled.' : ' Trading is READ-ONLY — the user cannot place orders from this account.';
+  return `🔒 ACCOUNT CONTEXT: Connected to ${meta.brokerName} (${envLabel} environment). These are REAL ${envLabel === 'live' ? 'positions with real money' : 'paper-trading positions'}.${tradeNote}`;
+}
 
 // ─── Ticker extraction (filters from shared symbol-resolution module) ──
 function extractTickers(text: string): string[] {
@@ -1304,7 +1322,7 @@ function stripForeignSuffixes(text: string): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { messages, portfolioContext, additionalContext, mode, timezone, retryAttempt: retryAttemptRaw, validationFailures: retryFailuresRaw } = body
+    const { messages, portfolioContext, additionalContext, mode, timezone, retryAttempt: retryAttemptRaw, validationFailures: retryFailuresRaw, accountMeta } = body
     const retryAttempt: number = typeof retryAttemptRaw === 'number' ? retryAttemptRaw : 0;
     const retryFailures: ValidationFailure[] | undefined = Array.isArray(retryFailuresRaw) ? retryFailuresRaw : undefined;
 
@@ -1405,97 +1423,45 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       searchContext = await searchWeb(screening.searchQuery)
     }
 
-    // ── Live market data: extract tickers from user message + search results → Finnhub ──
+    // ── Tiered ticker resolution: 5-tier system replaces regex-only extractTickers ──
     let liveMarketContext = ''
-    // Primary: explicit tickers in user message ($SPCX, AAPL)
-    let tickers = extractTickers(lastMessage)
+    let tickerResolverContext = ''
+    let tickers: string[] = []
+
+    try {
+      const resolution = await resolveTickers(lastMessage)
+      tickers = resolution.resolved.map(r => r.symbol)
+
+      if (resolution.resolved.length > 0) {
+        console.log(`[chat] 🔍 Tiered resolver: ${resolution.resolved.length} resolved (tier0=${resolution.resolved.filter(r=>r.tier===0).length} tier2=${resolution.resolved.filter(r=>r.tier===2).length})`)
+      }
+      if (resolution.tier2Required) {
+        console.log(`[chat] 🔍 Tier 2 (live search) was required`)
+      }
+
+      // Build resolver context for system prompt enrichment
+      const ctxParts: string[] = []
+      if (resolution.needsClarification && resolution.clarificationOptions?.length) {
+        ctxParts.push(`\n⚠️ TICKER CLARIFICATION NEEDED: Multiple possible tickers found.\n` +
+          resolution.clarificationOptions.map(o => `  ${o.name} → ${o.symbol} (${o.exchange})`).join('\n') +
+          `\nAsk the user to clarify which they meant before making any recommendation.`)
+      }
+      if (resolution.notFound.length > 0) {
+        ctxParts.push(`\n❓ UNRESOLVED REFERENCES: ${resolution.notFound.join(', ')}. Do NOT invent tickers for these — tell the user you couldn't find a US-listed match.`)
+      }
+      if (resolution.resolved.length > 0) {
+        ctxParts.push(`\n✅ RESOLVED TICKERS: ${resolution.resolved.map(r => `${r.name} → ${r.symbol} (${r.confidence} confidence, ${r.source})`).join('; ')}`)
+      }
+      tickerResolverContext = ctxParts.join('\n')
+    } catch (e) {
+      console.error('[chat] Tiered resolver error (falling back to regex):', e)
+      tickers = extractTickers(lastMessage)
+    }
+
     // Secondary: extract tickers from search result titles (handles company names like SpaceX→SPCX)
     if (searchContext) {
       const searchTickers = extractTickers(searchContext)
       tickers = [...new Set([...tickers, ...searchTickers])]
-    }
-    // Tertiary: Finnhub search to resolve company names (e.g., "Tesla" → TSLA, "Google" → GOOGL)
-    // No intent gate — if extractSearchTerm() found a proper noun, it's worth a lookup.
-    if (tickers.length === 0) {
-      const searchTerm = extractSearchTerm(lastMessage)
-      if (searchTerm) {
-        try {
-          const fRes = await fetch(
-            `https://finnhub.io/api/v1/search?q=${encodeURIComponent(searchTerm)}&token=${process.env.FINNHUB_IO_API_KEY}`
-          )
-          if (fRes.ok) {
-            const fData = await fRes.json()
-            if (fData.result?.length > 0) {
-              tickers = fData.result.slice(0, 2).map((r: any) => r.symbol)
-              console.log('[chat] Finnhub search resolved:', searchTerm, '→', tickers)
-            }
-          }
-        } catch (e) {
-          console.error('[chat] Finnhub search error:', e)
-        }
-      }
-    }
-
-    // ── GUARDRAIL: Filter to US-listed tickers only ──
-    // Any ticker extracted from search results or user message must be verified
-    // against the Finnhub US symbol cache before the model sees live data for it.
-    // This is the pre-generation filter — the model should never see foreign-listed
-    // symbols in live market data.
-    if (tickers.length > 0) {
-      try {
-        const usSymbols = await loadSymbolCache()
-        if (usSymbols.size > 0) {
-          const validTickers: string[] = []
-          const foreignFiltered: string[] = []
-          const liveVerified: string[] = []
-
-          for (const t of tickers) {
-            const upper = t.toUpperCase()
-            // Reject: non-US format (dots, foreign suffixes, bad length)
-            if (upper.includes('.') || !/^[A-Z]{1,5}$/.test(upper)) {
-              foreignFiltered.push(t)
-              continue
-            }
-            // Accept: in cache (fast path)
-            if (usSymbols.has(upper)) {
-              validTickers.push(upper)
-              continue
-            }
-            // Accept: in FALLBACK_SYMBOLS allowlist (safety net for ETFs Finnhub misses)
-            if (FALLBACK_SYMBOLS[upper]) {
-              console.log(`[chat] 🛡️ US-only filter: keeping "${upper}" via FALLBACK_SYMBOLS allowlist`)
-              validTickers.push(upper)
-              continue
-            }
-            // Try live verification: Finnhub profile2 lookup for cache-miss tickers
-            try {
-              const resolved = await validateSymbol(upper)
-              if (resolved && resolved.confidence !== 'low') {
-                console.log(`[chat] 🛡️ US-only filter: keeping "${upper}" via live verification (${resolved.source}, ${resolved.name})`)
-                liveVerified.push(upper)
-                validTickers.push(upper)
-                continue
-              }
-            } catch { /* live check failed — filter out below */ }
-            // Reject: not in cache, not in fallback, live check failed
-            foreignFiltered.push(t)
-          }
-
-          tickers = validTickers
-          if (foreignFiltered.length > 0) {
-            console.log(`[chat] 🛡️ US-only filter: removed ${foreignFiltered.length} non-US ticker(s): ${foreignFiltered.join(', ')}`)
-          }
-          if (liveVerified.length > 0) {
-            console.log(`[chat] 🛡️ US-only filter: live-verified ${liveVerified.length} ticker(s): ${liveVerified.join(', ')}`)
-          }
-          if (tickers.length === 0) {
-            console.log('[chat] 🛡️ US-only filter: NO US-traded tickers found for this query — model will receive empty live data')
-          }
-        }
-      } catch (e) {
-        console.error('[chat] US-only filter error (failing open):', e)
-        // Fail open — let the validator catch foreign markers downstream
-      }
     }
 
     if (tickers.length > 0) {
@@ -1613,6 +1579,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       }
     }
     const systemBlocks: SystemBlock[] = [
+    ...CHAT_PRINCIPLES,
     ...CHAT_SAFETY_BLOCKS,
       {
         type: 'text' as const,
@@ -1621,7 +1588,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       },
       {
         type: 'text' as const,
-        text: [dateContext, profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext, screeningContext].filter(Boolean).join('\n\n'),
+        text: [dateContext, accountMeta ? buildAccountContext(accountMeta) : '', profileContext, portfolioContext || '', additionalContext || '', searchContext, liveMarketContext, preResolvedContext, deviationContext, tickerResolverContext, screeningContext].filter(Boolean).join('\n\n'),
       },
     ];
 

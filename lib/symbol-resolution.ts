@@ -94,6 +94,7 @@ const FALLBACK_SYMBOLS: Record<string, string> = {
 const PREVERIFIED_TICKERS: Record<string, { name: string; exchange: string }> = {
   'SPCX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
   'SPACEX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
+  'SPACE EXPLORATION': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
 };
 
 // ── Helpers ───────────────────────────────────────────────
@@ -809,6 +810,7 @@ export async function searchSymbolsByName(
 // ── Re-export FALLBACK_SYMBOLS for consumers that need the list ──
 
 export { FALLBACK_SYMBOLS };
+export { PREVERIFIED_TICKERS };
 
 // ═══════════════════════════════════════════════════════════════
 // Shared symbol filters — single authority for the entire codebase.
@@ -834,6 +836,13 @@ export const NOT_TICKERS = new Set([
   'HERE', 'THERE', 'WHICH', 'RIGHT', 'STILL', 'OTHER', 'AFTER', 'FIRST',
   'WHERE', 'EVERY', 'DON', 'DOES', 'MORE', 'LESS', 'ONLY', 'MOST', 'LAST',
   'ADD', 'SHOW', 'OF', 'VS', 'CHART', 'MAKE', 'TAKE', 'GIVE', 'FIND', 'HIGH',
+  // Finance/trading domain words that match regex (extended from live testing)
+  'MARKET', 'TRADE', 'TODAY', 'YESTERDAY', 'TOMORROW', 'MONTH', 'YEAR',
+  'MONEY', 'DOLLAR', 'CENTS', 'COST', 'VALUE', 'GAIN', 'LOSS', 'PROFIT',
+  'LATEST', 'BEST', 'TOP', 'LOW', 'OPEN', 'CLOSE', 'VOLUME', 'CHANGE',
+  'ORDER', 'LIMIT', 'STOP', 'GTC', 'DAY', 'IOC', 'CHECK', 'SPEC',
+  // Names that score false-positive regex hits (handled by Tier 1 classification)
+  'ELON', 'MUSK',
   // Exchange/country-code suffixes — prevent ghost buttons from foreign listings
   'DE', 'MX', 'SW', 'VI', 'SN', 'DU', 'HM', 'GLP', 'LN', 'L', 'PA', 'SA',
   'TO', 'CN', 'HK', 'JP', 'KR', 'BR', 'IN', 'AU', 'AS', 'AX', 'TA', 'OL',
