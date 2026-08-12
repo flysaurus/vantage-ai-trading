@@ -1915,6 +1915,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                         {/* Summary card: TL;DR + allocation table below prose */}
                         {(() => {
                           if (tier === 'silver') return null;
+                          // CLARIFY guard: open question → no TL;DR summary card / buy table
+                          if (/\[CLARIFY:/i.test(msg.content)) return null;
                           const suggestions = parseSuggestions(msg.content, validSymbols);
                           if (suggestions.length === 0) return null;
                           const tldrText = parseSummaryTLDR(msg.content);
@@ -1939,6 +1941,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               {/* Inline trade buttons (Demo/Gold only) */}
               {(() => {
                 if (tier === 'silver') return null;
+
+                // ── CLARIFY guard ──
+                // A CLARIFY response is an open question — never render live
+                // buy/sell buttons alongside it (contradictory UI). Strategy
+                // cards may still render below (selectable, no live buttons).
+                if (/\[CLARIFY:/i.test(msg.content)) return null;
 
                 // ── Multi-strategy detection ──
                 const msgBlocks = parsePortfolioBlocks(msg.content);

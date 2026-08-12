@@ -49,6 +49,25 @@ export interface ValidationReport {
 // ── Public API ─────────────────────────────────────────────
 
 /**
+ * Strip RECOMMEND markers from responses that also contain CLARIFY blocks.
+ * CLARIFY is a question — RECOMMEND markers alongside it create a
+ * contradictory UI ("Which approach?" + live buy buttons).
+ *
+ * This is a HARD guarantee: CLARIFY + RECOMMEND cannot coexist in output.
+ * Called from validateResponse() before any other processing.
+ */
+export function stripRecommendFromClarify(text: string): { text: string; stripped: number } {
+  if (!/\[CLARIFY:/i.test(text)) return { text, stripped: 0 };
+  const matches = text.match(/\[RECOMMEND:[^\]]*\]/g);
+  const stripped = matches ? matches.length : 0;
+  if (stripped > 0) {
+    console.warn(`[validator] 🚫 Stripped ${stripped} RECOMMEND markers from CLARIFY response`);
+    return { text: text.replace(/\[RECOMMEND:[^\]]*\]/g, ''), stripped };
+  }
+  return { text, stripped: 0 };
+}
+
+/**
  * Run the full validation pipeline against an AI response.
  *
  * @param responseText - Raw AI response text
@@ -63,12 +82,19 @@ export function validateResponse(
 
   // ── Pass 1: Sanitization ──
   const { text: sanitized, count: suffixesStripped } = stripForeignSuffixes(responseText);
-  const sanitizedText = stripTrailingQuestions(sanitized);
+  // CLARIFY responses must never carry RECOMMEND markers (open question + live
+  // buy buttons is a UI contradiction). Strip markers, keep PORTFOLIO blocks
+  // so selectable strategy cards can still render ("no live buttons until tapped").
+  const clarifyStrip = stripRecommendFromClarify(sanitized);
+  const sanitizedText = stripTrailingQuestions(clarifyStrip.text);
 
   if (suffixesStripped > 0) {
     console.log(`[validator] Pass 1: Stripped ${suffixesStripped} foreign exchange suffixes`);
   }
-  if (sanitizedText !== sanitized) {
+  if (clarifyStrip.stripped > 0) {
+    console.log(`[validator] Pass 1: Stripped ${clarifyStrip.stripped} RECOMMEND markers from CLARIFY response`);
+  }
+  if (sanitizedText !== clarifyStrip.text) {
     console.log('[validator] Pass 1: Removed trailing questions from response');
   }
 
@@ -214,6 +240,114 @@ export function detectIncoherence(response: string, requestedBudget?: number | n
     }
   }
 
+  // ── Computed-metric coherence ──
+  // Extends the contradictory-totals check beyond dollar amounts: if a computed
+  // metric (yield, expense ratio, P/E, etc.) is stated in both the SUMMARY_TLDR
+  // and the prose body with conflicting values, that's the same class of bug.
+  const metricIncoherence = detectMetricIncoherence(response);
+  if (metricIncoherence) return metricIncoherence;
+
+  return null;
+}
+
+// ── Computed-metric coherence helpers ─────────────────────
+
+// Labels for metrics that can be "computed" and stated as a number.
+// Ordered longest-first so "dividend yield" matches before "yield".
+const COMPUTED_METRIC_LABELS = [
+  'dividend yield',
+  'expense ratio',
+  'price-to-earnings',
+  'p/e ratio',
+  'pe ratio',
+  'annualized return',
+  'total return',
+  'interest rate',
+  'yield',
+  'volatility',
+  'cagr',
+  'sharpe',
+  'coupon',
+  'alpha',
+  'beta',
+  'fee',
+  'expense',
+];
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Extract metric-label → numeric-value pairs from a body of text.
+ * Handles both "2.4% yield" (value before label) and "yield of 2.4%"
+ * (value after label) forms.
+ */
+function extractMetricValues(text: string): Map<string, number[]> {
+  const result = new Map<string, number[]>();
+  const labelsAlt = COMPUTED_METRIC_LABELS.map(escapeRegex).join('|');
+
+  const add = (rawLabel: string, value: number) => {
+    if (!Number.isFinite(value)) return;
+    const key = rawLabel.toLowerCase();
+    if (!result.has(key)) result.set(key, []);
+    result.get(key)!.push(value);
+  };
+
+  // "2.4% yield" / "4.8% dividend yield" — value then label
+  const beforeRe = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*%\\s*(\\b(?:${labelsAlt})\\b)`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = beforeRe.exec(text)) !== null) add(m[2], parseFloat(m[1]));
+
+  // "yield of 2.4%" / "expense ratio 0.15%" — label then value
+  const afterRe = new RegExp(`(\\b(?:${labelsAlt})\\b)\\s*(?:of|is|at|~|≈|:|=|was)?\\s*~?\\s*(\\d+(?:\\.\\d+)?)\\s*%`, 'gi');
+  while ((m = afterRe.exec(text)) !== null) add(m[1], parseFloat(m[2]));
+
+  return result;
+}
+
+/**
+ * Two values of the same metric conflict if they differ materially:
+ * >0.5 percentage points AND >10% relative. Tolerates trivial rounding.
+ */
+function metricValuesConflict(a: number, b: number): boolean {
+  const absDiff = Math.abs(a - b);
+  const relDiff = absDiff / Math.max(Math.abs(a), Math.abs(b), 1e-9);
+  return absDiff > 0.5 && relDiff > 0.1;
+}
+
+/**
+ * Flag contradictory computed metrics between the SUMMARY_TLDR and prose body.
+ * Example: "2.4% yield" in the body vs "4.8% yield" in the TLDR is the same
+ * class of bug as the $10,000-vs-$9,500 dollar-total contradiction.
+ */
+export function detectMetricIncoherence(response: string): string | null {
+  const tldrMatch = response.match(/\[SUMMARY_TLDR:([^\]]*)\]/i);
+  if (!tldrMatch) return null;
+  const tldrText = tldrMatch[1];
+
+  // Body = everything except structured markers (SUMMARY_TLDR, RECOMMEND,
+  // PORTFOLIO, CLARIFY) — so prose math isn't confused with marker numbers.
+  const bodyText = response
+    .replace(/\[SUMMARY_TLDR:[^\]]*\]/gi, ' ')
+    .replace(/\[RECOMMEND:[^\]]*\]/gi, ' ')
+    .replace(/\[PORTFOLIO:\{[\s\S]*?\}\]/gi, ' ')
+    .replace(/\[CLARIFY:\{[\s\S]*?\}\]/gi, ' ');
+
+  const tldrMetrics = extractMetricValues(tldrText);
+  const bodyMetrics = extractMetricValues(bodyText);
+
+  for (const [label, tldrVals] of tldrMetrics) {
+    const bodyVals = bodyMetrics.get(label);
+    if (!bodyVals || bodyVals.length === 0) continue;
+    for (const tv of tldrVals) {
+      for (const bv of bodyVals) {
+        if (metricValuesConflict(tv, bv)) {
+          return `Contradictory computed metric "${label}": TLDR states ${tv}% but body states ${bv}%. Computed metrics must agree between the summary and the body.`;
+        }
+      }
+    }
+  }
   return null;
 }
 

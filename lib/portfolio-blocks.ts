@@ -8,6 +8,37 @@
 
 import { type PortfolioBlock, type PortfolioPosition } from '@/lib/portfolio-types';
 
+/**
+ * Find the index of the matching close-brace for an opening brace at openIdx.
+ * Handles nested braces and strings. Returns -1 if unbalanced.
+ */
+function findBalancedBrace(text: string, openIdx: number): number {
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let pos = openIdx; pos < text.length; pos++) {
+    const ch = text[pos];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === '\\') { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return pos; }
+  }
+  return -1;
+}
+
+/** Map a raw strategy object into normalized positions. */
+function mapPositions(rawPositions: any): PortfolioPosition[] {
+  if (!Array.isArray(rawPositions)) return [];
+  return rawPositions.map((p: any) => ({
+    symbol: p.symbol || 'CASH',
+    amount: typeof p.amount === 'number' ? p.amount : 0,
+    side: p.side === 'sell' ? 'sell' as const : 'buy' as const,
+    isReserve: p.symbol === 'CASH' || p.isReserve === true,
+  }));
+}
+
 /** Parse all [PORTFOLIO:{...}] JSON blocks from the AI response. */
 export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
   const blocks: PortfolioBlock[] = [];
@@ -70,6 +101,37 @@ export function parsePortfolioBlocks(response: string): PortfolioBlock[] {
     }
 
     idx = pos + 1;
+  }
+
+  // ── Raw strategy JSON fallback ──
+  // The model sometimes emits {"strategies": [...]} instead of [PORTFOLIO:{...}].
+  // Normalize so strategy cards render instead of raw JSON leaking to the user.
+  idx = 0;
+  while ((idx = response.indexOf('{"strategies"', idx)) !== -1) {
+    // Back up to the opening {
+    let openIdx = idx;
+    while (openIdx > 0 && response[openIdx] !== '{') openIdx--;
+    if (response[openIdx] !== '{') { idx += 1; continue; }
+    const endIdx = findBalancedBrace(response, openIdx);
+    if (endIdx === -1) break;
+    const jsonStr = response.slice(openIdx, endIdx + 1);
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed.strategies)) {
+        for (const s of parsed.strategies) {
+          const positions = mapPositions(s?.positions);
+          blocks.push({
+            total: typeof s?.total === 'number' ? s.total : positions.reduce((a: number, p) => a + p.amount, 0),
+            strategy: s?.name || s?.strategy || s?.label,
+            positions,
+            raw: jsonStr,
+          });
+        }
+      }
+    } catch {
+      // Malformed raw JSON — ignore, don't crash
+    }
+    idx = endIdx + 1;
   }
 
   return blocks;

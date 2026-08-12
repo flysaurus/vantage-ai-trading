@@ -11,10 +11,10 @@
 //
 // ──────────────────────────────────────────────────────────────────
 
-import { validateResponse } from '../validator';
+import { validateResponse, stripForeignSuffixes, stripRecommendFromClarify, detectMetricIncoherence } from '../validator';
 import { classifyIntent, createConversationState } from '../manager';
-import { stripForeignSuffixes } from '../validator';
 import { sanitizeClarifyResponse, analyzeMarkerPresence } from '../presenter';
+import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import { NOT_TICKERS, FOREIGN_EXCHANGE_SUFFIXES, isFilteredCommonWord } from '@/lib/symbol-resolution';
 import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults';
 
@@ -390,6 +390,71 @@ test('PREVERIFIED maps return canonical symbol, not lookup key', 'preverified', 
     assert(/^[A-Z]{1,5}$/.test(entry.canonicalSymbol),
       `PREVERIFIED_TICKERS["${key}"].canonicalSymbol "${entry.canonicalSymbol}" must be a valid ticker format`);
   }
+});
+
+// ── Suite: Raw Strategy JSON (Bug 3) ────────────────────
+
+test('Raw {"strategies":[...]} JSON is parsed into portfolio blocks', 'raw_strategy_json', () => {
+  const response = `Here are your options.\n{"strategies":[{"name":"Income","total":5000,"positions":[{"symbol":"JEPI","amount":5000}]},{"name":"Growth","total":5000,"positions":[{"symbol":"QQQ","amount":5000}]}]}`;
+  const blocks = parsePortfolioBlocks(response);
+  assertEq(blocks.length, 2, 'Should parse 2 strategy blocks from raw JSON');
+  assertEq(blocks[0].strategy, 'Income', 'First block strategy name');
+  assertEq(blocks[0].total, 5000, 'First block total');
+  assertEq(blocks[1].strategy, 'Growth', 'Second block strategy name');
+});
+
+// ── Suite: CLARIFY + RECOMMEND Contradiction (Bug 1) ─────
+
+test('stripRecommendFromClarify removes RECOMMEND markers from CLARIFY', 'clarify_contradiction', () => {
+  const response = '[CLARIFY:{"question":"Which approach?","options":["Growth","Income"]}]\n[RECOMMEND:AAPL:BUY:$5000]';
+  const { text, stripped } = stripRecommendFromClarify(response);
+  assertEq(stripped, 1, 'Should strip 1 RECOMMEND marker');
+  assert(!text.includes('RECOMMEND:AAPL'), 'RECOMMEND marker should be removed');
+  assert(text.includes('CLARIFY:'), 'CLARIFY block should be preserved');
+});
+
+test('validateResponse strips RECOMMEND markers from CLARIFY response', 'clarify_contradiction', () => {
+  const response = '[CLARIFY:{"question":"Which approach?","options":["Growth","Income"]}]\n[RECOMMEND:AAPL:BUY:$5000]';
+  const report = validateResponse(response, null);
+  assert(!report.sanitizedText.includes('RECOMMEND:AAPL'), 'RECOMMEND should be stripped in sanitized text');
+  assert(!report.hasRecommendMarkers, 'hasRecommendMarkers should be false after strip');
+});
+
+test('stripRecommendFromClarify leaves non-CLARIFY responses untouched', 'clarify_contradiction', () => {
+  const response = '[RECOMMEND:AAPL:BUY:$5000]\n[RECOMMEND:MSFT:BUY:$5000]';
+  const { text, stripped } = stripRecommendFromClarify(response);
+  assertEq(stripped, 0, 'No CLARIFY, so nothing stripped');
+  assert(text.includes('RECOMMEND:AAPL'), 'RECOMMEND should remain');
+});
+
+// ── Suite: Computed-Metric Coherence (Bug 2) ─────────────
+
+test('Contradictory yield between body and TLDR detected', 'metric_coherence', () => {
+  const response = '[SUMMARY_TLDR:Portfolio with 4.8% yield]\nThe portfolio has a blended yield of 2.4%.';
+  const result = detectMetricIncoherence(response);
+  assert(!!result, 'Should detect conflicting yield values');
+  assert(result!.includes('yield'), 'Error should mention yield');
+});
+
+test('Consistent yield passes metric coherence check', 'metric_coherence', () => {
+  const response = '[SUMMARY_TLDR:Portfolio with 2.4% yield]\nThe portfolio has a blended yield of 2.4%.';
+  const result = detectMetricIncoherence(response);
+  assertEq(result, null, 'Consistent yield should pass');
+});
+
+test('No TLDR returns null from metric coherence', 'metric_coherence', () => {
+  const response = 'The portfolio has a yield of 2.4%.';
+  const result = detectMetricIncoherence(response);
+  assertEq(result, null, 'No TLDR block → nothing to cross-check');
+});
+
+test('Metric coherence integrated into validateResponse', 'metric_coherence', () => {
+  const response = '[SUMMARY_TLDR:Portfolio with 4.8% yield]\n[RECOMMEND:AAPL:BUY:$5000]\nThe portfolio has a yield of 2.4%.';
+  const report = validateResponse(response, 5000);
+  assert(!report.ok, 'Conflicting metric should fail validation');
+  const issue = report.issues.find(i => i.pass === 'incoherence');
+  assert(!!issue, 'Should have incoherence issue');
+  assert(issue!.message.includes('yield'), 'Error should mention yield');
 });
 
 // ── Run ────────────────────────────────────────────────────

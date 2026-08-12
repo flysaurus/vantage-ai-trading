@@ -211,9 +211,43 @@ function stripPortfolioMarkers(text: string): string {
   return result;
 }
 
+/**
+ * Strip raw {"strategies": [...]} JSON blocks (and any bare {...} JSON object)
+ * from visible text. The model sometimes emits raw JSON instead of the
+ * [PORTFOLIO:{...}] marker — users must never see it as literal text.
+ */
+function stripRawStrategyJson(text: string): string {
+  let result = text;
+  // Guard against stripping prose that merely mentions "strategies" — only match
+  // a bare JSON object whose first key is literally "strategies".
+  let idx = 0;
+  while ((idx = result.indexOf('{"strategies"', idx)) !== -1) {
+    let openIdx = idx;
+    while (openIdx > 0 && result[openIdx] !== '{') openIdx--;
+    if (result[openIdx] !== '{') { idx += 1; continue; }
+    // Bracket-count to the matching close brace
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    let pos = openIdx;
+    for (; pos < result.length; pos++) {
+      const ch = result[pos];
+      if (escapeNext) { escapeNext = false; continue; }
+      if (ch === '\\') { escapeNext = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) break; }
+    }
+    if (pos >= result.length) break;
+    result = result.slice(0, openIdx) + result.slice(pos + 1);
+  }
+  return result;
+}
+
 /** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
-  let result = stripPortfolioMarkers(stripClarifyMarkers(text))
+  let result = stripRawStrategyJson(stripPortfolioMarkers(stripClarifyMarkers(text)))
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
     .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text
