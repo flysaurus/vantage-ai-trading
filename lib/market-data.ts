@@ -1029,3 +1029,250 @@ export function availableSources(): { finnhub: boolean; alpaca: boolean; yahoo: 
     yahoo: true, // always available (free)
   };
 }
+
+// ─── ETF Data (Yahoo fundProfile/fundPerformance + Finnhub /etf/list) ───
+//
+// ETFs need fund-appropriate fields that the stock fundamentals path
+// (P/E, EPS, beta) does NOT provide. We source from Yahoo's quoteSummary
+// `fundProfile` (expense ratio, category, fund family), `summaryDetail`
+// (AUM, trailing yield) and `fundPerformance` (trailing 1/3/5yr returns),
+// plus Finnhub's `/etf/list` for the discovery universe.
+
+const YAHOO_QUOTE_SUMMARY_BASE = 'https://query2.finance.yahoo.com/v10/finance/quoteSummary';
+
+/**
+ * Fund-level profile fields, live-sourced. All percentage fields are
+ * stored as percentages (e.g. 0.09 = 0.09% expense ratio, 12.34 = 12.34%
+ * trailing return) — NOT raw fractions.
+ */
+export interface EtfProfile {
+  symbol: string;
+  name: string;
+  category: string | null;        // fundProfile.categoryName (Morningstar-style)
+  fundFamily: string | null;      // fundProfile.family
+  expenseRatioPct: number | null; // annual report expense ratio, %
+  aum: number | null;             // total assets, USD
+  dividendYieldPct: number | null;// trailing annual dividend yield, %
+  returnYtdPct: number | null;
+  return1yPct: number | null;
+  return3yPct: number | null;
+  return5yPct: number | null;
+  indexTracked: string | null;    // best-effort, derived from name/description
+  description: string | null;
+  source: 'yahoo';
+}
+
+/** Parse a Yahoo value object ({ raw, fmt }) into a percentage number. */
+function yahooPct(v: any): number | null {
+  const raw = v?.raw;
+  if (raw == null || typeof raw !== 'number' || !isFinite(raw)) return null;
+  // Yahoo stores ratios as fractions (0.0123 = 1.23%); multiply by 100.
+  // Guard against the occasional already-percent value (> 5 for a ratio is
+  // almost certainly already a percentage, e.g. a 6.5% yield would be 0.065 raw).
+  return Math.abs(raw) < 5 ? raw * 100 : raw;
+}
+
+/** Best-effort extraction of the tracked index from an ETF's name/description. */
+function extractIndexTracked(name: string, description: string | null): string | null {
+  const text = `${name || ''} ${description || ''}`;
+  const patterns = [
+    /S&P\s*500/i, /S&P\s*MidCap\s*400/i, /S&P\s*SmallCap\s*600/i,
+    /Nasdaq-?100/i, /Nasdaq\s*Composite/i, /Dow\s*Jones/i, /Dow\s*30/i,
+    /Russell\s*2000/i, /Russell\s*1000/i, /Russell\s*3000/i,
+    /MSCI\s*(EAFE|Emerging|World|ACWI|USA)/i, /FTSE/i, /Bloomberg\s*(US\s*)?Agg/i,
+    /NYSE\s*(Composite|Arca)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[0].trim();
+  }
+  return null;
+}
+
+/**
+ * Fetch a single ETF's fund profile from Yahoo quoteSummary.
+ * Returns null if the symbol is not an ETF or Yahoo is unreachable.
+ */
+export async function getEtfProfile(symbol: string): Promise<EtfProfile | null> {
+  const auth = await getYahooCrumb();
+  if (!auth) return null;
+
+  const ySymbol = yahooSymbol(symbol.toUpperCase());
+  const modules = 'fundProfile,summaryDetail,fundPerformance,price';
+  try {
+    const res = await fetch(
+      `${YAHOO_QUOTE_SUMMARY_BASE}/${encodeURIComponent(ySymbol)}?modules=${modules}&crumb=${auth.crumb}`,
+      { headers: { 'User-Agent': YAHOO_UA, 'Cookie': auth.cookie }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const result = json?.quoteSummary?.result?.[0];
+    if (!result) return null;
+
+    const fp = result.fundProfile || {};
+    const sd = result.summaryDetail || {};
+    const fperf = result.fundPerformance || {};
+    const priceMod = result.price || {};
+
+    const getRaw = (obj: any, key: string): number | null => {
+      const v = obj?.[key];
+      if (v && typeof v === 'object' && 'raw' in v && typeof v.raw === 'number') return v.raw;
+      return null;
+    };
+
+    // Expense ratio: prefer annual report, fall back to net (annual).
+    const fees = fp.feesExpensesInvestment || {};
+    const expenseRaw = fees.annualReportExpenseRatio ?? fees.annualExpenseRatio ?? null;
+    const expenseRatioPct = yahooPct(expenseRaw);
+
+    const aum = getRaw(sd, 'totalAssets');
+    const dividendYieldPct = yahooPct(sd.trailingAnnualDividendYield);
+
+    const name = typeof priceMod?.longName === 'string' ? priceMod.longName
+      : (typeof priceMod?.shortName === 'string' ? priceMod.shortName : symbol.toUpperCase());
+    const description = typeof fp?.description === 'string' ? fp.description : null;
+
+    // Trailing returns
+    let returnYtdPct: number | null = null;
+    let return1yPct: number | null = null;
+    let return3yPct: number | null = null;
+    let return5yPct: number | null = null;
+    const trailing = fperf?.trailingReturns;
+    if (Array.isArray(trailing)) {
+      for (const r of trailing) {
+        const period = r?.period;
+        const val = yahooPct(r?.value);
+        if (val == null) continue;
+        if (period === 'YTD' || period === 'ytd') returnYtdPct = val;
+        else if (period === '1y') return1yPct = val;
+        else if (period === '3y') return3yPct = val;
+        else if (period === '5y') return5yPct = val;
+      }
+    }
+
+    return {
+      symbol: symbol.toUpperCase(),
+      name,
+      category: typeof fp?.categoryName === 'string' ? fp.categoryName : null,
+      fundFamily: typeof fp?.family === 'string' ? fp.family : null,
+      expenseRatioPct,
+      aum,
+      dividendYieldPct,
+      returnYtdPct,
+      return1yPct,
+      return3yPct,
+      return5yPct,
+      indexTracked: extractIndexTracked(name, description),
+      description,
+      source: 'yahoo',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Curated fallback universe used when Finnhub `/etf/list` is unavailable. */
+export const FALLBACK_ETF_UNIVERSE: { symbol: string; description: string }[] = [
+  { symbol: 'SPY', description: 'SPDR S&P 500 ETF Trust' },
+  { symbol: 'VOO', description: 'Vanguard S&P 500 ETF' },
+  { symbol: 'IVV', description: 'iShares Core S&P 500 ETF' },
+  { symbol: 'QQQ', description: 'Invesco QQQ Trust (Nasdaq-100)' },
+  { symbol: 'VTI', description: 'Vanguard Total Stock Market ETF' },
+  { symbol: 'ITOT', description: 'iShares Core S&P Total US Stock Market' },
+  { symbol: 'SCHB', description: 'Schwab US Broad Market ETF' },
+  { symbol: 'IWM', description: 'iShares Russell 2000 ETF' },
+  { symbol: 'IJH', description: 'iShares Core S&P Mid-Cap ETF' },
+  { symbol: 'IJR', description: 'iShares Core S&P Small-Cap ETF' },
+  { symbol: 'DIA', description: 'SPDR Dow Jones Industrial Average ETF' },
+  { symbol: 'VEA', description: 'Vanguard FTSE Developed Markets ETF' },
+  { symbol: 'VWO', description: 'Vanguard FTSE Emerging Markets ETF' },
+  { symbol: 'IEFA', description: 'iShares Core MSCI EAFE ETF' },
+  { symbol: 'EFA', description: 'iShares MSCI EAFE ETF' },
+  { symbol: 'SCHF', description: 'Schwab International Equity ETF' },
+  { symbol: 'VXUS', description: 'Vanguard Total International Stock ETF' },
+  { symbol: 'BND', description: 'Vanguard Total Bond Market ETF' },
+  { symbol: 'AGG', description: 'iShares Core US Aggregate Bond ETF' },
+  { symbol: 'SCHD', description: 'Schwab US Dividend Equity ETF' },
+  { symbol: 'VYM', description: 'Vanguard High Dividend Yield ETF' },
+  { symbol: 'DGRO', description: 'iShares Core Dividend Growth ETF' },
+  { symbol: 'HDV', description: 'iShares Core High Dividend ETF' },
+  { symbol: 'VIG', description: 'Vanguard Dividend Appreciation ETF' },
+  { symbol: 'SPHD', description: 'Invesco S&P 500 High Dividend Low Volatility ETF' },
+  { symbol: 'XLF', description: 'Financial Select Sector SPDR Fund' },
+  { symbol: 'VFH', description: 'Vanguard Financials ETF' },
+  { symbol: 'XLK', description: 'Technology Select Sector SPDR Fund' },
+  { symbol: 'VGT', description: 'Vanguard Information Technology ETF' },
+  { symbol: 'SMH', description: 'VanEck Semiconductor ETF' },
+  { symbol: 'SOXX', description: 'iShares Semiconductor ETF' },
+  { symbol: 'XLV', description: 'Health Care Select Sector SPDR Fund' },
+  { symbol: 'VHT', description: 'Vanguard Health Care ETF' },
+  { symbol: 'IBB', description: 'iShares Biotechnology ETF' },
+  { symbol: 'XLI', description: 'Industrial Select Sector SPDR Fund' },
+  { symbol: 'VIS', description: 'Vanguard Industrials ETF' },
+  { symbol: 'XLE', description: 'Energy Select Sector SPDR Fund' },
+  { symbol: 'VDE', description: 'Vanguard Energy ETF' },
+  { symbol: 'XLU', description: 'Utilities Select Sector SPDR Fund' },
+  { symbol: 'VPU', description: 'Vanguard Utilities ETF' },
+  { symbol: 'XLRE', description: 'Real Estate Select Sector SPDR Fund' },
+  { symbol: 'VNQ', description: 'Vanguard Real Estate ETF' },
+  { symbol: 'XLY', description: 'Consumer Discretionary Select Sector SPDR Fund' },
+  { symbol: 'XLP', description: 'Consumer Staples Select Sector SPDR Fund' },
+  { symbol: 'XLB', description: 'Materials Select Sector SPDR Fund' },
+  { symbol: 'VAW', description: 'Vanguard Materials ETF' },
+  { symbol: 'XLC', description: 'Communication Services Select Sector SPDR Fund' },
+  { symbol: 'XBI', description: 'SPDR S&P Biotech ETF' },
+  { symbol: 'ARKK', description: 'ARK Innovation ETF' },
+  { symbol: 'IYH', description: 'iShares US Healthcare ETF' },
+  { symbol: 'IYG', description: 'iShares US Financial Services ETF' },
+  { symbol: 'IYW', description: 'iShares US Technology ETF' },
+  { symbol: 'IYJ', description: 'iShares US Industrials ETF' },
+];
+
+let etfUniverseCache: { data: { symbol: string; description: string }[]; timestamp: number } | null = null;
+
+/**
+ * Load the US ETF discovery universe. Primary: Finnhub `/etf/list`
+ * (~2000+ US ETFs). Falls back to the curated list when Finnhub is
+ * unavailable. Cached for 24h (the list changes rarely).
+ */
+export async function listEtfUniverse(): Promise<{ symbol: string; description: string }[]> {
+  const CACHE_TTL = 24 * 60 * 60 * 1000;
+  if (etfUniverseCache && Date.now() - etfUniverseCache.timestamp < CACHE_TTL) {
+    return etfUniverseCache.data;
+  }
+
+  const key = finnhubKey();
+  const result: { symbol: string; description: string }[] = [];
+  if (key) {
+    try {
+      const res = await fetch(
+        `https://finnhub.io/api/v1/etf/list?exchange=US&token=${key}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        // Finnhub response shape varies across versions; be defensive.
+        let arr: any[] = Array.isArray(data) ? data : [];
+        if (arr.length === 0 && Array.isArray(data?.data)) arr = data.data;
+        if (arr.length === 0 && data && typeof data === 'object') {
+          for (const v of Object.values(data)) {
+            if (Array.isArray(v)) { arr = v as any[]; break; }
+          }
+        }
+        for (const item of arr) {
+          const sym = item?.symbol || item?.displaySymbol;
+          if (!sym) continue;
+          result.push({
+            symbol: String(sym).toUpperCase(),
+            description: item?.description || item?.name || '',
+          });
+        }
+      }
+    } catch { /* fall through to curated fallback */ }
+  }
+
+  const universe = result.length > 0 ? result : FALLBACK_ETF_UNIVERSE;
+  etfUniverseCache = { data: universe, timestamp: Date.now() };
+  return universe;
+}

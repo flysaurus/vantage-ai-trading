@@ -17,6 +17,8 @@ import { sanitizeClarifyResponse, analyzeMarkerPresence } from '../presenter';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import { NOT_TICKERS, FOREIGN_EXCHANGE_SUFFIXES, isFilteredCommonWord } from '@/lib/symbol-resolution';
 import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults';
+import { detectEtfIntent, extractEtfCriteria, formatEtfContext } from '@/lib/etf-screener';
+import type { EtfScreenerResult, EtfScreenerCriteria } from '@/lib/etf-screener';
 
 // ── Test runner ────────────────────────────────────────────
 
@@ -464,6 +466,45 @@ test('Metric coherence integrated into validateResponse', 'metric_coherence', ()
   const issue = report.issues.find(i => i.pass === 'incoherence');
   assert(!!issue, 'Should have incoherence issue');
   assert(issue!.message.includes('yield'), 'Error should mention yield');
+});
+
+// ── Suite: ETF Screening (Part A) ─────────────────────────
+test('detectEtfIntent flags ETF/index-fund requests', 'etf_screening', () => {
+  assert(detectEtfIntent('build me a diversified ETF portfolio'), 'ETF phrase');
+  assert(detectEtfIntent('index funds for retirement'), 'index funds phrase');
+  assert(!detectEtfIntent('buy 1000 worth of apple'), 'plain stock request is not ETF');
+  assert(!detectEtfIntent('should I sell my NVDA?'), 'single stock sell is not ETF');
+});
+
+test('extractEtfCriteria parses sectors + yield goal from ETF prompt', 'etf_screening', () => {
+  const c = extractEtfCriteria('$10,000 diversified ETF portfolio, healthcare/financials/tech/manufacturing, 5% yield goal');
+  assert(c.categories.includes('healthcare'), 'healthcare detected');
+  assert(c.categories.includes('technology'), 'technology detected (tech)');
+  assert(c.categories.includes('financials'), 'financials detected');
+  assert(c.categories.includes('industrials'), 'industrials detected (manufacturing)');
+  assert(!c.categories.includes('broad'), '"diversified" must NOT map to broad-market category');
+  assert(c.yieldMin === 5, `yield goal parsed as ${c.yieldMin} (expected 5)`);
+});
+
+test('extractEtfCriteria parses expense ceiling + AUM floor', 'etf_screening', () => {
+  const c = extractEtfCriteria('cheap low-cost ETFs with expense ratio under 0.20% and AUM over 2 billion');
+  assert(c.expenseRatioMax === 0.20, `expense ratio parsed as ${c.expenseRatioMax}`);
+  assert(c.aumMin === 2e9, `AUM floor parsed as ${c.aumMin}`);
+});
+
+test('formatEtfContext enforces live expense ratio + trailing returns', 'etf_screening', () => {
+  const sample: EtfScreenerResult[] = [{
+    symbol: 'VOO', name: 'Vanguard S&P 500 ETF', category: null, fundFamily: 'Vanguard',
+    expenseRatioPct: 0.03, aum: 500e9, dividendYieldPct: 1.2,
+    return1yPct: 24.1, return3yPct: 10.2, return5yPct: 14.7, indexTracked: 'S&P 500',
+  }];
+  const criteria: EtfScreenerCriteria = { categories: [], expenseRatioMax: null, aumMin: null, yieldMin: null, return1yMin: null, return3yMin: null, return5yMin: null, indexTracked: null };
+  const ctx = formatEtfContext(sample, criteria);
+  assert(ctx.includes('expenseRatio=0.03%'), 'expense ratio rendered');
+  assert(ctx.includes('returns[1y=24.1%, 3y=10.2%, 5y=14.7%]'), 'trailing 1y/3y/5y returns rendered');
+  assert(ctx.includes('NEVER estimate'), 'no-estimation enforcement present');
+  assert(ctx.includes('MUST cite'), 'citation mandate present');
+  assert(formatEtfContext([], criteria) === '', 'empty results → empty context');
 });
 
 // ── Run ────────────────────────────────────────────────────

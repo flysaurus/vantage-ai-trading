@@ -1635,19 +1635,42 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     // ── Retry prompt injection (for validation-driven regeneration) ──
     const requestedBudget = extractBudgetFromHistory(messages);
 
-    // ── Stock Screening: delegated to Phase 3 orchestrator ──
-    const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
-    const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
-    const screeningContext = screeningOrch.context;
-    let screeningResults: Awaited<ReturnType<typeof import('@/lib/ai/orchestrator').runScreening>> | null = screeningOrch.results;
-    let screeningCriteria: Record<string, any> | null = screeningOrch.criteria;
-    let screeningSource = screeningOrch.source;
-    let multiSectorPools = screeningOrch.multiSectorPools;
+    // ── Vehicle-aware screening: ETF path (Part A) vs stock orchestrator ──
+    const { detectEtfIntent } = await import('@/lib/etf-screener');
+    const isEtfRequest = detectEtfIntent(lastMessage);
+    let screeningContext = '';
+    let screeningResults: Awaited<ReturnType<typeof import('@/lib/ai/orchestrator').runScreening>> | null = null;
+    let screeningCriteria: Record<string, any> | null = null;
+    let screeningSource: string | null = null;
+    let multiSectorPools: Awaited<ReturnType<typeof import('@/lib/ai/orchestrator').orchestrateScreening>>['multiSectorPools'] = null;
+    let etfScreeningResults: { total: number; scanned: number; universe: number } | null = null;
 
-    if (!screeningOrch.skipped) {
-      console.log(`[chat] 🔍 Orchestrator: source=${screeningOrch.source} pools=${screeningOrch.multiSectorPools?.length || 0} results=${screeningOrch.results?.results?.length || 0}`);
-      if (screeningOrch.results?.error) {
-        console.error('[chat] 🔍 Screener error:', screeningOrch.results.error);
+    if (isEtfRequest) {
+      const { extractEtfCriteria, screenEtfs, formatEtfContext } = await import('@/lib/etf-screener');
+      try {
+        const etfCriteria = extractEtfCriteria(lastMessage);
+        const etfOutput = await screenEtfs(etfCriteria, { maxScan: 12, limit: 15 });
+        etfScreeningResults = { total: etfOutput.total, scanned: etfOutput.scanned, universe: etfOutput.universe };
+        screeningContext = formatEtfContext(etfOutput.results, etfCriteria);
+        screeningCriteria = { ...etfCriteria, _etf: true };
+        console.log(`[chat] 🔍 ETF screener: scanned=${etfOutput.scanned} matches=${etfOutput.total} universe=${etfOutput.universe}`);
+      } catch (e) {
+        console.error('[chat] ETF screening error (non-fatal):', e);
+      }
+    } else {
+      const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
+      const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
+      screeningContext = screeningOrch.context;
+      screeningResults = screeningOrch.results;
+      screeningCriteria = screeningOrch.criteria;
+      screeningSource = screeningOrch.source;
+      multiSectorPools = screeningOrch.multiSectorPools;
+
+      if (!screeningOrch.skipped) {
+        console.log(`[chat] 🔍 Orchestrator: source=${screeningOrch.source} pools=${screeningOrch.multiSectorPools?.length || 0} results=${screeningOrch.results?.results?.length || 0}`);
+        if (screeningOrch.results?.error) {
+          console.error('[chat] 🔍 Screener error:', screeningOrch.results.error);
+        }
       }
     }
     const systemBlocks: SystemBlock[] = [
@@ -1765,7 +1788,27 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           [...initialMessages];
 
         // ── Screening results checklist ──
-        if (screeningResults && screeningCriteria) {
+        if (etfScreeningResults) {
+          const count = etfScreeningResults.total;
+          const criteria = (screeningCriteria || {}) as Record<string, any>;
+          const parts: string[] = [];
+          if (Array.isArray(criteria.categories) && criteria.categories.length) parts.push(`sectors: ${criteria.categories.join(', ')}`);
+          if (criteria.expenseRatioMax != null) parts.push(`ER ≤ ${criteria.expenseRatioMax}%`);
+          if (criteria.aumMin != null) parts.push(`AUM ≥ $${(criteria.aumMin / 1e6).toFixed(0)}M`);
+          if (criteria.yieldMin != null) parts.push(`yield ≥ ${criteria.yieldMin}%`);
+          if (criteria.return1yMin != null) parts.push(`1y ≥ ${criteria.return1yMin}%`);
+          const criteriaDesc = parts.join(', ') || 'broad ETF scan';
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            screeningMeta: { criteria, criteriaDescription: criteriaDesc, matchCount: count, provider: 'etf-screener', source: 'etf', multiSector: false }
+          })}\n\n`));
+          if (count > 0) {
+            sendChecklist(controller, encoder, 'screening', 'done', `${count} ETFs with live expense/return data (${criteriaDesc})`);
+            sendChecklist(controller, encoder, 'tickers_resolved', 'done', `${count} ETFs screened from ${etfScreeningResults.universe} universe funds`);
+          } else {
+            sendChecklist(controller, encoder, 'screening', 'failed', `0 ETFs matched ${criteriaDesc}`);
+            sendChecklist(controller, encoder, 'tickers_resolved', 'failed', `0 ETFs for ${criteriaDesc} — try wider criteria`);
+          }
+        } else if (screeningResults && screeningCriteria) {
           const isMulti = screeningCriteria._multi === true && multiSectorPools && multiSectorPools.length > 0;
 
           if (isMulti && multiSectorPools) {
