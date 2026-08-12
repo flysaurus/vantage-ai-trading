@@ -200,6 +200,15 @@ test('Internal monologue detected', 'validation', () => {
   assert(!!issue, 'Should have incoherence issue');
 });
 
+test('CLARIFY lead-in is not monologue', 'validation', () => {
+  // Regression: "I need to clarify..." opening a CLARIFY response was being
+  // falsely flagged as internal monologue, forcing a silent regenerate loop.
+  const response = 'I need to clarify a couple things before I build this.\n[CLARIFY:{"question":"Growth or value?","options":["Growth","Value"]}]';
+  const report = validateResponse(response);
+  const monoIssue = report.issues.find(i => i.pass === 'incoherence' && /monologue/i.test(i.message || ''));
+  assert(!monoIssue, 'CLARIFY lead-in should not be flagged as monologue');
+});
+
 test('Duplicate SUMMARY_TLDR detected', 'validation', () => {
   const response = '[SUMMARY_TLDR:Portfolio A]\n[SUMMARY_TLDR:Portfolio B]\n[RECOMMEND:AAPL:BUY:$5000]';
   const report = validateResponse(response, 5000);

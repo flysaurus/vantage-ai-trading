@@ -176,8 +176,13 @@ export function stripTrailingQuestions(text: string): string {
 
 // ── Pass 2: Incoherence detection ─────────────────────────
 
+// Legitimate CLARIFY lead-ins ("I need to clarify…", "Let me confirm…") are
+// user-facing questions, NOT reasoning-process leakage. The system prompt allows a
+// brief prose lead-in before a [CLARIFY:{...}] block, so exclude those verbs from
+// the opening "thinking words" pattern below (which is what was falsely flagging
+// CLARIFY responses and triggering a silent regenerate loop).
 const INTERNAL_MONOLOGUE_PATTERNS = [
-  /^(?:Hmm|Let me|I should|I need to|I'll start|First, I'll|Let's see|Okay,|Alright,|Wait,|Actually,|I think I|I realize)/m,
+  /^(?!(?:Let me|I (?:should|need to))\s+(?:clarify|ask|confirm|understand|know)\b)(?:Hmm|Let me|I should|I need to|I'll start|First, I'll|Let's see|Okay,|Alright,|Wait,|Actually,|I think I|I realize)/m,
   /(?:the user wants|the user asked|the user is asking|the user requested)\b/i,
   /(?:my instructions|my system prompt|my guidelines) say\b/i,
   /I need to (?:recommend|provide|suggest|offer|build|construct)/i,
