@@ -11,7 +11,7 @@
 //
 // ──────────────────────────────────────────────────────────────────
 
-import { validateResponse, stripForeignSuffixes, stripRecommendFromClarify, detectMetricIncoherence } from '../validator';
+import { validateResponse, stripForeignSuffixes, stripRecommendFromClarify, detectMetricIncoherence, detectIncoherence } from '../validator';
 import { classifyIntent, createConversationState } from '../manager';
 import { sanitizeClarifyResponse, analyzeMarkerPresence } from '../presenter';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
@@ -505,6 +505,25 @@ test('formatEtfContext enforces live expense ratio + trailing returns', 'etf_scr
   assert(ctx.includes('NEVER estimate'), 'no-estimation enforcement present');
   assert(ctx.includes('MUST cite'), 'citation mandate present');
   assert(formatEtfContext([], criteria) === '', 'empty results → empty context');
+});
+
+test('CLARIFY lead-in "I need to pin down…" is not monologue', 'etf_screening', () => {
+  const clarify = 'I need to pin down a couple of things before I build this out.\n\n[CLARIFY:{"question":"How strict is the 5% yield target?","options":["Hard","Soft"]}]';
+  const result = detectIncoherence(clarify, null);
+  assert(result === null, `CLARIFY lead-in must not flag monologue, got: ${result}`);
+});
+
+test('formatEtfContext appends relaxation note when criteria relaxed', 'etf_screening', () => {
+  const sample: EtfScreenerResult[] = [{
+    symbol: 'XLV', name: 'Health Care Select Sector SPDR Fund', category: 'Health', fundFamily: 'State Street',
+    expenseRatioPct: 0.09, aum: 40e9, dividendYieldPct: 1.3,
+    return1yPct: 12.0, return3yPct: 8.0, return5yPct: 11.0, indexTracked: 'S&P 500',
+  }];
+  const criteria: EtfScreenerCriteria = { categories: ['healthcare'], expenseRatioMax: null, aumMin: null, yieldMin: 5, return1yMin: null, return3yMin: null, return5yMin: null, indexTracked: null };
+  const ctx = formatEtfContext(sample, criteria, ['yield >= 5%']);
+  assert(ctx.includes('relaxed'), 'relaxation note present');
+  assert(ctx.includes('yield >= 5%'), 'relaxed criterion named');
+  assert(ctx.includes('yield=1.30%'), 'actual yield still cited');
 });
 
 // ── Run ────────────────────────────────────────────────────

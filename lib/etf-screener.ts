@@ -44,6 +44,7 @@ export interface EtfScreenOutput {
   scanned: number;   // number of candidates enriched
   total: number;     // matches after filters
   universe: number;  // size of discovery universe loaded
+  relaxations: string[]; // criteria relaxed because nothing qualified
 }
 
 // ── Category keywords (fund-focus, not stock sectors) ─────────
@@ -213,18 +214,56 @@ export async function screenEtfs(
     }
   }
 
-  // Apply filters
-  let filtered = enriched;
-  if (criteria.expenseRatioMax != null) filtered = filtered.filter(e => e.expenseRatioPct != null && e.expenseRatioPct <= criteria.expenseRatioMax!);
-  if (criteria.aumMin != null) filtered = filtered.filter(e => e.aum != null && e.aum >= criteria.aumMin!);
-  if (criteria.yieldMin != null) filtered = filtered.filter(e => e.dividendYieldPct != null && e.dividendYieldPct >= criteria.yieldMin!);
-  if (criteria.return1yMin != null) filtered = filtered.filter(e => e.return1yPct != null && e.return1yPct >= criteria.return1yMin!);
-  if (criteria.return3yMin != null) filtered = filtered.filter(e => e.return3yPct != null && e.return3yPct >= criteria.return3yMin!);
-  if (criteria.return5yMin != null) filtered = filtered.filter(e => e.return5yPct != null && e.return5yPct >= criteria.return5yMin!);
-  if (criteria.categories.length > 0) filtered = filtered.filter(e => categoryMatch(e, criteria.categories));
-  if (criteria.indexTracked) {
-    const idx = criteria.indexTracked.toLowerCase();
-    filtered = filtered.filter(e => e.indexTracked != null && e.indexTracked.toLowerCase().includes(idx));
+  // Apply filters with graceful relaxation — a strict constraint (e.g. a 5%
+  // yield "goal") shouldn't collapse the whole screen to zero matches.
+  const applyFilters = (over: {
+    expenseRatioMax: number | null;
+    yieldMin: number | null;
+    return1yMin: number | null;
+    return3yMin: number | null;
+    return5yMin: number | null;
+    requireCategory: boolean;
+  }) => {
+    let f = enriched;
+    if (over.expenseRatioMax != null) f = f.filter(e => e.expenseRatioPct != null && e.expenseRatioPct <= over.expenseRatioMax!);
+    if (criteria.aumMin != null) f = f.filter(e => e.aum != null && e.aum >= criteria.aumMin!);
+    if (over.yieldMin != null) f = f.filter(e => e.dividendYieldPct != null && e.dividendYieldPct >= over.yieldMin!);
+    if (over.return1yMin != null) f = f.filter(e => e.return1yPct != null && e.return1yPct >= over.return1yMin!);
+    if (over.return3yMin != null) f = f.filter(e => e.return3yPct != null && e.return3yPct >= over.return3yMin!);
+    if (over.return5yMin != null) f = f.filter(e => e.return5yPct != null && e.return5yPct >= over.return5yMin!);
+    if (over.requireCategory && criteria.categories.length > 0) f = f.filter(e => categoryMatch(e, criteria.categories));
+    if (criteria.indexTracked) {
+      const idx = criteria.indexTracked.toLowerCase();
+      f = f.filter(e => e.indexTracked != null && e.indexTracked.toLowerCase().includes(idx));
+    }
+    return f;
+  };
+
+  const relaxations: string[] = [];
+  let filtered = applyFilters({
+    expenseRatioMax: criteria.expenseRatioMax,
+    yieldMin: criteria.yieldMin,
+    return1yMin: criteria.return1yMin,
+    return3yMin: criteria.return3yMin,
+    return5yMin: criteria.return5yMin,
+    requireCategory: true,
+  });
+
+  if (filtered.length === 0 && criteria.yieldMin != null) {
+    relaxations.push(`yield >= ${criteria.yieldMin}%`);
+    filtered = applyFilters({ expenseRatioMax: criteria.expenseRatioMax, yieldMin: null, return1yMin: criteria.return1yMin, return3yMin: criteria.return3yMin, return5yMin: criteria.return5yMin, requireCategory: true });
+  }
+  if (filtered.length === 0 && (criteria.return1yMin != null || criteria.return3yMin != null || criteria.return5yMin != null)) {
+    relaxations.push('trailing-return floor');
+    filtered = applyFilters({ expenseRatioMax: criteria.expenseRatioMax, yieldMin: null, return1yMin: null, return3yMin: null, return5yMin: null, requireCategory: true });
+  }
+  if (filtered.length === 0 && criteria.expenseRatioMax != null) {
+    relaxations.push('expense-ratio ceiling');
+    filtered = applyFilters({ expenseRatioMax: null, yieldMin: null, return1yMin: null, return3yMin: null, return5yMin: null, requireCategory: true });
+  }
+  if (filtered.length === 0 && criteria.categories.length > 0) {
+    relaxations.push('category match');
+    filtered = applyFilters({ expenseRatioMax: null, yieldMin: null, return1yMin: null, return3yMin: null, return5yMin: null, requireCategory: false });
   }
 
   // Sort: AUM descending (liquidity proxy).
@@ -235,6 +274,7 @@ export async function screenEtfs(
     scanned: enriched.length,
     total: filtered.length,
     universe: universe.length,
+    relaxations,
   };
 }
 
@@ -247,7 +287,7 @@ function fmtAum(v: number): string {
 }
 
 /** Build the prompt context block. Enforces live expense/return citation. */
-export function formatEtfContext(results: EtfScreenerResult[], criteria: EtfScreenerCriteria): string {
+export function formatEtfContext(results: EtfScreenerResult[], criteria: EtfScreenerCriteria, relaxations: string[] = []): string {
   if (!results || results.length === 0) return '';
 
   const lines = results.slice(0, 15).map(r => {
@@ -265,8 +305,13 @@ export function formatEtfContext(results: EtfScreenerResult[], criteria: EtfScre
     return `  ${parts.join(' | ')}`;
   });
 
+  const relaxNote = relaxations.length
+    ? `\n\nNOTE: the user's criteria for [${relaxations.join(', ')}] were relaxed because no funds qualified. ` +
+      `Be honest about the gap — state the actual expense ratios and yields you cite, and flag where they fall short of what the user asked for.`
+    : '';
+
   return `SCREENED ETF UNIVERSE (${results.length} candidates, live fund data):\n${lines.join('\n')}\n\n` +
     `Build your ETF portfolio ONLY from the ETFs above. For EVERY ETF you recommend, you MUST cite its ` +
     `live expense ratio AND trailing 1y/3y/5y returns exactly as shown above. If a field is missing above, ` +
-    `say "not available" — NEVER estimate expense ratios or returns from memory.`;
+    `say "not available" — NEVER estimate expense ratios or returns from memory.${relaxNote}`;
 }

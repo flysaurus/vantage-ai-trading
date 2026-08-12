@@ -1651,7 +1651,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         const etfCriteria = extractEtfCriteria(lastMessage);
         const etfOutput = await screenEtfs(etfCriteria, { maxScan: 12, limit: 15 });
         etfScreeningResults = { total: etfOutput.total, scanned: etfOutput.scanned, universe: etfOutput.universe };
-        screeningContext = formatEtfContext(etfOutput.results, etfCriteria);
+        screeningContext = formatEtfContext(etfOutput.results, etfCriteria, etfOutput.relaxations);
         screeningCriteria = { ...etfCriteria, _etf: true };
         console.log(`[chat] 🔍 ETF screener: scanned=${etfOutput.scanned} matches=${etfOutput.total} universe=${etfOutput.universe}`);
       } catch (e) {

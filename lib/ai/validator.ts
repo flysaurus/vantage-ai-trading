@@ -207,9 +207,10 @@ const PROSE_QUESTION_PATTERNS = [
 export function detectIncoherence(response: string, requestedBudget?: number | null): string | null {
   // ── Internal monologue check ──
   // Only reject monologue leakage when the response has NO actionable markers.
-  // If the AI already produced RECOMMEND or PORTFOLIO blocks, a casual "Hmm"
-  // or "Let me" prefix is harmless — rejecting it just breaks valid single-stock buys.
-  const hasActionableMarkers = /\[RECOMMEND:|\[PORTFOLIO:\{/i.test(response);
+  // If the AI already produced RECOMMEND, PORTFOLIO, or CLARIFY blocks, a casual
+  // "Hmm" / "Let me" / "I need to pin down…" lead-in is harmless — rejecting it
+  // just breaks valid single-stock buys and legitimate CLARIFY responses.
+  const hasActionableMarkers = /\[RECOMMEND:|\[PORTFOLIO:\{|\[CLARIFY:\{/i.test(response);
   if (!hasActionableMarkers) {
     for (const pattern of INTERNAL_MONOLOGUE_PATTERNS) {
       if (pattern.test(response)) {
