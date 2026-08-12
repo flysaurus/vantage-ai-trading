@@ -91,10 +91,12 @@ const FALLBACK_SYMBOLS: Record<string, string> = {
 
 // Tickers that Finnhub free tier may not index (newer IPOs, etc.)
 // Phase -1: these bypass Finnhub entirely and resolve authoritatively.
-const PREVERIFIED_TICKERS: Record<string, { name: string; exchange: string }> = {
-  'SPCX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
-  'SPACEX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
-  'SPACE EXPLORATION': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS' },
+// canonicalSymbol is the authoritative ticker — NOT the lookup key.
+// Prevents [RECOMMEND:SPACEX:...] when the real ticker is SPCX.
+const PREVERIFIED_TICKERS: Record<string, { name: string; exchange: string; canonicalSymbol: string }> = {
+  'SPCX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS', canonicalSymbol: 'SPCX' },
+  'SPACEX': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS', canonicalSymbol: 'SPCX' },
+  'SPACE EXPLORATION': { name: 'Space Exploration Technologies Corp.', exchange: 'NasdaqGS', canonicalSymbol: 'SPCX' },
 };
 
 // ── Helpers ───────────────────────────────────────────────
@@ -425,9 +427,9 @@ export async function resolveCompanyName(
   const upperQuery = companyName.trim().toUpperCase();
   if (PREVERIFIED_TICKERS[upperQuery]) {
     const pv = PREVERIFIED_TICKERS[upperQuery];
-    console.log(`[symbol-res] ✅ Phase -1: Pre-verified ticker "${upperQuery}" → ${pv.name} (${pv.exchange})`);
+    console.log(`[symbol-res] ✅ Phase -1: Pre-verified ticker "${upperQuery}" → ${pv.name} (canonical: ${pv.canonicalSymbol}, ${pv.exchange})`);
     return [{
-      symbol: upperQuery,
+      symbol: pv.canonicalSymbol,
       name: pv.name,
       source: 'cache_fallback',
       confidence: 'high',

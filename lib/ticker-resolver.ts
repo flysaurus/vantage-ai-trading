@@ -175,9 +175,10 @@ async function quickValidate(symbol: string, usSymbols: Set<string>): Promise<Ti
   const upper = symbol.toUpperCase();
 
   // Pre-verified tickers (e.g., SPCX — newer IPOs Finnhub free tier might not index)
+  // canonicalSymbol is the authoritative ticker, NOT the lookup key.
   if (PREVERIFIED_TICKERS[upper]) {
     const pv = PREVERIFIED_TICKERS[upper];
-    return { symbol: upper, name: pv.name, exchange: pv.exchange, confidence: 'high', source: 'preverified', tier: 0 };
+    return { symbol: pv.canonicalSymbol, name: pv.name, exchange: pv.exchange, confidence: 'high', source: 'preverified', tier: 0 };
   }
 
   // US symbol cache (fast, in-memory)

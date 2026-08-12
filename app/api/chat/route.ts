@@ -175,15 +175,18 @@ function extractCompanyNames(text: string): string[] {
 async function resolveOneFast(name: string): Promise<{ symbol: string; name: string } | null> {
   const key = process.env.FINNHUB_IO_API_KEY
   // Phase -1: Pre-verified tickers bypass Finnhub entirely
-  const PREVERIFIED: Record<string, { name: string }> = {
-    'SPCX': { name: 'Space Exploration Technologies Corp.' },
-    'SPACEX': { name: 'Space Exploration Technologies Corp.' },
-    'SPACE EXPLORATION': { name: 'Space Exploration Technologies Corp.' },
+  // canonicalSymbol is the authoritative ticker, NOT the lookup key.
+  // Prevents [RECOMMEND:SPACEX:...] when the real ticker is SPCX.
+  const PREVERIFIED: Record<string, { name: string; canonicalSymbol: string }> = {
+    'SPCX': { name: 'Space Exploration Technologies Corp.', canonicalSymbol: 'SPCX' },
+    'SPACEX': { name: 'Space Exploration Technologies Corp.', canonicalSymbol: 'SPCX' },
+    'SPACE EXPLORATION': { name: 'Space Exploration Technologies Corp.', canonicalSymbol: 'SPCX' },
   };
   const upper = name.trim().toUpperCase();
   if (PREVERIFIED[upper]) {
-    console.log(`[chat] ✅ resolveOneFast: pre-verified "${upper}" → ${PREVERIFIED[upper].name}`);
-    return { symbol: upper, name: PREVERIFIED[upper].name };
+    const pv = PREVERIFIED[upper];
+    console.log(`[chat] ✅ resolveOneFast: pre-verified "${upper}" → ${pv.name} (canonical: ${pv.canonicalSymbol})`);
+    return { symbol: pv.canonicalSymbol, name: pv.name };
   }
   if (!key) return null
   try {

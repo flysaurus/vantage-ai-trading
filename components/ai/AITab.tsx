@@ -1847,33 +1847,36 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 const tldr = extractTLDR(msg.content);
                 const showTLDR = tldr && qualifiesForTLDR(msg.content);
                 const isCollapsed = collapsedTLDRs.has(i);
+                const tldrToggleButton = (
+                  <div style={{ marginTop: isCollapsed ? '8px' : '6px', marginBottom: '0' }}>
+                    <button
+                      onClick={() => toggleTLDR(i)}
+                      style={{
+                        background: 'rgba(34,211,238,0.08)',
+                        border: '1px solid rgba(34,211,238,0.2)',
+                        borderRadius: '6px',
+                        color: '#22d3ee',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '2px 10px',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        opacity: 0.85,
+                      }}
+                    >
+                      {isCollapsed ? 'Show full response ▲' : 'TL;DR ▼'}
+                    </button>
+                  </div>
+                );
                 return (
                   <>
-                    {showTLDR && (
-                      <div style={{ marginBottom: isCollapsed ? '0' : '6px' }}>
-                        <button
-                          onClick={() => toggleTLDR(i)}
-                          style={{
-                            background: 'rgba(34,211,238,0.08)',
-                            border: '1px solid rgba(34,211,238,0.2)',
-                            borderRadius: '6px',
-                            color: '#22d3ee',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            padding: '2px 10px',
-                            cursor: 'pointer',
-                            fontFamily: 'inherit',
-                            opacity: 0.85,
-                          }}
-                        >
-                          {isCollapsed ? 'Show full response ▲' : 'TL;DR ▼'}
-                        </button>
-                      </div>
-                    )}
                     {isCollapsed ? (
-                      <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.6', fontStyle: 'italic', borderLeft: '2px solid rgba(34,211,238,0.3)', paddingLeft: '10px' }}>
-                        {tldr}
-                      </div>
+                      <>
+                        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.6', fontStyle: 'italic', borderLeft: '2px solid rgba(34,211,238,0.3)', paddingLeft: '10px' }}>
+                          {tldr}
+                        </div>
+                        {showTLDR && tldrToggleButton}
+                      </>
                     ) : (
                       <>
                       <ReactMarkdown
@@ -1913,6 +1916,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                             />
                           );
                         })()}
+                        {showTLDR && tldrToggleButton}
                       </>
                     )}
                   </>
