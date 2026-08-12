@@ -526,7 +526,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const wasAtBottomRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastAiResponseRef = useRef('');
 
   // ── Smooth streaming queue ──
@@ -957,6 +957,20 @@ export function AITab({ messages, setMessages }: AITabProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // ── Auto-grow textarea composer ──
+  const [inputHeight, setInputHeight] = useState(40); // min height
+  const TEXTAREA_MAX_HEIGHT = 200;
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    // Reset height to get accurate scrollHeight, then grow
+    el.style.height = 'auto';
+    const newHeight = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT);
+    setInputHeight(newHeight);
+    el.style.height = newHeight + 'px';
+    el.style.overflowY = el.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, [input]);
 
   // ── Close menu on outside click ──
   useEffect(() => {
@@ -2178,13 +2192,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         <div>
           <div className="vantage-input-bar" style={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: inputHeight > 45 ? 'flex-end' : 'center',
             gap: '10px',
             background: 'rgba(20,28,48,0.9)',
             border: '1.5px solid rgba(34,211,238,0.45)',
-            borderRadius: '999px',
-            padding: '8px 8px 8px 8px',
+            borderRadius: inputHeight > 45 ? '18px' : '999px',
+            padding: inputHeight > 45 ? '8px 8px 8px 14px' : '8px 8px 8px 8px',
             boxShadow: '0 0 20px rgba(34,211,238,0.12)',
+            transition: 'border-radius 0.15s ease, padding 0.15s ease',
           }}>
             {/* Explore button — text-first, falls back to icon-only on narrow screens */}
             <button
@@ -2225,9 +2240,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 }} />
               )}
             </button>
-            <input
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onFocus={() => { if (showExplore) setShowExplore(false); }}
@@ -2246,9 +2261,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 border: 'none',
                 color: '#ffffff',
                 fontSize: '14px',
+                lineHeight: '1.5',
                 outline: 'none',
                 fontFamily: 'inherit',
                 minWidth: 0,
+                resize: 'none',
+                padding: inputHeight > 45 ? '6px 0' : '0',
+                alignSelf: 'center',
               }}
             />
             <div
