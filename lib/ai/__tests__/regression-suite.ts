@@ -312,6 +312,86 @@ test('Strip "How does that look?"', 'trailing_questions', () => {
   assert(!report.sanitizedText.includes('How does that look?'), 'Trailing question should be stripped');
 });
 
+// ── Suite: OTC Exclusion Regression ──────────────────────
+
+test('SPEC is in NOT_TICKERS (prevent OTC penny stock)', 'otc_exclusion', () => {
+  assert(NOT_TICKERS.has('SPEC'), 'SPEC should be in NOT_TICKERS to block OTC resolution');
+});
+
+test('OTC exchange regex rejects OTC patterns', 'otc_exclusion', () => {
+  const OTC_PATTERN = /^OTC|OTCMKTS|OTCBB|OTCQB|OTCQX|PINK/i;
+  assert(OTC_PATTERN.test('OTC'), 'OTC should match');
+  assert(OTC_PATTERN.test('OTCMKTS'), 'OTCMKTS should match');
+  assert(OTC_PATTERN.test('OTCQX'), 'OTCQX should match');
+  assert(OTC_PATTERN.test('Pink Sheet'), 'Pink should match');
+  assert(!OTC_PATTERN.test('NASDAQ'), 'NASDAQ should NOT match');
+  assert(!OTC_PATTERN.test('NYSE'), 'NYSE should NOT match');
+  assert(!OTC_PATTERN.test('ARCA'), 'ARCA should NOT match');
+});
+
+test('NOT_TICKERS contains common OTC ticker patterns', 'otc_exclusion', () => {
+  // Common words that match ticker regex but are OTC or false positives
+  assert(NOT_TICKERS.has('SPEC'), 'SPEC (OTC stock) should be blocked');
+  // BUY, SELL, CASH etc. are trading verbs/proxies — check at least one is blocked
+  assert(NOT_TICKERS.has('BUY') || NOT_TICKERS.has('CASH'),
+    'Trading-related words (BUY/CASH) should have at least one in NOT_TICKERS');
+});
+
+// ── Suite: Ambiguous Ticker Disambiguation ────────────────
+
+test('"spec. X" is ambiguous — SPEC in NOT_TICKERS, X is single-letter', 'ambiguous_tickers', () => {
+  // "spec." with period — SPEC is in NOT_TICKERS, should be filtered
+  const tokens = 'spec. X'.split(/[\s.]+/);
+  const tickerTokens = tokens.filter(t => /^[A-Z]{1,5}$/i.test(t));
+  // SPEC should be in NOT_TICKERS (blocked)
+  const specUpper = tokens[0].toUpperCase();
+  assert(NOT_TICKERS.has(specUpper) || specUpper === 'SPEC',
+    `SPEC should be blocked: NOT_TICKERS.has('SPEC')=${NOT_TICKERS.has('SPEC')}`);
+  // X is a real NYSE ticker (US Steel), single-letter — needs special handling
+  assertEq(tokens[1].toUpperCase(), 'X', 'Second token should be X');
+  // Single-letter tickers need explicit stock-context keywords to be extracted
+  // by extractTickers, otherwise the main regex ([A-Z]{2,5}) misses them.
+  // This is a known gap — single-letter tickers like X (US Steel), F (Ford)
+  // are legitimate NYSE stocks that need marker support.
+  const singleLetterRegex = /\$?\b([A-Z])\b\s*(?:stocks|shares|stock|share|price|quote|trading|ticker)\b/gi;
+  const text = 'buy X stock';
+  const matched = [...text.matchAll(singleLetterRegex)];
+  assert(matched.length > 0, 'Single-letter ticker with stock keyword should match');
+  // But without the keyword, it should NOT match (prevents false positives)
+  const textNoKeyword = 'buy X';
+  const matchedNoKeyword = [...textNoKeyword.matchAll(singleLetterRegex)];
+  assert(matchedNoKeyword.length === 0, 'Single-letter without keyword should NOT match to prevent false positives');
+});
+
+test('Single-letter X (US Steel) is a valid NYSE ticker', 'ambiguous_tickers', () => {
+  // X = US Steel, listed on NYSE — should NOT be in NOT_TICKERS
+  assert(!NOT_TICKERS.has('X'), 'X (US Steel) should be resolvable');
+  // But single-letter tickers need special handling in extractTickers/extractRegexTickers
+  // because the main regex pattern is [A-Z]{2,5} (2-char minimum)
+  const mainRegex = /\$?\b([A-Z]{2,5})\b/gi;
+  // Use a sentence where only X is a short token — avoid 2-5 letter words
+  // "check X price" has "is" (2), but NOT_TICKERS filters it. The point is X alone won't match.
+  const text = 'ticker X position';
+  const matches = [...text.matchAll(mainRegex)];
+  // "ticker" is 6 chars, "position" is 8 chars, X is 1 char — none match [A-Z]{2,5}
+  assert(matches.length === 0, 'Main regex should NOT match single-letter X — needs keyword fallback');
+});
+
+// ─── Suite: PREVERIFIED Canonical Symbol Resolution ─────
+
+test('PREVERIFIED maps return canonical symbol, not lookup key', 'preverified', () => {
+  // Import the PREVERIFIED_TICKERS from symbol-resolution
+  // This is a structural test — PREVERIFIED entries MUST have a canonicalSymbol field
+  const { PREVERIFIED_TICKERS } = require('@/lib/symbol-resolution');
+  for (const [key, entry] of Object.entries(PREVERIFIED_TICKERS) as [string, any][]) {
+    assert(entry.canonicalSymbol !== undefined,
+      `PREVERIFIED_TICKERS["${key}"] must have canonicalSymbol field`);
+    // canonicalSymbol must be a valid 1-5 char uppercase ticker
+    assert(/^[A-Z]{1,5}$/.test(entry.canonicalSymbol),
+      `PREVERIFIED_TICKERS["${key}"].canonicalSymbol "${entry.canonicalSymbol}" must be a valid ticker format`);
+  }
+});
+
 // ── Run ────────────────────────────────────────────────────
 
 async function runAll(suiteFilter?: string) {

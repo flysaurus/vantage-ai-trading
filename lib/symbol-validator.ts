@@ -52,6 +52,8 @@ export async function loadSymbolCache(): Promise<Set<string>> {
     console.log('[symbol-validator] Fetching US stock symbol list from Finnhub...');
     // Fetch from multiple exchange codes to cover both major exchanges and OTC
     // (OTC ensures ADR tickers like SKHYV are included in the client-side validSymbols)
+    // Note: OTC exchange filtering for RECOMMEND markers happens at resolution time
+    // in resolveOneFast() — this Set is just for client-side ticker validation.
     const exchangeCodes = ['US', 'OTC'];
     const symbols = new Set<string>();
     const symbolNameMap = new Map<string, string>(); // symbol → description

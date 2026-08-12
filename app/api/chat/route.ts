@@ -61,23 +61,69 @@ function buildAccountContext(meta: {
   return `🔒 ACCOUNT CONTEXT: Connected to ${meta.brokerName} (${envLabel} environment). These are REAL ${envLabel === 'live' ? 'positions with real money' : 'paper-trading positions'}.${tradeNote}`;
 }
 
+// Known single-letter NYSE/Nasdaq tickers
+// These are legitimate US-listed stocks that the 2-5 char regex can't match.
+// MUST be kept in sync with actual listings (check if delisted/renamed).
+const SINGLE_LETTER_TICKERS = new Set([
+  'X',  // US Steel (NYSE)
+  'F',  // Ford Motor (NYSE)
+  'V',  // Visa (NYSE)
+  'T',  // AT&T (NYSE)
+  'C',  // Citigroup (NYSE)
+  'M',  // Macy's (NYSE)
+  'W',  // Wayfair (NYSE)
+]);
+
 // ─── Ticker extraction (filters from shared symbol-resolution module) ──
 function extractTickers(text: string): string[] {
   // Match: $SPCX, SPCX (2-5 letters, standalone, case-insensitive)
   const matches = text.match(/\$?\b([A-Z]{2,5})\b/gi);
-  if (!matches) {
-    // Try single-letter tickers: only when explicitly in stock context
-    // e.g., "F stock", "C price quote", "T shares"
-    const singleLetter = text.match(/\$?\b([A-Z])\b\s*(?:stocks|shares|stock|share|price|quote|trading|ticker)\b/gi);
-    if (singleLetter) {
-      return [...new Set(singleLetter.map(t => t.replace(/[$\s]+.*$/g, '').toUpperCase()).filter(t => t.length === 1 && /^[A-Z]$/.test(t) && !NOT_TICKERS.has(t)))];
-    }
-    return [];
+  const results = new Set<string>();
+
+  if (matches) {
+    matches
+      .map(t => t.replace('$', '').toUpperCase())
+      .filter(t => !NOT_TICKERS.has(t))
+      .forEach(t => results.add(t));
   }
-  const tickers = matches
-    .map(t => t.replace('$', '').toUpperCase())
-    .filter(t => !NOT_TICKERS.has(t));
-  return [...new Set(tickers)]; // deduplicate
+
+  // Single-letter tickers: keyword context (e.g., "F stock", "C price quote")
+  const singleLetter = text.match(/\$?\b([A-Z])\b\s*(?:stocks|shares|stock|share|price|quote|trading|ticker)\b/gi);
+  if (singleLetter) {
+    singleLetter
+      .map(t => t.replace(/[\$\s]+.*$/g, '').toUpperCase())
+      .filter(t => t.length === 1 && /^[A-Z]$/.test(t) && !NOT_TICKERS.has(t))
+      .forEach(t => results.add(t));
+  }
+
+  // Adjacent NOT_TICKERS → single-letter extraction
+  // Handles "spec. X" → SPEC blocked by NOT_TICKERS, X extracted as legit ticker
+  // Requires either: (a) blocked word is uppercase (ticker intent), or
+  // (b) buy/sell/invest context exists nearby within 100 chars.
+  const hasTradingContext = /\b(?:buy|sell|invest|trade|purchase|portfolio|position|allocation|shares|stock|stocks)\b/i.test(text);
+  const adjacentPattern = /\b([A-Z]{2,5})\b[.\s]+\b([A-Z])\b/gi;
+  let adjMatch;
+  while ((adjMatch = adjacentPattern.exec(text)) !== null) {
+    const rawBlocker = adjMatch[1];
+    const blocker = rawBlocker.toUpperCase();
+    const candidate = adjMatch[2].toUpperCase();
+    const isUppercase = rawBlocker === blocker;
+    if (NOT_TICKERS.has(blocker) && SINGLE_LETTER_TICKERS.has(candidate) && (isUppercase || hasTradingContext)) {
+      results.add(candidate);
+    }
+  }
+
+  // Direct buy/sell context with single-letter whitelist (e.g., "buy X", "sell F")
+  const buyPattern = /\b(?:buy|sell|invest|trade|purchase|get|add)\s+(?:\$?\d+\s+)?(?:some\s+)?(?:worth\s+)?\b([A-Z])\b/gi;
+  let buyMatch;
+  while ((buyMatch = buyPattern.exec(text)) !== null) {
+    const candidate = buyMatch[1].toUpperCase();
+    if (SINGLE_LETTER_TICKERS.has(candidate) && !NOT_TICKERS.has(candidate)) {
+      results.add(candidate);
+    }
+  }
+
+  return [...results]; // deduplicated via Set
 }
 
 // ─── Stock price intent detection ──
@@ -191,12 +237,19 @@ async function resolveOneFast(name: string): Promise<{ symbol: string; name: str
   if (!key) return null
   try {
     // Phase 0: If input looks like a ticker, check profile directly
+    // MUST validate exchange — OTC stocks are excluded (see OTC_EXCHANGE_RE below)
     if (/^[A-Z]{1,5}$/i.test(name.trim())) {
       const ticker = name.trim().toUpperCase();
       const pRes = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(ticker)}&token=${key}`)
       if (pRes.ok) {
         const p = await pRes.json()
         if (p.name && p.ticker && p.exchange) {
+          // Reject OTC-listed securities — same as foreign-exchange exclusion
+          const rawEx = (p.exchange || '').toUpperCase();
+          if (/^OTC|OTCMKTS|OTCBB|OTCQB|OTCQX|PINK/i.test(rawEx)) {
+            console.log(`[chat] 🚫 resolveOneFast: rejected OTC ticker "${ticker}" (exchange: ${p.exchange})`);
+            return null;
+          }
           console.log(`[chat] ✅ resolveOneFast: direct ticker lookup "${ticker}" → ${p.name} (${p.exchange})`)
           return { symbol: ticker, name: p.name }
         }
@@ -208,10 +261,9 @@ async function resolveOneFast(name: string): Promise<{ symbol: string; name: str
     if (!res.ok) return null
     const data = await res.json()
     if (data.result?.length > 0) {
-      // Prefer US-exchange results — match at start of exchange string
-      // (e.g. "NasdaqGS", "Nasdaq Global Select", "NYSE American")
+      // Prefer US-exchange results — NYSE, NASDAQ, AMEX, ARCA, BATS, IEX ONLY (NO OTC)
       const usResult = data.result.find((r: any) =>
-        /^(NASDAQ|Nasdaq|NYSE|AMEX|OTC|BATS|IEX)/i.test(r.exchange || '') &&
+        /^(NASDAQ|Nasdaq|NYSE|AMEX|ARCA|BATS|IEX)/i.test(r.exchange || '') &&
         /^[A-Z]{1,5}(\.[A-Z])?$/.test(r.symbol)
       )
       if (usResult) return { symbol: usResult.symbol, name: usResult.description }
@@ -220,7 +272,15 @@ async function resolveOneFast(name: string): Promise<{ symbol: string; name: str
       if (valid && valid.symbol.toUpperCase() === name.toUpperCase()) {
         console.log(`[chat] 🔍 resolveOneFast: "${name}" found with exchange="${valid.exchange}", type="${valid.type}" — exchange didn't match US pattern`)
       }
-      if (valid) return { symbol: valid.symbol, name: valid.description }
+      if (valid) {
+        // Check if the only valid result is OTC — if so, reject it
+        const rawEx = (valid.exchange || '').toUpperCase();
+        if (/^OTC|OTCMKTS|OTCBB|OTCQB|OTCQX|PINK/i.test(rawEx)) {
+          console.log(`[chat] 🚫 resolveOneFast: search result for "${name}" is OTC (${valid.exchange}) — rejecting`);
+          return null;
+        }
+        return { symbol: valid.symbol, name: valid.description };
+      }
       // Log when no results pass the US ticker format check
       console.warn(`[chat] 🔍 resolveOneFast: "${name}" — ${data.result.length} Finnhub results, 0 passed US format check. Raw: ${data.result.slice(0,3).map((r:any) => `${r.symbol}(${r.exchange})`).join(', ')}`)
     }
