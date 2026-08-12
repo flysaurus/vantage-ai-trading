@@ -1127,27 +1127,35 @@ export async function getEtfProfile(symbol: string): Promise<EtfProfile | null> 
     const expenseRatioPct = yahooPct(expenseRaw);
 
     const aum = getRaw(sd, 'totalAssets');
-    const dividendYieldPct = yahooPct(sd.trailingAnnualDividendYield);
+    // ETF yield lives in `summaryDetail.yield` (trailing 12-month). `trailingAnnualDividendYield`
+    // is frequently an empty {} for funds, so prefer `yield` and fall back to it.
+    const dividendYieldPct = yahooPct(sd.yield) ?? yahooPct(sd.trailingAnnualDividendYield);
 
     const name = typeof priceMod?.longName === 'string' ? priceMod.longName
       : (typeof priceMod?.shortName === 'string' ? priceMod.shortName : symbol.toUpperCase());
     const description = typeof fp?.description === 'string' ? fp.description : null;
 
-    // Trailing returns
+    // Trailing returns — Yahoo `fundPerformance.trailingReturns` is an OBJECT keyed
+    // by period (ytd, oneMonth, threeMonth, oneYear, threeYear, fiveYear, tenYear),
+    // each a { raw, fmt }. `performanceOverview` is the alternate shape.
     let returnYtdPct: number | null = null;
     let return1yPct: number | null = null;
     let return3yPct: number | null = null;
     let return5yPct: number | null = null;
     const trailing = fperf?.trailingReturns;
-    if (Array.isArray(trailing)) {
-      for (const r of trailing) {
-        const period = r?.period;
-        const val = yahooPct(r?.value);
-        if (val == null) continue;
-        if (period === 'YTD' || period === 'ytd') returnYtdPct = val;
-        else if (period === '1y') return1yPct = val;
-        else if (period === '3y') return3yPct = val;
-        else if (period === '5y') return5yPct = val;
+    if (trailing && typeof trailing === 'object' && !Array.isArray(trailing)) {
+      returnYtdPct = yahooPct(trailing.ytd);
+      return1yPct = yahooPct(trailing.oneYear);
+      return3yPct = yahooPct(trailing.threeYear);
+      return5yPct = yahooPct(trailing.fiveYear);
+    }
+    if (return1yPct == null || return3yPct == null || return5yPct == null) {
+      const po = fperf?.performanceOverview;
+      if (po && typeof po === 'object') {
+        returnYtdPct = returnYtdPct ?? yahooPct(po.ytdReturnPct);
+        return1yPct = return1yPct ?? yahooPct(po.oneYearTotalReturn);
+        return3yPct = return3yPct ?? yahooPct(po.threeYearTotalReturn);
+        return5yPct = return5yPct ?? yahooPct(po.fiveYrAvgReturnPct);
       }
     }
 
