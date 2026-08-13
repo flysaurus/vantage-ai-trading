@@ -694,21 +694,6 @@ function extractMultiSectorCriteria(
 }
 
 
-async function runScreening(criteria: Record<string, any>): Promise<{ results: any[]; provider: string; error?: string }> {
-  try {
-    const res = await fetch('http://127.0.0.1:8766/screen', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...criteria, limit: 30 }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return { results: [], provider: 'error', error: `HTTP ${res.status}` };
-    return await res.json();
-  } catch (e: any) {
-    return { results: [], provider: 'error', error: e.message };
-  }
-}
-
 /** Format screening results as context for the AI system prompt. */
 function formatScreeningContext(results: any[], criteria: Record<string, any>, count: number): string {
   if (!results || results.length === 0) {

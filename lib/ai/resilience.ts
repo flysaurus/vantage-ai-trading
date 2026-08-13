@@ -216,9 +216,10 @@ export async function withFallback<T>(
   dependency: DependencyName,
   primaryFn: () => Promise<T>,
   context?: string,
+  timeoutMs?: number,
 ): Promise<{ result: T; source: 'primary' | 'fallback' }> {
   try {
-    const result = await withCircuitBreaker(dependency, primaryFn);
+    const result = await withCircuitBreaker(dependency, primaryFn, timeoutMs ? { timeoutMs } : undefined);
     return { result, source: 'primary' };
   } catch (err) {
     const fallback = fallbackRegistry.get(dependency);

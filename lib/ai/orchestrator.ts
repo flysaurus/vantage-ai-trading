@@ -15,6 +15,7 @@
 
 import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults';
 import { withFallback, stageLog } from '@/lib/ai/resilience';
+import { screenStocks } from '@/lib/equity-screener';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ const SECTOR_KEYWORDS: Record<string, string> = {
   // Communication Services
   'communication_services': 'communication|media|telecom|entertainment|streaming|social media|advertising|gaming',
   // Basic Materials
-  'basic_materials': 'material|mining|chemical|metal|steel|gold miner|copper|aluminum|lithium',
+  'basic_materials': 'material|materials|mining|mineral|minerals|chemical|metal|metals|steel|gold miner|copper|aluminum|lithium|rare earth|critical mineral',
   // Real Estate
   'real_estate': 'real estate|reit|property|housing|mortgage',
   // Utilities
@@ -156,6 +157,7 @@ export async function orchestrateScreening(
           'screener',
           () => runScreening(criteria),
           `multi-sector:${label}`,
+          30_000,
         );
         if (source === 'fallback') {
           stageLog('warn', 'screening', `Screener fallback for ${label}`, { dependency: 'screener' });
@@ -197,6 +199,7 @@ export async function orchestrateScreening(
     'screener',
     () => runScreening(criteria),
     'single-sector',
+    30_000,
   );
   const source = messageContainsSectorKeywords(message) ? 'explicit' : 'style_defaults';
   const finalSource = (scSource === 'fallback' ? `fallback:${source}` : source) as OrchestrationOutput['source'];
@@ -416,19 +419,21 @@ export function relaxCriteria(criteria: Record<string, any>): Record<string, any
 // ── Screener HTTP call ─────────────────────────────────────
 
 /**
- * Call the stock screener HTTP service.
- * Returns results array and provider metadata.
+ * Run the equity screener.
+ *
+ * Finnhub-direct (replaces the old localhost:8766 OpenBB service, which was
+ * never reachable from Vercel serverless). Returns results + provider metadata.
  */
 export async function runScreening(criteria: Record<string, any>): Promise<ScreeningResult> {
   try {
-    const res = await fetch('http://127.0.0.1:8766/screen', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...criteria, limit: 30 }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return { results: [], provider: 'error', error: `HTTP ${res.status}` };
-    return await res.json();
+    const output = await screenStocks(criteria);
+    if (output.relaxed.length > 0) {
+      console.warn('[orchestrator] 🔍 Screener auto-relaxed filters:', output.relaxed.join(','));
+    }
+    return {
+      results: output.results,
+      provider: output.provider,
+    };
   } catch (e: any) {
     return { results: [], provider: 'error', error: e.message };
   }
@@ -446,13 +451,25 @@ export function formatScreeningContext(
 ): string {
   if (!results || results.length === 0) return '';
 
-  const tickers = results.slice(0, 15).map((r: any) =>
+  const sorted = [...results].sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0));
+  const tickers = sorted.slice(0, 15).map((r: any) =>
     `${r.symbol || r.ticker} (${r.name || ''})`.replace(/\s{2,}/g, ' ').trim()
   );
 
-  return `STOCK SCREENER RESULTS (${results.length} matches, showing top ${Math.min(count, 15)}):
-${tickers.join(', ')}${results.length > 15 ? `, ...and ${results.length - 15} more` : ''}
-Criteria: ${JSON.stringify(criteria)}`;
+  const summary = sorted.slice(0, 8).map((r: any) => {
+    const parts = [`${r.symbol || r.ticker}`];
+    if (r.market_cap) parts.push(`MCap:$${(r.market_cap / 1e9).toFixed(1)}B`);
+    if (r.pe != null && r.pe > 0) parts.push(`PE:${r.pe.toFixed(1)}`);
+    if (r.eps_growth != null) parts.push(`Grow:${(r.eps_growth * 100).toFixed(0)}%`);
+    return parts.join(' ');
+  }).join('; ');
+
+  return `STOCK SCREENER RESULTS (${results.length} US-listed candidates from real-time Finnhub screening):\n` +
+    `Available tickers: ${tickers.join(', ')}${results.length > 15 ? `, ...and ${results.length - 15} more` : ''}\n` +
+    `Top by market cap: ${summary}\n` +
+    `Criteria: ${JSON.stringify(criteria)}\n` +
+    `You MUST build your stock allocation ONLY from the screened tickers above. ` +
+    `Do NOT substitute familiar tickers from memory. If none fit, say so and offer to widen.`;
 }
 
 /**
