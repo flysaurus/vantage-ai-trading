@@ -1671,7 +1671,17 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     if (resolvedVehicle === 'etfs' || resolvedVehicle === 'mixed') {
       const { extractEtfCriteria, screenEtfs, formatEtfContext } = await import('@/lib/etf-screener');
       try {
-        const etfCriteria = extractEtfCriteria(lastMessage);
+        // Bug B fix: derive ETF criteria from the FULL user-message history, not
+        // just the last message. Follow-up answers like "A mix of both" carry no
+        // sector keyword, so `extractEtfCriteria(lastMessage)` lost the original
+        // "healthcare" context and silently ran a broad (SPY/QQQ/VOO-style) scan
+        // — which is why healthcare ETFs (XLV/VHT) never appeared. User messages
+        // only, to avoid assistant responses polluting category detection.
+        const etfHistoryText = messages
+          .filter((m) => m.role === 'user')
+          .map((m) => m.content)
+          .join('\n');
+        const etfCriteria = extractEtfCriteria(etfHistoryText);
         const etfOutput = await screenEtfs(etfCriteria, { maxScan: 12, limit: 15 });
         etfScreeningResults = { total: etfOutput.total, scanned: etfOutput.scanned, universe: etfOutput.universe };
         const etfCtx = formatEtfContext(etfOutput.results, etfCriteria, etfOutput.relaxations);
