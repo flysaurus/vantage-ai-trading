@@ -67,7 +67,9 @@ export function createConversationState(): ConversationState {
 // determining whether to fire web search — that's a different concern.
 
 const PORTFOLIO_BUILD_PATTERNS = [
-  /build\s+(?:me\s+)?(?:a|an)\s*(?:new\s+)?portfolio/i,
+  // "build me a <…> portfolio" — allows qualifiers (budget, sector, style)
+  // between "a/an" and "portfolio" (e.g. "build me a $2k healthcare portfolio").
+  /build\s+(?:me\s+)?(?:a|an)\b[^.!?]{0,60}?\bportfolio\b/i,
   /recommend\s+(?:some\s+)?(?:stocks|picks|investments|positions)/i,
   /what\s+should\s+(?:I|we)\s+(?:buy|invest\s+in|pick)/i,
   /I\s+have\s+\$?[\d,.]+\s+(?:to\s+invest|in\s+cash|available)/i,
@@ -304,6 +306,7 @@ export function classifyIntent(message: string, state?: ConversationState): Clas
     needsClarify: false,
     vehicle: detectVehiclePreference(message),
     needsVehicleClarify: false,
+    requestedBudget: null,
   };
 
   // ── CLARIFY response detection (must check FIRST if clarify is open) ──
@@ -367,9 +370,17 @@ export function classifyIntent(message: string, state?: ConversationState): Clas
   }
 
   // ── Fallback: check for budget mentions that imply portfolio build ──
-  if (classification.intent === 'unknown' && classification.requestedBudget !== null) {
-    classification.intent = 'portfolio_build';
-    classification.confidence = 0.6;
+  // NOTE: `requestedBudget` is initialized to `null` above and only populated
+  // inside the pattern loops, so a bare `requestedBudget !== null` would
+  // misclassify EVERY unclassified message as a build. Check the message
+  // directly instead.
+  if (classification.intent === 'unknown') {
+    const fallbackBudget = extractBudgetFromText(message);
+    if (fallbackBudget !== null) {
+      classification.intent = 'portfolio_build';
+      classification.confidence = 0.6;
+      classification.requestedBudget = fallbackBudget;
+    }
   }
 
   // ── Sub-intent detection ──

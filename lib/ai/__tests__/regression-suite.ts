@@ -124,6 +124,27 @@ test('Detects mentioned tickers', 'intent', () => {
   assert(result.mentionedTickers.includes('MSFT'), 'Should detect MSFT');
 });
 
+test('Bare "A mix of both" is NOT a portfolio build', 'intent', () => {
+  const result = classifyIntent('A mix of both');
+  assertEq(result.intent, 'unknown', 'sub-sector/vehicle answer must not be classified as a build');
+});
+
+test('Bare greeting is NOT a portfolio build', 'intent', () => {
+  const result = classifyIntent('hello');
+  assertEq(result.intent, 'unknown', 'budget fallback must not promote unclassified text to a build');
+});
+
+test('Build request with sector qualifier → portfolio_build', 'intent', () => {
+  const result = classifyIntent('Build me a healthcare portfolio');
+  assertEq(result.intent, 'portfolio_build', 'qualified build request still classified as build');
+});
+
+test('Build request with budget + sector → portfolio_build', 'intent', () => {
+  const result = classifyIntent('Build me a $2k healthcare focused portfolio');
+  assertEq(result.intent, 'portfolio_build', 'budget-qualified build classified as build');
+  assert(result.requestedBudget !== null, 'budget extracted from message');
+});
+
 // ── Suite: Foreign Suffix Stripping ────────────────────────
 
 test('Strips JNJ.DE → JNJ', 'sanitization', () => {
