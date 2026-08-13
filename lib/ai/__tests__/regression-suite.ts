@@ -12,7 +12,7 @@
 // ──────────────────────────────────────────────────────────────────
 
 import { validateResponse, stripForeignSuffixes, stripRecommendFromClarify, detectMetricIncoherence, detectIncoherence } from '../validator';
-import { classifyIntent, createConversationState } from '../manager';
+import { classifyIntent, createConversationState, resolveVehicleForRequest } from '../manager';
 import { sanitizeClarifyResponse, analyzeMarkerPresence } from '../presenter';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import { NOT_TICKERS, FOREIGN_EXCHANGE_SUFFIXES, isFilteredCommonWord } from '@/lib/symbol-resolution';
@@ -524,6 +524,52 @@ test('formatEtfContext appends relaxation note when criteria relaxed', 'etf_scre
   assert(ctx.includes('relaxed'), 'relaxation note present');
   assert(ctx.includes('yield >= 5%'), 'relaxed criterion named');
   assert(ctx.includes('yield=1.30%'), 'actual yield still cited');
+});
+
+// ── Suite: Vehicle Triage (Bug A) ─────────────────────────
+// "A mix of both" is ambiguous — it can answer the VEHICLE split (stocks+ETFs)
+// OR a model-emitted SUB-SECTOR clarify (e.g. pharma/biotech vs services). The
+// vehicle must be resolved relative to the currently-open CLARIFY, not as a
+// global pattern match.
+
+const VEHICLE_CLARIFY = `[CLARIFY:{"question":"Do you want this portfolio built with individual stocks, ETFs, or a mix of both?","options":["Stocks only","ETFs only","A mix of both"]}]`;
+const SUBSECTOR_CLARIFY = `[CLARIFY:{"question":"Which healthcare sub-sector?","options":["Pharma/biotech","Services","A mix of both"]}]`;
+
+test('vehicle clarify open → "A mix of both" = mixed', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a $2k healthcare focused portfolio' },
+    { role: 'ai', content: VEHICLE_CLARIFY },
+    { role: 'user', content: 'A mix of both' },
+  ]);
+  assertEq(got, 'mixed', 'vehicle clarify answer resolves to mixed');
+});
+
+test('sub-sector clarify open → "A mix of both" ≠ vehicle answer', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a $2k healthcare focused portfolio' },
+    { role: 'ai', content: VEHICLE_CLARIFY },
+    { role: 'user', content: 'A mix of both' },
+    { role: 'ai', content: SUBSECTOR_CLARIFY },
+    { role: 'user', content: 'A mix of both' },
+  ]);
+  assertEq(got, 'unspecified', 'sub-sector mix must NOT re-resolve the vehicle to mixed');
+});
+
+test('legacy (no assistant clarify) → bare answer = mixed', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a $2k healthcare focused portfolio' },
+    { role: 'user', content: 'A mix of both' },
+  ]);
+  assertEq(got, 'mixed', 'bare answer after unspecified build still resolves to mixed');
+});
+
+test('vehicle clarify open → "Stocks only" = stocks', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a $2k portfolio' },
+    { role: 'ai', content: VEHICLE_CLARIFY },
+    { role: 'user', content: 'Stocks only' },
+  ]);
+  assertEq(got, 'stocks', 'explicit vehicle answer resolves correctly');
 });
 
 // ── Run ────────────────────────────────────────────────────

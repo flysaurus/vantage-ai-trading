@@ -179,11 +179,77 @@ export function detectVehicleAnswer(message: string): VehiclePreference | null {
   return null;
 }
 
+// ── Open-CLARIFY scoping (Bug A) ─────────────────────────────
+// "A mix of both" is ambiguous: it can answer the VEHICLE clarify (stocks +
+// ETFs) OR a MODEL-emitted SUB-SECTOR clarify (e.g. "pharma/biotech vs
+// services vs mix"). Reading it as a global vehicle answer regardless of
+// context re-resolved the vehicle to 'mixed' on sub-sector follow-ups →
+// redundant full re-screen + a confusing model context (the trigger for the
+// intermittent blank responses).
+//
+// We scope by inspecting the most recent assistant CLARIFY block. The
+// deterministic vehicle clarify always offers a "Stocks…" option AND an
+// "ETFs…" option; any other CLARIFY (sector/sub-sector options) is a
+// different question, so "a mix of both" must NOT be read as a vehicle answer.
+
+interface ClarifyBlock { question: string; options: string[]; }
+
+function extractClarifyBlocks(text: string): ClarifyBlock[] {
+  const blocks: ClarifyBlock[] = [];
+  const re = /\[CLARIFY:(\{.*?\})\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(m[1]);
+      if (parsed && typeof parsed.question === 'string') {
+        blocks.push({
+          question: parsed.question,
+          options: Array.isArray(parsed.options) ? parsed.options.map(String) : [],
+        });
+      }
+    } catch { /* malformed block — ignore */ }
+  }
+  return blocks;
+}
+
+function isVehicleClarify(blocks: ClarifyBlock[]): boolean {
+  return blocks.some((b) => {
+    const opts = b.options.map((o) => o.toLowerCase());
+    return opts.some((o) => /\bstocks?\b/.test(o)) && opts.some((o) => /\betfs?\b/.test(o));
+  });
+}
+
+/**
+ * Classify the CLARIFY question most recently asked by the assistant.
+ * 'vehicle'   → the deterministic stocks/ETFs/mixed split.
+ * 'subsector' → any other CLARIFY (sector/sub-sector/mix).
+ * 'none'      → the last assistant message is a normal reply, or there is none.
+ */
+function detectOpenClarifyType(
+  messages: Array<{ role: string; content: string }>,
+): 'vehicle' | 'subsector' | 'none' {
+  // Skip the last message — it is the current user input being resolved.
+  // The CLARIFY that may be "open" is the one the assistant asked immediately
+  // before this input.
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i];
+    if (!m) continue;
+    if (m.role === 'user') return 'none'; // reached a user msg before any assistant CLARIFY
+    const blocks = extractClarifyBlocks(m.content || '');
+    if (blocks.length > 0) return isVehicleClarify(blocks) ? 'vehicle' : 'subsector';
+    return 'none'; // last assistant message is not a CLARIFY
+  }
+  return 'none';
+}
+
 /**
  * Resolve the vehicle for the CURRENT request from the full conversation.
- * - If the last message is a bare vehicle answer to a prior build request
- *   that lacked a vehicle, the answer wins (fresh each request — not stored).
- * - Otherwise the vehicle is read from the last message directly.
+ * - If the last message is a bare vehicle answer to the OPEN vehicle clarify
+ *   (or, as a legacy fallback, to a prior build that lacked a vehicle), the
+ *   answer wins — fresh each request, not stored.
+ * - If the last message is a bare "a mix of both" answering a SUB-SECTOR
+ *   clarify, it is NOT a vehicle answer; the vehicle is read from the message
+ *   directly (→ 'unspecified' for a bare mix), so no redundant full re-screen.
  */
 export function resolveVehicleForRequest(
   messages: Array<{ role: string; content: string }>,
@@ -192,6 +258,20 @@ export function resolveVehicleForRequest(
   const answer = detectVehicleAnswer(last);
 
   if (answer !== null) {
+    const openClarify = detectOpenClarifyType(messages);
+
+    if (openClarify === 'subsector') {
+      // "A mix of both" answers a sub-sector CLARIFY, not the vehicle split.
+      return detectVehiclePreference(last);
+    }
+
+    if (openClarify === 'vehicle') {
+      return answer;
+    }
+
+    // openClarify === 'none' — legacy heuristic: bare vehicle answer following
+    // a build request that lacked a vehicle (older clients may not persist the
+    // deterministic vehicle CLARIFY as assistant text).
     const priorBuild = [...messages].slice(0, -1).reverse().find(
       (m) => m.role === 'user' && classifyIntent(m.content).intent === 'portfolio_build',
     );

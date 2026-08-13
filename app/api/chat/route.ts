@@ -1677,7 +1677,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // "healthcare" context and silently ran a broad (SPY/QQQ/VOO-style) scan
         // — which is why healthcare ETFs (XLV/VHT) never appeared. User messages
         // only, to avoid assistant responses polluting category detection.
-        const etfHistoryText = messages
+        const etfHistoryText = [...messages]
           .filter((m) => m.role === 'user')
           .map((m) => m.content)
           .join('\n');
