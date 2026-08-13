@@ -22,6 +22,9 @@ export type IntentCategory =
   | 'greeting'             // casual conversation
   | 'unknown';             // fallback
 
+/** What kind of security the user wants: individual stocks, ETFs, both, or not yet specified. */
+export type VehiclePreference = 'stocks' | 'etfs' | 'mixed' | 'unspecified';
+
 export interface Classification {
   intent: IntentCategory;
   confidence: number;       // 0–1
@@ -32,6 +35,8 @@ export interface Classification {
   isStaleDuplicate: boolean;
   needsClarify: boolean;    // AI should ask for clarification
   clarifyReason?: string;
+  vehicle: VehiclePreference;        // resolved vehicle preference for THIS message
+  needsVehicleClarify: boolean;      // portfolio build with no explicit vehicle
 }
 
 export interface ConversationState {
@@ -129,6 +134,75 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
   utilities: ['utility', 'electric', 'water', 'power grid'],
 };
 
+// ── Vehicle detection (Part B) ───────────────────────────────
+
+/**
+ * Detect whether a message explicitly specifies a security vehicle.
+ * Used on a single message (fresh build request or follow-up) to decide
+ * which screener(s) to run — or whether to ask first.
+ */
+export function detectVehiclePreference(message: string): VehiclePreference {
+  const m = message.toLowerCase();
+  const hasEtf = /\betfs?\b|exchange[- ]traded|index funds?\b|index[- ]tracking\b|\bpassive\b/i.test(m);
+  const hasStock = /\b(?:individual |single |specific )?stocks?\b|\bequit(?:y|ies)\b|\bstock[- ]picking\b|\b(?:individual |single )?shares?\b/i.test(m);
+  if (hasEtf && hasStock) return 'mixed';
+  if (hasEtf) return 'etfs';
+  if (hasStock) return 'stocks';
+  return 'unspecified';
+}
+
+/**
+ * Detect a bare vehicle-choice reply to the stocks/ETFs/mixed CLARIFY.
+ * Returns null when the message is NOT a short vehicle answer, so callers
+ * can distinguish a genuine follow-up from an unrelated new request.
+ */
+export function detectVehicleAnswer(message: string): VehiclePreference | null {
+  const m = message.trim().toLowerCase();
+  if (!m || m.length > 80) return null;
+
+  // Mixed answers (check first — "stocks and etfs" must not read as stocks)
+  if (/^(a\s+)?mix(?:ed|ture)?\b/.test(m) || /^(the\s+)?both\b/.test(m) ||
+      /^(a\s+)?(?:combination|blend)\b/.test(m) || /^(a\s+)?mix\s+of\s+both\b/.test(m) ||
+      /^(?:stocks?\s*(?:and|\+|&|\/)\s*etfs?|etfs?\s*(?:and|\+|&|\/)\s*stocks?)/.test(m)) {
+    return 'mixed';
+  }
+  // ETF answers
+  if (/^(?:just\s+)?(?:etfs?|index\s+funds?|exchange[- ]traded\s+funds?|funds?)\b/.test(m) ||
+      /^etfs?\s*(?:only|please)?$/.test(m)) {
+    return 'etfs';
+  }
+  // Stock answers
+  if (/^(?:just\s+)?(?:stocks?|equities|individual\s+stocks?|single\s+stocks?|shares?)\b/.test(m) ||
+      /^stocks?\s*(?:only|please)?$/.test(m)) {
+    return 'stocks';
+  }
+  return null;
+}
+
+/**
+ * Resolve the vehicle for the CURRENT request from the full conversation.
+ * - If the last message is a bare vehicle answer to a prior build request
+ *   that lacked a vehicle, the answer wins (fresh each request — not stored).
+ * - Otherwise the vehicle is read from the last message directly.
+ */
+export function resolveVehicleForRequest(
+  messages: Array<{ role: string; content: string }>,
+): VehiclePreference {
+  const last = messages[messages.length - 1]?.content ?? '';
+  const answer = detectVehicleAnswer(last);
+
+  if (answer !== null) {
+    const priorBuild = [...messages].slice(0, -1).reverse().find(
+      (m) => m.role === 'user' && classifyIntent(m.content).intent === 'portfolio_build',
+    );
+    if (priorBuild && detectVehiclePreference(priorBuild.content) === 'unspecified') {
+      return answer;
+    }
+  }
+
+  return detectVehiclePreference(last);
+}
+
 // ── Public API ────────────────────────────────────────────────
 
 /**
@@ -148,6 +222,8 @@ export function classifyIntent(message: string, state?: ConversationState): Clas
     mentionedSectors: detectSectors(message),
     isStaleDuplicate: false,
     needsClarify: false,
+    vehicle: detectVehiclePreference(message),
+    needsVehicleClarify: false,
   };
 
   // ── CLARIFY response detection (must check FIRST if clarify is open) ──
@@ -229,6 +305,12 @@ export function classifyIntent(message: string, state?: ConversationState): Clas
   if (classification.intent === 'portfolio_build' && classification.mentionedSectors.length === 0) {
     classification.needsClarify = true;
     classification.clarifyReason = 'No sector preference detected — user may need to specify';
+  }
+
+  // ── Vehicle triage (Part B): a portfolio build with no explicit vehicle ──
+  // is routed to a deterministic stocks/ETFs/mixed CLARIFY before any screening.
+  if (classification.intent === 'portfolio_build' && classification.vehicle === 'unspecified') {
+    classification.needsVehicleClarify = true;
   }
 
   return classification;

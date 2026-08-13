@@ -33,6 +33,7 @@ import {
 import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults'
 import {
   classifyIntent,
+  resolveVehicleForRequest,
 } from '@/lib/ai/manager'
 import { validateResponse } from '@/lib/ai/validator'
 
@@ -538,6 +539,31 @@ function buildClarifyFromFailures(
       ],
     },
   };
+}
+
+/** Deterministic vehicle-triage CLARIFY (Part B) — no model call, no screening.
+ *  Emitted when a portfolio build has no explicit vehicle (stocks vs ETFs vs mixed). */
+function buildVehicleClarifyResponse(): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+        clarify: {
+          question: 'Do you want this portfolio built with individual stocks, ETFs, or a mix of both?',
+          options: ['Stocks only', 'ETFs only', 'A mix of both'],
+        },
+      })}\n\n`));
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      controller.close();
+    },
+  });
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }
 
 /** Extract screening criteria from a natural-language user message. */
@@ -1459,7 +1485,17 @@ export async function POST(req: Request) {
 
     // ── Manager / Triager (Phase 2): classify intent ──
     const classification = classifyIntent(lastMessage);
-    console.log(`[chat] ===> MANAGER intent=${classification.intent} confidence=${classification.confidence.toFixed(2)} sectors=[${classification.mentionedSectors.join(',') || 'none'}] tickers=[${classification.mentionedTickers.join(',') || 'none'}]${classification.needsClarify ? ' CLARIFY_NEEDED:' + classification.clarifyReason : ''}`);
+    console.log(`[chat] ===> MANAGER intent=${classification.intent} confidence=${classification.confidence.toFixed(2)} sectors=[${classification.mentionedSectors.join(',') || 'none'}] tickers=[${classification.mentionedTickers.join(',') || 'none'}] vehicle=${classification.vehicle}${classification.needsVehicleClarify ? ' VEHICLE_CLARIFY' : ''}${classification.needsClarify ? ' CLARIFY_NEEDED:' + classification.clarifyReason : ''}`);
+
+    // ── Vehicle triage (Part B): deterministic stocks/ETFs/mixed CLARIFY ──
+    // A portfolio build with no explicit vehicle is short-circuited HERE —
+    // no screening, no model call. The answer becomes a hard constraint on
+    // the NEXT request (resolved fresh, not stored in conversation state).
+    const resolvedVehicle = resolveVehicleForRequest(messages);
+    if (classification.intent === 'portfolio_build' && resolvedVehicle === 'unspecified') {
+      console.log('[chat] 🚦 VEHICLE TRIAGE: no explicit vehicle → CLARIFY stocks/ETFs/mixed');
+      return buildVehicleClarifyResponse();
+    }
 
     // ── Deviation facts: inject history so AI knows not to repeat ──
     let deviationContext = '';
@@ -1635,36 +1671,54 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     // ── Retry prompt injection (for validation-driven regeneration) ──
     const requestedBudget = extractBudgetFromHistory(messages);
 
-    // ── Vehicle-aware screening: ETF path (Part A) vs stock orchestrator ──
-    const { detectEtfIntent } = await import('@/lib/etf-screener');
-    const isEtfRequest = detectEtfIntent(lastMessage);
+    // ── Vehicle-aware screening (Part B): ETF / stock / mixed hard constraint ──
+    // The resolved vehicle decides which screener(s) run. Resolved fresh each
+    // request from the conversation (never stored).
     let screeningContext = '';
     let screeningResults: Awaited<ReturnType<typeof import('@/lib/ai/orchestrator').runScreening>> | null = null;
     let screeningCriteria: Record<string, any> | null = null;
     let screeningSource: string | null = null;
     let multiSectorPools: Awaited<ReturnType<typeof import('@/lib/ai/orchestrator').orchestrateScreening>>['multiSectorPools'] = null;
     let etfScreeningResults: { total: number; scanned: number; universe: number } | null = null;
+    let isMixedVehicle = false;
 
-    if (isEtfRequest) {
+    // ETF leg — runs for 'etfs' AND 'mixed'
+    if (resolvedVehicle === 'etfs' || resolvedVehicle === 'mixed') {
       const { extractEtfCriteria, screenEtfs, formatEtfContext } = await import('@/lib/etf-screener');
       try {
         const etfCriteria = extractEtfCriteria(lastMessage);
         const etfOutput = await screenEtfs(etfCriteria, { maxScan: 12, limit: 15 });
         etfScreeningResults = { total: etfOutput.total, scanned: etfOutput.scanned, universe: etfOutput.universe };
-        screeningContext = formatEtfContext(etfOutput.results, etfCriteria, etfOutput.relaxations);
+        const etfCtx = formatEtfContext(etfOutput.results, etfCriteria, etfOutput.relaxations);
+        if (resolvedVehicle === 'mixed') {
+          isMixedVehicle = true;
+          screeningContext = `[MIXED PORTFOLIO — the user wants BOTH individual stocks AND ETFs. Build a diversified allocation drawing from BOTH universes below.]\n\n=== ETF UNIVERSE ===\n${etfCtx}\n\n`;
+        } else {
+          screeningContext = etfCtx;
+        }
         screeningCriteria = { ...etfCriteria, _etf: true };
         console.log(`[chat] 🔍 ETF screener: scanned=${etfOutput.scanned} matches=${etfOutput.total} universe=${etfOutput.universe}`);
       } catch (e) {
         console.error('[chat] ETF screening error (non-fatal):', e);
       }
-    } else {
+    }
+
+    // Stock leg — runs for 'stocks', 'mixed', and 'unspecified' (fallback)
+    if (resolvedVehicle === 'stocks' || resolvedVehicle === 'mixed' || resolvedVehicle === 'unspecified') {
       const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
       const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
-      screeningContext = screeningOrch.context;
-      screeningResults = screeningOrch.results;
-      screeningCriteria = screeningOrch.criteria;
-      screeningSource = screeningOrch.source;
-      multiSectorPools = screeningOrch.multiSectorPools;
+      if (isMixedVehicle) {
+        screeningContext += `\n=== STOCK UNIVERSE (equity screener) ===\n${screeningOrch.context}`;
+        screeningResults = screeningOrch.results;
+        screeningSource = screeningOrch.source;
+        multiSectorPools = screeningOrch.multiSectorPools;
+      } else {
+        screeningContext = screeningOrch.context;
+        screeningResults = screeningOrch.results;
+        screeningCriteria = screeningOrch.criteria;
+        screeningSource = screeningOrch.source;
+        multiSectorPools = screeningOrch.multiSectorPools;
+      }
 
       if (!screeningOrch.skipped) {
         console.log(`[chat] 🔍 Orchestrator: source=${screeningOrch.source} pools=${screeningOrch.multiSectorPools?.length || 0} results=${screeningOrch.results?.results?.length || 0}`);
@@ -1673,6 +1727,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         }
       }
     }
+
+    console.log(`[chat] 🚦 Vehicle resolved: ${resolvedVehicle}${isMixedVehicle ? ' (mixed)' : ''}`);
     const systemBlocks: SystemBlock[] = [
     ...CHAT_PRINCIPLES,
     ...CHAT_SAFETY_BLOCKS,
@@ -1788,7 +1844,21 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           [...initialMessages];
 
         // ── Screening results checklist ──
-        if (etfScreeningResults) {
+        if (isMixedVehicle) {
+          const stockCount = screeningResults?.results?.length || 0;
+          const etfCount = etfScreeningResults?.total || 0;
+          const total = stockCount + etfCount;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            screeningMeta: { criteria: { mixed: true }, criteriaDescription: 'Mixed portfolio — stocks + ETFs', matchCount: total, provider: 'equity+etf', source: 'mixed', multiSector: false }
+          })}\n\n`));
+          if (total > 0) {
+            sendChecklist(controller, encoder, 'screening', 'done', `Mixed: ${stockCount} stocks + ${etfCount} ETFs`);
+            sendChecklist(controller, encoder, 'tickers_resolved', 'done', `Mixed portfolio — ${stockCount} stocks + ${etfCount} ETFs`);
+          } else {
+            sendChecklist(controller, encoder, 'screening', 'failed', `0 candidates across stocks and ETFs`);
+            sendChecklist(controller, encoder, 'tickers_resolved', 'failed', `0 results — try wider criteria`);
+          }
+        } else if (etfScreeningResults) {
           const count = etfScreeningResults.total;
           const criteria = (screeningCriteria || {}) as Record<string, any>;
           const parts: string[] = [];
