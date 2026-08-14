@@ -51,6 +51,7 @@ const PUBLIC_ROUTES = [
   '/api/cron/investor-score', // cron — own CRON_SECRET auth
   '/api/cron/portfolio-agent', // cron — own QSTASH_CRON_SECRET auth
   '/api/cron/send-agent-digest', // cron — own CRON_SECRET auth (daily email digest)
+  '/api/cron/sync-orders', // cron — own CRON_SECRET/GH_CRON_SECRET/QSTASH_CRON_SECRET auth
   '/api/agent-emails/unsubscribe', // public — signed token, no login required
   '/api/access-requests/resend', // public POST (resend invite for approved users)
   '/api/auth/signup', // public — server-side signup with hard invite gate
