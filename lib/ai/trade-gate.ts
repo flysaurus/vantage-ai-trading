@@ -9,6 +9,8 @@
 // Zero-tolerance: if the symbol doesn't match what the user was shown,
 // the order is BLOCKED — not warned, not logged-and-continued.
 
+import { listEtfUniverse } from '@/lib/market-data';
+
 interface FinnhubProfile {
   name: string;
   ticker: string;
@@ -122,9 +124,9 @@ function namesMatch(nameA: string, nameB: string): boolean {
 }
 
 /**
- * Fetch Finnhub company profile for a symbol.
+ * Fetch Finnhub company profile for a stock (equity-shaped lookup).
  */
-async function fetchProfile(symbol: string, apiKey: string): Promise<FinnhubProfile | null> {
+async function fetchStockProfile(symbol: string, apiKey: string): Promise<FinnhubProfile | null> {
   try {
     const res = await fetch(
       `${FINNHUB_BASE}/stock/profile2?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${apiKey}`,
@@ -136,6 +138,37 @@ async function fetchProfile(symbol: string, apiKey: string): Promise<FinnhubProf
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve an ETF symbol from the same discovery source the ETF screener
+ * trusts (Finnhub `/etf/list` with a curated fallback, via
+ * `listEtfUniverse`). Gate 1 previously only consulted `/stock/profile2`,
+ * which is equity-shaped and returns no data for funds — so every ETF was
+ * incorrectly blocked as "not a recognized ticker symbol."
+ */
+async function fetchEtfProfile(symbol: string): Promise<FinnhubProfile | null> {
+  try {
+    const universe = await listEtfUniverse();
+    const entry = universe.find((e) => e.symbol.toUpperCase() === symbol.toUpperCase());
+    if (!entry) return null;
+    return {
+      name: entry.description || entry.symbol,
+      ticker: entry.symbol.toUpperCase(),
+      exchange: 'ETF',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch a symbol's profile — equity-first, then ETF-aware fallback.
+ */
+async function fetchProfile(symbol: string, apiKey: string): Promise<FinnhubProfile | null> {
+  const stock = await fetchStockProfile(symbol, apiKey);
+  if (stock) return stock;
+  return fetchEtfProfile(symbol);
 }
 
 // Regex for company names in text — matches capitalized multi-word names
@@ -260,7 +293,7 @@ export async function verifyTradeSymbol(
     return {
       allowed: false,
       reason: `"${symbol.toUpperCase()}" is not a recognized ticker symbol. The order was blocked as a safety measure.`,
-      detail: `Finnhub profile2 returned no data for ${symbol}`,
+      detail: `No stock or ETF profile found for ${symbol} (profile2 + /etf/list)`,
       profile: null,
     };
   }
