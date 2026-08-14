@@ -7,11 +7,21 @@
  * Verifies HMAC-SHA256 signature using consumer key (canonical JSON, sorted keys).
  * Prevents replay attacks with 5-minute timestamp window.
  *
+ * ═══════════════════════════════════════════════════════════════
+ * SCOPE (re-scoped 2026-08-14): CONNECTION LIFECYCLE ONLY.
+ * SnapTrade does NOT emit order-execution events. Order status sync
+ * (submitted → open → filled/partially_filled/cancelled/rejected) is
+ * driven by POLLING via /api/cron/sync-orders (QStash 5-min schedule).
+ * This webhook must never be relied upon for order fill/cancel detection.
+ * Any order-shaped event received here is a no-op: logged + acked.
+ * ═══════════════════════════════════════════════════════════════
+ *
  * Event types handled:
  *   - CONNECTION_BROKEN → alert user, disable trading for that connection
  *   - CONNECTION_FIXED → re-enable connection
  *   - CONNECTION_ADDED/CONNECTION_DELETED → log for audit
  *   - NEW_ACCOUNT_AVAILABLE → trigger account refresh
+ *   - Order-shaped events (ORDER_STATUS / ORDER_FILLED / TRADE_EXECUTED) → no-op
  *   - Others → ack and log
  */
 
@@ -161,6 +171,19 @@ export async function POST(req: NextRequest) {
     case 'NEW_ACCOUNT_AVAILABLE':
       logEvent(eventType, payload);
       // Client-side should trigger a refresh on next page load or heartbeat
+      break;
+
+    // Order-shaped events: SnapTrade does not emit these. If it ever starts,
+    // we deliberately no-op (log + ack) rather than act on them — order status
+    // is polled via /api/cron/sync-orders, which is the single source of truth.
+    case 'ORDER_STATUS':
+    case 'ORDER_FILLED':
+    case 'ORDER_CANCELLED':
+    case 'TRADE_EXECUTED':
+    case 'POSITION_UPDATED':
+      console.log(
+        `[SnapTrade Webhook] ${eventType} — order event not supported; ignoring (polling handles status sync)`,
+      );
       break;
 
     case 'USER_REGISTERED':
