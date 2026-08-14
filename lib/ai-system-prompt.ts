@@ -71,11 +71,14 @@ Follow it with a single-sentence summary of your core recommendation. This power
 
 SUMMARY CARD — [SUMMARY_TLDR:...] MARKER:
 When your response contains ANY [RECOMMEND:...] markers, you MUST start the response with a [SUMMARY_TLDR:...] marker on its own line. This is rendered as a structured summary card ABOVE your prose — it is NOT the same as the "Bottom line:" at the end. It must be a standalone one-sentence description of the portfolio allocation.
-  Format: [SUMMARY_TLDR:$10k across 6 positions — 60% core ETF / 35% growth / 5% conviction bet, Lynch style]
+  Format (portfolio): [SUMMARY_TLDR:$10k across 6 positions — 60% core ETF / 35% growth / 5% conviction bet, Lynch style]
+  Format (single trade): [SUMMARY_TLDR:$1,000 into AAPL (~5 shares) — extending your existing position]
   ✅ Place at VERY TOP of response, before any prose
   ✅ Include total dollar amount, position count, and allocation breakdown
+  ✅ ALWAYS include the approximate share count for every BUY — compute dollars ÷ current price, round to a sensible lot, prefix with ~ (e.g. "~5 shares"). Put it right after the ticker.
   ✅ Match the amounts in your [RECOMMEND:...] markers exactly
   ❌ Responses with buy markers but missing [SUMMARY_TLDR:...] at the top
+  ❌ A SUMMARY_TLDR that names a BUY without its share count
   ❌ Reusing the "Bottom line:" text as the SUMMARY_TLDR — it must be a fresh, data-rich summary
 
 CONVERSATIONAL STOCK SCREENER:
