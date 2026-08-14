@@ -593,6 +593,58 @@ test('vehicle clarify open → "Stocks only" = stocks', 'vehicle_triage', () => 
   assertEq(got, 'stocks', 'explicit vehicle answer resolves correctly');
 });
 
+// ── Suite: Monologue Leak + Multiple CLARIFY ──────────────
+// Live leak (probe-partc.mjs): sector-specific ETF request with ambiguous
+// ticker (TECH) — the model narrated its own ticker-resolution and asked a
+// prose "Sound right?" question alongside TWO [CLARIFY:...] blocks.
+
+const LEAKED_SECTOR_ETF_RESPONSE = `I need to clarify a couple things before I build this.
+
+For now, I'm assuming you want a 4-sector core (Tech, Healthcare, Financials, Industrials) and you're willing to accept 1.5–1.7% yield as the realistic range rather than 5%. Sound right?Hold up — **TECH** (ticker TECH) resolves to **Bio-Techne Corp**, a biotech company. That's NOT the broad tech sector ETF you're looking for.
+
+From the screened universe, here's what I actually have:
+
+**TECH SECTOR** — VGT, XLK, SMH, SOXX
+**HEALTHCARE** — XLV, VHT, IBB
+**FINANCIALS** — XLF, VFH
+**INDUSTRIALS** — XLI, VIS
+
+Let me know:[CLARIFY:{"question":"For 'diversified manufacturing,' do you want:","options":["Broad industrial sector ETF","Specific manufacturer stock","Skip manufacturing"]}]
+
+[CLARIFY:{"question":"On yield — accept 1.5–1.7% realistic range instead of 5%?","options":["Yes, build the portfolio","No — show me high-yield alternatives"]}]`;
+
+test('leaked ticker-resolution monologue rejected even with CLARIFY blocks', 'monologue_leak', () => {
+  const result = detectIncoherence(LEAKED_SECTOR_ETF_RESPONSE, null);
+  assert(!!result, 'leaked "Hold up — TECH (ticker TECH) resolves to…" monologue must be rejected');
+});
+
+test('"resolves to <Company Corp>" narration is rejected', 'monologue_leak', () => {
+  const result = detectIncoherence('TECH resolves to Bio-Techne Corp, so I will drop it.', null);
+  assert(!!result, 'ticker-resolution narration must be rejected');
+});
+
+test('"Hold up/Hold on" interjection is rejected', 'monologue_leak', () => {
+  const result = detectIncoherence('Hold on — that is not what the user asked.', null);
+  assert(!!result, '"Hold on" internal interjection must be rejected');
+});
+
+test('"That\'s NOT the … you\'re looking for" self-correction is rejected', 'monologue_leak', () => {
+  const result = detectIncoherence("That's NOT the broad tech sector ETF you're looking for.", null);
+  assert(!!result, 'self-correction narration must be rejected');
+});
+
+test('prose "Sound right?" question rejected even with CLARIFY present', 'monologue_leak', () => {
+  const response = 'I will build a 4-sector core. Sound right?\n\n[CLARIFY:{"question":"Proceed?","options":["Yes","No"]}]';
+  const result = detectIncoherence(response, null);
+  assert(!!result, 'prose sign-off question must be rejected');
+});
+
+test('two CLARIFY blocks with clean lead-in are ALLOWED (stepper sequences them)', 'monologue_leak', () => {
+  const response = 'I need two things locked in before I build this.\n\n[CLARIFY:{"question":"Which sub-sector?","options":["Pharma","Services"]}]\n\n[CLARIFY:{"question":"Yield target?","options":["5%","1.5%"]}]';
+  const result = detectIncoherence(response, null);
+  assertEq(result, null, 'two CLARIFY blocks are valid — only leak/prose text is rejected');
+});
+
 // ── Run ────────────────────────────────────────────────────
 
 async function runAll(suiteFilter?: string) {

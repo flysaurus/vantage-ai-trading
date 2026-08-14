@@ -181,13 +181,35 @@ export function stripTrailingQuestions(text: string): string {
 // brief prose lead-in before a [CLARIFY:{...}] block, so exclude those verbs from
 // the opening "thinking words" pattern below (which is what was falsely flagging
 // CLARIFY responses and triggering a silent regenerate loop).
-const INTERNAL_MONOLOGUE_PATTERNS = [
-  /^(?!(?:Let me|I (?:should|need to))\s+(?:clarify|ask|confirm|understand|know)\b)(?:Hmm|Let me|I should|I need to|I'll start|First, I'll|Let's see|Okay,|Alright,|Wait,|Actually,|I think I|I realize)/m,
+// Genuine internal-monologue leaks. These reference the reasoning process
+// (the user, instructions, training data, or ticker resolution) and are NEVER
+// legitimate user-facing text — reject them regardless of whether
+// RECOMMEND/PORTFOLIO/CLARIFY markers are also present. A previous narrowing
+// gated ALL monologue checks behind "no actionable markers", which let real
+// leaks through whenever the model emitted a CLARIFY block alongside them
+// (e.g. "Hold up — TECH (ticker TECH) resolves to Bio-Techne Corp…").
+const INTERNAL_MONOLOGUE_META_PATTERNS = [
   /(?:the user wants|the user asked|the user is asking|the user requested)\b/i,
   /(?:my instructions|my system prompt|my guidelines) say\b/i,
   /I need to (?:recommend|provide|suggest|offer|build|construct)/i,
-  /Let me (?:know if|check|verify|double.check|make sure)/i,
+  /Let me (?:check|verify|double[- ]?check|make sure|look (?:it|this|that)\s+up)\b/i,
   /(?:according to my|per my|my)\s*(?:training|knowledge|understanding)/i,
+  // Ticker-resolution self-narration — internal reasoning about a symbol
+  // resolution decision, never user-facing:
+  //   "Hold up — TECH (ticker TECH) resolves to Bio-Techne Corp…"
+  //   "That's NOT the broad tech sector ETF you're looking for."
+  /\b\(ticker\s+[A-Z]{1,5}\)\b/,
+  /\bHold\s+(?:up|on)\b/,
+  /\bresolves?\s+to\b[^.!?]{0,80}?(?:Corp\b|Inc\b|Technologies\b|Ltd\b)/i,
+  /That['']s\s+(?:NOT|not)\s+the\b[^.!?]{0,80}\byou(?:'re|are)\s+looking\s+for/i,
+];
+
+// Opening "thinking words" that CAN be legitimate CLARIFY lead-ins
+// ("Let me clarify…", "I need to confirm…"). Only reject these when the
+// response carries NO actionable markers — a casual "Hmm" / "Actually" lead-in
+// on a complete recommendation or CLARIFY response is harmless.
+const INTERNAL_MONOLOGUE_LEADIN_PATTERNS = [
+  /^(?!(?:Let me|I (?:should|need to))\s+(?:clarify|ask|confirm|understand|know)\b)(?:Hmm|Let me|I should|I need to|I'll start|First, I'll|Let's see|Okay,|Alright,|Wait,|Actually,|I think I|I realize)/m,
 ];
 
 const DUPLICATE_TLDR_RE = /\[SUMMARY_TLDR:[^\]]*\]/gi;
@@ -206,13 +228,20 @@ const PROSE_QUESTION_PATTERNS = [
  */
 export function detectIncoherence(response: string, requestedBudget?: number | null): string | null {
   // ── Internal monologue check ──
-  // Only reject monologue leakage when the response has NO actionable markers.
-  // If the AI already produced RECOMMEND, PORTFOLIO, or CLARIFY blocks, a casual
-  // "Hmm" / "Let me" / "I need to pin down…" lead-in is harmless — rejecting it
-  // just breaks valid single-stock buys and legitimate CLARIFY responses.
+  // Genuine meta-leaks are ALWAYS rejected (they are never legitimate),
+  // regardless of any RECOMMEND/PORTFOLIO/CLARIFY markers also present.
+  for (const pattern of INTERNAL_MONOLOGUE_META_PATTERNS) {
+    if (pattern.test(response)) {
+      return `Internal monologue leaking in response. Remove all meta-commentary about your reasoning process.`;
+    }
+  }
+  // Opening "thinking words" are only rejected when the response has NO
+  // actionable markers — a casual "Hmm" / "Let me" / "I need to pin down…"
+  // lead-in on a complete recommendation or legitimate CLARIFY response is
+  // harmless, and rejecting it would break valid single-stock buys.
   const hasActionableMarkers = /\[RECOMMEND:|\[PORTFOLIO:\{|\[CLARIFY:\{/i.test(response);
   if (!hasActionableMarkers) {
-    for (const pattern of INTERNAL_MONOLOGUE_PATTERNS) {
+    for (const pattern of INTERNAL_MONOLOGUE_LEADIN_PATTERNS) {
       if (pattern.test(response)) {
         return `Internal monologue leaking in response. Remove all meta-commentary about your reasoning process.`;
       }
@@ -244,6 +273,16 @@ export function detectIncoherence(response: string, requestedBudget?: number | n
     if (proseQuestions && proseQuestions.length >= 2) {
       return `Found ${proseQuestions.length} prose questions outside [CLARIFY:...] blocks. Wrap ALL questions in CLARIFY blocks.`;
     }
+  }
+
+  // Sign-off questions in prose (NEVER-SAY list). These are the exact phrases
+  // the system prompt forbids in prose ("Sound good?", "Does that work?"). They
+  // leak through as raw text when they appear mid-response next to a CLARIFY
+  // block — the guard above skips prose scanning once CLARIFY markers exist,
+  // so these need an explicit, marker-independent check.
+  const signoffQuestion = response.match(/\b(?:Sound (?:right|good|okay|fair)|Does that (?:work|make sense|sound (?:right|good))|Work for you|Make sense)\s*\?/i);
+  if (signoffQuestion) {
+    return `Prose question detected outside [CLARIFY:{...}] block: "${signoffQuestion[0]}". All questions MUST use the CLARIFY contract: [CLARIFY:{"question":"...","options":[...]}]`;
   }
 
   // ── Computed-metric coherence ──
