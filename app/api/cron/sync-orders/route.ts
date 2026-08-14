@@ -15,7 +15,9 @@
 // returns status 'canceled' on the next poll and we persist it.
 //
 // Auth: Bearer CRON_SECRET / GH_CRON_SECRET / QSTASH_CRON_SECRET.
-// Schedule: every 5 minutes (Vercel cron).
+// Schedule: 21:15 UTC weekdays (Vercel Hobby caps cron at 1 run/day).
+// For near-real-time sync, register a QStash schedule (minute-level cron)
+// pointing at this same route with `Authorization: Bearer <QSTASH_CRON_SECRET>`.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
