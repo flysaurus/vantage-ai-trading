@@ -241,12 +241,32 @@ export function useOrders() {
 
   const cancelOrder = useCallback(
     async (orderId: string): Promise<void> => {
-      if (!broker) throw new Error('Broker not connected');
+      // Demo / local broker → use the local adapter (client-side localStorage).
+      if (isShowingDemo || !isConnected || !broker) {
+        if (broker) {
+          await broker.cancelOrder(orderId);
+          updateOrder(orderId, { status: 'cancelled' });
+          return;
+        }
+        throw new Error('Broker not connected');
+      }
 
-      await broker.cancelOrder(orderId);
+      // Real broker → server-side proxy. The client BrokerAdapter's
+      // cancelOrder() is a read-only stub (throws READ_ONLY_ERROR); the only
+      // working cancel path is /api/broker/cancel-order (SnapTrade credentials
+      // stay server-side). Optimistic UI update; the 30s poll reconciles.
+      const res = await fetch('/api/broker/cancel-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || data.message || 'Cancel failed');
+      }
       updateOrder(orderId, { status: 'cancelled' });
     },
-    [broker, updateOrder]
+    [broker, isConnected, isShowingDemo, updateOrder]
   );
 
   // Initial load
