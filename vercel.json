@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/execute-pending-orders",
       "schedule": "0 14 * * 1-5"
+    },
+    {
+      "path": "/api/cron/sync-orders",
+      "schedule": "*/5 * * * *"
     }
   ],
   "functions": {
@@ -68,6 +72,9 @@
       "maxDuration": 55
     },
     "app/api/cron/execute-pending-orders/route.ts": {
+      "maxDuration": 55
+    },
+    "app/api/cron/sync-orders/route.ts": {
       "maxDuration": 55
     },
     "app/api/cron/portfolio-agent/route.ts": {

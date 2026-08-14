@@ -75,14 +75,17 @@ interface SnapOrder {
 
 /** Map SnapTrade's verbose status enum to our simplified OrderStatus */
 function _mapSnapTradeStatusToOrderStatus(rawStatus: string | undefined): OrderStatus {
-  if (!rawStatus) return 'OPEN';
+  if (!rawStatus) return 'SUBMITTED';
   const s = rawStatus.toUpperCase();
+  // Terminal
   if (['EXECUTED', 'FILLED'].includes(s)) return 'FILLED';
-  if (['PENDING', 'ACCEPTED', 'QUEUED', 'TRIGGERED', 'ACTIVATED', 'CONTINGENT_ORDER', 'REPLACE_PENDING'].includes(s)) return 'OPEN';
-  if (s === 'PARTIAL') return 'PARTIALLY_FILLED';
-  if (['CANCELED', 'PARTIAL_CANCELED', 'CANCEL_PENDING'].includes(s)) return 'CANCELLED';
-  if (['REJECTED', 'FAILED'].includes(s)) return 'REJECTED';
-  if (s === 'EXPIRED') return 'CANCELLED';
+  if (['PARTIAL', 'PARTIALLY_FILLED'].includes(s)) return 'PARTIALLY_FILLED';
+  if (['CANCELED', 'PARTIAL_CANCELED', 'CANCEL_PENDING', 'PENDING_CANCEL', 'EXPIRED'].includes(s)) return 'CANCELLED';
+  if (['REJECTED', 'FAILED', 'SUSPENDED', 'STOPPED'].includes(s)) return 'REJECTED';
+  // Submitted — reached the broker, not yet confirmed working/open
+  if (['NEW', 'PENDING_NEW', 'SUBMITTED', 'ACCEPTED', 'ACCEPTED_FOR_BIDDING', 'QUEUED', 'PENDING'].includes(s)) return 'SUBMITTED';
+  // Open/working — confirmed resting at the venue
+  if (['OPEN', 'WORKING', 'DONE_FOR_DAY', 'TRIGGERED', 'ACTIVATED', 'CONTINGENT_ORDER', 'REPLACE_PENDING', 'REPLACED', 'PENDING_REPLACE', 'CALCULATED', 'HELD'].includes(s)) return 'OPEN';
   return 'OPEN';
 }
 
@@ -747,6 +750,7 @@ export class SnapTradeBroker implements BrokerEngine {
       type: 'market' as OrderType,
       status: _mapSnapTradeStatusToOrderStatus(raw.status),
       shares: qty,
+      filledShares: raw.filled_quantity ?? (isFilled ? qty : 0),
       submittedPrice: fillPx || 0,
       limitPrice: raw.price ?? undefined,
       stopPrice: raw.stop_price ?? undefined,

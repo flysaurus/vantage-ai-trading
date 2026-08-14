@@ -14,8 +14,8 @@ export type OrderSide = 'BUY' | 'SELL';
 
 export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit';
 
-/** Canonical order status lifecycle: OPEN → FILLED | CANCELLED | REJECTED */
-export type OrderStatus = 'OPEN' | 'FILLED' | 'CANCELLED' | 'REJECTED' | 'PARTIALLY_FILLED';
+/** Canonical order status lifecycle: SUBMITTED → OPEN → FILLED | PARTIALLY_FILLED | CANCELLED | REJECTED */
+export type OrderStatus = 'SUBMITTED' | 'OPEN' | 'PARTIALLY_FILLED' | 'FILLED' | 'CANCELLED' | 'REJECTED';
 
 export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
 
@@ -141,6 +141,8 @@ export interface BrokerOrder {
   stopPrice?: number;
   timeInForce?: TimeInForce;
   fillPrice?: number;
+  /** Number of shares actually filled (distinct from `shares` on partial fills) */
+  filledShares?: number;
   totalCost: number;
   submittedAt: string;
   filledAt?: string;
