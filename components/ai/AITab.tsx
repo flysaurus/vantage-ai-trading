@@ -1115,13 +1115,21 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       setMessages(prev => [...prev, { role: 'ai', content: '', id: crypto.randomUUID() }]);
 
+      // SSE events (data: {...}\n\n) are NOT guaranteed to arrive aligned to
+      // reader.read() chunk boundaries — a single event can be split across
+      // chunks, or multiple events coalesced into one. Buffer partial lines so
+      // JSON.parse never sees a truncated event (which would silently drop
+      // streamed text/checklist/marker payloads).
+      let buffer = '';
+
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
         setToast(null);
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ') && line !== 'data: [DONE]') {
