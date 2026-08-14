@@ -442,7 +442,7 @@ export class SnapTradeBroker implements BrokerEngine {
     // All orders are sent to the broker immediately, 24/7.
     // Brokers (Alpaca, Tastytrade, etc.) queue orders placed outside market hours.
     // We return the status as-is.
-    const isSuccess = status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED';
+    const isSuccess = status === 'SUBMITTED' || status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED';
     const nextOpen = !this.isMarketOpen() ? this.getNextOpenLabel() : undefined;
     return {
       success: isSuccess,

@@ -132,8 +132,8 @@ function generateOrderId(): string {
 interface TradeResult {
   success: boolean;
   error?: string;
-  /** Whether the order was FILLED (market open), OPEN (pending, market closed), or REJECTED */
-  status?: 'FILLED' | 'OPEN' | 'REJECTED';
+  /** Whether the order was FILLED (market open), OPEN (pending, market closed), SUBMITTED (accepted, awaiting fill), or REJECTED */
+  status?: 'FILLED' | 'OPEN' | 'SUBMITTED' | 'REJECTED';
   /** Order ID from the broker, for linking marker executions */
   orderId?: string;
 }
@@ -802,13 +802,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         if (!proxyResult.success) {
           setToast({ message: `❌ ${proxyResult.error || proxyResult.message}`, type: 'error' });
           setTimeout(() => setToast(null), 4000);
-          return { success: false, error: proxyResult.error || proxyResult.message || 'Order failed', status: proxyResult.status as 'FILLED' | 'OPEN' | 'REJECTED' };
+          return { success: false, error: proxyResult.error || proxyResult.message || 'Order failed', status: proxyResult.status as NonNullable<TradeResult['status']> };
         }
         await refreshStateFromBroker();
         const fillPx = proxyResult.fillPrice ?? price;
         const status = proxyResult.status as string;
         const pShares = proxyResult.filledShares || shares;
-        if (status === 'OPEN') {
+        if (status === 'OPEN' || status === 'SUBMITTED') {
           let orderNote = '';
           if (orderType === 'stop') orderNote = ` (stop $${(stopPrice || price).toFixed(2)})`;
           else if (orderType === 'stop_limit') orderNote = ` (stop $${(stopPrice || price).toFixed(2)} limit $${(limitPrice || price).toFixed(2)})`;
@@ -820,7 +820,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
         setTimeout(() => setToast(null), status === 'FILLED' ? 3000 : 4000);
         submittingTradeRef.current = false;
-        return { success: true, status: status as 'FILLED' | 'OPEN' | 'REJECTED', orderId: proxyResult.orderId };
+        return { success: true, status: status as NonNullable<TradeResult['status']>, orderId: proxyResult.orderId };
       }
 
       const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
@@ -829,7 +829,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       if (!result.success) {
         setToast({ message: `❌ ${result.message}`, type: 'error' });
         setTimeout(() => setToast(null), 4000);
-        return { success: false, error: result.message || 'Order failed', status: result.status as 'FILLED' | 'OPEN' | 'REJECTED' };
+        return { success: false, error: result.message || 'Order failed', status: result.status as NonNullable<TradeResult['status']> };
       }
       await refreshStateFromBroker();
       const fillPx = result.fillPrice ?? price;
@@ -888,7 +888,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }).catch(() => {});
       }
 
-      return { success: true, status: result.status as 'FILLED' | 'OPEN' | 'REJECTED', orderId: result.orderId };
+      return { success: true, status: result.status as NonNullable<TradeResult['status']>, orderId: result.orderId };
       } finally {
         submittingTradeRef.current = false;
       }
