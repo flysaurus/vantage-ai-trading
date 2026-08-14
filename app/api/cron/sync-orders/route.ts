@@ -30,6 +30,16 @@ import type { OrderStatus } from '@/lib/broker/types';
 
 const IN_FLIGHT = ['submitted', 'open', 'partially_filled'] as const;
 
+// Stale-order guard: an in-flight order older than this that has dropped
+// out of SnapTrade's recentOrders is dead (expired/rejected at the broker)
+// and must not linger as "open" forever. 2 days is conservative:
+//   - market+day orders resolve same-day (fill or expire at close)
+//   - a genuinely-live GTC order stays in recentOrders, so it never hits
+//     the "not found" branch at all — it reconciles normally
+// Only orders BOTH missing from recentOrders AND older than this threshold
+// are auto-cancelled; recent+missing is treated as transient lag and skipped.
+const STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+
 const ALLOWED_SECRETS = [
   process.env.CRON_SECRET || '',
   process.env.GH_CRON_SECRET || '',
@@ -54,6 +64,7 @@ interface InFlightOrder {
   id: string;
   brokerage_order_id: string | null;
   status: string;
+  created_at: string;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -70,7 +81,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 1. Load all in-flight orders, grouped by user
   const { data: rows, error } = await supabase
     .from('orders')
-    .select('id, user_id, brokerage_order_id, status')
+    .select('id, user_id, brokerage_order_id, status, created_at')
     .in('status', [...IN_FLIGHT])
     .not('brokerage_order_id', 'is', null);
 
@@ -86,6 +97,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       id: r.id,
       brokerage_order_id: r.brokerage_order_id,
       status: r.status,
+      created_at: r.created_at,
     });
     byUser.set(r.user_id, list);
   }
@@ -103,6 +115,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   let transitions = 0;
   let skipped = 0;
+  let staleCancelled = 0;
   let errors = 0;
 
   for (const [userId, orders] of byUser) {
@@ -155,8 +168,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       const live = liveById.get(o.brokerage_order_id);
       if (!live) {
-        // Broker no longer returns this order (replaced/dropped). Don't guess.
-        skipped++;
+        // Broker no longer returns this order. Two cases:
+        //  1. Recent + missing → transient lag (just placed, not yet visible).
+        //     Skip and retry next run.
+        //  2. Old + missing → dropped/expired/rejected at the broker. Auto-cancel
+        //     so it can't linger as "open" forever (stale-state guard).
+        const createdAt = new Date(o.created_at).getTime();
+        const ageMs = Date.now() - createdAt;
+        if (Number.isFinite(createdAt) && ageMs > STALE_AFTER_MS) {
+          const now = new Date().toISOString();
+          const { error: staleErr } = await supabase
+            .from('orders')
+            .update({ status: 'cancelled', cancelled_at: now, updated_at: now })
+            .eq('id', o.id);
+          if (staleErr) {
+            errors++;
+            console.error(
+              `[sync-orders] Stale-cancel failed for ${o.id}:`,
+              staleErr.message,
+            );
+          } else {
+            staleCancelled++;
+            console.log(
+              `[sync-orders] Stale-cancel: ${o.brokerage_order_id.slice(0, 8)} open ${Math.round(ageMs / 3600000)}h → cancelled`,
+            );
+          }
+        } else {
+          skipped++;
+        }
         continue;
       }
 
@@ -202,6 +241,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     users: byUser.size,
     orders: rows?.length || 0,
     transitions,
+    staleCancelled,
     skipped,
     errors,
   });
