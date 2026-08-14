@@ -25,6 +25,7 @@ import {
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { notifyOrderEvent } from '@/lib/order-emails';
 import { createClient } from '@supabase/supabase-js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -113,13 +114,16 @@ export async function POST(req: NextRequest) {
   // order by BOTH so we know (a) which brokerage_order_id to send to SnapTrade
   // and (b) which DB row to flip to 'cancelled' after a successful cancel.
   let dbOrderId: string | null = null;
+  let dbSymbol: string | null = null;
+  let dbSide: string | null = null;
+  let dbQty: number | null = null;
   let brokerageOrderId: string = orderId;
 
   if (UUID_RE.test(orderId)) {
     try {
       const { data } = await supabase
         .from('orders')
-        .select('id, brokerage_order_id, status')
+        .select('id, brokerage_order_id, status, symbol, side, qty')
         .or(`id.eq.${orderId},brokerage_order_id.eq.${orderId}`)
         .eq('user_id', authUser!.id)
         .limit(1)
@@ -128,6 +132,9 @@ export async function POST(req: NextRequest) {
       if (data) {
         dbOrderId = data.id;
         brokerageOrderId = data.brokerage_order_id || orderId;
+        dbSymbol = data.symbol || null;
+        dbSide = data.side || null;
+        dbQty = typeof data.qty === 'number' ? data.qty : null;
       }
     } catch (err) {
       console.warn(
@@ -172,6 +179,25 @@ export async function POST(req: NextRequest) {
     if (updErr) {
       console.error('[cancel-order] DB update failed:', updErr.message);
     }
+  }
+
+  // ── Order email: cancelled (user-initiated) ──
+  if (dbSymbol) {
+    await notifyOrderEvent(
+      supabase,
+      authUser!.id,
+      {
+        kind: 'cancelled',
+        brokerName: formatBrokerName(brokerSlug),
+        symbol: dbSymbol,
+        side: dbSide === 'sell' ? 'SELL' : 'BUY',
+        shares: dbQty ?? 0,
+        orderId: brokerageOrderId,
+        isLive: true,
+        cancelReason: 'user_cancelled',
+      },
+      authUser!.email,
+    );
   }
 
   return NextResponse.json({

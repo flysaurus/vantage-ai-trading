@@ -53,6 +53,7 @@ const PUBLIC_ROUTES = [
   '/api/cron/send-agent-digest', // cron — own CRON_SECRET auth (daily email digest)
   '/api/cron/sync-orders', // cron — own CRON_SECRET/GH_CRON_SECRET/QSTASH_CRON_SECRET auth
   '/api/agent-emails/unsubscribe', // public — signed token, no login required
+  '/api/order-emails/unsubscribe', // public — signed token, no login required
   '/api/access-requests/resend', // public POST (resend invite for approved users)
   '/api/auth/signup', // public — server-side signup with hard invite gate
   '/api/auth/reset-password', // public — set new password via reset token

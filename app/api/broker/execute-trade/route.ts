@@ -21,6 +21,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
+import { notifyOrderEvent } from '@/lib/order-emails';
 import { createClient } from '@supabase/supabase-js';
 
 function formatBrokerName(slug: string | null): string {
@@ -220,6 +221,63 @@ export async function POST(req: NextRequest) {
         `[execute-trade] ⚠️ SKIPPED DB persist — phantom order (orderId: "${result.orderId}"). ` +
         `Pre-broker validation failure: ${result.message || 'unknown'}`
       );
+    }
+
+    // ── Order email: placed (and filled, if the broker executed immediately) ──
+    //
+    // "Placed" fires whenever the order reached the broker (not a phantom,
+    // not rejected). "Filled" fires here ONLY for immediate fills (market orders
+    // during market hours) — the sync cron handles deferred fills via the
+    // in-flight transition, so this branch can't double-email.
+    if (shouldPersist && result.success) {
+      const brokerName = formatBrokerName(brokerSlug);
+      const placedShares = result.filledShares || result.estimatedShares || shares || 0;
+      const estimatedTotal = result.totalCost
+        || (result.fillPrice && placedShares ? result.fillPrice * placedShares : 0)
+        || dollarAmount
+        || 0;
+      const orderIdForEmail = result.orderId || dbOrderId || '';
+
+      await notifyOrderEvent(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'placed',
+          brokerName,
+          symbol: symbol.toUpperCase(),
+          side,
+          shares: placedShares,
+          type: orderType || 'market',
+          limitPrice,
+          stopPrice,
+          estimatedTotal,
+          orderId: orderIdForEmail,
+          isLive: true,
+        },
+        authUser!.email,
+      );
+
+      if (result.status === 'FILLED' || result.status === 'PARTIALLY_FILLED') {
+        const fillShares = result.filledShares || placedShares || 0;
+        const fillPrice = result.fillPrice || 0;
+        const totalCost = result.totalCost || (fillPrice * fillShares);
+        await notifyOrderEvent(
+          supabase,
+          authUser!.id,
+          {
+            kind: 'filled',
+            brokerName,
+            symbol: symbol.toUpperCase(),
+            side,
+            shares: fillShares,
+            fillPrice,
+            totalCost,
+            orderId: orderIdForEmail,
+            isLive: true,
+          },
+          authUser!.email,
+        );
+      }
     }
 
     return NextResponse.json({

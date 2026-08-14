@@ -26,6 +26,7 @@ import {
   SnapTradeAuthError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { notifyOrderEvent } from '@/lib/order-emails';
 import type { OrderStatus } from '@/lib/broker/types';
 
 const IN_FLIGHT = ['submitted', 'open', 'partially_filled'] as const;
@@ -120,14 +121,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   for (const [userId, orders] of byUser) {
     let broker: SnapTradeBroker;
+    let brokerName = 'Unknown';
     try {
       const creds = await resolveSnapTradeCredentials(userId);
+      brokerName = formatBrokerName(creds.brokerSlug);
       broker = new SnapTradeBroker({
         userId: creds.snaptradeUserId,
         userSecret: creds.snaptradeUserSecret,
         connectionId: creds.connectionId,
         brokerSlug: creds.brokerSlug,
-        brokerName: formatBrokerName(creds.brokerSlug),
+        brokerName,
         // getOrders() works read-only regardless of tradingEnabled; passing
         // true here only affects place/cancel, which this cron never calls.
         tradingEnabled: true,
@@ -233,6 +236,36 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         console.log(
           `[sync-orders] ${o.brokerage_order_id.slice(0, 8)}: ${o.status} → ${newStatus}`,
         );
+
+        // Order email: filled / cancelled transition (incl. external cancels).
+        // `live` carries the authoritative broker-side details for the email.
+        if (live.status === 'FILLED' || live.status === 'PARTIALLY_FILLED') {
+          const fillShares = live.filledShares ?? live.shares ?? 0;
+          const fillPrice = live.fillPrice ?? 0;
+          const totalCost = live.totalCost || (fillPrice * fillShares);
+          await notifyOrderEvent(supabase, userId, {
+            kind: 'filled',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            shares: fillShares,
+            fillPrice,
+            totalCost,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+          });
+        } else if (live.status === 'CANCELLED') {
+          await notifyOrderEvent(supabase, userId, {
+            kind: 'cancelled',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            shares: live.filledShares ?? live.shares ?? 0,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            cancelReason: 'external',
+          });
+        }
       }
     }
   }
