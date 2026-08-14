@@ -25,9 +25,9 @@ for (const line of fs.readFileSync('/tmp/vantage-prod.env', 'utf8').split('\n'))
 
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE = env.SUPABASE_SERVICE_ROLE_KEY;
-const CRON_SECRET = env.CRON_SECRET;
+const CRON_SECRET = process.env.CRON_SECRET || env.CRON_SECRET;
 const SESSION_SECRET = env.SESSION_SECRET || 'vantage-dev-secret';
-const PROD = env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app';
+const PROD = (env.NEXT_PUBLIC_APP_URL || 'https://vantage-ai-trading.vercel.app').replace(/\/+$/, '');
 
 if (!SUPABASE_URL || !SERVICE) {
   console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in /tmp/vantage-prod.env');
