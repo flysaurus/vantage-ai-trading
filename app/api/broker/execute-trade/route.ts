@@ -21,6 +21,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
+import { checkIdempotency, releaseIdempotency } from '@/lib/broker/order-idempotency';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { createClient } from '@supabase/supabase-js';
 
@@ -102,6 +103,26 @@ export async function POST(req: NextRequest) {
 
   console.log(`[execute-trade] trade-gate passed: ${gateResult.reason}`);
 
+  // ═══════════════════════════════════════════════════════════════
+  // GATE 2: Idempotency guard — reject duplicate submissions
+  // ═══════════════════════════════════════════════════════════════
+  const idempotency = await checkIdempotency(supabase, authUser!.id, messageId, symbol, side);
+
+  if (!idempotency.allowed) {
+    console.error(
+      `[execute-trade] 🚫 BLOCKED by idempotency guard: ${symbol} ${side} for user ${authUser!.id}`,
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        error: idempotency.reason || 'This order was already submitted.',
+        status: 'DUPLICATE',
+        blockedBy: 'idempotency',
+      },
+      { status: 409 },
+    );
+  }
+
   // --- Resolve credentials + connection metadata ---
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
@@ -139,6 +160,7 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Place the order ---
+  let orderPlaced = false;
   try {
     const broker = new SnapTradeBroker({
       userId: snaptradeUserId,
@@ -160,6 +182,13 @@ export async function POST(req: NextRequest) {
       timeInForce: timeInForce || 'day',
       currentPrice,
     });
+
+    orderPlaced = true;
+
+    // Broker rejected the order — release the reservation so the user can retry.
+    if (!result.success) {
+      await releaseIdempotency(supabase, idempotency.dedupKey).catch(() => {});
+    }
 
     // ── Persist order to database (Phase 6: real broker order lifecycle) ──
     //
@@ -293,6 +322,12 @@ export async function POST(req: NextRequest) {
       dbWarnMsg,
     });
   } catch (err) {
+    // If placeOrder threw before the order reached the broker, release the
+    // reservation so the user can retry. (If persist/email threw AFTER a
+    // successful placement, keep the key — the order did happen.)
+    if (!orderPlaced) {
+      await releaseIdempotency(supabase, idempotency.dedupKey).catch(() => {});
+    }
     const msg = (err as Error).message || 'Trade execution failed';
     console.error('[execute-trade] Error:', msg);
     return NextResponse.json(

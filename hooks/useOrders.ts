@@ -125,7 +125,9 @@ export function useOrders() {
         symbol: o.symbol,
         side: (o.side === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
         type: (o.orderType || 'market') as 'market' | 'limit' | 'stop' | 'stop_limit',
-        status: (o.status || 'filled') as Order['status'],
+        status: (o.status === 'submitted' || o.status === 'partially_filled'
+          ? 'open'
+          : (o.status || 'filled')) as Order['status'],
         qty: o.qty || 0,
         filledQty: o.filledQty || 0,
         filledPrice: o.filledPrice,

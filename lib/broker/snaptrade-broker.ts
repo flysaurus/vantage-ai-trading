@@ -9,12 +9,13 @@
 
 import { snapTradeFetch, snapTradeFetchSafe } from '@/lib/snaptrade/auth';
 import { getAccountBalances } from '@/lib/snaptrade/client';
+import { extractOrderSymbol } from '@/lib/snaptrade/mapping';
 import { toStandardSymbol, toBrokerSymbol } from './symbol-resolver';
 import type {
   BrokerEngine, BrokerMeta, BrokerPosition, BrokerAccountSummary,
   BrokerOrder, BrokerBasketOrder, OrderRequest, OrderResult,
   BasketOrderRequest, BasketOrderResult, OrderStatus, OrderSide, OrderType,
-  OrderImpactPreview,
+  TimeInForce, OrderImpactPreview,
 } from './types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -106,6 +107,27 @@ function _mapTimeInForceToSnapTrade(tif: string): string {
     case 'fok': return 'FOK';
     case 'ioc': return 'IOC';
     default: return 'Day';
+  }
+}
+
+/** Map SnapTrade order_type → our OrderType (reverse of _mapOrderTypeToSnapTrade) */
+function _mapSnapTradeOrderType(rawType?: string): OrderType {
+  switch ((rawType || '').toUpperCase()) {
+    case 'LIMIT': return 'limit';
+    case 'STOP': return 'stop';
+    case 'STOPLIMIT':
+    case 'STOP_LIMIT': return 'stop_limit';
+    default: return 'market';
+  }
+}
+
+/** Map SnapTrade time_in_force → our TimeInForce (reverse of _mapTimeInForceToSnapTrade) */
+function _mapSnapTradeTimeInForce(rawTif?: string): TimeInForce {
+  switch ((rawTif || '').toUpperCase()) {
+    case 'GTC': return 'gtc';
+    case 'FOK': return 'fok';
+    case 'IOC': return 'ioc';
+    default: return 'day';
   }
 }
 
@@ -733,11 +755,7 @@ export class SnapTradeBroker implements BrokerEngine {
   }
 
   private _mapOrder(raw: SnapOrder): BrokerOrder {
-    const symbol =
-      raw.symbol
-      || raw.universal_symbol?.symbol
-      || raw.universal_symbol?.description
-      || 'UNKNOWN';
+    const symbol = extractOrderSymbol(raw as unknown as Record<string, unknown>) || 'UNKNOWN';
 
     const qty = raw.quantity || raw.filled_quantity || 0;
     const fillPx = raw.average_fill_price || raw.price || 0;
@@ -747,7 +765,7 @@ export class SnapTradeBroker implements BrokerEngine {
       id: raw.brokerage_order_id || '',
       symbol: toStandardSymbol(symbol),
       side: (raw.action?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as OrderSide,
-      type: 'market' as OrderType,
+      type: _mapSnapTradeOrderType(raw.order_type),
       status: _mapSnapTradeStatusToOrderStatus(raw.status),
       shares: qty,
       filledShares: raw.filled_quantity ?? (isFilled ? qty : 0),
@@ -756,6 +774,7 @@ export class SnapTradeBroker implements BrokerEngine {
       stopPrice: raw.stop_price ?? undefined,
       fillPrice: fillPx || undefined,
       totalCost: raw.total_cost || (fillPx * qty) || 0,
+      timeInForce: _mapSnapTradeTimeInForce(raw.time_in_force),
       submittedAt: raw.create_date || raw.trade_date || new Date().toISOString(),
       filledAt: isFilled ? (raw.trade_date || new Date().toISOString()) : undefined,
       cancelledAt: _mapSnapTradeStatusToOrderStatus(raw.status) === 'CANCELLED'

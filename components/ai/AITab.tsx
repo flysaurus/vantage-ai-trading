@@ -2774,7 +2774,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         onConfirm={async (params) => {
           if (!tradeTicket) return;
           const price = tradeTicket.currentPrice;
-          const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce, undefined, undefined, undefined, params.dollarAmount);
+          const result = await executeTrade(tradeTicket.symbol, tradeTicket.side, params.shares, price, params.type, params.stopPrice, params.limitPrice, params.timeInForce, undefined, undefined, undefined, params.dollarAmount, tradeTicket.messageId);
           if (!result.success) {
             throw new Error(result.error || 'Order failed');
           }

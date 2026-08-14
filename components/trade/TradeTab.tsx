@@ -282,7 +282,7 @@ export function TradeTab() {
     symbol: o.symbol,
     side: (o.side || '').toUpperCase(),
     status: (o.status || '').toLowerCase(),
-    shares: o.shares ?? o.qty ?? o.filledQty ?? 0,
+    shares: Number(((o.shares ?? o.qty ?? o.filledQty ?? 0) as number).toFixed(4)),
     price: o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     date: o.createdAt ?? o.date ?? '',
@@ -1704,14 +1704,16 @@ export function TradeTab() {
                       {order.status.toUpperCase()}
                     </div>
                     <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      {order.price ? `$${(order.price as number).toFixed(2)}/share` : 'pending'}
+                      {order.price > 0
+                        ? `$${(order.price as number).toFixed(2)}/share`
+                        : (order.status === 'filled' ? 'price unavailable' : 'pending')}
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                       {(() => {
                         try {
                           const d = new Date(order.date);
                           if (!isNaN(d.getTime())) {
-                            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
                           }
                         } catch {}
                         return order.date || '';
