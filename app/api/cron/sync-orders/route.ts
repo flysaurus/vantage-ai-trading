@@ -27,6 +27,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
+import { notifyOrderNotification } from '@/lib/order-notifications';
 import type { OrderStatus } from '@/lib/broker/types';
 
 const IN_FLIGHT = ['submitted', 'open', 'partially_filled'] as const;
@@ -222,6 +223,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               requestedAmount: o.requested_amount ?? null,
               requestedQty: o.requested_qty ?? null,
             });
+
+            await notifyOrderNotification(supabase, userId, {
+              kind: 'cancelled',
+              brokerName,
+              symbol: o.symbol || 'Unknown',
+              side: o.side?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+              orderId: o.brokerage_order_id,
+              isLive: true,
+              cancelReason: 'stale_guard',
+              orderUnit: o.order_unit ?? null,
+              requestedAmount: o.requested_amount ?? null,
+              requestedQty: o.requested_qty ?? null,
+            });
           }
         } else {
           skipped++;
@@ -288,6 +302,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             isLive: true,
             ...requested,
           });
+
+          await notifyOrderNotification(supabase, userId, {
+            kind: 'filled',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            fillQty: fillShares,
+            fillPrice,
+            fillTotal: totalCost,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            ...requested,
+          });
         } else if (live.status === 'PARTIALLY_FILLED') {
           const fillShares = live.filledShares ?? live.shares ?? 0;
           const fillPrice = live.fillPrice ?? 0;
@@ -306,8 +333,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             isLive: true,
             ...requested,
           });
+
+          await notifyOrderNotification(supabase, userId, {
+            kind: 'partially_filled',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            fillQty: fillShares,
+            fillPrice,
+            fillTotal: totalCost,
+            remainingQty,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            ...requested,
+          });
         } else if (live.status === 'CANCELLED') {
           await notifyOrderEvent(supabase, userId, {
+            kind: 'cancelled',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            cancelReason: 'external',
+            ...requested,
+          });
+
+          await notifyOrderNotification(supabase, userId, {
             kind: 'cancelled',
             brokerName,
             symbol: live.symbol,

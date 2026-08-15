@@ -51,6 +51,7 @@ export function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [orderNotifsEnabled, setOrderNotifsEnabled] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchUnread = useCallback(async () => {
@@ -81,16 +82,35 @@ export function Header() {
     } catch { /* ignore */ }
   };
 
+  const fetchNotifPref = useCallback(async () => {
+    try {
+      const res = await apiGet('/api/notifications/preferences');
+      if (res.ok) {
+        const data = await res.json();
+        setOrderNotifsEnabled(data.order_notifications_enabled !== false);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleOrderNotifs = async () => {
+    const next = !orderNotifsEnabled;
+    setOrderNotifsEnabled(next); // optimistic
+    try {
+      await apiPost('/api/notifications/preferences', { order_notifications_enabled: next });
+    } catch { /* ignore */ }
+  };
+
   const [marketStatus, setMarketStatus] = useState(getMarketStatus());
 
   useEffect(() => {
     fetchUnread();
+    fetchNotifPref();
     const interval = setInterval(() => {
       fetchUnread();
       setMarketStatus(getMarketStatus());
     }, 60000);
     return () => clearInterval(interval);
-  }, [fetchUnread]);
+  }, [fetchUnread, fetchNotifPref]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -245,6 +265,35 @@ export function Header() {
               </div>
             ))
           )}
+
+          {/* Preference toggle */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px', borderTop: '1px solid rgba(255,255,255,0.06)',
+            position: 'sticky', bottom: 0, background: '#131929',
+            borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#cbd5e1' }}>
+              Order alerts
+            </span>
+            <button
+              onClick={toggleOrderNotifs}
+              style={{
+                width: 34, height: 18, borderRadius: 9, border: 'none',
+                cursor: 'pointer', position: 'relative',
+                background: orderNotifsEnabled ? '#22d3ee' : '#334155',
+                transition: 'background 0.2s',
+              }}
+              aria-label={orderNotifsEnabled ? 'Mute order alerts' : 'Unmute order alerts'}
+            >
+              <span style={{
+                position: 'absolute', top: 2,
+                left: orderNotifsEnabled ? 18 : 2,
+                width: 14, height: 14, borderRadius: 7,
+                background: '#fff', transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
         </div>
       )}
     </div>

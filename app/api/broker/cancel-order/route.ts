@@ -26,6 +26,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
+import { notifyOrderNotification } from '@/lib/order-notifications';
 import { createClient } from '@supabase/supabase-js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -195,6 +196,23 @@ export async function POST(req: NextRequest) {
         },
         authUser!.email,
       );
+
+      await notifyOrderNotification(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'cancelled',
+          brokerName: formatBrokerName(brokerSlug),
+          symbol: dbSymbol,
+          side: dbSide === 'sell' ? 'SELL' : 'BUY',
+          orderId: brokerageOrderId,
+          isLive: true,
+          cancelReason: 'user_cancelled',
+          orderUnit: dbOrderUnit,
+          requestedAmount: dbRequestedAmount,
+          requestedQty: dbRequestedQty,
+        },
+      );
     }
 
     return NextResponse.json({
@@ -258,6 +276,25 @@ export async function POST(req: NextRequest) {
           requestedQty: dbRequestedQty,
         },
         authUser!.email,
+      );
+
+      await notifyOrderNotification(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'cancel_rejected_filled',
+          brokerName: formatBrokerName(brokerSlug),
+          symbol: dbSymbol,
+          side: dbSide === 'sell' ? 'SELL' : 'BUY',
+          fillQty: shares,
+          fillPrice,
+          fillTotal: shares * fillPrice,
+          orderId: brokerageOrderId,
+          isLive: true,
+          orderUnit: dbOrderUnit,
+          requestedAmount: dbRequestedAmount,
+          requestedQty: dbRequestedQty,
+        },
       );
     }
 

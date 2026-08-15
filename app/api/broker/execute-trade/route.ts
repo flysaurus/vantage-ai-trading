@@ -23,6 +23,7 @@ import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
 import { checkIdempotency, releaseIdempotency } from '@/lib/broker/order-idempotency';
 import { notifyOrderEvent } from '@/lib/order-emails';
+import { notifyOrderNotification } from '@/lib/order-notifications';
 import { createClient } from '@supabase/supabase-js';
 
 function formatBrokerName(slug: string | null): string {
@@ -309,6 +310,24 @@ export async function POST(req: NextRequest) {
         authUser!.email,
       );
 
+      await notifyOrderNotification(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'placed',
+          brokerName,
+          symbol: symbol.toUpperCase(),
+          side,
+          type: orderType || 'market',
+          limitPrice,
+          stopPrice,
+          estimatedTotal,
+          orderId: orderIdForEmail,
+          isLive: true,
+          ...requestedFields,
+        },
+      );
+
       const fillShares = result.filledShares || placedShares || 0;
       const fillPrice = result.fillPrice || 0;
       const totalCost = result.totalCost || (fillPrice * fillShares);
@@ -331,6 +350,23 @@ export async function POST(req: NextRequest) {
           },
           authUser!.email,
         );
+
+        await notifyOrderNotification(
+          supabase,
+          authUser!.id,
+          {
+            kind: 'filled',
+            brokerName,
+            symbol: symbol.toUpperCase(),
+            side,
+            fillQty: fillShares,
+            fillPrice,
+            fillTotal: totalCost,
+            orderId: orderIdForEmail,
+            isLive: true,
+            ...requestedFields,
+          },
+        );
       } else if (result.status === 'PARTIALLY_FILLED') {
         const remainingQty = Math.max(0, Number(requestedQty ?? effectiveQty ?? 0) - Number(fillShares));
         await notifyOrderEvent(
@@ -351,6 +387,24 @@ export async function POST(req: NextRequest) {
           },
           authUser!.email,
         );
+
+        await notifyOrderNotification(
+          supabase,
+          authUser!.id,
+          {
+            kind: 'partially_filled',
+            brokerName,
+            symbol: symbol.toUpperCase(),
+            side,
+            fillQty: fillShares,
+            fillPrice,
+            fillTotal: totalCost,
+            remainingQty,
+            orderId: orderIdForEmail,
+            isLive: true,
+            ...requestedFields,
+          },
+        );
       }
     } else if (shouldPersist && !result.success) {
       await notifyOrderEvent(
@@ -367,6 +421,21 @@ export async function POST(req: NextRequest) {
           ...requestedFields,
         },
         authUser!.email,
+      );
+
+      await notifyOrderNotification(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'rejected',
+          brokerName,
+          symbol: symbol.toUpperCase(),
+          side,
+          reason: result.message,
+          orderId: orderIdForEmail,
+          isLive: true,
+          ...requestedFields,
+        },
       );
     }
 
