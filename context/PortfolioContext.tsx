@@ -25,6 +25,7 @@ import { useAccounts } from '@/context/AccountContext';
 import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
+import { availableCash } from '@/lib/available-cash';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getBroker } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
@@ -1451,8 +1452,7 @@ PORTFOLIO CONTEXT (live Finnhub prices):
 Total Value: $${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Today P&L: ${daySign}$${Math.abs(account.dayPnl).toFixed(2)} (${account.dayPnlPercent.toFixed(1)}%)
 Total P&L: ${totalSign}$${Math.abs(account.totalPnl).toFixed(2)} (${account.totalPnlPercent.toFixed(1)}%)
-Buying Power: ${account.buyingPower != null ? '$' + account.buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'N/A'}
-Cash: $${account.cash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Available cash: ${availableCash(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 
 POSITIONS (${account.positions.length} holdings):
 ${positionsSummary}
