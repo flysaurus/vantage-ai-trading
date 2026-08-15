@@ -145,6 +145,41 @@ test('Build request with budget + sector → portfolio_build', 'intent', () => {
   assert(result.requestedBudget !== null, 'budget extracted from message');
 });
 
+// Direct buy/sell with a named ticker must NOT route through vehicle triage.
+// Regression: "Buy VOO $1000" previously fell through to the budget fallback
+// (extractBudgetFromText → 1000) → portfolio_build → stocks/ETFs/mixed CLARIFY.
+test('Direct buy with ticker → trade_instruction (no vehicle triage)', 'intent', () => {
+  const result = classifyIntent('Buy VOO $1000');
+  assertEq(result.intent, 'trade_instruction', 'direct buy with ticker is a trade, not a build');
+  assert(!result.needsVehicleClarify, 'must NOT trigger vehicle clarify');
+});
+
+test('Direct sell with ticker → trade_instruction', 'intent', () => {
+  const result = classifyIntent('Sell NVDA');
+  assertEq(result.intent, 'trade_instruction', 'imperative sell with ticker is a trade');
+});
+
+test('Buy shares-of ticker → trade_instruction', 'intent', () => {
+  const result = classifyIntent('buy 2 shares of AAPL');
+  assertEq(result.intent, 'trade_instruction', 'buy N shares of TICKER is a trade');
+});
+
+test('Direct buy with company name → trade_instruction', 'intent', () => {
+  const result = classifyIntent('Buy Apple for $1000');
+  assertEq(result.intent, 'trade_instruction', 'company-name buy must not route through vehicle triage');
+});
+
+test('Question form (should I buy X) is NOT a trade_instruction', 'intent', () => {
+  const result = classifyIntent('Should I buy AAPL?');
+  assertEq(result.intent, 'stock_analysis', 'question form remains stock_analysis');
+});
+
+test('Open-ended build with no ticker still CLARIFYs on vehicle', 'intent', () => {
+  const result = classifyIntent('build me a $10,000 portfolio');
+  assertEq(result.intent, 'portfolio_build', 'no-ticker build stays portfolio_build');
+  assert(result.needsVehicleClarify, 'no vehicle specified → vehicle clarify still required');
+});
+
 // ── Suite: Foreign Suffix Stripping ────────────────────────
 
 test('Strips JNJ.DE → JNJ', 'sanitization', () => {

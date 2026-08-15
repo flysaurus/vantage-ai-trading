@@ -17,6 +17,7 @@ export type IntentCategory =
   | 'portfolio_build'      // user wants a portfolio recommendation
   | 'portfolio_rebalance'  // user wants to rebalance existing holdings
   | 'stock_analysis'       // user wants analysis of specific stock(s)
+  | 'trade_instruction'    // user wants to buy/sell a specific security now
   | 'market_question'      // user asks a general market question
   | 'clarify_response'     // user is responding to a CLARIFY prompt
   | 'greeting'             // casual conversation
@@ -119,6 +120,20 @@ const CLARIFY_RESPONSE_PATTERNS = [
   /^(?:the|I'll\s+go\s+with|let's\s+do|pick)\s+(?:the\s+)?(?:first|second|third|last|option)/i,
   /^(?:I\s+)?(?:want|prefer|like|choose|select|go\s+for)\b/i,
   /^(?:more\s+|less\s+)?(?:aggressive|conservative|balanced|growth|value|income|tech|defensive)/i,
+];
+
+// Direct buy/sell instructions with an explicit security — concrete trade
+// orders, NOT open-ended portfolio builds. These must never fall through to
+// the budget fallback (which would promote them to `portfolio_build` and route
+// them through the stocks/ETFs/mixed vehicle triage).
+// Examples: "Buy VOO $1000", "sell NVDA", "buy 2 shares of AAPL", "Buy Apple".
+const DIRECT_TRADE_PATTERNS = [
+  // Imperative action + ticker (e.g. "Buy VOO $1000", "sell NVDA")
+  /\b(?:buy|purchase|sell|short|cover|dump)\b[^.!?]{0,40}?\b\$?([A-Z]{2,5})\b/i,
+  // Imperative action + "shares/stock of <name>" (e.g. "buy 2 shares of AAPL")
+  /\b(?:buy|purchase|sell|short|cover|dump)\b[^.!?]{0,40}?\b(?:shares?|stock)\s+of\s+([a-z][\w.&]*)/i,
+  // Imperative action + company name in title case (e.g. "Buy Apple", "Sell Tesla")
+  /\b(?:buy|purchase|sell|short|cover|dump)\b[^.!?]{0,40}?\b([A-Z][a-z]{2,25})\b/i,
 ];
 
 // ── Sector detection ──────────────────────────────────────────
@@ -364,6 +379,21 @@ export function classifyIntent(message: string, state?: ConversationState): Clas
       if (pattern.test(message)) {
         classification.confidence = 0.8;
         classification.intent = 'market_question';
+        break;
+      }
+    }
+  }
+
+  // ── Direct trade instruction (must precede the budget fallback) ──
+  // A concrete buy/sell order with an explicit security is NOT a portfolio
+  // build. "Buy VOO $1000" is unambiguous — routing it through vehicle triage
+  // (stocks/ETFs/mixed CLARIFY) is a bug. Classify it as a trade instruction so
+  // it proceeds straight to ticker resolution + Trade-Gate.
+  if (classification.confidence < 0.5) {
+    for (const pattern of DIRECT_TRADE_PATTERNS) {
+      if (pattern.test(message)) {
+        classification.intent = 'trade_instruction';
+        classification.confidence = 0.9;
         break;
       }
     }
