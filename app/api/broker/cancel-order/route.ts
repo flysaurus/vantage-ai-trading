@@ -117,13 +117,16 @@ export async function POST(req: NextRequest) {
   let dbSymbol: string | null = null;
   let dbSide: string | null = null;
   let dbQty: number | null = null;
+  let dbOrderUnit: 'dollars' | 'shares' | null = null;
+  let dbRequestedAmount: number | null = null;
+  let dbRequestedQty: number | null = null;
   let brokerageOrderId: string = orderId;
 
   if (UUID_RE.test(orderId)) {
     try {
       const { data } = await supabase
         .from('orders')
-        .select('id, brokerage_order_id, status, symbol, side, qty')
+        .select('id, brokerage_order_id, status, symbol, side, qty, requested_amount, requested_qty, order_unit')
         .or(`id.eq.${orderId},brokerage_order_id.eq.${orderId}`)
         .eq('user_id', authUser!.id)
         .limit(1)
@@ -135,6 +138,9 @@ export async function POST(req: NextRequest) {
         dbSymbol = data.symbol || null;
         dbSide = data.side || null;
         dbQty = typeof data.qty === 'number' ? data.qty : null;
+        dbOrderUnit = data.order_unit === 'dollars' || data.order_unit === 'shares' ? data.order_unit : null;
+        dbRequestedAmount = typeof data.requested_amount === 'number' ? data.requested_amount : null;
+        dbRequestedQty = typeof data.requested_qty === 'number' ? data.requested_qty : null;
       }
     } catch (err) {
       console.warn(
@@ -180,10 +186,12 @@ export async function POST(req: NextRequest) {
           brokerName: formatBrokerName(brokerSlug),
           symbol: dbSymbol,
           side: dbSide === 'sell' ? 'SELL' : 'BUY',
-          shares: dbQty ?? 0,
           orderId: brokerageOrderId,
           isLive: true,
           cancelReason: 'user_cancelled',
+          orderUnit: dbOrderUnit,
+          requestedAmount: dbRequestedAmount,
+          requestedQty: dbRequestedQty,
         },
         authUser!.email,
       );
@@ -236,15 +244,18 @@ export async function POST(req: NextRequest) {
         supabase,
         authUser!.id,
         {
-          kind: 'filled',
+          kind: 'cancel_rejected_filled',
           brokerName: formatBrokerName(brokerSlug),
           symbol: dbSymbol,
           side: dbSide === 'sell' ? 'SELL' : 'BUY',
-          shares,
+          fillQty: shares,
           fillPrice,
-          totalCost: shares * fillPrice,
+          fillTotal: shares * fillPrice,
           orderId: brokerageOrderId,
           isLive: true,
+          orderUnit: dbOrderUnit,
+          requestedAmount: dbRequestedAmount,
+          requestedQty: dbRequestedQty,
         },
         authUser!.email,
       );

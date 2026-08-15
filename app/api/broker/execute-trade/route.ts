@@ -204,25 +204,26 @@ export async function POST(req: NextRequest) {
     let dbOrderId: string | null = null;
     let dbWarnMsg: string | null = null;
 
+    // ── Four-field requested model (hoisted so persist + email share it) ──
+    //   order_unit       = 'dollars' when the user specified a dollar amount, else 'shares'
+    //   requested_amount = authoritative when dollars, else derived estimate
+    //   requested_qty    = authoritative when shares, else derived estimate
+    const isNotionalOrder = dollarAmount != null && dollarAmount > 0;
+    const effectiveQty = shares || 0;
+    const orderUnit: 'dollars' | 'shares' = isNotionalOrder ? 'dollars' : 'shares';
+    const referencePrice = limitPrice || currentPrice || result.fillPrice || 0;
+    const requestedAmount = isNotionalOrder
+      ? dollarAmount
+      : (referencePrice > 0 && effectiveQty > 0 ? Number((effectiveQty * referencePrice).toFixed(2)) : null);
+    const requestedQty = isNotionalOrder
+      ? (effectiveQty > 0 ? effectiveQty : (referencePrice > 0 ? Number((dollarAmount / referencePrice).toFixed(6)) : null))
+      : effectiveQty;
+
     if (shouldPersist) {
       try {
         const now = new Date().toISOString();
         // notional=null if column doesn't exist yet (migration 042 pending).
         // qty always stores the share estimate so it's meaningful even without notional.
-        const isNotionalOrder = dollarAmount != null && dollarAmount > 0;
-        const effectiveQty = shares || 0;
-        // Four-field requested model:
-        //   order_unit       = 'dollars' when the user specified a dollar amount, else 'shares'
-        //   requested_amount = authoritative when dollars, else derived estimate
-        //   requested_qty    = authoritative when shares, else derived estimate
-        const orderUnit: 'dollars' | 'shares' = isNotionalOrder ? 'dollars' : 'shares';
-        const referencePrice = limitPrice || currentPrice || result.fillPrice || 0;
-        const requestedAmount = isNotionalOrder
-          ? dollarAmount
-          : (referencePrice > 0 && effectiveQty > 0 ? Number((effectiveQty * referencePrice).toFixed(2)) : null);
-        const requestedQty = isNotionalOrder
-          ? (effectiveQty > 0 ? effectiveQty : (referencePrice > 0 ? Number((dollarAmount / referencePrice).toFixed(6)) : null))
-          : effectiveQty;
         const insertRow: Record<string, unknown> = {
           user_id: authUser!.id,
           symbol: symbol.toUpperCase(),
@@ -267,20 +268,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Order email: placed (and filled, if the broker executed immediately) ──
+    // ── Order email: placed / filled / partial / rejected ──
     //
     // "Placed" fires whenever the order reached the broker (not a phantom,
-    // not rejected). "Filled" fires here ONLY for immediate fills (market orders
-    // during market hours) — the sync cron handles deferred fills via the
-    // in-flight transition, so this branch can't double-email.
+    // not rejected). "Filled"/"Partially Filled" fire here ONLY for immediate
+    // execution (market orders during hours) — the sync cron handles deferred
+    // fills via the in-flight transition, so this branch can't double-email.
+    // "Rejected" fires when the order reached the broker but was not accepted.
+    const brokerName = formatBrokerName(brokerSlug);
+    const orderIdForEmail = result.orderId || dbOrderId || '';
+    const requestedFields = {
+      orderUnit,
+      requestedAmount: requestedAmount ?? null,
+      requestedQty: requestedQty ?? null,
+    };
+
     if (shouldPersist && result.success) {
-      const brokerName = formatBrokerName(brokerSlug);
       const placedShares = result.filledShares || result.estimatedShares || shares || 0;
       const estimatedTotal = result.totalCost
         || (result.fillPrice && placedShares ? result.fillPrice * placedShares : 0)
         || dollarAmount
         || 0;
-      const orderIdForEmail = result.orderId || dbOrderId || '';
 
       await notifyOrderEvent(
         supabase,
@@ -290,21 +298,22 @@ export async function POST(req: NextRequest) {
           brokerName,
           symbol: symbol.toUpperCase(),
           side,
-          shares: placedShares,
           type: orderType || 'market',
           limitPrice,
           stopPrice,
           estimatedTotal,
           orderId: orderIdForEmail,
           isLive: true,
+          ...requestedFields,
         },
         authUser!.email,
       );
 
-      if (result.status === 'FILLED' || result.status === 'PARTIALLY_FILLED') {
-        const fillShares = result.filledShares || placedShares || 0;
-        const fillPrice = result.fillPrice || 0;
-        const totalCost = result.totalCost || (fillPrice * fillShares);
+      const fillShares = result.filledShares || placedShares || 0;
+      const fillPrice = result.fillPrice || 0;
+      const totalCost = result.totalCost || (fillPrice * fillShares);
+
+      if (result.status === 'FILLED') {
         await notifyOrderEvent(
           supabase,
           authUser!.id,
@@ -313,15 +322,52 @@ export async function POST(req: NextRequest) {
             brokerName,
             symbol: symbol.toUpperCase(),
             side,
-            shares: fillShares,
+            fillQty: fillShares,
             fillPrice,
-            totalCost,
+            fillTotal: totalCost,
             orderId: orderIdForEmail,
             isLive: true,
+            ...requestedFields,
+          },
+          authUser!.email,
+        );
+      } else if (result.status === 'PARTIALLY_FILLED') {
+        const remainingQty = Math.max(0, Number(requestedQty ?? effectiveQty ?? 0) - Number(fillShares));
+        await notifyOrderEvent(
+          supabase,
+          authUser!.id,
+          {
+            kind: 'partially_filled',
+            brokerName,
+            symbol: symbol.toUpperCase(),
+            side,
+            fillQty: fillShares,
+            fillPrice,
+            fillTotal: totalCost,
+            remainingQty,
+            orderId: orderIdForEmail,
+            isLive: true,
+            ...requestedFields,
           },
           authUser!.email,
         );
       }
+    } else if (shouldPersist && !result.success) {
+      await notifyOrderEvent(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'rejected',
+          brokerName,
+          symbol: symbol.toUpperCase(),
+          side,
+          reason: result.message,
+          orderId: orderIdForEmail,
+          isLive: true,
+          ...requestedFields,
+        },
+        authUser!.email,
+      );
     }
 
     return NextResponse.json({

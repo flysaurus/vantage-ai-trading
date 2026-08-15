@@ -214,32 +214,11 @@ export async function sendOrderNotification(
   userEmail: string,
   notification: OrderNotification,
 ): Promise<boolean> {
-  if (!userEmail || !userEmail.includes('@')) {
-    console.log('[notifications] No valid email, skipping:', notification.orderId);
-    return false;
-  }
-
-  const subject = buildOrderSubject(notification);
-  const html = buildOrderHtml(notification);
-
-  if (SMTP_CONFIGURED) {
-    try {
-      // Dynamic import to keep nodemailer (Node-only) out of client bundles
-      const { sendEmail } = await import('@/lib/email');
-      const result = await sendEmail({ to: userEmail, subject, html });
-      console.log(`[notifications] ✅ Order email sent → ${userEmail}: ${subject}`);
-      return result.success;
-    } catch (err: any) {
-      console.error(`[notifications] SMTP send failed for ${notification.orderId}:`, err.message);
-      return false;
-    }
-  }
-
-  // Dev fallback
-  console.log(`[notifications] (dev) Would send to ${userEmail}: ${subject}`);
-  console.log(`[notifications] (dev) Order: ${notification.orderType} ${notification.side} ${notification.shares} ${notification.symbol}`);
-  if (notification.fillPrice) console.log(`[notifications] (dev) Fill: $${notification.fillPrice.toFixed(2)}`);
-  return true;
+  // Demo-mode orders send ZERO order-lifecycle emails (locked product decision).
+  // Real-broker orders route through lib/order-emails.ts (notifyOrderEvent),
+  // which is the single source of truth for transactional order email now.
+  console.log(`[notifications] Skipping demo order email (${notification.symbol} ${notification.type})`);
+  return false;
 }
 
 /**
@@ -250,27 +229,7 @@ export async function sendBasketNotification(
   userEmail: string,
   notification: BasketNotification,
 ): Promise<void> {
-  if (!userEmail || !userEmail.includes('@')) {
-    console.log('[notifications] No valid email, skipping basket notification:', notification.basketId);
-    return;
-  }
-
-  const subject = buildBasketSubject(notification);
-  const html = buildBasketHtml(notification);
-
-  if (SMTP_CONFIGURED) {
-    try {
-      // Dynamic import to keep nodemailer (Node-only) out of client bundles
-      const { sendEmail } = await import('@/lib/email');
-      await sendEmail({ to: userEmail, subject, html });
-      console.log(`[notifications] ✅ Basket email sent → ${userEmail}: ${subject}`);
-    } catch (err: any) {
-      console.error(`[notifications] SMTP basket send failed:`, err.message);
-    }
-    return;
-  }
-
-  // Dev fallback
-  console.log(`[notifications] (dev) Would send to ${userEmail}: ${subject}`);
-  console.log(`[notifications] (dev) Basket: ${notification.basketName}, $${notification.totalInvested.toFixed(2)}, ${notification.filledCount}/${notification.positions.length} filled`);
+  // Demo-mode baskets send ZERO lifecycle emails (locked product decision).
+  // Real-broker baskets route through lib/order-emails.ts (notifyBasketEvent).
+  console.log(`[notifications] Skipping demo basket email (${notification.basketName})`);
 }

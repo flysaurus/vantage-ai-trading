@@ -1,239 +1,467 @@
 /**
  * Order Notification Emails
  *
- * Sends transactional emails for order lifecycle events:
- *   - placed (order confirmation — "sent" merged into "placed" per state machine)
- *   - filled (execution confirmation)
- *   - cancelled (user-initiated, day-expired, or external/broker-side)
+ * Sends transactional emails for the full order lifecycle (10 event kinds):
+ *   placed, filled, partially_filled, rejected (immediate), 4 cancellation
+ *   variants (user / broker / external / stale-guard), cancel-rejected-
+ *   because-already-filled, and consolidated baskets.
  *
  * Uses the existing email infra (lib/email.ts) — SMTP in prod, Ethereal in dev.
- * Unsubscribe is a one-click HMAC link (same scheme as the Portfolio Agent digest)
- * that flips users.order_emails_enabled → false via /api/order-emails/unsubscribe.
  *
- * notifyOrderEvent() is the single entry point call sites use: it resolves the
- * user's email + opt-out flag from the `users` table, then dispatches to the
- * right send function. It never throws — email failures must not block the
- * order flow.
+ * Rules (locked product decisions):
+ *   - ALWAYS-ON: no unsubscribe link/footer and no opt-out gate. These are
+ *     transactional, distinct from the optional daily digest (which keeps its
+ *     own unsubscribe flow).
+ *   - DEMO EXCLUSION: demo orders (is_demo = true → isLive = false) send
+ *     NOTHING. Real-broker orders only.
+ *   - GENERIC: every template is BUY/SELL agnostic.
+ *   - ROUNDING: share counts are rounded exactly like OrdersTab (4dp, trailing
+ *     zeros stripped) — never raw 18-decimal values.
+ *
+ * notifyOrderEvent() is the single entry point for order events; it resolves
+ * the user's email from public.users, skips demo, then dispatches. It never
+ * throws — email failures must not block the order flow.
+ *
+ * notifyBasketEvent() is the equivalent for consolidated basket actions.
  */
 
 import { sendEmail } from '@/lib/email';
-import { signUnsubscribeToken } from '@/lib/digest';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://vantage-ai-trading.vercel.app';
+// ─── Rounding helpers (mirror OrdersTab) ─────────────────────
 
-// ─── Unsubscribe footer (HMAC-signed, one-click, no login) ──
-
-function buildUnsubscribeFooter(userId: string): string {
-  const token = signUnsubscribeToken(userId);
-  return `
-      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-      <p style="font-size:11px;color:#aaa">
-        You received this email because order notifications are enabled in Vantage.
-        <a href="${BASE_URL}/api/order-emails/unsubscribe?token=${encodeURIComponent(token)}" style="color:#aaa;text-decoration:underline">Unsubscribe</a> — one click, no login.
-      </p>`;
+function fmtShares(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
+  return `${Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
 }
 
-// ─── Placed ───────────────────────────────────────────────────
+function fmtDollars(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
+  return `$${Number(n).toFixed(2)}`;
+}
 
-export interface OrderConfirmationParams {
-  userId: string;
-  userEmail: string;
-  userName?: string;
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
+  return `${Number(n).toFixed(2)}%`;
+}
+
+// ─── Four-field requested display ────────────────────────────
+// Authoritative field bold; derived estimate labeled + muted.
+
+export interface RequestedFields {
+  orderUnit?: 'dollars' | 'shares' | null;
+  requestedAmount?: number | null;
+  requestedQty?: number | null;
+}
+
+function resolveUnit(f: RequestedFields): 'dollars' | 'shares' {
+  if (f.orderUnit === 'dollars' || f.orderUnit === 'shares') return f.orderUnit;
+  return f.requestedAmount != null && f.requestedAmount > 0 ? 'dollars' : 'shares';
+}
+
+/** Returns the authoritative requested string (bold) — no derived estimate. */
+function authoritativeRequested(f: RequestedFields): string {
+  if (resolveUnit(f) === 'dollars') {
+    return fmtDollars(f.requestedAmount);
+  }
+  const q = f.requestedQty;
+  const n = q != null && q > 0 ? Number(q) : 0;
+  return n > 0 ? `${fmtShares(n)} share${n === 1 ? '' : 's'}` : '—';
+}
+
+/** Returns the derived estimate string (muted) if any, else '' (HTML). */
+function derivedRequested(f: RequestedFields): string {
+  if (resolveUnit(f) === 'dollars') {
+    return f.requestedQty != null && f.requestedQty > 0
+      ? `≈${fmtShares(f.requestedQty)} shares est.`
+      : '';
+  }
+  return f.requestedAmount != null && f.requestedAmount > 0
+    ? `≈${fmtDollars(f.requestedAmount)} est.`
+    : '';
+}
+
+/** Full requested line: "<strong>authoritative</strong> (derived)". */
+function requestedLine(f: RequestedFields): string {
+  const auth = authoritativeRequested(f);
+  const deriv = derivedRequested(f);
+  const derivHtml = deriv
+    ? ` <span style="color:#888;font-weight:400">(${deriv})</span>`
+    : '';
+  return `<strong>${auth}</strong>${derivHtml}`;
+}
+
+// ─── Shared layout ───────────────────────────────────────────
+
+const SIDE_COLOR = (side: 'BUY' | 'SELL') => (side === 'BUY' ? '#16a34a' : '#dc2626');
+
+function wrap(inner: string): string {
+  return `<div style="max-width:600px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e293b">${inner}</div>`;
+}
+
+function tableRow(label: string, value: string, shaded = false, valueColor?: string): string {
+  const bg = shaded ? 'background:#f5f5f5;' : '';
+  const color = valueColor ? `color:${valueColor};` : '';
+  return `<tr><td style="padding:6px 12px;${bg}font-weight:bold;width:160px">${label}</td><td style="padding:6px 12px;${bg}${color}">${value}</td></tr>`;
+}
+
+// ─── Event payload types ─────────────────────────────────────
+
+interface BaseEvent extends RequestedFields {
   brokerName: string;
   symbol: string;
   side: 'BUY' | 'SELL';
-  shares: number;
-  type: string;
-  limitPrice?: number;
-  stopPrice?: number;
-  estimatedTotal: number;
   orderId: string;
-  isLive: boolean; // true = real broker, false = demo
+  isLive: boolean;
+  userName?: string;
 }
 
-export async function sendOrderConfirmation(
-  params: OrderConfirmationParams,
-): Promise<void> {
-  const {
-    userId, userEmail, userName, brokerName, symbol, side,
-    shares, type, limitPrice, stopPrice, estimatedTotal,
-    orderId, isLive,
-  } = params;
+export type OrderEmailEvent =
+  | (BaseEvent & {
+      kind: 'placed';
+      type: string;
+      limitPrice?: number;
+      stopPrice?: number;
+      estimatedTotal?: number;
+    })
+  | (BaseEvent & {
+      kind: 'filled';
+      fillQty: number;
+      fillPrice: number;
+      fillTotal: number;
+    })
+  | (BaseEvent & {
+      kind: 'partially_filled';
+      fillQty: number;
+      fillPrice: number;
+      fillTotal: number;
+      remainingQty: number;
+    })
+  | (BaseEvent & {
+      kind: 'rejected';
+      reason?: string;
+    })
+  | (BaseEvent & {
+      kind: 'cancelled';
+      cancelReason: 'user_cancelled' | 'broker' | 'external' | 'stale_guard';
+    })
+  | (BaseEvent & {
+      kind: 'cancel_rejected_filled';
+      fillQty: number;
+      fillPrice: number;
+      fillTotal: number;
+    });
 
-  const greeting = userName ? `Hi ${userName},` : 'Hi,';
-  const env = isLive ? `via **${brokerName}**` : 'in your **Demo** account';
-  const priceNote = limitPrice
-    ? ` at $${limitPrice.toFixed(2)}`
-    : stopPrice
-      ? ` (stop: $${stopPrice.toFixed(2)})`
+export interface BasketPositionSummary extends RequestedFields {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  status?: string;
+  fillPrice?: number | null;
+}
+
+export interface BasketOrderEvent {
+  brokerName: string;
+  basketName: string;
+  basketEmoji?: string;
+  event: 'placed' | 'filled' | 'partially_filled' | 'cancelled';
+  positions: BasketPositionSummary[];
+  isLive: boolean;
+  userName?: string;
+  orderIds?: string[];
+}
+
+// ─── 1. Placed ───────────────────────────────────────────────
+
+async function sendPlaced(e: Extract<OrderEmailEvent, { kind: 'placed' }>, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const priceNote = e.limitPrice
+    ? ` at $${e.limitPrice.toFixed(2)}`
+    : e.stopPrice
+      ? ` (stop: $${e.stopPrice.toFixed(2)})`
       : '';
 
-  const subject = `[Vantage] ${side} ${shares} ${symbol}${priceNote} — Order Confirmed`;
-  const html = `
-    <div style="max-width:600px;font-family:sans-serif">
-      <h2>📊 Order Confirmed</h2>
-      <p>${greeting}</p>
-      <p>Your order has been placed ${env}:</p>
-      <table style="border-collapse:collapse;width:100%;margin:16px 0">
-        <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Symbol</td><td style="padding:6px 12px">${symbol}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold">Action</td><td style="padding:6px 12px;color:${side === 'BUY' ? '#16a34a' : '#dc2626'}">${side} ${shares} shares</td></tr>
-        <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Type</td><td style="padding:6px 12px">${type.toUpperCase()}</td></tr>
-        ${limitPrice ? `<tr><td style="padding:6px 12px;font-weight:bold">Limit</td><td style="padding:6px 12px">$${limitPrice.toFixed(2)}</td></tr>` : ''}
-        ${stopPrice ? `<tr><td style="padding:6px 12px;font-weight:bold">Stop</td><td style="padding:6px 12px">$${stopPrice.toFixed(2)}</td></tr>` : ''}
-        <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Est. Total</td><td style="padding:6px 12px">$${estimatedTotal.toFixed(2)}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold">Broker</td><td style="padding:6px 12px">${brokerName}${isLive ? '' : ' (Demo)'}</td></tr>
-      </table>
-      <p style="font-size:12px;color:#888">Order ID: ${orderId.slice(0, 12)}...</p>
-      <p style="font-size:12px;color:#888">
-        ${isLive
-          ? 'This order was sent to your brokerage. Execution is not guaranteed. Please verify in your brokerage account.'
-          : 'This is a simulated Demo order. No real money was involved.'}
-      </p>
-      ${buildUnsubscribeFooter(userId)}
-    </div>
-  `;
+  const subject = `[Vantage] ${e.side} ${e.symbol} — Order Submitted`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">📊 Order Submitted</h2>
+    <p>${greeting}</p>
+    <p>Your order was sent to <strong>${e.brokerName}</strong>:</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      ${tableRow('Symbol', e.symbol, false)}
+      ${tableRow('Action', `${e.side}`, true, SIDE_COLOR(e.side))}
+      ${tableRow('Requested', requestedLine(e), false)}
+      ${e.type ? tableRow('Type', e.type.toUpperCase(), true) : ''}
+      ${e.limitPrice ? tableRow('Limit', fmtDollars(e.limitPrice), false) : ''}
+      ${e.stopPrice ? tableRow('Stop', fmtDollars(e.stopPrice), false) : ''}
+      ${e.estimatedTotal != null && e.estimatedTotal > 0 ? tableRow('Est. Total', fmtDollars(e.estimatedTotal), true) : ''}
+      ${tableRow('Broker', e.brokerName, false)}
+    </table>
+    <p style="font-size:12px;color:#888">Order ID: ${e.orderId.slice(0, 12)}…</p>
+    <p style="font-size:12px;color:#888">
+      Execution is not guaranteed. You'll receive a follow-up email once this order
+      fills, partially fills, or is cancelled. Please verify directly with ${e.brokerName} if unsure.
+    </p>
+  `);
 
   try {
-    await sendEmail({ to: userEmail, subject, html });
-    console.log(`[order-email] Sent ${side} confirmation for ${symbol} to ${userEmail}`);
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent ${e.side} submission for ${e.symbol}`);
   } catch (err) {
-    console.error(
-      '[order-email] Failed to send confirmation:',
-      err instanceof Error ? err.message : 'Unknown',
-    );
-    // Don't throw — email failure should not block the order flow
+    console.error('[order-email] Failed to send submission:', err);
   }
 }
 
-// ─── Filled ───────────────────────────────────────────────────
+// ─── 2. Filled ───────────────────────────────────────────────
 
-export interface OrderFillParams {
-  userId: string;
-  userEmail: string;
-  userName?: string;
-  brokerName: string;
-  symbol: string;
-  side: 'BUY' | 'SELL';
-  shares: number;
-  fillPrice: number;
-  totalCost: number;
-  orderId: string;
-  isLive: boolean;
-}
+async function sendFilled(e: Extract<OrderEmailEvent, { kind: 'filled' }>, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const pnlNote = e.side === 'BUY' ? 'Now in your portfolio' : 'Proceeds added to your account';
 
-export async function sendOrderFillNotification(
-  params: OrderFillParams,
-): Promise<void> {
-  const {
-    userId, userEmail, userName, brokerName, symbol, side,
-    shares, fillPrice, totalCost, orderId, isLive,
-  } = params;
-
-  const greeting = userName ? `Hi ${userName},` : 'Hi,';
-  const env = isLive ? `via **${brokerName}**` : 'in your **Demo** account';
-  const pnlNote = side === 'BUY' ? 'Now in your portfolio' : 'Proceeds added to your account';
-
-  const subject = `[Vantage] ✅ ${side} ${shares} ${symbol} Filled @ $${fillPrice.toFixed(2)}`;
-  const html = `
-    <div style="max-width:600px;font-family:sans-serif">
-      <h2>✅ Order Filled</h2>
-      <p>${greeting}</p>
-      <p>Your order was filled ${env}:</p>
-      <table style="border-collapse:collapse;width:100%;margin:16px 0">
-        <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Symbol</td><td style="padding:6px 12px">${symbol}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold">Action</td><td style="padding:6px 12px;color:${side === 'BUY' ? '#16a34a' : '#dc2626'}">${side} ${shares} shares</td></tr>
-        <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Fill Price</td><td style="padding:6px 12px">$${fillPrice.toFixed(2)}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold">Total</td><td style="padding:6px 12px">$${totalCost.toFixed(2)}</td></tr>
-      </table>
-      <p>${pnlNote}.</p>
-      <p style="font-size:12px;color:#888">Order ID: ${orderId.slice(0, 12)}...</p>
-      ${buildUnsubscribeFooter(userId)}
-    </div>
-  `;
+  const subject = `[Vantage] ✅ ${e.side} ${e.symbol} — Filled`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">✅ Order Filled</h2>
+    <p>${greeting}</p>
+    <p>Your order was filled at <strong>${e.brokerName}</strong>:</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      ${tableRow('Symbol', e.symbol, false)}
+      ${tableRow('Action', `${e.side}`, true, SIDE_COLOR(e.side))}
+      ${tableRow('Requested', requestedLine(e), false)}
+      ${tableRow('Filled', `${fmtShares(e.fillQty)} share${Number(e.fillQty) === 1 ? '' : 's'} @ ${fmtDollars(e.fillPrice)}`, true)}
+      ${tableRow('Total', fmtDollars(e.fillTotal), false)}
+    </table>
+    <p>${pnlNote}.</p>
+    <p style="font-size:12px;color:#888">Order ID: ${e.orderId.slice(0, 12)}…</p>
+  `);
 
   try {
-    await sendEmail({ to: userEmail, subject, html });
-    console.log(`[order-email] Sent fill notification for ${symbol} to ${userEmail}`);
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent fill for ${e.symbol}`);
   } catch (err) {
-    console.error('[order-email] Failed to send fill notification:', err);
+    console.error('[order-email] Failed to send fill:', err);
   }
 }
 
-// ─── Cancelled ────────────────────────────────────────────────
+// ─── 3. Partially Filled ─────────────────────────────────────
 
-export interface OrderCancellationParams {
-  userId: string;
-  userEmail: string;
-  userName?: string;
-  brokerName: string;
-  symbol: string;
-  side: 'BUY' | 'SELL';
-  shares: number;
-  orderId: string;
-  isLive: boolean;
-  /** Why it was cancelled — drives the user-facing reason line. */
-  cancelReason?: 'user_cancelled' | 'day_expired' | 'external';
-}
+async function sendPartiallyFilled(e: Extract<OrderEmailEvent, { kind: 'partially_filled' }>, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const filledShares = Number(e.fillQty);
+  const remainingShares = Number(e.remainingQty || 0);
 
-export async function sendOrderCancellation(
-  params: OrderCancellationParams,
-): Promise<void> {
-  const {
-    userId, userEmail, userName, brokerName, symbol, side,
-    shares, orderId, isLive, cancelReason,
-  } = params;
-
-  const greeting = userName ? `Hi ${userName},` : 'Hi,';
-  const env = isLive ? `at **${brokerName}**` : 'in your **Demo** account';
-  const reason =
-    cancelReason === 'day_expired'
-      ? 'It was a day order and expired at market close.'
-      : cancelReason === 'external'
-        ? 'It was cancelled outside Vantage (directly at your brokerage, or the order expired).'
-        : 'It was cancelled at your request.';
-
-  const subject = `[Vantage] ❌ ${side} ${shares} ${symbol} — Cancelled`;
-  const html = `
-    <div style="max-width:600px;font-family:sans-serif">
-      <h2>❌ Order Cancelled</h2>
-      <p>${greeting}</p>
-      <p>Your order was cancelled ${env}:</p>
-      <table style="border-collapse:collapse;width:100%;margin:16px 0">
-        <tr><td style="padding:6px 12px;background:#f5f5f5;font-weight:bold">Symbol</td><td style="padding:6px 12px">${symbol}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold">Action</td><td style="padding:6px 12px;color:#dc2626">${side} ${shares} shares</td></tr>
-      </table>
-      <p style="font-size:13px;color:#555">${reason}</p>
-      <p style="font-size:12px;color:#888">Order ID: ${orderId.slice(0, 12)}...</p>
-      ${buildUnsubscribeFooter(userId)}
-    </div>
-  `;
+  const subject = `[Vantage] ⏳ ${e.side} ${e.symbol} — Partially Filled`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">⏳ Partially Filled</h2>
+    <p>${greeting}</p>
+    <p>Part of your order was filled at <strong>${e.brokerName}</strong> — it is <strong>not yet complete</strong>:</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      ${tableRow('Symbol', e.symbol, false)}
+      ${tableRow('Action', `${e.side}`, true, SIDE_COLOR(e.side))}
+      ${tableRow('Requested', requestedLine(e), false)}
+      ${tableRow('Filled', `${fmtShares(e.fillQty)} share${filledShares === 1 ? '' : 's'} @ ${fmtDollars(e.fillPrice)}`, true)}
+      ${tableRow('Filled Total', fmtDollars(e.fillTotal), false)}
+      ${remainingShares > 0 ? tableRow('Remaining', `${fmtShares(e.remainingQty)} share${remainingShares === 1 ? '' : 's'} open`, true) : ''}
+    </table>
+    <p style="font-size:12px;color:#888">Order ID: ${e.orderId.slice(0, 12)}…</p>
+    <p style="font-size:12px;color:#888">The remaining portion is still open. You'll get another update when it resolves.</p>
+  `);
 
   try {
-    await sendEmail({ to: userEmail, subject, html });
-    console.log(`[order-email] Sent cancellation for ${symbol} to ${userEmail}`);
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent partial fill for ${e.symbol}`);
+  } catch (err) {
+    console.error('[order-email] Failed to send partial fill:', err);
+  }
+}
+
+// ─── 4. Immediate Rejection ──────────────────────────────────
+
+async function sendRejected(e: Extract<OrderEmailEvent, { kind: 'rejected' }>, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const reason = e.reason?.trim() || 'No reason provided by the broker';
+
+  const subject = `[Vantage] ⚠️ ${e.side} ${e.symbol} — Order Not Accepted`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">⚠️ Order Not Accepted</h2>
+    <p>${greeting}</p>
+    <p>Your order was <strong>not accepted</strong> by ${e.brokerName}:</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      ${tableRow('Symbol', e.symbol, false)}
+      ${tableRow('Action', `${e.side}`, true, SIDE_COLOR(e.side))}
+      ${tableRow('Requested', requestedLine(e), false)}
+      ${tableRow('Reason', reason, true)}
+    </table>
+    <p style="font-size:12px;color:#888">Order ID: ${e.orderId.slice(0, 12)}…</p>
+    <p style="font-size:12px;color:#888">No trade was executed. You can retry once the issue is resolved.</p>
+  `);
+
+  try {
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent rejection for ${e.symbol}`);
+  } catch (err) {
+    console.error('[order-email] Failed to send rejection:', err);
+  }
+}
+
+// ─── 5–8. Cancelled variants ─────────────────────────────────
+
+function cancelReasonLine(reason: 'user_cancelled' | 'broker' | 'external' | 'stale_guard', brokerName: string): string {
+  switch (reason) {
+    case 'user_cancelled':
+      return 'It was cancelled at your request in Vantage.';
+    case 'broker':
+      return `It was rejected or expired at ${brokerName} (not cancelled in Vantage).`;
+    case 'external':
+      return 'It was cancelled outside Vantage (directly at your brokerage, or the order expired).';
+    case 'stale_guard':
+      return `We could no longer confirm this order's status with ${brokerName} after 2 days and marked it cancelled — please verify directly with ${brokerName} if you're unsure.`;
+  }
+}
+
+async function sendCancelled(e: Extract<OrderEmailEvent, { kind: 'cancelled' }>, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const reason = cancelReasonLine(e.cancelReason, e.brokerName);
+  const heading = e.cancelReason === 'stale_guard' ? 'Order Marked Cancelled' : 'Order Cancelled';
+
+  const subject = `[Vantage] ❌ ${e.side} ${e.symbol} — ${heading}`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">❌ ${heading}</h2>
+    <p>${greeting}</p>
+    <p>Your order was cancelled at <strong>${e.brokerName}</strong>:</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      ${tableRow('Symbol', e.symbol, false)}
+      ${tableRow('Action', `${e.side}`, true, SIDE_COLOR(e.side))}
+      ${tableRow('Requested', requestedLine(e), false)}
+    </table>
+    <p style="font-size:13px;color:#555">${reason}</p>
+    <p style="font-size:12px;color:#888">Order ID: ${e.orderId.slice(0, 12)}…</p>
+  `);
+
+  try {
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent cancellation for ${e.symbol} (${e.cancelReason})`);
   } catch (err) {
     console.error('[order-email] Failed to send cancellation:', err);
   }
 }
 
-// ─── Dispatcher ───────────────────────────────────────────────
+// ─── 6. Cancel rejected because already filled ───────────────
 
-export type OrderEmailEvent =
-  | ({ kind: 'placed' } & Omit<OrderConfirmationParams, 'userId' | 'userEmail' | 'userName'> & { userName?: string })
-  | ({ kind: 'filled' } & Omit<OrderFillParams, 'userId' | 'userEmail' | 'userName'> & { userName?: string })
-  | ({ kind: 'cancelled' } & Omit<OrderCancellationParams, 'userId' | 'userEmail' | 'userName'> & { userName?: string });
+async function sendCancelRejectedFilled(e: Extract<OrderEmailEvent, { kind: 'cancel_rejected_filled' }>, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const pnlNote = e.side === 'BUY' ? 'Now in your portfolio' : 'Proceeds added to your account';
+
+  const subject = `[Vantage] ✅ ${e.side} ${e.symbol} — Filled (Cancel Unavailable)`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">✅ Order Filled — Cancel Unavailable</h2>
+    <p>${greeting}</p>
+    <p>Your cancel request could not be completed: the order had <strong>already filled</strong> at ${e.brokerName} before the cancel reached it.</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      ${tableRow('Symbol', e.symbol, false)}
+      ${tableRow('Action', `${e.side}`, true, SIDE_COLOR(e.side))}
+      ${tableRow('Requested', requestedLine(e), false)}
+      ${tableRow('Filled', `${fmtShares(e.fillQty)} share${Number(e.fillQty) === 1 ? '' : 's'} @ ${fmtDollars(e.fillPrice)}`, true)}
+      ${tableRow('Total', fmtDollars(e.fillTotal), false)}
+    </table>
+    <p>${pnlNote}.</p>
+    <p style="font-size:12px;color:#888">Order ID: ${e.orderId.slice(0, 12)}…</p>
+  `);
+
+  try {
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent cancel-rejected-filled for ${e.symbol}`);
+  } catch (err) {
+    console.error('[order-email] Failed to send cancel-rejected-filled:', err);
+  }
+}
+
+// ─── 10. Basket (consolidated) ───────────────────────────────
+
+const BASKET_EVENT_LABEL: Record<BasketOrderEvent['event'], string> = {
+  placed: 'Basket Submitted',
+  filled: 'Basket Filled',
+  partially_filled: 'Basket Partially Filled',
+  cancelled: 'Basket Cancelled',
+};
+
+const BASKET_EVENT_EMOJI: Record<BasketOrderEvent['event'], string> = {
+  placed: '📊',
+  filled: '✅',
+  partially_filled: '⏳',
+  cancelled: '❌',
+};
+
+async function sendBasket(e: BasketOrderEvent, email: string): Promise<void> {
+  const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
+  const emoji = e.basketEmoji || '🧺';
+  const title = e.basketName || 'Basket';
+
+  const rows = e.positions
+    .map((p, i) => {
+      const requested = `${requestedLine(p)}`;
+      const statusLabel = p.status ? ` — ${p.status}` : '';
+      return `<tr>
+        <td style="padding:6px 12px;${i % 2 === 1 ? 'background:#f5f5f5;' : ''}font-weight:bold">${p.symbol}</td>
+        <td style="padding:6px 12px;${i % 2 === 1 ? 'background:#f5f5f5;' : ''}color:${SIDE_COLOR(p.side)}">${p.side}</td>
+        <td style="padding:6px 12px;${i % 2 === 1 ? 'background:#f5f5f5;' : ''}">${requested}${statusLabel}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const subject = `[Vantage] ${BASKET_EVENT_EMOJI[e.event]} ${emoji} ${title} — ${BASKET_EVENT_LABEL[e.event]}`;
+  const html = wrap(`
+    <h2 style="margin:0 0 12px">${BASKET_EVENT_EMOJI[e.event]} ${BASKET_EVENT_LABEL[e.event]}</h2>
+    <p>${greeting}</p>
+    <p>${emoji} <strong>${title}</strong> — one consolidated update for ${e.positions.length} position${e.positions.length === 1 ? '' : 's'} at <strong>${e.brokerName}</strong>:</p>
+    <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+      <tr>
+        <th style="padding:6px 12px;text-align:left;border-bottom:1px solid #e5e7eb">Symbol</th>
+        <th style="padding:6px 12px;text-align:left;border-bottom:1px solid #e5e7eb">Action</th>
+        <th style="padding:6px 12px;text-align:left;border-bottom:1px solid #e5e7eb">Requested</th>
+      </tr>
+      ${rows}
+    </table>
+    ${e.orderIds && e.orderIds.length ? `<p style="font-size:12px;color:#888">Order IDs: ${e.orderIds.map((id) => id.slice(0, 12)).join(', ')}…</p>` : ''}
+    <p style="font-size:12px;color:#888">
+      ${e.event === 'placed'
+        ? 'Execution is not guaranteed. You\'ll receive follow-up emails as each position resolves.'
+        : ''}
+      Verify directly with ${e.brokerName} if unsure.
+    </p>
+  `);
+
+  try {
+    await sendEmail({ to: email, subject, html });
+    console.log(`[order-email] Sent basket ${e.event} for "${title}" (${e.positions.length} positions)`);
+  } catch (err) {
+    console.error('[order-email] Failed to send basket email:', err);
+  }
+}
+
+// ─── Dispatchers ─────────────────────────────────────────────
+
+async function resolveEmail(supabase: any, userId: string, fallbackEmail?: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('email')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[order-email] Failed to fetch user email:', error.message);
+      return null;
+    }
+    return data?.email || fallbackEmail || null;
+  } catch (err) {
+    console.error('[order-email] User lookup failed:', err);
+    return null;
+  }
+}
 
 /**
- * Single entry point for order email dispatch.
+ * Single entry point for order lifecycle emails.
  *
- * Resolves the user's email + opt-out flag from public.users, skips when the
- * user is opted out (or the column is missing — migration pending), then sends
- * the appropriate transactional email. Never throws.
- *
- * @param supabase   service-role Supabase client (any compatible client works)
- * @param userId     canonical user UUID (for preference lookup + HMAC token)
- * @param event      the lifecycle event to notify
- * @param fallbackEmail optional — used only if users.email is null (e.g. auth-only users)
+ * Skips demo orders (isLive === false), resolves the user's email, then
+ * dispatches to the correct template. Always-on (no opt-out, no unsubscribe).
+ * Never throws.
  */
 export async function notifyOrderEvent(
   supabase: any,
@@ -241,47 +469,65 @@ export async function notifyOrderEvent(
   event: OrderEmailEvent,
   fallbackEmail?: string,
 ): Promise<void> {
-  let email: string | null = null;
-  let enabled = true;
-
-  try {
-    const { data: userRow, error } = await supabase
-      .from('users')
-      .select('email, order_emails_enabled')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (error) {
-      if (error.message?.includes('order_emails_enabled')) {
-        console.log('[order-email] order_emails_enabled column missing — migration 044 pending. Skipping.');
-      } else {
-        console.error('[order-email] Failed to fetch user email:', error.message);
-      }
-      return;
-    }
-
-    email = userRow?.email || fallbackEmail || null;
-    enabled = userRow?.order_emails_enabled !== false; // default true when null
-  } catch (err) {
-    console.error('[order-email] notifyOrderEvent user lookup failed:', err);
+  if (!event.isLive) {
+    console.log('[order-email] Skipping demo order (isLive=false)');
     return;
   }
 
-  if (!email || !email.includes('@') || !enabled) return;
+  const email = await resolveEmail(supabase, userId, fallbackEmail);
+  if (!email || !email.includes('@')) return;
 
   try {
     switch (event.kind) {
       case 'placed':
-        await sendOrderConfirmation({ userId, userEmail: email, ...event });
+        await sendPlaced(event, email);
         break;
       case 'filled':
-        await sendOrderFillNotification({ userId, userEmail: email, ...event });
+        await sendFilled(event, email);
+        break;
+      case 'partially_filled':
+        await sendPartiallyFilled(event, email);
+        break;
+      case 'rejected':
+        await sendRejected(event, email);
         break;
       case 'cancelled':
-        await sendOrderCancellation({ userId, userEmail: email, ...event });
+        await sendCancelled(event, email);
+        break;
+      case 'cancel_rejected_filled':
+        await sendCancelRejectedFilled(event, email);
         break;
     }
   } catch (err) {
     console.error('[order-email] notifyOrderEvent send failed:', err);
   }
 }
+
+/**
+ * Consolidated basket email. Skips demo, resolves the user's email, sends ONE
+ * email summarizing all positions. Never throws.
+ */
+export async function notifyBasketEvent(
+  supabase: any,
+  userId: string,
+  event: BasketOrderEvent,
+  fallbackEmail?: string,
+): Promise<void> {
+  if (!event.isLive) {
+    console.log('[order-email] Skipping demo basket (isLive=false)');
+    return;
+  }
+
+  const email = await resolveEmail(supabase, userId, fallbackEmail);
+  if (!email || !email.includes('@')) return;
+
+  try {
+    await sendBasket(event, email);
+  } catch (err) {
+    console.error('[order-email] notifyBasketEvent send failed:', err);
+  }
+}
+
+// Re-export shared helpers for reuse by the in-app bell writer (keeps
+// rounding + requested-line formatting single-sourced).
+export { fmtShares, fmtDollars, fmtPct, authoritativeRequested, derivedRequested, resolveUnit };

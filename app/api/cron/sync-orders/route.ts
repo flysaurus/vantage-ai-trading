@@ -66,6 +66,12 @@ interface InFlightOrder {
   brokerage_order_id: string | null;
   status: string;
   created_at: string;
+  symbol?: string | null;
+  side?: string | null;
+  qty?: number | null;
+  requested_amount?: number | null;
+  requested_qty?: number | null;
+  order_unit?: 'dollars' | 'shares' | null;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -82,7 +88,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 1. Load all in-flight orders, grouped by user
   const { data: rows, error } = await supabase
     .from('orders')
-    .select('id, user_id, brokerage_order_id, status, created_at')
+    .select('id, user_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit')
     .in('status', [...IN_FLIGHT])
     .not('brokerage_order_id', 'is', null);
 
@@ -99,6 +105,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       brokerage_order_id: r.brokerage_order_id,
       status: r.status,
       created_at: r.created_at,
+      symbol: r.symbol ?? null,
+      side: r.side ?? null,
+      qty: typeof r.qty === 'number' ? r.qty : null,
+      requested_amount: typeof r.requested_amount === 'number' ? r.requested_amount : null,
+      requested_qty: typeof r.requested_qty === 'number' ? r.requested_qty : null,
+      order_unit: r.order_unit === 'dollars' || r.order_unit === 'shares' ? r.order_unit : null,
     });
     byUser.set(r.user_id, list);
   }
@@ -195,6 +207,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             console.log(
               `[sync-orders] Stale-cancel: ${o.brokerage_order_id.slice(0, 8)} open ${Math.round(ageMs / 3600000)}h → cancelled`,
             );
+
+            // Honest stale-guard email: we could no longer confirm status with
+            // the broker — do NOT phrase it as if the broker explicitly said so.
+            await notifyOrderEvent(supabase, userId, {
+              kind: 'cancelled',
+              brokerName,
+              symbol: o.symbol || 'Unknown',
+              side: o.side?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+              orderId: o.brokerage_order_id,
+              isLive: true,
+              cancelReason: 'stale_guard',
+              orderUnit: o.order_unit ?? null,
+              requestedAmount: o.requested_amount ?? null,
+              requestedQty: o.requested_qty ?? null,
+            });
           }
         } else {
           skipped++;
@@ -237,9 +264,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           `[sync-orders] ${o.brokerage_order_id.slice(0, 8)}: ${o.status} → ${newStatus}`,
         );
 
-        // Order email: filled / cancelled transition (incl. external cancels).
-        // `live` carries the authoritative broker-side details for the email.
-        if (live.status === 'FILLED' || live.status === 'PARTIALLY_FILLED') {
+        // Order email: filled / partially-filled / cancelled transition
+        // (incl. external cancels). `live` carries the authoritative broker-side
+        // details; `o` carries the four-field requested model from the DB.
+        const requested = {
+          orderUnit: o.order_unit ?? null,
+          requestedAmount: o.requested_amount ?? null,
+          requestedQty: o.requested_qty ?? null,
+        };
+        if (live.status === 'FILLED') {
           const fillShares = live.filledShares ?? live.shares ?? 0;
           const fillPrice = live.fillPrice ?? 0;
           const totalCost = live.totalCost || (fillPrice * fillShares);
@@ -248,11 +281,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             brokerName,
             symbol: live.symbol,
             side: live.side,
-            shares: fillShares,
+            fillQty: fillShares,
             fillPrice,
-            totalCost,
+            fillTotal: totalCost,
             orderId: o.brokerage_order_id,
             isLive: true,
+            ...requested,
+          });
+        } else if (live.status === 'PARTIALLY_FILLED') {
+          const fillShares = live.filledShares ?? live.shares ?? 0;
+          const fillPrice = live.fillPrice ?? 0;
+          const totalCost = live.totalCost || (fillPrice * fillShares);
+          const remainingQty = Math.max(0, Number(o.requested_qty ?? o.qty ?? 0) - Number(fillShares));
+          await notifyOrderEvent(supabase, userId, {
+            kind: 'partially_filled',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            fillQty: fillShares,
+            fillPrice,
+            fillTotal: totalCost,
+            remainingQty,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            ...requested,
           });
         } else if (live.status === 'CANCELLED') {
           await notifyOrderEvent(supabase, userId, {
@@ -260,10 +312,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             brokerName,
             symbol: live.symbol,
             side: live.side,
-            shares: live.filledShares ?? live.shares ?? 0,
             orderId: o.brokerage_order_id,
             isLive: true,
             cancelReason: 'external',
+            ...requested,
           });
         }
       }
