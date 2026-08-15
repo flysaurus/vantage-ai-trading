@@ -67,7 +67,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       isDemo: true,
       tradingEnabled: true,
       totalValue: demoEquity,
-      buyingPower: demoCash,
+      buyingPower: null, // Demo: no margin concept — never report demo cash as buying power
       cash: demoCash,
       environment: 'demo',
     });

@@ -7,6 +7,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useAccounts } from '@/context/AccountContext';
 import type { Position, AccountSummary } from '@/types';
+import { availableCash as computeAvailableCash } from '@/lib/available-cash';
 import type { Basket } from '@/context/PortfolioContext';
 import SellModal from './SellModal';
 import TradeTicket from './TradeTicket';
@@ -814,7 +815,7 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>CASH</div>
           <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
-            ${account.cash.toLocaleString('en-US', DOLLAR_FMT)}
+            ${computeAvailableCash(account).toLocaleString('en-US', DOLLAR_FMT)}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1064,6 +1065,7 @@ export function PortfolioTab() {
   // Fallback: if broker expected but not loaded yet, show zeroes (loading skeleton)
   // If demo, use computed demo numbers ($100K starting capital)
   const accountData: AccountSummary = displayAccount || (isBrokerExpected ? {
+    // Real account, broker data still loading → honest "unavailable" skeleton.
     equity: 0,
     cash: 0,
     buyingPower: null,
@@ -1072,15 +1074,27 @@ export function PortfolioTab() {
     totalPnl: 0,
     totalPnlPercent: 0,
     positions: [],
-  } : {
+  } : isShowingDemo ? {
+    // Genuinely demo → demo numbers. buyingPower stays null (no margin concept);
+    // never backfill it from demo cash.
     equity: correctEquity,
     cash: cashBalance,
-    buyingPower: cashBalance,
+    buyingPower: null,
     dayPnl: totalTodayPnL,
     dayPnlPercent: correctEquity > 0 ? (totalTodayPnL / correctEquity) * 100 : 0,
     totalPnl: correctEquity - 100000,
     totalPnlPercent: ((correctEquity - 100000) / 100000) * 100,
     positions: displayPositions,
+  } : {
+    // Neither broker-expected nor demo → never substitute another account's data.
+    equity: 0,
+    cash: 0,
+    buyingPower: null,
+    dayPnl: 0,
+    dayPnlPercent: 0,
+    totalPnl: 0,
+    totalPnlPercent: 0,
+    positions: [],
   });
 
   // ── Loading / Error states ──
@@ -1492,7 +1506,7 @@ export function PortfolioTab() {
                   onToggleExpand={() => toggleExpand(pos.symbol)}
                   onBuy={() => {
                     console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
-                    setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: displayAccount?.cash ?? 0 });
+                    setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
                   }}
                   onSell={() => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0 })}
                   showCheckbox={selectMode}

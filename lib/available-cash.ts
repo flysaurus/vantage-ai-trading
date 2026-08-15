@@ -5,12 +5,12 @@
 //   - TradeTicket "Available cash"
 //   - AI Advisor budget checks
 //
-// Option C (user-confirmed 2026-08-15):
-//   available_cash = buying_power ?? (cash − open reservations)
+// FINAL (2026-08-16): cash − open reservations as PRIMARY; buying_power
+// secondary/informational only.
 //
-// Prefer the broker's buying_power when present — it already nets out open
-// orders + settlement holds. Fall back to cash minus reserved open-order
-// amounts for brokers/accounts that don't expose buying_power (e.g. demo).
+// "Available cash" must mean actual settled cash, not margin buying power.
+// Buying power ($391K on a margin/paper account) ≠ spendable cash ($93K).
+// Never backfill from another account's state (see cross-account isolation).
 
 export interface CashBalanceFields {
   /** Total settled cash balance. */
@@ -57,21 +57,27 @@ export function sumOpenReservedAmount(orders: OpenOrderReservation[]): number {
 }
 
 /**
- * Available cash (spendable). Option C: buying_power ?? (cash − reservations).
+ * Available cash (spendable). FINAL: cash − open reservations primary;
+ * buying_power secondary/informational only.
  *
- * @param balance            cash + buyingPower (from broker.getAccount())
- * @param openReservedAmount SUM(requested_amount WHERE open) — only used in the
- *                           fallback path (when buying_power is absent).
+ * @param balance            cash + buyingPower (from broker.getAccount()); null-safe
+ * @param openReservedAmount SUM(requested_amount WHERE open) — subtracted from
+ *                           cash (or buying_power fallback).
  */
 export function availableCash(
-  balance: CashBalanceFields,
+  balance: CashBalanceFields | null | undefined,
   openReservedAmount = 0,
 ): number {
+  const reserved = Number(openReservedAmount) || 0;
+  // PRIMARY: actual settled cash − open reservations.
+  const cash = balance?.cash;
+  if (cash != null && Number.isFinite(Number(cash))) {
+    return Math.max(0, Number(cash) - reserved);
+  }
+  // SECONDARY/informational: buying power only when cash is genuinely absent.
   const bp = balance?.buyingPower;
   if (bp != null && Number.isFinite(Number(bp))) {
-    return Number(bp);
+    return Math.max(0, Number(bp) - reserved);
   }
-  const cash = Number(balance?.cash ?? 0);
-  const reserved = Number(openReservedAmount) || 0;
-  return Math.max(0, cash - reserved);
+  return 0;
 }

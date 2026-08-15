@@ -8,6 +8,7 @@ import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
+import { availableCash as computeAvailableCash } from '@/lib/available-cash';
 import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
@@ -441,7 +442,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     const rawShares = pos?.qty || 0;
     const reservedSell = pos?.reservedShares || 0;
     const sharesHeld = Math.max(0, rawShares - reservedSell);
-    const availableCash = liveAccount?.cash || 0;
+    const availableCash = computeAvailableCash(liveAccount);
 
     // Pass both amount and shares — TradeTicket defaults to dollar mode when initialAmount is set
     const initialAmount = suggestedAmount && suggestedAmount > 0 ? suggestedAmount : undefined;
