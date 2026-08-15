@@ -15,7 +15,7 @@ import type {
   BrokerEngine, BrokerMeta, BrokerPosition, BrokerAccountSummary,
   BrokerOrder, BrokerBasketOrder, OrderRequest, OrderResult,
   BasketOrderRequest, BasketOrderResult, OrderStatus, OrderSide, OrderType,
-  TimeInForce, OrderImpactPreview,
+  TimeInForce, OrderImpactPreview, CancelOrderResult,
 } from './types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -107,6 +107,21 @@ function _mapTimeInForceToSnapTrade(tif: string): string {
     case 'fok': return 'FOK';
     case 'ioc': return 'IOC';
     default: return 'Day';
+  }
+}
+
+/** True when a mapped status is terminal and NOT a successful cancel. */
+function _isTerminalNonCancelled(s: OrderStatus): boolean {
+  return s === 'FILLED' || s === 'REJECTED';
+}
+
+/** Human label for a terminal status (used in cancel-race messaging). */
+function _statusLabel(s: OrderStatus): string {
+  switch (s) {
+    case 'FILLED': return 'filled';
+    case 'REJECTED': return 'rejected';
+    case 'CANCELLED': return 'cancelled';
+    default: return s.toLowerCase();
   }
 }
 
@@ -513,6 +528,123 @@ export class SnapTradeBroker implements BrokerEngine {
       console.error('[SnapTradeBroker] cancelOrder failed:', msg);
       return { success: false, message: msg };
     }
+  }
+
+  /**
+   * Fetch the current real state of a single order from SnapTrade's
+   * recentOrders endpoint. Returns null if the order can't be found.
+   * Used to reconcile after an ambiguous cancel (cancel race).
+   */
+  async getOrderById(orderId: string): Promise<BrokerOrder | null> {
+    try {
+      const accountId = await this._getPrimaryAccountId();
+      if (!accountId) return null;
+
+      const response = await snapTradeFetch<{ orders?: SnapOrder[] }>(
+        `/accounts/${accountId}/recentOrders`,
+        null,
+        {
+          userId: this.userId,
+          userSecret: this.userSecret,
+          only_executed: 'false',
+        },
+      );
+
+      const rawOrders = response.orders || [];
+      const found = rawOrders.find(
+        (o) =>
+          o.brokerage_order_id &&
+          o.brokerage_order_id.toLowerCase() === orderId.toLowerCase(),
+      );
+      return found ? this._mapOrder(found) : null;
+    } catch (err) {
+      console.error(
+        '[SnapTradeBroker] getOrderById failed:',
+        err instanceof Error ? err.message : 'Unknown',
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Cancel an order WITHOUT throwing away the broker's error/status detail.
+   *
+   * SnapTrade exposes no dedicated "already filled" error code — a cancel of a
+   * filled order surfaces as either a generic 4xx/5xx OR a 200 whose
+   * `raw_response.status` is a terminal (non-cancelled) state. So we:
+   *   1. Always fire the cancel (broker is the final arbiter).
+   *   2. On ANY failure — or a 200 with a terminal raw_response — immediately
+   *      reconcile THIS order against real broker state via getOrderById().
+   */
+  async cancelOrderSafe(orderId: string): Promise<CancelOrderResult> {
+    if (!this.tradingEnabled) {
+      return { success: false, message: 'Trading not enabled for this connection.' };
+    }
+
+    const accountId = await this._getPrimaryAccountId();
+    if (!accountId) {
+      return { success: false, message: 'No trading account found.' };
+    }
+
+    console.log(`[SnapTradeBroker] cancelOrderSafe: ${orderId}`);
+
+    const res = await snapTradeFetchSafe<{
+      brokerage_order_id?: string;
+      raw_response?: { status?: string } | null;
+      default_code?: string | number;
+      default_detail?: string;
+    }>(
+      `/accounts/${accountId}/trading/cancel`,
+      { brokerage_order_id: orderId },
+      { userId: this.userId, userSecret: this.userSecret },
+    );
+
+    // Network / HTTP failure → reconcile the real state of this one order.
+    if (!res.ok) {
+      console.warn(
+        `[SnapTradeBroker] cancelOrderSafe failed (HTTP ${res.status}): ${res.error}`,
+      );
+      const reconciled = await this.getOrderById(orderId).catch(() => null);
+      if (reconciled) {
+        const terminal = _isTerminalNonCancelled(reconciled.status);
+        return {
+          success: false,
+          alreadyTerminal: terminal,
+          reconciledOrder: reconciled,
+          httpStatus: res.status,
+          message: terminal
+            ? `Order is already ${_statusLabel(reconciled.status)} — cancel not applied.`
+            : (res.error || 'Cancel failed at broker.'),
+        };
+      }
+      return {
+        success: false,
+        httpStatus: res.status,
+        message: res.error || 'Cancel failed at broker.',
+      };
+    }
+
+    // 200 OK — but raw_response.status may reveal the order was already terminal.
+    const rawStatus = res.data?.raw_response?.status;
+    if (rawStatus) {
+      const status = _mapSnapTradeStatusToOrderStatus(rawStatus);
+      if (_isTerminalNonCancelled(status)) {
+        const reconciled = await this.getOrderById(orderId).catch(() => null);
+        return {
+          success: false,
+          alreadyTerminal: true,
+          reconciledOrder: reconciled,
+          httpStatus: res.status,
+          message: `Order is already ${_statusLabel(status)} — cancel not applied.`,
+        };
+      }
+    }
+
+    return {
+      success: true,
+      httpStatus: res.status,
+      message: `Order ${orderId} cancelled.`,
+    };
   }
 
   async cancelBasketOrder(_basketOrderId: string): Promise<{ success: boolean; message?: string }> {

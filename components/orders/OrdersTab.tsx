@@ -10,6 +10,7 @@ import { BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 import { AccountSummaryCard } from '@/components/shared/AccountSummaryCard';
 import DemoBanner from '@/components/shared/DemoBanner';
+import type { Order } from '@/types';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 
@@ -22,6 +23,72 @@ function formatOrderDate(date: string) {
   );
 }
 
+// ─── Requested vs filled formatting helpers ──────────────────
+// The four-field model: order_unit decides which "requested" field is
+// authoritative. The other is a labeled DERIVED ESTIMATE, never a bare number.
+
+function fmtShares(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return '';
+  return `${Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
+}
+
+function fmtDollars(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return '';
+  return `$${Number(n).toFixed(2)}`;
+}
+
+function resolveRequested(order: Order) {
+  const unit: 'dollars' | 'shares' =
+    order.orderUnit ?? (order.notional != null && order.notional > 0 ? 'dollars' : 'shares');
+  const requestedAmount = order.requestedAmount ?? (unit === 'dollars' ? order.notional : null);
+  const requestedQty = order.requestedQty ?? (unit === 'shares' ? order.qty : (order.qty > 0 ? order.qty : null));
+  return { unit, requestedAmount, requestedQty };
+}
+
+function RequestedLine({ order }: { order: Order }) {
+  const r = resolveRequested(order);
+  const isFilled = order.status === 'filled';
+  const prefix = isFilled ? 'Requested: ' : '';
+  if (r.unit === 'dollars') {
+    const amt = r.requestedAmount != null && r.requestedAmount > 0 ? fmtDollars(r.requestedAmount) : null;
+    const est = r.requestedQty != null && r.requestedQty > 0 ? `≈${fmtShares(r.requestedQty)} shares est.` : null;
+    return (
+      <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
+        {isFilled && <span style={{ color: '#94a3b8' }}>{prefix}</span>}
+        {amt
+          ? <span style={{ fontWeight: 700, color: '#ffffff' }}>{amt}</span>
+          : <span style={{ color: '#94a3b8' }}>—</span>}
+        {est && <span style={{ color: '#94a3b8' }}> · {est}</span>}
+      </div>
+    );
+  }
+  const qtyStr = r.requestedQty != null && r.requestedQty > 0
+    ? `${fmtShares(r.requestedQty)} share${r.requestedQty === 1 ? '' : 's'}`
+    : null;
+  const est = r.requestedAmount != null && r.requestedAmount > 0 ? `≈${fmtDollars(r.requestedAmount)} est.` : null;
+  return (
+    <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
+      {isFilled && <span style={{ color: '#94a3b8' }}>{prefix}</span>}
+      {qtyStr
+        ? <span style={{ fontWeight: 700, color: '#ffffff' }}>{qtyStr}</span>
+        : <span style={{ color: '#94a3b8' }}>—</span>}
+      {est && <span style={{ color: '#94a3b8' }}> · {est}</span>}
+    </div>
+  );
+}
+
+function FilledLine({ order }: { order: Order }) {
+  const fillQty = order.filledQty ?? order.qty;
+  const fillPrice = order.filledPrice;
+  if (fillQty == null || fillPrice == null || fillQty <= 0) return null;
+  const fillAmount = fillQty * fillPrice;
+  return (
+    <div style={{ fontSize: 11, color: '#4ade80', marginBottom: 2 }}>
+      Filled: {fmtShares(fillQty)} shares @ {fmtDollars(fillPrice)} ({fmtDollars(fillAmount)})
+    </div>
+  );
+}
+
 export function OrdersTab() {
   const router = useRouter();
   const { orders, allOrders, loading, error, refresh, cancelOrder } = useOrders();
@@ -31,6 +98,32 @@ export function OrdersTab() {
   const { isConnected } = useBroker();
   const { user } = useAuth();
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [cancelNotice, setCancelNotice] = useState<{ kind: 'filled' | 'error'; message: string } | null>(null);
+
+  const handleCancel = async (order: Order) => {
+    setCancelNotice(null);
+    try {
+      const outcome = await cancelOrder(order.id);
+      if ('alreadyFilled' in outcome && outcome.alreadyFilled) {
+        setCancelNotice({
+          kind: 'filled',
+          message: `${order.symbol} had already filled before the cancel could be processed — showing the real result.`,
+        });
+      } else if ('alreadyTerminal' in outcome) {
+        setCancelNotice({
+          kind: 'filled',
+          message: `${order.symbol} was already ${outcome.status} — showing the real result.`,
+        });
+      }
+    } catch (err) {
+      setCancelNotice({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Cancel failed',
+      });
+    }
+    // Auto-dismiss after 8s
+    setTimeout(() => setCancelNotice(null), 8000);
+  };
 
   // useOrders hook already pre-filters by activeFilter (open includes pending/partially_filled)
 
@@ -277,6 +370,34 @@ export function OrdersTab() {
         </div>
       )}
 
+      {/* Cancel-race notice (already filled / terminal) */}
+      {cancelNotice && (
+        <div
+          style={{
+            padding: '8px 12px',
+            marginBottom: 10,
+            background: cancelNotice.kind === 'filled'
+              ? 'rgba(74,222,128,0.1)'
+              : 'rgba(248,113,113,0.1)',
+            border: `1px solid ${cancelNotice.kind === 'filled' ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)'}`,
+            borderRadius: 8,
+            fontSize: 11,
+            color: cancelNotice.kind === 'filled' ? '#4ade80' : '#f87171',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>{cancelNotice.kind === 'filled' ? '✅ ' : '⚠️ '}{cancelNotice.message}</span>
+          <button
+            onClick={() => setCancelNotice(null)}
+            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 12 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Orders List */}
       {orders.map((order) => (
         <div key={order.id} className={`order-card ${order.status}`}>
@@ -294,18 +415,12 @@ export function OrdersTab() {
                 <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>{order.symbol}</span>
                 <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
               </div>
-              <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
-                {order.type} · {order.notional && order.notional > 0
-                  ? `$${Number(order.notional).toFixed(2)}`
-                  : order.qty > 0
-                    ? `${Number(order.qty).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')} share${order.qty === 1 ? '' : 's'}`
-                    : `—`
-                }
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
+                {order.type.toUpperCase()}
               </div>
-              {order.status === 'filled' && order.filledPrice != null && (
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Total Cost: ${order.notional && order.notional > 0 ? order.notional.toFixed(2) : ((order.filledQty ?? order.qty) * order.filledPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
+              <RequestedLine order={order} />
+              {order.status === 'filled' && (
+                <FilledLine order={order} />
               )}
             </div>
 
@@ -353,7 +468,7 @@ export function OrdersTab() {
                 <button
                   className="action-btn"
                   style={{ color: '#f87171', borderColor: 'rgba(239,68,68,0.3)' }}
-                  onClick={() => cancelOrder(order.id)}
+                  onClick={() => handleCancel(order)}
                 >
                   Cancel
                 </button>
@@ -389,7 +504,27 @@ export function OrdersTab() {
               <DetailRow label="Status" value={order.status.toUpperCase()} />
               <DetailRow label="Side" value={order.side.toUpperCase()} />
               <DetailRow label="Type" value={order.type.toUpperCase()} />
-              <DetailRow label={order.notional && order.notional > 0 ? 'Notional' : 'Qty Ordered'} value={order.notional && order.notional > 0 ? `$${order.notional.toFixed(2)}` : String(order.qty)} />
+              {(() => {
+                const r = resolveRequested(order);
+                if (r.unit === 'dollars') {
+                  const amt = r.requestedAmount != null && r.requestedAmount > 0 ? fmtDollars(r.requestedAmount) : '—';
+                  const est = r.requestedQty != null && r.requestedQty > 0 ? `≈${fmtShares(r.requestedQty)} shares` : null;
+                  return (
+                    <>
+                      <DetailRow label="Requested Amount" value={amt} />
+                      {est && <DetailRow label="Est. Shares" value={est} />}
+                    </>
+                  );
+                }
+                const qtyStr = r.requestedQty != null && r.requestedQty > 0 ? `${fmtShares(r.requestedQty)} shares` : '—';
+                const est = r.requestedAmount != null && r.requestedAmount > 0 ? `≈${fmtDollars(r.requestedAmount)}` : null;
+                return (
+                  <>
+                    <DetailRow label="Requested Qty" value={qtyStr} />
+                    {est && <DetailRow label="Est. Amount" value={est} />}
+                  </>
+                );
+              })()}
               {order.filledQty !== undefined && order.filledQty !== order.qty && (
                 <DetailRow label="Qty Filled" value={String(order.filledQty)} />
               )}

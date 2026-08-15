@@ -17,6 +17,12 @@ import type { OrderStatus } from '@/types/broker';
 const REFRESH_INTERVAL = 30000; // 30 seconds
 const RETRY_DELAY = 3000;
 
+/** Outcome of a cancel attempt — lets the UI surface the cancel-race result. */
+export type CancelOutcome =
+  | { cancelled: true }
+  | { alreadyFilled: true; fillPrice?: number; filledQty?: number }
+  | { alreadyTerminal: true; status: Order['status'] };
+
 export function useOrders() {
   const { orders, setOrders, addOrder, updateOrder, activeFilter } =
     useOrderStore();
@@ -65,6 +71,9 @@ export function useOrders() {
     createdAt: raw.submittedAt ?? raw.createdAt ?? new Date().toISOString(),
     updatedAt: raw.submittedAt ?? raw.updatedAt ?? raw.createdAt,
     notional: raw.notional ?? null,
+    orderUnit: raw.orderUnit ?? raw.order_unit ?? undefined,
+    requestedAmount: raw.requestedAmount ?? raw.requested_amount ?? null,
+    requestedQty: raw.requestedQty ?? raw.requested_qty ?? null,
     brokerageOrderId: raw.brokerageOrderId ?? raw.brokerage_order_id ?? raw.id,
     bracketOrder: raw.bracketOrder
       ? {
@@ -136,6 +145,9 @@ export function useOrders() {
         createdAt: o.createdAt,
         updatedAt: o.createdAt,
         notional: (o.notional ?? (o as any).notional) ?? null,
+        orderUnit: (o.orderUnit ?? (o as any).orderUnit) as 'dollars' | 'shares' | undefined,
+        requestedAmount: (o.requestedAmount ?? (o as any).requestedAmount) ?? null,
+        requestedQty: (o.requestedQty ?? (o as any).requestedQty) ?? null,
         brokerageOrderId: (o as any).brokerageOrderId,
       }));
 
@@ -151,7 +163,35 @@ export function useOrders() {
       // Priority: broker > trade_history > public.orders.
       // Also dedup DB orders whose brokerageOrderId matches a broker order's id
       // (same order reached the broker AND was persisted to our DB).
-      const brokerOrderIds = new Set(mappedBrokerOrders.map(o => o.id));
+      //
+      // ── Fix: "0 shares" on OPEN notional orders ───────────────────────
+      // SnapTrade reports quantity=0 for open dollar (notional) orders and does
+      // NOT report the requested dollar amount. Our persisted DB row HAS the
+      // authoritative requested data (order_unit, requested_amount/qty, notional).
+      // So before dedup drops the DB row, enrich each broker order with its
+      // matching DB requested fields — broker stays authoritative for FILL data
+      // (filledQty/filledPrice), DB supplies requested/notional context.
+      const dbByBrokerId = new Map<string, Order>();
+      for (const d of dbOrders) {
+        if (d.brokerageOrderId) dbByBrokerId.set(d.brokerageOrderId.toLowerCase(), d);
+      }
+
+      const enrichedBrokerOrders = mappedBrokerOrders.map((o) => {
+        const matchKey = (o.brokerageOrderId || o.id || '').toLowerCase();
+        const dbMatch = dbByBrokerId.get(matchKey);
+        if (!dbMatch) return o;
+        return {
+          ...o,
+          notional: o.notional ?? dbMatch.notional,
+          orderUnit: o.orderUnit ?? dbMatch.orderUnit,
+          requestedAmount: o.requestedAmount ?? dbMatch.requestedAmount,
+          requestedQty: o.requestedQty ?? dbMatch.requestedQty,
+          // Fall back to DB requested qty when broker qty is 0/absent (open notional)
+          qty: Number(o.qty || 0) > 0 ? o.qty : (dbMatch.requestedQty ?? dbMatch.qty ?? 0),
+        };
+      });
+
+      const brokerOrderIds = new Set(enrichedBrokerOrders.map(o => o.id));
       const brokerOrderIdsLower = new Set([...brokerOrderIds].map(id => id.toLowerCase()));
       const uniqueTradeHistory = tradeHistoryOrders.filter(o => !brokerOrderIds.has(o.id));
       const existingIds = new Set([...brokerOrderIds, ...uniqueTradeHistory.map(o => o.id)]);
@@ -163,7 +203,7 @@ export function useOrders() {
         return true;
       });
 
-      const allOrders = [...mappedBrokerOrders, ...uniqueTradeHistory, ...uniqueDbOrders];
+      const allOrders = [...enrichedBrokerOrders, ...uniqueTradeHistory, ...uniqueDbOrders];
 
       const mappedOrders = allOrders
         // Deduplicate by ID (safety net)
@@ -242,13 +282,13 @@ export function useOrders() {
   );
 
   const cancelOrder = useCallback(
-    async (orderId: string): Promise<void> => {
+    async (orderId: string): Promise<CancelOutcome> => {
       // Demo / local broker → use the local adapter (client-side localStorage).
       if (isShowingDemo || !isConnected || !broker) {
         if (broker) {
           await broker.cancelOrder(orderId);
           updateOrder(orderId, { status: 'cancelled' });
-          return;
+          return { cancelled: true };
         }
         throw new Error('Broker not connected');
       }
@@ -263,10 +303,43 @@ export function useOrders() {
         body: JSON.stringify({ orderId }),
       });
       const data = await res.json().catch(() => ({}));
+
+      // Cancel race: broker already filled (or otherwise terminal) the order.
+      if (data.reconciled === true) {
+        if (data.alreadyFilled === true) {
+          const fillPrice =
+            typeof data.fillPrice === 'number' ? data.fillPrice : undefined;
+          const filledQty =
+            typeof data.filledQty === 'number' ? data.filledQty : undefined;
+          updateOrder(orderId, {
+            status: 'filled',
+            filledPrice: fillPrice,
+            filledQty: filledQty,
+            totalValue:
+              fillPrice != null && filledQty != null
+                ? fillPrice * filledQty
+                : undefined,
+          });
+          return { alreadyFilled: true, fillPrice, filledQty };
+        }
+        // Other terminal state (cancelled/rejected) — reflect the real status.
+        const realStatus: Order['status'] =
+          data.status === 'filled'
+            ? 'filled'
+            : data.status === 'cancelled'
+              ? 'cancelled'
+              : data.status === 'rejected'
+                ? 'rejected'
+                : 'open';
+        updateOrder(orderId, { status: realStatus });
+        return { alreadyTerminal: true, status: realStatus };
+      }
+
       if (!res.ok || data.success === false) {
         throw new Error(data.error || data.message || 'Cancel failed');
       }
       updateOrder(orderId, { status: 'cancelled' });
+      return { cancelled: true };
     },
     [broker, isConnected, isShowingDemo, updateOrder]
   );

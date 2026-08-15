@@ -211,10 +211,25 @@ export async function POST(req: NextRequest) {
         // qty always stores the share estimate so it's meaningful even without notional.
         const isNotionalOrder = dollarAmount != null && dollarAmount > 0;
         const effectiveQty = shares || 0;
+        // Four-field requested model:
+        //   order_unit       = 'dollars' when the user specified a dollar amount, else 'shares'
+        //   requested_amount = authoritative when dollars, else derived estimate
+        //   requested_qty    = authoritative when shares, else derived estimate
+        const orderUnit: 'dollars' | 'shares' = isNotionalOrder ? 'dollars' : 'shares';
+        const referencePrice = limitPrice || currentPrice || result.fillPrice || 0;
+        const requestedAmount = isNotionalOrder
+          ? dollarAmount
+          : (referencePrice > 0 && effectiveQty > 0 ? Number((effectiveQty * referencePrice).toFixed(2)) : null);
+        const requestedQty = isNotionalOrder
+          ? (effectiveQty > 0 ? effectiveQty : (referencePrice > 0 ? Number((dollarAmount / referencePrice).toFixed(6)) : null))
+          : effectiveQty;
         const insertRow: Record<string, unknown> = {
           user_id: authUser!.id,
           symbol: symbol.toUpperCase(),
           qty: effectiveQty,
+          order_unit: orderUnit,
+          requested_amount: requestedAmount,
+          requested_qty: requestedQty,
           filled_qty: result.status === 'FILLED' ? (result.filledShares || effectiveQty) : 0,
           side: side.toLowerCase(),
           order_type: (orderType || 'market').toLowerCase(),

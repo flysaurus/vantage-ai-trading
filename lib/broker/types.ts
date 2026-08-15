@@ -61,6 +61,26 @@ export interface OrderResult {
   filledAt?: string;
 }
 
+/**
+ * Structured result from a cancel attempt that gracefully handles the
+ * "cancel an already-filled order" race.
+ *
+ * `alreadyTerminal` is true when the broker reported the order was already in
+ * a terminal state (FILLED / REJECTED / EXPIRED) — i.e. the cancel could not
+ * be applied because there was nothing left to cancel. `reconciledOrder` then
+ * carries the real, freshly-fetched broker state for that order.
+ */
+export interface CancelOrderResult {
+  success: boolean;
+  message?: string;
+  /** True when the order was already in a terminal (non-cancelled) state. */
+  alreadyTerminal?: boolean;
+  /** Freshly-reconciled real broker state for the order (when available). */
+  reconciledOrder?: BrokerOrder | null;
+  /** Raw HTTP status from the cancel call (0 = network failure). */
+  httpStatus?: number;
+}
+
 // ─── Basket Orders ────────────────────────────────────────
 
 export interface BasketOrderRequest {

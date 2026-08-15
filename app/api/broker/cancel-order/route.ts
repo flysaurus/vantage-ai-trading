@@ -154,58 +154,137 @@ export async function POST(req: NextRequest) {
     tradingEnabled,
   });
 
-  const result = await broker.cancelOrder(brokerageOrderId);
-
-  if (!result.success) {
-    console.error(
-      `[cancel-order] Cancel failed for ${brokerageOrderId}:`,
-      result.message,
-    );
-    return NextResponse.json(
-      { success: false, error: result.message || 'Cancel failed at broker.' },
-      { status: 502 },
-    );
-  }
-
-  // --- Persist cancellation to canonical orders table ---
+  const result = await broker.cancelOrderSafe(brokerageOrderId);
   const now = new Date().toISOString();
-  let dbUpdated = false;
-  if (dbOrderId) {
-    const { error: updErr } = await supabase
-      .from('orders')
-      .update({ status: 'cancelled', cancelled_at: now, updated_at: now })
-      .eq('id', dbOrderId);
-    dbUpdated = !updErr;
-    if (updErr) {
-      console.error('[cancel-order] DB update failed:', updErr.message);
+
+  // ── Success: normal cancel ───────────────────────────────
+  if (result.success) {
+    let dbUpdated = false;
+    if (dbOrderId) {
+      const { error: updErr } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled', cancelled_at: now, updated_at: now })
+        .eq('id', dbOrderId);
+      dbUpdated = !updErr;
+      if (updErr) {
+        console.error('[cancel-order] DB update failed:', updErr.message);
+      }
     }
+
+    if (dbSymbol) {
+      await notifyOrderEvent(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'cancelled',
+          brokerName: formatBrokerName(brokerSlug),
+          symbol: dbSymbol,
+          side: dbSide === 'sell' ? 'SELL' : 'BUY',
+          shares: dbQty ?? 0,
+          orderId: brokerageOrderId,
+          isLive: true,
+          cancelReason: 'user_cancelled',
+        },
+        authUser!.email,
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      status: 'cancelled',
+      orderId: brokerageOrderId,
+      cancelledAt: now,
+      dbUpdated,
+      message: result.message || `Order ${brokerageOrderId} cancelled.`,
+    });
   }
 
-  // ── Order email: cancelled (user-initiated) ──
-  if (dbSymbol) {
-    await notifyOrderEvent(
-      supabase,
-      authUser!.id,
-      {
-        kind: 'cancelled',
-        brokerName: formatBrokerName(brokerSlug),
-        symbol: dbSymbol,
-        side: dbSide === 'sell' ? 'SELL' : 'BUY',
-        shares: dbQty ?? 0,
-        orderId: brokerageOrderId,
-        isLive: true,
-        cancelReason: 'user_cancelled',
-      },
-      authUser!.email,
-    );
+  // ── Cancel race / failure: reconcile this ONE order's real state ──
+  const reconciled = result.reconciledOrder;
+  if (reconciled) {
+    const dbStatus = mapBrokerStatusToDb(reconciled.status);
+    const alreadyFilled = reconciled.status === 'FILLED';
+
+    let dbUpdated = false;
+    if (dbOrderId) {
+      const patch: Record<string, unknown> = {
+        status: dbStatus,
+        updated_at: now,
+      };
+      if (alreadyFilled) {
+        patch.filled_qty = reconciled.filledShares ?? reconciled.shares ?? 0;
+        patch.filled_price = reconciled.fillPrice ?? null;
+        patch.filled_at = reconciled.filledAt ?? now;
+      } else if (reconciled.status === 'CANCELLED') {
+        patch.cancelled_at = now;
+      }
+      const { error: updErr } = await supabase
+        .from('orders')
+        .update(patch)
+        .eq('id', dbOrderId);
+      dbUpdated = !updErr;
+      if (updErr) {
+        console.error('[cancel-order] reconcile DB update failed:', updErr.message);
+      }
+    }
+
+    // Fill notification when the "cancel" actually turned out to be a fill.
+    if (alreadyFilled && dbSymbol) {
+      const shares = reconciled.filledShares ?? reconciled.shares ?? dbQty ?? 0;
+      const fillPrice = reconciled.fillPrice ?? 0;
+      await notifyOrderEvent(
+        supabase,
+        authUser!.id,
+        {
+          kind: 'filled',
+          brokerName: formatBrokerName(brokerSlug),
+          symbol: dbSymbol,
+          side: dbSide === 'sell' ? 'SELL' : 'BUY',
+          shares,
+          fillPrice,
+          totalCost: shares * fillPrice,
+          orderId: brokerageOrderId,
+          isLive: true,
+        },
+        authUser!.email,
+      );
+    }
+
+    return NextResponse.json({
+      success: false,
+      alreadyFilled,
+      reconciled: true,
+      status: dbStatus,
+      fillPrice: alreadyFilled ? (reconciled.fillPrice ?? undefined) : undefined,
+      filledQty: alreadyFilled
+        ? (reconciled.filledShares ?? reconciled.shares ?? undefined)
+        : undefined,
+      filledAt: alreadyFilled ? (reconciled.filledAt ?? undefined) : undefined,
+      orderId: brokerageOrderId,
+      dbUpdated,
+      message:
+        result.message ||
+        (alreadyFilled
+          ? 'This order had already filled — showing the real result.'
+          : `Order is already ${dbStatus}.`),
+    });
   }
 
-  return NextResponse.json({
-    success: true,
-    status: 'cancelled',
-    orderId: brokerageOrderId,
-    cancelledAt: now,
-    dbUpdated,
-    message: result.message || `Order ${brokerageOrderId} cancelled.`,
-  });
+  // Generic failure with no reconciliation data available.
+  return NextResponse.json(
+    { success: false, error: result.message || 'Cancel failed at broker.' },
+    { status: 502 },
+  );
+}
+
+function mapBrokerStatusToDb(status: string): string {
+  switch (status.toUpperCase()) {
+    case 'FILLED': return 'filled';
+    case 'CANCELLED': return 'cancelled';
+    case 'REJECTED': return 'rejected';
+    case 'PARTIALLY_FILLED': return 'partially_filled';
+    case 'OPEN':
+    case 'SUBMITTED':
+    default: return 'open';
+  }
 }

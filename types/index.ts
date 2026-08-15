@@ -95,6 +95,12 @@ export interface Order {
   updatedAt?: string;
   /** Dollar amount for notional_value orders (null for share-based orders) */
   notional?: number | null;
+  /** Denomination the user actually specified: 'dollars' (notional) or 'shares' */
+  orderUnit?: 'dollars' | 'shares';
+  /** Requested dollar amount — authoritative when orderUnit='dollars', else derived estimate */
+  requestedAmount?: number | null;
+  /** Requested share count — authoritative when orderUnit='shares', else derived estimate */
+  requestedQty?: number | null;
   /** SnapTrade/Alpaca brokerage_order_id — allows dedup against broker-fetched orders */
   brokerageOrderId?: string;
   bracketOrder?: {

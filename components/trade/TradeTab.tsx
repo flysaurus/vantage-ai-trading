@@ -865,6 +865,7 @@ export function TradeTab() {
               ? parseFloat(limitPrice)
               : symbolQuote?.price;
             if (!price || isNaN(price) || price <= 0) return;
+            const dollarAmount = qtyType === 'dollars' ? parseFloat(qty || '0') : undefined;
             const shares = qtyType === 'dollars' && price > 0
               ? Math.floor(parseFloat(qty || '0') / price)
               : parseInt(qty || '0');
@@ -879,7 +880,7 @@ export function TradeTab() {
 
             // Pre-check buying power for BUY orders
             if (side === 'buy') {
-              const estCost = shares * price;
+              const estCost = dollarAmount != null ? dollarAmount : shares * price;
               const bp = account?.buyingPower ?? account?.cash ?? 0;
               if (estCost > bp) return; // Blocked by buy warning — don't submit
             }
@@ -900,6 +901,10 @@ export function TradeTab() {
               stopPx,
               limitPx,
               tif,
+              undefined, // basketId
+              undefined, // basketName
+              undefined, // basketEmoji
+              dollarAmount,
             );
             if (result.success) {
               setQty('');

@@ -49,6 +49,9 @@ export async function GET(req: NextRequest) {
         createdAt: o.created_at,
         brokerageOrderId: o.brokerage_order_id,
         notional: o.notional ? Number(o.notional) : undefined,
+        orderUnit: o.order_unit,
+        requestedAmount: o.requested_amount != null ? Number(o.requested_amount) : undefined,
+        requestedQty: o.requested_qty != null ? Number(o.requested_qty) : undefined,
       })),
       total: count || 0,
     });
