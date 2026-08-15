@@ -757,8 +757,10 @@ export class SnapTradeBroker implements BrokerEngine {
   private _mapOrder(raw: SnapOrder): BrokerOrder {
     const symbol = extractOrderSymbol(raw as unknown as Record<string, unknown>) || 'UNKNOWN';
 
-    const qty = raw.quantity || raw.filled_quantity || 0;
-    const fillPx = raw.average_fill_price || raw.price || 0;
+    // SnapTrade returns numeric fields as strings (e.g. quantity: "10.5"), so
+    // coerce every numeric value before it flows into BrokerOrder / the UI.
+    const qty = Number(raw.quantity || raw.filled_quantity || 0);
+    const fillPx = Number(raw.average_fill_price || raw.price || 0);
     const isFilled = _mapSnapTradeStatusToOrderStatus(raw.status) === 'FILLED';
 
     return {
@@ -768,12 +770,12 @@ export class SnapTradeBroker implements BrokerEngine {
       type: _mapSnapTradeOrderType(raw.order_type),
       status: _mapSnapTradeStatusToOrderStatus(raw.status),
       shares: qty,
-      filledShares: raw.filled_quantity ?? (isFilled ? qty : 0),
+      filledShares: Number(raw.filled_quantity ?? (isFilled ? qty : 0)),
       submittedPrice: fillPx || 0,
-      limitPrice: raw.price ?? undefined,
-      stopPrice: raw.stop_price ?? undefined,
+      limitPrice: raw.price != null ? Number(raw.price) : undefined,
+      stopPrice: raw.stop_price != null ? Number(raw.stop_price) : undefined,
       fillPrice: fillPx || undefined,
-      totalCost: raw.total_cost || (fillPx * qty) || 0,
+      totalCost: Number(raw.total_cost || (fillPx * qty) || 0),
       timeInForce: _mapSnapTradeTimeInForce(raw.time_in_force),
       submittedAt: raw.create_date || raw.trade_date || new Date().toISOString(),
       filledAt: isFilled ? (raw.trade_date || new Date().toISOString()) : undefined,

@@ -282,7 +282,7 @@ export function TradeTab() {
     symbol: o.symbol,
     side: (o.side || '').toUpperCase(),
     status: (o.status || '').toLowerCase(),
-    shares: Number(((o.shares ?? o.qty ?? o.filledQty ?? 0) as number).toFixed(4)),
+    shares: Number(Number(o.shares ?? o.qty ?? o.filledQty ?? 0).toFixed(4)),
     price: o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     date: o.createdAt ?? o.date ?? '',
