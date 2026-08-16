@@ -1817,14 +1817,48 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         content: m.content,
       }));
 
-    const stream = await client.messages.stream({
-      model,
-      max_tokens: mode === 'deep' ? 8192 : 4096,
-      system: systemBlocks as any,
-      messages: initialMessages,
-      tools: [resolveSymbolTool],
-      tool_choice: { type: 'auto' },
-    })
+    let stream: Awaited<ReturnType<typeof client.messages.stream>>;
+    try {
+      stream = await client.messages.stream({
+        model,
+        max_tokens: mode === 'deep' ? 8192 : 4096,
+        system: systemBlocks as any,
+        messages: initialMessages,
+        tools: [resolveSymbolTool],
+        tool_choice: { type: 'auto' },
+      })
+    } catch (streamInitError: any) {
+      // The model stream failed BEFORE any bytes were produced (Anthropic 4xx/5xx,
+      // rate limit, overloaded, or timeout). A bare 500 here surfaces to the user
+      // as the opaque "Sorry — I encountered an error" message. Return a graceful
+      // SSE clarify instead so the user can retry / simplify rather than hit a wall.
+      const errMsg = (streamInitError?.status
+        ? `Anthropic ${streamInitError.status}: ${streamInitError?.error?.error?.message || streamInitError.message}`
+        : (streamInitError?.message || String(streamInitError))).slice(0, 200);
+      console.error('[chat] 🔴 MODEL STREAM INIT FAILED:', errMsg);
+      if (streamInitError?.stack) console.error('[chat] Stack trace:', streamInitError.stack);
+      const initEncoder = new TextEncoder();
+      const initErrStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(initEncoder.encode(`data: ${JSON.stringify({
+            error: errMsg,
+            clarify: {
+              question: 'I hit a temporary hiccup reaching the AI model. What should I do?',
+              options: ['Try again', 'Simplify my request', 'Cancel'],
+            },
+          })}\n\n`));
+          controller.enqueue(initEncoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      return new Response(initErrStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
 
     const encoder = new TextEncoder();
     const fullResponse: string[] = []; // ALL text from ALL tool-call turns

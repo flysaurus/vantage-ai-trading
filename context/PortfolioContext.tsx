@@ -1444,6 +1444,10 @@ export function buildLivePortfolioContext(account: AccountSummary | null): strin
   const daySign = account.dayPnl >= 0 ? '+' : '';
   const totalSign = account.totalPnl >= 0 ? '+' : '';
 
+  const buyingPowerLine = account.buyingPower != null
+    ? `\nBuying power: $${account.buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '';
+
   return `
 ⚠️ CURRENT MARKET PRICES (use these, ignore training data):
 ${priceAnchor}
@@ -1452,7 +1456,7 @@ PORTFOLIO CONTEXT (live Finnhub prices):
 Total Value: $${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Today P&L: ${daySign}$${Math.abs(account.dayPnl).toFixed(2)} (${account.dayPnlPercent.toFixed(1)}%)
 Total P&L: ${totalSign}$${Math.abs(account.totalPnl).toFixed(2)} (${account.totalPnlPercent.toFixed(1)}%)
-Available cash: ${availableCash(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Available cash: ${availableCash(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${buyingPowerLine}
 
 POSITIONS (${account.positions.length} holdings):
 ${positionsSummary}
