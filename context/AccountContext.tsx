@@ -80,6 +80,30 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     saveActiveAccount(accountId);
   }, []);
 
+  // ── Auto-select the user's connected broker over the demo default ──
+  // When accounts load and the current selection is still the unset default
+  // (no explicit choice stored) — or points at an account that no longer
+  // exists — prefer a connected live/paper broker account so the Portfolio
+  // and AI Advisor reflect the user's real holdings. Fall back to demo only
+  // when no broker account is connected.
+  useEffect(() => {
+    if (isLoading || accounts.length === 0) return;
+
+    const hasExplicitChoice =
+      typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY) !== null;
+
+    // Respect an explicit, still-valid choice.
+    if (hasExplicitChoice && accounts.some((a) => a.id === activeAccountId)) {
+      return;
+    }
+
+    const preferred =
+      accounts.find((a) => !a.isDemo) || accounts.find((a) => a.isDemo);
+    if (preferred && preferred.id !== activeAccountId) {
+      setActiveAccount(preferred.id);
+    }
+  }, [accounts, isLoading, activeAccountId, setActiveAccount]);
+
   const activeAccount = useMemo(
     () => accounts.find(a => a.id === activeAccountId) || null,
     [accounts, activeAccountId]

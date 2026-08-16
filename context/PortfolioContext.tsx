@@ -444,8 +444,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // ── Recompute AccountSummary from mutable state + live quotes ──
   const recomputeAccount = useCallback(
     (quotes: Record<string, any> | null) => {
-      console.log('[recomputeAccount] called, quotes null?:', quotes === null, 'demoState exists?:', !!demoState);
-      if (!demoState) return;
+      console.log('[recomputeAccount] called, quotes null?:', quotes === null, 'demoState exists?:', !!demoState, 'isShowingDemo:', isShowingDemo);
+      if (!demoState || !isShowingDemo) return;
 
       const positions = demoState.positions.map((p) => {
         const pqty = (p as any).shares ?? (p as any).qty ?? 0;
@@ -505,14 +505,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       };
       setAccount(summary);
     },
-    [demoState]
+    [demoState, isShowingDemo]
   );
 
   // ── Fetch live quotes + recompute ──
   const fetchData = useCallback(async () => {
-    // Fetch live quotes for demo positions as long as demo state exists.
+    // Fetch live quotes for demo positions as long as demo state exists AND demo is the active view.
     // Don't block on isConnected — user may switch to Demo while broker is connected.
-    if (!demoState) return;
+    // Guard on isShowingDemo so demo recompute never clobbers the live broker account.
+    if (!demoState || !isShowingDemo) return;
 
     try {
       setError(null);
@@ -538,7 +539,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         setError(err instanceof Error ? err.message : 'Failed to load market data');
       }
     }
-  }, [demoState, recomputeAccount]);
+  }, [demoState, recomputeAccount, isShowingDemo]);
 
   // ── Load real broker data when connected (SnapTrade / Alpaca / etc.) ──
   // This replaces the DemoBroker path — PortfolioContext's account state
