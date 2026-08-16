@@ -8,6 +8,7 @@ import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
+  SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
 
@@ -37,7 +38,7 @@ const DEV_POSITIONS: SnapTradePosition[] = [
   { symbol: 'QQQ', name: 'Invesco QQQ Trust', units: 15, price: 478.62, marketValue: 7179.30, costBasis: 6300.00, openPnl: 879.30, dayChange: 35.85, dayChangePct: 0.50, assetType: 'etf', currency: 'USD' },
 ];
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
@@ -45,16 +46,21 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json(DEV_POSITIONS);
   }
 
+  const connectionId = req.nextUrl.searchParams.get('connectionId');
+
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
   let authorizationId: string;
   try {
-    const creds = await resolveSnapTradeCredentials(authUser.id);
+    const creds = await resolveSnapTradeCredentials(authUser.id, connectionId);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     authorizationId = creds.connectionId;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (err instanceof SnapTradeAmbiguousError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     return NextResponse.json({ error: 'Failed to load brokerage credentials.' }, { status: 502 });

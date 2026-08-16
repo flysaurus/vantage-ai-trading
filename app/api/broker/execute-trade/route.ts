@@ -18,6 +18,7 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
+  SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
@@ -54,6 +55,8 @@ export async function POST(req: NextRequest) {
     messageId?: string | null;
     /** Company name displayed in chat — passed directly for max reliability */
     expectedCompanyName?: string | null;
+    /** broker_connections.id — explicit account selection (multi-broker safety) */
+    connectionId?: string | null;
   };
 
   try {
@@ -65,7 +68,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { symbol, side, shares, orderType, dollarAmount, limitPrice, stopPrice, timeInForce, currentPrice, messageId, expectedCompanyName } = body;
+  const { symbol, side, shares, orderType, dollarAmount, limitPrice, stopPrice, timeInForce, currentPrice, messageId, expectedCompanyName, connectionId: requestedConnectionId } = body;
 
   if (!symbol || !side || (shares == null && dollarAmount == null)) {
     return NextResponse.json(
@@ -132,23 +135,20 @@ export async function POST(req: NextRequest) {
   let tradingEnabled: boolean = false;
 
   try {
-    const creds = await resolveSnapTradeCredentials(authUser!.id);
+    const creds = await resolveSnapTradeCredentials(authUser!.id, requestedConnectionId);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;
     brokerSlug = creds.brokerSlug;
-
-    const { data: conn } = await supabase
-      .from('broker_connections')
-      .select('trading_enabled')
-      .eq('user_id', authUser!.id)
-      .eq('connection_type', 'snaptrade')
-      .eq('status', 'connected')
-      .maybeSingle();
-
-    tradingEnabled = conn?.trading_enabled === true;
+    tradingEnabled = creds.tradingEnabled;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json(
+        { success: false, error: err.message, status: 'REJECTED' },
+        { status: err.status },
+      );
+    }
+    if (err instanceof SnapTradeAmbiguousError) {
       return NextResponse.json(
         { success: false, error: err.message, status: 'REJECTED' },
         { status: err.status },

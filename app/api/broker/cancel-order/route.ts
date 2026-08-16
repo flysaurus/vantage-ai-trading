@@ -23,6 +23,7 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
+  SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
-  let body: { orderId?: string };
+  let body: { orderId?: string; connectionId?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
   }
 
   const orderId = typeof body?.orderId === 'string' ? body.orderId.trim() : '';
+  const requestedConnectionId = typeof body?.connectionId === 'string' ? body.connectionId : null;
   if (!orderId) {
     return NextResponse.json(
       { success: false, error: 'Missing orderId' },
@@ -75,23 +77,20 @@ export async function POST(req: NextRequest) {
   let tradingEnabled = false;
 
   try {
-    const creds = await resolveSnapTradeCredentials(authUser!.id);
+    const creds = await resolveSnapTradeCredentials(authUser!.id, requestedConnectionId);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;
     brokerSlug = creds.brokerSlug;
-
-    const { data: conn } = await supabase
-      .from('broker_connections')
-      .select('trading_enabled')
-      .eq('user_id', authUser!.id)
-      .eq('connection_type', 'snaptrade')
-      .eq('status', 'connected')
-      .maybeSingle();
-
-    tradingEnabled = conn?.trading_enabled === true;
+    tradingEnabled = creds.tradingEnabled;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json(
+        { success: false, error: err.message },
+        { status: err.status },
+      );
+    }
+    if (err instanceof SnapTradeAmbiguousError) {
       return NextResponse.json(
         { success: false, error: err.message },
         { status: err.status },

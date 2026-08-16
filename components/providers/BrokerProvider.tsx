@@ -89,7 +89,10 @@ export function BrokerProvider({ children }: { children: React.ReactNode }) {
               id: data.brokerId,
               name: adapter.name,
               environment: data.environment || 'paper',
-              extra: underlyingBroker ? { brokerId: underlyingBroker } : undefined,
+              extra: {
+                ...(underlyingBroker ? { brokerId: underlyingBroker } : {}),
+                ...(data.connectionId ? { connectionId: data.connectionId } : {}),
+              },
             };
 
             try {

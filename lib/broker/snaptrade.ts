@@ -43,12 +43,14 @@ export class SnapTradeAdapter implements BrokerAdapter {
   private config: SnaptradeConfig | null = null;
   private _connected = false;
   private underlyingBroker: string = '';
+  private connectionId: string | null = null;
 
   // ─── Connection ──────────────────────────────────────────
 
   async connect(config: BrokerConfig): Promise<void> {
     this.config = config as SnaptradeConfig;
     this.underlyingBroker = this.config.extra?.brokerId || this.config.underlyingBrokerId || '';
+    this.connectionId = this.config.extra?.connectionId || null;
     this._connected = true;
   }
 
@@ -56,6 +58,7 @@ export class SnapTradeAdapter implements BrokerAdapter {
     this._connected = false;
     this.config = null;
     this.underlyingBroker = '';
+    this.connectionId = null;
   }
 
   isConnected(): boolean {
@@ -329,7 +332,16 @@ export class SnapTradeAdapter implements BrokerAdapter {
   // ─── Internal ────────────────────────────────────────────
 
   private async snaptradeFetch<T>(url: string): Promise<T> {
-    const res = await fetch(url, { credentials: 'include' });
+    // Thread the explicit broker_connections.id when known so the server can
+    // scope the fetch to THIS connection (fails closed on multi-broker instead
+    // of silently resolving "first row wins").
+    let resolvedUrl = url;
+    if (this.connectionId) {
+      const sep = url.includes('?') ? '&' : '?';
+      resolvedUrl = `${url}${sep}connectionId=${encodeURIComponent(this.connectionId)}`;
+    }
+
+    const res = await fetch(resolvedUrl, { credentials: 'include' });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }));

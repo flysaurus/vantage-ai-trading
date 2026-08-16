@@ -13,6 +13,7 @@ import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
+  SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
@@ -36,7 +37,7 @@ const DEV_ACCOUNT = {
   orders: [],
 };
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
@@ -45,16 +46,20 @@ export async function GET(_req: NextRequest) {
   }
 
   // ── Resolve credentials ────────────────────────────────
+  const connectionId = req.nextUrl.searchParams.get('connectionId');
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
   let authorizationId: string;
   try {
-    const creds = await resolveSnapTradeCredentials(authUser.id);
+    const creds = await resolveSnapTradeCredentials(authUser.id, connectionId);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     authorizationId = creds.connectionId;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (err instanceof SnapTradeAmbiguousError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     return NextResponse.json(

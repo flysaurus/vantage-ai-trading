@@ -18,6 +18,7 @@ import { getOptionalUserId } from '@/lib/auth/get-server-user';
 import { checkUsageLimit } from '@/lib/ai-guard';
 import { writeFact } from '@/lib/ai/facts';
 import { beginGenLog } from '@/lib/ai/generation-log';
+import { listConnectedSnapTradeConnections } from '@/lib/snaptrade/client';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -243,14 +244,9 @@ export async function GET(req: NextRequest) {
     let cashBalance = 0;
     let holdingsUnavailable = false;
 
-    const { data: brokerConn } = await (supabase as any)
-      .from('broker_connections')
-      .select('connection_type, status')
-      .eq('user_id', userId)
-      .eq('status', 'connected')
-      .maybeSingle();
+    const connectedConnections = await listConnectedSnapTradeConnections(userId);
 
-    if (brokerConn?.connection_type) {
+    if (connectedConnections.length > 0) {
       const { data: brokerPositions } = await (supabase as any)
         .from('positions')
         .select('*')
@@ -259,7 +255,11 @@ export async function GET(req: NextRequest) {
       positions = brokerPositions || [];
     }
 
-    if (positions.length === 0) {
+    // Cross-account isolation: only fall back to demo when there is genuinely
+    // NO broker connection. A connected broker with an empty positions table
+    // (just-connected, or a cash-only real account) must surface as
+    // 'no_positions'/'holdings_unavailable' — NEVER substitute demo holdings.
+    if (connectedConnections.length === 0) {
       const { data: portfolioState } = await (supabase as any)
         .from('demo_portfolio_state')
         .select('positions, cash_balance, holdings_unavailable')

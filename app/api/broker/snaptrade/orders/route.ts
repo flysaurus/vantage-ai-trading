@@ -12,6 +12,7 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
+  SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 
@@ -90,7 +91,7 @@ function mapToClientFormat(raw: {
   };
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
@@ -100,18 +101,22 @@ export async function GET(_req: NextRequest) {
   }
 
   // ── Resolve credentials ──────────────────────────────
+  const connectionId = req.nextUrl.searchParams.get('connectionId');
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
-  let connectionId: string;
+  let authorizationId: string;
   let brokerSlug: string;
   try {
-    const creds = await resolveSnapTradeCredentials(authUser.id);
+    const creds = await resolveSnapTradeCredentials(authUser.id, connectionId);
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
-    connectionId = creds.connectionId;
+    authorizationId = creds.connectionId;
     brokerSlug = creds.brokerSlug;
   } catch (err) {
     if (err instanceof SnapTradeAuthError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (err instanceof SnapTradeAmbiguousError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     return NextResponse.json({ error: 'Failed to load brokerage credentials.' }, { status: 502 });
@@ -121,7 +126,7 @@ export async function GET(_req: NextRequest) {
     const broker = new SnapTradeBroker({
       userId: snaptradeUserId,
       userSecret: snaptradeUserSecret,
-      connectionId,
+      connectionId: authorizationId,
       brokerSlug,
       brokerName: formatBrokerName(brokerSlug),
       tradingEnabled: true, // orders always visible even if read-only

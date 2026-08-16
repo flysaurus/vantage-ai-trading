@@ -18,6 +18,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
 import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard';
+import { listConnectedSnapTradeConnections } from '@/lib/snaptrade/client';
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
@@ -141,15 +142,10 @@ export async function GET(req: NextRequest) {
     let holdingsUnavailable = false;
     let isBrokerConnected = false;
 
-    // Check if user has a connected broker (broker_connections, not vault)
+    // Check if user has a connected broker (canonical list — not .maybeSingle)
     try {
-      const { data: brokerConn } = await (supabase as any)
-        .from('broker_connections')
-        .select('connection_type, status')
-        .eq('user_id', userId)
-        .eq('status', 'connected')
-        .maybeSingle();
-      isBrokerConnected = !!brokerConn?.connection_type;
+      const connectedConnections = await listConnectedSnapTradeConnections(userId);
+      isBrokerConnected = connectedConnections.length > 0;
 
       if (isBrokerConnected) {
         // For broker users, positions are in the positions table
