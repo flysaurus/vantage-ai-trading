@@ -537,6 +537,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastAiResponseRef = useRef('');
+  const lastAiMessageIdRef = useRef<string | null>(null); // client-side AI message id (matches msg.id used for trade messageId)
 
   // ── Smooth streaming queue ──
   const charQueueRef = useRef<string[]>([]);
@@ -1148,7 +1149,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
       correctedSymbolsRef.current = new Set();
       checklistFrameRef.current = 0; // reset checklist animation stagger
 
-      setMessages(prev => [...prev, { role: 'ai', content: '', id: crypto.randomUUID() }]);
+      const aiMsgId = crypto.randomUUID();
+      lastAiMessageIdRef.current = aiMsgId;
+      setMessages(prev => [...prev, { role: 'ai', content: '', id: aiMsgId }]);
 
       // SSE events (data: {...}\n\n) are NOT guaranteed to arrive aligned to
       // reader.read() chunk boundaries — a single event can be split across
@@ -1420,10 +1423,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
           // Await both saves before anything else — prevents losing the last message on refresh
           const userSaved = await saveChatMessage(userId, 'user', content, accountId).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
           if (lastAiResponseRef.current) {
-            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current, accountId).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
+            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current, accountId, lastAiMessageIdRef.current).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
             console.log('[AITab] Saved: user=', !!userSaved, 'ai=', !!aiSaved);
             setLastAIResponse(lastAiResponseRef.current);
             lastAiResponseRef.current = '';
+            lastAiMessageIdRef.current = null;
             // Refresh session list after saving to DB
             fetchRecentSessions(userId, accountId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); }).catch(() => {});
           }
@@ -1433,11 +1437,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
           if (lastAiResponseRef.current) {
             setLastAIResponse(lastAiResponseRef.current);
             lastAiResponseRef.current = '';
+            lastAiMessageIdRef.current = null;
           }
         }
       } else if (lastAiResponseRef.current) {
         setLastAIResponse(lastAiResponseRef.current);
         lastAiResponseRef.current = '';
+        lastAiMessageIdRef.current = null;
       }
       scrollToBottom();
     }

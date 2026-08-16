@@ -27,6 +27,7 @@ export async function saveChatMessage(
   role: 'user' | 'assistant',
   content: string,
   accountId: string = 'demo',
+  id?: string | null,
 ): Promise<string> {
   const supabase = createClient();
   const messageType = role === 'user' ? 'user_message' : 'ai_response';
@@ -40,6 +41,7 @@ export async function saveChatMessage(
       p_content: content,
       p_message_type: messageType,
       p_account_id: accountId,
+      p_id: id ?? null,
     });
     if (!error && data) return data as string;
     if (error) {
@@ -54,6 +56,7 @@ export async function saveChatMessage(
     const { data, error } = await (supabase as any)
       .from('chat_messages')
       .insert({
+        ...(id ? { id } : {}),
         user_id: userId,
         role,
         content,

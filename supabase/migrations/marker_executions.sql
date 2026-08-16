@@ -31,7 +31,10 @@ CREATE POLICY "Users can insert own marker executions"
   ON marker_executions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- Admin bypass
+-- Admin bypass (uses the users.is_admin column — migration 029;
+-- there is no is_admin() function in this schema)
 CREATE POLICY "Admins can manage all marker executions"
   ON marker_executions FOR ALL
-  USING (is_admin());
+  USING (EXISTS (
+    SELECT 1 FROM users WHERE users.id = auth.uid() AND users.is_admin = true
+  ));
