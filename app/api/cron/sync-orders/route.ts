@@ -24,6 +24,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   resolveSnapTradeCredentials,
   SnapTradeAuthError,
+  SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
@@ -64,6 +65,7 @@ function formatBrokerName(slug: string | null): string {
 
 interface InFlightOrder {
   id: string;
+  connection_id: string | null;
   brokerage_order_id: string | null;
   status: string;
   created_at: string;
@@ -89,7 +91,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 1. Load all in-flight orders, grouped by user
   const { data: rows, error } = await supabase
     .from('orders')
-    .select('id, user_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit')
+    .select('id, user_id, connection_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit')
     .in('status', [...IN_FLIGHT])
     .not('brokerage_order_id', 'is', null);
 
@@ -98,11 +100,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const byUser = new Map<string, InFlightOrder[]>();
+  // Group in-flight orders by (user, connection) so each broker connection is
+  // polled against its OWN SnapTrade authorization — never a sibling broker's.
+  // A null connection_id (pre-052 legacy rows) groups under '' and resolves via
+  // the single-connection path (throws 409 if the user has 2+ brokers).
+  const groups = new Map<string, { userId: string; connectionId: string | null; orders: InFlightOrder[] }>();
   for (const r of rows || []) {
-    const list = byUser.get(r.user_id) || [];
-    list.push({
+    const connectionId: string | null = r.connection_id ?? null;
+    const key = `${r.user_id}|${connectionId ?? ''}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { userId: r.user_id, connectionId, orders: [] };
+      groups.set(key, group);
+    }
+    group.orders.push({
       id: r.id,
+      connection_id: connectionId,
       brokerage_order_id: r.brokerage_order_id,
       status: r.status,
       created_at: r.created_at,
@@ -113,12 +126,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       requested_qty: typeof r.requested_qty === 'number' ? r.requested_qty : null,
       order_unit: r.order_unit === 'dollars' || r.order_unit === 'shares' ? r.order_unit : null,
     });
-    byUser.set(r.user_id, list);
   }
 
-  if (byUser.size === 0) {
+  if (groups.size === 0) {
     return NextResponse.json({
-      users: 0,
+      connections: 0,
       orders: 0,
       transitions: 0,
       skipped: 0,
@@ -132,11 +144,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let staleCancelled = 0;
   let errors = 0;
 
-  for (const [userId, orders] of byUser) {
+  for (const group of groups.values()) {
+    const userId = group.userId;
+    const orders = group.orders;
     let broker: SnapTradeBroker;
     let brokerName = 'Unknown';
     try {
-      const creds = await resolveSnapTradeCredentials(userId);
+      const creds = await resolveSnapTradeCredentials(userId, group.connectionId);
       brokerName = formatBrokerName(creds.brokerSlug);
       broker = new SnapTradeBroker({
         userId: creds.snaptradeUserId,
@@ -151,12 +165,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } catch (err) {
       errors++;
       console.warn(
-        `[sync-orders] Skip user ${userId}: ${
+        `[sync-orders] Skip ${group.connectionId ? `connection ${group.connectionId}` : 'legacy (no connection_id)'} for user ${userId}: ${
           err instanceof SnapTradeAuthError
             ? 'no connected SnapTrade brokerage'
-            : err instanceof Error
-              ? err.message
-              : String(err)
+            : err instanceof SnapTradeAmbiguousError
+              ? 'multiple brokers — order predates account tagging (052)'
+              : err instanceof Error
+                ? err.message
+                : String(err)
         }`,
       );
       continue;
@@ -375,7 +391,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   return NextResponse.json({
-    users: byUser.size,
+    users: new Set([...groups.values()].map((g) => g.userId)).size,
+    connections: groups.size,
     orders: rows?.length || 0,
     transitions,
     staleCancelled,

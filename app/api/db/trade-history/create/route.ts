@@ -12,7 +12,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: 'Missing request body' }, { status: 400 });
 
-    const { userId, symbol, action, quantity, price, commission, notes, alpacaOrderId, executedAt } = body as Record<string, any>;
+    const { userId, symbol, action, quantity, price, commission, notes, alpacaOrderId, executedAt, connectionId, isDemo } = body as Record<string, any>;
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
     if (!symbol?.trim()) return NextResponse.json({ error: 'symbol required' }, { status: 400 });
     if (!action || !['buy', 'sell'].includes(action)) return NextResponse.json({ error: 'action must be buy or sell' }, { status: 400 });
@@ -47,6 +47,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       commission: commission || 0, notes: notes || null,
       status: 'filled', executed_at: execTime,
       alpaca_order_id: alpacaOrderId || null,
+      connection_id: connectionId || null,
+      is_demo: isDemo === true,
     }).select('id, symbol, action, quantity, price, total_value, commission, notes, executed_at, created_at').single();
 
     if (error) return NextResponse.json({ error: 'Failed to create trade', detail: error.message }, { status: 500 });

@@ -13,7 +13,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(path, { ...init, headers, credentials: 'include' as RequestCredentials });
 }
 
-export async function createTrade(params: { userId: string; symbol: string; action: 'buy' | 'sell'; quantity: number; price: number; commission?: number; notes?: string; alpacaOrderId?: string; executedAt?: string }): Promise<(Trade & { _existing?: boolean }) | null> {
+export async function createTrade(params: { userId: string; symbol: string; action: 'buy' | 'sell'; quantity: number; price: number; commission?: number; notes?: string; alpacaOrderId?: string; executedAt?: string; connectionId?: string | null; isDemo?: boolean }): Promise<(Trade & { _existing?: boolean }) | null> {
   const res = await apiFetch(`${API_BASE}/create`, { method: 'POST', body: JSON.stringify(params) });
   if (!res.ok) { console.warn('[trades] create failed:', res.status, await res.text()); return null; }
   return res.json();
@@ -26,6 +26,7 @@ export async function syncFilledOrders(
     id: string; symbol: string; side: 'buy' | 'sell';
     filledQty: number; filledPrice: number; createdAt: string;
   }>,
+  connectionId?: string | null,
 ): Promise<number> {
   let synced = 0;
   for (const order of filledOrders) {
@@ -38,14 +39,17 @@ export async function syncFilledOrders(
       price: order.filledPrice,
       alpacaOrderId: order.id,
       executedAt: order.createdAt,
+      connectionId,
     });
     if (result && !result._existing) synced++;
   }
   return synced;
 }
 
-export async function getTrades(userId: string, limit = 100, offset = 0): Promise<{ trades: Trade[]; total: number }> {
-  const res = await apiFetch(`${API_BASE}/get-all?userId=${encodeURIComponent(userId)}&limit=${limit}&offset=${offset}`, { cache: 'no-store' });
+export async function getTrades(userId: string, limit = 100, offset = 0, connectionId?: string | null): Promise<{ trades: Trade[]; total: number }> {
+  const params = new URLSearchParams({ userId, limit: String(limit), offset: String(offset) });
+  if (connectionId) params.set('connectionId', connectionId);
+  const res = await apiFetch(`${API_BASE}/get-all?${params.toString()}`, { cache: 'no-store' });
   if (!res.ok) return { trades: [], total: 0 };
   return res.json();
 }

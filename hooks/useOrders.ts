@@ -110,7 +110,7 @@ export function useOrders() {
           .getOrders({ status: 'filled', limit: 20 })
           .catch(() => []),
         uid
-          ? getTrades(uid, 500, 0).catch(() => ({ trades: [] as any[], total: 0 }))
+          ? getTrades(uid, 500, 0, liveConnectionId).catch(() => ({ trades: [] as any[], total: 0 }))
           : Promise.resolve({ trades: [] as any[], total: 0 }),
         fetch(
           `/api/orders?limit=500${liveConnectionId ? `&connectionId=${encodeURIComponent(liveConnectionId)}` : ''}`
@@ -255,6 +255,7 @@ export function useOrders() {
             filledPrice: o.filledPrice ?? 0,
             createdAt: o.createdAt,
           })),
+          liveConnectionId,
         ).catch(() => {/* fire-and-forget: errors are logged in createTrade */});
       }
     } catch (err) {

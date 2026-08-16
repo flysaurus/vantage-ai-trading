@@ -15,12 +15,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const targetUserId = searchParams.get('userId') || authUserId;
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100'), 1), 500);
     const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
+    const connectionId = searchParams.get('connectionId');
     if (targetUserId !== authUserId) return NextResponse.json({ error: 'Cannot fetch other users trades' }, { status: 403 });
 
-    const { count } = await (supabase as any).from('trade_history').select('*', { count: 'exact', head: true }).eq('user_id', targetUserId);
-    const { data, error } = await (supabase as any).from('trade_history')
+    const base = (supabase as any).from('trade_history').select('*', { count: 'exact', head: true }).eq('user_id', targetUserId);
+    const { count } = connectionId ? await base.eq('connection_id', connectionId) : await base;
+    let query = (supabase as any).from('trade_history')
       .select('id, symbol, action, quantity, price, total_value, commission, notes, executed_at, created_at')
-      .eq('user_id', targetUserId).order('executed_at', { ascending: false }).range(offset, offset + limit - 1);
+      .eq('user_id', targetUserId);
+    if (connectionId) query = query.eq('connection_id', connectionId);
+    const { data, error } = await query.order('executed_at', { ascending: false }).range(offset, offset + limit - 1);
 
     if (error) return NextResponse.json({ error: 'Failed to fetch trades', detail: error.message }, { status: 500 });
 
