@@ -305,15 +305,9 @@ export async function GET(req: NextRequest) {
       if (userData?.investor_style) {
         investorStyle = userData.investor_style;
       }
-      // Check if connected to broker
-      const { data: vaultData } = await (supabase as any)
-        .from('vault')
-        .select('provider')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (vaultData?.provider) {
-        portfolioMode = vaultData.provider === 'alpaca' ? 'live' : 'demo';
-      }
+      // Portfolio mode is driven by the canonical SnapTrade connection check
+      // (isBrokerConnected above), NOT the legacy vault.provider field.
+      portfolioMode = isBrokerConnected ? 'live' : 'demo';
     } catch {
       // use defaults
     }

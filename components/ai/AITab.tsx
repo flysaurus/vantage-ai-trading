@@ -8,6 +8,7 @@ import { apiPost } from '@/lib/api-client';
 import { debugLog } from '@/lib/debug-log';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio, buildLivePortfolioContext } from '@/context/PortfolioContext';
+import { useAccounts } from '@/context/AccountContext';
 import { availableCash as computeAvailableCash } from '@/lib/available-cash';
 import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
@@ -189,6 +190,11 @@ const PLACEHOLDERS = [
 export function AITab({ messages, setMessages }: AITabProps) {
   const { account: liveAccount, executeTrade, brokerMeta } = useLivePortfolio();
   const { isConnected } = useBroker();
+  // Canonical account source of truth. brokerMeta is derived (and goes null/stale
+  // when demo is active), so we must NOT infer isDemo from it — that was feeding
+  // the AI a "real money / live" label while showing demo data.
+  const { activeAccount } = useAccounts();
+  const isDemoAccount = activeAccount?.isDemo ?? true;
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : null;
   const investorStyle = user?.investorStyle || 'Lynch';
@@ -1087,11 +1093,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
         validationFailures: retryOpts?.retryFailures ?? null,
         // Account context — prevents AI from presenting Demo holdings as real
         accountMeta: {
-          isDemo: brokerMeta?.isDemo ?? false,
-          brokerSource: brokerMeta?.slug ?? 'demo',
-          brokerName: brokerMeta?.name ?? 'Demo Portfolio',
-          environment: brokerMeta?.environment ?? 'demo',
-          tradingEnabled: brokerMeta?.tradingEnabled ?? false,
+          isDemo: isDemoAccount,
+          brokerSource: isDemoAccount ? 'demo' : (activeAccount?.brokerageSlug || activeAccount?.broker || 'snaptrade'),
+          brokerName: isDemoAccount ? 'Demo Portfolio' : (activeAccount?.name || 'Connected Broker'),
+          environment: isDemoAccount ? 'demo' : (activeAccount?.environment || 'live'),
+          tradingEnabled: isDemoAccount ? false : (activeAccount?.tradingEnabled ?? false),
         },
       });
 
