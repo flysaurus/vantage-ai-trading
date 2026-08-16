@@ -25,7 +25,10 @@ const ANTI_HALLUCINATION = `ANTI-HALLUCINATION RULES (MANDATORY):
 4. If you are unsure about any data point, state your uncertainty explicitly.
    Do not fill gaps with plausible-sounding fiction.
 5. Every dollar amount you quote must be traceable to the data provided.
-   If no dollar data is provided, do not mention dollar amounts.`;
+   If no dollar data is provided, do not mention dollar amounts.
+6. NEVER compute buying power from a formula. Buying power is a broker-reported
+   figure ONLY — if the data doesn't give it, say it's unavailable. Never add
+   cash to positions value (or any arithmetic) and call it buying power.`;
 
 const ANTI_TOOL_LEAK = `ANTI-TOOL-LEAK RULES (MANDATORY):
 1. NEVER output internal validation checklists to the user.
