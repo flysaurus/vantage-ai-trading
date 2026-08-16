@@ -7,7 +7,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
-import { createClient } from '@supabase/supabase-js';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
   const { authUser, authError } = await requireAuth();
@@ -15,85 +14,108 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
   const userId = authUser!.id;
 
   try {
-    // ── Check SnapTrade connections first (broker_connections table) ──
-    // These are OAuth-based connections that don't store credentials in Vault.
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    );
+    // ── Canonical resolver — reads LIVE SnapTrade balances ──
+    // Requires exactly one connected SnapTrade connection (or an explicit
+    // connection id). Ambiguity (2+ connections) fails closed with 409 —
+    // never "first row wins". Header balances come from live /accounts +
+    // /balances, NOT the cached snaptrade_accounts JSON (fixes stale $32K).
+    const { resolveSnapTradeCredentials, SnapTradeAuthError, SnapTradeAmbiguousError } =
+      await import('@/lib/snaptrade/client');
+    const { snapTradeFetch } = await import('@/lib/snaptrade/auth');
 
-    const { data: snapConn } = await supabaseAdmin
-      .from('broker_connections')
-      .select('snaptrade_broker_id, brokerage_slug, trading_enabled, snaptrade_accounts, status')
-      .eq('user_id', userId)
-      .eq('connection_type', 'snaptrade')
-      .eq('status', 'connected')
-      .maybeSingle();
-
-    if (snapConn) {
-      const accounts = (snapConn.snaptrade_accounts as any[]) || [];
-      const totalValue = accounts.reduce((sum: number, a: any) => sum + (a.totalValue || 0), 0);
-      const buyingPower = accounts.reduce((sum: number, a: any) => sum + (a.buyingPower || 0), 0);
-      const brokerSlug = snapConn.snaptrade_broker_id || snapConn.brokerage_slug || '';
-      const isPaper = brokerSlug.toUpperCase().includes('PAPER');
-
-      // Capabilities are read live — make a lightweight call to get sync_status
-      // This tells us holdingsUnavailable WITHOUT a full positions fetch.
-      let holdingsAvailable = true;
-      try {
-        const { resolveSnapTradeCredentials, SnapTradeAuthError } = await import(
-          '@/lib/snaptrade/client'
+    let creds;
+    try {
+      creds = await resolveSnapTradeCredentials(userId);
+    } catch (err) {
+      if (err instanceof SnapTradeAuthError) {
+        // No connected SnapTrade broker — clean "not connected" state.
+        return NextResponse.json({
+          connected: false,
+          brokerId: null,
+          accountPreview: null,
+          marketOpen: false,
+          environment: null,
+        });
+      }
+      if (err instanceof SnapTradeAmbiguousError) {
+        return NextResponse.json(
+          {
+            connected: true,
+            brokerId: 'snaptrade',
+            ambiguous: true,
+            error: err.message,
+            accountPreview: null,
+            marketOpen: false,
+            environment: null,
+          },
+          { status: 409 },
         );
-        const { snapTradeFetch } = await import('@/lib/snaptrade/auth');
-        const creds = await resolveSnapTradeCredentials(userId);
-        const authAccounts = await snapTradeFetch<Array<{
-          sync_status?: { holdings?: { holdings_unavailable?: boolean } };
-        }>>(
-          `/authorizations/${creds.connectionId}/accounts`,
-          null,
-          { userId: creds.snaptradeUserId, userSecret: creds.snaptradeUserSecret },
-        );
-        if (Array.isArray(authAccounts)) {
-          holdingsAvailable = !authAccounts.some(
-            (a) => a.sync_status?.holdings?.holdings_unavailable,
-          );
-        }
-      } catch { /* keep default true */ }
-
-      console.error(
-        '[broker/status] SnapTrade connection detected:',
-        'brokerSlug:', brokerSlug,
-        'accounts:', accounts.length,
-        'totalValue:', totalValue,
-        'tradingEnabled:', snapConn.trading_enabled,
-        'holdingsAvailable:', holdingsAvailable,
-      );
-
-      return NextResponse.json({
-        connected: true,
-        brokerId: 'snaptrade',
-        trading_enabled: snapConn.trading_enabled !== false,
-        holdings_available: holdingsAvailable,
-        underlying_broker: brokerSlug,
-        accountPreview: {
-          id: accounts[0]?.id || 'snaptrade',
-          equity: totalValue,
-          buyingPower: buyingPower || null,
-          status: 'ACTIVE',
-        },
-        marketOpen: false,
-        environment: isPaper ? 'paper' : 'live',
-      });
+      }
+      throw err;
     }
 
-    // ── No connected broker ──
+    const ep = { userId: creds.snaptradeUserId, userSecret: creds.snaptradeUserSecret };
+
+    // Live accounts → total equity + holdings availability + account id
+    const accounts = await snapTradeFetch<Array<{
+      id: string;
+      status?: string;
+      balance?: { total?: { amount?: number } };
+      sync_status?: { holdings?: { holdings_unavailable?: boolean } };
+    }>>(`/authorizations/${creds.connectionId}/accounts`, null, ep);
+
+    let totalValue = 0;
+    let buyingPower = 0;
+    let holdingsAvailable = true;
+    let accountId = 'snaptrade';
+
+    if (Array.isArray(accounts) && accounts.length > 0) {
+      accountId = accounts[0]?.id || 'snaptrade';
+      for (const acct of accounts) {
+        totalValue += Number(acct.balance?.total?.amount || 0);
+        if (acct.sync_status?.holdings?.holdings_unavailable) holdingsAvailable = false;
+      }
+      // Live per-account balances → real buying power (fixes stale $32K cache)
+      for (const acct of accounts) {
+        try {
+          const balances = await snapTradeFetch<Array<{ cash?: number; buying_power?: number }>>(
+            `/accounts/${acct.id}/balances`, null, ep,
+          );
+          if (Array.isArray(balances)) {
+            for (const b of balances) buyingPower += Number(b.buying_power || 0);
+          }
+        } catch { /* partial failure OK */ }
+      }
+    }
+
+    const brokerSlug = creds.brokerSlug || '';
+    const isPaper = brokerSlug.toUpperCase().includes('PAPER');
+
+    console.error(
+      '[broker/status] SnapTrade connection detected:',
+      'brokerSlug:', brokerSlug,
+      'accounts:', Array.isArray(accounts) ? accounts.length : 0,
+      'totalValue:', totalValue,
+      'buyingPower:', buyingPower,
+      'tradingEnabled:', creds.tradingEnabled,
+      'holdingsAvailable:', holdingsAvailable,
+    );
+
     return NextResponse.json({
-      connected: false,
-      brokerId: null,
-      accountPreview: null,
+      connected: true,
+      brokerId: 'snaptrade',
+      connectionId: creds.brokerConnectionId,
+      trading_enabled: creds.tradingEnabled,
+      holdings_available: holdingsAvailable,
+      underlying_broker: brokerSlug,
+      accountPreview: {
+        id: accountId,
+        equity: totalValue,
+        buyingPower: buyingPower || null,
+        status: 'ACTIVE',
+      },
       marketOpen: false,
-      environment: null,
+      environment: isPaper ? 'paper' : 'live',
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AuthError') {
