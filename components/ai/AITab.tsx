@@ -1106,7 +1106,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
           const errData = await res.json().catch(() => ({}));
           throw { status: 429, ...errData };
         }
-        throw new Error('API error');
+        // Include the actual HTTP status so transient server/auth errors are
+        // distinguishable from network failures in the catch block below.
+        throw new Error(`API error (${res.status}${res.statusText ? ' ' + res.statusText : ''})`);
       }
 
       const reader = res.body?.getReader();
@@ -1379,7 +1381,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
           setMessages(prev => [...prev, { role: 'ai', content: msg }]);
         }
       } else {
-        setMessages(prev => [...prev, { role: 'ai', content: 'Sorry — I encountered an error. Please try again.' }]);
+        // Surface the underlying reason (network / stream abort / HTTP status)
+        // instead of a bare generic message — makes client-side failures self-diagnosing.
+        const detail = error?.message ? ` (${error.message})` : '';
+        setMessages(prev => [...prev, { role: 'ai', content: `Sorry — I encountered an error${detail}. Please try again.` }]);
       }
     } finally {
       setLoading(false); loadingRef.current = false;
