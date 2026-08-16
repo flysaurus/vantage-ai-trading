@@ -244,6 +244,7 @@ export async function POST(req: NextRequest) {
           time_in_force: (timeInForce || 'day').toLowerCase(),
           is_demo: false,
           brokerage_order_id: result.orderId || null,
+          source: messageId ? 'ai_advisor' : 'manual',
           created_at: now,
         };
         if (isNotionalOrder) {

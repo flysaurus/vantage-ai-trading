@@ -48,6 +48,8 @@ export function useOrders() {
   const statusMap: Record<string, Order['status']> = {
     new: 'open',
     pending: 'pending',
+    submitted: 'submitted',
+    open: 'open',
     filled: 'filled',
     partially_filled: 'open',
     cancelled: 'cancelled',
@@ -75,6 +77,9 @@ export function useOrders() {
     timeInForce: raw.timeInForce || 'day',
     createdAt: raw.submittedAt ?? raw.createdAt ?? new Date().toISOString(),
     updatedAt: raw.submittedAt ?? raw.updatedAt ?? raw.createdAt,
+    filledAt: raw.filledAt ?? raw.filled_at ?? null,
+    cancelledAt: raw.cancelledAt ?? raw.cancelled_at ?? null,
+    source: raw.source ?? raw.origin ?? null,
     notional: raw.notional ?? null,
     orderUnit: raw.orderUnit ?? raw.order_unit ?? undefined,
     requestedAmount: raw.requestedAmount ?? raw.requested_amount ?? null,
@@ -133,6 +138,8 @@ export function useOrders() {
         timeInForce: 'day',
         createdAt: trade.executedAt || trade.createdAt,
         updatedAt: trade.createdAt,
+        filledAt: trade.executedAt || trade.createdAt || null,
+        source: 'manual',
       }));
 
       // Map public.orders entries to Order format
@@ -141,9 +148,11 @@ export function useOrders() {
         symbol: o.symbol,
         side: (o.side === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
         type: (o.orderType || 'market') as 'market' | 'limit' | 'stop' | 'stop_limit',
-        status: (o.status === 'submitted' || o.status === 'partially_filled'
-          ? 'open'
-          : (o.status || 'filled')) as Order['status'],
+        status: (o.status === 'submitted'
+          ? 'submitted'
+          : o.status === 'partially_filled'
+            ? 'open'
+            : (o.status || 'filled')) as Order['status'],
         qty: o.qty || 0,
         filledQty: o.filledQty || 0,
         filledPrice: o.filledPrice,
@@ -151,6 +160,9 @@ export function useOrders() {
         timeInForce: (o.timeInForce || 'day') as 'day' | 'gtc' | 'ioc' | 'fok',
         createdAt: o.createdAt,
         updatedAt: o.createdAt,
+        filledAt: o.filledAt ?? o.filled_at ?? null,
+        cancelledAt: o.cancelledAt ?? o.cancelled_at ?? null,
+        source: o.source ?? null,
         notional: (o.notional ?? (o as any).notional) ?? null,
         orderUnit: (o.orderUnit ?? (o as any).orderUnit) as 'dollars' | 'shares' | undefined,
         requestedAmount: (o.requestedAmount ?? (o as any).requestedAmount) ?? null,
@@ -193,6 +205,9 @@ export function useOrders() {
           orderUnit: o.orderUnit ?? dbMatch.orderUnit,
           requestedAmount: o.requestedAmount ?? dbMatch.requestedAmount,
           requestedQty: o.requestedQty ?? dbMatch.requestedQty,
+          source: o.source ?? dbMatch.source ?? null,
+          filledAt: o.filledAt ?? dbMatch.filledAt ?? null,
+          cancelledAt: o.cancelledAt ?? dbMatch.cancelledAt ?? null,
           // Fall back to DB requested qty when broker qty is 0/absent (open notional)
           qty: Number(o.qty || 0) > 0 ? o.qty : (dbMatch.requestedQty ?? dbMatch.qty ?? 0),
         };
@@ -382,7 +397,7 @@ export function useOrders() {
     activeFilter === 'all'
       ? orders
       : orders.filter((o) => {
-          if (activeFilter === 'open') return o.status === 'open' || o.status === 'pending';
+          if (activeFilter === 'open') return o.status === 'open' || o.status === 'pending' || o.status === 'submitted';
           return o.status === activeFilter;
         });
 

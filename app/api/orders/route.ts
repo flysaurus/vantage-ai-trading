@@ -59,6 +59,8 @@ export async function GET(req: NextRequest) {
         filledQty: Number(o.filled_qty || 0),
         filledPrice: o.filled_price ? Number(o.filled_price) : undefined,
         filledAt: o.filled_at,
+        cancelledAt: o.cancelled_at,
+        source: o.source,
         timeInForce: o.time_in_force,
         isDemo: o.is_demo,
         connectionId: o.connection_id,

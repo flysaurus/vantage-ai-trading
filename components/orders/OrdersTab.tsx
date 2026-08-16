@@ -45,46 +45,144 @@ function resolveRequested(order: Order) {
   return { unit, requestedAmount, requestedQty };
 }
 
-function RequestedLine({ order }: { order: Order }) {
-  const r = resolveRequested(order);
-  const isFilled = order.status === 'filled';
-  const prefix = isFilled ? 'Requested: ' : '';
-  if (r.unit === 'dollars') {
-    const amt = r.requestedAmount != null && r.requestedAmount > 0 ? fmtDollars(r.requestedAmount) : null;
-    const est = r.requestedQty != null && r.requestedQty > 0 ? `≈${fmtShares(r.requestedQty)} shares est.` : null;
-    return (
-      <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
-        {isFilled && <span style={{ color: '#94a3b8' }}>{prefix}</span>}
-        {amt
-          ? <span style={{ fontWeight: 700, color: '#ffffff' }}>{amt}</span>
-          : <span style={{ color: '#94a3b8' }}>—</span>}
-        {est && <span style={{ color: '#94a3b8' }}> · {est}</span>}
-      </div>
-    );
+// ─── Order Timeline Stepper ────────────────────────────────
+
+function formatStepTime(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
-  const qtyStr = r.requestedQty != null && r.requestedQty > 0
-    ? `${fmtShares(r.requestedQty)} share${r.requestedQty === 1 ? '' : 's'}`
-    : null;
-  const est = r.requestedAmount != null && r.requestedAmount > 0 ? `≈${fmtDollars(r.requestedAmount)} est.` : null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function orderOrigin(order: Order): string {
+  return order.source === 'ai_advisor' ? 'via AI Advisor' : 'Manual buy';
+}
+
+function orderRef(order: Order): string {
+  const bare = (order.brokerageOrderId || order.id).replace(/^demo-/, '');
+  return '#' + bare.slice(0, 8);
+}
+
+function OrderStepper({ order }: { order: Order }) {
+  const s = order.status;
+  const isFilled = s === 'filled';
+  const isCancelled = s === 'cancelled';
+  const isRejected = s === 'rejected';
+  const isSubmitted = s === 'submitted';
+  // 'open' and 'pending' both mean the order is confirmed working at the venue.
+  const isOpen = s === 'open' || s === 'pending';
+
+  const placedTime = formatStepTime(order.createdAt);
+
+  // Middle step: Open (normal) → Cancelled/Rejected (diverged branch).
+  let middleLabel = 'Open';
+  let middleKind: 'done' | 'active' | 'cancelled' = 'active';
+  let middleTime = '';
+  if (isFilled) {
+    middleKind = 'done';
+    middleTime = formatStepTime(order.filledAt || order.updatedAt);
+  } else if (isCancelled) {
+    middleLabel = 'Cancelled';
+    middleKind = 'cancelled';
+    middleTime = formatStepTime(order.cancelledAt || order.updatedAt);
+  } else if (isRejected) {
+    middleLabel = 'Rejected';
+    middleKind = 'cancelled';
+    middleTime = formatStepTime(order.cancelledAt || order.updatedAt);
+  } else if (isOpen) {
+    middleKind = 'done';
+    middleTime = formatStepTime(order.updatedAt || order.createdAt);
+  } else {
+    // submitted → still awaiting venue acknowledgement, keep "Open" as the active step.
+    middleKind = 'active';
+    middleTime = '';
+  }
+
+  // Filled step
+  const filledTime = isFilled ? formatStepTime(order.filledAt) : '';
+  const filledMuted = isCancelled || isRejected;
+  const filledDot = isFilled ? '✓' : filledMuted ? '—' : '3';
+  const filledDotClass = isFilled ? 'done' : '';
+
+  // Connectors:
+  //  Placed → middle: emerald once the order reached the middle step (open/filled/cancelled);
+  //    red if REJECTED (diverged immediately after placement, never reached Open);
+  //    faint while still SUBMITTED.
+  const placedLineClass = isRejected ? 'cancelled' : isSubmitted ? '' : 'done';
+  //  middle → Filled: emerald when filled; red when the branch terminated (cancelled/rejected);
+  //    faint while still open/submitted.
+  const middleLineClass = isFilled ? 'done' : isCancelled || isRejected ? 'cancelled' : '';
+
   return (
-    <div style={{ fontSize: 11, color: '#e2e8f0', marginBottom: 2 }}>
-      {isFilled && <span style={{ color: '#94a3b8' }}>{prefix}</span>}
-      {qtyStr
-        ? <span style={{ fontWeight: 700, color: '#ffffff' }}>{qtyStr}</span>
-        : <span style={{ color: '#94a3b8' }}>—</span>}
-      {est && <span style={{ color: '#94a3b8' }}> · {est}</span>}
+    <div className="stepper">
+      <div className="step">
+        <div className={`line ${placedLineClass}`} />
+        <div className="dot done">✓</div>
+        <div className="step-label done">Placed</div>
+        <div className="step-time">{placedTime}</div>
+      </div>
+      <div className="step">
+        <div className={`line ${middleLineClass}`} />
+        <div className={`dot ${middleKind}`}>
+          {middleKind === 'done' ? '✓' : middleKind === 'cancelled' ? '✕' : '●'}
+        </div>
+        <div className={`step-label ${middleKind}`}>{middleLabel}</div>
+        <div className="step-time">{middleKind === 'active' ? (middleTime || 'pending') : middleTime}</div>
+      </div>
+      <div className="step" style={filledMuted ? { opacity: 0.35 } : undefined}>
+        <div className={`dot ${filledDotClass}`}>{filledDot}</div>
+        <div className={`step-label ${filledDotClass}`}>Filled</div>
+        <div className="step-time">{filledTime}</div>
+      </div>
     </div>
   );
 }
 
-function FilledLine({ order }: { order: Order }) {
+function RequestedFilledBlocks({ order }: { order: Order }) {
+  const r = resolveRequested(order);
+  const openNow = order.status === 'open' || order.status === 'pending' || order.status === 'submitted';
+
+  let reqValue: string;
+  let reqEst: string | null = null;
+  if (r.unit === 'dollars') {
+    reqValue = r.requestedAmount != null && r.requestedAmount > 0 ? fmtDollars(r.requestedAmount) : '—';
+    reqEst = r.requestedQty != null && r.requestedQty > 0 ? `≈${fmtShares(r.requestedQty)} shares est.` : null;
+  } else {
+    reqValue = r.requestedQty != null && r.requestedQty > 0 ? `${fmtShares(r.requestedQty)} shares` : '—';
+    reqEst = r.requestedAmount != null && r.requestedAmount > 0 ? `≈${fmtDollars(r.requestedAmount)} est.` : null;
+  }
+
   const fillQty = order.filledQty ?? order.qty;
   const fillPrice = order.filledPrice;
-  if (fillQty == null || fillPrice == null || fillQty <= 0) return null;
-  const fillAmount = fillQty * fillPrice;
+  const hasFill = fillQty != null && fillQty > 0 && fillPrice != null;
+  const fillAmount = hasFill ? fillQty * fillPrice : null;
+
   return (
-    <div style={{ fontSize: 11, color: '#4ade80', marginBottom: 2 }}>
-      Filled: {fmtShares(fillQty)} shares @ {fmtDollars(fillPrice)} ({fmtDollars(fillAmount)})
+    <div className="data-row">
+      <div className="data-block">
+        <div className="k">Requested</div>
+        <div className="v">{reqValue}</div>
+        {reqEst && <div className="est-tag">{reqEst}</div>}
+      </div>
+      <div className={`data-block ${hasFill ? 'filled' : ''}`}>
+        <div className="k">Filled</div>
+        {hasFill ? (
+          <>
+            <div className="v">{fmtShares(fillQty)} sh @ {fmtDollars(fillPrice)}</div>
+            <div className="est-tag" style={{ color: '#3ddc97' }}>{fmtDollars(fillAmount)} total</div>
+          </>
+        ) : (
+          <div className="v muted">{openNow ? 'Awaiting broker' : 'Not filled'}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -129,27 +227,13 @@ export function OrdersTab() {
 
   const counts = {
     open: allOrders.filter(
-      (o) => o.status === 'open' || o.status === 'pending'
+      (o) => o.status === 'open' || o.status === 'pending' || o.status === 'submitted'
     ).length,
     filled: allOrders.filter((o) => o.status === 'filled').length,
   };
 
-  const statusStyle = (status: string) => {
-    switch (status) {
-      case 'open':
-        return { background: 'rgba(251,191,36,0.2)', color: '#fbbf24' };
-      case 'pending':
-        return { background: 'rgba(251,191,36,0.15)', color: '#fbbf24' };
-      case 'filled':
-        return { background: 'rgba(74,222,128,0.2)', color: '#4ade80' };
-      case 'cancelled':
-        return { background: 'rgba(100,116,139,0.2)', color: '#94a3b8' };
-      case 'rejected':
-        return { background: 'rgba(248,113,113,0.2)', color: '#f87171' };
-      default:
-        return { background: 'rgba(100,116,139,0.2)', color: '#94a3b8' };
-    }
-  };
+  const isWorking = (status: string) =>
+    status === 'open' || status === 'pending' || status === 'submitted';
 
   // Loading state — skeleton shimmer
   if (loading && allOrders.length === 0) {
@@ -399,96 +483,56 @@ export function OrdersTab() {
       )}
 
       {/* Orders List */}
-      {orders.map((order) => (
+      {orders.map((order) => {
+        const working = isWorking(order.status);
+        return (
         <div key={order.id} className={`order-card ${order.status}`}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'start',
-              marginBottom: 4,
-            }}
-          >
-            {/* LEFT — symbol, type+shares, total cost */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>{order.symbol}</span>
-                <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
-                {order.type.toUpperCase()}
-              </div>
-              <RequestedLine order={order} />
-              {order.status === 'filled' && (
-                <FilledLine order={order} />
-              )}
+          {/* Card head: symbol + side + origin + ref */}
+          <div className="card-head">
+            <div className="head-left">
+              <span className="sym">{order.symbol}</span>
+              <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
             </div>
-
-            {/* RIGHT — status, price/share, date */}
             <div style={{ textAlign: 'right' }}>
-              <span className="status-badge" style={statusStyle(order.status)}>
-                {order.status.toUpperCase()}
-              </span>
-              {order.filledPrice != null && (
-                <div style={{ fontSize: 11, color: '#e2e8f0', marginTop: 3 }}>
-                  ${order.filledPrice.toFixed(2)}/share
-                </div>
-              )}
-              <div style={{ fontSize: 10, color: '#e2e8f0', marginTop: 2 }}>
-                {formatOrderDate(order.createdAt)}
-              </div>
+              <div className="origin">{orderOrigin(order)}</div>
+              <div className="ref">{orderRef(order)}</div>
             </div>
           </div>
 
+          {/* Timeline stepper: Placed → Open → Filled (or Cancelled/Rejected branch) */}
+          <OrderStepper order={order} />
+
+          {/* Requested vs Filled — always side by side */}
+          <RequestedFilledBlocks order={order} />
+
+          {/* Cancellation / rejection note */}
+          {(order.status === 'cancelled' || order.status === 'rejected') && (
+            <div className="cancel-note">
+              {order.status === 'cancelled'
+                ? "We could no longer confirm this order's status with your broker and marked it cancelled — verify directly with your broker if you're unsure."
+                : "This order was rejected by your broker before it could be opened — verify directly with your broker if you're unsure."}
+            </div>
+          )}
+
           {/* Actions row */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              fontSize: 10,
-              color: '#94a3b8',
-              paddingTop: 8,
-              borderTop: '1px solid #1e293b',
-            }}
-          >
-            <span>
-              {order.bracketOrder ? `🛡️ SL $${order.bracketOrder.stopLoss} / TP $${order.bracketOrder.takeProfit}` : ''}
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(order.status === 'open' || order.status === 'pending') && (
-                <button
-                  className="action-btn"
-                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                >
-                  Modify
-                </button>
+          <div className="actions">
+            {working && (
+              <button className="cancel-btn" onClick={() => handleCancel(order)}>
+                Cancel Order
+              </button>
+            )}
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {order.bracketOrder && (
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                  {`🛡️ SL $${order.bracketOrder.stopLoss} / TP $${order.bracketOrder.takeProfit}`}
+                </span>
               )}
-              {(order.status === 'open' || order.status === 'pending') && (
-                <button
-                  className="action-btn"
-                  style={{ color: '#f87171', borderColor: 'rgba(239,68,68,0.3)' }}
-                  onClick={() => handleCancel(order)}
-                >
-                  Cancel
-                </button>
-              )}
-              {order.status === 'filled' && (
-                <button
-                  className="action-btn"
-                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                >
-                  {expandedOrderId === order.id ? 'Hide' : 'Details'}
-                </button>
-              )}
-              {(order.status === 'cancelled' || order.status === 'rejected') && (
-                <button
-                  className="action-btn"
-                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                >
-                  {expandedOrderId === order.id ? 'Hide' : 'Details'}
-                </button>
-              )}
+              <button
+                className="action-btn"
+                onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+              >
+                {expandedOrderId === order.id ? 'Hide' : 'Details'}
+              </button>
             </div>
           </div>
 
@@ -555,7 +599,7 @@ export function OrdersTab() {
                   )}
                 </>
               )}
-              {(order.status === 'open' || order.status === 'pending') && (
+              {working && (
                 <div style={{ marginTop: 4, fontSize: 10, color: '#cbd5e1', textAlign: 'center', lineHeight: 1.4 }}>
                   Order modification coming soon — cancel and re-place to adjust.
                 </div>
@@ -563,21 +607,31 @@ export function OrdersTab() {
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       <style jsx>{`
         .order-card {
           background: #1e293b;
           border: 1px solid #334155;
           border-radius: 16px;
-          padding: 11px;
+          padding: 14px 16px;
           margin-bottom: 8px;
         }
         .order-card.filled { border-left: 3px solid #4ade80; }
         .order-card.open { border-left: 3px solid #fbbf24; }
         .order-card.pending { border-left: 3px solid #fbbf24; }
+        .order-card.submitted { border-left: 3px solid #fbbf24; }
         .order-card.cancelled { border-left: 3px solid #64748b; opacity: 0.7; }
         .order-card.rejected { border-left: 3px solid #f87171; opacity: 0.7; }
+
+        /* Card head */
+        .card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+        .head-left { display: flex; align-items: center; gap: 10px; }
+        .sym { font-size: 17px; font-weight: 800; color: #fff; }
+        .origin { font-size: 10.5px; color: #8b96ab; border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .ref { font-size: 10px; color: #5c6579; font-family: "SF Mono", Menlo, monospace; margin-top: 2px; }
+
         .side-badge {
           font-size: 9px;
           font-weight: 700;
@@ -587,13 +641,48 @@ export function OrdersTab() {
         }
         .side-badge.buy { background: rgba(34,197,94,0.2); color: #4ade80; }
         .side-badge.sell { background: rgba(239,68,68,0.2); color: #f87171; }
-        .status-badge {
-          font-size: 9px;
-          padding: 2px 7px;
-          border-radius: 3px;
-          font-weight: 600;
-          text-transform: uppercase;
+
+        /* Stepper */
+        .stepper { display: flex; align-items: flex-start; margin: 14px 0 16px; }
+        .step { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
+        .dot {
+          width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+          font-size: 11px; font-weight: 800; z-index: 2; border: 2px solid #5c6579; background: #0a0e16; color: #5c6579;
         }
+        .dot.done { border-color: #3ddc97; background: #3ddc97; color: #06110c; }
+        .dot.active { border-color: #f0b73f; background: #0a0e16; color: #f0b73f; animation: pulse 1.6s ease-in-out infinite; }
+        .dot.cancelled { border-color: #ef7b6a; background: #ef7b6a; color: #1a0a08; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(240,183,63,0.4);} 50%{box-shadow:0 0 0 5px rgba(240,183,63,0);} }
+        .line { position: absolute; top: 10px; left: 50%; width: 100%; height: 2px; background: #5c6579; z-index: 1; }
+        .line.done { background: #3ddc97; }
+        .line.cancelled { background: #ef7b6a; }
+        .step:last-child .line { display: none; }
+        .step-label { font-size: 9.5px; color: #5c6579; margin-top: 6px; text-align: center; letter-spacing: 0.02em; }
+        .step-label.done { color: #3ddc97; }
+        .step-label.active { color: #f0b73f; font-weight: 700; }
+        .step-label.cancelled { color: #ef7b6a; }
+        .step-time { font-size: 8.5px; color: #5c6579; margin-top: 1px; }
+
+        /* Requested vs Filled */
+        .data-row { display: flex; gap: 10px; }
+        .data-block { flex: 1; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.1); border-radius: 11px; padding: 10px 12px; }
+        .data-block .k { font-size: 9.5px; color: #5c6579; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+        .data-block .v { font-size: 14.5px; font-weight: 700; color: #eef2f7; }
+        .data-block .v.muted { color: #8b96ab; font-weight: 600; font-size: 12.5px; font-style: italic; }
+        .data-block.filled { border-color: rgba(61,220,151,0.3); background: rgba(61,220,151,0.04); }
+        .data-block.filled .v { color: #3ddc97; }
+        .est-tag { font-size: 9px; color: #5c6579; font-weight: 500; margin-top: 2px; }
+
+        .cancel-note {
+          margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+          background: rgba(239,123,106,0.06); border: 1px dashed rgba(239,123,106,0.3);
+          font-size: 11.5px; color: #ef7b6a; line-height: 1.5;
+        }
+
+        .actions { margin-top: 12px; }
+        .cancel-btn { width: 100%; padding: 9px; border-radius: 10px; border: 1px solid rgba(239,123,106,0.4); background: transparent; color: #ef7b6a; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-bottom: 6px; }
+        .cancel-btn:active { opacity: 0.7; }
+
         .action-btn {
           padding: 4px 8px;
           background: #0f172a;

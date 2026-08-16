@@ -75,7 +75,7 @@ export interface SectorAllocation {
 // ─── Orders ───
 export type OrderSide = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit' | 'trailing_stop';
-export type OrderStatus = 'open' | 'filled' | 'cancelled' | 'rejected' | 'pending';
+export type OrderStatus = 'submitted' | 'open' | 'filled' | 'cancelled' | 'rejected' | 'pending';
 export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
 
 export interface Order {
@@ -93,6 +93,12 @@ export interface Order {
   timeInForce: TimeInForce;
   createdAt: string;
   updatedAt?: string;
+  /** Broker fill timestamp (filled_at) — used by the order timeline stepper */
+  filledAt?: string | null;
+  /** Broker cancellation timestamp (cancelled_at) — used by the order timeline stepper */
+  cancelledAt?: string | null;
+  /** Order origin: 'ai_advisor' (placed via AI Advisor chat) or 'manual' (trade ticket/sell). Null = legacy/manual. */
+  source?: 'ai_advisor' | 'manual' | string | null;
   /** Dollar amount for notional_value orders (null for share-based orders) */
   notional?: number | null;
   /** Denomination the user actually specified: 'dollars' (notional) or 'shares' */
