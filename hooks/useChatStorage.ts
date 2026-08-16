@@ -27,7 +27,7 @@ export interface PreviousSession {
   sessionId?: string;
 }
 
-export function useChatStorage() {
+export function useChatStorage(accountId: string = 'demo') {
   const [previousSession, setPreviousSession] = useState<PreviousSession | null>(null);
   const [recentSessions, setRecentSessions] = useState<ChatSessionRecord[]>([]);
   const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
@@ -44,8 +44,8 @@ export function useChatStorage() {
           const remaining = await getRemainingMessages(data.session.user.id);
           setRemainingMessages(remaining);
 
-          // Load last session from Supabase
-          const lastMsgs = await fetchLastSession(data.session.user.id);
+          // Load last session from Supabase (scoped to the active account)
+          const lastMsgs = await fetchLastSession(data.session.user.id, accountId);
           if (lastMsgs.length > 0) {
             const sessionDate = new Date(lastMsgs[0].created_at);
             const label = sessionDate.toLocaleDateString('en-US', {
@@ -64,14 +64,14 @@ export function useChatStorage() {
         // Not authenticated — fall through to device-keyed localStorage
       }
 
-      // Always load device-keyed recent sessions
-      const deviceSessions = getRecentSessions(3);
+      // Always load device-keyed recent sessions (scoped to active account)
+      const deviceSessions = getRecentSessions(3, accountId);
       setRecentSessions(deviceSessions);
       setLoading(false);
     };
 
     loadRecent();
-  }, []);
+  }, [accountId]);
 
   // ── load previous session messages into chat ──
   const loadPreviousSession = useCallback((): ChatMessage[] | null => {
@@ -83,9 +83,9 @@ export function useChatStorage() {
 
   // ── resume a specific device-keyed session ──
   const resumeSession = useCallback((sessionId: string): ChatMessage[] | null => {
-    const msgs = loadSessionMessages(sessionId);
+    const msgs = loadSessionMessages(sessionId, accountId);
     return msgs || null;
-  }, []);
+  }, [accountId]);
 
   // ── dismiss previous session banner ──
   const dismissPreviousSession = useCallback(() => {
@@ -94,8 +94,8 @@ export function useChatStorage() {
 
   // ── refresh recent sessions ──
   const refreshSessions = useCallback(() => {
-    setRecentSessions(getRecentSessions(3));
-  }, []);
+    setRecentSessions(getRecentSessions(3, accountId));
+  }, [accountId]);
 
   return {
     previousSession,

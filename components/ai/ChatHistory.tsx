@@ -5,6 +5,7 @@ import { X, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useAccounts } from '@/context/AccountContext';
 import { fetchRecentSessions, type DBSession, type DBChatMessage } from '@/lib/chat-history-db';
 import { stripRecommendationMarkers } from '@/components/ai/InlineTradeButton';
 
@@ -263,6 +264,8 @@ function SessionDay({
 export function ChatHistory({ open, onClose }: ChatHistoryProps) {
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : null;
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || 'demo';
 
   const [sessions, setSessions] = useState<DBSession[]>([]);
   const [loading, setLoading] = useState(false);
@@ -274,7 +277,7 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchRecentSessions(userId, 10);
+      const data = await fetchRecentSessions(userId, accountId, 10);
       setSessions(data);
       // Expand most recent day by default (browser local timezone)
       if (data.length > 0) {
@@ -292,13 +295,13 @@ export function ChatHistory({ open, onClose }: ChatHistoryProps) {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, accountId]);
 
   useEffect(() => {
     if (open && userId) {
       loadSessions();
     }
-  }, [open, userId, loadSessions]);
+  }, [open, userId, accountId, loadSessions]);
 
   const toggleDate = (date: string) => {
     setExpandedDates(prev => {

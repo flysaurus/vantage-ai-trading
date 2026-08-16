@@ -24,7 +24,9 @@ export function getDeviceId(): string {
 }
 
 const DEVICE_ID = typeof window !== 'undefined' ? getDeviceId() : 'ssr';
-const HISTORY_KEY = `vantage_chat_history_${DEVICE_ID}`;
+function getHistoryKey(accountId: string): string {
+  return `vantage_chat_history_${DEVICE_ID}_${accountId}`;
+}
 const MAX_SESSIONS = 20;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -48,9 +50,9 @@ export interface ChatSessionRecord {
 // ── Core helpers ──────────────────────────────────────────────
 
 /** Load sessions, trimming expired */
-export function loadSessions(): ChatSessionRecord[] {
+export function loadSessions(accountId: string = 'demo'): ChatSessionRecord[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
+    const raw = localStorage.getItem(getHistoryKey(accountId));
     if (!raw) return [];
     const sessions: ChatSessionRecord[] = JSON.parse(raw);
     const cutoff = Date.now() - MAX_AGE_MS;
@@ -61,13 +63,13 @@ export function loadSessions(): ChatSessionRecord[] {
 }
 
 /** Save sessions to device-keyed localStorage */
-export function saveSessions(sessions: ChatSessionRecord[]): void {
+export function saveSessions(sessions: ChatSessionRecord[], accountId: string = 'demo'): void {
   try {
     const cutoff = Date.now() - MAX_AGE_MS;
     const trimmed = sessions.filter(s => s.updatedAt > cutoff).slice(0, MAX_SESSIONS);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(getHistoryKey(accountId), JSON.stringify(trimmed));
   } catch {
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(sessions.slice(-5))); } catch {}
+    try { localStorage.setItem(getHistoryKey(accountId), JSON.stringify(sessions.slice(-5))); } catch {}
   }
 }
 
@@ -85,10 +87,11 @@ export function generateSessionId(): string {
 export function saveCurrentSession(
   currentSessionId: string,
   messages: ChatMessage[],
+  accountId: string = 'demo',
 ): void {
   if (messages.length === 0) return;
 
-  const sessions = loadSessions();
+  const sessions = loadSessions(accountId);
   const existing = sessions.findIndex(s => s.id === currentSessionId);
 
   // Build preview from first AI response
@@ -124,15 +127,15 @@ export function saveCurrentSession(
     sessions.unshift(sessionData);
   }
 
-  saveSessions(sessions);
+  saveSessions(sessions, accountId);
 }
 
 /**
  * Load a specific session's messages by ID.
  * Returns null if not found or expired.
  */
-export function loadSessionMessages(sessionId: string): ChatMessage[] | null {
-  const sessions = loadSessions();
+export function loadSessionMessages(sessionId: string, accountId: string = 'demo'): ChatMessage[] | null {
+  const sessions = loadSessions(accountId);
   const session = sessions.find(s => s.id === sessionId);
   return session ? session.messages : null;
 }
@@ -141,8 +144,8 @@ export function loadSessionMessages(sessionId: string): ChatMessage[] | null {
  * Get recent sessions (last N) for the history modal.
  * Returns sessions sorted by most recent first.
  */
-export function getRecentSessions(limit: number = 3): ChatSessionRecord[] {
-  return loadSessions()
+export function getRecentSessions(limit: number = 3, accountId: string = 'demo'): ChatSessionRecord[] {
+  return loadSessions(accountId)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, limit);
 }
@@ -150,7 +153,7 @@ export function getRecentSessions(limit: number = 3): ChatSessionRecord[] {
 /**
  * Delete a specific session by ID.
  */
-export function deleteSession(sessionId: string): void {
-  const sessions = loadSessions().filter(s => s.id !== sessionId);
-  saveSessions(sessions);
+export function deleteSession(sessionId: string, accountId: string = 'demo'): void {
+  const sessions = loadSessions(accountId).filter(s => s.id !== sessionId);
+  saveSessions(sessions, accountId);
 }

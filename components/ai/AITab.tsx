@@ -193,8 +193,10 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // Canonical account source of truth. brokerMeta is derived (and goes null/stale
   // when demo is active), so we must NOT infer isDemo from it — that was feeding
   // the AI a "real money / live" label while showing demo data.
-  const { activeAccount } = useAccounts();
+  const { activeAccount, activeAccountId } = useAccounts();
   const isDemoAccount = activeAccount?.isDemo ?? true;
+  // Canonical account scope for chat isolation (defaults to demo until accounts resolve)
+  const accountId = activeAccountId || 'demo';
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : null;
   const investorStyle = user?.investorStyle || 'Lynch';
@@ -205,7 +207,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
     loadPreviousSession,
     dismissPreviousSession,
     refreshSessions,
-  } = useChatStorage();
+  } = useChatStorage(accountId);
 
   // ── state ──
   const [input, setInput] = useState('');
@@ -629,15 +631,39 @@ export function AITab({ messages, setMessages }: AITabProps) {
     refreshUsageStats();
   }, [refreshRemaining, refreshUsageStats]);
 
+  // ── Account switch: reset chat so another account's messages never leak ──
+  const prevAccountRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevAccountRef.current === null) {
+      prevAccountRef.current = accountId;
+      return;
+    }
+    if (prevAccountRef.current !== accountId) {
+      prevAccountRef.current = accountId;
+      setMessages([]);
+      setCurrentSessionId(null);
+      setLoading(false);
+      loadingRef.current = false;
+      setInput('');
+      setToast(null);
+      setShowClearConfirm(false);
+      // Reset streaming state so a mid-stream switch doesn't corrupt the new account
+      charQueueRef.current = [];
+      displayedContentRef.current = '';
+      streamDoneRef.current = false;
+      isDrainingRef.current = false;
+    }
+  }, [accountId]);
+
   // ── DB hydration: load recent sessions from Supabase on mount ──
   useEffect(() => {
     if (!userId) return;
-    fetchRecentSessions(userId, 10).then(sessions => {
+    fetchRecentSessions(userId, accountId, 10).then(sessions => {
       let allSessions: DBSession[] = sessions;
 
       if (sessions.length === 0) {
         // Fallback: no DB sessions yet — check device localStorage
-        const local = getRecentSessions(10).map(s => ({
+        const local = getRecentSessions(10, accountId).map(s => ({
           id: s.id,
           label: s.date,
           date: new Date(s.updatedAt).toISOString().slice(0, 10),
@@ -684,7 +710,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         }
       }
     }).catch(() => {});
-  }, [userId]); // re-fetch when user changes
+  }, [userId, accountId]); // re-fetch when user or account changes
 
   // ── Persist current session to DB cache (lightweight, offline fallback) ──
   // Only save metadata, not full message content — DB is authority.
@@ -694,7 +720,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
         role: (m.role as string === 'assistant' ? 'ai' : 'user') as 'user' | 'ai',
         content: m.content,
       }));
-      saveCurrentSession(currentSessionId, formatted);
+      saveCurrentSession(currentSessionId, formatted, accountId);
     }
   }, [messages.length]); // only on count change, NOT on every token
 
@@ -1392,14 +1418,14 @@ export function AITab({ messages, setMessages }: AITabProps) {
       if (userId) {
         try {
           // Await both saves before anything else — prevents losing the last message on refresh
-          const userSaved = await saveChatMessage(userId, 'user', content).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
+          const userSaved = await saveChatMessage(userId, 'user', content, accountId).catch((e: any) => { console.error('[AITab] user msg save failed:', e?.message); return null; });
           if (lastAiResponseRef.current) {
-            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
+            const aiSaved = await saveChatMessage(userId, 'assistant', lastAiResponseRef.current, accountId).catch((e: any) => { console.error('[AITab] ai msg save failed:', e?.message); return null; });
             console.log('[AITab] Saved: user=', !!userSaved, 'ai=', !!aiSaved);
             setLastAIResponse(lastAiResponseRef.current);
             lastAiResponseRef.current = '';
             // Refresh session list after saving to DB
-            fetchRecentSessions(userId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); }).catch(() => {});
+            fetchRecentSessions(userId, accountId, 10).then(s => { console.log('[AITab] sessions refreshed:', s.length); }).catch(() => {});
           }
         } catch (e: any) {
           console.error('[AITab] save message exception:', e?.message || e);
@@ -2757,12 +2783,12 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 streamDoneRef.current = false;
                 isDrainingRef.current = false;
                 if (userId) {
-                  clearUserMessages(userId).catch(e => console.error('[clear] DB clear failed:', e));
+                  clearUserMessages(userId, accountId).catch(e => console.error('[clear] DB clear failed:', e));
                 }
                 try {
                   const mod = await import('@/lib/chat-history');
-                  if (sessionToDelete) mod.deleteSession(sessionToDelete);
-                  mod.saveSessions([]);
+                  if (sessionToDelete) mod.deleteSession(sessionToDelete, accountId);
+                  mod.saveSessions([], accountId);
                 } catch {}
               }} style={{ flex: 1, padding: '12px', background: '#ef4444', border: 'none', borderRadius: '10px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
             </div>

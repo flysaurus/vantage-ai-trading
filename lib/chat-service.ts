@@ -26,6 +26,7 @@ export async function saveChatMessage(
   userId: string,
   role: 'user' | 'assistant',
   content: string,
+  accountId: string = 'demo',
 ): Promise<string> {
   const supabase = createClient();
   const messageType = role === 'user' ? 'user_message' : 'ai_response';
@@ -38,6 +39,7 @@ export async function saveChatMessage(
       p_role: role,
       p_content: content,
       p_message_type: messageType,
+      p_account_id: accountId,
     });
     if (!error && data) return data as string;
     if (error) {
@@ -56,6 +58,7 @@ export async function saveChatMessage(
         role,
         content,
         message_type: messageType,
+        account_id: accountId,
       })
       .select('id')
       .single();
@@ -75,9 +78,10 @@ export async function saveChatMessage(
 export async function saveChatMessages(
   userId: string,
   messages: { role: 'user' | 'assistant'; content: string }[],
+  accountId: string = 'demo',
 ): Promise<void> {
   for (const msg of messages) {
-    await saveChatMessage(userId, msg.role, msg.content).catch(console.error);
+    await saveChatMessage(userId, msg.role, msg.content, accountId).catch(console.error);
   }
 }
 
@@ -86,6 +90,7 @@ export async function saveChatMessages(
 /** Fetch messages for today's date */
 export async function fetchTodayMessages(
   userId: string,
+  accountId: string = 'demo',
 ): Promise<ChatMessageRow[]> {
   const supabase = createClient();
   const today = new Date();
@@ -96,6 +101,7 @@ export async function fetchTodayMessages(
     .from('chat_messages')
     .select('*')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .gte('created_at', today.toISOString())
     .order('created_at', { ascending: true });
 
@@ -110,6 +116,7 @@ export async function fetchTodayMessages(
 /** Fetch messages from last session (most recent before today) */
 export async function fetchLastSession(
   userId: string,
+  accountId: string = 'demo',
 ): Promise<ChatMessageRow[]> {
   const supabase = createClient();
   const today = new Date();
@@ -121,6 +128,7 @@ export async function fetchLastSession(
     .from('chat_messages')
     .select('created_at')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .lt('created_at', today.toISOString())
     .order('created_at', { ascending: false })
     .limit(1);
@@ -138,6 +146,7 @@ export async function fetchLastSession(
     .from('chat_messages')
     .select('*')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .gte('created_at', startOfLastDay.toISOString())
     .lte('created_at', endOfLastDay.toISOString())
     .order('created_at', { ascending: true });

@@ -37,6 +37,7 @@ const MAX_SESSIONS = 10;
  */
 export async function fetchRecentSessions(
   userId: string,
+  accountId: string = 'demo',
   limit: number = MAX_SESSIONS,
   retentionDays: number = 7,
 ): Promise<DBSession[]> {
@@ -52,6 +53,7 @@ export async function fetchRecentSessions(
     .from('chat_messages')
     .select('id, user_id, role, content, created_at')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .gte('created_at', cutoff.toISOString())
     .order('created_at', { ascending: false })
     .limit(500);
@@ -126,6 +128,7 @@ export async function fetchRecentSessions(
 export async function fetchSessionMessages(
   userId: string,
   dateStr: string, // YYYY-MM-DD
+  accountId: string = 'demo',
 ): Promise<DBChatMessage[]> {
   const supabase = createClient();
   const startOfDay = `${dateStr}T00:00:00Z`;
@@ -135,6 +138,7 @@ export async function fetchSessionMessages(
     .from('chat_messages')
     .select('id, user_id, role, content, created_at')
     .eq('user_id', userId)
+    .eq('account_id', accountId)
     .gte('created_at', startOfDay)
     .lte('created_at', endOfDay)
     .order('created_at', { ascending: true });
@@ -153,18 +157,19 @@ export async function fetchSessionMessages(
  * Clear all chat messages for a user. Called when the user
  * manually clears their conversation from the UI.
  */
-export async function clearUserMessages(userId: string): Promise<boolean> {
+export async function clearUserMessages(userId: string, accountId: string = 'demo'): Promise<boolean> {
   const supabase = createClient();
   try {
     const { error } = await (supabase as any)
       .from('chat_messages')
       .delete()
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('account_id', accountId);
     if (error) {
       console.error('[chat-history-db] Failed to clear messages:', error);
       return false;
     }
-    console.log('[chat-history-db] Cleared all messages for user:', userId);
+    console.log('[chat-history-db] Cleared all messages for user:', userId, 'account:', accountId);
     return true;
   } catch (e) {
     console.error('[chat-history-db] Error clearing messages:', e);
