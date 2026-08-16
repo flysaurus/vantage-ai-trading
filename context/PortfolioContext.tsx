@@ -288,7 +288,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     });
     return {
       equity: totalEquity,
-      buyingPower: null, // Demo: no margin concept
+      buyingPower: state.cashBalance, // Demo: buying power = cash (no margin)
       cash: state.cashBalance,
       dayPnl: 0,
       dayPnlPercent: 0,
@@ -320,7 +320,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // Cash-only default — no fake positions/orders. Real data only from trades.
     return {
       equity: 100_000,
-      buyingPower: null, // Demo: no margin concept
+      buyingPower: 100_000, // Demo: buying power = cash (no margin)
       cash: 100_000,
       dayPnl: 0,
       dayPnlPercent: 0,
@@ -492,7 +492,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
       const summary: AccountSummary = {
         equity: totalEquity,
-        buyingPower: null, // Demo: no margin concept
+        buyingPower: demoState.cashBalance, // Demo: buying power = cash (no margin)
         cash: demoState.cashBalance,
         dayPnl,
         dayPnlPercent,

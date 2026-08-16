@@ -605,7 +605,7 @@ export class DemoBroker implements BrokerEngine {
     return {
       totalValue: totals.totalValue,
       cashBalance: totals.cash,
-      buyingPower: null, // Demo: no margin concept → always null
+      buyingPower: this.state.cashBalance, // Demo: buying power = cash (no margin)
       totalInvested: totals.invested,
       totalPnL: totals.totalPnl,
       totalPnLPct: totals.totalPnlPct,

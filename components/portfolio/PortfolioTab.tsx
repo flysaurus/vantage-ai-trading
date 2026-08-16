@@ -1084,11 +1084,10 @@ export function PortfolioTab() {
     totalPnlPercent: 0,
     positions: [],
   } : isShowingDemo ? {
-    // Genuinely demo → demo numbers. buyingPower stays null (no margin concept);
-    // never backfill it from demo cash.
+    // Genuinely demo → demo numbers. buyingPower = cash (no margin concept).
     equity: correctEquity,
     cash: cashBalance,
-    buyingPower: null,
+    buyingPower: cashBalance,
     dayPnl: totalTodayPnL,
     dayPnlPercent: correctEquity > 0 ? (totalTodayPnL / correctEquity) * 100 : 0,
     totalPnl: correctEquity - 100000,
