@@ -1,4 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
+
+// Allow the full pipeline (DeepSeek screening → search → quotes → model stream)
+// to finish without Vercel killing the function mid-stream.
+export const maxDuration = 60;
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
 import { withFallback, stageLog, createTimeoutBudget, startStage, endStage } from '@/lib/ai/resilience'
 import { resolveSymbol } from '@/lib/tools/resolve-symbol'
@@ -340,6 +344,7 @@ async function screenMessage(userMessage: string): Promise<{
   try {
     const res = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
+      signal: AbortSignal.timeout(6000),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
@@ -396,7 +401,8 @@ Question: "${userMessage}"`
 async function searchWeb(query: string): Promise<string> {
   try {
     const res = await fetch(
-      `${SEARXNG_URL}/search?q=${encodeURIComponent(query)}&format=json&categories=general,news&language=en`
+      `${SEARXNG_URL}/search?q=${encodeURIComponent(query)}&format=json&categories=general,news&language=en`,
+      { signal: AbortSignal.timeout(6000) }
     )
     const data = await res.json()
 
@@ -2439,8 +2445,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       }
     })
 
-  } catch (error) {
-    console.error('Chat API error:', error)
+  } catch (error: any) {
+    console.error('Chat API error:', error?.message || error, '\n', error?.stack || '(no stack)')
     return Response.json({ error: 'Failed to process request' }, { status: 500 })
   }
 }
