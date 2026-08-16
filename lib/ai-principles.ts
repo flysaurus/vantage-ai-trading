@@ -208,17 +208,34 @@ GOOD: "You said Moderate risk. This position is anything but moderate right now.
 /** Full principles for AI Chat / Greeting — identity, voice, format, transparency, user interaction, timezone. */
 export const CHAT_PRINCIPLES: SystemBlock[] = [CHAT_CONSOLIDATED];
 
-/** Lean principles for Daily Brief / Weekly Snapshot / Basket Generate — identity, voice, transparency, timezone. */
-export const BRIEF_PRINCIPLES: SystemBlock[] = [
-  IDENTITY_BLOCK,
-  VOICE_BLOCK,
-  TRANSPARENCY_BLOCK,
-  TIMEZONE_BLOCK,
-];
+// ── CONSOLIDATED BRIEF PRINCIPLES — single block with ONE cache_control ──
+// CRITICAL: Anthropic limit is 4 cache_control blocks per request.
+// Combined with *STATIC (1) + *_SAFETY_BLOCKS (1) = 3 blocks total (≤4).
+// DO NOT split this back into individual blocks without reducing cache_control elsewhere.
+const BRIEF_CONSOLIDATED: SystemBlock = {
+  type: 'text',
+  text: [
+    IDENTITY_BLOCK.text,
+    VOICE_BLOCK.text,
+    TRANSPARENCY_BLOCK.text,
+    TIMEZONE_BLOCK.text,
+  ].join('\n\n'),
+  cache_control: { type: 'ephemeral' },
+};
 
-/** Minimal principles for Portfolio Agent / autonomous surfaces — identity, transparency, timezone. */
-export const AGENT_PRINCIPLES: SystemBlock[] = [
-  IDENTITY_BLOCK,
-  TRANSPARENCY_BLOCK,
-  TIMEZONE_BLOCK,
-];
+// ── CONSOLIDATED AGENT PRINCIPLES — single block with ONE cache_control ──
+const AGENT_CONSOLIDATED: SystemBlock = {
+  type: 'text',
+  text: [
+    IDENTITY_BLOCK.text,
+    TRANSPARENCY_BLOCK.text,
+    TIMEZONE_BLOCK.text,
+  ].join('\n\n'),
+  cache_control: { type: 'ephemeral' },
+};
+
+/** Lean principles for Daily Brief / Weekly Snapshot / Basket Generate — identity, voice, transparency, timezone. Single consolidated block (one cache_control). */
+export const BRIEF_PRINCIPLES: SystemBlock[] = [BRIEF_CONSOLIDATED];
+
+/** Minimal principles for Portfolio Agent / autonomous surfaces — identity, transparency, timezone. Single consolidated block (one cache_control). */
+export const AGENT_PRINCIPLES: SystemBlock[] = [AGENT_CONSOLIDATED];
