@@ -268,18 +268,32 @@ export function encryptUserSecret(vantageUserId: string, userSecret: string): st
 }
 
 // ── Shared Credential Resolution ─────────────────────────────
-// THE single entry point for resolving SnapTrade credentials
-// in any route handler. No route should ever manually construct
-// userId/userSecret from raw DB fields or authUserId.
-//
-// This is what prevents the "constructed wrong credentials" bug
-// class from recurring in every new SnapTrade route.
+// THE single entry point for resolving SnapTrade credentials / connection
+// rows in any route handler. No route should ever manually construct
+// userId/userSecret from raw DB fields or authUserId, and no route should
+// `.maybeSingle()` broker_connections to "pick whichever row comes back
+// first" — that is exactly the cross-account-substitution bug class this
+// replaces. Arbitrary selection is structurally impossible here.
 
 export interface ResolvedSnapTrade {
   snaptradeUserId: string;
   snaptradeUserSecret: string;
+  /** SnapTrade authorization id — what SnapTrade API calls need. */
   connectionId: string;
+  /** broker_connections.id — our internal row UUID (the client-facing account id). */
+  brokerConnectionId: string;
   brokerSlug: string;
+  tradingEnabled: boolean;
+}
+
+/** Normalized broker_connections row. */
+export interface BrokerConnectionRow {
+  id: string;
+  snaptradeConnectionId: string;
+  snaptradeUserId: string;
+  snaptradeUserSecretEncrypted: string;
+  brokerSlug: string;
+  tradingEnabled: boolean;
 }
 
 export class SnapTradeAuthError extends Error {
@@ -290,47 +304,115 @@ export class SnapTradeAuthError extends Error {
   }
 }
 
-/**
- * Resolve SnapTrade credentials for the authenticated user.
- *
- * Queries broker_connections for the first connected SnapTrade row,
- * decrypts the stored userSecret server-side, and returns the
- * values needed for ANY SnapTrade API call.
- *
- * Throws SnapTradeAuthError (401) if no connected brokerage exists.
- */
-export async function resolveSnapTradeCredentials(
-  authUserId: string,
-): Promise<ResolvedSnapTrade> {
+/** Thrown when a user has 2+ connected brokers and no explicit account id was given. */
+export class SnapTradeAmbiguousError extends Error {
+  status = 409;
+  constructor(message = 'Multiple brokers connected — specify an account.') {
+    super(message);
+    this.name = 'SnapTradeAmbiguousError';
+  }
+}
+
+async function getSupabaseAdmin() {
   const { createClient } = await import('@supabase/supabase-js');
-  const supabase = createClient(
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
+}
 
-  const { data: conn } = await supabase
+/**
+ * Canonical query for the user's connected SnapTrade connection rows.
+ * Deterministically ordered by created_at so "the first one" is stable.
+ */
+export async function listConnectedSnapTradeConnections(
+  authUserId: string,
+): Promise<BrokerConnectionRow[]> {
+  const supabase = await getSupabaseAdmin();
+  const { data, error } = await supabase
     .from('broker_connections')
-    .select('snaptrade_user_id, snaptrade_user_secret_encrypted, snaptrade_connection_id, brokerage_slug')
+    .select('id, snaptrade_user_id, snaptrade_user_secret_encrypted, snaptrade_connection_id, brokerage_slug, trading_enabled')
     .eq('user_id', authUserId)
     .eq('connection_type', 'snaptrade')
     .eq('status', 'connected')
-    .maybeSingle();
+    .order('created_at', { ascending: true });
 
-  if (!conn?.snaptrade_user_id || !conn?.snaptrade_user_secret_encrypted || !conn?.snaptrade_connection_id) {
+  if (error) {
+    console.error('[snaptrade] listConnectedSnapTradeConnections error:', error.message);
+    return [];
+  }
+
+  return (data || []).map((c: any) => ({
+    id: c.id,
+    snaptradeConnectionId: c.snaptrade_connection_id || '',
+    snaptradeUserId: c.snaptrade_user_id,
+    snaptradeUserSecretEncrypted: c.snaptrade_user_secret_encrypted,
+    brokerSlug: c.brokerage_slug || '',
+    tradingEnabled: c.trading_enabled === true,
+  }));
+}
+
+/**
+ * Resolve a single connection row, enforcing an explicit, verified account id.
+ *
+ * - `connectionId` provided → resolve EXACTLY that row (must belong to the
+ *   user, be snaptrade type, and be connected). Missing/foreign → auth error.
+ * - `connectionId` omitted → resolve only if the user has EXACTLY ONE connected
+ *   broker. 0 → SnapTradeAuthError; 2+ → SnapTradeAmbiguousError (409).
+ *   Arbitrary "first row wins" selection is structurally impossible here.
+ */
+export async function resolveBrokerConnection(
+  authUserId: string,
+  connectionId?: string | null,
+): Promise<BrokerConnectionRow> {
+  const all = await listConnectedSnapTradeConnections(authUserId);
+
+  if (connectionId) {
+    const match = all.find((c) => c.id === connectionId);
+    if (!match) {
+      throw new SnapTradeAuthError(
+        'No connected SnapTrade brokerage found for that account. Please reconnect the broker.',
+      );
+    }
+    return match;
+  }
+
+  if (all.length === 0) {
+    throw new SnapTradeAuthError('No connected SnapTrade brokerage found. Please connect a broker.');
+  }
+  if (all.length > 1) {
+    throw new SnapTradeAmbiguousError();
+  }
+  return all[0];
+}
+
+/**
+ * Resolve SnapTrade credentials (userId/userSecret + authorization id) for a
+ * verified connection. Decrypts the user secret server-side.
+ */
+export async function resolveSnapTradeCredentials(
+  authUserId: string,
+  connectionId?: string | null,
+): Promise<ResolvedSnapTrade> {
+  const conn = await resolveBrokerConnection(authUserId, connectionId);
+
+  if (!conn.snaptradeUserId || !conn.snaptradeUserSecretEncrypted || !conn.snaptradeConnectionId) {
     throw new SnapTradeAuthError('No connected SnapTrade brokerage found. Please connect a broker.');
   }
 
   const snapUser = await getOrCreateSnapTradeUser(
     authUserId,
-    conn.snaptrade_user_id,
-    conn.snaptrade_user_secret_encrypted,
+    conn.snaptradeUserId,
+    conn.snaptradeUserSecretEncrypted,
   );
 
   return {
     snaptradeUserId: snapUser.userId,
     snaptradeUserSecret: snapUser.userSecret,
-    connectionId: conn.snaptrade_connection_id,
-    brokerSlug: conn.brokerage_slug || '',
+    connectionId: conn.snaptradeConnectionId,
+    brokerConnectionId: conn.id,
+    brokerSlug: conn.brokerSlug,
+    tradingEnabled: conn.tradingEnabled,
   };
 }
