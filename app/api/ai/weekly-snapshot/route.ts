@@ -18,7 +18,7 @@ import { getOptionalUserId } from '@/lib/auth/get-server-user';
 import { checkUsageLimit } from '@/lib/ai-guard';
 import { writeFact } from '@/lib/ai/facts';
 import { beginGenLog } from '@/lib/ai/generation-log';
-import { listConnectedSnapTradeConnections } from '@/lib/snaptrade/client';
+import { resolveAccountPositions } from '@/lib/ai/account-positions';
 
 // Static analysis instructions — cached across all snapshot requests
 const SNAPSHOT_STATIC: SystemBlock = {
@@ -170,29 +170,20 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const forceRegen = searchParams.get('forceRegen') === 'true';
+    const accountId = searchParams.get('accountId') || 'demo';
     const weekStartStr = getWeekStart();
     const supabase = createServerClient();
 
-    // Usage limit check (before cache lookup to prevent bypass)
-    if (forceRegen) {
-      const usageCheck = await checkUsageLimit(userId, 'weeklySnapshot');
-      if (!usageCheck.allowed) {
-        return NextResponse.json(
-          { error: 'Weekly snapshot limit reached', reason: usageCheck.reason },
-          { status: 429 },
-        );
-      }
-    }
-
-    // Check cache
+    // Check cache (scoped to the active account)
     const { data: existing } = await (supabase as any)
       .from('weekly_snapshots')
       .select('*')
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .eq('week_start', weekStartStr)
       .maybeSingle();
 
-    if (existing) {
+    if (existing && !forceRegen) {
       // Re-parse if cached fields are null but content exists (fix for old busted cache entries)
       let healthScore = existing.health_score;
       let riskLevel = existing.risk_level;
@@ -213,7 +204,7 @@ export async function GET(req: NextRequest) {
         (supabase as any).from('weekly_snapshots').update({
           health_score: healthScore,
           risk_level: riskLevel,
-        }).eq('user_id', userId).eq('week_start', weekStartStr).then(() => {}).catch(() => {});
+        }).eq('user_id', userId).eq('account_id', accountId).eq('week_start', weekStartStr).then(() => {}).catch(() => {});
       }
 
       return NextResponse.json({
@@ -226,49 +217,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // No cache — only regenerate if explicitly requested (user tapped ↻)
-    if (!forceRegen) {
-      return NextResponse.json({
-        content: null,
-        healthScore: null,
-        riskLevel: null,
-        weekStart: weekStartStr,
-        generatedAt: null,
-        cached: false,
-      });
+    // ─── Generate fresh snapshot (auto-generates on first load of the week) ───
+    const usageCheck = await checkUsageLimit(userId, 'weeklySnapshot');
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Weekly snapshot limit reached', reason: usageCheck.reason },
+        { status: 429 },
+      );
     }
 
-    // ─── forceRegen: generate fresh snapshot ───
-    // Check broker positions first, fall back to demo
-    let positions: any[] = [];
-    let cashBalance = 0;
-    let holdingsUnavailable = false;
-
-    const connectedConnections = await listConnectedSnapTradeConnections(userId);
-
-    if (connectedConnections.length > 0) {
-      const { data: brokerPositions } = await (supabase as any)
-        .from('positions')
-        .select('*')
-        .eq('user_id', userId)
-        .neq('qty', 0);
-      positions = brokerPositions || [];
-    }
-
-    // Cross-account isolation: only fall back to demo when there is genuinely
-    // NO broker connection. A connected broker with an empty positions table
-    // (just-connected, or a cash-only real account) must surface as
-    // 'no_positions'/'holdings_unavailable' — NEVER substitute demo holdings.
-    if (connectedConnections.length === 0) {
-      const { data: portfolioState } = await (supabase as any)
-        .from('demo_portfolio_state')
-        .select('positions, cash_balance, holdings_unavailable')
-        .eq('user_id', userId)
-        .maybeSingle();
-      positions = portfolioState?.positions || [];
-      cashBalance = portfolioState?.cash_balance ?? 0;
-      holdingsUnavailable = portfolioState?.holdings_unavailable;
-    }
+    // Resolve positions scoped to the active account
+    const { positions, cashBalance, holdingsUnavailable } =
+      await resolveAccountPositions(supabase, userId, accountId);
 
     if (!positions || positions.length === 0) {
       return NextResponse.json({
@@ -437,13 +397,14 @@ export async function GET(req: NextRequest) {
     await (supabase as any).from('weekly_snapshots').upsert(
       {
         user_id: userId,
+        account_id: accountId,
         week_start: weekStartStr,
         health_score: healthScore,
         risk_level: riskLevel,
         content,
         generated_at: generatedAt,
       },
-      { onConflict: 'user_id,week_start' },
+      { onConflict: 'user_id,account_id,week_start' },
     );
 
     // ── Step 3: Write generated conclusions back as facts ─────
@@ -479,12 +440,14 @@ export async function DELETE(req: NextRequest) {
     }
 
     const weekStartStr = getWeekStart();
+    const accountId = new URL(req.url).searchParams.get('accountId') || 'demo';
     const supabase = createServerClient();
 
     await (supabase as any)
       .from('weekly_snapshots')
       .delete()
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .eq('week_start', weekStartStr);
 
     return NextResponse.json({ deleted: true });

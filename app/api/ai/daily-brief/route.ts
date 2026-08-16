@@ -18,7 +18,7 @@ import { buildUserProfileContext } from '@/lib/ai/userProfile';
 import type { UserProfile } from '@/lib/ai/userProfile';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
 import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard';
-import { listConnectedSnapTradeConnections } from '@/lib/snaptrade/client';
+import { resolveAccountPositions } from '@/lib/ai/account-positions';
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://85.239.230.26:8888';
 
@@ -106,6 +106,7 @@ export async function GET(req: NextRequest) {
     // 1. Parse query params
     const { searchParams } = new URL(req.url);
     const forceRegen = searchParams.get('forceRegen') === 'true';
+    const accountId = searchParams.get('accountId') || 'demo';
     const today = new Date().toISOString().split('T')[0];
     const supabase = createServerClient();
 
@@ -114,6 +115,7 @@ export async function GET(req: NextRequest) {
       .from('daily_briefs')
       .select('content, market_summary, generated_at')
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .eq('date', today)
       .maybeSingle();
 
@@ -135,51 +137,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 3. Get live portfolio state
-    // Check both demo_portfolio_state and broker-backed positions
-    let positions: any[] = [];
-    let cashBalance = 0;
-    let holdingsUnavailable = false;
-    let isBrokerConnected = false;
-
-    // Check if user has a connected broker (canonical list — not .maybeSingle)
-    try {
-      const connectedConnections = await listConnectedSnapTradeConnections(userId);
-      isBrokerConnected = connectedConnections.length > 0;
-
-      if (isBrokerConnected) {
-        // For broker users, positions are in the positions table
-        const { data: brokerPositions } = await (supabase as any)
-          .from('positions')
-          .select('*')
-          .eq('user_id', userId)
-          .neq('qty', 0);
-        positions = brokerPositions || [];
-        cashBalance = 0; // Will be computed below if we have positions
-
-        // Check if broker holdings are unavailable (from account status)
-        const { data: brokerAccounts } = await (supabase as any)
-          .from('broker_accounts')
-          .select('sync_status')
-          .eq('user_id', userId);
-        if (brokerAccounts?.length) {
-          holdingsUnavailable = brokerAccounts.some(
-            (a: any) => a.sync_status?.holdings?.holdings_unavailable === true
-          );
-        }
-      }
-    } catch { /* ignore */ }
-
-    // Fallback to demo state
-    if (!isBrokerConnected) {
-      const { data: demoState } = await (supabase as any)
-        .from('demo_portfolio_state')
-        .select('positions, cash_balance')
-        .eq('user_id', userId)
-        .maybeSingle();
-      positions = demoState?.positions || [];
-      cashBalance = demoState?.cash_balance ?? 0;
-    }
+    // 3. Get live portfolio state, scoped to the active account
+    const { positions, cashBalance, holdingsUnavailable, isBrokerConnected } =
+      await resolveAccountPositions(supabase, userId, accountId);
 
     if (holdingsUnavailable) {
       return NextResponse.json({
@@ -450,6 +410,7 @@ export async function GET(req: NextRequest) {
     await (supabase as any).from('daily_briefs').upsert(
       {
         user_id: userId,
+        account_id: accountId,
         date: today,
         content,
         market_summary: {
@@ -459,7 +420,7 @@ export async function GET(req: NextRequest) {
         },
         generated_at: generatedAt,
       },
-      { onConflict: 'user_id,date' },
+      { onConflict: 'user_id,account_id,date' },
     );
 
     return NextResponse.json({
@@ -490,12 +451,14 @@ export async function DELETE(req: NextRequest) {
     }
 
     const today = new Date().toISOString().split('T')[0];
+    const accountId = new URL(req.url).searchParams.get('accountId') || 'demo';
     const supabase = createServerClient();
 
     await (supabase as any)
       .from('daily_briefs')
       .delete()
       .eq('user_id', userId)
+      .eq('account_id', accountId)
       .eq('date', today);
 
     return NextResponse.json({ deleted: true });

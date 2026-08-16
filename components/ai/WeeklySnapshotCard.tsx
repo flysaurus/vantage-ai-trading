@@ -142,9 +142,10 @@ interface WeeklySnapshotCardProps {
   mode?: 'pill' | 'content';
   active?: boolean;
   onClick?: () => void;
+  accountId?: string;
 }
 
-export default function WeeklySnapshotCard({ mode = 'pill', active = false, onClick }: WeeklySnapshotCardProps) {
+export default function WeeklySnapshotCard({ mode = 'pill', active = false, onClick, accountId = 'demo' }: WeeklySnapshotCardProps) {
   const [data, setData] = useState<SnapshotData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -155,6 +156,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
       const params = new URLSearchParams({ tz });
+      params.set('accountId', accountId);
       if (force) params.set('forceRegen', 'true');
       const r = await apiGet(`/api/ai/weekly-snapshot?${params.toString()}`);
       if (!r.ok) {
@@ -175,7 +177,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     load();
@@ -185,7 +187,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
     e.stopPropagation();
     setRefreshing(true);
     try {
-      await apiDelete('/api/ai/weekly-snapshot');
+      await apiDelete(`/api/ai/weekly-snapshot?accountId=${encodeURIComponent(accountId)}`);
     } catch { /* continue */ }
     await load(true);
   };

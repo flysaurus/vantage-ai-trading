@@ -936,7 +936,7 @@ export function PortfolioTab() {
   const { account: brokerAccount, loading: brokerLoading, error: brokerError } = usePortfolio();
   const { account: liveAccount, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
-  const { activeAccount } = useAccounts();
+  const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
 
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
@@ -1197,11 +1197,11 @@ export function PortfolioTab() {
           {/* Daily Brief / Weekly Snapshot buttons */}
           <div ref={briefsRef}>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <DailyBriefCard mode="pill" active={dailyExpanded} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
-              <WeeklySnapshotCard mode="pill" active={weeklyExpanded} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
+              <DailyBriefCard mode="pill" active={dailyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setDailyExpanded(!dailyExpanded); if (weeklyExpanded) setWeeklyExpanded(false); }} />
+              <WeeklySnapshotCard mode="pill" active={weeklyExpanded} accountId={activeAccountId || 'demo'} onClick={() => { setWeeklyExpanded(!weeklyExpanded); if (dailyExpanded) setDailyExpanded(false); }} />
             </div>
-            {dailyExpanded && <DailyBriefCard mode="content" onClick={() => setDailyExpanded(false)} />}
-            {weeklyExpanded && <WeeklySnapshotCard mode="content" onClick={() => setWeeklyExpanded(false)} />}
+            {dailyExpanded && <DailyBriefCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setDailyExpanded(false)} />}
+            {weeklyExpanded && <WeeklySnapshotCard mode="content" accountId={activeAccountId || 'demo'} onClick={() => setWeeklyExpanded(false)} />}
           </div>
         </div>
       </div>

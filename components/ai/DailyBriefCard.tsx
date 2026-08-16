@@ -72,9 +72,10 @@ interface DailyBriefCardProps {
   mode?: 'pill' | 'content';
   active?: boolean;
   onClick?: () => void;
+  accountId?: string;
 }
 
-export default function DailyBriefCard({ mode = 'pill', active = false, onClick }: DailyBriefCardProps) {
+export default function DailyBriefCard({ mode = 'pill', active = false, onClick, accountId = 'demo' }: DailyBriefCardProps) {
   const [data, setData] = useState<BriefData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,6 +85,7 @@ export default function DailyBriefCard({ mode = 'pill', active = false, onClick 
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
       const params = new URLSearchParams({ tz });
+      params.set('accountId', accountId);
       if (force) params.set('forceRegen', 'true');
       const r = await apiGet(`/api/ai/daily-brief?${params.toString()}`);
       if (!r.ok) return;
@@ -95,7 +97,7 @@ export default function DailyBriefCard({ mode = 'pill', active = false, onClick 
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     load();
@@ -104,7 +106,7 @@ export default function DailyBriefCard({ mode = 'pill', active = false, onClick 
   const handleRefresh = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setRefreshing(true);
-    try { await apiDelete('/api/ai/daily-brief'); } catch { /* continue */ }
+    try { await apiDelete(`/api/ai/daily-brief?accountId=${encodeURIComponent(accountId)}`); } catch { /* continue */ }
     await load(true);
   };
 
