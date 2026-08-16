@@ -27,7 +27,7 @@ export function useOrders() {
   const { orders, setOrders, addOrder, updateOrder, activeFilter } =
     useOrderStore();
   const { broker, isConnected } = useBroker();
-  const { activeAccount } = useAccounts();
+  const { activeAccount, activeAccountId } = useAccounts();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +38,11 @@ export function useOrders() {
   // Hard boundary: when Demo is the active account, NEVER fetch from broker.
   // PortfolioContext will push demo orders into Zustand instead.
   const isShowingDemo = activeAccount?.isDemo ?? false;
+
+  // broker_connections.id for the active live account ('' for demo)
+  const liveConnectionId = activeAccountId?.startsWith('snaptrade:')
+    ? activeAccountId.slice('snaptrade:'.length)
+    : null;
 
   // Map broker OrderStatus to app OrderStatus
   const statusMap: Record<string, Order['status']> = {
@@ -107,7 +112,9 @@ export function useOrders() {
         uid
           ? getTrades(uid, 500, 0).catch(() => ({ trades: [] as any[], total: 0 }))
           : Promise.resolve({ trades: [] as any[], total: 0 }),
-        fetch('/api/orders?limit=500').then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
+        fetch(
+          `/api/orders?limit=500${liveConnectionId ? `&connectionId=${encodeURIComponent(liveConnectionId)}` : ''}`
+        ).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
       ]);
 
       if (!mountedRef.current) return;
@@ -264,7 +271,7 @@ export function useOrders() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, isConnected, isShowingDemo, setOrders, user]);
+  }, [broker, isConnected, isShowingDemo, liveConnectionId, setOrders, user]);
 
   const placeOrder = useCallback(
     async (

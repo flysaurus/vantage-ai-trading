@@ -14,6 +14,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10), 500);
   const offset = parseInt(searchParams.get('offset') || '0', 10);
+  // Account isolation: pass either `connectionId` (broker_connections.id) for
+  // a live account, or `isDemo=true` for the demo account. Omitted → all
+  // orders (legacy; callers should always scope by account).
+  const connectionId = searchParams.get('connectionId');
+  const isDemo = searchParams.get('isDemo');
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,10 +26,20 @@ export async function GET(req: NextRequest) {
   );
 
   try {
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('orders')
       .select('*', { count: 'exact' })
-      .eq('user_id', authUser!.id)
+      .eq('user_id', authUser!.id);
+
+    if (connectionId) {
+      query = query.eq('connection_id', connectionId);
+    } else if (isDemo === 'true') {
+      query = query.eq('is_demo', true);
+    } else if (isDemo === 'false') {
+      query = query.eq('is_demo', false);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -46,6 +61,7 @@ export async function GET(req: NextRequest) {
         filledAt: o.filled_at,
         timeInForce: o.time_in_force,
         isDemo: o.is_demo,
+        connectionId: o.connection_id,
         createdAt: o.created_at,
         brokerageOrderId: o.brokerage_order_id,
         notional: o.notional ? Number(o.notional) : undefined,

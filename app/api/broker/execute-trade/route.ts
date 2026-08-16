@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
   let snaptradeUserId: string;
   let snaptradeUserSecret: string;
   let connectionId: string;
+  let brokerConnectionId: string;
   let brokerSlug: string;
   let tradingEnabled: boolean = false;
 
@@ -139,6 +140,7 @@ export async function POST(req: NextRequest) {
     snaptradeUserId = creds.snaptradeUserId;
     snaptradeUserSecret = creds.snaptradeUserSecret;
     connectionId = creds.connectionId;
+    brokerConnectionId = creds.brokerConnectionId;
     brokerSlug = creds.brokerSlug;
     tradingEnabled = creds.tradingEnabled;
   } catch (err) {
@@ -227,6 +229,7 @@ export async function POST(req: NextRequest) {
         // qty always stores the share estimate so it's meaningful even without notional.
         const insertRow: Record<string, unknown> = {
           user_id: authUser!.id,
+          connection_id: brokerConnectionId,
           symbol: symbol.toUpperCase(),
           qty: effectiveQty,
           order_unit: orderUnit,
