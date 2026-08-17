@@ -481,12 +481,38 @@ export class SnapTradeBroker implements BrokerEngine {
     // We return the status as-is.
     const isSuccess = status === 'SUBMITTED' || status === 'OPEN' || status === 'FILLED' || status === 'PARTIALLY_FILLED';
     const nextOpen = !this.isMarketOpen() ? this.getNextOpenLabel() : undefined;
+
+    // ── Fill details (authoritative for immediate FILLED / PARTIALLY_FILLED) ──
+    // SnapTrade's order response uses `filled_quantity` + `average_fill_price`
+    // (NOT `filled_price`), and notional (dollar) orders may omit `quantity`
+    // entirely — so derive the filled share count from those fields, with a
+    // notional_value ÷ average_fill_price fallback for dollar-amount orders.
+    const isFilledNow = status === 'FILLED' || status === 'PARTIALLY_FILLED';
+    const rawFilledQty = Number(result.filled_quantity || 0);
+    const rawQty = Number(result.quantity || 0);
+    const avgFillPx = Number(result.average_fill_price || result.filled_price || result.price || 0);
+    const notional = Number(result.notional_value || 0);
+    const filledShares = isFilledNow
+      ? (rawFilledQty || rawQty || (avgFillPx > 0 && notional > 0 ? notional / avgFillPx : 0))
+      : 0;
+    // Fill price: actual average fill price when filled; otherwise fall back to
+    // the limit price (estimate) so "placed" emails still show a reference.
+    const fillPrice = isFilledNow && avgFillPx > 0
+      ? avgFillPx
+      : (result.price ? Number(result.price) : undefined);
+    // Total: actual total_cost when filled; otherwise an estimate (price × shares)
+    // so "placed" emails keep their estimated-total row.
+    const totalCost = isFilledNow
+      ? (Number(result.total_cost || 0) || (fillPrice ? fillPrice * filledShares : 0))
+      : (Number(result.total_cost || 0) || (result.price ? Number(result.price) * (req.shares || 0) : 0) || undefined);
+
     return {
       success: isSuccess,
       orderId,
       status,
-      fillPrice: result.filled_price || result.price,
-      totalCost: result.total_cost || (result.filled_price || result.price || 0) * (req.shares || 0),
+      fillPrice,
+      filledShares: filledShares || undefined,
+      totalCost,
       filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
       nextOpenLabel: nextOpen,
     };
