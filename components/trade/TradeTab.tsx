@@ -282,7 +282,7 @@ export function TradeTab() {
     symbol: o.symbol,
     side: (o.side || '').toUpperCase(),
     status: (o.status || '').toLowerCase(),
-    shares: Number(Number(o.shares ?? o.qty ?? o.filledQty ?? 0).toFixed(4)),
+    shares: Number(Number((o.filledQty || o.filledShares || o.qty || o.shares) || 0).toFixed(4)),
     price: o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     date: o.createdAt ?? o.date ?? '',
@@ -299,6 +299,7 @@ export function TradeTab() {
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
     if (historyTab === 'all') return true;
+    if (historyTab === 'open') return o.status === 'open' || o.status === 'pending' || o.status === 'submitted';
     return o.status === historyTab;
   });
 
