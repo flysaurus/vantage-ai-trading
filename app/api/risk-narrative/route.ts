@@ -253,6 +253,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       suggestion,
       triggers,
       cached: false,
+      // This request generated a NEW narrative (cache miss + triggers fired + quota
+      // available), so it consumed 1 deep analysis — surfaced to the client so the
+      // spend is never silent.
+      consumedDeepAnalysis: true,
     });
   } catch (err: any) {
     console.error('[risk-narrative] Unexpected error:', err?.message || err);

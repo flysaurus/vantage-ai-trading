@@ -1418,38 +1418,7 @@ export async function POST(req: Request) {
     const lastMsgPreview = typeof lastMsg === 'string' ? lastMsg.slice(0, 80) : '[non-text]';
     console.log(`[chat] ===> REQUEST user=${userId?.slice(0,8) || 'anon'} retry=${retryAttempt} msg="${lastMsgPreview}"`);
     
-    const usageType = mode === 'deep' ? 'deepAnalysis' : 'message';
-    // Compute user's local date from their timezone (not server UTC)
-    const localDate = getLocalDateFromTimezone(timezone);
-    if (userId && userId !== 'anonymous') {
-      const usageCheck = await checkUsageLimit(userId, usageType, localDate, timezone);
-      if (!usageCheck.allowed) {
-        return Response.json(
-          {
-            error: usageCheck.reason || 'Daily limit reached',
-            remaining: usageCheck.remaining,
-            resetsIn: usageCheck.resetsIn,
-            type: usageType,
-          },
-          { status: 429 }
-        );
-      }
-
-      // ── Abuse protection: consecutive validation failure cooldown ──
-      // Independent of daily quota. Caps rapid-fire rejected requests.
-      const abuseCheck = await checkAbuseCooldown(userId);
-      if (abuseCheck.blocked) {
-        return Response.json(
-          {
-            error: `Too many failed attempts — cooldown active`,
-            reason: `Please wait ${abuseCheck.cooldownSeconds}s before trying again.`,
-            resetsIn: `${abuseCheck.cooldownSeconds}s`,
-            type: 'abuse_cooldown',
-          },
-          { status: 429 }
-        );
-      }
-    }
+    // (usage-limit check runs below, after isFullPipeline is resolved)
 
     // Build user profile context from request
     const profile: UserProfile = {
@@ -1543,6 +1512,44 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       screening.queryType === 'portfolio' ||
       (hasExplicitVehicle && (isVehicleFollowUp || !isGeneralFinanceQuestion));
     console.log(`[chat] 🧭 Pipeline routing: intent=${classification.intent} vehicle=${resolvedVehicle} queryType=${screening.queryType} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
+
+    // ── Usage limit check (type depends on routing + mode) ──
+    // Deep analysis is consumed by exactly one of two triggers:
+    //   1. mode === 'deep' — explicit user opt-in via the "Deep Dive" affordance
+    //   2. isFullPipeline — the full build pipeline (screening + generation + validation)
+    // Everything else (direct-answer, general finance, alerts) is a normal message.
+    const usageType = (mode === 'deep' || isFullPipeline) ? 'deepAnalysis' : 'message';
+    // Compute user's local date from their timezone (not server UTC)
+    const localDate = getLocalDateFromTimezone(timezone);
+    if (userId && userId !== 'anonymous') {
+      const usageCheck = await checkUsageLimit(userId, usageType, localDate, timezone);
+      if (!usageCheck.allowed) {
+        return Response.json(
+          {
+            error: usageCheck.reason || 'Daily limit reached',
+            remaining: usageCheck.remaining,
+            resetsIn: usageCheck.resetsIn,
+            type: usageType,
+          },
+          { status: 429 }
+        );
+      }
+
+      // ── Abuse protection: consecutive validation failure cooldown ──
+      // Independent of daily quota. Caps rapid-fire rejected requests.
+      const abuseCheck = await checkAbuseCooldown(userId);
+      if (abuseCheck.blocked) {
+        return Response.json(
+          {
+            error: `Too many failed attempts — cooldown active`,
+            reason: `Please wait ${abuseCheck.cooldownSeconds}s before trying again.`,
+            resetsIn: `${abuseCheck.cooldownSeconds}s`,
+            type: 'abuse_cooldown',
+          },
+          { status: 429 }
+        );
+      }
+    }
 
     // Stage 2: Search if needed
     let searchContext = ''
@@ -2121,6 +2128,12 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
         let responseText = fullResponse.join('');
 
+        // ── TRUNCATION-DEBUG (server) — raw streamed text across ALL tool turns ──
+        console.log('[TRUNCATION-DEBUG][server] streamed.length =', responseText.length,
+          '| isFullPipeline =', isFullPipeline,
+          '| head =', JSON.stringify(responseText.slice(0, 140)),
+          '| tail =', JSON.stringify(responseText.slice(-140)));
+
         // ── Direct-answer path (general / market questions, plain chat) ──
         // Non-recommendation messages skip the build pipeline entirely: no screening,
         // no checklist stages, no marker/coherence/symbol/budget validation. The
@@ -2195,6 +2208,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
               encoder.encode(`data: ${JSON.stringify({ corrections: validation.issues, correctedText: validation.corrected })}\n\n`)
             );
             responseText = validation.corrected!; // guarded by hasCorrections above
+            console.log('[TRUNCATION-DEBUG][server] correctedText.length =', responseText.length,
+              '| head =', JSON.stringify(responseText.slice(0, 140)));
           }
         } catch (valErr) {
           stageLog('error', 'marker_format', 'Marker validation failed', { dependency: 'finnhub', data: { error: String(valErr) } });

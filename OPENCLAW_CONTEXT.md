@@ -618,7 +618,7 @@ Health color:
 Expanded:
   Full ReactMarkdown output
   Generated Jun 6 · 10:15 AM
-  [↻ Refresh]  (costs 1 deep analysis)
+  [↻ Refresh]  (costs 1 weekly snapshot — NOT a deep analysis)
 ```
 
 ### Chat Messages
@@ -716,7 +716,7 @@ Theme preview card
 Budget: $ [large input]
 Quick: [$1K] [$5K] [$10K] [$25K]
 
-[Generate 🤖 Basket]   ← pinned to bottom, uses 1 deep analysis
+[Generate 🤖 Basket]   ← pinned to bottom (no deep-analysis charge)
 ```
 
 ### Basket Flow
@@ -885,19 +885,27 @@ Same visual style as portfolio sparkline.
 ### Models
 ```
 General chat:   claude-haiku-4-5     (fast, cheap)
-Deep analysis:  claude-sonnet-4-6    (thorough)
+Deep Dive:      claude-sonnet-4-6    (thorough — explicit opt-in only)
+Auto deep-analysis paths (full pipeline + Risk Narrative) use Haiku.
 ```
 
 ### Daily Limits
 ```
-Messages:       75 / day
-Deep analyses:  20 / day
-Resets:         midnight UTC
+Messages/day:      Demo 25 · Silver 45 · Gold 90
+Deep analyses/day: Demo 5 · Silver 4 · Gold 8
+Demo trial pool:   20 deep analyses total across the 30-day trial
+Monthly caps:      Silver 25 deep / 750 chat · Gold 55 deep / 1800 chat
+Resets:            daily at user-local midnight (not server UTC)
 ```
 
-### Deep Analysis Modes
+### What consumes 1 deep analysis — exactly two triggers (no complexity classifier)
 ```
-research | theme | health | opportunities | tax | alerts | market_pulse
+1. AUTOMATIC — any full build-pipeline request: screening + generation + marker
+   validation, gated on the isFullPipeline flag (app/api/chat/route.ts usageType).
+2. EXPLICIT — the "Deep Dive" toggle in the AI tab (mode:'deep', Sonnet).
+Plus: the Risk Narrative card auto-fires on Portfolio load and charges 1 deep
+analysis on a cache miss when a risk trigger breaches (Haiku, ~120 tokens).
+Everything else (direct-answer chat, general finance, alerts) = a normal message.
 ```
 
 ### Finance Guard
@@ -938,7 +946,7 @@ ALWAYS include:
   OR Alpaca OAuth (read-only scope)
 - Real portfolio, real P&L, real positions
 - AI analysis — no trade execution
-- 25 AI messages/day
+- 45 AI messages/day
 - Daily Brief + Weekly Snapshot
 - Target: Fidelity/Schwab/Vanguard/TD users
 ```
@@ -948,7 +956,7 @@ ALWAYS include:
 - Everything in Silver
 - Real trade execution via Alpaca
   (future: Tastytrade, Tradier, IBKR)
-- 50 AI messages/day
+- 90 AI messages/day
 - Priority AI (Sonnet for all queries)
 - Advanced alerts
 - Target: active traders who want AI-assisted execution

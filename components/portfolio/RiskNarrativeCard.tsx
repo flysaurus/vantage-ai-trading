@@ -17,6 +17,7 @@ interface NarrativeResponse {
   suggestion?: string | null;
   triggers: RiskTrigger[];
   cached: boolean;
+  consumedDeepAnalysis?: boolean;
   sectorCount?: number;
   limitReached?: boolean;
   limitReason?: string;
@@ -304,6 +305,20 @@ export default function RiskNarrativeCard({
       >
         {displayText}
       </p>
+
+      {/* Consumption notice — the spend is surfaced, never silent */}
+      {data.consumedDeepAnalysis && (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.4)',
+            fontStyle: 'italic',
+          }}
+        >
+          Used 1 deep analysis
+        </div>
+      )}
 
       {/* Expanded trigger details */}
       {expanded && hasTriggers && (
