@@ -38,6 +38,7 @@ import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults'
 import {
   classifyIntent,
   resolveVehicleForRequest,
+  detectVehicleAnswer,
 } from '@/lib/ai/manager'
 import { validateResponse } from '@/lib/ai/validator'
 
@@ -1510,6 +1511,39 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
     // Stage 1: DeepSeek screening
     const screening = await screenMessage(lastMessage)
 
+    // ── Pipeline routing (fix: general questions must not run the build pipeline) ──
+    // Recommendation requests take the full screening → checklist → marker-validation
+    // pipeline. Everything else (general finance questions, market questions, plain
+    // chat) takes the lighter direct-answer path — web search + live market data,
+    // but NO orchestrateScreening, NO checklist stages, NO marker validation.
+    // FULL pipeline when ANY of these holds:
+    //   1. deterministic classifier → a recommendation intent (build/rebalance/stock/trade)
+    //   2. DeepSeek screenMessage → queryType 'portfolio' (backstop for phrasings the
+    //      regex classifier missed; also protects against DeepSeek's fail-open default)
+    //   3. an explicit stocks/ETFs/mixed vehicle — EXCEPT when it's a general-finance
+    //      question and NOT a bare vehicle answer to the CLARIFY (so "how do ETFs
+    //      differ from mutual funds" routes to direct-answer, while "Stocks"/"ETFs
+    //      only"/"A mix of both" continue the build).
+    const isRecommendationIntent =
+      classification.intent === 'portfolio_build' ||
+      classification.intent === 'portfolio_rebalance' ||
+      classification.intent === 'stock_analysis' ||
+      classification.intent === 'trade_instruction';
+    const hasExplicitVehicle = resolvedVehicle !== 'unspecified';
+    // Bare vehicle answers ("Stocks", "ETFs only", "A mix of both") are replies to
+    // the stocks/ETFs/mixed CLARIFY and MUST continue the build — never treat them
+    // as a general-finance question, even if DeepSeek labels the bare word
+    // 'general_finance'. Any OTHER message with a vehicle keyword that DeepSeek
+    // calls 'general_finance' (e.g. "how do ETFs differ from mutual funds") is
+    // educational → direct-answer, not a portfolio screen.
+    const isVehicleFollowUp = detectVehicleAnswer(lastMessage) !== null;
+    const isGeneralFinanceQuestion = screening.queryType === 'general_finance';
+    const isFullPipeline =
+      isRecommendationIntent ||
+      screening.queryType === 'portfolio' ||
+      (hasExplicitVehicle && (isVehicleFollowUp || !isGeneralFinanceQuestion));
+    console.log(`[chat] 🧭 Pipeline routing: intent=${classification.intent} vehicle=${resolvedVehicle} queryType=${screening.queryType} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
+
     // Stage 2: Search if needed
     let searchContext = ''
     if (screening.needsSearch && screening.searchQuery) {
@@ -1673,8 +1707,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     let etfScreeningResults: { total: number; scanned: number; universe: number } | null = null;
     let isMixedVehicle = false;
 
-    // ETF leg — runs for 'etfs' AND 'mixed'
-    if (resolvedVehicle === 'etfs' || resolvedVehicle === 'mixed') {
+    // ETF leg — runs for 'etfs' AND 'mixed' (full pipeline only)
+    if (isFullPipeline && (resolvedVehicle === 'etfs' || resolvedVehicle === 'mixed')) {
       const { extractEtfCriteria, screenEtfs, formatEtfContext } = await import('@/lib/etf-screener');
       try {
         // Bug B fix: derive ETF criteria from the FULL user-message history, not
@@ -1704,8 +1738,8 @@ Use these for any market-direction questions ("how are markets today?", "any sel
       }
     }
 
-    // Stock leg — runs for 'stocks', 'mixed', and 'unspecified' (fallback)
-    if (resolvedVehicle === 'stocks' || resolvedVehicle === 'mixed' || resolvedVehicle === 'unspecified') {
+    // Stock leg — runs for 'stocks', 'mixed', and 'unspecified' (full pipeline only)
+    if (isFullPipeline && (resolvedVehicle === 'stocks' || resolvedVehicle === 'mixed' || resolvedVehicle === 'unspecified')) {
       const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
       const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
       if (isMixedVehicle) {
@@ -1963,14 +1997,16 @@ Use these for any market-direction questions ("how are markets today?", "any sel
                 `0 results for ${criteriaDesc} — try wider criteria`);
             }
           }
-        } else {
+        } else if (isFullPipeline) {
           sendChecklist(controller, encoder, 'screening', 'skipped', 'No screening criteria detected');
           sendChecklist(controller, encoder, 'tickers_resolved', 'done',
             preResolvedCount > 0 ? `${preResolvedCount} resolved` : 'None needed');
         }
 
-        // ── Checklist: Building recommendations ──
-        sendChecklist(controller, encoder, 'recommendations_built', 'in_progress');
+        // ── Checklist: Building recommendations (full pipeline only) ──
+        if (isFullPipeline) {
+          sendChecklist(controller, encoder, 'recommendations_built', 'in_progress');
+        }
 
         // ── Multi-turn tool-calling loop ──────────────────────
         do {
@@ -2084,6 +2120,32 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         } while (turn < MAX_TOOL_TURNS);
 
         let responseText = fullResponse.join('');
+
+        // ── Direct-answer path (general / market questions, plain chat) ──
+        // Non-recommendation messages skip the build pipeline entirely: no screening,
+        // no checklist stages, no marker/coherence/symbol/budget validation. The
+        // model's plain-text answer already streamed above (with web search + live
+        // market data). Only recommendation requests — or an explicit
+        // stocks/ETFs/mixed vehicle, or DeepSeek's 'portfolio' queryType — take the
+        // full screening → checklist → validation path.
+        if (!isFullPipeline) {
+          // Defensive: strip any leaked [RECOMMEND:...] markers so no ghost
+          // buy/sell buttons render for a message that wasn't a recommendation.
+          responseText = responseText.replace(/\[RECOMMEND:[^\]]*\]/g, '');
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          if (userId && userId !== 'anonymous') {
+            const totalTokens = totalInputTokens + totalOutputTokens;
+            // Claude 4.5 Haiku (chat mode): $1/MTok input, $5/MTok output
+            const cost = (totalInputTokens / 1_000_000) * 1 + (totalOutputTokens / 1_000_000) * 5;
+            try {
+              await incrementUsage(userId, usageType, totalTokens, cost, localDate);
+            } catch (e) {
+              console.error('[chat] incrementUsage failed:', e);
+            }
+          }
+          controller.close();
+          return;
+        }
 
         // ── Unified pass 1: sanitization + incoherence detection ──
         const validationReport = validateResponse(responseText, requestedBudget);
