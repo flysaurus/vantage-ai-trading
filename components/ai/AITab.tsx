@@ -648,6 +648,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setInput('');
       setToast(null);
       setShowClearConfirm(false);
+      // Per-account cooldown: reset the rate-limit clock so switching Demo ↔ live
+      // doesn't carry the previous account's 5s throttle into the new one.
+      setLastMessageTime(0);
       // Reset streaming state so a mid-stream switch doesn't corrupt the new account
       charQueueRef.current = [];
       displayedContentRef.current = '';
