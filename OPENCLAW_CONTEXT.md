@@ -886,26 +886,25 @@ Same visual style as portfolio sparkline.
 ```
 General chat:   claude-haiku-4-5     (fast, cheap)
 Deep Dive:      claude-sonnet-4-6    (thorough — explicit opt-in only)
-Auto deep-analysis paths (full pipeline + Risk Narrative) use Haiku.
+Risk Narrative: claude-haiku-4-5     (consent-gated, ~120 tokens)
 ```
 
 ### Daily Limits
 ```
 Messages/day:      Demo 25 · Silver 45 · Gold 90
 Deep analyses/day: Demo 5 · Silver 4 · Gold 8
-Demo trial pool:   20 deep analyses total across the 30-day trial
+Demo trial pool:   20 deep analyses total across the 30-day trial (lifetime — no daily reset)
 Monthly caps:      Silver 25 deep / 750 chat · Gold 55 deep / 1800 chat
 Resets:            daily at user-local midnight (not server UTC)
 ```
 
-### What consumes 1 deep analysis — exactly two triggers (no complexity classifier)
+### What consumes 1 deep analysis — explicit/consent-gated ONLY (no auto-fire, no complexity classifier)
 ```
-1. AUTOMATIC — any full build-pipeline request: screening + generation + marker
-   validation, gated on the isFullPipeline flag (app/api/chat/route.ts usageType).
-2. EXPLICIT — the "Deep Dive" toggle in the AI tab (mode:'deep', Sonnet).
-Plus: the Risk Narrative card auto-fires on Portfolio load and charges 1 deep
-analysis on a cache miss when a risk trigger breaches (Haiku, ~120 tokens).
-Everything else (direct-answer chat, general finance, alerts) = a normal message.
+1. EXPLICIT — the "Deep Dive" toggle in the AI tab (mode:'deep', Sonnet).
+2. CONSENT-GATED — the Risk Narrative card's "Generate risk analysis (1 deep)"
+   button on the Portfolio tab (Haiku). No longer auto-fires on page load.
+Portfolio builds (isFullPipeline) and everything else = a NORMAL MESSAGE —
+building a portfolio is core, not premium, and does NOT consume deep analysis.
 ```
 
 ### Finance Guard

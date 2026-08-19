@@ -592,6 +592,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── Usage tracking (chat + deep) ──
   const [chatRemaining, setChatRemaining] = useState<number | null>(null);
   const [deepRemaining, setDeepRemaining] = useState<number | null>(null);
+  const [deepPoolRemaining, setDeepPoolRemaining] = useState<number | null>(null);
+  const [deepMonthlyRemaining, setDeepMonthlyRemaining] = useState<number | null>(null);
+  const [effectiveDeepRemaining, setEffectiveDeepRemaining] = useState<number | null>(null);
   const [deepMode, setDeepMode] = useState(false); // explicit opt-in "Deep Dive" — single-shot
   const [tier, setTier] = useState('demo');
   const [usageStats, setUsageStats] = useState<any>(null); // full stats for settings panel
@@ -610,6 +613,9 @@ export function AITab({ messages, setMessages }: AITabProps) {
         const data = await res.json();
         setChatRemaining(data.chatRemaining ?? getLocalRemaining());
         setDeepRemaining(data.deepRemaining ?? 5);
+        setDeepPoolRemaining(data.deepPoolRemaining ?? null);
+        setDeepMonthlyRemaining(data.deepMonthlyRemaining ?? null);
+        setEffectiveDeepRemaining(data.effectiveDeepRemaining ?? data.deepRemaining ?? 5);
         return;
       }
     } catch { /* fall through */ }
@@ -1557,6 +1563,31 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
   // ── Explore bottom sheet ──
   const [showExplore, setShowExplore] = useState(false);
 
+  // ── Deep-analysis remaining: binding count + exhaustion kind ──
+  // effectiveDeepRemaining = min(daily, monthly, pool). Distinguish the
+  // kind of exhaustion so the UI never shows a bare "0 left" without
+  // saying whether it resets (daily/monthly) or is lifetime (trial pool).
+  const deepCount = effectiveDeepRemaining;
+  const poolLeft = deepPoolRemaining;
+  const monthlyLeft = deepMonthlyRemaining;
+  const deepIsPoolExhausted = poolLeft !== null && poolLeft <= 0;
+  const deepIsMonthlyExhausted = monthlyLeft !== null && monthlyLeft <= 0;
+  const deepIsDailyExhausted =
+    deepRemaining !== null && deepRemaining <= 0 && !deepIsPoolExhausted && !deepIsMonthlyExhausted;
+  // Pool is the tighter (non-exhausted) constraint when it runs out before daily.
+  const poolIsBinding =
+    poolLeft !== null && deepRemaining !== null && poolLeft < deepRemaining;
+  const deepCountLabel = (() => {
+    if (deepCount == null) return 'deep analyses remaining today';
+    if (deepIsPoolExhausted) return 'deep analyses — trial pool exhausted (upgrade for more)';
+    if (deepIsMonthlyExhausted) return 'deep analyses — monthly limit reached (resets on the 1st)';
+    if (deepIsDailyExhausted) return 'deep analyses — daily limit reached (resets tomorrow)';
+    if (deepCount === 1) return 'deep analysis left — this is your last one';
+    if (poolIsBinding) return 'deep analyses left in your trial pool';
+    return 'deep analyses remaining today';
+  })();
+  const deepCountIsLow = deepCount !== null && deepCount <= 1;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative', background: 'linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 40%, rgba(10,15,30,0.4) 100%)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: '28px', margin: '8px 12px 6px 12px', overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.4)' }}>
       {/* Previous session banner */}
@@ -2253,10 +2284,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         )}
 
         {/* Usage counter — chat + deep (only shown after real data loads, never flashes defaults) */}
-        {chatRemaining !== null && deepRemaining !== null && (
+        {chatRemaining !== null && deepCount !== null && (
         <div style={{
           fontSize: '11px',
-          color: (chatRemaining! <= 3 || deepRemaining <= 3) ? WARNING : TEXT_MUTED,
+          color: (chatRemaining! <= 3 || deepCountIsLow) ? WARNING : TEXT_MUTED,
           textAlign: 'center',
           marginBottom: '10px',
           transition: 'color 0.3s ease',
@@ -2264,9 +2295,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           <b style={{ color: chatRemaining! <= 3 ? WARNING : ACCENT }}>
             {chatRemaining}
           </b> messages ·{' '}
-          <b style={{ color: deepRemaining! <= 3 ? WARNING : ACCENT }}>
-            {deepRemaining!}
-          </b> deep analyses remaining today
+          <b style={{ color: deepCountIsLow ? WARNING : ACCENT }}>
+            {deepCount!}
+          </b>{' '}
+          <span style={{ color: deepCountIsLow ? WARNING : TEXT_MUTED }}>{deepCountLabel}</span>
         </div>
         )}
 
@@ -2284,7 +2316,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           flexWrap: 'wrap',
         }}>
           <span style={{ fontWeight: 800, color: '#c084fc' }}>🔬 Deep Dive on</span>
-          <span>— this message will use 1 of your <b>{deepRemaining ?? 0}</b> deep analyses today</span>
+          <span>— this message will use 1 of your <b>{deepCount ?? 0}</b> deep analyses</span>
+          {deepCount === 1 && (
+            <span style={{ fontWeight: 700, color: '#fbbf24' }}>⚠️ this is your last one</span>
+          )}
         </div>
         )}
 
@@ -2303,10 +2338,16 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           }}>
             {/* Deep Dive toggle — explicit opt-in, consumes 1 deep analysis on next send */}
             <button
-              onClick={() => { if (deepRemaining !== 0 || deepMode) setDeepMode(!deepMode); }}
+              onClick={() => { if (deepCount !== 0 || deepMode) setDeepMode(!deepMode); }}
               title={deepMode
                 ? 'Deep Dive ON — your next message uses 1 deep analysis (tap to cancel)'
-                : 'Deep Dive: in-depth Sonnet analysis — uses 1 deep analysis'}
+                : deepCount === 0
+                  ? (deepIsPoolExhausted
+                    ? 'No deep analyses left — trial pool exhausted (upgrade for more)'
+                    : deepIsDailyExhausted
+                      ? 'No deep analyses left — daily limit reached (resets tomorrow)'
+                      : 'No deep analyses left')
+                  : 'Deep Dive: in-depth Sonnet analysis — uses 1 deep analysis'}
               aria-pressed={deepMode}
               style={{
                 display: 'flex',
@@ -2319,9 +2360,9 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 fontSize: '12px',
                 fontWeight: 700,
                 color: deepMode ? '#f3e8ff' : 'rgba(255,255,255,0.75)',
-                opacity: deepRemaining === 0 && !deepMode ? 0.5 : 1,
+                opacity: deepCount === 0 && !deepMode ? 0.5 : 1,
                 flexShrink: 0,
-                cursor: (deepRemaining === 0 && !deepMode) ? 'not-allowed' : 'pointer',
+                cursor: (deepCount === 0 && !deepMode) ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
                 fontFamily: 'inherit',
               }}
@@ -2376,13 +2417,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  const canSend = deepMode ? deepRemaining !== 0 : chatRemaining !== 0;
+                  const canSend = deepMode ? deepCount !== 0 : chatRemaining !== 0;
                   if (canSend) sendMessage(input, deepMode ? 'deep' : 'chat');
                 }
               }}
               placeholder={deepMode ? 'Ask for an in-depth analysis — e.g. "real analysis of NVDA\'s moat"' : chatPlaceholder}
               maxLength={500}
-              disabled={deepMode ? deepRemaining === 0 : chatRemaining === 0}
+              disabled={deepMode ? deepCount === 0 : chatRemaining === 0}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -2400,7 +2441,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             />
             <div
               onClick={() => {
-                const canSend = deepMode ? deepRemaining !== 0 : chatRemaining !== 0;
+                const canSend = deepMode ? deepCount !== 0 : chatRemaining !== 0;
                 if (canSend && input.trim()) sendMessage(input, deepMode ? 'deep' : 'chat');
               }}
               style={{
@@ -2409,14 +2450,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: input.trim() && (deepMode ? deepRemaining !== 0 : chatRemaining !== 0)
+                background: input.trim() && (deepMode ? deepCount !== 0 : chatRemaining !== 0)
                   ? (deepMode ? '#c084fc' : ACCENT)
                   : 'rgba(255,255,255,0.12)',
                 borderRadius: '50%',
                 fontSize: '15px',
-                color: input.trim() && (deepMode ? deepRemaining !== 0 : chatRemaining !== 0) ? '#05202a' : 'rgba(255,255,255,0.3)',
+                color: input.trim() && (deepMode ? deepCount !== 0 : chatRemaining !== 0) ? '#05202a' : 'rgba(255,255,255,0.3)',
                 flexShrink: 0,
-                cursor: input.trim() && (deepMode ? deepRemaining !== 0 : chatRemaining !== 0) ? 'pointer' : 'default',
+                cursor: input.trim() && (deepMode ? deepCount !== 0 : chatRemaining !== 0) ? 'pointer' : 'default',
                 fontWeight: 700,
               }}
             >

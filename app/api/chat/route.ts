@@ -1513,12 +1513,12 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       (hasExplicitVehicle && (isVehicleFollowUp || !isGeneralFinanceQuestion));
     console.log(`[chat] 🧭 Pipeline routing: intent=${classification.intent} vehicle=${resolvedVehicle} queryType=${screening.queryType} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
 
-    // ── Usage limit check (type depends on routing + mode) ──
-    // Deep analysis is consumed by exactly one of two triggers:
-    //   1. mode === 'deep' — explicit user opt-in via the "Deep Dive" affordance
-    //   2. isFullPipeline — the full build pipeline (screening + generation + validation)
-    // Everything else (direct-answer, general finance, alerts) is a normal message.
-    const usageType = (mode === 'deep' || isFullPipeline) ? 'deepAnalysis' : 'message';
+    // ── Usage limit check (type depends on mode only) ──
+    // Deep analysis is consumed by exactly ONE trigger:
+    //   mode === 'deep' — explicit user opt-in via the "Deep Dive" affordance
+    // Portfolio builds (isFullPipeline) and everything else go on the normal
+    // message quota — building a portfolio is core, not premium.
+    const usageType = (mode === 'deep') ? 'deepAnalysis' : 'message';
     // Compute user's local date from their timezone (not server UTC)
     const localDate = getLocalDateFromTimezone(timezone);
     if (userId && userId !== 'anonymous') {
