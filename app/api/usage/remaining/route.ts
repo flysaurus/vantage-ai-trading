@@ -1,7 +1,7 @@
 // ─── GET /api/usage/remaining ──────────────────────────────
 // Quick remaining-count check for the chat guard (message quota only).
 // Accepts ?localDate=YYYY-MM-DD for user's timezone.
-// Deep Dive is UNMETERED — no pool, no daily deep limit.
+// Deep Dive costs 2 of this message quota — no separate pool or daily deep limit.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { checkUsageLimit, getLocalDateFromTimezone } from '@/lib/ai-guard';

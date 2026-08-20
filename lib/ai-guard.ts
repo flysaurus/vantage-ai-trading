@@ -1,6 +1,6 @@
 // ─── AI Usage Guard ───────────────────────────────────────────
 // Multi-dimensional usage limits with daily + monthly caps and
-// per-surface counters. Deep Dive is UNMETERED — no quota.
+// per-surface counters. Deep Dive costs 2 of the message quota (no separate pool).
 // Server-side only — uses createServerClient for Supabase access.
 // Limits are tier-aware: read from tier_feature_values via get_tier_limit RPC.
 //
@@ -254,6 +254,9 @@ export async function incrementUsage(
   tokens?: number,
   cost?: number,
   localDate?: string,
+  // Message-quota delta. Normal chat = 1, Deep Dive = 2 (costs 2 of the
+  // existing message quota — there is no separate deep pool).
+  increment = 1,
 ) {
   // Use user's local date (browser timezone), not server UTC
   const today = localDate || getLocalDateFromTimezone();
@@ -269,7 +272,7 @@ export async function incrementUsage(
   const { error: rpcError } = await (supabase as any).rpc('increment_ai_usage', {
     p_user_id: userId,
     p_date: today,
-    p_message_increment: isMessage ? 1 : 0,
+    p_message_increment: isMessage ? increment : 0,
     p_analysis_increment: 0,
     p_tokens: tokens || 0,
     p_cost: cost || 0,
@@ -291,7 +294,7 @@ export async function incrementUsage(
       await (supabase as any)
         .from('ai_usage')
         .update({
-          [field]: (existing[field] || 0) + 1,
+          [field]: (existing[field] || 0) + increment,
           tokens_used: (existing.tokens_used || 0) + (tokens || 0),
           cost_usd: (existing.cost_usd || 0) + (cost || 0),
         })
@@ -303,7 +306,7 @@ export async function incrementUsage(
         .insert({
           user_id: userId,
           date: today,
-          message_count: isMessage ? 1 : 0,
+          message_count: isMessage ? increment : 0,
           deep_analysis_count: 0,
           tokens_used: tokens || 0,
           cost_usd: cost || 0,
@@ -319,7 +322,7 @@ export async function incrementUsage(
   try {
     await (supabase as any).rpc('increment_user_counters', {
       p_user_id: userId,
-      p_chat_delta: type === 'message' ? 1 : 0,
+      p_chat_delta: type === 'message' ? increment : 0,
       p_deep_delta: 0,
       p_deep_pool_delta: 0,
     });

@@ -589,9 +589,11 @@ export function AITab({ messages, setMessages }: AITabProps) {
   // ── portfolio context for AI ──
   const portfolioContext = buildLivePortfolioContext(liveAccount);
 
-  // ── Usage tracking (chat only — Deep Dive is unmetered) ──
+  // ── Usage tracking (chat = 1 message, Deep Dive = 2 messages) ──
   const [chatRemaining, setChatRemaining] = useState<number | null>(null);
   const [deepMode, setDeepMode] = useState(false); // opt-in "Deep Dive" — single-shot
+  // Deep Dive costs 2 messages: disabled when fewer than 2 remain (null = not yet loaded).
+  const deepDisabled = chatRemaining !== null && chatRemaining < 2;
   const [tier, setTier] = useState('demo');
   const [usageStats, setUsageStats] = useState<any>(null); // full stats for settings panel
 
@@ -630,6 +632,13 @@ export function AITab({ messages, setMessages }: AITabProps) {
     refreshRemaining();
     refreshUsageStats();
   }, [refreshRemaining, refreshUsageStats]);
+
+  // Defensive: if remaining drops below 2 (e.g. a slow load lands on "1 left",
+  // or a race between arming and the count refreshing), dis-arm Deep Dive so a
+  // stale armed state can't slip a 2-cost send through the server guard.
+  useEffect(() => {
+    if (deepDisabled && deepMode) setDeepMode(false);
+  }, [deepDisabled, deepMode]);
 
   // ── Account switch: reset chat so another account's messages never leak ──
   const prevAccountRef = useRef<string | null>(null);
@@ -2262,7 +2271,59 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         </div>
         )}
 
-        {/* Deep Dive notice — visible while the toggle is armed (no quota language) */}
+        {/* Deep Dive segmented control — above the input bar (Chat | 🔬 Deep Dive) */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+          <div style={{
+            display: 'flex',
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            padding: '3px',
+            gap: '2px',
+          }}>
+            <button
+              onClick={() => setDeepMode(false)}
+              aria-pressed={!deepMode}
+              style={{
+                padding: '5px 14px',
+                borderRadius: '9px',
+                fontSize: '11px',
+                fontWeight: 700,
+                border: 'none',
+                background: !deepMode ? 'rgba(34,211,238,0.15)' : 'transparent',
+                color: !deepMode ? ACCENT : TEXT_MUTED,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Chat
+            </button>
+            <button
+              onClick={() => { if (!deepDisabled) setDeepMode(!deepMode); }}
+              disabled={deepDisabled}
+              aria-pressed={deepMode}
+              title={deepDisabled ? 'Deep Dive needs 2 messages' : (deepMode ? 'Deep Dive ON — tap to cancel' : 'Deep Dive: extended reasoning, uses 2 messages')}
+              style={{
+                padding: '5px 14px',
+                borderRadius: '9px',
+                fontSize: '11px',
+                fontWeight: 700,
+                border: 'none',
+                background: deepMode ? 'rgba(192,132,252,0.18)' : 'transparent',
+                color: deepDisabled ? 'rgba(255,255,255,0.25)' : (deepMode ? '#c084fc' : TEXT_MUTED),
+                cursor: deepDisabled ? 'not-allowed' : 'pointer',
+                opacity: deepDisabled ? 0.4 : 1,
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🔬 Deep Dive
+            </button>
+          </div>
+        </div>
+
+        {/* Deep Dive notice — cost shown when armed (replaces old "N deep analyses" language) */}
         {deepMode && (
         <div style={{
           fontSize: '11px',
@@ -2276,7 +2337,19 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           flexWrap: 'wrap',
         }}>
           <span style={{ fontWeight: 800, color: '#c084fc' }}>🔬 Deep Dive on</span>
-          <span>— using extended reasoning for this message</span>
+          <span>— uses 2 messages</span>
+        </div>
+        )}
+
+        {/* Deep Dive disabled reason — explicit, not a silent disable (only when 1 left) */}
+        {deepDisabled && chatRemaining === 1 && (
+        <div style={{
+          fontSize: '11px',
+          color: WARNING,
+          textAlign: 'center',
+          marginBottom: '8px',
+        }}>
+          ⚠️ Deep Dive needs 2 messages — you have 1 left today
         </div>
         )}
 
@@ -2293,32 +2366,6 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             boxShadow: '0 0 20px rgba(34,211,238,0.12)',
             transition: 'border-radius 0.15s ease, padding 0.15s ease',
           }}>
-            {/* Deep Dive toggle — opt-in extended-reasoning mode (free & unmetered) */}
-            <button
-              onClick={() => setDeepMode(!deepMode)}
-              title={deepMode
-                ? 'Deep Dive ON — using extended reasoning for this message (tap to cancel)'
-                : 'Deep Dive: use extended reasoning (Sonnet) for this message'}
-              aria-pressed={deepMode}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                background: deepMode ? 'rgba(192,132,252,0.28)' : 'rgba(255,255,255,0.06)',
-                border: deepMode ? '1.5px solid #c084fc' : '1px solid rgba(255,255,255,0.12)',
-                borderRadius: '999px',
-                padding: '6px 10px',
-                fontSize: '12px',
-                fontWeight: 700,
-                color: deepMode ? '#f3e8ff' : 'rgba(255,255,255,0.75)',
-                flexShrink: 0,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                fontFamily: 'inherit',
-              }}
-            >
-              🔬 Deep Dive
-            </button>
             {/* Explore button — text-first, falls back to icon-only on narrow screens */}
             <button
               onClick={() => { setShowExplore(!showExplore); setExploreSeenCount(noticedItems.length); }}
@@ -2367,13 +2414,13 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  const canSend = deepMode || chatRemaining !== 0;
+                  const canSend = chatRemaining !== 0;
                   if (canSend) sendMessage(input, deepMode ? 'deep' : 'chat');
                 }
               }}
               placeholder={deepMode ? 'Ask for an in-depth analysis — e.g. "real analysis of NVDA\'s moat"' : chatPlaceholder}
               maxLength={500}
-              disabled={!deepMode && chatRemaining === 0}
+              disabled={chatRemaining === 0}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -2391,7 +2438,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             />
             <div
               onClick={() => {
-                const canSend = deepMode || chatRemaining !== 0;
+                const canSend = chatRemaining !== 0;
                 if (canSend && input.trim()) sendMessage(input, deepMode ? 'deep' : 'chat');
               }}
               style={{
@@ -2400,14 +2447,14 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: input.trim() && (deepMode || chatRemaining !== 0)
+                background: input.trim() && chatRemaining !== 0
                   ? (deepMode ? '#c084fc' : ACCENT)
                   : 'rgba(255,255,255,0.12)',
                 borderRadius: '50%',
                 fontSize: '15px',
-                color: input.trim() && (deepMode || chatRemaining !== 0) ? '#05202a' : 'rgba(255,255,255,0.3)',
+                color: input.trim() && chatRemaining !== 0 ? '#05202a' : 'rgba(255,255,255,0.3)',
                 flexShrink: 0,
-                cursor: input.trim() && (deepMode || chatRemaining !== 0) ? 'pointer' : 'default',
+                cursor: input.trim() && chatRemaining !== 0 ? 'pointer' : 'default',
                 fontWeight: 700,
               }}
             >

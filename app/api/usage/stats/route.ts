@@ -1,6 +1,6 @@
 // ─── GET /api/usage/stats ──────────────────────────────────
 // Full usage breakdown for AI Settings panel (chat/message quota only).
-// Deep Dive is UNMETERED — no deep counters or limits.
+// Deep Dive costs 2 of the message quota — no separate deep counters or limits.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getOptionalUserId } from '@/lib/auth/get-server-user';
