@@ -1721,60 +1721,78 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     let etfScreeningResults: { total: number; scanned: number; universe: number } | null = null;
     let isMixedVehicle = false;
 
-    // ETF leg — runs for 'etfs' AND 'mixed' (full pipeline only)
-    if (isFullPipeline && (resolvedVehicle === 'etfs' || resolvedVehicle === 'mixed')) {
-      const { extractEtfCriteria, screenEtfs, formatEtfContext } = await import('@/lib/etf-screener');
-      try {
-        // Bug B fix: derive ETF criteria from the FULL user-message history, not
-        // just the last message. Follow-up answers like "A mix of both" carry no
-        // sector keyword, so `extractEtfCriteria(lastMessage)` lost the original
-        // "healthcare" context and silently ran a broad (SPY/QQQ/VOO-style) scan
-        // — which is why healthcare ETFs (XLV/VHT) never appeared. User messages
-        // only, to avoid assistant responses polluting category detection.
-        const etfHistoryText = [...messages]
-          .filter((m) => m.role === 'user')
-          .map((m) => m.content)
-          .join('\n');
-        const etfCriteria = extractEtfCriteria(etfHistoryText);
-        const etfOutput = await screenEtfs(etfCriteria, { maxScan: 12, limit: 15 });
-        etfScreeningResults = { total: etfOutput.total, scanned: etfOutput.scanned, universe: etfOutput.universe };
-        const etfCtx = formatEtfContext(etfOutput.results, etfCriteria, etfOutput.relaxations);
-        if (resolvedVehicle === 'mixed') {
-          isMixedVehicle = true;
-          screeningContext = `[MIXED PORTFOLIO — the user wants BOTH individual stocks AND ETFs. Build a diversified allocation drawing from BOTH universes below.]\n\n=== ETF UNIVERSE ===\n${etfCtx}\n\n`;
-        } else {
-          screeningContext = etfCtx;
-        }
-        screeningCriteria = { ...etfCriteria, _etf: true };
-        console.log(`[chat] 🔍 ETF screener: scanned=${etfOutput.scanned} matches=${etfOutput.total} universe=${etfOutput.universe}`);
-      } catch (e) {
-        console.error('[chat] ETF screening error (non-fatal):', e);
-      }
-    }
+    // ETF leg + Stock leg — run CONCURRENTLY for mixed builds (full pipeline).
+    // Previously these ran sequentially: the ETF screener awaited, then the
+    // equity orchestrator awaited. For "A mix of both" (stocks + ETFs) that
+    // stacked two full screens ahead of the model stream + validation, which
+    // could blow past the 60s function timeout → Vercel kills the SSE stream
+    // mid-flight → Safari surfaces it as the opaque "Load failed". The two legs
+    // are fully independent, so Promise.all halves the screening latency.
+    const needEtfLeg = isFullPipeline && (resolvedVehicle === 'etfs' || resolvedVehicle === 'mixed');
+    const needStockLeg = isFullPipeline && (resolvedVehicle === 'stocks' || resolvedVehicle === 'mixed' || resolvedVehicle === 'unspecified');
+    isMixedVehicle = needEtfLeg && needStockLeg;
 
-    // Stock leg — runs for 'stocks', 'mixed', and 'unspecified' (full pipeline only)
-    if (isFullPipeline && (resolvedVehicle === 'stocks' || resolvedVehicle === 'mixed' || resolvedVehicle === 'unspecified')) {
-      const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
-      const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
-      if (isMixedVehicle) {
-        screeningContext += `\n=== STOCK UNIVERSE (equity screener) ===\n${screeningOrch.context}`;
-        screeningResults = screeningOrch.results;
-        screeningSource = screeningOrch.source;
-        multiSectorPools = screeningOrch.multiSectorPools;
-      } else {
-        screeningContext = screeningOrch.context;
-        screeningResults = screeningOrch.results;
-        screeningCriteria = screeningOrch.criteria;
-        screeningSource = screeningOrch.source;
-        multiSectorPools = screeningOrch.multiSectorPools;
-      }
+    let etfCtx: string | null = null;
+    let stockCtx: string | null = null;
 
-      if (!screeningOrch.skipped) {
-        console.log(`[chat] 🔍 Orchestrator: source=${screeningOrch.source} pools=${screeningOrch.multiSectorPools?.length || 0} results=${screeningOrch.results?.results?.length || 0}`);
-        if (screeningOrch.results?.error) {
-          console.error('[chat] 🔍 Screener error:', screeningOrch.results.error);
+    await Promise.all([
+      (async () => {
+        if (!needEtfLeg) return;
+        const { extractEtfCriteria, screenEtfs, formatEtfContext } = await import('@/lib/etf-screener');
+        try {
+          // Bug B fix: derive ETF criteria from the FULL user-message history, not
+          // just the last message. Follow-up answers like "A mix of both" carry no
+          // sector keyword, so `extractEtfCriteria(lastMessage)` lost the original
+          // "healthcare" context and silently ran a broad (SPY/QQQ/VOO-style) scan
+          // — which is why healthcare ETFs (XLV/VHT) never appeared. User messages
+          // only, to avoid assistant responses polluting category detection.
+          const etfHistoryText = [...messages]
+            .filter((m) => m.role === 'user')
+            .map((m) => m.content)
+            .join('\n');
+          const etfCriteria = extractEtfCriteria(etfHistoryText);
+          const etfOutput = await screenEtfs(etfCriteria, { maxScan: 12, limit: 15 });
+          etfScreeningResults = { total: etfOutput.total, scanned: etfOutput.scanned, universe: etfOutput.universe };
+          etfCtx = formatEtfContext(etfOutput.results, etfCriteria, etfOutput.relaxations);
+          screeningCriteria = { ...etfCriteria, _etf: true };
+          console.log(`[chat] 🔍 ETF screener: scanned=${etfOutput.scanned} matches=${etfOutput.total} universe=${etfOutput.universe}`);
+        } catch (e) {
+          console.error('[chat] ETF screening error (non-fatal):', e);
         }
-      }
+      })(),
+      (async () => {
+        if (!needStockLeg) return;
+        try {
+          const { orchestrateScreening } = await import('@/lib/ai/orchestrator');
+          const screeningOrch = await orchestrateScreening(lastMessage, profile.investorStyle, messages, requestedBudget);
+          stockCtx = screeningOrch.context;
+          screeningResults = screeningOrch.results;
+          screeningSource = screeningOrch.source;
+          multiSectorPools = screeningOrch.multiSectorPools;
+          if (!isMixedVehicle) {
+            screeningCriteria = screeningOrch.criteria;
+          }
+          if (!screeningOrch.skipped) {
+            console.log(`[chat] 🔍 Orchestrator: source=${screeningOrch.source} pools=${screeningOrch.multiSectorPools?.length || 0} results=${screeningOrch.results?.results?.length || 0}`);
+            if (screeningOrch.results?.error) {
+              console.error('[chat] 🔍 Screener error:', screeningOrch.results.error);
+            }
+          }
+        } catch (e) {
+          console.error('[chat] Equity screening error (non-fatal):', e);
+        }
+      })(),
+    ]);
+
+    // Compose the screening context once both legs settle.
+    if (isMixedVehicle) {
+      screeningContext = '[MIXED PORTFOLIO — the user wants BOTH individual stocks AND ETFs. Build a diversified allocation drawing from BOTH universes below.]';
+      if (etfCtx) screeningContext += `\n\n=== ETF UNIVERSE ===\n${etfCtx}\n`;
+      if (stockCtx) screeningContext += `\n=== STOCK UNIVERSE (equity screener) ===\n${stockCtx}\n`;
+    } else if (etfCtx) {
+      screeningContext = etfCtx;
+    } else if (stockCtx) {
+      screeningContext = stockCtx;
     }
 
     console.log(`[chat] 🚦 Vehicle resolved: ${resolvedVehicle}${isMixedVehicle ? ' (mixed)' : ''}`);
