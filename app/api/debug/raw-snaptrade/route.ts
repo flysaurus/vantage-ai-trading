@@ -83,6 +83,18 @@ export async function GET(req: NextRequest) {
       } catch (e) { raw[`${prefix}_activities_error`] = (e as Error).message; }
 
       try {
+        raw[`${prefix}_recentOrders`] = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/recentOrders`, null, ep,
+        );
+      } catch (e) { raw[`${prefix}_recentOrders_error`] = (e as Error).message; }
+
+      try {
+        raw[`${prefix}_orders`] = await snapTradeFetch<unknown>(
+          `/accounts/${acct.id}/orders`, null, ep,
+        );
+      } catch (e) { raw[`${prefix}_orders_error`] = (e as Error).message; }
+
+      try {
         raw[`${prefix}_holdings`] = await snapTradeFetch<unknown>(
           `/accounts/${acct.id}/holdings`, null, ep,
         );
