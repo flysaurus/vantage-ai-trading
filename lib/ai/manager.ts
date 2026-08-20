@@ -267,10 +267,14 @@ function detectOpenClarifyType(
  * Resolve the vehicle for the CURRENT request from the full conversation.
  * - If the last message is a bare vehicle answer to the OPEN vehicle clarify
  *   (or, as a legacy fallback, to a prior build that lacked a vehicle), the
- *   answer wins — fresh each request, not stored.
+ *   answer wins.
  * - If the last message is a bare "a mix of both" answering a SUB-SECTOR
  *   clarify, it is NOT a vehicle answer; the vehicle is read from the message
  *   directly (→ 'unspecified' for a bare mix), so no redundant full re-screen.
+ * - If the last message is an answer to a FOLLOW-UP clarify (time horizon,
+ *   sub-sector, …) and carries no vehicle of its own, the vehicle resolved on
+ *   an earlier turn is carried forward so it survives a chain of sequential
+ *   CLARIFY questions rather than only a single round-trip.
  */
 export function resolveVehicleForRequest(
   messages: Array<{ role: string; content: string }>,
@@ -301,7 +305,66 @@ export function resolveVehicleForRequest(
     }
   }
 
-  return detectVehiclePreference(last);
+  // Explicit vehicle in the current message wins outright.
+  const explicit = detectVehiclePreference(last);
+  if (explicit !== 'unspecified') {
+    return explicit;
+  }
+
+  // Carry forward: when the user is answering a follow-up CLARIFY (the
+  // immediately-preceding assistant message is a CLARIFY block), resolve the
+  // vehicle from earlier in the conversation. Without this, a resolved vehicle
+  // is lost the moment the user answers a SECOND clarify (e.g. time horizon),
+  // because that combined answer contains no stock/ETF keyword → the vehicle
+  // triage re-fires.
+  const prevAssistant = messages[messages.length - 2];
+  const isAnsweringClarify =
+    !!prevAssistant &&
+    prevAssistant.role !== 'user' &&
+    extractClarifyBlocks(prevAssistant.content || '').length > 0;
+
+  if (isAnsweringClarify) {
+    return resolveVehicleFromHistory(messages);
+  }
+
+  return 'unspecified';
+}
+
+/**
+ * Scan backward (excluding the current last message) for the most recent
+ * vehicle resolution, so it can be carried through subsequent CLARIFY questions.
+ * Returns 'unspecified' when none is found.
+ */
+function resolveVehicleFromHistory(
+  messages: Array<{ role: string; content: string }>,
+): VehiclePreference {
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || m.role !== 'user') continue;
+    const content = m.content || '';
+
+    // (a) Bare vehicle answer — verify it answered the VEHICLE split, not a
+    //     sub-sector/mix clarify (which would otherwise mis-resolve "a mix of
+    //     both" to 'mixed').
+    const answer = detectVehicleAnswer(content);
+    if (answer !== null) {
+      const prev = messages[i - 1];
+      const prevBlocks = prev && prev.role !== 'user'
+        ? extractClarifyBlocks(prev.content || '')
+        : [];
+      if (prevBlocks.length === 0) return answer;  // legacy: vehicle clarify was an SSE event
+      if (isVehicleClarify(prevBlocks)) return answer;
+      continue;  // answered a different clarify — keep looking further back
+    }
+
+    // (b) Explicit vehicle in a genuine (non-stepper) build request.
+    if (content.includes('→')) continue;  // stepper-combined clarify answer
+    const pref = detectVehiclePreference(content);
+    if (pref !== 'unspecified' && classifyIntent(content).intent === 'portfolio_build') {
+      return pref;
+    }
+  }
+  return 'unspecified';
 }
 
 // ── Public API ────────────────────────────────────────────────

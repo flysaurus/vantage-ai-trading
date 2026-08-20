@@ -628,6 +628,59 @@ test('vehicle clarify open → "Stocks only" = stocks', 'vehicle_triage', () => 
   assertEq(got, 'stocks', 'explicit vehicle answer resolves correctly');
 });
 
+// ── Vehicle carried through subsequent CLARIFY (Bug C) ──
+// A resolved vehicle must survive a CHAIN of follow-up clarifies (time horizon,
+// sub-sector, …), not just a single round-trip. Regression: answering the
+// time-horizon clarify re-fired the vehicle clarify because the combined answer
+// carried no stock/ETF keyword and the earlier "ETFs only" resolution was lost.
+
+const TIME_HORIZON_CLARIFY = `[CLARIFY:{"question":"What's your time horizon for this $80,517 deployment?","options":["1-2 years","5+ years","10+ years"]}]`;
+const TIME_HORIZON_ANSWER = `What's your time horizon for this $80,517 deployment?\n→ 5+ years`;
+
+test('vehicle persists through time-horizon clarify (SSE vehicle clarify)', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a portfolio for all my available cash' },
+    { role: 'user', content: 'ETFs only' },
+    { role: 'ai', content: TIME_HORIZON_CLARIFY },
+    { role: 'user', content: TIME_HORIZON_ANSWER },
+  ]);
+  assertEq(got, 'etfs', 'vehicle must be carried through the time-horizon answer, not re-fire');
+});
+
+test('vehicle persists through time-horizon clarify (persisted vehicle clarify)', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a portfolio for all my available cash' },
+    { role: 'ai', content: VEHICLE_CLARIFY },
+    { role: 'user', content: 'ETFs only' },
+    { role: 'ai', content: TIME_HORIZON_CLARIFY },
+    { role: 'user', content: TIME_HORIZON_ANSWER },
+  ]);
+  assertEq(got, 'etfs', 'vehicle carries forward even when the vehicle clarify is persisted as text');
+});
+
+test('explicit vehicle in the original build request is carried forward', 'vehicle_triage', () => {
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me an ETF portfolio with $50k' },
+    { role: 'ai', content: TIME_HORIZON_CLARIFY },
+    { role: 'user', content: TIME_HORIZON_ANSWER },
+  ]);
+  assertEq(got, 'etfs', 'explicit ETF in the opening build request survives the follow-up clarify');
+});
+
+test('sub-sector follow-up answer carries prior vehicle, not mixed', 'vehicle_triage', () => {
+  const SUBSECTOR_WITH_BUDGET = `[CLARIFY:{"question":"You have $80,517 — which healthcare sub-sector?","options":["Pharma/biotech","Services","A mix of both"]}]`;
+  const got = resolveVehicleForRequest([
+    { role: 'user', content: 'Build me a portfolio for all my available cash' },
+    { role: 'ai', content: VEHICLE_CLARIFY },
+    { role: 'user', content: 'ETFs only' },
+    { role: 'ai', content: TIME_HORIZON_CLARIFY },
+    { role: 'user', content: TIME_HORIZON_ANSWER },
+    { role: 'ai', content: SUBSECTOR_WITH_BUDGET },
+    { role: 'user', content: 'You have $80,517 — which healthcare sub-sector?\n→ A mix of both' },
+  ]);
+  assertEq(got, 'etfs', 'a sub-sector "mix" answer must carry the earlier ETF vehicle, not resolve to mixed');
+});
+
 // ── Suite: Monologue Leak + Multiple CLARIFY ──────────────
 // Live leak (probe-partc.mjs): sector-specific ETF request with ambiguous
 // ticker (TECH) — the model narrated its own ticker-resolution and asked a
