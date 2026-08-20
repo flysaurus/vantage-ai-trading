@@ -27,8 +27,6 @@ interface UserRow {
   created_at: string;
   updated_at?: string | null;
   monthly_chat_used?: number | null;
-  monthly_deep_used?: number | null;
-  demo_deep_pool_used?: number | null;
   demo_expires_at?: string | null;
 }
 
@@ -56,8 +54,6 @@ interface AggregatedUser {
   longest_streak: number | null;
   total_days_active: number | null;
   monthly_chat_used: number | null;
-  monthly_deep_used: number | null;
-  demo_deep_pool_used: number | null;
   demo_expires_at: string | null;
   created_at: string;
   updated_at: string | null;
@@ -98,8 +94,8 @@ export async function GET(request: NextRequest) {
         investor_style, investor_style_onboarded, tier,
         is_admin, suspended, deleted,
         created_at, updated_at,
-        monthly_chat_used, monthly_deep_used,
-        demo_deep_pool_used, demo_expires_at
+        monthly_chat_used,
+        demo_expires_at
       `)
       .order(sortField, { ascending: sortOrder === 'asc' })
       .limit(limit);
@@ -219,8 +215,6 @@ export async function GET(request: NextRequest) {
         longest_streak: streak?.longest_streak ?? null,
         total_days_active: streak?.total_days_active ?? null,
         monthly_chat_used: u.monthly_chat_used ?? null,
-        monthly_deep_used: u.monthly_deep_used ?? null,
-        demo_deep_pool_used: u.demo_deep_pool_used ?? null,
         demo_expires_at: u.demo_expires_at || null,
         created_at: u.created_at,
         updated_at: u.updated_at || null,
@@ -241,7 +235,7 @@ export async function GET(request: NextRequest) {
 //   tier_override      — change subscription tier
 //   toggle_admin       — grant or revoke is_admin
 //   toggle_suspension  — suspend or unsuspend user
-//   reset_demo         — reset demo trial (expiry + deep pool counter)
+//   reset_demo         — reset demo trial (expiry)
 // All actions are audit-logged with old_value / new_value JSONB.
 
 export async function PUT(request: NextRequest) {
@@ -305,7 +299,7 @@ export async function PUT(request: NextRequest) {
 async function fetchUser(sb: any, userId: string) {
   const { data: user, error } = await sb
     .from('users')
-    .select('id, tier, is_admin, suspended, demo_expires_at, demo_deep_pool_used')
+    .select('id, tier, is_admin, suspended, demo_expires_at')
     .eq('id', userId)
     .single();
   if (error) return { error: `User not found: ${error.message}`, status: 404 };
@@ -444,19 +438,17 @@ async function handleResetDemo(sb: any, userId: string, adminEmail: string) {
   const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const oldValues = {
     demo_expires_at: user.demo_expires_at,
-    demo_deep_pool_used: user.demo_deep_pool_used,
   };
 
   await sb.from('users').update({
     demo_expires_at: thirtyDays,
-    demo_deep_pool_used: 0,
     tier: user.tier || 'demo',
     updated_at: new Date().toISOString(),
   }).eq('id', userId);
 
   await writeAudit(sb, adminEmail, userId, 'reset_demo',
     oldValues,
-    { demo_expires_at: thirtyDays, demo_deep_pool_used: 0 },
+    { demo_expires_at: thirtyDays },
   );
 
   return NextResponse.json({
@@ -464,7 +456,6 @@ async function handleResetDemo(sb: any, userId: string, adminEmail: string) {
     message: `Demo trial reset — expires ${new Date(thirtyDays).toLocaleDateString()}`,
     userId,
     demo_expires_at: thirtyDays,
-    demo_deep_pool_used: 0,
   });
 }
 

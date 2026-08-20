@@ -8,8 +8,7 @@ import { requireAdmin } from '@/lib/auth/admin-check';
 import { createServerClient } from '@/lib/supabase';
 
 const EDITABLE_FEATURES = [
-  'ai_message_limit', 'monthly_chat_limit', 'deep_analysis_limit',
-  'monthly_deep_limit', 'demo_deep_pool', 'model_access',
+  'ai_message_limit', 'monthly_chat_limit', 'model_access',
 ];
 
 export async function GET(request: NextRequest) {

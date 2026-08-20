@@ -28,8 +28,6 @@ interface AggregatedUser {
   longest_streak: number | null;
   total_days_active: number | null;
   monthly_chat_used: number | null;
-  monthly_deep_used: number | null;
-  demo_deep_pool_used: number | null;
   demo_expires_at: string | null;
   created_at: string;
   updated_at: string | null;
@@ -671,16 +669,6 @@ export function UsersManager() {
                         <span style={{ color: '#8b949e' }}>Chat:</span>{' '}
                         {formatNumber(u.monthly_chat_used)}
                       </div>
-                      <div style={{ fontSize: '0.6875rem' }}>
-                        <span style={{ color: '#8b949e' }}>Deep:</span>{' '}
-                        {formatNumber(u.monthly_deep_used)}
-                      </div>
-                      {u.tier === 'demo' && (
-                        <div style={{ fontSize: '0.6875rem' }}>
-                          <span style={{ color: '#8b949e' }}>Pool:</span>{' '}
-                          {formatNumber(u.demo_deep_pool_used)}
-                        </div>
-                      )}
                     </td>
                     <td style={styles.td}>
                       <span style={{ color: '#8b949e', fontSize: '0.75rem' }}>
@@ -811,16 +799,6 @@ export function UsersManager() {
                 <span style={styles.cardLabel}>Chat Used</span>
                 <span>{formatNumber(u.monthly_chat_used)}</span>
               </div>
-              <div style={styles.cardRow}>
-                <span style={styles.cardLabel}>Deep Used</span>
-                <span>{formatNumber(u.monthly_deep_used)}</span>
-              </div>
-              {u.tier === 'demo' && (
-                <div style={styles.cardRow}>
-                  <span style={styles.cardLabel}>Deep Pool</span>
-                  <span>{formatNumber(u.demo_deep_pool_used)}</span>
-                </div>
-              )}
               <div style={styles.cardRow}>
                 <span style={styles.cardLabel}>Created</span>
                 <span>{formatDate(u.created_at)}</span>
@@ -1023,7 +1001,6 @@ export function UsersManager() {
                 </p>
                 <ul style={{ color: '#8b949e', fontSize: '0.8125rem', marginBottom: '1rem', paddingLeft: '1.25rem' }}>
                   <li>Extends demo expiry to 30 days from now</li>
-                  <li>Resets deep analysis pool usage to 0</li>
                   <li>Keeps tier at «demo» (if currently demo)</li>
                 </ul>
                 {modalUser.demo_expires_at && (
@@ -1207,10 +1184,7 @@ export function UsersManager() {
                 <Stat label="Joined" value={formatDate(modalUser.created_at)} />
                 <Stat label="Subscription" value={modalUser.subscription_status || 'none'} />
                 {modalUser.tier === 'demo' && (
-                  <>
-                    <Stat label="Demo Expires" value={formatDate(modalUser.demo_expires_at)} />
-                    <Stat label="Deep Pool Used" value={String(modalUser.demo_deep_pool_used ?? 0)} />
-                  </>
+                  <Stat label="Demo Expires" value={formatDate(modalUser.demo_expires_at)} />
                 )}
               </div>
             </div>
@@ -1236,7 +1210,6 @@ export function UsersManager() {
                 <Stat label="Baskets Created" value={String(modalUser.baskets_created ?? 0)} />
                 <Stat label="AI Sessions" value={String(modalUser.ai_sessions ?? 0)} />
                 <Stat label="Chat Used" value={String(modalUser.monthly_chat_used ?? 0)} />
-                <Stat label="Deep Used" value={String(modalUser.monthly_deep_used ?? 0)} />
               </div>
             </div>
 

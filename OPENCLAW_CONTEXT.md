@@ -618,7 +618,7 @@ Health color:
 Expanded:
   Full ReactMarkdown output
   Generated Jun 6 · 10:15 AM
-  [↻ Refresh]  (costs 1 weekly snapshot — NOT a deep analysis)
+  [↻ Refresh]  (costs 1 weekly snapshot)
 ```
 
 ### Chat Messages
@@ -885,26 +885,33 @@ Same visual style as portfolio sparkline.
 ### Models
 ```
 General chat:   claude-haiku-4-5     (fast, cheap)
-Deep Dive:      claude-sonnet-4-6    (thorough — explicit opt-in only)
-Risk Narrative: claude-haiku-4-5     (consent-gated, ~120 tokens)
+Deep Dive:      claude-sonnet-4-6    (thorough — free opt-in, unmetered)
+Risk Narrative: claude-haiku-4-5     (auto-fires on portfolio load, ~120 tokens)
 ```
 
 ### Daily Limits
 ```
 Messages/day:      Demo 25 · Silver 45 · Gold 90
-Deep analyses/day: Demo 5 · Silver 4 · Gold 8
-Demo trial pool:   20 deep analyses total across the 30-day trial (lifetime — no daily reset)
-Monthly caps:      Silver 25 deep / 750 chat · Gold 55 deep / 1800 chat
+Monthly caps:      Silver 750 chat · Gold 1800 chat
 Resets:            daily at user-local midnight (not server UTC)
+
+Deep Dive:         UNMETERED — no daily limit, no trial pool, no monthly cap.
+                   Deep Dive (mode:'deep', Sonnet) is a free opt-in mode,
+                   not a limited resource.
 ```
 
-### What consumes 1 deep analysis — explicit/consent-gated ONLY (no auto-fire, no complexity classifier)
+### Deep Dive & Risk Narrative — UNMETERED
 ```
-1. EXPLICIT — the "Deep Dive" toggle in the AI tab (mode:'deep', Sonnet).
-2. CONSENT-GATED — the Risk Narrative card's "Generate risk analysis (1 deep)"
-   button on the Portfolio tab (Haiku). No longer auto-fires on page load.
-Portfolio builds (isFullPipeline) and everything else = a NORMAL MESSAGE —
-building a portfolio is core, not premium, and does NOT consume deep analysis.
+Deep Dive (mode:'deep', Sonnet) is a free, uncounted opt-in — toggling it
+ON for a message simply uses extended reasoning. It never draws from any
+pool or limit and is never blocked by quota.
+
+Risk Narrative auto-fires on portfolio load when a risk threshold is crossed
+(Haiku). No consent step, no "used 1 deep analysis" note — nothing is metered.
+
+Portfolio builds (isFullPipeline) and everything else = a NORMAL MESSAGE,
+charged against the regular message quota. Building a portfolio is core,
+not premium.
 ```
 
 ### Finance Guard
@@ -1123,7 +1130,7 @@ Build in priority order after core app is stable.
   - Replace with real Claude Haiku generation on daily cron
 - [ ] Weekly Snapshot — AI generated
   - Currently hardcoded Opportunities/Risks/Recommendations
-  - Replace with real Claude Sonnet deep analysis
+  - Replace with real Claude Sonnet analysis
   - Triggered by refresh button or weekly cron
 
 ### Phase 4 — Portfolio Features

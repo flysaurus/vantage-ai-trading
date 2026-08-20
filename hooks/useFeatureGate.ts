@@ -22,8 +22,7 @@ type FeatureKey =
   | 'tax_lot_tracking'
   | 'tax_loss_harvesting'
   | 'csv_export'
-  | 'ai_message_limit'
-  | 'deep_analysis_limit';
+  | 'ai_message_limit';
 
 const CACHE = new Map<string, Record<string, boolean | string>>();
 

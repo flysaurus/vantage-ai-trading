@@ -13,7 +13,7 @@ beats generic AI tools on financial specificity.
 - Repo: github.com/flysaurus/vantage-ai-trading (master branch)
 - Stack: Next.js 15, React 19, TypeScript, Tailwind CSS 4, Supabase, Vercel
 - Data: Finnhub API, SearXNG (85.239.230.26:8888)
-- AI: Claude Haiku 4.5 (chat), Claude Sonnet 4.6 (deep analysis)
+- AI: Claude Haiku 4.5 (chat), Claude Sonnet 4.6 (Deep Dive)
 - Agent: OpenClaw on VPS 85.239.230.26 via Telegram
 
 ## Tier Structure
@@ -39,7 +39,7 @@ beats generic AI tools on financial specificity.
 - Everything in Silver
 - Real trade execution via Alpaca
 - 50 AI messages/day
-- Sonnet for ALL queries (not just deep analysis)
+- Sonnet for ALL queries (not just Deep Dive)
 - Advanced alerts
 - Target: active traders wanting AI-assisted execution
 

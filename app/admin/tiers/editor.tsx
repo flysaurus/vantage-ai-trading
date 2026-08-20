@@ -25,14 +25,11 @@ interface ConfigData {
 const FEATURE_META: Record<string, { label: string; suffix: string; type: 'number' | 'select'; options?: string[]; tiers?: string[] }> = {
   ai_message_limit: { label: 'Daily chat messages', suffix: 'msg/day', type: 'number' },
   monthly_chat_limit: { label: 'Monthly chat messages', suffix: 'msg/month', type: 'number' },
-  deep_analysis_limit: { label: 'Daily deep analyses', suffix: 'deep/day', type: 'number' },
-  monthly_deep_limit: { label: 'Monthly deep analyses', suffix: 'deep/month', type: 'number' },
-  demo_deep_pool: { label: 'Deep analysis pool', suffix: 'total (trial)', type: 'number', tiers: ['demo'] },
   model_access: { label: 'Model access', suffix: '', type: 'select', options: ['haiku', 'haiku+sonnet'] },
 };
 
 // Sorting from cheapest → most capable tier
-const FEATURE_ORDER = ['ai_message_limit', 'monthly_chat_limit', 'deep_analysis_limit', 'monthly_deep_limit', 'demo_deep_pool', 'model_access'];
+const FEATURE_ORDER = ['ai_message_limit', 'monthly_chat_limit', 'model_access'];
 
 // ─── Component ─────────────────────────────────────────────────
 
@@ -262,12 +259,8 @@ export function TiersEditor() {
         {/* Quick reference */}
         <div className="mt-4 text-xs text-gray-400 dark:text-gray-500">
           <p>
-            <strong>Model access:</strong> Haiku only = Chat + Deep both use Claude Haiku.
-            Haiku+Sonnet = Chat uses Haiku, Deep uses Sonnet.
-          </p>
-          <p className="mt-1">
-            <strong>Deep analysis pool:</strong> Demo only — lifetime trial cap.
-            Silver/Gold use monthly_deep_limit instead.
+            <strong>Model access:</strong> Haiku only = Chat + Deep Dive both use Claude Haiku.
+            Haiku+Sonnet = Chat uses Haiku, Deep Dive uses Sonnet.
           </p>
         </div>
       </div>

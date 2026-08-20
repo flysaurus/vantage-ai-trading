@@ -1,6 +1,6 @@
 // ─── AI Usage Guard ───────────────────────────────────────────
-// Multi-dimensional usage limits with daily + monthly caps,
-// demo trial deep-analysis pool, and per-surface counters.
+// Multi-dimensional usage limits with daily + monthly caps and
+// per-surface counters. Deep Dive is UNMETERED — no quota.
 // Server-side only — uses createServerClient for Supabase access.
 // Limits are tier-aware: read from tier_feature_values via get_tier_limit RPC.
 //
@@ -9,7 +9,7 @@
 
 import { createServerClient } from '@/lib/supabase';
 
-export type UsageType = 'message' | 'deepAnalysis' | 'dailyBrief' | 'weeklySnapshot' | 'greeting' | 'noticed';
+export type UsageType = 'message' | 'dailyBrief' | 'weeklySnapshot' | 'greeting' | 'noticed';
 
 // ─── Timezone helpers ────────────────────────────────────
 
@@ -127,12 +127,6 @@ export async function checkUsageLimit(
       monthlyFeature: 'monthly_chat_limit',
       dbField: 'message_count',
     },
-    deepAnalysis: {
-      dailyFeature: 'deep_analysis_limit',
-      monthlyFeature: 'monthly_deep_limit',
-      poolFeature: 'demo_deep_pool',
-      dbField: 'deep_analysis_count',
-    },
     dailyBrief: {
       dailyFeature: 'daily_brief_limit',
       monthlyFeature: null,
@@ -158,7 +152,7 @@ export async function checkUsageLimit(
   const config = configMap[type];
 
   // ── Get daily usage ──
-  // Chat (message/deepAnalysis): read from ai_usage table
+  // Chat (message): read from ai_usage table
   // Surface (greeting/brief/snapshot): read from ai_generation_log to avoid
   //   contaminating the chat message_count with non-chat activity
   let dailyUsed = 0;
@@ -216,22 +210,19 @@ export async function checkUsageLimit(
     };
   }
 
-  // For message/deepAnalysis: check monthly limit
+  // For message: check monthly limit
   if (config.monthlyFeature) {
     try {
       const monthlyLimit = await getUserTierLimit(userId, config.monthlyFeature);
       if (typeof monthlyLimit === 'number' && monthlyLimit > 0) {
-        // Get user's monthly counters
+        // Get user's monthly message counter
         const { data: userData } = await (supabase as any)
           .from('users')
-          .select('monthly_chat_used, monthly_deep_used')
+          .select('monthly_chat_used')
           .eq('id', userId)
           .single();
 
-        const monthlyUsed =
-          type === 'message'
-            ? (userData?.monthly_chat_used || 0)
-            : (userData?.monthly_deep_used || 0);
+        const monthlyUsed = userData?.monthly_chat_used || 0;
 
         if (monthlyUsed >= monthlyLimit) {
           const daysInMonth = new Date(
@@ -246,26 +237,6 @@ export async function checkUsageLimit(
             resetsIn: `${daysLeft}d`,
             reason: `Monthly ${type} limit (${monthlyLimit}) reached`,
           };
-        }
-      }
-    } catch { /* fail open */ }
-  }
-
-  // For deepAnalysis: check demo trial pool
-  if (type === 'deepAnalysis' && tier === 'demo') {
-    try {
-      const poolLimit = await getUserTierLimit(userId, 'demo_deep_pool');
-      if (typeof poolLimit === 'number' && poolLimit > 0) {
-        const { data: userData } = await (supabase as any)
-          .from('users')
-          .select('demo_deep_pool_used')
-          .eq('id', userId)
-          .single();
-
-        const poolUsed = userData?.demo_deep_pool_used || 0;
-        if (poolUsed >= poolLimit) {
-          const resetMsg = `Trial pool of ${poolLimit} deep analyses exhausted. Upgrade to Silver/Gold for more deep analyses.`;
-          return { allowed: false, remaining: 0, resetsIn: 'upgrade', reason: resetMsg };
         }
       }
     } catch { /* fail open */ }
@@ -286,7 +257,6 @@ export async function incrementUsage(
 ) {
   // Use user's local date (browser timezone), not server UTC
   const today = localDate || getLocalDateFromTimezone();
-  const tier = await getUserTier(userId);
   const supabase = createServerClient();
 
   // Map type to increment values.
@@ -294,14 +264,13 @@ export async function incrementUsage(
   // Greeting/brief/snapshot track tokens/cost but do NOT contaminate the
   // chat counter — their daily limits are checked via ai_generation_log.
   const isMessage = type === 'message';
-  const isDeep = type === 'deepAnalysis';
 
   // Try RPC first
   const { error: rpcError } = await (supabase as any).rpc('increment_ai_usage', {
     p_user_id: userId,
     p_date: today,
     p_message_increment: isMessage ? 1 : 0,
-    p_analysis_increment: isDeep ? 1 : 0,
+    p_analysis_increment: 0,
     p_tokens: tokens || 0,
     p_cost: cost || 0,
   });
@@ -309,7 +278,7 @@ export async function incrementUsage(
   if (rpcError) {
     console.error('[ai-guard] RPC increment_ai_usage failed:', rpcError);
     // Fallback: direct upsert
-    const field = isDeep ? 'deep_analysis_count' : 'message_count';
+    const field = 'message_count';
 
     const { data: existing } = await (supabase as any)
       .from('ai_usage')
@@ -335,7 +304,7 @@ export async function incrementUsage(
           user_id: userId,
           date: today,
           message_count: isMessage ? 1 : 0,
-          deep_analysis_count: isDeep ? 1 : 0,
+          deep_analysis_count: 0,
           tokens_used: tokens || 0,
           cost_usd: cost || 0,
         });
@@ -351,8 +320,8 @@ export async function incrementUsage(
     await (supabase as any).rpc('increment_user_counters', {
       p_user_id: userId,
       p_chat_delta: type === 'message' ? 1 : 0,
-      p_deep_delta: type === 'deepAnalysis' ? 1 : 0,
-      p_deep_pool_delta: type === 'deepAnalysis' && tier === 'demo' ? 1 : 0,
+      p_deep_delta: 0,
+      p_deep_pool_delta: 0,
     });
   } catch (e) {
     console.error('[ai-guard] RPC increment_user_counters failed:', e);

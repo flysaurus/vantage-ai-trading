@@ -16,9 +16,6 @@ import { createServerClient } from '@/lib/supabase';
 const EDITABLE_FEATURES = [
   'ai_message_limit',
   'monthly_chat_limit',
-  'deep_analysis_limit',
-  'monthly_deep_limit',
-  'demo_deep_pool',
   'model_access',
 ] as const;
 
@@ -239,7 +236,7 @@ export async function PUT(request: NextRequest) {
   }
 
   // For ascending features (limits): Demo ≤ Silver ≤ Gold
-  const ascendingFeatures = ['ai_message_limit', 'monthly_chat_limit', 'deep_analysis_limit', 'monthly_deep_limit'];
+  const ascendingFeatures = ['ai_message_limit', 'monthly_chat_limit'];
   for (const f of ascendingFeatures) {
     const d = getVal(demoId, f);
     const s = getVal(silverId, f);
@@ -251,13 +248,6 @@ export async function PUT(request: NextRequest) {
       errors.push(`Silver ${f} (${s}) exceeds Gold ${f} (${g})`);
     }
   }
-
-  // Demo deep pool should be > 0 for demo, 0 for paid tiers
-  const dPool = getVal(demoId, 'demo_deep_pool');
-  const sPool = getVal(silverId, 'demo_deep_pool');
-  const gPool = getVal(goldId, 'demo_deep_pool');
-  if (sPool !== Infinity && sPool !== 0) errors.push('demo_deep_pool should be 0 for Silver (not applicable)');
-  if (gPool !== Infinity && gPool !== 0) errors.push('demo_deep_pool should be 0 for Gold (not applicable)');
 
   if (errors.length > 0) {
     return NextResponse.json(
@@ -284,7 +274,7 @@ export async function PUT(request: NextRequest) {
       .insert({
         key: 'model_access',
         label: 'Model access',
-        description: 'Which models this tier can use: haiku (Claude Haiku only) or haiku+sonnet (Haiku + Sonnet for deep analysis)',
+        description: 'Which models this tier can use: haiku (Claude Haiku only) or haiku+sonnet (Haiku + Sonnet for Deep Dive)',
         sort_order: 25,
       })
       .select('id, key')

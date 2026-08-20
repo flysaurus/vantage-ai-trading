@@ -90,7 +90,7 @@ GOLD (paid, higher tier):
 ## AI Models — Use the Right One
    Claude Haiku 4.5: regular chat messages
    Claude Sonnet 4.6: Weekly Snapshot, Alerts, Build Basket,
-                      deep analysis, Tax Check, Market Pulse
+                      Deep Dive, Tax Check, Market Pulse
    NEVER use DeepSeek for user-facing analysis.
    DeepSeek: only for internal routing (needs_search? yes/no)
 

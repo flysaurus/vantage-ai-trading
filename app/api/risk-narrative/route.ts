@@ -16,7 +16,6 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import { computeRiskMetrics, evaluateRiskTriggers } from '@/lib/risk-narrative';
 import { callChatAI } from '@/lib/ai-provider';
 import { writeFact } from '@/lib/ai/facts';
-import { checkUsageLimit, incrementUsage } from '@/lib/ai-guard';
 import { createServerClient } from '@/lib/supabase';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -174,20 +173,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // ── Cache miss → check tier limits ──
-    const limitCheck = await checkUsageLimit(userId, 'deepAnalysis');
-    if (!limitCheck.allowed) {
-      // Return triggers without narrative — client can show raw trigger messages
-      return NextResponse.json({
-        narrative: null,
-        triggers,
-        cached: false,
-        limitReached: true,
-        limitReason: limitCheck.reason,
-      });
-    }
-
-    // ── Call Claude Haiku ──
+    // ── Cache miss → generate narrative (unmetered — risk analysis is free) ──
     const prompt = buildPrompt(triggers, metrics);
 
     let narrative: string;
@@ -211,14 +197,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const suggMatch = raw.match(/^SUGGESTION:\s*(.+?)(?:\n|$)/m);
       narrative = diagMatch?.[1]?.trim() || raw;
       suggestion = suggMatch?.[1]?.trim() || null;
-
-      // Track usage
-      await incrementUsage(
-        userId,
-        'deepAnalysis',
-        aiResponse.tokensUsed || 0,
-        0,
-      );
     } catch (aiErr: any) {
       console.error('[risk-narrative] AI call failed:', aiErr?.message || aiErr);
       // Return triggers without narrative on AI failure
@@ -253,10 +231,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       suggestion,
       triggers,
       cached: false,
-      // This request generated a NEW narrative (cache miss + triggers fired + quota
-      // available), so it consumed 1 deep analysis — surfaced to the client so the
-      // spend is never silent.
-      consumedDeepAnalysis: true,
     });
   } catch (err: any) {
     console.error('[risk-narrative] Unexpected error:', err?.message || err);

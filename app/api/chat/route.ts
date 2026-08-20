@@ -1513,26 +1513,26 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       (hasExplicitVehicle && (isVehicleFollowUp || !isGeneralFinanceQuestion));
     console.log(`[chat] 🧭 Pipeline routing: intent=${classification.intent} vehicle=${resolvedVehicle} queryType=${screening.queryType} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
 
-    // ── Usage limit check (type depends on mode only) ──
-    // Deep analysis is consumed by exactly ONE trigger:
-    //   mode === 'deep' — explicit user opt-in via the "Deep Dive" affordance
-    // Portfolio builds (isFullPipeline) and everything else go on the normal
-    // message quota — building a portfolio is core, not premium.
-    const usageType = (mode === 'deep') ? 'deepAnalysis' : 'message';
+    // ── Usage limit check (message quota only) ──
+    // Deep Dive (mode === 'deep') is FREE and uncounted — no quota applies.
+    // Everything else, including full-pipeline portfolio builds, uses the
+    // normal message quota (building a portfolio is core, not premium).
     // Compute user's local date from their timezone (not server UTC)
     const localDate = getLocalDateFromTimezone(timezone);
     if (userId && userId !== 'anonymous') {
-      const usageCheck = await checkUsageLimit(userId, usageType, localDate, timezone);
-      if (!usageCheck.allowed) {
-        return Response.json(
-          {
-            error: usageCheck.reason || 'Daily limit reached',
-            remaining: usageCheck.remaining,
-            resetsIn: usageCheck.resetsIn,
-            type: usageType,
-          },
-          { status: 429 }
-        );
+      if (mode !== 'deep') {
+        const usageCheck = await checkUsageLimit(userId, 'message', localDate, timezone);
+        if (!usageCheck.allowed) {
+          return Response.json(
+            {
+              error: usageCheck.reason || 'Daily limit reached',
+              remaining: usageCheck.remaining,
+              resetsIn: usageCheck.resetsIn,
+              type: 'message',
+            },
+            { status: 429 }
+          );
+        }
       }
 
       // ── Abuse protection: consecutive validation failure cooldown ──
@@ -1794,9 +1794,9 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     }
 
     // ── Model selection with tier-based access control ──────
-    // Default: Haiku for chat, Sonnet for deep analysis.
+    // Default: Haiku for chat, Sonnet for Deep Dive.
     // Tier override: if model_access='haiku', Sonnet is blocked —
-    // deep analysis falls back to Haiku (slower but still functional).
+    // Deep Dive falls back to Haiku (slower but still functional).
     let modelAccess = 'haiku+sonnet'; // safe default for anonymous / on-error
     if (userId && userId !== 'anonymous') {
       try {
@@ -2146,12 +2146,12 @@ Use these for any market-direction questions ("how are markets today?", "any sel
           // buy/sell buttons render for a message that wasn't a recommendation.
           responseText = responseText.replace(/\[RECOMMEND:[^\]]*\]/g, '');
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          if (userId && userId !== 'anonymous') {
+          if (userId && userId !== 'anonymous' && mode !== 'deep') {
             const totalTokens = totalInputTokens + totalOutputTokens;
             // Claude 4.5 Haiku (chat mode): $1/MTok input, $5/MTok output
             const cost = (totalInputTokens / 1_000_000) * 1 + (totalOutputTokens / 1_000_000) * 5;
             try {
-              await incrementUsage(userId, usageType, totalTokens, cost, localDate);
+              await incrementUsage(userId, 'message', totalTokens, cost, localDate);
             } catch (e) {
               console.error('[chat] incrementUsage failed:', e);
             }
@@ -2426,16 +2426,12 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         // Must complete before controller.close() so the client's
         // refreshRemaining() reads the updated count, not the old one.
         // Skip usage tracking for rejected responses — client will retry.
-        if (userId && userId !== 'anonymous' && !validationRejected) {
+        if (userId && userId !== 'anonymous' && !validationRejected && mode !== 'deep') {
           const totalTokens = totalInputTokens + totalOutputTokens;
-          const isDeep = mode === 'deep';
           // Claude 4.5 Haiku: $1/MTok input, $5/MTok output
-          // Claude 4.6 Sonnet: $3/MTok input, $15/MTok output
-          const cost = isDeep
-            ? (totalInputTokens / 1_000_000) * 3 + (totalOutputTokens / 1_000_000) * 15
-            : (totalInputTokens / 1_000_000) * 1 + (totalOutputTokens / 1_000_000) * 5;
+          const cost = (totalInputTokens / 1_000_000) * 1 + (totalOutputTokens / 1_000_000) * 5;
           try {
-            await incrementUsage(userId, usageType, totalTokens, cost, localDate);
+            await incrementUsage(userId, 'message', totalTokens, cost, localDate);
           } catch (e) {
             console.error('[chat] incrementUsage failed:', e);
           }

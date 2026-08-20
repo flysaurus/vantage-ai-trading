@@ -17,10 +17,7 @@ interface NarrativeResponse {
   suggestion?: string | null;
   triggers: RiskTrigger[];
   cached: boolean;
-  consumedDeepAnalysis?: boolean;
   sectorCount?: number;
-  limitReached?: boolean;
-  limitReason?: string;
   aiError?: boolean;
 }
 
@@ -79,32 +76,7 @@ export default function RiskNarrativeCard({
   const [expanded, setExpanded] = useState(false);
   const generatingRef = useRef(false);
 
-  // Deep-analysis remaining for the consent-gate pre-spend notice.
-  const [deepRemaining, setDeepRemaining] = useState<number | null>(null);
-  const [deepIsPoolExhausted, setDeepIsPoolExhausted] = useState(false);
-  const [deepIsDailyExhausted, setDeepIsDailyExhausted] = useState(false);
-
-  // Fetch remaining on mount so the button shows the spend BEFORE firing.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const d = new Date();
-        const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const res = await fetch(`/api/usage/remaining?localDate=${encodeURIComponent(localDate)}`);
-        if (res.ok && active) {
-          const r = await res.json();
-          const poolExhausted = r.deepPoolRemaining !== null && r.deepPoolRemaining <= 0;
-          setDeepRemaining(r.effectiveDeepRemaining ?? r.deepRemaining ?? null);
-          setDeepIsPoolExhausted(poolExhausted);
-          setDeepIsDailyExhausted(!poolExhausted && (r.deepRemaining ?? 0) <= 0);
-        }
-      } catch { /* fail silently — server enforces the real limit */ }
-    })();
-    return () => { active = false; };
-  }, [positions]);
-
-  // ── Consent-gated generation: ONLY fires on explicit tap ──
+  // ── Auto-fire: evaluate risk on portfolio load (unmetered) ──
   const generate = async () => {
     if (!positions || positions.length === 0) return;
     if (generatingRef.current) return;
@@ -143,102 +115,15 @@ export default function RiskNarrativeCard({
     }
   };
 
+  // Fire automatically whenever positions change.
+  useEffect(() => {
+    generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions]);
+
   // ── No positions → nothing to show ──
   if (!positions || positions.length === 0) {
     return null;
-  }
-
-  // ── Idle — explicit consent gate (NO auto-fire) ──
-  if (!data && !loading) {
-    const exhausted = deepRemaining !== null && deepRemaining <= 0;
-    return (
-      <div
-        style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 12,
-          padding: '14px 16px',
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              backgroundColor: '#22d3ee',
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#22d3ee',
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-            }}
-          >
-            Risk Analysis
-          </span>
-        </div>
-
-        <p
-          style={{
-            margin: '8px 0 12px 0',
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: 'rgba(255,255,255,0.66)',
-          }}
-        >
-          Check your portfolio for concentration, sector, and style-drift risks.
-        </p>
-
-        <button
-          onClick={generate}
-          disabled={exhausted}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            background: exhausted ? 'rgba(255,255,255,0.06)' : 'rgba(34,211,238,0.14)',
-            border: exhausted ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(34,211,238,0.4)',
-            borderRadius: 8,
-            padding: '8px 14px',
-            fontSize: 12,
-            fontWeight: 700,
-            color: exhausted ? 'rgba(255,255,255,0.4)' : '#67e8f9',
-            cursor: exhausted ? 'not-allowed' : 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          {exhausted ? 'No deep analyses available' : 'Generate risk analysis (1 deep)'}
-        </button>
-
-        {/* Pre-spend notice — the cost is visible BEFORE firing */}
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 10,
-            fontStyle: 'italic',
-            color: exhausted ? 'rgba(251,191,36,0.85)' : 'rgba(255,255,255,0.4)',
-          }}
-        >
-          {exhausted
-            ? deepIsPoolExhausted
-              ? 'Trial pool exhausted — no daily reset. Upgrade for more deep analyses.'
-              : deepIsDailyExhausted
-                ? 'Daily limit reached — resets tomorrow.'
-                : 'No deep analyses available.'
-            : deepRemaining === 1
-              ? '⚠️ Uses 1 deep analysis — this is your last one.'
-              : deepRemaining !== null
-                ? `Uses 1 deep analysis — ${deepRemaining} remaining today.`
-                : 'Uses 1 deep analysis.'}
-        </div>
-      </div>
-    );
   }
 
   // ── Loading skeleton ──
@@ -290,8 +175,6 @@ export default function RiskNarrativeCard({
     displayText = data.narrative;
   } else if (data.triggers.length === 0) {
     displayText = `Well diversified across ${sectorCount} sector${sectorCount !== 1 ? 's' : ''}`;
-  } else if (data.limitReached) {
-    displayText = data.triggers[0]?.message || 'Portfolio has some concentration risks.';
   } else if (data.aiError) {
     displayText = data.triggers[0]?.message || 'Portfolio has some concentration risks.';
   } else {
@@ -403,20 +286,6 @@ export default function RiskNarrativeCard({
       >
         {displayText}
       </p>
-
-      {/* Consumption notice — the spend is surfaced, never silent */}
-      {data.consumedDeepAnalysis && (
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 10,
-            color: 'rgba(255,255,255,0.4)',
-            fontStyle: 'italic',
-          }}
-        >
-          Used 1 deep analysis
-        </div>
-      )}
 
       {/* Expanded trigger details */}
       {expanded && hasTriggers && (
