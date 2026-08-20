@@ -301,6 +301,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
     initialShares?: number; initialAmount?: number;
+    /** Full company name for the subtitle under ticker + price */
+    companyName?: string;
     /** ID of the AI message the marker came from — for persisting execution state */
     messageId?: string;
   } | null>(null);
@@ -460,8 +462,8 @@ export function AITab({ messages, setMessages }: AITabProps) {
       initialShares = Math.floor(initialAmount / currentPrice);
     }
 
-    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares, initialAmount, messageId });
-  }, [liveAccount]);
+    setTradeTicket({ symbol, side, currentPrice, sharesHeld, availableCash, initialShares, initialAmount, companyName: symbolNames.get(symbol.toUpperCase()) || undefined, messageId });
+  }, [liveAccount, symbolNames]);
   const [showLibrary, setShowLibrary] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastAIResponse, setLastAIResponse] = useState<string | null>(null);
@@ -1904,7 +1906,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               </div>
             );
           }
-          // AI message — accent left border, same 14px font as user messages
+          // AI message — full width, no left gutter (readability: reclaims the
+          // space the accent bar used to eat so prose isn't a narrow column)
           // Compute clarifying options from [CLARIFY:...] markers for chips BELOW the bubble
           const isLastAiMsg = !loading && !messages.slice(i + 1).some(m => m.role === 'ai');
           const isClarifyResolved = !!(msg.id && getResolvedClarify().has(msg.id));
@@ -1918,10 +1921,10 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
             <React.Fragment key={i}>
             <div
               style={{
-                maxWidth: '92%',
+                maxWidth: '100%',
                 background: 'rgba(255,255,255,0.04)',
-                borderLeft: '3px solid #22d3ee',
-                borderRadius: '4px 16px 16px 16px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '14px',
                 padding: '14px 16px',
                 fontSize: '14px',
                 color: 'rgba(255,255,255,0.85)',
@@ -2256,30 +2259,22 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
           </div>
         )}
 
-        {/* Usage counter — chat messages (only shown after real data loads, never flashes defaults) */}
-        {chatRemaining !== null && (
+        {/* Deep Dive segmented control + usage — left-aligned toggle, trailing count */}
         <div style={{
-          fontSize: '11px',
-          color: chatRemaining! <= 3 ? WARNING : TEXT_MUTED,
-          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
           marginBottom: '10px',
-          transition: 'color 0.3s ease',
         }}>
-          <b style={{ color: chatRemaining! <= 3 ? WARNING : ACCENT }}>
-            {chatRemaining}
-          </b> messages remaining today
-        </div>
-        )}
-
-        {/* Deep Dive segmented control — above the input bar (Chat | 🔬 Deep Dive) */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
           <div style={{
             display: 'flex',
             background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: deepMode ? '1px solid rgba(192,132,252,0.5)' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: '12px',
             padding: '3px',
             gap: '2px',
+            transition: 'border-color 0.2s ease',
           }}>
             <button
               onClick={() => setDeepMode(false)}
@@ -2321,32 +2316,29 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
               🔬 Deep Dive
             </button>
           </div>
-        </div>
 
-        {/* Deep Dive notice — cost shown when armed (replaces old "N deep analyses" language) */}
-        {deepMode && (
-        <div style={{
-          fontSize: '11px',
-          color: '#e9d5ff',
-          textAlign: 'center',
-          marginBottom: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '6px',
-          flexWrap: 'wrap',
-        }}>
-          <span style={{ fontWeight: 800, color: '#c084fc' }}>🔬 Deep Dive on</span>
-          <span>— uses 2 messages</span>
+          {/* Trailing context — quiet message count, or cost when armed */}
+          {deepMode ? (
+            <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#c084fc', whiteSpace: 'nowrap' }}>
+              uses 2 messages
+            </div>
+          ) : chatRemaining !== null ? (
+            <div style={{
+              fontSize: '11.5px',
+              color: chatRemaining <= 3 ? WARNING : TEXT_MUTED,
+              whiteSpace: 'nowrap',
+              transition: 'color 0.3s ease',
+            }}>
+              <b style={{ color: chatRemaining <= 3 ? WARNING : TEXT_DIM }}>{chatRemaining}</b> messages left
+            </div>
+          ) : null}
         </div>
-        )}
 
         {/* Deep Dive disabled reason — explicit, not a silent disable (only when 1 left) */}
         {deepDisabled && chatRemaining === 1 && (
         <div style={{
           fontSize: '11px',
           color: WARNING,
-          textAlign: 'center',
           marginBottom: '8px',
         }}>
           ⚠️ Deep Dive needs 2 messages — you have 1 left today
@@ -2874,6 +2866,7 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
         availableCash={tradeTicket?.availableCash || 0}
         initialShares={tradeTicket?.initialShares}
         initialAmount={tradeTicket?.initialAmount}
+        companyName={tradeTicket?.companyName}
         variant="ai"
         supportsFractional={true}
         onConfirm={async (params) => {

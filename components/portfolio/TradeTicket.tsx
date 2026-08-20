@@ -37,6 +37,8 @@ interface TradeTicketProps {
   variant?: 'manual' | 'ai';
   /** Whether the broker supports fractional shares for this symbol */
   supportsFractional?: boolean;
+  /** Full company name — shown as a quiet subtitle under ticker + price */
+  companyName?: string;
   onConfirm: (params: {
     shares: number;
     type: 'market' | 'limit' | 'stop' | 'stop_limit';
@@ -51,7 +53,7 @@ interface TradeTicketProps {
 export default function TradeTicket({
   isOpen, onClose, symbol, side, currentPrice,
   sharesHeld, availableCash, initialShares, initialAmount,
-  variant = 'manual', supportsFractional = false, onConfirm,
+  variant = 'manual', supportsFractional = false, companyName, onConfirm,
 }: TradeTicketProps) {
   const { activeAccount } = useAccounts();
   const isReadOnlyBroker = activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled;
@@ -232,6 +234,11 @@ export default function TradeTicket({
               <div style={{ fontSize: 13, color: '#cbd5e1', fontFamily: 'var(--font-mono, monospace)' }}>
                 ${currentPrice.toFixed(2)}
               </div>
+              {companyName ? (
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3, lineHeight: 1.4 }}>
+                  {companyName}
+                </div>
+              ) : null}
             </div>
           </div>
           <button onClick={onClose} style={{
