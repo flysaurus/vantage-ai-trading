@@ -14,12 +14,13 @@ import { saveCurrentSession, getRecentSessions } from '@/lib/chat-history';
 import { fetchRecentSessions, clearUserMessages, type DBSession } from '@/lib/chat-history-db';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { saveChatMessage } from '@/lib/chat-service';
-import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type Suggestion, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
+import { InlineTradeButtons, parseSuggestions, parseChoiceSuggestions, parseSummaryTLDR, parsePositions, stripRecommendationMarkers, markMarkerExecuted, isMarkerExecutedInStorage, type Suggestion, type ChoiceSuggestion } from '@/components/ai/InlineTradeButton';
 import StrategyCards from '@/components/ai/StrategyCards';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import type { PortfolioBlock } from '@/lib/portfolio-types';
 import { parseClarifyMarkers, questionsToOptions, ClarifyingOptions, ClarifyStepper, type ClarifyingOption, type ClarifyingQuestion } from '@/components/ai/ClarifyingOptions';
 import { SummaryCard } from '@/components/ai/SummaryCard';
+import { PositionCards } from '@/components/ai/PositionCards';
 import { ProgressIndicator, type ChecklistItem } from '@/components/ai/ProgressIndicator';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import CompassIcon from '@/components/CompassIcon';
@@ -1993,6 +1994,8 @@ Note: For sector performance, use the ETF moves above as proxies and your knowle
                       >
                         {stripRecommendationMarkers(msg.content)}
                       </ReactMarkdown>
+                        {/* Position cards: structured [POSITION:{...}] markers rendered as scannable cards */}
+                        <PositionCards positions={parsePositions(msg.content)} />
                         {/* Summary card: TL;DR + allocation table below prose */}
                         {(() => {
                           if (tier === 'silver') return null;

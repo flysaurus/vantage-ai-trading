@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import TradeTicket from '@/components/portfolio/TradeTicket';
 import { useAccounts } from '@/context/AccountContext';
+import type { PositionMarker } from '@/lib/portfolio-types';
 
 // ── Extraction ───────────────────────────────────────────────
 
@@ -166,6 +167,47 @@ export function parseSummaryTLDR(markdownContent: string): string | null {
   return match ? match[1].trim() : null;
 }
 
+/**
+ * Extract structured [POSITION:{...}] markers into PositionMarker objects.
+ * Same bracket-counting technique as the PORTFOLIO/CLARIFY strippers, so
+ * nested JSON (including commas/quotes inside the thesis string) is handled.
+ * Malformed JSON is skipped — the marker is still stripped from visible text
+ * by stripRecommendationMarkers, so raw JSON never reaches the user.
+ */
+export function parsePositions(markdownContent: string): PositionMarker[] {
+  const results: PositionMarker[] = [];
+  const prefix = '[POSITION:{';
+  let idx = 0;
+  while ((idx = markdownContent.indexOf(prefix, idx)) !== -1) {
+    // The JSON object starts at the '{' (last char of the prefix).
+    let depth = 1;
+    let pos = idx + prefix.length;
+    while (pos < markdownContent.length && depth > 0) {
+      const ch = markdownContent[pos];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      pos++;
+    }
+    const jsonText = markdownContent.slice(idx + prefix.length - 1, pos);
+    try {
+      const obj = JSON.parse(jsonText);
+      if (obj && typeof obj === 'object' && typeof obj.ticker === 'string' && obj.ticker) {
+        const pctRaw = obj.pct;
+        results.push({
+          ticker: obj.ticker.toUpperCase(),
+          name: typeof obj.name === 'string' ? obj.name : undefined,
+          pct: typeof pctRaw === 'number' ? pctRaw : (typeof pctRaw === 'string' ? parseFloat(pctRaw) : undefined),
+          thesis: typeof obj.thesis === 'string' ? obj.thesis : undefined,
+        });
+      }
+    } catch {
+      // Malformed JSON — skip. The stripper will still remove the raw text.
+    }
+    idx = pos;
+  }
+  return results;
+}
+
 /** Strip [CLARIFY:{...}] markers with bracket counting — handles nested JSON arrays
  *  that the old regex /\[CLARIFY:[^\]]*\]/ would truncate at the first inner ]. */
 function stripClarifyMarkers(text: string): string {
@@ -195,6 +237,27 @@ function stripClarifyMarkers(text: string): string {
 function stripPortfolioMarkers(text: string): string {
   let result = text;
   const prefix = '[PORTFOLIO:{';
+  let idx = 0;
+  while ((idx = result.indexOf(prefix, idx)) !== -1) {
+    let depth = 1;
+    let pos = idx + prefix.length;
+    while (pos < result.length && depth > 0) {
+      if (result[pos] === '{') depth++;
+      else if (result[pos] === '}') depth--;
+      pos++;
+    }
+    while (pos < result.length && (result[pos] === ' ' || result[pos] === '\n')) pos++;
+    if (pos < result.length && result[pos] === ']') pos++;
+    result = result.slice(0, idx) + result.slice(pos);
+  }
+  return result;
+}
+
+/** Strip [POSITION:{...}] blocks — same bracket-counting technique. The parsed
+ *  cards are rendered separately; raw JSON must never reach the user. */
+function stripPositionMarkers(text: string): string {
+  let result = text;
+  const prefix = '[POSITION:{';
   let idx = 0;
   while ((idx = result.indexOf(prefix, idx)) !== -1) {
     let depth = 1;
@@ -247,7 +310,7 @@ function stripRawStrategyJson(text: string): string {
 
 /** Strip [RECOMMEND:...] and [RECOMMEND_CHOICE:...] markers + JSON blocks from visible text — users never see raw markers. */
 export function stripRecommendationMarkers(text: string): string {
-  let result = stripRawStrategyJson(stripPortfolioMarkers(stripClarifyMarkers(text)))
+  let result = stripPositionMarkers(stripRawStrategyJson(stripPortfolioMarkers(stripClarifyMarkers(text))))
     .replace(MARKER_PATTERN, '')
     .replace(CHOICE_MARKER_PATTERN, '')
     .replace(/\[SUMMARY_TLDR:.+?\]\s*/g, '')  // Remove TL;DR marker from visible text

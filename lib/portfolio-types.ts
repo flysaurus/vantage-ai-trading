@@ -22,3 +22,15 @@ export interface PortfolioBlock {
   raw: string;
   parseError?: string;
 }
+
+/**
+ * Structured [POSITION:{...}] marker — emitted by the model alongside each
+ * position in a portfolio-build response so the UI can render a scannable card
+ * (ticker + role name + pct badge + one-line thesis) instead of raw JSON.
+ */
+export interface PositionMarker {
+  ticker: string;
+  name?: string;
+  pct?: number;
+  thesis?: string;
+}
