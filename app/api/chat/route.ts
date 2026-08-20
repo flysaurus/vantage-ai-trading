@@ -12,7 +12,7 @@ import { CHAT_PRINCIPLES } from '@/lib/ai-principles';
 import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
-import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone, checkAbuseCooldown } from '@/lib/ai-guard'
+import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
 import { getBatchQuotes } from '@/lib/market-data'
@@ -1540,21 +1540,6 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
             resetsIn: usageCheck.resetsIn,
             type: 'message',
             required,
-          },
-          { status: 429 }
-        );
-      }
-
-      // ── Abuse protection: consecutive validation failure cooldown ──
-      // Independent of daily quota. Caps rapid-fire rejected requests.
-      const abuseCheck = await checkAbuseCooldown(userId);
-      if (abuseCheck.blocked) {
-        return Response.json(
-          {
-            error: `Too many failed attempts — cooldown active`,
-            reason: `Please wait ${abuseCheck.cooldownSeconds}s before trying again.`,
-            resetsIn: `${abuseCheck.cooldownSeconds}s`,
-            type: 'abuse_cooldown',
           },
           { status: 429 }
         );

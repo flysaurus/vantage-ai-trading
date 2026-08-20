@@ -222,7 +222,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
     matchCount: number;
     provider: string;
   } | null>(null);
-  const [lastMessageTime, setLastMessageTime] = useState(0);
   // ── Greeting state — initialized from sessionStorage to prevent skeleton flash on remount ──
   const getCachedGreeting = (): { opener: string; hook: string } | null => {
     if (typeof window === 'undefined') return null;
@@ -242,7 +241,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
   const userName: string = String((user as any)?.name || (user as any)?.email || 
     (typeof window !== 'undefined' ? (user as any)?.name || '' : '') || 'M');
   const userInitial = (userName[0]?.toUpperCase() || 'M') + '.';
-  const RATE_LIMIT_MS = 5000;
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -372,7 +370,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
 
       // Submit as a normal chat message (bypass ref prevents stepper intercept)
       bypassStepperRef.current = true;
-      sendMessage(combined, 'chat', undefined, undefined, true);
+      sendMessage(combined, 'chat', undefined, undefined);
     } else {
       setClarifyStep(nextStep);
     }
@@ -659,9 +657,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       setInput('');
       setToast(null);
       setShowClearConfirm(false);
-      // Per-account cooldown: reset the rate-limit clock so switching Demo ↔ live
-      // doesn't carry the previous account's 5s throttle into the new one.
-      setLastMessageTime(0);
       // Reset streaming state so a mid-stream switch doesn't corrupt the new account
       charQueueRef.current = [];
       displayedContentRef.current = '';
@@ -1037,11 +1032,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
     mode: 'chat' | 'alerts' | 'deep' = 'chat',
     additionalContext?: string,
     retryOpts?: { retryAttempt: number; retryFailures: any[] },
-    // internal = system-initiated re-send (clarify-stepper auto-submit /
-    // validation auto-retry). NOT a user send — exempt from the client
-    // rate-limit throttle (neither subject to the check nor advancing
-    // lastMessageTime).
-    internal = false,
   ) => {
     if (!content.trim() || loadingRef.current) return;
 
@@ -1093,19 +1083,6 @@ export function AITab({ messages, setMessages }: AITabProps) {
       }]);
       return;
     }
-
-    const now = Date.now();
-    if (!internal && now - lastMessageTime < RATE_LIMIT_MS) {
-      const secondsLeft = Math.ceil((RATE_LIMIT_MS - (now - lastMessageTime)) / 1000);
-      setMessages(prev => [...prev, {
-        role: 'ai',
-        content: `Please wait ${secondsLeft} second${secondsLeft === 1 ? '' : 's'} before sending another message.`
-      }]);
-      return;
-    }
-    // Only user-initiated sends advance the throttle. Internal re-sends
-    // (stepper auto-submit / validation auto-retry) must not re-arm it.
-    if (!internal) setLastMessageTime(now);
 
     if (messages.length === 0) {
       // session tracking stub removed — gamification UI retired
@@ -1330,7 +1307,7 @@ export function AITab({ messages, setMessages }: AITabProps) {
             await sendMessage(content, 'chat', undefined, {
               retryAttempt: (retryOpts?.retryAttempt ?? 0) + 1,
               retryFailures: rejectData.failures,
-            }, true);
+            });
           } catch (retryErr) {
             console.error('[chat] Auto-retry failed:', retryErr);
           }
