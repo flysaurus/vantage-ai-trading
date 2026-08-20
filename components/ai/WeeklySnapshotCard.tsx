@@ -4,6 +4,7 @@ import { apiDelete, apiGet } from '@/lib/api-client';
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { escapeTildes } from '@/components/ai/InlineTradeButton';
 
 // ── Design tokens ──
 const PILL_BG = 'rgba(255,255,255,0.05)';
@@ -496,7 +497,7 @@ export default function WeeklySnapshotCard({ mode = 'pill', active = false, onCl
                   remarkPlugins={[remarkGfm]}
                   components={MARKDOWN_COMPONENTS as any}
                 >
-                  {sectionContent}
+                  {escapeTildes(sectionContent)}
                 </ReactMarkdown>
               </div>
             )}

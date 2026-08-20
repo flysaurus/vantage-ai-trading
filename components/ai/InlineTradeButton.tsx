@@ -259,7 +259,21 @@ export function stripRecommendationMarkers(text: string): string {
     .replace(/[ \t]{2,}/g, ' ')  // collapse multiple horizontal spaces (preserve \n for tables)
     .replace(/\n{3,}/g, '\n\n')  // collapse excessive blank lines
     .trim();
-  return result;
+  // Escape literal tildes so the markdown renderer doesn't misread the AI's
+  // "~57 shares" / "(~$705)" approximation notation as GFM strikethrough.
+  return escapeTildes(result);
+}
+
+/**
+ * Escape `~` so the GFM markdown renderer treats it as a literal character.
+ * The AI deliberately uses `~` to mean "approximately" (e.g. "~57 shares",
+ * "(~$705)"). remark-gfm's strikethrough also accepts SINGLE tildes, so two
+ * approximation tildes in one paragraph get paired and strike through the
+ * text between them. This app never renders intentional strikethrough, so
+ * escaping all tildes is safe and preserves the exact glyph.
+ */
+export function escapeTildes(text: string): string {
+  return text.replace(/~/g, '\\~');
 }
 
 // ── Component ────────────────────────────────────────────────
