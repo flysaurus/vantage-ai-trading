@@ -27,7 +27,7 @@
   ],
   "functions": {
     "app/api/chat/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "app/api/debug/ai/route.ts": {
       "maxDuration": 30

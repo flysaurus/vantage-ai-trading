@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 // Allow the full pipeline (DeepSeek screening → search → quotes → model stream)
 // to finish without Vercel killing the function mid-stream.
-export const maxDuration = 60;
+export const maxDuration = 300;
 import { VANTAGE_SYSTEM_PROMPT, ALERTS_SYSTEM_PROMPT } from '@/lib/ai-system-prompt'
 import { withFallback, stageLog, createTimeoutBudget, startStage, endStage } from '@/lib/ai/resilience'
 import { resolveSymbol } from '@/lib/tools/resolve-symbol'
@@ -1404,6 +1404,8 @@ function stripForeignSuffixes(text: string): string {
 
 // ─── POST Handler ───
 export async function POST(req: Request) {
+  const t0 = Date.now();
+  const tMark = (label: string) => console.log(`[chat] ⏱ +${Date.now() - t0}ms ${label}`);
   try {
     const body = await req.json()
     const { messages, portfolioContext, additionalContext, mode, timezone, retryAttempt: retryAttemptRaw, validationFailures: retryFailuresRaw, accountMeta } = body
@@ -1512,6 +1514,7 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       screening.queryType === 'portfolio' ||
       (hasExplicitVehicle && (isVehicleFollowUp || !isGeneralFinanceQuestion));
     console.log(`[chat] 🧭 Pipeline routing: intent=${classification.intent} vehicle=${resolvedVehicle} queryType=${screening.queryType} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
+    tMark('routed (usage check next)');
 
     // ── Usage limit check (message quota only) ──
     // Deep Dive costs 2 messages of the existing quota; normal chat costs 1.
@@ -1796,6 +1799,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
     }
 
     console.log(`[chat] 🚦 Vehicle resolved: ${resolvedVehicle}${isMixedVehicle ? ' (mixed)' : ''}`);
+    tMark('screening done → building system prompt');
     const systemBlocks: SystemBlock[] = [
     ...CHAT_PRINCIPLES,
     ...CHAT_SAFETY_BLOCKS,
@@ -1891,6 +1895,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
 
     let stream: Awaited<ReturnType<typeof client.messages.stream>>;
     try {
+      tMark('starting model stream');
       stream = await client.messages.stream({
         model,
         max_tokens: mode === 'deep' ? 8192 : 4096,
@@ -2152,6 +2157,7 @@ Use these for any market-direction questions ("how are markets today?", "any sel
         } while (turn < MAX_TOOL_TURNS);
 
         let responseText = fullResponse.join('');
+        tMark('model stream complete → validation');
 
         // ── TRUNCATION-DEBUG (server) — raw streamed text across ALL tool turns ──
         console.log('[TRUNCATION-DEBUG][server] streamed.length =', responseText.length,
