@@ -36,10 +36,10 @@ import {
 } from '@/lib/symbol-resolution'
 import { getStyleScreeningDefaults } from '@/lib/investor-style-defaults'
 import {
-  classifyIntent,
   resolveVehicleForRequest,
   detectVehicleAnswer,
 } from '@/lib/ai/manager'
+import { classify } from '@/lib/ai/classifier'
 import { validateResponse } from '@/lib/ai/validator'
 
 const client = new Anthropic({
@@ -48,7 +48,6 @@ const client = new Anthropic({
     'anthropic-beta': 'prompt-caching-2024-07-31',
   },
 })
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888'
 
 // ─── Account context builder — prevents AI from confusing Demo with real holdings ──
@@ -334,68 +333,6 @@ async function preResolveTickers(
     console.log(`[chat] ✅ Pre-resolved: ${resolved.map(r => `${r.name}→${r.symbol}`).join(', ')}`)
   }
   return resolved
-}
-
-// ─── Stage 0: DeepSeek Screening ───
-async function screenMessage(userMessage: string): Promise<{
-  needsSearch: boolean
-  searchQuery: string | null
-  queryType: 'portfolio' | 'market_research' | 'general_finance'
-}> {
-  try {
-    const res = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      signal: AbortSignal.timeout(6000),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        max_tokens: 100,
-        messages: [{
-          role: 'user',
-          content: `Classify this finance question. Reply with JSON only:
-{
-  "needsSearch": true/false,
-  "searchQuery": "optimized search query" or null,
-  "queryType": "portfolio" or "market_research" or "general_finance"
-}
-
-needsSearch = true if question needs current data:
-- IPO news, recent valuations, current events
-- Company news from last 6 months
-- Recent earnings, analyst ratings
-- Anything time-sensitive
-
-needsSearch = false if:
-- Portfolio analysis (data provided in context)
-- General investing concepts
-- Historical analysis
-
-Question: "${userMessage}"`
-        }]
-      })
-    })
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.error('[chat] DeepSeek screening HTTP', res.status, errText.slice(0, 200));
-      // Fail open → search anyway
-      return { needsSearch: true, searchQuery: userMessage.slice(0, 200), queryType: 'market_research' as const };
-    }
-
-    const data = await res.json()
-    let raw = data.choices?.[0]?.message?.content || '';
-    // DeepSeek sometimes wraps JSON in markdown code fences even with response_format
-    raw = raw.replace(/```(?:json)?\s*\n?/g, '').trim();
-    return JSON.parse(raw)
-  } catch (e) {
-    console.error('[chat] DeepSeek screening failed:', e);
-    // DEFAULT TO SEARCH — safer to search unnecessarily than to miss current data
-    // Claude's training cutoff means it will hallucinate dates for recent events without search.
-    return { needsSearch: true, searchQuery: userMessage.slice(0, 200), queryType: 'market_research' as const };
-  }
 }
 
 // ─── Stage 1: SearXNG Web Search ───
@@ -1446,17 +1383,47 @@ export async function POST(req: Request) {
       ? ALERTS_SYSTEM_PROMPT
       : VANTAGE_SYSTEM_PROMPT
 
-    // ── Manager / Triager (Phase 2): classify intent ──
-    const classification = classifyIntent(lastMessage);
-    console.log(`[chat] ===> MANAGER intent=${classification.intent} confidence=${classification.confidence.toFixed(2)} sectors=[${classification.mentionedSectors.join(',') || 'none'}] tickers=[${classification.mentionedTickers.join(',') || 'none'}] vehicle=${classification.vehicle}${classification.needsVehicleClarify ? ' VEHICLE_CLARIFY' : ''}${classification.needsClarify ? ' CLARIFY_NEEDED:' + classification.clarifyReason : ''}`);
+    // ── Classifier (normalize → fast-path → GPT-5 nano) ──
+    // Authoritative routing decision. Replaces the regex `classifyIntent` +
+    // DeepSeek `screenMessage` stack. Fast-path handles unambiguous direct
+    // trades / empty / trivial inputs synchronously; everything else goes to
+    // GPT-5 nano, whose output is trusted directly (not a narrow backstop).
+    const classification = await classify(lastMessage);
+    console.log(`[chat] ===> CLASSIFY category=${classification.category} vehicle=${classification.vehicle} source=${classification.source} needsSearch=${classification.needsSearch}${classification.gibberish ? ' GIBBERISH' : ''}${classification.trivial ? ' TRIVIAL' : ''}`);
 
-    // ── Vehicle triage (Part B): deterministic stocks/ETFs/mixed CLARIFY ──
-    // A portfolio build with no explicit vehicle is short-circuited HERE —
-    // no screening, no model call. The answer becomes a hard constraint on
-    // the NEXT request (resolved fresh, not stored in conversation state).
-    const resolvedVehicle = resolveVehicleForRequest(messages);
-    if (classification.intent === 'portfolio_build' && resolvedVehicle === 'unspecified') {
-      console.log('[chat] 🚦 VEHICLE TRIAGE: no explicit vehicle → CLARIFY stocks/ETFs/mixed');
+    // Empty / pure-gibberish → graceful "didn't understand" (never classified).
+    if (classification.gibberish) {
+      return Response.json({
+        content: "I didn't quite catch that — could you rephrase? I specialize in portfolio analysis and market intelligence, so tell me what you'd like to research, build, or trade.",
+      });
+    }
+
+    // Off-topic (non-trivial) → polite scope redirect. Trivial commands
+    // (hi/help/thanks) fall through to the light path and get a natural reply.
+    if (classification.category === 'off_topic' && !classification.trivial) {
+      return Response.json({
+        content: "I specialize exclusively in portfolio analysis and market intelligence. What would you like to know about your portfolio or the markets?",
+      });
+    }
+
+    // ── Vehicle resolution ─────────────────────────────────────
+    // The conversational resolver stays authoritative for multi-turn CLARIFY
+    // answers (it knows which clarify type is open — "a mix of both" to a
+    // sub-sector clarify must NOT read as a vehicle answer). For a FRESH
+    // construction request, the classifier's vehicle field supplements it —
+    // catching phrasings the regex-based detectVehiclePreference misses.
+    const isVehicleFollowUp = detectVehicleAnswer(lastMessage) !== null;
+    const conversationVehicle = resolveVehicleForRequest(messages);
+    const resolvedVehicle =
+      classification.category === 'portfolio_construction' &&
+      !isVehicleFollowUp &&
+      classification.vehicle !== 'unspecified'
+        ? classification.vehicle
+        : conversationVehicle;
+
+    // ── Vehicle triage: portfolio build with no vehicle → CLARIFY ──
+    if (classification.category === 'portfolio_construction' && resolvedVehicle === 'unspecified') {
+      console.log('[chat] 🚦 VEHICLE TRIAGE: portfolio construction, no vehicle → CLARIFY stocks/ETFs/mixed');
       return buildVehicleClarifyResponse();
     }
 
@@ -1479,41 +1446,22 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
       console.error('[chat] deviation facts fetch error:', e);
     }
 
-    // Stage 1: DeepSeek screening
-    const screening = await screenMessage(lastMessage)
-
     // ── Pipeline routing (fix: general questions must not run the build pipeline) ──
-    // Recommendation requests take the full screening → checklist → marker-validation
-    // pipeline. Everything else (general finance questions, market questions, plain
-    // chat) takes the lighter direct-answer path — web search + live market data,
-    // but NO orchestrateScreening, NO checklist stages, NO marker validation.
-    // FULL pipeline when ANY of these holds:
-    //   1. deterministic classifier → a recommendation intent (build/rebalance/stock/trade)
-    //   2. DeepSeek screenMessage → queryType 'portfolio' (backstop for phrasings the
-    //      regex classifier missed; also protects against DeepSeek's fail-open default)
-    //   3. an explicit stocks/ETFs/mixed vehicle — EXCEPT when it's a general-finance
-    //      question and NOT a bare vehicle answer to the CLARIFY (so "how do ETFs
-    //      differ from mutual funds" routes to direct-answer, while "Stocks"/"ETFs
-    //      only"/"A mix of both" continue the build).
+    // ── Pipeline routing ───────────────────────────────────────
+    // FULL pipeline (screening → checklist → validation) for portfolio
+    // construction and direct trade instructions. Everything else takes the
+    // lighter direct-answer path — web search + live market data, but NO
+    // orchestrateScreening, NO checklist stages, NO marker validation.
+    // A bare vehicle answer ("ETFs only", "A mix of both") to the CLARIFY
+    // continues the build via isVehicleFollowUp → full pipeline.
     const isRecommendationIntent =
-      classification.intent === 'portfolio_build' ||
-      classification.intent === 'portfolio_rebalance' ||
-      classification.intent === 'stock_analysis' ||
-      classification.intent === 'trade_instruction';
+      classification.category === 'portfolio_construction' ||
+      classification.category === 'direct_trade_instruction';
     const hasExplicitVehicle = resolvedVehicle !== 'unspecified';
-    // Bare vehicle answers ("Stocks", "ETFs only", "A mix of both") are replies to
-    // the stocks/ETFs/mixed CLARIFY and MUST continue the build — never treat them
-    // as a general-finance question, even if DeepSeek labels the bare word
-    // 'general_finance'. Any OTHER message with a vehicle keyword that DeepSeek
-    // calls 'general_finance' (e.g. "how do ETFs differ from mutual funds") is
-    // educational → direct-answer, not a portfolio screen.
-    const isVehicleFollowUp = detectVehicleAnswer(lastMessage) !== null;
-    const isGeneralFinanceQuestion = screening.queryType === 'general_finance';
     const isFullPipeline =
       isRecommendationIntent ||
-      screening.queryType === 'portfolio' ||
-      (hasExplicitVehicle && (isVehicleFollowUp || !isGeneralFinanceQuestion));
-    console.log(`[chat] 🧭 Pipeline routing: intent=${classification.intent} vehicle=${resolvedVehicle} queryType=${screening.queryType} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
+      (hasExplicitVehicle && isVehicleFollowUp);
+    console.log(`[chat] 🧭 Pipeline routing: category=${classification.category} vehicle=${resolvedVehicle} source=${classification.source} vehicleFollowUp=${isVehicleFollowUp} → ${isFullPipeline ? 'FULL (screening+checklist+validation)' : 'DIRECT ANSWER (no checklist)'}`);
     tMark('routed (usage check next)');
 
     // ── Usage limit check (message quota only) ──
@@ -1548,8 +1496,8 @@ If there are ${devFacts.length >= 2 ? `${devFacts.length} deviations in similar 
 
     // Stage 2: Search if needed
     let searchContext = ''
-    if (screening.needsSearch && screening.searchQuery) {
-      searchContext = await searchWeb(screening.searchQuery)
+    if (classification.needsSearch && classification.searchQuery) {
+      searchContext = await searchWeb(classification.searchQuery)
     }
 
     // ── Tiered ticker resolution: 5-tier system replaces regex-only extractTickers ──

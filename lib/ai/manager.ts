@@ -69,12 +69,15 @@ export function createConversationState(): ConversationState {
 
 const PORTFOLIO_BUILD_PATTERNS = [
   // "build me a <…> portfolio" — allows qualifiers (budget, sector, style)
-  // between "a/an" and "portfolio" (e.g. "build me a $2k healthcare portfolio").
+  // between the (now-optional) article and "portfolio" (e.g. "build me a $2k
+  // healthcare portfolio", or "build me portfolio for my cash" with no article).
   // Broad verb set — "propose/design/create/make a portfolio" were previously
   // missed, which let those requests fall through to 'unknown' intent and skip
   // the deterministic stocks/ETFs/mixed vehicle CLARIFY (the model then just
-  // silently defaulted to individual stocks).
-  /(?:build|propose|create|design|make|put\s+together|give\s+me|recommend|suggest)\s+(?:me\s+)?(?:a|an|some)\b[^.!?]{0,60}?\bportfolio\b/i,
+  // silently defaulted to individual stocks). The article "a/an/some" is
+  // OPTIONAL so "build portfolio" / "build me portfolio" still route to the
+  // vehicle triage instead of being silently defaulted by the model.
+  /(?:build|propose|create|design|make|put\s+together|give\s+me|recommend|suggest)\s+(?:me\s+)?(?:(?:a|an|some)\b)?[^.!?]{0,60}?\bportfolio\b/i,
   /recommend\s+(?:some\s+)?(?:stocks|picks|investments|positions)/i,
   /what\s+should\s+(?:I|we)\s+(?:buy|invest\s+in|pick)/i,
   /I\s+have\s+\$?[\d,.]+\s+(?:to\s+invest|in\s+cash|available)/i,
