@@ -8,7 +8,7 @@ import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
-import { formatFillPriceDisplay, formatSharesDisplay, cancelReasonText } from '@/components/orders/OrderDisplay';
+import { OrderStepper, formatSharesDisplay, cancelReasonText } from '@/components/orders/OrderDisplay';
 import { isWorkingStatus } from '@/lib/order-format';
 
 const statusBorder: Record<string, string> = {
@@ -24,13 +24,6 @@ function getBorderColor(order: any): string {
   if (order.status === 'open' || order.status === 'pending' || order.status === 'submitted') return '#f59e0b';
   if (order.status === 'rejected') return '#f87171';
   return '#64748b';
-}
-
-function getStatusStyle(status: string) {
-  if (status === 'filled') return { color: '#10b981' };
-  if (status === 'open' || status === 'pending' || status === 'submitted') return { color: '#f59e0b' };
-  if (status === 'rejected') return { color: '#f87171' };
-  return { color: '#94a3b8' };
 }
 
 function formatQuoteDate(ts: number) {
@@ -287,9 +280,13 @@ export function TradeTab() {
     side: (o.side || '').toUpperCase(),
     status: (o.status || '').toLowerCase(),
     shares: Number(Number((o.filledQty || o.filledShares || o.qty || o.shares) || 0).toFixed(4)),
+    qty: Number(Number(o.qty ?? o.shares ?? 0).toFixed(4)),
     price: o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     submittedPrice: o.submittedPrice ?? o.fillPrice ?? o.filledPrice ?? o.price ?? 0,
     date: o.createdAt ?? o.date ?? '',
+    createdAt: o.createdAt ?? o.date ?? '',
+    updatedAt: o.updatedAt ?? o.createdAt ?? '',
+    cancelledAt: o.cancelledAt ?? null,
     note: o.note ?? '',
     reservedCost: o.reservedCost ?? 0,
     fillPrice: o.fillPrice ?? o.filledPrice ?? 0,
@@ -1657,119 +1654,112 @@ export function TradeTab() {
                     borderRadius: '8px',
                     padding: '14px 16px',
                     marginBottom: '8px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
                   }}
                 >
-                  {/* LEFT */}
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
-                        {order.symbol}
-                      </span>
-                      <span style={{
-                        borderRadius: '4px',
-                        padding: '2px 6px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-                        color: order.side === 'BUY' ? '#10b981' : '#ef4444'
-                      }}>
-                        {order.side}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '2px' }}>
-                      {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(order.shares)} shares
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#5c6579', fontFamily: 'monospace', marginBottom: '2px' }}>
-                      #{String(order.brokerageOrderId || order.id).replace(/^demo-/, '').slice(0, 8)}
-                    </div>
-                    {order.status === 'filled' && order.price && (
-                      <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
-                        Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {/* HEADER ROW */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                    {/* LEFT */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                          {order.symbol}
+                        </span>
+                        <span style={{
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                          color: order.side === 'BUY' ? '#10b981' : '#ef4444'
+                        }}>
+                          {order.side}
+                        </span>
                       </div>
-                    )}
-                    {['open', 'pending', 'submitted'].includes(order.status) && (
-                      <>
-                        {order.submittedPrice > 0 && (
-                          <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
-                            Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        )}
-                        {order.note && (
-                          <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>
-                            ⏳ {order.note}
-                          </div>
-                        )}
-                        {!order.note && (
-                          <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
-                            ⏳ Pending execution
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {['cancelled', 'rejected'].includes(order.status) && (
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                        {cancelReasonText(order)}
+                      <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '2px' }}>
+                        {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(order.shares)} shares
                       </div>
-                    )}
+                      <div style={{ fontSize: '10px', color: '#5c6579', fontFamily: 'monospace' }}>
+                        #{String(order.brokerageOrderId || order.id).replace(/^demo-/, '').slice(0, 8)}
+                      </div>
+                    </div>
+
+                    {/* RIGHT (date + cancel) */}
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        {(() => {
+                          try {
+                            const d = new Date(order.date);
+                            if (!isNaN(d.getTime())) {
+                              return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                            }
+                          } catch {}
+                          return order.date || '';
+                        })()}
+                      </div>
+                      {/* Cancel button for any non-terminal order (open/pending/submitted) */}
+                      {['open', 'pending', 'submitted'].includes(order.status) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmCancel({
+                              orderId: order.id,
+                              symbol: order.symbol,
+                              side: order.side,
+                              shares: order.shares,
+                              price: order.submittedPrice || order.price || 0,
+                            });
+                          }}
+                          style={{
+                            background: 'none',
+                            border: '1px solid rgba(239,68,68,0.4)',
+                            borderRadius: '6px',
+                            color: '#ef4444',
+                            fontSize: '11px',
+                            padding: '4px 10px',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            fontWeight: '600',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* RIGHT */}
-                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      textTransform: 'uppercase',
-                      ...getStatusStyle(order.status)
-                    }}>
-                      {order.status.toUpperCase()}
+                  {/* 3-step timeline — replaces the flat status badge + fill-price subtext */}
+                  <OrderStepper order={order} />
+
+                  {/* FOOTER: total / note / cancel reason */}
+                  {order.status === 'filled' && order.price && (
+                    <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
+                      Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      {formatFillPriceDisplay(order.price, order.status)}
+                  )}
+                  {['open', 'pending', 'submitted'].includes(order.status) && (
+                    <>
+                      {order.submittedPrice > 0 && (
+                        <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
+                          Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      )}
+                      {order.note && (
+                        <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>
+                          ⏳ {order.note}
+                        </div>
+                      )}
+                      {!order.note && (
+                        <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
+                          ⏳ Pending execution
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {['cancelled', 'rejected'].includes(order.status) && (
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                      {cancelReasonText(order)}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                      {(() => {
-                        try {
-                          const d = new Date(order.date);
-                          if (!isNaN(d.getTime())) {
-                            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-                          }
-                        } catch {}
-                        return order.date || '';
-                      })()}
-                    </div>
-                    {/* Cancel button for any non-terminal order (open/pending/submitted) */}
-                    {['open', 'pending', 'submitted'].includes(order.status) && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmCancel({
-                            orderId: order.id,
-                            symbol: order.symbol,
-                            side: order.side,
-                            shares: order.shares,
-                            price: order.submittedPrice || order.price || 0,
-                          });
-                        }}
-                        style={{
-                          background: 'none',
-                          border: '1px solid rgba(239,68,68,0.4)',
-                          borderRadius: '6px',
-                          color: '#ef4444',
-                          fontSize: '11px',
-                          padding: '4px 10px',
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                          fontWeight: '600',
-                          alignSelf: 'flex-end',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               ))}
             </>

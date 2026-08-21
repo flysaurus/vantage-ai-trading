@@ -174,6 +174,13 @@ export async function POST(req: NextRequest) {
       tradingEnabled,
     });
 
+    // Internal Vantage order id — generated up-front so the same UUID can be
+    // sent to the broker as `client_order_id` (defense-in-depth idempotency +
+    // 1:1 traceability back to Vantage's own orders.id). It must be created
+    // before placeOrder because client_order_id rides in the SnapTrade request
+    // body, while the DB row (and its id) is only inserted afterward.
+    const vantageOrderId = crypto.randomUUID();
+
     const result = await broker.placeOrder({
       symbol,
       side,
@@ -184,6 +191,7 @@ export async function POST(req: NextRequest) {
       stopPrice,
       timeInForce: timeInForce || 'day',
       currentPrice,
+      clientOrderId: vantageOrderId,
     });
 
     orderPlaced = true;
@@ -228,6 +236,7 @@ export async function POST(req: NextRequest) {
         // notional=null if column doesn't exist yet (migration 042 pending).
         // qty always stores the share estimate so it's meaningful even without notional.
         const insertRow: Record<string, unknown> = {
+          id: vantageOrderId,
           user_id: authUser!.id,
           connection_id: brokerConnectionId,
           symbol: symbol.toUpperCase(),

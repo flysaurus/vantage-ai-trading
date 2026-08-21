@@ -41,6 +41,11 @@ export interface OrderRequest {
   timeInForce?: TimeInForce;
   /** Current market price — used for after-hours market→limit conversion. */
   currentPrice?: number;
+  /**
+   * Optional client-supplied idempotency UUID, forwarded to the broker as
+   * `client_order_id`. Mirrors Vantage's internal order id for traceability.
+   */
+  clientOrderId?: string;
   basketId?: string;
   basketName?: string;
   basketEmoji?: string;

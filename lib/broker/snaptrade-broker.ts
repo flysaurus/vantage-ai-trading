@@ -405,6 +405,13 @@ export class SnapTradeBroker implements BrokerEngine {
       symbol,
     };
 
+    // Client-supplied idempotency key — forwarded verbatim to the broker as
+    // `client_order_id` (Alpaca treats it as an idempotency key). We send our
+    // internal order UUID so the broker order maps 1:1 back to Vantage's order.
+    if (req.clientOrderId) {
+      body.client_order_id = req.clientOrderId;
+    }
+
     // Units (shares) vs notional_value (dollar amount)
     // When dollarAmount is explicitly set (AI Advisor dollar-first mode), prefer notional_value
     // to preserve exact dollar intent rather than converting to shares where rounding can skew.
