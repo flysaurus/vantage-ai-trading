@@ -179,6 +179,7 @@ interface PortfolioContextValue {
     basketEmoji?: string,
     dollarAmount?: number,
     messageId?: string | null,
+    companyName?: string | null,
   ) => Promise<TradeResult>;
   /** Demo order history */
   demoOrders: DemoOrder[];
@@ -776,7 +777,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executeTrade ──
   const executeTrade = useCallback(
-    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string, dollarAmount?: number, messageId?: string | null): Promise<TradeResult> => {
+    async (symbol: string, side: 'BUY' | 'SELL', shares: number, price: number, orderType?: 'market' | 'limit' | 'stop' | 'stop_limit', stopPrice?: number, limitPrice?: number, timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok', basketId?: string, basketName?: string, basketEmoji?: string, dollarAmount?: number, messageId?: string | null, companyName?: string | null): Promise<TradeResult> => {
       if (submittingTradeRef.current) {
         console.log('[executeTrade] Already submitting — ignoring duplicate call');
         return { success: false, error: 'Order already in progress' };
@@ -801,6 +802,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             timeInForce,
             currentPrice: price,
             messageId,
+            expectedCompanyName: companyName || null,
           }),
         }).then(r => r.json());
         if (!proxyResult.success) {

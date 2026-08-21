@@ -236,7 +236,20 @@ function extractContextFromMessage(messageContent: string, symbol: string): stri
     return boldMatch[1].trim();
   }
 
-  // Fallback: grab trailing capitalized words (last 1-4 words)
+  // Fallback: grab trailing capitalized words (last 1-4 words).
+  // Finance boilerplate ("Expense Ratio", "Yield", "Market") is NOT a company
+  // name — filter it out so a legit ETF recommendation ("IJR (expense ratio
+  // 0.06%) [RECOMMEND:IJR:BUY:$500]") doesn't get falsely blocked.
+  const FINANCE_STOPWORDS = new Set([
+    'expense', 'ratio', 'yield', 'return', 'returns', 'market', 'day', 'week',
+    'month', 'year', 'quarter', 'pe', 'eps', 'dividend', 'dividends',
+    'annualized', 'beta', 'volume', 'average', 'avg', 'net', 'assets', 'aum',
+    'nav', 'price', 'cost', 'shares', 'share', 'stock', 'etf', 'fund', 'index',
+    'growth', 'value', 'income', 'sector', 'cap', 'large', 'mid', 'small',
+    'core', 'total', 'rating', 'target', 'consensus', 'analyst', 'analysts',
+    'strong', 'amount', 'allocation', 'position', 'holding', 'holdings',
+    'weight', 'weights', 'percent', 'basis',
+  ]);
   const words = beforeText.split(/\s+/);
   const isCapitalized = (w: string) =>
     /^[A-Z]{2,5}(?:[.&]?[A-Z]{0,5})*$/.test(w) ||
@@ -245,7 +258,7 @@ function extractContextFromMessage(messageContent: string, symbol: string): stri
   const nameWords: string[] = [];
   for (let i = words.length - 1; i >= 0 && nameWords.length < 4; i--) {
     const w = words[i];
-    if (isCapitalized(w)) {
+    if (isCapitalized(w) && !FINANCE_STOPWORDS.has(w.toLowerCase())) {
       nameWords.unshift(w);
     } else if (nameWords.length > 0) {
       break;
@@ -254,7 +267,13 @@ function extractContextFromMessage(messageContent: string, symbol: string): stri
 
   const candidate = nameWords.join(' ');
   const blockedWords = /^(?:The|This|That|Buy|Sell|Hold|We|You|It|At|In|On|By|To|Or|And|But|So|If|As|Is|Be|Are|Was|Were|Will|Can|Should|Would|Could|Do|Does|Did|Has|Have|From|Into|Over|Under|Up|Out|Off|Down|Back)$/i;
-  if (candidate.length > 0 && !blockedWords.test(candidate)) {
+  // Never treat the symbol itself as a "company name" — a bare ticker means
+  // there's no name in the text, so skip the cross-check rather than block.
+  if (
+    candidate.length > 0 &&
+    !blockedWords.test(candidate) &&
+    candidate.toUpperCase() !== symbol.toUpperCase()
+  ) {
     return candidate;
   }
 
