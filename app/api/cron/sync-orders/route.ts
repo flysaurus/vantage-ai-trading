@@ -211,7 +211,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const now = new Date().toISOString();
           const { error: staleErr } = await supabase
             .from('orders')
-            .update({ status: 'cancelled', cancelled_at: now, updated_at: now })
+            .update({ status: 'cancelled', cancelled_at: now, updated_at: now, cancel_reason: 'stale_guard' })
             .eq('id', o.id);
           if (staleErr) {
             errors++;
@@ -275,6 +275,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
       if (live.status === 'CANCELLED') {
         patch.cancelled_at = live.cancelledAt ?? now;
+        patch.cancel_reason = 'external';
       }
 
       const { error: updErr } = await supabase

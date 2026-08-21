@@ -8,7 +8,8 @@ import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
-import { formatFillPriceDisplay, formatSharesDisplay } from '@/components/orders/OrderDisplay';
+import { formatFillPriceDisplay, formatSharesDisplay, cancelReasonText } from '@/components/orders/OrderDisplay';
+import { isWorkingStatus } from '@/lib/order-format';
 
 const statusBorder: Record<string, string> = {
   filled_buy: '#10b981',
@@ -20,13 +21,15 @@ const statusBorder: Record<string, string> = {
 function getBorderColor(order: any): string {
   const side = (order.side || '').toUpperCase();
   if (order.status === 'filled') return side === 'BUY' ? '#10b981' : '#ef4444';
-  if (order.status === 'open') return '#f59e0b';
-  return '#475569';
+  if (order.status === 'open' || order.status === 'pending' || order.status === 'submitted') return '#f59e0b';
+  if (order.status === 'rejected') return '#f87171';
+  return '#64748b';
 }
 
 function getStatusStyle(status: string) {
   if (status === 'filled') return { color: '#10b981' };
-  if (status === 'open') return { color: '#f59e0b' };
+  if (status === 'open' || status === 'pending' || status === 'submitted') return { color: '#f59e0b' };
+  if (status === 'rejected') return { color: '#f87171' };
   return { color: '#94a3b8' };
 }
 
@@ -300,11 +303,12 @@ export function TradeTab() {
     timeInForce: o.timeInForce || 'day',
     brokerageOrderId: o.brokerageOrderId || o.id,
     filledAt: o.filledAt ?? null,
+    cancelReason: o.cancelReason ?? o.cancel_reason ?? null,
   }));
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
     if (historyTab === 'all') return true;
-    if (historyTab === 'open') return o.status === 'open' || o.status === 'pending' || o.status === 'submitted';
+    if (historyTab === 'open') return isWorkingStatus(o.status);
     return o.status === historyTab;
   });
 
@@ -1686,7 +1690,7 @@ export function TradeTab() {
                         Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     )}
-                    {order.status === 'open' && (
+                    {['open', 'pending', 'submitted'].includes(order.status) && (
                       <>
                         {order.submittedPrice > 0 && (
                           <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
@@ -1704,6 +1708,11 @@ export function TradeTab() {
                           </div>
                         )}
                       </>
+                    )}
+                    {['cancelled', 'rejected'].includes(order.status) && (
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                        {cancelReasonText(order)}
+                      </div>
                     )}
                   </div>
 
@@ -1731,8 +1740,8 @@ export function TradeTab() {
                         return order.date || '';
                       })()}
                     </div>
-                    {/* Cancel button for OPEN orders */}
-                    {order.status === 'open' && (
+                    {/* Cancel button for any non-terminal order (open/pending/submitted) */}
+                    {['open', 'pending', 'submitted'].includes(order.status) && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

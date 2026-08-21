@@ -17,11 +17,13 @@ import {
   resolveRequested,
   orderOrigin,
   orderRef,
+  cancelReasonText,
   OrderStepper,
   RequestedFilledBlocks,
   DetailRow,
 } from './OrderDisplay';
 import { fmtShares, fmtDollars } from '@/lib/order-format';
+import { isWorkingStatus } from '@/lib/order-format';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 
@@ -70,8 +72,7 @@ export function OrdersTab() {
     filled: allOrders.filter((o) => o.status === 'filled').length,
   };
 
-  const isWorking = (status: string) =>
-    status === 'open' || status === 'pending' || status === 'submitted';
+  const isWorking = (status: string) => isWorkingStatus(status);
 
   // Loading state — skeleton shimmer
   if (loading && allOrders.length === 0) {
@@ -343,12 +344,10 @@ export function OrdersTab() {
           {/* Requested vs Filled — always side by side */}
           <RequestedFilledBlocks order={order} />
 
-          {/* Cancellation / rejection note */}
+          {/* Cancellation / rejection note — reason-specific via shared helper */}
           {(order.status === 'cancelled' || order.status === 'rejected') && (
             <div className="cancel-note">
-              {order.status === 'cancelled'
-                ? "We could no longer confirm this order's status with your broker and marked it cancelled — verify directly with your broker if you're unsure."
-                : "This order was rejected by your broker before it could be opened — verify directly with your broker if you're unsure."}
+              {cancelReasonText(order)}
             </div>
           )}
 

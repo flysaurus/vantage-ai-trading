@@ -13,7 +13,10 @@ import {
   fmtDollars,
   authoritativeRequested,
   derivedRequested,
+  cancelReasonText,
 } from '@/lib/order-format';
+
+export { cancelReasonText };
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -45,7 +48,7 @@ export function resolveRequested(order: Order) {
 // Never render "0" or a bare blank when the truthful state is "not yet
 // available" — always say so explicitly.
 
-/** Fill-price line: "$X.XX/share", or "Price pending" when filled w/o price, "Pending" when open. */
+/** Fill-price/status line: "$X.XX/share", or an honest status word when not filled. */
 export function formatFillPriceDisplay(
   fillPrice: number | null | undefined,
   status: string,
@@ -54,7 +57,15 @@ export function formatFillPriceDisplay(
     return `$${Number(fillPrice).toFixed(2)}/share`;
   }
   const s = (status || '').toLowerCase();
-  return s === 'filled' ? 'Price pending' : 'Pending';
+  switch (s) {
+    case 'filled': return 'Price pending';
+    case 'cancelled': return 'Cancelled';
+    case 'rejected': return 'Rejected';
+    case 'open':
+    case 'pending':
+    case 'submitted': return 'Awaiting fill';
+    default: return '';
+  }
 }
 
 /** Share-count line: formatted count, or "—" when genuinely absent (never bare "0"). */

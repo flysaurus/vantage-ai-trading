@@ -11,6 +11,7 @@ import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useAccounts } from '@/context/AccountContext';
 import { syncFilledOrders, getTrades } from '@/lib/supabase/trades';
+import { isWorkingStatus } from '@/lib/order-format';
 import type { Order } from '@/types';
 import type { OrderStatus } from '@/types/broker';
 
@@ -79,6 +80,7 @@ export function useOrders() {
     updatedAt: raw.submittedAt ?? raw.updatedAt ?? raw.createdAt,
     filledAt: raw.filledAt ?? raw.filled_at ?? null,
     cancelledAt: raw.cancelledAt ?? raw.cancelled_at ?? null,
+    cancelReason: raw.cancelReason ?? raw.cancel_reason ?? null,
     source: raw.source ?? raw.origin ?? null,
     notional: raw.notional ?? null,
     orderUnit: raw.orderUnit ?? raw.order_unit ?? undefined,
@@ -162,6 +164,7 @@ export function useOrders() {
         updatedAt: o.createdAt,
         filledAt: o.filledAt ?? o.filled_at ?? null,
         cancelledAt: o.cancelledAt ?? o.cancelled_at ?? null,
+        cancelReason: (o.cancelReason ?? (o as any).cancel_reason) ?? null,
         source: o.source ?? null,
         notional: (o.notional ?? (o as any).notional) ?? null,
         orderUnit: (o.orderUnit ?? (o as any).orderUnit) as 'dollars' | 'shares' | undefined,
@@ -210,6 +213,8 @@ export function useOrders() {
           cancelledAt: o.cancelledAt ?? dbMatch.cancelledAt ?? null,
           // Fall back to DB requested qty when broker qty is 0/absent (open notional)
           qty: Number(o.qty || 0) > 0 ? o.qty : (dbMatch.requestedQty ?? dbMatch.qty ?? 0),
+          // DB is authoritative for cancel_reason (broker orders don't carry it)
+          cancelReason: o.cancelReason ?? dbMatch.cancelReason ?? null,
         };
       });
 
@@ -342,6 +347,7 @@ export function useOrders() {
               fillPrice != null && filledQty != null
                 ? fillPrice * filledQty
                 : undefined,
+            cancelReason: 'already_filled',
           });
           return { alreadyFilled: true, fillPrice, filledQty };
         }
@@ -354,14 +360,17 @@ export function useOrders() {
               : data.status === 'rejected'
                 ? 'rejected'
                 : 'open';
-        updateOrder(orderId, { status: realStatus });
+        updateOrder(orderId, {
+          status: realStatus,
+          cancelReason: realStatus === 'cancelled' ? 'external' : null,
+        });
         return { alreadyTerminal: true, status: realStatus };
       }
 
       if (!res.ok || data.success === false) {
         throw new Error(data.error || data.message || 'Cancel failed');
       }
-      updateOrder(orderId, { status: 'cancelled' });
+      updateOrder(orderId, { status: 'cancelled', cancelReason: 'user_cancelled' });
       return { cancelled: true };
     },
     [broker, isConnected, isShowingDemo, updateOrder]
@@ -397,7 +406,7 @@ export function useOrders() {
     activeFilter === 'all'
       ? orders
       : orders.filter((o) => {
-          if (activeFilter === 'open') return o.status === 'open' || o.status === 'pending' || o.status === 'submitted';
+          if (activeFilter === 'open') return isWorkingStatus(o.status);
           return o.status === activeFilter;
         });
 

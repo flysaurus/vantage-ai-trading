@@ -70,3 +70,42 @@ export function derivedRequested(f: RequestedFields): string {
     ? `≈${fmtDollars(f.requestedAmount)} est.`
     : '';
 }
+
+// ─── Cancellation reason ──────────────────────────────────────
+// Human reason for a cancelled/rejected order shown IN-APP. (The email
+// templates have their own fuller cancelReasonLine in lib/order-emails.ts that
+// includes the broker name; this is the concise card version.)
+export function cancelReasonText(order: {
+  status?: string;
+  cancelReason?: string | null;
+}): string {
+  const s = (order.status || '').toLowerCase();
+  if (s === 'rejected') {
+    return 'Rejected by your broker before it could be opened.';
+  }
+  if (s !== 'cancelled') return '';
+  switch (order.cancelReason) {
+    case 'user_cancelled':
+      return 'Cancelled by you.';
+    case 'already_filled':
+      return 'Your cancel didn\u2019t go through — the order had already filled.';
+    case 'stale_guard':
+      return 'Marked cancelled after we couldn\u2019t confirm status with your broker.';
+    case 'external':
+      return 'Cancelled outside Vantage (at your brokerage, or the order expired).';
+    default:
+      return 'Cancelled.';
+  }
+}
+
+// ─── Status predicates ────────────────────────────────────────
+// "Working" = an order still in flight (could still fill or be cancelled).
+// The Open tab filter and the Cancel button both use this exact set, so a
+// freshly-SUBMITTED order is immediately visible/actionable — never stranded.
+export const WORKING_STATUSES = ['open', 'pending', 'submitted'] as const;
+
+export function isWorkingStatus(status?: string | null): boolean {
+  return WORKING_STATUSES.includes(
+    (status || '').toLowerCase() as (typeof WORKING_STATUSES)[number],
+  );
+}

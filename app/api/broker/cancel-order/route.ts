@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
     if (dbOrderId) {
       const { error: updErr } = await supabase
         .from('orders')
-        .update({ status: 'cancelled', cancelled_at: now, updated_at: now })
+        .update({ status: 'cancelled', cancelled_at: now, updated_at: now, cancel_reason: 'user_cancelled' })
         .eq('id', dbOrderId);
       dbUpdated = !updErr;
       if (updErr) {
@@ -220,6 +220,7 @@ export async function POST(req: NextRequest) {
       orderId: brokerageOrderId,
       cancelledAt: now,
       dbUpdated,
+      cancelReason: 'user_cancelled',
       message: result.message || `Order ${brokerageOrderId} cancelled.`,
     });
   }
@@ -240,8 +241,10 @@ export async function POST(req: NextRequest) {
         patch.filled_qty = reconciled.filledShares ?? reconciled.shares ?? 0;
         patch.filled_price = reconciled.fillPrice ?? null;
         patch.filled_at = reconciled.filledAt ?? now;
+        patch.cancel_reason = 'already_filled';
       } else if (reconciled.status === 'CANCELLED') {
         patch.cancelled_at = now;
+        patch.cancel_reason = 'external';
       }
       const { error: updErr } = await supabase
         .from('orders')
