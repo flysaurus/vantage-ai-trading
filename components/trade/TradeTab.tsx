@@ -8,6 +8,7 @@ import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
+import { formatFillPriceDisplay, formatSharesDisplay } from '@/components/orders/OrderDisplay';
 
 const statusBorder: Record<string, string> = {
   filled_buy: '#10b981',
@@ -295,6 +296,10 @@ export function TradeTab() {
     basketName: o.basketName,
     basketEmoji: o.basketEmoji,
     submittedAt: o.submittedAt ?? o.createdAt ?? '',
+    type: (o.type || 'market').toLowerCase(),
+    timeInForce: o.timeInForce || 'day',
+    brokerageOrderId: o.brokerageOrderId || o.id,
+    filledAt: o.filledAt ?? null,
   }));
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
@@ -1671,7 +1676,10 @@ export function TradeTab() {
                       </span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '2px' }}>
-                      market · {order.shares} shares
+                      {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(order.shares)} shares
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#5c6579', fontFamily: 'monospace', marginBottom: '2px' }}>
+                      #{String(order.brokerageOrderId || order.id).replace(/^demo-/, '').slice(0, 8)}
                     </div>
                     {order.status === 'filled' && order.price && (
                       <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
@@ -1710,9 +1718,7 @@ export function TradeTab() {
                       {order.status.toUpperCase()}
                     </div>
                     <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      {order.price > 0
-                        ? `$${(order.price as number).toFixed(2)}/share`
-                        : (order.status === 'filled' ? 'price unavailable' : 'pending')}
+                      {formatFillPriceDisplay(order.price, order.status)}
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                       {(() => {

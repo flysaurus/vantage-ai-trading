@@ -64,10 +64,16 @@ interface SnapOrder {
   price?: number;
   stop_price?: number;
   quantity?: number;
-  filled_quantity?: number;
-  average_fill_price?: number;
-  total_cost?: number;
-  fees?: number;
+  filled_quantity?: number | string | null;
+  average_fill_price?: number | string | null;
+  execution_price?: number | string | null;
+  total_quantity?: number | string | null;
+  open_quantity?: number | string | null;
+  canceled_quantity?: number | string | null;
+  total_cost?: number | string | null;
+  fees?: number | string | null;
+  time_placed?: string;
+  time_executed?: string;
   trade_date?: string;
   create_date?: string;
 }
@@ -483,14 +489,14 @@ export class SnapTradeBroker implements BrokerEngine {
     const nextOpen = !this.isMarketOpen() ? this.getNextOpenLabel() : undefined;
 
     // ── Fill details (authoritative for immediate FILLED / PARTIALLY_FILLED) ──
-    // SnapTrade's order response uses `filled_quantity` + `average_fill_price`
-    // (NOT `filled_price`), and notional (dollar) orders may omit `quantity`
-    // entirely — so derive the filled share count from those fields, with a
-    // notional_value ÷ average_fill_price fallback for dollar-amount orders.
+    // SnapTrade's order response uses `filled_quantity` + `execution_price`
+    // (NOT `filled_price`/`average_fill_price`), and notional (dollar) orders
+    // may omit `quantity` entirely — so derive the filled share count from those
+    // fields, with a notional_value ÷ execution_price fallback for dollar orders.
     const isFilledNow = status === 'FILLED' || status === 'PARTIALLY_FILLED';
     const rawFilledQty = Number(result.filled_quantity || 0);
     const rawQty = Number(result.quantity || 0);
-    const avgFillPx = Number(result.average_fill_price || result.filled_price || result.price || 0);
+    const avgFillPx = Number(result.execution_price ?? result.average_fill_price ?? result.filled_price ?? result.price ?? 0);
     const notional = Number(result.notional_value || 0);
     const filledShares = isFilledNow
       ? (rawFilledQty || rawQty || (avgFillPx > 0 && notional > 0 ? notional / avgFillPx : 0))
@@ -513,7 +519,7 @@ export class SnapTradeBroker implements BrokerEngine {
       fillPrice,
       filledShares: filledShares || undefined,
       totalCost,
-      filledAt: result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
+      filledAt: result.time_executed || result.filled_at || (status === 'FILLED' ? new Date().toISOString() : undefined),
       nextOpenLabel: nextOpen,
     };
   }
@@ -918,7 +924,7 @@ export class SnapTradeBroker implements BrokerEngine {
     // SnapTrade returns numeric fields as strings (e.g. quantity: "10.5"), so
     // coerce every numeric value before it flows into BrokerOrder / the UI.
     const qty = Number(raw.quantity || raw.filled_quantity || 0);
-    const fillPx = Number(raw.average_fill_price || raw.price || 0);
+    const fillPx = Number(raw.execution_price ?? raw.average_fill_price ?? raw.price ?? 0);
     const isFilled = _mapSnapTradeStatusToOrderStatus(raw.status) === 'FILLED';
 
     return {
@@ -935,8 +941,8 @@ export class SnapTradeBroker implements BrokerEngine {
       fillPrice: fillPx || undefined,
       totalCost: Number(raw.total_cost || (fillPx * qty) || 0),
       timeInForce: _mapSnapTradeTimeInForce(raw.time_in_force),
-      submittedAt: raw.create_date || raw.trade_date || new Date().toISOString(),
-      filledAt: isFilled ? (raw.trade_date || new Date().toISOString()) : undefined,
+      submittedAt: raw.time_placed || raw.create_date || raw.trade_date || new Date().toISOString(),
+      filledAt: isFilled ? (raw.time_executed || raw.trade_date || new Date().toISOString()) : undefined,
       cancelledAt: _mapSnapTradeStatusToOrderStatus(raw.status) === 'CANCELLED'
         ? new Date().toISOString() : undefined,
       note: raw.order_role || undefined,
