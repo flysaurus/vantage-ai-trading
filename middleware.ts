@@ -41,7 +41,6 @@ const PUBLIC_ROUTES = [
   '/api/auth/is-admin', // admin status check — returns {isAdmin:true/false} without auth redirect
   '/api/symbols/search', // public — Finnhub company search
   '/api/symbols/check', // public — single-symbol validation
-  '/api/debug/raw-snaptrade', // TEMPORARY — raw SnapTrade response dump (self-gated via key)
   '/api/symbols/all', // public — full symbol cache for client validation
   '/api/invites/validate', // public — invite token/email validation (pre-auth signup gate)
   '/api/access-requests', // public POST (waitlist submit), GET is admin-gated internally
