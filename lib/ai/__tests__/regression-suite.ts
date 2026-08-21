@@ -13,6 +13,7 @@
 
 import { validateResponse, stripForeignSuffixes, stripRecommendFromClarify, detectMetricIncoherence, detectIncoherence } from '../validator';
 import { classifyIntent, createConversationState, resolveVehicleForRequest } from '../manager';
+import { classify } from '../classifier';
 import { sanitizeClarifyResponse, analyzeMarkerPresence } from '../presenter';
 import { parsePortfolioBlocks } from '@/lib/portfolio-blocks';
 import { NOT_TICKERS, FOREIGN_EXCHANGE_SUFFIXES, isFilteredCommonWord } from '@/lib/symbol-resolution';
@@ -92,7 +93,12 @@ test('Unknown style falls back to broad mid+ cap', 'style_defaults', () => {
   assertEq(defaults.market_cap_min, 2_000_000_000, 'Unknown: market_cap_min');
 });
 
-// ── Suite: Intent Classification ───────────────────────────
+// ── Suite: Intent Classification (legacy regex path) ───────
+// classifyIntent is no longer the authoritative router — lib/ai/classifier.ts
+// (see the "classifier" suite below) owns the primary routing decision. But
+// classifyIntent is STILL live: resolveVehicleForRequest uses it to detect
+// portfolio_build messages during vehicle triage, so these fixtures remain
+// load-bearing.
 
 test('Fresh build request → portfolio_build', 'intent', () => {
   const result = classifyIntent('Build me a $5000 growth portfolio');
@@ -178,6 +184,57 @@ test('Open-ended build with no ticker still CLARIFYs on vehicle', 'intent', () =
   const result = classifyIntent('build me a $10,000 portfolio');
   assertEq(result.intent, 'portfolio_build', 'no-ticker build stays portfolio_build');
   assert(result.needsVehicleClarify, 'no vehicle specified → vehicle clarify still required');
+});
+
+// ── Suite: Authoritative Classifier (GPT-5 nano) ────────────
+// lib/ai/classifier.ts replaced the regex classifyIntent for the PRIMARY
+// routing decision. Only its DETERMINISTIC parts are tested here: the
+// synchronous fast-path (no model call) and the fail-open default (no API
+// key). The model path itself needs a live key + network and is covered by
+// the manual classifier smoke test instead.
+
+test('fast-path: "buy AAPL" → direct_trade_instruction', 'classifier', async () => {
+  const r = await classify('buy AAPL');
+  assertEq(r.category, 'direct_trade_instruction', 'direct buy is a trade');
+  assertEq(r.source, 'fast_path', 'no model call needed');
+  assertEq(r.vehicle, 'unspecified', 'vehicle not meaningful for a trade');
+});
+
+test('fast-path: "sell NVDA" → direct_trade_instruction', 'classifier', async () => {
+  const r = await classify('sell NVDA');
+  assertEq(r.category, 'direct_trade_instruction', 'imperative sell with ticker is a trade');
+  assertEq(r.source, 'fast_path', 'no model call needed');
+});
+
+test('fast-path: "$1000 VOO" → direct_trade_instruction', 'classifier', async () => {
+  const r = await classify('$1000 VOO');
+  assertEq(r.category, 'direct_trade_instruction', 'ticker + amount is a trade');
+  assertEq(r.source, 'fast_path', 'no model call needed');
+});
+
+test('fast-path: "buy 2 shares AAPL" → direct_trade_instruction', 'classifier', async () => {
+  const r = await classify('buy 2 shares AAPL');
+  assertEq(r.category, 'direct_trade_instruction', 'buy N shares TICKER is a trade');
+  assertEq(r.source, 'fast_path', 'no model call needed');
+});
+
+test('fast-path: greeting → off_topic (trivial)', 'classifier', async () => {
+  const r = await classify('hi');
+  assertEq(r.category, 'off_topic', 'greeting is off_topic');
+  assert(r.trivial === true, 'trivial flag set');
+});
+
+test('fail-open: no API key → single_security_research (NEVER portfolio_construction)', 'classifier', async () => {
+  const prev = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    const r = await classify('build me a portfolio for all my cash');
+    assertEq(r.source, 'fail_open', 'missing key must fail open');
+    assertEq(r.category, 'single_security_research', 'light path, not a build');
+    assert(r.category !== 'portfolio_construction', 'must NEVER silently route to a full build');
+  } finally {
+    if (prev !== undefined) process.env.OPENAI_API_KEY = prev;
+  }
 });
 
 // ── Suite: Foreign Suffix Stripping ────────────────────────
