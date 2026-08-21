@@ -27,58 +27,17 @@
 
 import { sendEmail } from '@/lib/email';
 
-// ─── Rounding helpers (mirror OrdersTab) ─────────────────────
+import {
+  fmtShares,
+  fmtDollars,
+  fmtPct,
+  resolveUnit,
+  authoritativeRequested,
+  derivedRequested,
+  type RequestedFields,
+} from '@/lib/order-format';
 
-function fmtShares(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return '—';
-  return `${Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
-}
-
-function fmtDollars(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return '—';
-  return `$${Number(n).toFixed(2)}`;
-}
-
-function fmtPct(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return '—';
-  return `${Number(n).toFixed(2)}%`;
-}
-
-// ─── Four-field requested display ────────────────────────────
-// Authoritative field bold; derived estimate labeled + muted.
-
-export interface RequestedFields {
-  orderUnit?: 'dollars' | 'shares' | null;
-  requestedAmount?: number | null;
-  requestedQty?: number | null;
-}
-
-function resolveUnit(f: RequestedFields): 'dollars' | 'shares' {
-  if (f.orderUnit === 'dollars' || f.orderUnit === 'shares') return f.orderUnit;
-  return f.requestedAmount != null && f.requestedAmount > 0 ? 'dollars' : 'shares';
-}
-
-/** Returns the authoritative requested string (bold) — no derived estimate. */
-function authoritativeRequested(f: RequestedFields): string {
-  if (resolveUnit(f) === 'dollars') {
-    return fmtDollars(f.requestedAmount);
-  }
-  const q = f.requestedQty;
-  const n = q != null && q > 0 ? Number(q) : 0;
-  return n > 0 ? `${fmtShares(n)} share${n === 1 ? '' : 's'}` : '—';
-}
-
-/** Returns the derived estimate string (muted) if any, else '' (HTML). */
-function derivedRequested(f: RequestedFields): string {
-  if (resolveUnit(f) === 'dollars') {
-    return f.requestedQty != null && f.requestedQty > 0
-      ? `≈${fmtShares(f.requestedQty)} shares est.`
-      : '';
-  }
-  return f.requestedAmount != null && f.requestedAmount > 0
-    ? `≈${fmtDollars(f.requestedAmount)} est.`
-    : '';
-}
+export type { RequestedFields };
 
 /** Full requested line: "<strong>authoritative</strong> (derived)". */
 function requestedLine(f: RequestedFields): string {
@@ -528,6 +487,5 @@ export async function notifyBasketEvent(
   }
 }
 
-// Re-export shared helpers for reuse by the in-app bell writer (keeps
-// rounding + requested-line formatting single-sourced).
+// Re-export shared helpers for backward-compat with the bell writer.
 export { fmtShares, fmtDollars, fmtPct, authoritativeRequested, derivedRequested, resolveUnit };

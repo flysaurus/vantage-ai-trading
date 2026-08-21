@@ -24,8 +24,9 @@ import {
   fmtDollars,
   authoritativeRequested,
   derivedRequested,
-} from '@/lib/order-emails';
-import type { OrderEmailEvent, RequestedFields } from '@/lib/order-emails';
+  type RequestedFields,
+} from '@/lib/order-format';
+import type { OrderEmailEvent } from '@/lib/order-emails';
 
 const ACTION_URL = '/?tab=invest';
 

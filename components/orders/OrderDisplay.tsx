@@ -8,6 +8,12 @@
 // divergence between the two previously-independent render paths.
 
 import type { Order } from '@/types';
+import {
+  fmtShares,
+  fmtDollars,
+  authoritativeRequested,
+  derivedRequested,
+} from '@/lib/order-format';
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -20,16 +26,8 @@ export function formatOrderDate(date: string) {
   );
 }
 
-/** Shared shares formatter — never renders a bare "0"; empty string means "not yet available". */
-export function fmtShares(n: number | null | undefined): string {
-  if (n == null || isNaN(n)) return '';
-  return `${Number(n).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
-}
-
-export function fmtDollars(n: number | null | undefined): string {
-  if (n == null || isNaN(n)) return '';
-  return `$${Number(n).toFixed(2)}`;
-}
+// (fmtShares / fmtDollars are imported from lib/order-format — single source
+// of truth shared with the email + bell writers.)
 
 // ─── Requested vs filled resolution ──────────────────────────────────────────
 // The four-field model: order_unit decides which "requested" field is
@@ -191,15 +189,15 @@ export function RequestedFilledBlocks({ order }: { order: Order }) {
   const r = resolveRequested(order);
   const openNow = order.status === 'open' || order.status === 'pending' || order.status === 'submitted';
 
-  let reqValue: string;
-  let reqEst: string | null = null;
-  if (r.unit === 'dollars') {
-    reqValue = r.requestedAmount != null && r.requestedAmount > 0 ? fmtDollars(r.requestedAmount) : '—';
-    reqEst = r.requestedQty != null && r.requestedQty > 0 ? `≈${fmtShares(r.requestedQty)} shares est.` : null;
-  } else {
-    reqValue = r.requestedQty != null && r.requestedQty > 0 ? `${fmtShares(r.requestedQty)} shares` : '—';
-    reqEst = r.requestedAmount != null && r.requestedAmount > 0 ? `≈${fmtDollars(r.requestedAmount)} est.` : null;
-  }
+  // Single-source the "Requested $X (≈Y shares est.)" pattern via the shared
+  // four-field helpers so in-app cards and emails can never diverge.
+  const requestedFields = {
+    orderUnit: r.unit,
+    requestedAmount: r.requestedAmount,
+    requestedQty: r.requestedQty,
+  };
+  const reqValue = authoritativeRequested(requestedFields);
+  const reqEst = derivedRequested(requestedFields) || null;
 
   const fillQty = order.filledQty ?? order.qty;
   const fillPrice = order.filledPrice;

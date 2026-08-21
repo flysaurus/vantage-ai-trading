@@ -14,8 +14,6 @@ import type { Order } from '@/types';
 
 import {
   formatOrderDate,
-  fmtShares,
-  fmtDollars,
   resolveRequested,
   orderOrigin,
   orderRef,
@@ -23,6 +21,7 @@ import {
   RequestedFilledBlocks,
   DetailRow,
 } from './OrderDisplay';
+import { fmtShares, fmtDollars } from '@/lib/order-format';
 
 const FILTERS = ['open', 'filled', 'cancelled', 'all'] as const;
 
