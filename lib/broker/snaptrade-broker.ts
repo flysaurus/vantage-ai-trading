@@ -572,6 +572,9 @@ export class SnapTradeBroker implements BrokerEngine {
 
     for (const stock of req.stocks) {
       try {
+        // Per-leg Vantage UUID — sent as client_order_id so each basket leg is
+        // traceable back to Vantage's own orders.id (same pattern as single orders).
+        const legClientOrderId = crypto.randomUUID();
         const result = await this.placeOrder({
           symbol: stock.symbol,
           side: 'BUY',
@@ -582,6 +585,7 @@ export class SnapTradeBroker implements BrokerEngine {
           basketName: req.basketName,
           basketEmoji: req.basketEmoji,
           basketDisplayName: req.basketDisplayName,
+          clientOrderId: legClientOrderId,
         });
         if (!result.success) {
           if (result.message) errors.push(`${stock.symbol}: ${result.message}`);
@@ -589,8 +593,9 @@ export class SnapTradeBroker implements BrokerEngine {
         }
         // Notional orders don't echo reservedAmount back from placeOrder —
         // carry the requested dollar amount so queued legs still report an
-        // accurate reserve total.
-        orders.push({ ...result, reservedAmount: stock.dollarAmount });
+        // accurate reserve total. Also stamp symbol + clientOrderId so the
+        // caller can map each leg back for per-leg persistence.
+        orders.push({ ...result, symbol: stock.symbol, clientOrderId: legClientOrderId, reservedAmount: stock.dollarAmount });
         totalSpent += result.totalCost || 0;
         totalReserved += stock.dollarAmount;
       } catch (err) {

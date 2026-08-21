@@ -64,6 +64,10 @@ export interface OrderResult {
   filledShares?: number;
   totalCost?: number;
   filledAt?: string;
+  /** Symbol for this leg (populated on basket orders so results map back to legs). */
+  symbol?: string;
+  /** Vantage UUID sent as client_order_id for this leg (basket orders). */
+  clientOrderId?: string;
 }
 
 /**

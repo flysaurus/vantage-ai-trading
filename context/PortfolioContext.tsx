@@ -1173,20 +1173,55 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
     submittingBasketRef.current = true;
     try {
-    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
-    if (!b) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Broker not initialized' };
-    const result = await b.placeBasketOrder({
-      basketId,
-      basketName,
-      basketEmoji,
-      basketDisplayName: displayName,
-      stocks: stocks.map(s => ({ symbol: s.symbol, dollarAmount: (s.allocationPct / 100) * budget * 0.95, allocationPct: s.allocationPct, fallbackPrice: s.fallbackPrice })),
-      totalBudget: budget,
-    });
+    // Build the leg payload once (shared by demo + real-broker paths).
+    const stocksPayload = stocks.map(s => ({ symbol: s.symbol, dollarAmount: (s.allocationPct / 100) * budget * 0.95, allocationPct: s.allocationPct, fallbackPrice: s.fallbackPrice }));
+
+    // Real SnapTrade baskets MUST go through the server-side proxy — the
+    // `broker` from useBroker() is a read-only SnapTradeAdapter with no
+    // `placeBasketOrder` method (was crashing: "placeBasketOrder is not a
+    // function"). Mirrors executeTrade's isRealSnapTrade branch.
+    const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
+
+    let result: {
+      success: boolean;
+      status?: string;
+      message?: string;
+      error?: string;
+      nextOpenLabel?: string;
+      orders: Array<{ totalCost?: number; reservedAmount?: number }>;
+      failed?: number;
+    };
+
+    if (isRealSnapTrade) {
+      result = await fetch('/api/broker/execute-basket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          basketId,
+          basketName,
+          basketEmoji,
+          basketDisplayName: displayName,
+          stocks: stocksPayload,
+          totalBudget: budget,
+        }),
+      }).then(r => r.json());
+    } else {
+      const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+      if (!b) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Broker not initialized' };
+      result = await b.placeBasketOrder({
+        basketId,
+        basketName,
+        basketEmoji,
+        basketDisplayName: displayName,
+        stocks: stocksPayload,
+        totalBudget: budget,
+      });
+    }
+
     if (!result.success) {
-      setToast({ message: `❌ ${result.message || 'Basket order failed'}`, type: 'error' });
+      setToast({ message: `❌ ${result.message || result.error || 'Basket order failed'}`, type: 'error' });
       setTimeout(() => setToast(null), 4000);
-      return { success: false, executed: 0, failed: stocks.length, totalSpent: 0, error: result.message };
+      return { success: false, executed: 0, failed: stocks.length, totalSpent: 0, error: result.message || result.error };
     }
     // Post-trade refresh is best-effort. A failed refresh must NOT flip a
     // successful placement into a failure (which would invite a double-submit
@@ -1204,7 +1239,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const totalSpent = result.orders.reduce((sum, o) => sum + (o.totalCost || o.reservedAmount || 0), 0);
     const failedCount = result.failed ?? 0;
     if (result.status === 'OPEN') {
-      setToast({ message: `🧺 Basket "${basketName}" queued — ${result.nextOpenLabel}. ${result.orders.length} stocks, $${totalSpent.toFixed(2)} reserved.`, type: 'success' });
+      setToast({ message: `🧺 Basket "${basketName}" queued — ${result.nextOpenLabel || 'pending'}. ${result.orders.length} stocks, $${totalSpent.toFixed(2)} reserved.`, type: 'success' });
     } else {
       const failedNote = failedCount > 0 ? ` (${failedCount} failed)` : '';
       setToast({ message: `🧺 Bought ${result.orders.length} stocks in "${basketName}" for $${totalSpent.toFixed(2)}${failedNote}`, type: 'success' });
@@ -1214,7 +1249,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     } finally {
       submittingBasketRef.current = false;
     }
-  }, [brokerRef, refreshStateFromBroker, loadBaskets, broker, isShowingDemo]);
+  }, [brokerRef, refreshStateFromBroker, loadBaskets, broker, isShowingDemo, brokerSource]);
 
   // ── sellBasketPositions ──
   const sellBasketPositions = useCallback(async (
