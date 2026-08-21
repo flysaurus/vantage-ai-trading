@@ -1495,16 +1495,25 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
       setExecuting(false);
       return;
     }
-    const result = await executeBasketTrade(
-      isBasketEditMode ? 'custom_' + Date.now() : selectedCurated.id,
-      isBasketEditMode ? (editBasket?.basketName || selectedCurated.name) : selectedCurated.name,
-      isBasketEditMode ? (editBasket?.basketEmoji || selectedCurated.emoji) : selectedCurated.emoji,
-      basketDisplayName || (isBasketEditMode ? (editBasket?.basketDisplayName || selectedCurated.name) : selectedCurated.name),
-      reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name, fallbackPrice: s.price })),
-      bNum,
-    );
+    let result: Awaited<ReturnType<typeof executeBasketTrade>>;
+    try {
+      result = await executeBasketTrade(
+        isBasketEditMode ? 'custom_' + Date.now() : selectedCurated.id,
+        isBasketEditMode ? (editBasket?.basketName || selectedCurated.name) : selectedCurated.name,
+        isBasketEditMode ? (editBasket?.basketEmoji || selectedCurated.emoji) : selectedCurated.emoji,
+        basketDisplayName || (isBasketEditMode ? (editBasket?.basketDisplayName || selectedCurated.name) : selectedCurated.name),
+        reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name, fallbackPrice: s.price })),
+        bNum,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unexpected error placing basket order';
+      console.error('[BuildBasketModal] executeBasketTrade threw:', err);
+      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: msg });
+      return;
+    } finally {
+      setExecuting(false);
+    }
     setExecutionResult(result);
-    setExecuting(false);
     if (result.success) {
       const b = selectedCurated!;
       const market = getMarketStatus();

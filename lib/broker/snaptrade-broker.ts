@@ -524,14 +524,93 @@ export class SnapTradeBroker implements BrokerEngine {
     };
   }
 
-  async placeBasketOrder(_req: BasketOrderRequest): Promise<BasketOrderResult> {
+  /**
+   * Place a basket order for a SnapTrade account.
+   *
+   * SnapTrade has no native "basket" primitive — a basket is realized as N
+   * individual market (notional) orders, one per leg, placed sequentially via
+   * placeOrder(). We aggregate the per-leg results into a single
+   * BasketOrderResult so the UI treats it as one logical submission.
+   */
+  async placeBasketOrder(req: BasketOrderRequest): Promise<BasketOrderResult> {
+    if (!this.tradingEnabled) {
+      return {
+        success: false,
+        basketOrderId: 'readonly',
+        status: 'REJECTED',
+        orders: [],
+        totalReserved: 0,
+        message: `${this.brokerName} is read-only — re-authorize with trading access to place orders.`,
+      };
+    }
+
+    const accountId = await this._getPrimaryAccountId();
+    if (!accountId) {
+      return {
+        success: false,
+        basketOrderId: 'no-account',
+        status: 'REJECTED',
+        orders: [],
+        totalReserved: 0,
+        message: 'No trading account found for this connection.',
+      };
+    }
+
+    const basketOrderId = crypto.randomUUID();
+
+    const orders: OrderResult[] = [];
+    const errors: string[] = [];
+    let totalSpent = 0;
+    let totalReserved = 0;
+
+    for (const stock of req.stocks) {
+      try {
+        const result = await this.placeOrder({
+          symbol: stock.symbol,
+          side: 'BUY',
+          type: 'market',
+          dollarAmount: stock.dollarAmount,
+          timeInForce: 'day',
+          basketId: req.basketId,
+          basketName: req.basketName,
+          basketEmoji: req.basketEmoji,
+          basketDisplayName: req.basketDisplayName,
+        });
+        if (!result.success) {
+          if (result.message) errors.push(`${stock.symbol}: ${result.message}`);
+          continue;
+        }
+        // Notional orders don't echo reservedAmount back from placeOrder —
+        // carry the requested dollar amount so queued legs still report an
+        // accurate reserve total.
+        orders.push({ ...result, reservedAmount: stock.dollarAmount });
+        totalSpent += result.totalCost || 0;
+        totalReserved += stock.dollarAmount;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        errors.push(`${stock.symbol}: ${msg}`);
+      }
+    }
+
+    const executed = orders.length;
+    const failed = req.stocks.length - executed;
+    const hasWorking = orders.some(o => o.status === 'OPEN' || o.status === 'SUBMITTED');
+    const status: OrderStatus = executed === 0
+      ? 'REJECTED'
+      : hasWorking
+        ? 'OPEN'
+        : 'FILLED';
+
     return {
-      success: false,
-      basketOrderId: 'not-implemented',
-      status: 'REJECTED',
-      orders: [],
-      totalReserved: 0,
-      message: 'Basket orders are not supported via SnapTrade — place individual orders instead.',
+      success: executed > 0,
+      basketOrderId,
+      status,
+      orders,
+      totalReserved,
+      totalSpent,
+      executed,
+      failed,
+      message: failed > 0 ? errors.join(' · ') : undefined,
     };
   }
 

@@ -1188,16 +1188,29 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => setToast(null), 4000);
       return { success: false, executed: 0, failed: stocks.length, totalSpent: 0, error: result.message };
     }
-    await refreshStateFromBroker();
-    await loadBaskets();
+    // Post-trade refresh is best-effort. A failed refresh must NOT flip a
+    // successful placement into a failure (which would invite a double-submit
+    // on retry). Log and continue.
+    try {
+      await refreshStateFromBroker();
+    } catch (err) {
+      console.warn('[executeBasketTrade] refreshStateFromBroker failed (non-fatal):', err);
+    }
+    try {
+      await loadBaskets();
+    } catch (err) {
+      console.warn('[executeBasketTrade] loadBaskets failed (non-fatal):', err);
+    }
     const totalSpent = result.orders.reduce((sum, o) => sum + (o.totalCost || o.reservedAmount || 0), 0);
+    const failedCount = result.failed ?? 0;
     if (result.status === 'OPEN') {
       setToast({ message: `🧺 Basket "${basketName}" queued — ${result.nextOpenLabel}. ${result.orders.length} stocks, $${totalSpent.toFixed(2)} reserved.`, type: 'success' });
     } else {
-      setToast({ message: `🧺 Bought ${result.orders.length} stocks in "${basketName}" for $${totalSpent.toFixed(2)}`, type: 'success' });
+      const failedNote = failedCount > 0 ? ` (${failedCount} failed)` : '';
+      setToast({ message: `🧺 Bought ${result.orders.length} stocks in "${basketName}" for $${totalSpent.toFixed(2)}${failedNote}`, type: 'success' });
     }
     setTimeout(() => setToast(null), 5000);
-    return { success: true, executed: result.orders.length, failed: 0, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
+    return { success: true, executed: result.orders.length, failed: failedCount, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
     } finally {
       submittingBasketRef.current = false;
     }
