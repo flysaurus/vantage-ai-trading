@@ -23,6 +23,17 @@
   --text-muted: rgba(255, 255, 255, 0.35);
   --text-placeholder: #334155;
 
+  /* Brightened secondary/faint tokens for improved contrast (per basket-lot spec) */
+  --dim: #aab4c7;
+  --faint: #8794a8;
+  --cyan: #22d3ee;
+  --cyan-dim: rgba(34,211,238,0.12);
+  --violet: #b389f0;
+  --violet-dim: rgba(179,137,240,0.12);
+  --emerald-dim: rgba(16,185,129,0.12);
+  --amber-dim: rgba(245,158,11,0.12);
+  --mono-font: 'JetBrains Mono', monospace;
+
   /* ── Accent ── */
   --accent: #22d3ee;
   --accent-10: rgba(34,211,238,0.10);
