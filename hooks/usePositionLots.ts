@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getActiveLotCount, getTotalRemainingQty, type Lot } from '@/lib/fifo-engine';
 
 export interface PositionLotData {
@@ -41,23 +41,27 @@ export function usePositionLots(
     let cancelled = false;
     mountedRef.current = true;
 
+    // Capture in local variables for TS narrowing across async boundary
+    const uid = userId;
+    const symbol = ticker;
+    const connId = connectionId;
+
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const supabase = createClient();
-
-        let query = supabase
+        const client = getSupabaseBrowserClient();
+        let query = client
           .from('position_lots')
           .select('*')
-          .eq('user_id', userId)
-          .eq('ticker', ticker.toUpperCase())
+          .eq('user_id', uid)
+          .eq('ticker', symbol!.toUpperCase())
           .gt('remaining_qty', 0)
           .order('filled_at', { ascending: true });
 
         // If connectionId is provided, scope to that connection
-        if (connectionId) {
-          query = query.eq('account_id', connectionId);
+        if (connId) {
+          query = query.eq('account_id', connId);
         }
 
         const { data, error: fetchErr } = await query;
@@ -77,6 +81,7 @@ export function usePositionLots(
             filled_at: row.filled_at,
             basket_id: row.basket_id || null,
             origin_tag: row.origin_tag || null,
+            source: row.source || null,
           }));
           setLots(mapped);
         }

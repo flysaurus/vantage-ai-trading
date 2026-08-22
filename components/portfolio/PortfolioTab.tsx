@@ -12,7 +12,9 @@ import type { Basket } from '@/context/PortfolioContext';
 import SellModal from './SellModal';
 import TradeTicket from './TradeTicket';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
+import BasketCard from './BasketCard';
 import PortfolioChart from './PortfolioChart';
+import PositionCardV3 from './PositionCardV3';
 import MarketOverview from '../shared/MarketOverview';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
@@ -927,6 +929,14 @@ export function PortfolioTab() {
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [expandedBasketIds, setExpandedBasketIds] = useState<Set<string>>(new Set());
+  // Phase 4: Basket ticker navigation state
+  const [navigatingBasketTicker, setNavigatingBasketTicker] = useState<{
+    symbol: string;
+    basketId: string;
+    basketName: string;
+    basketEmoji: string;
+    tickerData: any;
+  } | null>(null);
   const briefsRef = useRef<HTMLDivElement>(null);
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
@@ -1346,8 +1356,13 @@ export function PortfolioTab() {
           };
         });
 
+        // Filter out closed/liquidated baskets (Phase 4 Part D)
+        const activeBaskets = baskets.filter(
+          (b: Basket) => b.status !== 'closed' && (b as any).status !== 'liquidated'
+        );
+
         // Combine context baskets + position-based basket groups into one render list
-        const allBasketRows = [...baskets, ...positionBasketGroups];
+        const allBasketRows = [...activeBaskets, ...positionBasketGroups];
 
         const hasBasketsOrPositions = allBasketRows.length > 0 || filteredPositions.length > 0;
         if (!hasBasketsOrPositions) {
@@ -1376,151 +1391,179 @@ export function PortfolioTab() {
 
         return (
           <>
-            {/* Render baskets interleaved with positions */}
+            {/* Render baskets interleaved with positions (Phase 4: BasketCard) */}
             {allBasketRows.map((basket: any) => {
               const isExpanded = expandedBasketIds.has(basket.id);
-              const plColor = basket.totalPnL >= 0 ? '#10b981' : '#ef4444';
-              const plSign = basket.totalPnL >= 0 ? '+' : '';
 
               return (
-                <div key={`basket-${basket.id}`} style={{
-                  margin: '0 14px 8px',
-                  background: '#1a2235',
-                  border: '1px solid rgba(34,211,238,0.12)',
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                }}>
-                  {/* Basket Header Row */}
-                  <div
-                    onClick={() => {
-                      if (selectMode) {
-                        setSelectedSymbols(prev => {
-                          const next = new Set(prev);
-                          const key = `basket:${basket.id}`;
-                          if (next.has(key)) next.delete(key);
-                          else next.add(key);
-                          return next;
-                        });
-                        return;
-                      }
-                      setExpandedBasketIds(prev => {
-                        const next = new Set(prev);
-                        if (next.has(basket.id)) next.delete(basket.id);
-                        else next.add(basket.id);
-                        return next;
-                      });
-                    }}
-                    style={{
-                      padding: '14px 16px',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                      {selectMode && (
-                        <div onClick={(e) => { e.stopPropagation();
-                          setSelectedSymbols(prev => {
-                            const next = new Set(prev);
-                            const key = `basket:${basket.id}`;
-                            if (next.has(key)) next.delete(key);
-                            else next.add(key);
-                            return next;
-                          });
-                        }} style={{ flexShrink: 0 }}>
-                          <div style={{
-                            width: 18, height: 18, borderRadius: 9,
-                            border: `2px solid ${selectedSymbols.has(`basket:${basket.id}`) ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
-                            background: selectedSymbols.has(`basket:${basket.id}`) ? '#22d3ee' : 'transparent',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            {selectedSymbols.has(`basket:${basket.id}`) && <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>}
-                          </div>
-                        </div>
-                      )}
-
-                      
-                      <span style={{ fontSize: 20 }}>{basket.emoji || '🧺'}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: '#ffffff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {basket.name}
-                        </div>
-                          <span style={{
-                            background: 'rgba(34,211,238,0.12)', color: '#22d3ee',
-                            fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 999,
-                            flexShrink: 0, lineHeight: 1.4,
-                          }}>BASKET</span>
-                        <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
-                          {basket.activeCount} stock{basket.activeCount !== 1 ? 's' : ''}
-                          {basket.status === 'partial' && <span style={{ color: '#f59e0b', marginLeft: 4 }}>· Partial</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                      <div style={{ color: '#ffffff', fontWeight: 600, fontSize: 14 }}>
-                        ${basket.marketValue.toLocaleString('en-US', DOLLAR_FMT)}
-                      </div>
-                      <div style={{ color: plColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>
-                        {plSign}${Math.abs(basket.totalPnL).toLocaleString('en-US', DOLLAR_FMT)} ({plSign}{basket.totalPnLPct.toFixed(1)}%)
-                      </div>
-                    </div>
-                    <span style={{
-                      marginLeft: 8, color: '#64748b', fontSize: 11,
-                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.2s',
-                    }}>▼</span>
-                  </div>
-
-                  {/* Expanded: Shared Basket Action Panel (stats + positions + buy/sell) */}
-                  {isExpanded && (
-                    <BasketActionPanel
-                        basketId={basket.id}
-                        basketName={basket.name}
-                        basketEmoji={basket.emoji || '🧺'}
-                        positions={basket.positions.map((p: any) => ({
-                          symbol: p.symbol,
-                          shares: p.shares,
-                          avgCost: p.avgCost,
-                          currentPrice: p.currentPrice || p.avgCost,
-                          allocationPct: p.allocationPct || 0,
-                          marketValue: p.marketValue,
-                          totalPnL: p.totalPnL,
-                          totalPnLPct: p.totalPnLPct,
-                          name: p.name,
-                          status: p.status,
-                          sector: p.sector,
-                        }))}
-                        totalCost={basket.totalCost}
-                        marketValue={basket.marketValue}
-                        totalPnL={basket.totalPnL}
-                        totalPnLPct={basket.totalPnLPct}
-                        context="portfolio"
-                      />
-                  )}
-
-                </div>
+                <BasketCard
+                  key={`basket-${basket.id}`}
+                  basket={{
+                    id: basket.id,
+                    name: basket.name,
+                    emoji: basket.emoji || '🧺',
+                    positions: basket.positions.map((p: any) => ({
+                      symbol: p.symbol,
+                      shares: p.shares,
+                      avgCost: p.avgCost,
+                      currentPrice: p.currentPrice || p.avgCost,
+                      allocationPct: p.allocationPct || 0,
+                      marketValue: p.marketValue,
+                      totalPnL: p.totalPnL,
+                      totalPnLPct: p.totalPnLPct,
+                      name: p.name,
+                      status: p.status,
+                      sector: p.sector,
+                    })),
+                    totalCost: basket.totalCost,
+                    marketValue: basket.marketValue,
+                    totalPnL: basket.totalPnL,
+                    totalPnLPct: basket.totalPnLPct,
+                    activeCount: basket.activeCount,
+                    status: basket.status,
+                  }}
+                  userId={(user?.id as string) || undefined}
+                  isExpanded={isExpanded}
+                  isSelected={selectedSymbols.has(`basket:${basket.id}`)}
+                  selectMode={selectMode}
+                  onToggleExpand={() => {
+                    setExpandedBasketIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(basket.id)) next.delete(basket.id);
+                      else next.add(basket.id);
+                      return next;
+                    });
+                  }}
+                  onToggleSelect={() => {
+                    setSelectedSymbols(prev => {
+                      const next = new Set(prev);
+                      const key = `basket:${basket.id}`;
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    });
+                  }}
+                  onBuy={async () => {
+                    // Open trade ticket for each active position in the basket
+                    setTradeTicket({
+                      symbol: basket.positions[0]?.symbol || '',
+                      side: 'BUY',
+                      currentPrice: basket.positions[0]?.currentPrice || 0,
+                      sharesHeld: 0,
+                      availableCash: computeAvailableCash(displayAccount),
+                    });
+                  }}
+                  onSell={async () => {
+                    // Sell entire basket
+                    const activeSymbols = basket.positions
+                      .filter((p: any) => p.status === 'active')
+                      .map((p: any) => p.symbol);
+                    if (activeSymbols.length > 0) {
+                      try {
+                        await sellBasketPositions(basket.id, activeSymbols);
+                        refreshContext?.();
+                      } catch { /* ignore */ }
+                    }
+                  }}
+                  onNavigateToTicker={(symbol: string, tickerData: any) => {
+                    setNavigatingBasketTicker({
+                      symbol,
+                      basketId: basket.id,
+                      basketName: basket.name,
+                      basketEmoji: basket.emoji || '🧺',
+                      tickerData,
+                    });
+                  }}
+                  connectionId={null}
+                />
               );
             })}
 
             {/* Individual stocks NOT in any basket */}
             {filteredPositions
               .filter((pos: any) => !basketSymbolMap.has(pos.symbol))
-              .map((pos: any) => (
-                <PositionCard
-                  key={pos.symbol}
-                  pos={pos}
-                  isSelected={selectedSymbols.has(pos.symbol)}
-                  isExpanded={expandedSymbols.has(pos.symbol)}
-                  onToggleSelect={() => toggleSelect(pos.symbol)}
-                  onToggleExpand={() => toggleExpand(pos.symbol)}
-                  onBuy={() => {
-                    console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
-                    setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
-                  }}
-                  onSell={() => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0 })}
-                  showCheckbox={selectMode}
-                  baskets={[]}
-                />
-              ))}
+              .map((pos: any) => {
+                // Phase 4: Check if this position is being navigated to from a basket
+                const isBasketNavigated = navigatingBasketTicker && navigatingBasketTicker.symbol === pos.symbol;
+
+                if (isBasketNavigated && navigatingBasketTicker) {
+                  return (
+                    <div key={`basket-nav-${pos.symbol}`} style={{ marginBottom: 8 }}>
+                      {/* Back row */}
+                      <div
+                        onClick={() => setNavigatingBasketTicker(null)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '8px 14px',
+                          margin: '0 14px 4px',
+                          cursor: 'pointer',
+                          color: 'var(--violet, #b389f0)',
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>←</span>
+                        <span>{navigatingBasketTicker.basketEmoji} {navigatingBasketTicker.basketName}</span>
+                      </div>
+
+                      {/* PositionCardV3 with basketContext */}
+                      <PositionCardV3
+                        key={pos.symbol}
+                        pos={pos}
+                        isSelected={selectedSymbols.has(pos.symbol)}
+                        isExpanded={true}
+                        onToggleSelect={() => toggleSelect(pos.symbol)}
+                        onToggleExpand={() => toggleExpand(pos.symbol)}
+                        onBuy={() => {
+                          setTradeTicket({
+                            symbol: pos.symbol,
+                            side: 'BUY',
+                            currentPrice: pos.currentPrice ?? pos.avgCost,
+                            sharesHeld: pos.qty,
+                            availableCash: computeAvailableCash(displayAccount),
+                          });
+                        }}
+                        onSell={() =>
+                          setTradeTicket({
+                            symbol: pos.symbol,
+                            side: 'SELL',
+                            currentPrice: pos.currentPrice ?? pos.avgCost,
+                            sharesHeld: pos.qty,
+                            availableCash: 0,
+                          })
+                        }
+                        showCheckbox={selectMode}
+                        basketContext={{
+                          basketId: navigatingBasketTicker.basketId,
+                          basketName: navigatingBasketTicker.basketName,
+                          basketEmoji: navigatingBasketTicker.basketEmoji,
+                        }}
+                        connectionId={null}
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <PositionCardV3
+                    key={pos.symbol}
+                    pos={pos}
+                    isSelected={selectedSymbols.has(pos.symbol)}
+                    isExpanded={expandedSymbols.has(pos.symbol)}
+                    onToggleSelect={() => toggleSelect(pos.symbol)}
+                    onToggleExpand={() => toggleExpand(pos.symbol)}
+                    onBuy={() => {
+                      console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
+                      setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
+                    }}
+                    onSell={() => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0 })}
+                    showCheckbox={selectMode}
+                    connectionId={null}
+                  />
+                );
+              })}
 
             {/* No items at all */}
             {allBasketRows.length === 0 && filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length === 0 && (

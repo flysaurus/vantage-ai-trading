@@ -22,6 +22,7 @@ export interface Lot {
   filled_at: string; // ISO timestamp
   basket_id?: string | null;
   origin_tag?: string | null;
+  source?: string | null; // 'vantage' | broker slug e.g. 'alpaca'
 }
 
 export interface ConsumedLot {
