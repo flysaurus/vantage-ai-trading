@@ -332,8 +332,11 @@ export function TradeTab() {
 
       {/* ─── Symbol Search ─── */}
       <div style={{ margin: '0 16px 16px 16px', position: 'relative' }}>
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
+          SEARCH COMPANY TO BUY OR SELL
+        </div>
         <input
-          placeholder="Search symbol (e.g. AAPL)"
+          placeholder="Search by company name or symbol..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
@@ -914,9 +917,14 @@ export function TradeTab() {
               dollarAmount,
             );
             if (result.success) {
+              // Reset form state
               setQty('');
               setLimitPrice('');
               setStopPrice('');
+              // Close the order window by clearing selected symbol
+              setSelectedSymbol('');
+              setSelectedResult(null);
+              setSymbolQuote(null);
               // Switch to the correct order history tab
               setHistoryTab(result.status === 'FILLED' ? 'filled' : 'open');
               // Scroll to order history
