@@ -1838,7 +1838,7 @@ export function TradeTab() {
                 }}>{confirmCancel.side}</span>
               </div>
               <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
-                {confirmCancel.shares} shares @ ${confirmCancel.price.toFixed(2)}
+                {confirmCancel.shares} shares{confirmCancel.price > 0 ? ` @ $${confirmCancel.price.toFixed(2)}` : ''}
               </div>
               <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
                 ⚠ Reserved cash will be returned to your buying power.
