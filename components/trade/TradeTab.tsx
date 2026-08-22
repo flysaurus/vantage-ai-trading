@@ -867,7 +867,8 @@ export function TradeTab() {
           </div>
         )}
 
-        {/* PLACE ORDER BUTTON */}
+        {/* PLACE ORDER + CANCEL BUTTONS */}
+        <div style={{ display: 'flex', gap: '10px' }}>
         <button
           onClick={async () => {
             if (!selectedSymbol) return;
@@ -902,6 +903,14 @@ export function TradeTab() {
               if (!pos || available < shares) return; // Blocked by sell warning — don't submit
             }
 
+            // Close the order window immediately (optimistic UI)
+            setQty('');
+            setLimitPrice('');
+            setStopPrice('');
+            setSelectedSymbol('');
+            setSelectedResult(null);
+            setSymbolQuote(null);
+
             const result = await executeTrade(
               selectedSymbol,
               side === 'buy' ? 'BUY' : 'SELL',
@@ -917,14 +926,6 @@ export function TradeTab() {
               dollarAmount,
             );
             if (result.success) {
-              // Reset form state
-              setQty('');
-              setLimitPrice('');
-              setStopPrice('');
-              // Close the order window by clearing selected symbol
-              setSelectedSymbol('');
-              setSelectedResult(null);
-              setSymbolQuote(null);
               // Switch to the correct order history tab
               setHistoryTab(result.status === 'FILLED' ? 'filled' : 'open');
               // Scroll to order history
@@ -934,7 +935,7 @@ export function TradeTab() {
             }
           }}
           style={{
-            width: '100%',
+            flex: 1,
             padding: '16px',
             background: side === 'buy' ? '#10b981' : '#ef4444',
             border: 'none',
@@ -982,6 +983,29 @@ export function TradeTab() {
         >
           {side === 'buy' ? 'Place Buy Order' : 'Place Sell Order'}
         </button>
+        <button
+          onClick={() => {
+            setQty('');
+            setLimitPrice('');
+            setStopPrice('');
+            setSelectedSymbol('');
+            setSelectedResult(null);
+            setSymbolQuote(null);
+          }}
+          style={{
+            padding: '16px 24px',
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '10px',
+            color: '#cbd5e1',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
+        </div>
       </div>
       </div>
       )}
