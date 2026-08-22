@@ -1862,8 +1862,8 @@ export function TradeTab() {
                 Keep Order
               </button>
               <button
-                onClick={() => {
-                  cancelOrder(confirmCancel.orderId);
+                onClick={async () => {
+                  await cancelOrder(confirmCancel.orderId);
                   setConfirmCancel(null);
                 }}
                 style={{

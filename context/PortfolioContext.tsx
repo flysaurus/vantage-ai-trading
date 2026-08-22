@@ -907,11 +907,19 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // ── cancelOrder ──
   const cancelOrder = useCallback(async (orderId: string) => {
     const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
-    if (!b) return;
+    if (!b) {
+      setToast({ message: 'No broker connected — cannot cancel order', type: 'error' });
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
     const order = demoOrders.find(o => o.id === orderId);
     const symbol = order?.symbol || 'Unknown';
     const result = await b.cancelOrder(orderId);
-    if (!result.success) return;
+    if (!result.success) {
+      setToast({ message: `⚠ Could not cancel ${symbol}: ${result.message || 'Order not found or already filled'}`, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
     await refreshStateFromBroker();
     setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
     setTimeout(() => setToast(null), 4000);
