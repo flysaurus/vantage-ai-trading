@@ -906,6 +906,33 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── cancelOrder ──
   const cancelOrder = useCallback(async (orderId: string) => {
+    const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
+
+    if (isRealSnapTrade) {
+      const order = demoOrders.find(o => o.id === orderId);
+      const symbol = order?.symbol || 'Unknown';
+      try {
+        const result = await fetch('/api/broker/cancel-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId }),
+        }).then(r => r.json());
+        if (!result.success) {
+          const reason = result.alreadyFilled ? 'Order had already filled' : result.error || result.message || 'Cancel failed';
+          setToast({ message: `⚠ ${symbol}: ${reason}`, type: 'error' });
+          setTimeout(() => setToast(null), 5000);
+          return;
+        }
+        await refreshStateFromBroker();
+        setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
+        setTimeout(() => setToast(null), 4000);
+      } catch (err: any) {
+        setToast({ message: `⚠ Could not cancel ${symbol}: ${err?.message || 'Network error'}`, type: 'error' });
+        setTimeout(() => setToast(null), 5000);
+      }
+      return;
+    }
+
     const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
     if (!b) {
       setToast({ message: 'No broker connected — cannot cancel order', type: 'error' });
@@ -914,16 +941,22 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
     const order = demoOrders.find(o => o.id === orderId);
     const symbol = order?.symbol || 'Unknown';
-    const result = await b.cancelOrder(orderId);
-    if (!result.success) {
-      setToast({ message: `⚠ Could not cancel ${symbol}: ${result.message || 'Order not found or already filled'}`, type: 'error' });
+    try {
+      const result = await b.cancelOrder(orderId);
+      // BrokerAdapter returns void (success assumed), BrokerEngine returns { success, message }
+      if (result !== undefined && !result.success) {
+        setToast({ message: `⚠ Could not cancel ${symbol}: ${result.message || 'Order not found or already filled'}`, type: 'error' });
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      await refreshStateFromBroker();
+      setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
+      setTimeout(() => setToast(null), 4000);
+    } catch (err: any) {
+      setToast({ message: `⚠ Could not cancel ${symbol}: ${err?.message || 'Unknown error'}`, type: 'error' });
       setTimeout(() => setToast(null), 5000);
-      return;
     }
-    await refreshStateFromBroker();
-    setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
-    setTimeout(() => setToast(null), 4000);
-  }, [demoOrders, brokerRef, refreshStateFromBroker, broker, isShowingDemo]);
+  }, [demoOrders, brokerRef, refreshStateFromBroker, broker, isShowingDemo, brokerSource]);
 
   // ── cancelBasketOrder ──
   const cancelBasketOrder = useCallback(async (basketId: string) => {
