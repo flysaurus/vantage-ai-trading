@@ -10,6 +10,7 @@ import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
 import { OrderStepper, formatSharesDisplay, cancelReasonText } from '@/components/orders/OrderDisplay';
 import { isWorkingStatus } from '@/lib/order-format';
+import { computeBasketAggregateStatus } from '@/lib/basket-aggregate';
 
 const statusBorder: Record<string, string> = {
   filled_buy: '#10b981',
@@ -1134,7 +1135,10 @@ export function TradeTab() {
         {(() => {
           const filteredBasketOrders = (liveBasketOrders || []).filter((bo: any) => {
             if (historyTab === 'all') return true;
-            return bo.status === historyTab.toUpperCase();
+            if (historyTab === 'open') return bo.status === 'OPEN';
+            if (historyTab === 'filled') return bo.status === 'FILLED' || bo.status === 'PARTIAL';
+            // cancelled — show Cancelled + Partial baskets
+            return bo.status === 'CANCELLED' || bo.status === 'PARTIAL';
           });
 
           // ── Group individual orders by basketId for orders not covered by liveBasketOrders ──
@@ -1150,11 +1154,7 @@ export function TradeTab() {
             groupMap.get(bid)!.push(order);
           }
           const basketOrderGroups = Array.from(groupMap.entries()).map(([basketId, orders]) => {
-            const allFilled = orders.every((o: any) => o.status === 'filled');
-            const someFilled = orders.some((o: any) => o.status === 'filled');
-            const allCancelled = orders.every((o: any) => o.status === 'cancelled');
-            const aggregateStatus = allFilled ? 'FILLED' : allCancelled ? 'CANCELLED' : 'OPEN';
-            const displayStatus = (someFilled && !allFilled) ? 'PARTIAL' : aggregateStatus;
+            const agg = computeBasketAggregateStatus(orders);
             const first = orders[0];
             const totalCost = orders.reduce((s: number, o: any) =>
               s + (o.totalCost || o.reservedCost || (o.shares * (o.fillPrice || o.submittedPrice || 0))), 0);
@@ -1164,23 +1164,24 @@ export function TradeTab() {
               basketName: first.basketName || orders[0].symbol || 'Basket',
               basketEmoji: first.basketEmoji || '🧺',
               orders,
-              aggregateStatus,
-              displayStatus,
+              aggregateStatus: agg.status,
+              displayStatus: agg.displayStatus,
+              filledCount: agg.filledCount,
+              totalCount: agg.totalCount,
+              tabs: agg.tabs,
               totalCost,
               orderCount: orders.length,
-              filledCount: orders.filter((o: any) => o.status === 'filled').length,
               submittedAt: first.submittedAt || first.createdAt || first.date,
             };
           });
 
-          // Filter basket groups by current tab
+          // Filter basket groups by current tab using computed aggregate status
           const visibleGroups = basketOrderGroups.filter((g: any) => {
             if (historyTab === 'all') return true;
-            const s = g.aggregateStatus;
-            // PARTIAL baskets appear under Open tab (user explicitly chose this)
-            if (historyTab === 'open') return s === 'OPEN' || g.displayStatus === 'PARTIAL';
-            if (historyTab === 'filled') return s === 'FILLED';
-            if (historyTab === 'cancelled') return s === 'CANCELLED';
+            // Partial baskets appear in BOTH Filled and Cancelled tabs
+            if (historyTab === 'filled') return g.tabs.includes('filled');
+            if (historyTab === 'cancelled') return g.tabs.includes('cancelled');
+            if (historyTab === 'open') return g.tabs.includes('open');
             return true;
           });
 
@@ -1224,16 +1225,33 @@ export function TradeTab() {
                 </div>
               )}
 
-              {/* ── BASKET ORDER GROUPS ── */}
+              {/* ── BASKET ORDER GROUPS (broker-level) ── */}
               {filteredBasketOrders.map((basket: any) => {
                 const isExpanded = expandedBasketOrder === basket.id;
                 const isOpen = basket.status === 'OPEN';
+                const isPartial = basket.status === 'PARTIAL';
+                const isFilled = basket.status === 'FILLED';
+
+                // Status badge style for broker-level basket orders
+                const boBadgeStyle = isOpen
+                  ? { bg: 'var(--amber-dim)', color: 'var(--amber)', label: 'Open' }
+                  : isFilled
+                    ? { bg: 'var(--emerald-dim)', color: 'var(--emerald)', label: 'Filled' }
+                    : isPartial
+                      ? { bg: 'var(--violet-dim)', color: 'var(--violet)', label: 'Partial' }
+                      : { bg: 'var(--red-dim)', color: 'var(--red)', label: 'Cancelled' };
+
+                const boCardBorder = isOpen
+                  ? 'rgba(240,183,63,0.25)'
+                  : isPartial
+                    ? 'rgba(179,137,240,0.25)'
+                    : 'rgba(255,255,255,0.08)';
                   return (
                   <div
                     key={basket.id}
                     style={{
-                      background: '#1a2235',
-                      border: `1px solid ${isOpen ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                      background: 'var(--bg-card)',
+                      border: `1px solid ${boCardBorder}`,
                       borderRadius: '12px',
                       marginBottom: '10px',
                       overflow: 'hidden',
@@ -1326,8 +1344,13 @@ export function TradeTab() {
                           {basket.orders?.length || 0} positions ·
                           ${(basket.totalReserved || 0).toFixed(2)}
                           {isOpen && (
-                            <span style={{ color: '#f59e0b' }}>
+                            <span style={{ color: 'var(--amber)' }}>
                               {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : basket.nextOpenLabel || 'awaiting market open'}
+                            </span>
+                          )}
+                          {isPartial && (
+                            <span style={{ color: 'var(--violet)' }}>
+                              {' · '}{(basket.orders || []).filter((o: any) => o.status === 'FILLED').length}/{(basket.orders || []).length} filled
                             </span>
                           )}
                         </div>
@@ -1363,17 +1386,33 @@ export function TradeTab() {
                           </button>
                         )}
                         <span style={{
-                          fontSize: '11px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '10px',
                           fontWeight: '700',
                           padding: '3px 8px',
-                          borderRadius: '4px',
-                          background: isOpen ? 'rgba(245,158,11,0.15)'
-                            : basket.status === 'FILLED' ? 'rgba(16,185,129,0.15)'
-                            : 'rgba(100,116,139,0.15)',
-                          color: isOpen ? '#f59e0b'
-                            : basket.status === 'FILLED' ? '#10b981'
-                            : '#64748b',
+                          borderRadius: '6px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          background: isOpen
+                            ? 'var(--amber-dim)'
+                            : basket.status === 'FILLED'
+                              ? 'var(--emerald-dim)'
+                              : 'var(--red-dim)',
+                          color: isOpen
+                            ? 'var(--amber)'
+                            : basket.status === 'FILLED'
+                              ? 'var(--emerald)'
+                              : 'var(--red)',
                         }}>
+                          <span style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: 'currentColor',
+                            flexShrink: 0,
+                          }} />
                           {basket.status}
                         </span>
                         {!isOpen && (
@@ -1389,65 +1428,58 @@ export function TradeTab() {
                       </div>
                     </div>
 
-                    {/* Expanded — individual orders */}
+                    {/* Expanded — individual orders with stepper */}
                     {isExpanded && (
                       <div style={{
                         borderTop: '1px solid rgba(255,255,255,0.06)',
                       }}>
                         {(basket.orders || []).map((order: any) => (
                           <div key={order.id} style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            padding: '10px 16px',
+                            padding: '12px 16px 4px',
                             borderBottom: '1px solid rgba(255,255,255,0.04)',
                           }}>
-                            <div>
-                              <div style={{
-                                color: '#ffffff',
-                                fontWeight: '600',
-                                fontSize: '13px',
-                              }}>
-                                {order.symbol}
-                                <span style={{
-                                  color: '#10b981',
-                                  fontSize: '10px',
-                                  marginLeft: '6px',
-                                  background: 'rgba(16,185,129,0.15)',
-                                  padding: '1px 5px',
-                                  borderRadius: '3px',
+                            {/* Top row: symbol + direction + price */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div>
+                                <div style={{
+                                  color: '#ffffff',
+                                  fontWeight: '600',
+                                  fontSize: '13px',
                                 }}>
-                                  BUY
-                                </span>
-                              </div>
-                              <div style={{
-                                color: '#cbd5e1',
-                                fontSize: '11px',
-                                marginTop: '2px',
-                              }}>
-                                {order.shares?.toFixed(4)}sh
-                                {order.fillPrice
-                                  ? ` @ $${order.fillPrice.toFixed(2)}`
-                                  : ` @ ~$${(order.submittedPrice || 0).toFixed(2)}`
-                                }
+                                  {order.symbol}
+                                  <span style={{
+                                    color: 'var(--emerald)',
+                                    fontSize: '10px',
+                                    marginLeft: '6px',
+                                    background: 'var(--emerald-dim)',
+                                    padding: '1px 5px',
+                                    borderRadius: '3px',
+                                  }}>
+                                    BUY
+                                  </span>
+                                </div>
+                                <div style={{
+                                  color: 'var(--dim)',
+                                  fontSize: '10px',
+                                  marginTop: '1px',
+                                }}>
+                                  {(order.type || 'market').toLowerCase()}
+                                  {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
+                                  {' · '}{(order.shares || order.qty || 0).toFixed(2)} shares
+                                  {' · '}#{(order.brokerageOrderId || order.id || '').toString().replace(/^demo-/, '').slice(0, 8)}
+                                </div>
+                                <div style={{
+                                  color: '#cbd5e1',
+                                  fontSize: '12px',
+                                  fontWeight: '700',
+                                  marginTop: '4px',
+                                }}>
+                                  ${((order.fillPrice || order.submittedPrice || order.price || 0) as number).toFixed(2)}
+                                </div>
                               </div>
                             </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{
-                                color: order.status === 'FILLED' ? '#10b981'
-                                  : order.status === 'OPEN' ? '#f59e0b'
-                                  : '#64748b',
-                                fontSize: '11px',
-                                fontWeight: '600',
-                              }}>
-                                {order.status}
-                              </div>
-                              <div style={{
-                                color: '#cbd5e1',
-                                fontSize: '11px',
-                              }}>
-                                ${(order.totalCost || 0).toFixed(2)}
-                              </div>
-                            </div>
+                            {/* OrderStepper for this child */}
+                            <OrderStepper order={order} />
                           </div>
                         ))}
 
@@ -1493,19 +1525,29 @@ export function TradeTab() {
               {/* ── BASKET GROUPS FROM INDIVIDUAL ORDERS ── */}
               {visibleGroups.map((group: any) => {
                 const isExpanded = expandedBasketOrder === group.id;
-                const isPending = group.aggregateStatus === 'OPEN' && group.displayStatus !== 'PARTIAL';
-                const statusColor = group.aggregateStatus === 'FILLED' ? '#10b981'
-                  : group.aggregateStatus === 'CANCELLED' ? '#64748b'
-                  : group.displayStatus === 'PARTIAL' ? '#22d3ee'
-                  : '#f59e0b';
-                const statusBg = group.aggregateStatus === 'FILLED' ? 'rgba(16,185,129,0.15)'
-                  : group.aggregateStatus === 'CANCELLED' ? 'rgba(100,116,139,0.15)'
-                  : group.displayStatus === 'PARTIAL' ? 'rgba(34,211,238,0.15)'
-                  : 'rgba(245,158,11,0.15)';
+                const isPending = group.aggregateStatus === 'OPEN';
+                const isPartial = group.aggregateStatus === 'PARTIAL';
+                
+                // Status badge style based on aggregate status
+                const badgeStyle = isPending
+                  ? { bg: 'var(--amber-dim)', color: 'var(--amber)', label: 'Open' }
+                  : group.aggregateStatus === 'FILLED'
+                    ? { bg: 'var(--emerald-dim)', color: 'var(--emerald)', label: 'Filled' }
+                    : isPartial
+                      ? { bg: 'var(--violet-dim)', color: 'var(--violet)', label: 'Partial' }
+                      : { bg: 'var(--red-dim)', color: 'var(--red)', label: 'Cancelled' };
+
+                // Border color for the card
+                const cardBorder = isPending
+                  ? 'rgba(240,183,63,0.25)'
+                  : isPartial
+                    ? 'rgba(179,137,240,0.25)'
+                    : 'rgba(255,255,255,0.08)';
+
                 return (
                   <div key={group.id} style={{
-                    background: '#1a2235',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'var(--bg-card)',
+                    border: `1px solid ${cardBorder}`,
                     borderRadius: '12px',
                     marginBottom: '10px',
                     overflow: 'hidden',
@@ -1555,77 +1597,120 @@ export function TradeTab() {
                             {group.basketName}
                           </span>
                         </div>
-                        <div style={{ color: '#cbd5e1', fontSize: '11px' }}>
+                        <div style={{ color: 'var(--dim)', fontSize: '11px' }}>
                           {group.orderCount} positions · ${group.totalCost.toFixed(2)}
-                          {group.displayStatus === 'PARTIAL' && (
-                            <span style={{ color: '#22d3ee' }}>
-                              {' · '}⚠️ {group.filledCount}/{group.orderCount} filled
+                          {isPartial && (
+                            <span style={{ color: 'var(--violet)' }}>
+                              {' · '}{group.filledCount}/{group.totalCount} filled
                             </span>
                           )}
                           {isPending && (
-                            <span style={{ color: '#f59e0b' }}>
+                            <span style={{ color: 'var(--amber)' }}>
                               {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : 'awaiting market open'}
                             </span>
                           )}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Visual status badge with dot */}
                         <span style={{
-                          fontSize: '11px', fontWeight: '700',
-                          padding: '3px 8px', borderRadius: '4px',
-                          background: statusBg, color: statusColor,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          background: badgeStyle.bg,
+                          color: badgeStyle.color,
                         }}>
-                          {group.displayStatus}
+                          <span style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: 'currentColor',
+                            flexShrink: 0,
+                          }} />
+                          {badgeStyle.label}
                         </span>
+                        {/* X/Y progress badge for Partial */}
+                        {isPartial && (
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: 'var(--violet-dim)',
+                            color: 'var(--violet)',
+                          }}>
+                            {group.filledCount}/{group.totalCount} filled
+                          </span>
+                        )}
                         {!isPending && (
                           <span style={{
-                            color: '#cbd5e1', fontSize: '14px',
+                            color: 'var(--dim)', fontSize: '14px',
                             transform: isExpanded ? 'rotate(90deg)' : 'none',
                             transition: 'transform 0.2s',
                           }}>›</span>
                         )}
                         {isPending && (
-                          <span style={{ color: '#cbd5e1', fontSize: '10px', opacity: 0.6 }}>✏️</span>
+                          <span style={{ color: 'var(--dim)', fontSize: '10px', opacity: 0.6 }}>✏️</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Expanded — stock breakdown + basket actions (FILLED / PARTIAL only) */}
+                    {/* Expanded — child orders with steppers (FILLED / PARTIAL / CANCELLED only) */}
                     {isExpanded && !isPending && (
                       <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         {group.orders.map((order: any) => (
                           <div key={order.id} style={{
-                            display: 'flex', justifyContent: 'space-between',
-                            padding: '10px 16px',
+                            padding: '12px 16px 4px',
                             borderBottom: '1px solid rgba(255,255,255,0.04)',
                           }}>
-                            <div>
-                              <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
-                                {order.symbol}
-                                <span style={{
-                                  color: '#10b981', fontSize: '10px', marginLeft: '6px',
-                                  background: 'rgba(16,185,129,0.15)',
-                                  padding: '1px 5px', borderRadius: '3px',
-                                }}>BUY</span>
-                              </div>
-                              <div style={{ color: '#cbd5e1', fontSize: '11px', marginTop: '2px' }}>
-                                {order.shares?.toFixed(4)}sh
-                                {order.fillPrice ? ` @ $${order.fillPrice.toFixed(2)}` : ` @ ~$${(order.submittedPrice || 0).toFixed(2)}`}
+                            {/* Top row: symbol + direction + price */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div>
+                                <div style={{
+                                  color: '#ffffff',
+                                  fontWeight: '600',
+                                  fontSize: '13px',
+                                }}>
+                                  {order.symbol}
+                                  <span style={{
+                                    color: 'var(--emerald)',
+                                    fontSize: '10px',
+                                    marginLeft: '6px',
+                                    background: 'var(--emerald-dim)',
+                                    padding: '1px 5px',
+                                    borderRadius: '3px',
+                                  }}>
+                                    {(order.side || 'BUY').toUpperCase()}
+                                  </span>
+                                </div>
+                                <div style={{
+                                  color: 'var(--dim)',
+                                  fontSize: '10px',
+                                  marginTop: '1px',
+                                }}>
+                                  {(order.type || 'market').toLowerCase()}
+                                  {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
+                                  {' · '}{(order.shares || order.qty || 0).toFixed(2)} shares
+                                  {' · '}#{(order.brokerageOrderId || order.id || '').toString().replace(/^demo-/, '').slice(0, 8)}
+                                </div>
+                                <div style={{
+                                  color: '#cbd5e1',
+                                  fontSize: '12px',
+                                  fontWeight: '700',
+                                  marginTop: '4px',
+                                }}>
+                                  ${((order.fillPrice || order.submittedPrice || order.price || 0) as number).toFixed(2)}
+                                </div>
                               </div>
                             </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{
-                                color: order.status === 'filled' ? '#10b981'
-                                  : order.status === 'open' ? '#f59e0b'
-                                  : '#64748b',
-                                fontSize: '11px', fontWeight: '600',
-                              }}>
-                                {order.status.toUpperCase()}
-                              </div>
-                              <div style={{ color: '#cbd5e1', fontSize: '11px' }}>
-                                ${((order.totalCost || order.reservedCost || (order.shares * (order.fillPrice || order.submittedPrice || 0)) as number)).toFixed(2)}
-                              </div>
-                            </div>
+                            {/* OrderStepper for this child */}
+                            <OrderStepper order={order} />
                           </div>
                         ))}
                         {/* Shared Basket Action Panel — buy/sell from Invest tab */}

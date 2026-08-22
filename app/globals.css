@@ -30,8 +30,12 @@
   --cyan-dim: rgba(34,211,238,0.12);
   --violet: #b389f0;
   --violet-dim: rgba(179,137,240,0.12);
-  --emerald-dim: rgba(16,185,129,0.12);
-  --amber-dim: rgba(245,158,11,0.12);
+  --emerald: #3ddc97;
+  --emerald-dim: rgba(61,220,151,0.12);
+  --amber: #f0b73f;
+  --amber-dim: rgba(240,183,63,0.1);
+  --red: #ef7b6a;
+  --red-dim: rgba(239,123,106,0.1);
   --mono-font: 'JetBrains Mono', monospace;
 
   /* ── Accent ── */
