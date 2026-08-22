@@ -18,6 +18,8 @@ import PositionCardV3 from './PositionCardV3';
 import MarketOverview from '../shared/MarketOverview';
 import DailyBriefCard from '@/components/ai/DailyBriefCard';
 import WeeklySnapshotCard from '@/components/ai/WeeklySnapshotCard';
+import BasketBuyMoreTicket from '@/components/trade/BasketBuyMoreTicket';
+import BasketSellTicket from '@/components/trade/BasketSellTicket';
 
 // Dynamic import for RiskNarrativeCard (being built in parallel)
 let RiskNarrativeCard: any = null;
@@ -943,6 +945,14 @@ export function PortfolioTab() {
     sharesHeld: number; availableCash: number;
   } | null>(null);
 
+  // Phase 6: Basket-level trade tickets
+  const [basketBuyMoreTicket, setBasketBuyMoreTicket] = useState<{
+    basketId: string;
+  } | null>(null);
+  const [basketSellTicket, setBasketSellTicket] = useState<{
+    basketId: string;
+  } | null>(null);
+
   const { account: brokerAccount, loading: brokerLoading, error: brokerError } = usePortfolio();
   const { account: liveAccount, loading: liveLoading, baskets, executeTrade, sellBasketPositions, refresh: refreshContext } = useLivePortfolio();
   const { isConnected } = useBroker();
@@ -1444,26 +1454,12 @@ export function PortfolioTab() {
                     });
                   }}
                   onBuy={async () => {
-                    // Open trade ticket for each active position in the basket
-                    setTradeTicket({
-                      symbol: basket.positions[0]?.symbol || '',
-                      side: 'BUY',
-                      currentPrice: basket.positions[0]?.currentPrice || 0,
-                      sharesHeld: 0,
-                      availableCash: computeAvailableCash(displayAccount),
-                    });
+                    // Phase 6: Open basket-level Buy More ticket
+                    setBasketBuyMoreTicket({ basketId: basket.id });
                   }}
                   onSell={async () => {
-                    // Sell entire basket
-                    const activeSymbols = basket.positions
-                      .filter((p: any) => p.status === 'active')
-                      .map((p: any) => p.symbol);
-                    if (activeSymbols.length > 0) {
-                      try {
-                        await sellBasketPositions(basket.id, activeSymbols);
-                        refreshContext?.();
-                      } catch { /* ignore */ }
-                    }
+                    // Phase 6: Open basket-level Sell ticket
+                    setBasketSellTicket({ basketId: basket.id });
                   }}
                   onNavigateToTicker={(symbol: string, tickerData: any) => {
                     setNavigatingBasketTicker({
@@ -1576,6 +1572,120 @@ export function PortfolioTab() {
       })()}
 
       {/* Basket sell flow moved to shared BasketActionPanel component */}
+
+      {/* ── Trade Ticket (standalone position) ── */}
+      <TradeTicket
+        isOpen={tradeTicket !== null}
+        onClose={() => setTradeTicket(null)}
+        symbol={tradeTicket?.symbol || ''}
+        side={tradeTicket?.side || 'BUY'}
+        currentPrice={tradeTicket?.currentPrice || 0}
+        sharesHeld={tradeTicket?.sharesHeld || 0}
+        availableCash={tradeTicket?.availableCash || 0}
+        variant="manual"
+        onConfirm={async (params) => {
+          if (!tradeTicket) return;
+          const price = tradeTicket.currentPrice;
+          const result = await executeTrade(
+            tradeTicket.symbol,
+            tradeTicket.side,
+            params.shares,
+            price,
+            params.type,
+            params.stopPrice,
+            params.limitPrice,
+            params.timeInForce
+          );
+          if (!result.success) {
+            throw new Error(result.error || 'Order failed');
+          }
+          setTradeTicket(null);
+        }}
+      />
+
+      {/* ── Basket Buy More Ticket (Phase 6) ── */}
+      {(() => {
+        if (!basketBuyMoreTicket) return null;
+        const basketData = baskets.find(b => b.id === basketBuyMoreTicket.basketId);
+        if (!basketData) return null;
+
+        return (
+          <BasketBuyMoreTicket
+            isOpen={true}
+            onClose={() => setBasketBuyMoreTicket(null)}
+            basket={{
+              id: basketData.id,
+              name: basketData.name,
+              emoji: basketData.emoji || '🧺',
+              positions: basketData.positions
+                .filter(p => p.status === 'active')
+                .map(p => ({
+                  symbol: p.symbol,
+                  qty: p.shares,
+                  avgCost: p.avgCost,
+                  currentPrice: p.currentPrice || p.avgCost,
+                })),
+            }}
+            onConfirm={async (orders) => {
+              for (const order of orders) {
+                await executeTrade(order.symbol, 'BUY', order.shares, order.estimatedCost / order.shares);
+              }
+              refreshContext?.();
+              setBasketBuyMoreTicket(null);
+            }}
+            availableCash={computeAvailableCash(displayAccount)}
+          />
+        );
+      })()}
+
+      {/* ── Basket Sell Ticket (Phase 6) ── */}
+      {(() => {
+        if (!basketSellTicket) return null;
+        const basketData = baskets.find(b => b.id === basketSellTicket.basketId);
+        if (!basketData) return null;
+
+        const positionsWithLots = basketData.positions
+          .filter(p => p.status === 'active')
+          .map(p => ({
+            symbol: p.symbol,
+            qty: p.shares,
+            avgCost: p.avgCost,
+            currentPrice: p.currentPrice || p.avgCost,
+            lots: [] as any[],
+          }));
+
+        return (
+          <BasketSellTicket
+            isOpen={true}
+            onClose={() => setBasketSellTicket(null)}
+            basket={{
+              id: basketData.id,
+              name: basketData.name,
+              emoji: basketData.emoji || '🧺',
+              positions: positionsWithLots,
+            }}
+            onConfirmSellByQty={async (orders) => {
+              for (const order of orders) {
+                const pos = basketData.positions.find(p => p.symbol === order.symbol);
+                const price = pos?.currentPrice || pos?.avgCost || 0;
+                await executeTrade(order.symbol, 'SELL', order.shares, price);
+              }
+              refreshContext?.();
+              setBasketSellTicket(null);
+            }}
+            onConfirmSellAll={async () => {
+              const activeSymbols = basketData.positions
+                .filter(p => p.status === 'active')
+                .map(p => p.symbol);
+              if (activeSymbols.length > 0) {
+                await sellBasketPositions(basketData.id, activeSymbols);
+                refreshContext?.();
+              }
+              setBasketSellTicket(null);
+            }}
+          />
+        );
+      })()}
 
       {/* ── Select Mode Action Bar ── */}
       {selectMode && selectedSymbols.size > 0 && (

@@ -691,9 +691,14 @@ export default function BasketCard({
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
+              className="basket-buy-more-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                onBuy?.();
+                if (typeof onBuy === 'function') {
+                  onBuy();
+                } else {
+                  console.error('[BasketCard] onBuy is not a function:', typeof onBuy);
+                }
               }}
               style={{
                 flex: 1,
@@ -713,9 +718,14 @@ export default function BasketCard({
             </button>
             <button
               type="button"
+              className="basket-sell-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                onSell?.();
+                if (typeof onSell === 'function') {
+                  onSell();
+                } else {
+                  console.error('[BasketCard] onSell is not a function:', typeof onSell);
+                }
               }}
               style={{
                 flex: 1,
