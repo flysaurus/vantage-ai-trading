@@ -915,7 +915,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
               source: 'vantage',
               basketId: basketId ?? null,
               orderId: result.orderId ?? null,
-              originTag: basketId ? 'basket_buy' : 'standalone_buy',
+              originTag: basketId ? 'buy_more' : 'standalone_buy',
             });
           } else {
             const consumed = await consumeLotsForSell(
@@ -1042,7 +1042,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                 source: 'vantage',
                 basketId: fill.basketId ?? null,
                 orderId: fill.orderId ?? null,
-                originTag: fill.basketId ? 'basket_buy' : 'standalone_buy',
+                originTag: fill.basketId ? 'buy_more' : 'standalone_buy',
               });
             } else {
               const consumed = await consumeLotsForSell(
