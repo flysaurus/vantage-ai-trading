@@ -32,6 +32,7 @@ export function useOrders() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [baskets, setBaskets] = useState<any[]>([]);
 
   const mountedRef = useRef(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,6 +88,9 @@ export function useOrders() {
     requestedAmount: raw.requestedAmount ?? raw.requested_amount ?? null,
     requestedQty: raw.requestedQty ?? raw.requested_qty ?? null,
     brokerageOrderId: raw.brokerageOrderId ?? raw.brokerage_order_id ?? raw.id,
+    basketId: raw.basketId ?? raw.basket_id ?? null,
+    basketName: raw.basketName ?? raw.basket_name ?? null,
+    basketEmoji: raw.basketEmoji ?? raw.basket_emoji ?? null,
     bracketOrder: raw.bracketOrder
       ? {
           stopLoss: raw.bracketOrder.stopLoss?.stopPrice,
@@ -125,6 +129,9 @@ export function useOrders() {
       ]);
 
       if (!mountedRef.current) return;
+
+      // Persist user_baskets metadata (for grouping legs in Order History)
+      setBaskets((dbOrdersPayload?.baskets as any[]) || []);
 
       // Map trade_history entries to Order format
       const tradeHistoryOrders: Order[] = (tradeHistory.trades || []).map((trade): Order => ({
@@ -171,6 +178,7 @@ export function useOrders() {
         requestedAmount: (o.requestedAmount ?? (o as any).requestedAmount) ?? null,
         requestedQty: (o.requestedQty ?? (o as any).requestedQty) ?? null,
         brokerageOrderId: (o as any).brokerageOrderId,
+        basketId: o.basketId ?? null,
       }));
 
       const brokerOrders = [
@@ -215,6 +223,9 @@ export function useOrders() {
           qty: Number(o.qty || 0) > 0 ? o.qty : (dbMatch.requestedQty ?? dbMatch.qty ?? 0),
           // DB is authoritative for cancel_reason (broker orders don't carry it)
           cancelReason: o.cancelReason ?? dbMatch.cancelReason ?? null,
+          // Basket linkage lives on our persisted DB row — broker orders don't
+          // carry it, so propagate it through the dedup so basket legs stay grouped.
+          basketId: o.basketId ?? dbMatch.basketId ?? null,
         };
       });
 
@@ -413,6 +424,7 @@ export function useOrders() {
   return {
     orders: filteredOrders,
     allOrders: orders,
+    baskets,
     loading,
     error,
     refresh,

@@ -132,13 +132,35 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Persist each successful leg to `orders` ──
-    // Basket legs are always notional (dollarAmount) market BUY orders. We
-    // persist them as individual manual orders (the orders table has no basket
-    // linkage columns yet — that's the paused grouping feature). Each leg
-    // carries its own clientOrderId UUID → orders.id for traceability.
+    // Basket legs are always notional (dollarAmount) market BUY orders. Each
+    // leg carries its own clientOrderId UUID → orders.id, and is linked to a
+    // user_baskets row via orders.basket_id so Order History can group the
+    // whole basket into a single card.
     const brokerName = formatBrokerName(brokerSlug);
     const now = new Date().toISOString();
     const persisted: string[] = [];
+
+    // The client-side `basketId` is a curated catalog id or `custom_<ts>` —
+    // NOT a valid UUID — so we mint a fresh user_baskets.id here and link
+    // every leg to it. Order History joins orders.basket_id → user_baskets.
+    const userBasketId = crypto.randomUUID();
+    const basketDisplay = basketDisplayName || basketName || 'Basket';
+    const { error: basketErr } = await supabase
+      .from('user_baskets')
+      .insert({
+        id: userBasketId,
+        user_id: authUser!.id,
+        name: basketDisplay,
+        theme_label: basketName || null,
+        icon: basketEmoji || null,
+        status: 'active',
+        connection_id: brokerConnectionId || null,
+      });
+    if (basketErr) {
+      console.error('[execute-basket] ⚠️ user_baskets insert failed:', JSON.stringify(basketErr, null, 2));
+    } else {
+      console.log(`[execute-basket] 🧺 Basket group persisted: ${userBasketId} ("${basketDisplay}")`);
+    }
 
     for (const leg of result.orders) {
       const symbol = (leg.symbol || '').toUpperCase();
@@ -150,6 +172,7 @@ export async function POST(req: NextRequest) {
         id: legId,
         user_id: authUser!.id,
         connection_id: brokerConnectionId,
+        basket_id: userBasketId,
         symbol,
         qty: 0,
         order_unit: 'dollars',
@@ -196,6 +219,7 @@ export async function POST(req: NextRequest) {
       failed: result.failed,
       message: result.message,
       brokerName,
+      basketId: userBasketId,
       persisted,
     });
   } catch (err) {

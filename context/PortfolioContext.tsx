@@ -377,6 +377,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       timeInForce: (d.timeInForce || 'day') as any,
       createdAt: d.submittedAt || d.createdAt || new Date().toISOString(),
       updatedAt: d.cancelledAt || d.submittedAt || d.createdAt || new Date().toISOString(),
+      basketId: (d as any).basketId ?? null,
+      basketName: (d as any).basketName ?? null,
+      basketEmoji: (d as any).basketEmoji ?? null,
       bracketOrder: undefined,
     }));
 

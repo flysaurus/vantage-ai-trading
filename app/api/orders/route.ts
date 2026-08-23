@@ -48,6 +48,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ orders: [], total: 0 }, { status: 200 });
     }
 
+    // Basket metadata: fetch user_baskets for the user so Order History can
+    // resolve name/icon when grouping legs by orders.basket_id.
+    let baskets: any[] = [];
+    const basketIds = Array.from(
+      new Set((data || []).map(o => o.basket_id).filter(Boolean) as string[]),
+    );
+    if (basketIds.length > 0) {
+      const { data: basketRows } = await supabase
+        .from('user_baskets')
+        .select('id, name, theme_label, icon, status, created_at')
+        .in('id', basketIds);
+      baskets = basketRows || [];
+    }
+
     return NextResponse.json({
       orders: (data || []).map(o => ({
         id: o.id,
@@ -70,7 +84,9 @@ export async function GET(req: NextRequest) {
         orderUnit: o.order_unit,
         requestedAmount: o.requested_amount != null ? Number(o.requested_amount) : undefined,
         requestedQty: o.requested_qty != null ? Number(o.requested_qty) : undefined,
+        basketId: o.basket_id ?? null,
       })),
+      baskets,
       total: count || 0,
     });
   } catch (err) {
