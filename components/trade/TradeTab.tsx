@@ -52,6 +52,8 @@ export function TradeTab() {
   const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
   const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; totalReserved: number } | null>(null);
   const [editingBasket, setEditingBasket] = useState<any>(null);
+  const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
+  const fetchedSymbolsRef = useRef<Set<string>>(new Set());
 
   // ─── Symbol search state ───
   const [searchQuery, setSearchQuery] = useState('');
@@ -310,6 +312,29 @@ export function TradeTab() {
     return o.status === historyTab;
   });
 
+  // Hydrate company names for order symbols (not stored on the order payload).
+  // Reuses the same /api/company/profile source the Portfolio tab uses.
+  useEffect(() => {
+    const symbols = Array.from(new Set(normalizedOrders.map(o => o.symbol).filter(Boolean)));
+    const missing = symbols.filter(s => !companyNames[s] && !fetchedSymbolsRef.current.has(s));
+    if (missing.length === 0) return;
+    missing.forEach(s => fetchedSymbolsRef.current.add(s));
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled(
+        missing.map(s => fetch(`/api/company/profile?symbol=${encodeURIComponent(s)}`).then(r => r.json()))
+      );
+      if (cancelled) return;
+      const update: Record<string, string> = {};
+      results.forEach((r, i) => {
+        const name = r.status === 'fulfilled' ? (r.value as any)?.name : undefined;
+        if (name && name !== missing[i]) update[missing[i]] = name;
+      });
+      if (Object.keys(update).length > 0) setCompanyNames(prev => ({ ...prev, ...update }));
+    })();
+    return () => { cancelled = true; };
+  }, [normalizedOrders, companyNames]);
+
   return (
     <div style={{ paddingBottom: '120px' }} onClick={() => setShowResults(false)}>
 
@@ -331,6 +356,67 @@ export function TradeTab() {
         </div>
       )}
 
+      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
+        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
+          STRATEGIES
+        </div>
+        {/* AVAILABLE */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
+            AVAILABLE
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '0 16px' }}>
+            <button
+              onClick={() => setShowBuildBasket(true)}
+              style={{
+                background: '#1a2235',
+                border: '1px solid rgba(34,211,238,0.3)',
+                borderRadius: '10px',
+                padding: '10px 8px',
+                cursor: 'pointer',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>Build Basket</div>
+              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>AI-curated themed portfolios</div>
+            </button>
+            <button
+              onClick={() => setActiveTab('invest')}
+              style={{
+                background: '#1a2235',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '10px',
+                padding: '10px 8px',
+                cursor: 'pointer',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>DCA</div>
+              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>Dollar cost averaging</div>
+            </button>
+          </div>
+        </div>
+        {/* COMING SOON — collapsed to a single slim informational row */}
+        <div style={{ padding: '0 16px', marginBottom: '16px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 12px',
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: '10px',
+            fontSize: '11px',
+            color: '#64748b',
+          }}>
+            <span style={{ fontSize: '10px', color: '#22d3ee', fontWeight: '600', letterSpacing: '0.08em', flexShrink: 0 }}>
+              COMING SOON
+            </span>
+            <span style={{ color: '#64748b' }}>Rebalance · Tax Harvest · Momentum · Mean Reversion</span>
+          </div>
+        </div>
+      </div>
+
       {/* ─── Symbol Search ─── */}
       <div style={{ margin: '0 16px 16px 16px', position: 'relative' }}>
         <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '8px' }}>
@@ -343,8 +429,8 @@ export function TradeTab() {
           onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
           style={{
             width: '100%',
-            background: '#1a2235',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(34,211,238,0.07)',
+            border: '1px solid rgba(34,211,238,0.45)',
             borderRadius: '12px',
             padding: '12px 14px',
             color: '#ffffff',
@@ -1012,95 +1098,8 @@ export function TradeTab() {
       )}
 
       {/* ─── 2. STRATEGIES SECTION ─── */}
-      <div data-testid="strategies-section" style={{ margin: '0 16px 16px 16px' }} id="strategies-section">
-        <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
-          STRATEGIES
-        </div>
-        {/* AVAILABLE */}
-        <div style={{ marginBottom: '16px' }}>
-          <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
-            AVAILABLE
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '0 16px' }}>
-            <button
-              onClick={() => setShowBuildBasket(true)}
-              style={{
-                background: '#1a2235',
-                border: '1px solid rgba(34,211,238,0.3)',
-                borderRadius: '12px',
-                padding: '14px 10px',
-                cursor: 'pointer',
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ fontSize: '20px', marginBottom: '4px' }}>🧺</div>
-              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>Build Basket</div>
-              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.3' }}>AI-curated themed portfolios</div>
-            </button>
-            <button
-              onClick={() => setActiveTab('invest')}
-              style={{
-                background: '#1a2235',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '12px',
-                padding: '14px 10px',
-                cursor: 'pointer',
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>DCA</div>
-              <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.3' }}>Dollar cost averaging</div>
-            </button>
-          </div>
-        </div>
-        {/* COMING SOON */}
-        <div>
-          <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
-            COMING SOON
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '0 16px' }}>
-            {[
-              { id: 'rebalance', label: 'Rebalance', description: 'Optimize allocations' },
-              { id: 'tax-harvest', label: 'Tax Harvest', description: 'Offset gains with losses' },
-              { id: 'momentum', label: 'Momentum', description: 'Ride market leaders' },
-              { id: 'mean-reversion', label: 'Mean Rev.', description: 'Buy the dip' },
-            ].map(s => (
-              <div
-                key={s.id}
-                style={{
-                  background: '#1a2235',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: '12px',
-                  padding: '14px 10px',
-                  textAlign: 'center',
-                  opacity: 0.45,
-                  position: 'relative',
-                }}
-              >
-                <div style={{
-                  position: 'absolute',
-                  top: '6px',
-                  right: '6px',
-                  background: 'rgba(34,211,238,0.15)',
-                  color: '#22d3ee',
-                  fontSize: '8px',
-                  fontWeight: '600',
-                  padding: '2px 5px',
-                  borderRadius: '4px',
-                  letterSpacing: '0.05em',
-                }}>
-                  SOON
-                </div>
-                <div style={{ color: '#6b7280', fontSize: '12px', fontWeight: '600', marginBottom: '3px' }}>{s.label}</div>
-                <div style={{ color: '#64748b', fontSize: '10px', lineHeight: '1.3' }}>{s.description}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* ─── 4. ORDER HISTORY ─── */}
-      <div id="order-history" style={{ margin: '0 16px' }}>
+      <div id="order-history" style={{ margin: '0 14px' }}>
         <div style={{ fontSize: '11px', color: '#e2e8f0', letterSpacing: '0.1em', marginBottom: '12px' }}>
           ORDER HISTORY
         </div>
@@ -1458,6 +1457,11 @@ export function TradeTab() {
                                     BUY
                                   </span>
                                 </div>
+                                {companyNames[order.symbol] && (
+                                  <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '1px' }}>
+                                    {companyNames[order.symbol]}
+                                  </div>
+                                )}
                                 <div style={{
                                   color: 'var(--dim)',
                                   fontSize: '10px',
@@ -1689,6 +1693,11 @@ export function TradeTab() {
                                     {(order.side || 'BUY').toUpperCase()}
                                   </span>
                                 </div>
+                                {companyNames[order.symbol] && (
+                                  <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '1px' }}>
+                                    {companyNames[order.symbol]}
+                                  </div>
+                                )}
                                 <div style={{
                                   color: 'var(--dim)',
                                   fontSize: '10px',
@@ -1765,12 +1774,12 @@ export function TradeTab() {
                 <div
                   key={order.id}
                   style={{
-                    background: '#1a2235',
-                    border: '1px solid #2a3448',
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--card-border)',
                     borderLeft: `3px solid ${getBorderColor(order)}`,
-                    borderRadius: '8px',
-                    padding: '14px 16px',
-                    marginBottom: '8px',
+                    borderRadius: '16px',
+                    padding: '18px',
+                    marginBottom: '10px',
                   }}
                 >
                   {/* HEADER ROW */}
@@ -1792,6 +1801,11 @@ export function TradeTab() {
                           {order.side}
                         </span>
                       </div>
+                      {companyNames[order.symbol] && (
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>
+                          {companyNames[order.symbol]}
+                        </div>
+                      )}
                       <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '2px' }}>
                         {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(order.shares)} shares
                       </div>
