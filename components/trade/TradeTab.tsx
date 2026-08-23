@@ -50,7 +50,7 @@ export function TradeTab() {
   const [showBuildBasket, setShowBuildBasket] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
   const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
-  const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; totalReserved: number } | null>(null);
+  const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; pendingCount: number; filledCount: number; totalReserved: number } | null>(null);
   const [editingBasket, setEditingBasket] = useState<any>(null);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
   const fetchedSymbolsRef = useRef<Set<string>>(new Set());
@@ -1367,6 +1367,8 @@ export function TradeTab() {
                                 basketOrderId: basket.id,
                                 basketDisplayName: basket.basketDisplayName || basket.basketName,
                                 orderCount: basket.orders?.length || 0,
+                                pendingCount: (basket.orders || []).filter((o: any) => isWorkingStatus(o.status)).length,
+                                filledCount: (basket.orders || []).filter((o: any) => o.status === 'filled').length,
                                 totalReserved: basket.totalReserved || 0,
                               });
                             }}
@@ -1495,6 +1497,8 @@ export function TradeTab() {
                                 basketOrderId: basket.id,
                                 basketDisplayName: basket.basketDisplayName || basket.basketName || 'Basket',
                                 orderCount: basket.orders?.length || 0,
+                                pendingCount: (basket.orders || []).filter((o: any) => isWorkingStatus(o.status)).length,
+                                filledCount: (basket.orders || []).filter((o: any) => o.status === 'filled').length,
                                 totalReserved: basket.totalReserved || 0,
                               })}
                               style={{
@@ -2019,8 +2023,16 @@ export function TradeTab() {
               <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
                 {confirmCancelBasket.orderCount} orders · ${confirmCancelBasket.totalReserved.toFixed(2)} reserved
               </div>
+              <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
+                <span style={{ color: '#10b981', fontWeight: '600' }}>{confirmCancelBasket.filledCount} filled</span>
+                <span style={{ color: '#64748b', margin: '0 6px' }}>·</span>
+                <span style={{ color: '#f59e0b', fontWeight: '600' }}>{confirmCancelBasket.pendingCount} pending</span>
+              </div>
               <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
                 Cash will be returned to your buying power immediately.
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', lineHeight: '1.4' }}>
+                Only the {confirmCancelBasket.pendingCount} pending order{confirmCancelBasket.pendingCount === 1 ? '' : 's'} can be cancelled — filled legs have already executed at the broker and must be sold separately.
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -2057,7 +2069,7 @@ export function TradeTab() {
                   cursor: 'pointer',
                 }}
               >
-                Cancel Order
+                Cancel {confirmCancelBasket.pendingCount} Order{confirmCancelBasket.pendingCount === 1 ? '' : 's'}
               </button>
             </div>
           </div>
