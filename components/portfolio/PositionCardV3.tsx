@@ -15,7 +15,7 @@ interface PositionCardV3Props {
   onToggleSelect: () => void;
   onToggleExpand: () => void;
   onBuy?: () => void;
-  onSell?: () => void;
+  onSell?: (lots: Lot[]) => void;
   showCheckbox?: boolean;
   basketContext?: { basketId: string; basketName: string; basketEmoji: string } | null;
   connectionId?: string | null;
@@ -1477,7 +1477,7 @@ export default function PositionCardV3({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onSell?.();
+                onSell?.(lots);
               }}
               style={{
                 flex: 1,

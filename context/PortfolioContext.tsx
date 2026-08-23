@@ -27,6 +27,7 @@ import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { availableCash } from '@/lib/available-cash';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
 import { getBroker } from '@/lib/broker/broker-factory';
 import { useMarketOpenWatcher } from '@/hooks/useMarketOpenWatcher';
 import { DEMO_PORTFOLIOS } from '@/lib/demo-data';
@@ -894,6 +895,48 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }).catch(() => {});
       }
 
+      // ── Phase 7: persist FIFO lot ledger for demo fills ──
+      // Demo trades (account_id = NULL) write lots directly here so FIFO
+      // disclosure + realized P/L stay correct without broker polling.
+      if (user?.id && result.status === 'FILLED') {
+        try {
+          const supabaseClient = getSupabaseBrowserClient();
+          const userId = user.id as string;
+          const fillShares = result.filledShares || shares;
+          const nowIso = new Date().toISOString();
+          if (side === 'BUY') {
+            await createLotForBuy(supabaseClient, {
+              userId,
+              accountId: null,
+              ticker: symbol,
+              qty: fillShares,
+              priceAtFill: fillPx,
+              filledAt: nowIso,
+              source: 'vantage',
+              basketId: basketId ?? null,
+              orderId: result.orderId ?? null,
+              originTag: basketId ? 'basket_buy' : 'standalone_buy',
+            });
+          } else {
+            const consumed = await consumeLotsForSell(
+              supabaseClient,
+              userId,
+              null,
+              symbol,
+              fillShares,
+            );
+            if (consumed.shortfall > 0) {
+              console.warn(
+                `[PortfolioContext] Demo sell of ${symbol}: ${consumed.shortfall} sh ` +
+                `unmatched to tracked lots (untracked=${consumed.untracked}).`,
+              );
+            }
+          }
+        } catch (err: any) {
+          console.error('[PortfolioContext] Lot ledger write failed:', err?.message || err);
+        }
+      }
+
       return { success: true, status: result.status as NonNullable<TradeResult['status']>, orderId: result.orderId };
       } finally {
         submittingTradeRef.current = false;
@@ -1229,7 +1272,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       message?: string;
       error?: string;
       nextOpenLabel?: string;
-      orders: Array<{ totalCost?: number; reservedAmount?: number }>;
+      orders: Array<{
+        orderId?: string;
+        symbol?: string;
+        totalCost?: number;
+        reservedAmount?: number;
+        fillPrice?: number;
+        filledShares?: number;
+        filledAt?: string;
+      }>;
       failed?: number;
     };
 
@@ -1286,6 +1337,35 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       setToast({ message: `🧺 Bought ${result.orders.length} stocks in "${basketName}" for $${totalSpent.toFixed(2)}${failedNote}`, type: 'success' });
     }
     setTimeout(() => setToast(null), 5000);
+
+    // ── Phase 7: persist FIFO lots for demo basket fills ──
+    if (!isRealSnapTrade && user?.id && result.status === 'FILLED') {
+      try {
+        const supabaseClient = getSupabaseBrowserClient();
+        const userId = user.id as string;
+        const nowIso = new Date().toISOString();
+        for (const ord of result.orders) {
+          const symbol = ord.symbol;
+          const qty = ord.filledShares ?? 0;
+          if (!symbol || qty <= 0) continue;
+          await createLotForBuy(supabaseClient, {
+            userId,
+            accountId: null,
+            ticker: symbol,
+            qty,
+            priceAtFill: ord.fillPrice ?? 0,
+            filledAt: ord.filledAt ?? nowIso,
+            source: 'vantage',
+            basketId,
+            orderId: ord.orderId ?? null,
+            originTag: 'basket_buy',
+          });
+        }
+      } catch (err: any) {
+        console.error('[PortfolioContext] Basket buy lot ledger failed:', err?.message || err);
+      }
+    }
+
     return { success: true, executed: result.orders.length, failed: failedCount, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
     } finally {
       submittingBasketRef.current = false;
@@ -1348,6 +1428,26 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         cashBalance += proceeds;
         totalProceeds += proceeds;
         executed.push(pos.symbol);
+
+        // Phase 7: consume FIFO lots for this demo basket sell
+        try {
+          const supabaseClient = getSupabaseBrowserClient();
+          const consumed = await consumeLotsForSell(
+            supabaseClient,
+            user!.id as string,
+            null,
+            pos.symbol,
+            sharesToSell,
+          );
+          if (consumed.shortfall > 0) {
+            console.warn(
+              `[PortfolioContext] Basket sell of ${pos.symbol}: ` +
+              `${consumed.shortfall} sh unmatched to tracked lots.`,
+            );
+          }
+        } catch (lotErr: any) {
+          console.error('[PortfolioContext] Basket sell lot ledger failed:', lotErr?.message || lotErr);
+        }
       } catch {
         failed.push(pos.symbol);
       }

@@ -29,6 +29,7 @@ import {
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification } from '@/lib/order-notifications';
+import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
 import type { OrderStatus } from '@/lib/broker/types';
 
 const IN_FLIGHT = ['submitted', 'open', 'partially_filled'] as const;
@@ -75,6 +76,7 @@ interface InFlightOrder {
   requested_amount?: number | null;
   requested_qty?: number | null;
   order_unit?: 'dollars' | 'shares' | null;
+  basket_id?: string | null;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 1. Load all in-flight orders, grouped by user
   const { data: rows, error } = await supabase
     .from('orders')
-    .select('id, user_id, connection_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit')
+    .select('id, user_id, connection_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit, basket_id')
     .in('status', [...IN_FLIGHT])
     .not('brokerage_order_id', 'is', null);
 
@@ -125,6 +127,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       requested_amount: typeof r.requested_amount === 'number' ? r.requested_amount : null,
       requested_qty: typeof r.requested_qty === 'number' ? r.requested_qty : null,
       order_unit: r.order_unit === 'dollars' || r.order_unit === 'shares' ? r.order_unit : null,
+      basket_id: r.basket_id ?? null,
     });
   }
 
@@ -307,6 +310,45 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const fillShares = live.filledShares ?? live.shares ?? 0;
           const fillPrice = live.fillPrice ?? 0;
           const totalCost = live.totalCost || (fillPrice * fillShares);
+
+          // ── Lot ledger (unconditional, Phase 7) ──
+          // Update the FIFO ledger BEFORE any notification so a bell/email
+          // failure can never leave the ledger stale. Best-effort only:
+          // a shortfall (external buy predating lot tracking) degrades
+          // gracefully and is logged, never thrown.
+          try {
+            if (live.side === 'SELL') {
+              const res = await consumeLotsForSell(
+                supabase, userId, o.connection_id ?? null, live.symbol, fillShares,
+              );
+              if (res.shortfall > 0) {
+                console.warn(
+                  `[sync-orders] FIFO shortfall on ${live.symbol}: ` +
+                    `${res.shortfall} of ${fillShares} shares unmatched to lots`,
+                );
+              }
+            } else {
+              await createLotForBuy(supabase, {
+                userId,
+                accountId: o.connection_id ?? null,
+                ticker: live.symbol,
+                qty: fillShares,
+                priceAtFill: fillPrice,
+                filledAt: live.filledAt ?? now,
+                source: 'vantage',
+                basketId: o.basket_id ?? null,
+                orderId: o.id,
+                originTag: o.basket_id ? 'basket_buy' : 'standalone_buy',
+              });
+            }
+          } catch (err) {
+            // Never block the status transition or notifications on ledger failure.
+            console.error(
+              '[sync-orders] Lot-ledger update failed:',
+              err instanceof Error ? err.message : err,
+            );
+          }
+
           await notifyOrderEvent(supabase, userId, {
             kind: 'filled',
             brokerName,

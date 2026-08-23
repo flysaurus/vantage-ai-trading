@@ -17,6 +17,8 @@ import {
   type Lot,
   type FIFOResult,
 } from '@/lib/fifo-engine';
+import FIFOExplainer, { hasSeenFIFOExplainer } from '@/components/disclosure/FIFOExplainer';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -39,6 +41,10 @@ export interface BasketSellTicketProps {
     orders: Array<{ symbol: string; shares: number }>
   ) => Promise<void>;
   onConfirmSellAll: () => Promise<void>;
+  /** Owning user id — used to load the FIFO lot ledger for each ticker. */
+  userId?: string;
+  /** Broker connection id (NULL = demo). Maps to position_lots.account_id. */
+  connectionId?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────
@@ -73,12 +79,120 @@ export default function BasketSellTicket({
   basket,
   onConfirmSellByQty,
   onConfirmSellAll,
+  userId,
+  connectionId = null,
 }: BasketSellTicketProps) {
   // Sell mode
   const [sellMode, setSellMode] = useState<'byQty' | 'all'>('byQty');
   const [qtyMap, setQtyMap] = useState<Record<string, string>>({});
   const [marketIsOpen, setMarketIsOpen] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showFIFOExplainer, setShowFIFOExplainer] = useState(false);
+  const [lotsByTicker, setLotsByTicker] = useState<Record<string, Lot[]>>({});
+
+  // ── Load the FIFO lot ledger for every ticker in this basket ──
+  useEffect(() => {
+    if (!isOpen || !userId || basket.positions.length === 0) {
+      setLotsByTicker({});
+      return;
+    }
+
+    let cancelled = false;
+    const uid = userId;
+
+    async function fetchLots() {
+      try {
+        const client = getSupabaseBrowserClient();
+        const symbols = basket.positions.map(p => p.symbol);
+
+        let query = client
+          .from('position_lots')
+          .select('*')
+          .eq('user_id', uid)
+          .in('ticker', symbols)
+          .gt('remaining_qty', 0)
+          .order('filled_at', { ascending: true });
+
+        if (connectionId) {
+          query = query.eq('account_id', connectionId);
+        }
+
+        const { data, error } = await query;
+        if (cancelled) return;
+
+        if (error) {
+          console.error('[BasketSellTicket] lot fetch error:', error.message);
+          setLotsByTicker({});
+        } else {
+          const rows: any[] = data || [];
+          const typed: Record<string, Lot[]> = {};
+          for (const row of rows) {
+            const lot: Lot = {
+              id: row.id as string,
+              ticker: row.ticker as string,
+              qty: Number(row.qty),
+              remaining_qty: Number(row.remaining_qty),
+              price_at_fill: Number(row.price_at_fill),
+              filled_at: row.filled_at as string,
+              basket_id: (row.basket_id || null) as string | null,
+              origin_tag: (row.origin_tag || null) as string | null,
+              source: (row.source || null) as string | null,
+            };
+            if (!typed[lot.ticker]) typed[lot.ticker] = [];
+            typed[lot.ticker].push(lot);
+          }
+          setLotsByTicker(typed);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('[BasketSellTicket] lot fetch exception:', err);
+          setLotsByTicker({});
+        }
+      }
+    }
+
+    fetchLots();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, userId, connectionId, basket.positions]);
+
+  // Positions with their real lots merged in (from the ledger).
+  const positions = useMemo(() => {
+    return basket.positions.map(p => ({
+      ...p,
+      lots: lotsByTicker[p.symbol] ?? p.lots ?? [],
+    }));
+  }, [basket.positions, lotsByTicker]);
+
+  // Determine if any ticker has 2+ active lots — triggers FIFO explainer
+  const multiLotTicker = useMemo(() => {
+    if (hasSeenFIFOExplainer()) return null;
+    return positions.find(p => getActiveLotCount(p.lots) >= 2);
+  }, [positions]);
+
+  // Dates for the explainer modal (independent of the dismiss flag).
+  const explainerTarget = useMemo(() => {
+    const p = positions.find(pos => getActiveLotCount(pos.lots) >= 2);
+    if (!p) return null;
+    const sorted = [...p.lots]
+      .filter(l => l.remaining_qty > 0)
+      .sort((a, b) => new Date(a.filled_at).getTime() - new Date(b.filled_at).getTime());
+    return {
+      ticker: p.symbol,
+      oldestLotDate: sorted[0] ? formatLotDate(sorted[0].filled_at) : '',
+      secondLotDate: sorted[1] ? formatLotDate(sorted[1].filled_at) : '',
+    };
+  }, [positions]);
+
+  // Show FIFO explainer on open if not yet dismissed
+  useEffect(() => {
+    if (isOpen && multiLotTicker && !hasSeenFIFOExplainer()) {
+      // Small delay so the ticket renders first
+      const t = setTimeout(() => setShowFIFOExplainer(true), 300);
+      return () => clearTimeout(t);
+    }
+  }, [isOpen, multiLotTicker]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -104,15 +218,15 @@ export default function BasketSellTicket({
 
   // Snap to max for a ticker
   const setMaxQty = useCallback((symbol: string) => {
-    const pos = basket.positions.find(p => p.symbol === symbol);
+    const pos = positions.find(p => p.symbol === symbol);
     if (!pos) return;
     const maxQty = getTotalRemainingQty(pos.lots);
     setQty(symbol, String(maxQty));
-  }, [basket.positions]);
+  }, [positions]);
 
   // Derived rows with FIFO computation
   const { rows, totalProceeds, totalRealizedPL, positionsAffected } = useMemo(() => {
-    const posArr = basket.positions;
+    const posArr = positions;
     let tp = 0;
     let tpl = 0;
     let affected = 0;
@@ -161,7 +275,7 @@ export default function BasketSellTicket({
       totalRealizedPL: tpl,
       positionsAffected: affected,
     };
-  }, [basket.positions, qtyMap]);
+  }, [positions, qtyMap]);
 
   // FIFO notice: show description for the first ticker with active qty > 0
   const fifoNotice = useMemo(() => {
@@ -231,6 +345,7 @@ export default function BasketSellTicket({
     rows.some(r => r.inputQty > 0);
 
   return createPortal(
+    <>
     <div
       style={{
         position: 'fixed',
@@ -776,7 +891,17 @@ export default function BasketSellTicket({
           </>
         )}
       </div>
-    </div>,
+    </div>
+
+      {/* One-time FIFO explainer (first multi-lot sell only) */}
+      <FIFOExplainer
+        isOpen={showFIFOExplainer}
+        onDismiss={() => setShowFIFOExplainer(false)}
+        ticker={explainerTarget?.ticker ?? ''}
+        oldestLotDate={explainerTarget?.oldestLotDate ?? ''}
+        secondLotDate={explainerTarget?.secondLotDate ?? ''}
+      />
+    </>,
     document.body
   );
 }

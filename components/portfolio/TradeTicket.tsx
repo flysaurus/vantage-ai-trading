@@ -6,11 +6,13 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { getMarketStatus } from '@/lib/market-hours';
 import { useAccounts } from '@/context/AccountContext';
 import { X } from 'lucide-react';
+import { getActiveLotCount, consumeLotsFIFO, type Lot } from '@/lib/fifo-engine';
+import FIFOExplainer, { hasSeenFIFOExplainer, markFIFOExplainerSeen } from '@/components/disclosure/FIFOExplainer';
 
 export type TimeInForce = 'day' | 'gtc' | 'ioc' | 'fok';
 
@@ -19,6 +21,11 @@ export const TIF_LABELS: Record<TimeInForce, { label: string; desc: string }> = 
   gtc:  { label: 'GTC',   desc: 'Good-til-cancelled — stays open until filled or cancelled' },
   ioc:  { label: 'IOC',   desc: 'Immediate-or-cancel — fill any part now, cancel the rest' },
   fok:  { label: 'FOK',   desc: 'Fill-or-kill — all shares must fill immediately or cancel' },
+};
+
+const formatLotDate = (dateStr: string): string => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
 };
 
 interface TradeTicketProps {
@@ -39,6 +46,8 @@ interface TradeTicketProps {
   supportsFractional?: boolean;
   /** Full company name — shown as a quiet subtitle under ticker + price */
   companyName?: string;
+  /** FIFO lots for this position (SELL side). Enables specific-lot disclosure. */
+  lots?: Lot[];
   onConfirm: (params: {
     shares: number;
     type: 'market' | 'limit' | 'stop' | 'stop_limit';
@@ -53,13 +62,32 @@ interface TradeTicketProps {
 export default function TradeTicket({
   isOpen, onClose, symbol, side, currentPrice,
   sharesHeld, availableCash, initialShares, initialAmount,
-  variant = 'manual', supportsFractional = false, companyName, onConfirm,
+  variant = 'manual', supportsFractional = false, companyName, lots, onConfirm,
 }: TradeTicketProps) {
   const { activeAccount } = useAccounts();
   const isReadOnlyBroker = activeAccount && !activeAccount.isDemo && !activeAccount.tradingEnabled;
   console.log('[TradeTicket] render', { isOpen, symbol, side, currentPrice, availableCash, initialShares, initialAmount, variant, supportsFractional });
   
   const isAIVariant = variant === 'ai';
+
+  // ── FIFO disclosure (SELL side) ──
+  const activeLots = useMemo(() => (lots ?? []).filter(l => l.remaining_qty > 0), [lots]);
+  const activeLotCount = activeLots.length;
+  const isMultiLotSell = side === 'SELL' && activeLotCount >= 2;
+  const sortedActiveLots = useMemo(
+    () => [...activeLots].sort((a, b) => new Date(a.filled_at).getTime() - new Date(b.filled_at).getTime()),
+    [activeLots],
+  );
+  const oldestLotDate = sortedActiveLots.length > 0 ? formatLotDate(sortedActiveLots[0].filled_at) : '';
+  const secondLotDate = sortedActiveLots.length > 1 ? formatLotDate(sortedActiveLots[1].filled_at) : '';
+  const [showFIFOExplainer, setShowFIFOExplainer] = useState(false);
+
+  // One-time explainer: first time a multi-lot sell is attempted.
+  useEffect(() => {
+    if (isOpen && isMultiLotSell && !hasSeenFIFOExplainer()) {
+      setShowFIFOExplainer(true);
+    }
+  }, [isOpen, isMultiLotSell]);
   
   // ── AI variant: always dollar-first, editable amount, derived shares, locked market+day ──
   // ── Manual variant: smart detection from initialAmount/initialShares ──
@@ -133,6 +161,16 @@ export default function TradeTicket({
   // True dollar amount (what will actually be spent)
   const dollarAmount = forceDollarMode ? qty * effectivePrice : rawInput * effectivePrice;
   const estimatedTotal = dollarAmount;
+
+  // ── FIFO preview: which lots a sell of `qty` shares consumes (oldest first) ──
+  const fifoPreview = useMemo(() => {
+    if (!isMultiLotSell || qty <= 0) return null;
+    try {
+      return consumeLotsFIFO(activeLots, qty);
+    } catch {
+      return null; // qty exceeds available lots — validation handles the message
+    }
+  }, [isMultiLotSell, activeLots, qty]);
   
   // ── Fractional warning ──
   const fractionalGap = !supportsFractional && forceDollarMode && rawInput > 0 && effectivePrice > 0;
@@ -390,6 +428,39 @@ export default function TradeTicket({
                 : `≈ $${estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at market price`}
         </div>
 
+        {/* ── FIFO specific-lot disclosure (multi-lot sell) ── */}
+        {isMultiLotSell && (
+          <div style={{
+            padding: '10px 12px', marginBottom: 14,
+            background: 'rgba(240,183,63,0.06)',
+            border: '1px solid rgba(240,183,63,0.22)',
+            borderRadius: 10,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#f0b73f', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
+              FIFO — oldest shares first
+            </div>
+            {fifoPreview && fifoPreview.consumed.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {fifoPreview.consumed.map((c) => {
+                  const lot = activeLots.find(l => l.id === c.lot_id);
+                  return (
+                    <div key={c.lot_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: '#e2e8f0' }}>
+                      <span>{lot ? formatLotDate(lot.filled_at) : '—'}</span>
+                      <span style={{ fontFamily: 'var(--font-mono, monospace)' }}>
+                        {c.qty_consumed} sh @ ${c.price_at_fill.toFixed(2)}{c.partial ? ' (partial)' : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>
+                Selling across your {activeLotCount} lots, oldest first.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Fractional warning for whole-share-only stocks ── */}
         {showLargeFractionalWarning && (
           <div style={{
@@ -551,6 +622,22 @@ export default function TradeTicket({
           background: '#0f172a',
         }}>
 
+        {/* ── Persistent FIFO notice (non-dismissible, every multi-lot sell) ── */}
+        {isMultiLotSell && (
+          <div style={{
+            marginBottom: 10, padding: '8px 12px',
+            background: 'rgba(240,183,63,0.08)',
+            border: '1px solid rgba(240,183,63,0.2)',
+            borderRadius: 8,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ fontSize: 13 }}>🗂️</span>
+            <span style={{ fontSize: 11.5, color: '#fbbf24', lineHeight: 1.4 }}>
+              FIFO applies — your oldest shares sell first across {activeLotCount} lots.
+            </span>
+          </div>
+        )}
+
         {/* Submission error */}
         {tradeError && (
           <div style={{
@@ -604,6 +691,15 @@ export default function TradeTicket({
 
         </div>{/* end sticky footer */}
       </div>
+
+      {/* One-time FIFO explainer (first multi-lot sell only) */}
+      <FIFOExplainer
+        isOpen={showFIFOExplainer}
+        onDismiss={() => setShowFIFOExplainer(false)}
+        ticker={symbol}
+        oldestLotDate={oldestLotDate}
+        secondLotDate={secondLotDate}
+      />
     </div>
   , document.body);
 }

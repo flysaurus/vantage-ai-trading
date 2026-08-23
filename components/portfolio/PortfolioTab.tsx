@@ -943,6 +943,7 @@ export function PortfolioTab() {
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
     sharesHeld: number; availableCash: number;
+    lots?: import('@/lib/fifo-engine').Lot[];
   } | null>(null);
 
   // Phase 6: Basket-level trade tickets
@@ -1521,13 +1522,14 @@ export function PortfolioTab() {
                             availableCash: computeAvailableCash(displayAccount),
                           });
                         }}
-                        onSell={() =>
+                        onSell={(lots) =>
                           setTradeTicket({
                             symbol: pos.symbol,
                             side: 'SELL',
                             currentPrice: pos.currentPrice ?? pos.avgCost,
                             sharesHeld: pos.qty,
                             availableCash: 0,
+                            lots,
                           })
                         }
                         showCheckbox={selectMode}
@@ -1554,7 +1556,7 @@ export function PortfolioTab() {
                       console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
                       setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
                     }}
-                    onSell={() => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0 })}
+                    onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
                     showCheckbox={selectMode}
                     connectionId={null}
                   />
@@ -1582,6 +1584,7 @@ export function PortfolioTab() {
         currentPrice={tradeTicket?.currentPrice || 0}
         sharesHeld={tradeTicket?.sharesHeld || 0}
         availableCash={tradeTicket?.availableCash || 0}
+        lots={tradeTicket?.lots || []}
         variant="manual"
         onConfirm={async (params) => {
           if (!tradeTicket) return;
@@ -1628,7 +1631,7 @@ export function PortfolioTab() {
             }}
             onConfirm={async (orders) => {
               for (const order of orders) {
-                await executeTrade(order.symbol, 'BUY', order.shares, order.estimatedCost / order.shares);
+                await executeTrade(order.symbol, 'BUY', order.shares, order.estimatedCost / order.shares, undefined, undefined, undefined, undefined, basketBuyMoreTicket.basketId);
               }
               refreshContext?.();
               setBasketBuyMoreTicket(null);
@@ -1683,6 +1686,8 @@ export function PortfolioTab() {
               }
               setBasketSellTicket(null);
             }}
+            userId={(user?.id as string) || undefined}
+            connectionId={null}
           />
         );
       })()}

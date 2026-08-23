@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { HelpCircle, BookOpen, Key, MessageCircle, ExternalLink, ChevronRight, X } from 'lucide-react';
+import { HelpCircle, BookOpen, Key, Layers, MessageCircle, ExternalLink, ChevronRight, X } from 'lucide-react';
 
 // ─── Page ────────────────────────────────────────────────────
 export default function HelpPage() {
@@ -68,6 +68,23 @@ export default function HelpPage() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>Security</div>
                   <div style={{ fontSize: 10, color: '#64748b' }}>How your data and credentials are protected</div>
+                </div>
+              </div>
+              <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+            </div>
+            <div
+              onClick={() => router.push('/help/fifo')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: 14, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, marginBottom: 8,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Layers size={15} style={{ color: '#22d3ee' }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>FIFO &amp; Cost Basis</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>How lots are tracked and which shares get sold first</div>
                 </div>
               </div>
               <ChevronRight size={14} style={{ color: '#94a3b8' }} />

@@ -1001,7 +1001,7 @@ export class DemoBroker implements BrokerEngine {
 
       return {
         success: executed > 0, basketOrderId, status: 'FILLED',
-        orders: orders.map(o => ({ success: true, orderId: o.id, status: 'FILLED' as OrderStatus, estimatedShares: o.shares, reservedAmount: o.totalCost, fillPrice: o.fillPrice, filledShares: o.shares, totalCost: o.totalCost, filledAt: o.filledAt })),
+        orders: orders.map(o => ({ success: true, orderId: o.id, symbol: o.symbol, status: 'FILLED' as OrderStatus, estimatedShares: o.shares, reservedAmount: o.totalCost, fillPrice: o.fillPrice, filledShares: o.shares, totalCost: o.totalCost, filledAt: o.filledAt })),
         totalReserved: totalCost, totalSpent, executed, failed: executionPlan.length - executed,
       };
     }
