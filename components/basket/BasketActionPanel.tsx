@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import SellModal from '@/components/portfolio/SellModal';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
+import type { Lot } from '@/lib/fifo-engine';
 
 // ─── Types ─────────────────────────────────────────────
 
@@ -73,6 +75,54 @@ export default function BasketActionPanel({
     Array<{ symbol: string; qty: number; currentPrice: number }> | null
   >(null);
   const [sellSingleSymbol, setSellSingleSymbol] = useState<string | null>(null);
+  // Active lots per symbol (remaining_qty > 0) for FIFO disclosure in SellModal.
+  const [sellLotsBySymbol, setSellLotsBySymbol] = useState<Record<string, Lot[]> | undefined>(undefined);
+
+  // ── Fetch active lots for FIFO disclosure (Sell All / Sell single) ──
+  const fetchSellLots = async (symbols: string[]) => {
+    if (symbols.length === 0) {
+      setSellLotsBySymbol(undefined);
+      return;
+    }
+    try {
+      const client = getSupabaseBrowserClient();
+      const { data: { session } } = await client.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) {
+        setSellLotsBySymbol(undefined);
+        return;
+      }
+      const { data, error } = await client
+        .from('position_lots')
+        .select('*')
+        .eq('user_id', uid)
+        .in('ticker', symbols)
+        .gt('remaining_qty', 0)
+        .order('filled_at', { ascending: true });
+      if (error) {
+        console.error('[BasketActionPanel] lot fetch error:', error.message);
+        setSellLotsBySymbol(undefined);
+        return;
+      }
+      const typed: Record<string, Lot[]> = {};
+      for (const row of (data || []) as any[]) {
+        const lot: Lot = {
+          id: row.id as string,
+          ticker: row.ticker as string,
+          qty: Number(row.qty),
+          remaining_qty: Number(row.remaining_qty),
+          price_at_fill: Number(row.price_at_fill),
+          filled_at: row.filled_at as string,
+        };
+        if (!typed[lot.ticker]) typed[lot.ticker] = [];
+        typed[lot.ticker].push(lot);
+      }
+      setSellLotsBySymbol(typed);
+    } catch (err: any) {
+      console.error('[BasketActionPanel] lot fetch exception:', err);
+      setSellLotsBySymbol(undefined);
+    }
+  };
 
   // ── Derived ──
   const activePositions = useMemo(
@@ -189,6 +239,7 @@ export default function BasketActionPanel({
     setSellPositions([
       { symbol: pos.symbol, qty: pos.shares, currentPrice: pos.currentPrice },
     ]);
+    fetchSellLots([pos.symbol]);
   };
 
   // Sell — Whole Basket (open SellModal with proportional %)
@@ -201,6 +252,7 @@ export default function BasketActionPanel({
         currentPrice: p.currentPrice,
       })),
     );
+    fetchSellLots(activePositions.map(p => p.symbol));
   };
 
   // Sell confirmation
@@ -629,10 +681,12 @@ export default function BasketActionPanel({
       {sellPositions && (
         <SellModal
           positions={sellPositions}
+          lotsBySymbol={sellLotsBySymbol}
           showPercentOption={sellPositions.length > 1}
           onClose={() => {
             setSellPositions(null);
             setSellSingleSymbol(null);
+            setSellLotsBySymbol(undefined);
           }}
           onConfirm={(percentSold?: number) => {
             handleSellConfirm(percentSold);

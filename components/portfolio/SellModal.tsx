@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { consumeLotsFIFO, type Lot } from '@/lib/fifo-engine'
 
 interface Position {
  symbol: string
@@ -13,11 +14,19 @@ interface SellModalProps {
  onConfirm?: (percentSold?: number) => void
  /** Enable proportional percentage sell (for basket sells) */
  showPercentOption?: boolean
+ /** Active lots per symbol (remaining_qty > 0) for FIFO disclosure. */
+ lotsBySymbol?: Record<string, Lot[]>
 }
 
 const PRESETS = [25, 50, 75, 100] as const
 
-export default function SellModal({ positions, onClose, onConfirm, showPercentOption }: SellModalProps) {
+function formatLotDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
+}
+
+export default function SellModal({ positions, onClose, onConfirm, showPercentOption, lotsBySymbol }: SellModalProps) {
  const total = positions.reduce((s, p) => s + p.qty * p.currentPrice, 0)
  const [submitted, setSubmitted] = useState(false)
  const [sellPercent, setSellPercent] = useState(100)
@@ -42,6 +51,27 @@ export default function SellModal({ positions, onClose, onConfirm, showPercentOp
  const percentValue = showPercentOption ? sellPercent : 100
  const estimatedValue = total * (percentValue / 100)
  const displayPercent = showPercentOption ? percentValue : 100
+
+ // ── FIFO disclosure: specific consumed lots for a symbol ──
+ const consumedLotsFor = (symbol: string): { filledAt: string; qty: number }[] => {
+   const lots = lotsBySymbol?.[symbol]
+   if (!lots || lots.length === 0) return []
+   const active = lots.filter(l => l.remaining_qty > 0)
+   if (active.length === 0) return []
+   const pos = positions.find(p => p.symbol === symbol)
+   if (!pos) return []
+   const sellQty = pos.qty * (percentValue / 100)
+   const totalAvail = active.reduce((s, l) => s + l.remaining_qty, 0)
+   if (sellQty <= 0 || totalAvail <= 0) return []
+   try {
+     return consumeLotsFIFO(active, Math.min(sellQty, totalAvail)).consumed.map(c => {
+       const lot = active.find(l => l.id === c.lot_id)
+       return { filledAt: lot?.filled_at ?? '', qty: c.qty_consumed }
+     })
+   } catch {
+     return []
+   }
+ }
 
  return (
  <div
@@ -285,6 +315,18 @@ export default function SellModal({ positions, onClose, onConfirm, showPercentOp
    ? ` · selling ${(pos.qty * percentValue / 100).toFixed(4)}`
    : ''}
  </div>
+ {(() => {
+   const lots = consumedLotsFor(pos.symbol)
+   if (lots.length === 0) return null
+   const label = lots.length === 1
+     ? `FIFO · 1 lot · ${lots[0].qty.toFixed(4)} @ ${formatLotDate(lots[0].filledAt)}`
+     : `FIFO · ${lots.length} lots · ${lots.map(l => `${l.qty.toFixed(2)} @ ${formatLotDate(l.filledAt)}`).join(' · ')}`
+   return (
+     <div style={{ fontSize: '11px', color: '#22d3ee', marginTop: '3px', fontWeight: 500 }}>
+       {label}
+     </div>
+   )
+ })()}
  </div>
  <div style={{ textAlign: 'right' }}>
  <div style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff' }}>
