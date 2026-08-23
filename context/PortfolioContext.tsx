@@ -952,20 +952,53 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
 
     if (isRealSnapTrade) {
-      const order = demoOrders.find(o => o.id === orderId);
-      const symbol = order?.symbol || 'Unknown';
+      // Real-broker orders live in the Zustand OrderStore (not demoOrders) —
+      // look up the symbol there so toasts show the right ticker.
+      const storeOrder = useOrderStore.getState().orders.find(o => o.id === orderId);
+      const symbol = storeOrder?.symbol || 'Unknown';
       try {
         const result = await fetch('/api/broker/cancel-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId }),
         }).then(r => r.json());
+
         if (!result.success) {
+          // Cancel race: broker already filled/terminal. Reflect the REAL
+          // status in the order store so the list stops showing it as open.
+          if (result.reconciled === true) {
+            if (result.alreadyFilled === true) {
+              const fillPrice = typeof result.fillPrice === 'number' ? result.fillPrice : undefined;
+              const filledQty = typeof result.filledQty === 'number' ? result.filledQty : undefined;
+              useOrderStore.getState().updateOrder(orderId, {
+                status: 'filled',
+                filledPrice: fillPrice,
+                filledQty: filledQty,
+                totalValue: fillPrice != null && filledQty != null ? fillPrice * filledQty : undefined,
+                cancelReason: 'already_filled',
+              });
+            } else {
+              const realStatus = result.status === 'filled' ? 'filled'
+                : result.status === 'cancelled' ? 'cancelled'
+                : result.status === 'rejected' ? 'rejected'
+                : 'open';
+              useOrderStore.getState().updateOrder(orderId, {
+                status: realStatus,
+                cancelReason: realStatus === 'cancelled' ? 'external' : null,
+              });
+            }
+          }
           const reason = result.alreadyFilled ? 'Order had already filled' : result.error || result.message || 'Cancel failed';
           setToast({ message: `⚠ ${symbol}: ${reason}`, type: 'error' });
           setTimeout(() => setToast(null), 5000);
           return;
         }
+
+        // Success: optimistically mark the order cancelled in the Zustand store
+        // so the Invest/Orders lists refresh immediately. refreshStateFromBroker()
+        // below only touches the DEMO broker — it does NOT refresh real-broker
+        // orders, which was the root cause of "closes modal but order stays open".
+        useOrderStore.getState().updateOrder(orderId, { status: 'cancelled', cancelReason: 'user_cancelled' });
         await refreshStateFromBroker();
         setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
         setTimeout(() => setToast(null), 4000);
