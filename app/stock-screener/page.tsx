@@ -172,10 +172,10 @@ export default function StockScreenerPage() {
 
     try {
       // Find or create a "Screener Picks" watchlist
-      let lists = await getWatchlists(user.id);
+      let lists = await getWatchlists(user.id as string);
       let target = lists.find(l => l.name === 'Screener Picks');
       if (!target) {
-        const created = await createWatchlist({ userId: user.id, name: 'Screener Picks', description: 'From stock screener' });
+        const created = await createWatchlist({ userId: user.id as string, name: 'Screener Picks', description: 'From stock screener' });
         if (!created) throw new Error('Failed');
         target = created;
       }

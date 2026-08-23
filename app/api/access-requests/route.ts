@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
 // ── GET: List all requests (admin only) ──
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin(request);
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (auth.adminError) {
+    return auth.adminError;
   }
 
   try {

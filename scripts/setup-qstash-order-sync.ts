@@ -47,7 +47,7 @@ async function main() {
 
   console.log("✅ Schedule created/updated successfully!");
   console.log(`   Schedule ID: ${schedule.scheduleId}`);
-  console.log(`   Cron:       ${schedule.cron}`);
+  console.log(`   Cron:       ${SCHEDULE_CRON}`);
 }
 
 main().catch((err: any) => {

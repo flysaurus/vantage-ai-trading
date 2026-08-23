@@ -37,7 +37,7 @@ export default function InvestorStylePage() {
   useEffect(() => {
     if (!user) return;
     setLoadingProfile(true);
-    getUserProfile(user.id)
+    getUserProfile(user.id as string)
       .then(p => {
         setProfile(p);
         setLoadingProfile(false);
@@ -68,7 +68,7 @@ export default function InvestorStylePage() {
     if (!user || style === currentStyle) { setShowModal(false); return; }
     setUpdating(true);
     try {
-      await updateInvestorStyle(user.id, style);
+      await updateInvestorStyle(user.id as string, style);
       setProfile(prev => prev ? { ...prev, investorStyle: style } : null);
       setShowModal(false);
     } catch {

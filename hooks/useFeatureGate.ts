@@ -32,7 +32,7 @@ export function useFeatureGate(featureKey: FeatureKey): {
   loading: boolean;
 } {
   const { user } = useAuth();
-  const tier = user?.tier ?? 'demo';
+  const tier = (user as any)?.tier ?? 'demo';
   const [hasAccess, setHasAccess] = useState(true); // optimistic default
   const [value, setValue] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,7 +69,7 @@ export function useFeatureGate(featureKey: FeatureKey): {
       const access = v !== 'false' && v !== '0';
       if (!cancelled) {
         setHasAccess(access);
-        setValue(v);
+        setValue(String(v));
         setLoading(false);
       }
     }

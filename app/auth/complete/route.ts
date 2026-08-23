@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=no_code`);
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   console.log('[auth/complete] session ok:', session.user.id);
 
-  const serviceClient = createServiceClient();
+  const serviceClient = createServiceClient() as any;
 
   // Check if returning user
   const { data: existingUser } = await serviceClient

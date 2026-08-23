@@ -57,7 +57,6 @@ export async function POST(request: Request) {
         low: data.low,
         open: data.open,
         source: data.source,
-        exchange: data.exchange,
         high52w: data.high52w,
         low52w: data.low52w,
       };

@@ -13,15 +13,15 @@ function generateToken(): string {
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireAdmin(request);
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (auth.adminError) {
+    return auth.adminError;
   }
 
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { action } = body; // 'approve' or 'reject'
 
@@ -31,7 +31,7 @@ export async function PUT(
 
     const supabase = createServerClient();
     const sb = supabase as any;
-    const adminEmail = auth.user?.email || 'admin';
+    const adminEmail = auth.adminUser?.email || 'admin';
 
     // Fetch the request
     const { data: accessReq, error: fetchErr } = await sb

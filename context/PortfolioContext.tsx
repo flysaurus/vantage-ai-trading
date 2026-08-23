@@ -396,7 +396,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     if (!demoState || !user?.id) return;
     // Debounce: only sync every 5s max
     const timer = setTimeout(() => {
-      syncPortfolioToSupabase(user.id, {
+      syncPortfolioToSupabase(user.id as string, {
         positions: demoState.positions,
         cashBalance: demoState.cashBalance,
         orderHistory: brokerOrdersRef.current,       // BrokerOrder[] — full metadata for cron
@@ -417,7 +417,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user?.id) return;
     const trySupabaseLoad = async () => {
-      const supabaseState = await loadPortfolioFromSupabase(user.id);
+      const supabaseState = await loadPortfolioFromSupabase(user.id as string);
       if (!supabaseState || !supabaseState.positions?.length) return;
 
       const merged: DemoState = {
@@ -699,7 +699,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // loadFromSupabase() resolved, wiping real data with empty defaults.
   useEffect(() => {
     const supabaseClient = getSupabaseBrowserClient();
-    brokerRef.current = getBroker('demo', user?.id, supabaseClient, user?.email);
+    brokerRef.current = getBroker('demo', user?.id as string | undefined, supabaseClient, user?.email as string | undefined);
 
     // Don't initialise demo data when broker is the active view.
     // DemoBroker ref is still set above — needed for executeTrade in any mode.
@@ -830,7 +830,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         return { success: true, status: status as NonNullable<TradeResult['status']>, orderId: proxyResult.orderId };
       }
 
-      const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+      const b: BrokerEngine | null = (isShowingDemo || !broker) ? brokerRef.current : (broker as unknown as BrokerEngine);
       if (!b) return { success: false, error: 'Broker not initialized' };
       const result = await b.placeOrder({ symbol, side, type: orderType || 'market', shares, limitPrice, stopPrice, timeInForce, basketId, basketName, basketEmoji, dollarAmount });
       if (!result.success) {
@@ -1009,7 +1009,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+    const b: BrokerEngine | null = (isShowingDemo || !broker) ? brokerRef.current : (broker as unknown as BrokerEngine);
     if (!b) {
       setToast({ message: 'No broker connected — cannot cancel order', type: 'error' });
       setTimeout(() => setToast(null), 5000);
@@ -1036,7 +1036,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── cancelBasketOrder ──
   const cancelBasketOrder = useCallback(async (basketId: string) => {
-    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+    const b: BrokerEngine | null = (isShowingDemo || !broker) ? brokerRef.current : (broker as unknown as BrokerEngine);
     if (!b) return;
     const result = await b.cancelBasketOrder(basketId);
     if (!result.success) {
@@ -1051,7 +1051,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── executePendingOrders ──
   const executePendingOrders = useCallback(async () => {
-    const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+    const b: BrokerEngine | null = (isShowingDemo || !broker) ? brokerRef.current : (broker as unknown as BrokerEngine);
     if (!b) return;
     const { filled, fills } = await b.executePendingOrders();
     if (filled > 0) {
@@ -1372,7 +1372,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }),
       }).then(r => r.json());
     } else {
-      const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
+      const b: BrokerEngine | null = (isShowingDemo || !broker) ? brokerRef.current : (broker as unknown as BrokerEngine);
       if (!b) return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Broker not initialized' };
       result = await b.placeBasketOrder({
         basketId,

@@ -88,7 +88,7 @@ export async function activateLivePortfolio(
     time_in_force?: string;
   }>,
 ): Promise<void> {
-  const db = createServerClient();
+  const db = createServerClient() as any;
 
   // Clear existing (demo or stale live)
   await clearPortfolio(userId);

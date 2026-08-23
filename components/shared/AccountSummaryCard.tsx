@@ -25,7 +25,7 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
   // Resolve investor style
   const { user } = useAuth();
   const investorStyle: string = (() => {
-    if (user?.investorStyle) return user.investorStyle;
+    if (user?.investorStyle) return user.investorStyle as string;
     if (typeof window !== 'undefined') {
       return localStorage.getItem('vantage:investorStyle') || 'buffett';
     }

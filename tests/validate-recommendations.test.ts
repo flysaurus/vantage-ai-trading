@@ -5,7 +5,8 @@
 // Run: npx tsx tests/validate-recommendations.test.ts
 
 import { validateRecommendations, extractBudget } from '../lib/validate-recommendations';
-import { detectResponseIncoherence, stripTrailingQuestions, validatePortfolioBlocks, parsePortfolioBlocks } from '../app/api/chat/route';
+import { detectResponseIncoherence, stripTrailingQuestions, validatePortfolioBlocks } from '../lib/chat-response-validation';
+import { parsePortfolioBlocks } from '../lib/portfolio-blocks';
 
 // Mock US symbol cache for test environment (no Finnhub API key)
 const MOCK_SYMBOLS = new Set([
@@ -223,15 +224,17 @@ Bottom line: $500 VOO + $300 QQQ + $200 SCHD = $1,000 total.
   });
   await test('returns 3 ETF suggestions', async () => {
     const r = await v(FIXTURE_5, 1000);
-    if (!r.result || r.result.suggestions.length !== 3) throw new Error(`Expected 3, got ${r.result?.suggestions.length}`);
+    if (!r.ok) throw new Error('Expected OK. Failures: ' + JSON.stringify(r.failures));
+    if (r.result.suggestions.length !== 3) throw new Error(`Expected 3, got ${r.result.suggestions.length}`);
   });
   await test('budget is exactly $1,000 (500+300+200)', async () => {
     const r = await v(FIXTURE_5, 1000);
-    if (!r.result || r.result.total !== 1000) throw new Error(`Expected 1000, got ${r.result?.total}`);
+    if (!r.ok) throw new Error('Expected OK. Failures: ' + JSON.stringify(r.failures));
+    if (r.result.total !== 1000) throw new Error(`Expected 1000, got ${r.result.total}`);
   });
   await test('symbols are VOO, QQQ, SCHD (all in mock cache)', async () => {
     const r = await v(FIXTURE_5, 1000);
-    if (!r.result) throw new Error('Expected result');
+    if (!r.ok) throw new Error('Expected OK. Failures: ' + JSON.stringify(r.failures));
     const syms = r.result.suggestions.map(s => s.symbol).sort();
     const expected = ['QQQ', 'SCHD', 'VOO'];
     if (JSON.stringify(syms) !== JSON.stringify(expected)) throw new Error(`Expected ${expected}, got ${syms}`);

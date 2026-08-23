@@ -65,7 +65,7 @@ export default function WatchlistsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getWatchlists(user.id);
+      const data = await getWatchlists(user.id as string);
       setWatchlists(data);
     } catch {
       setError('Failed to load watchlists');
@@ -127,7 +127,7 @@ export default function WatchlistsPage() {
     if (!user || !name.trim()) return;
     setCreating(true);
     setCreateError(null);
-    const result = await createWatchlist({ userId: user.id, name: name.trim(), description: description.trim() || undefined });
+    const result = await createWatchlist({ userId: user.id as string, name: name.trim(), description: description.trim() || undefined });
     if (result) {
       // Add initial stocks if provided
       if (initialStocks.length > 0) {
@@ -135,7 +135,7 @@ export default function WatchlistsPage() {
           await addStockToWatchlist(result.id, sym);
         }
         // Reload the watchlist to get full stocks array
-        const updated = await getWatchlists(user.id);
+        const updated = await getWatchlists(user.id as string);
         setWatchlists(updated);
       } else {
         setWatchlists(prev => [result, ...prev]);

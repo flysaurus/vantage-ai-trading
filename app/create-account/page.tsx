@@ -1290,6 +1290,7 @@ function CheckEmailView({ email, onSignIn }: CheckEmailViewProps) {
   const router = useRouter();
   const [resendState, setResendState] = useState<'idle' | 'loading' | 'sent'>('idle');
   const [cooldown, setCooldown] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
 
   // Countdown timer for resend cooldown
   useEffect(() => {

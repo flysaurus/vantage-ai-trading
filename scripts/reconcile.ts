@@ -1,4 +1,6 @@
 #!/usr/bin/env npx tsx
+export {};
+
 /**
  * Financial Reconciliation Script
  * =================================

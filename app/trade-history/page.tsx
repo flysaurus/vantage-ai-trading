@@ -147,14 +147,14 @@ function TradeHistoryPageInner() {
     try {
       // 1. Sync filled orders from Alpaca to trade_history
       // Auth via Supabase cookies
-      const syncRes = await apiPost('/api/db/trade-history/sync', { userId: user.id, limit: 100 });
+      const syncRes = await apiPost('/api/db/trade-history/sync', { userId: user.id as string, limit: 100 });
       if (syncRes.ok) {
         const syncData = await syncRes.json();
         setSyncStatus(syncData.message || `Synced ${syncData.synced || 0} trades`);
       }
 
       // 2. Load trades from DB
-      const data = await getTrades(user.id, 500, 0);
+      const data = await getTrades(user.id as string, 500, 0);
       setTrades(data.trades || []);
       setTotal(data.total || 0);
     } catch {

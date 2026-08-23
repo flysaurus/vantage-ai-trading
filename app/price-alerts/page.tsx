@@ -60,7 +60,7 @@ export default function PriceAlertsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAlerts(user.id);
+      const data = await getAlerts(user.id as string);
       setAlerts(data);
     } catch {
       setError('Failed to load alerts');
@@ -103,7 +103,7 @@ export default function PriceAlertsPage() {
     setCreateError(null);
     try {
       const result = await createAlert({
-        userId: user.id,
+        userId: user.id as string,
         symbol: symbol.trim().toUpperCase(),
         alertType,
         targetValue,

@@ -24,6 +24,7 @@ interface UserRow {
   tier?: string | null;
   is_admin?: boolean | null;
   suspended?: boolean | null;
+  deleted?: boolean | null;
   created_at: string;
   updated_at?: string | null;
   monthly_chat_used?: number | null;
@@ -467,13 +468,14 @@ async function handleSoftDelete(
   reason: string | undefined,
   adminEmail: string,
 ) {
-  const { user, error: userErr } = await fetchUser(sb, userId);
-  if (userErr) {
+  const result = await fetchUser(sb, userId);
+  if ('error' in result) {
     return NextResponse.json(
-      { error: userErr.error || 'User not found' },
-      { status: userErr.status || 404 },
+      { error: result.error || 'User not found' },
+      { status: result.status as any },
     );
   }
+  const { user } = result;
 
   // Already deleted — no-op
   if ((user as any).deleted) {
@@ -516,13 +518,14 @@ async function handleRestoreUser(
   reason: string | undefined,
   adminEmail: string,
 ) {
-  const { user, error: userErr } = await fetchUser(sb, userId);
-  if (userErr) {
+  const result = await fetchUser(sb, userId);
+  if ('error' in result) {
     return NextResponse.json(
-      { error: userErr.error || 'User not found' },
-      { status: userErr.status || 404 },
+      { error: result.error || 'User not found' },
+      { status: result.status as any },
     );
   }
+  const { user } = result;
 
   if (!(user as any).deleted) {
     return NextResponse.json({
