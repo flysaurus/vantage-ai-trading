@@ -11,7 +11,7 @@ import {
   BasketOrderRequest, BasketOrderResult,
   BrokerPosition, BrokerOrder, BrokerBasketOrder,
   BrokerAccountSummary, OrderStatus,
-  DemoStateInternal, OrderImpactPreview,
+  DemoStateInternal, OrderImpactPreview, PendingOrderFill,
 } from './types';
 import { evaluateOpenOrder } from './fill-engine';
 import { sendOrderNotification, sendBasketNotification } from '@/lib/notifications';
@@ -1127,16 +1127,17 @@ export class DemoBroker implements BrokerEngine {
 
   // ─── EXECUTE PENDING ORDERS (market opens) ───
 
-  async executePendingOrders(): Promise<number> {
+  async executePendingOrders(): Promise<{ filled: number; fills: PendingOrderFill[] }> {
     const marketOpen = this.isMarketOpen();
     const now = new Date();
 
     let filled = 0;
     let expired = 0;
+    const fills: PendingOrderFill[] = [];
 
     // Collect all symbols that need quotes
     const openOrders = this.state.orders.filter(o => o.status === 'OPEN');
-    if (openOrders.length === 0) return 0;
+    if (openOrders.length === 0) return { filled: 0, fills: [] };
 
     const symbols = [...new Set(openOrders.map(o => o.symbol))];
     const quotes = new Map<string, number>();
@@ -1168,6 +1169,17 @@ export class DemoBroker implements BrokerEngine {
           const fillPx = decision.fillPrice || quotePrice;
           this.applyFillToOrder(order, fillPx);
           filled++;
+          fills.push({
+            orderId: order.id,
+            symbol: order.symbol,
+            side: order.side,
+            shares: order.shares,
+            fillPrice: order.fillPrice ?? fillPx,
+            filledAt: order.filledAt ?? now.toISOString(),
+            basketId: order.basketId ?? null,
+            basketName: order.basketName ?? null,
+            basketEmoji: order.basketEmoji ?? null,
+          });
         } else if (decision.action === 'expire') {
           this.expireOrder(order);
           expired++;
@@ -1255,7 +1267,7 @@ export class DemoBroker implements BrokerEngine {
 
       console.log(`[DemoBroker] Filled ${filled}, expired ${expired} pending orders`);
     }
-    return filled + expired;
+    return { filled: filled + expired, fills };
   }
 
   // ─── PRIVATE HELPERS ───

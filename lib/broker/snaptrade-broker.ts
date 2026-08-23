@@ -15,7 +15,7 @@ import type {
   BrokerEngine, BrokerMeta, BrokerPosition, BrokerAccountSummary,
   BrokerOrder, BrokerBasketOrder, OrderRequest, OrderResult,
   BasketOrderRequest, BasketOrderResult, OrderStatus, OrderSide, OrderType,
-  TimeInForce, OrderImpactPreview, CancelOrderResult,
+  TimeInForce, OrderImpactPreview, CancelOrderResult, PendingOrderFill,
 } from './types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -896,8 +896,8 @@ export class SnapTradeBroker implements BrokerEngine {
     return 'Market open';
   }
 
-  executePendingOrders(): Promise<number> {
-    return Promise.resolve(0);
+  executePendingOrders(): Promise<{ filled: number; fills: PendingOrderFill[] }> {
+    return Promise.resolve({ filled: 0, fills: [] });
   }
 
   // ── Order Status Polling ───────────────────────────────

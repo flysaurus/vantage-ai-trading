@@ -233,6 +233,21 @@ export interface BrokerMeta {
   brokerDisplayName: string;
 }
 
+/** A single order that just filled during pending-order execution
+ *  (limit/stop/stop_limit demo orders). Used to write the FIFO lot ledger. */
+export interface PendingOrderFill {
+  orderId: string;
+  symbol: string;
+  side: OrderSide;
+  /** Shares actually filled (post-fill, for BUY this is cost/price). */
+  shares: number;
+  fillPrice: number;
+  filledAt: string;
+  basketId?: string | null;
+  basketName?: string | null;
+  basketEmoji?: string | null;
+}
+
 // ─── Broker Engine Interface ──────────────────────────────
 
 export interface BrokerEngine {
@@ -259,7 +274,7 @@ export interface BrokerEngine {
 
   isMarketOpen(): boolean;
   getNextOpenLabel(): string;
-  executePendingOrders(): Promise<number>;
+  executePendingOrders(): Promise<{ filled: number; fills: PendingOrderFill[] }>;
 
   /** Poll broker to sync status of tracked in-flight orders.
    *  Returns order IDs whose status changed. */

@@ -1020,14 +1020,55 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const executePendingOrders = useCallback(async () => {
     const b = (isShowingDemo || !broker) ? brokerRef.current : broker;
     if (!b) return;
-    const filled = await b.executePendingOrders();
+    const { filled, fills } = await b.executePendingOrders();
     if (filled > 0) {
+      // ── Phase 7: persist FIFO lot ledger for pending-order fills ──
+      // Limit/stop/stop_limit demo orders that fill on market-open write
+      // lots here (account_id = NULL) so FIFO disclosure + realized P/L
+      // stay correct — same coverage as executeTrade's immediate fills.
+      if (user?.id) {
+        try {
+          const supabaseClient = getSupabaseBrowserClient();
+          const userId = user.id as string;
+          for (const fill of fills) {
+            if (fill.side === 'BUY') {
+              await createLotForBuy(supabaseClient, {
+                userId,
+                accountId: null,
+                ticker: fill.symbol,
+                qty: fill.shares,
+                priceAtFill: fill.fillPrice,
+                filledAt: fill.filledAt,
+                source: 'vantage',
+                basketId: fill.basketId ?? null,
+                orderId: fill.orderId ?? null,
+                originTag: fill.basketId ? 'basket_buy' : 'standalone_buy',
+              });
+            } else {
+              const consumed = await consumeLotsForSell(
+                supabaseClient,
+                userId,
+                null,
+                fill.symbol,
+                fill.shares,
+              );
+              if (consumed.shortfall > 0) {
+                console.warn(
+                  `[PortfolioContext] Pending sell ${fill.symbol}: ${consumed.shortfall} sh unmatched to tracked lots.`,
+                );
+              }
+            }
+          }
+        } catch (err: any) {
+          console.error('[PortfolioContext] Pending-order lot ledger failed:', err?.message || err);
+        }
+      }
       await refreshStateFromBroker();
       await loadBasketsRef.current(); // Refresh basket state from BASKET_POSITIONS_KEY
       setToast({ message: `🔔 Executed ${filled} pending orders`, type: 'success' });
       setTimeout(() => setToast(null), 4000);
     }
-  }, [brokerRef, refreshStateFromBroker, broker, isShowingDemo]);
+  }, [brokerRef, refreshStateFromBroker, broker, isShowingDemo, user?.id]);
 
   const loadBasketsRef = useRef<() => Promise<void>>(async () => {});
 
