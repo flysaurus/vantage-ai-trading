@@ -97,7 +97,7 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
             </div>
           </div>
         )}
-        <div style={{ flex: account.buyingPower != null ? 1 : undefined }}>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
             Cash
           </div>
@@ -111,6 +111,17 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
             </div>
           )}
         </div>
+        {/* Reserved cash — only when the broker path surfaces it (hidden for Demo). */}
+        {account.reservedCash !== null && account.reservedCash !== undefined && (
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
+              Reserved
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24' }}>
+              ${account.reservedCash.toLocaleString('en-US', DOLLAR_FMT)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* "as of" label — shows when lastSynced is present (broker accounts), hidden for Demo (null) */}

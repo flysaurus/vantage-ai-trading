@@ -806,11 +806,13 @@ function PositionCard({
 
 function BuyingPowerCard({ account, invested }: { account: AccountSummary; invested: number }) {
   const hasBuyingPower = account.buyingPower !== null && account.buyingPower !== undefined;
+  const hasReserved = account.reservedCash !== null && account.reservedCash !== undefined;
+  const columns = 2 + (hasBuyingPower ? 1 : 0) + (hasReserved ? 1 : 0);
   return (
     <div style={{ padding: '0 16px 16px' }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: hasBuyingPower ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)',
+        gridTemplateColumns: `repeat(${columns}, 1fr)`,
         gap: 12,
         padding: 16,
         background: 'var(--card-bg)',
@@ -823,6 +825,14 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
             ${computeAvailableCash(account).toLocaleString('en-US', DOLLAR_FMT)}
           </div>
         </div>
+        {hasReserved && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>RESERVED</div>
+            <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: '#fbbf24' }}>
+              ${(account.reservedCash ?? 0).toLocaleString('en-US', DOLLAR_FMT)}
+            </div>
+          </div>
+        )}
         {hasBuyingPower && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>BUYING POWER</div>

@@ -23,7 +23,10 @@ export interface AccountSummary {
   equity: number;
   /** null = non-margin account — UI hides field entirely */
   buyingPower: number | null;
+  /** NET settled cash = broker cash − reservedCash (already floored at 0). */
   cash: number;
+  /** Dollar value reserved by still-open BUY orders. null/undefined = no reservation data (Demo). */
+  reservedCash?: number | null;
   dayPnl: number;
   dayPnlPercent: number;
   totalPnl: number;

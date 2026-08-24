@@ -25,7 +25,7 @@ import { useAccounts } from '@/context/AccountContext';
 import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
-import { availableCash } from '@/lib/available-cash';
+import { availableCash, sumOpenReservedAmount } from '@/lib/available-cash';
 import { selectWorkingBasketLegs } from '@/lib/basket-cancel';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
@@ -572,10 +572,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
         if (cancelled) return;
 
+        // Net available cash: broker cash − cash reserved by still-open BUY orders.
+        const reservedCash = sumOpenReservedAmount(
+          useOrderStore.getState().orders as any
+        );
+
         const summary: AccountSummary = {
           equity: ba.equity,
           buyingPower: ba.buyingPower,
-          cash: ba.cash,
+          cash: Math.max(0, ba.cash - reservedCash),
+          reservedCash,
           dayPnl: ba.dayPnl ?? 0,
           dayPnlPercent: ba.dayPnlPercent ?? 0,
           totalPnl: ba.totalPnl ?? 0,

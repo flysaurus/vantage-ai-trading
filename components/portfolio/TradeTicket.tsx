@@ -555,6 +555,15 @@ export default function TradeTicket({
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, color: '#cbd5e1' }}>Shares</span>
+            <span style={{
+              fontSize: 14, fontWeight: 700, color: '#ffffff',
+              fontFamily: 'var(--font-mono, monospace)',
+            }}>
+              {Number(supportsFractional ? rawShares : qty).toLocaleString('en-US', { maximumFractionDigits: 4 })}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 12, color: '#cbd5e1' }}>
               {side === 'BUY' ? 'Est. cost' : 'Est. proceeds'}
             </span>

@@ -7,6 +7,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePortfolioStore } from '@/store';
+import { useOrderStore } from '@/store';
+import { sumOpenReservedAmount } from '@/lib/available-cash';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiPost } from '@/lib/api-client';
@@ -384,10 +386,20 @@ export function usePortfolio() {
         }))
         .sort((a, b) => b.percent - a.percent);
 
+      // Money-correctness: net available cash = broker cash − cash reserved
+      // by still-open BUY orders (dollar notional). Orders come from the
+      // canonical OrderStore (mapped by useOrders), which carries the
+      // authoritative requestedAmount/notional/requestedQty + filledQty/filledPrice.
+      // Sell orders are excluded (they reserve shares, not cash).
+      const reservedCash = sumOpenReservedAmount(
+        useOrderStore.getState().orders as any
+      );
+
       const accountSummary: AccountSummary = {
         equity: brokerAccount.equity,
         buyingPower: brokerAccount.buyingPower ?? null,
-        cash: brokerAccount.cash,
+        cash: Math.max(0, brokerAccount.cash - reservedCash),
+        reservedCash,
         dayPnl: brokerAccount.dayPnl,
         dayPnlPercent: brokerAccount.dayPnlPercent,
         totalPnl: brokerAccount.totalPnl,

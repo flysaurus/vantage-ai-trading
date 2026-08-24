@@ -20,6 +20,7 @@ export interface CashBalanceFields {
 }
 
 export interface OpenOrderReservation {
+  side?: string | null;
   status?: string | null;
   requestedAmount?: number | null;
   requestedQty?: number | null;
@@ -36,7 +37,7 @@ export interface OpenOrderReservation {
   filledCost?: number | null;
 }
 
-const OPEN_STATUSES = new Set(['open', 'submitted', 'partially_filled']);
+const OPEN_STATUSES = new Set(['open', 'pending', 'submitted', 'partially_filled']);
 
 /**
  * Sum of dollar value reserved by still-open orders = SUM(requested_amount
@@ -48,6 +49,11 @@ export function sumOpenReservedAmount(orders: OpenOrderReservation[]): number {
   let total = 0;
   for (const o of orders) {
     if (!o || !o.status || !OPEN_STATUSES.has(o.status.toLowerCase())) continue;
+
+    // SELL orders reserve SHARES, not cash — never count them against
+    // available cash. (Undefined/legacy side is treated as BUY to preserve
+    // backward compatibility with callers that don't pass a side.)
+    if (typeof o.side === 'string' && o.side.toLowerCase() === 'sell') continue;
 
     // Base reservation: requested_amount (authoritative), then notional, then
     // requestedQty/qty × a reference price.
@@ -62,17 +68,15 @@ export function sumOpenReservedAmount(orders: OpenOrderReservation[]): number {
       if (refPrice > 0 && qty > 0) reserved = qty * refPrice;
     }
 
-    // Money-correctness: a partially_filled order has already SPENT the filled
-    // portion. Release it from the reservation so only the unfilled remainder
-    // stays "locked". Without this, partially_filled orders (which stay in
-    // OPEN_STATUSES) would keep their FULL original reservation forever, and
-    // the filled cash would be double-counted against available cash.
-    if (o.status.toLowerCase() === 'partially_filled') {
-      const filledQty = Number(o.filledQty ?? 0);
-      const filledPrice = Number(o.filledPrice ?? 0);
-      const filledCost = Number(o.filledCost ?? 0) || (filledQty * filledPrice);
-      reserved = Math.max(0, reserved - filledCost);
-    }
+    // Money-correctness: release the already-filled portion of ANY working
+    // order (not just partially_filled — several adapters keep status 'open'
+    // with a nonzero filledQty, and the app's status map folds
+    // partially_filled → 'open'). Only the unfilled remainder stays locked,
+    // so the filled cash is never double-counted against available cash.
+    const filledQty = Number(o.filledQty ?? 0);
+    const filledPrice = Number(o.filledPrice ?? 0);
+    const filledCost = Number(o.filledCost ?? 0) || filledQty * filledPrice;
+    if (filledCost > 0) reserved = Math.max(0, reserved - filledCost);
 
     total += reserved;
   }
