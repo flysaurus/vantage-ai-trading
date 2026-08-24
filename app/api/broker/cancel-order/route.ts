@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
 
-  let body: { orderId?: string; connectionId?: string | null };
+  let body: { orderId?: string; connectionId?: string | null; detachFromBasket?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
 
   const orderId = typeof body?.orderId === 'string' ? body.orderId.trim() : '';
   const requestedConnectionId = typeof body?.connectionId === 'string' ? body.connectionId : null;
+  const detachFromBasket = body?.detachFromBasket === true;
   if (!orderId) {
     return NextResponse.json(
       { success: false, error: 'Missing orderId' },
@@ -167,13 +168,33 @@ export async function POST(req: NextRequest) {
   if (result.success) {
     let dbUpdated = false;
     if (dbOrderId) {
+      // detachFromBasket (basket edit): the superseded leg is being replaced by
+      // a re-placed one under the SAME user_baskets row, so clear its basket_id
+      // to keep the updated basket from showing stale cancelled legs.
+      const patch: Record<string, unknown> = {
+        status: 'cancelled',
+        cancelled_at: now,
+        updated_at: now,
+      };
+      if (detachFromBasket) patch.basket_id = null;
       const { error: updErr } = await supabase
         .from('orders')
-        .update({ status: 'cancelled', cancelled_at: now, updated_at: now, cancel_reason: 'user_cancelled' })
+        .update(patch)
         .eq('id', dbOrderId);
       dbUpdated = !updErr;
       if (updErr) {
         console.error('[cancel-order] DB update failed:', updErr.message);
+      } else {
+        // cancel_reason is best-effort (added by migration 057). A missing
+        // optional column must NEVER break the critical status flip above —
+        // this was the root cause of cancels silently not persisting.
+        const { error: reasonErr } = await supabase
+          .from('orders')
+          .update({ cancel_reason: 'user_cancelled' })
+          .eq('id', dbOrderId);
+        if (reasonErr) {
+          console.warn('[cancel-order] cancel_reason write skipped:', reasonErr.message);
+        }
       }
     }
 
@@ -237,14 +258,15 @@ export async function POST(req: NextRequest) {
         status: dbStatus,
         updated_at: now,
       };
+      let reason: string | null = null;
       if (alreadyFilled) {
         patch.filled_qty = reconciled.filledShares ?? reconciled.shares ?? 0;
         patch.filled_price = reconciled.fillPrice ?? null;
         patch.filled_at = reconciled.filledAt ?? now;
-        patch.cancel_reason = 'already_filled';
+        reason = 'already_filled';
       } else if (reconciled.status === 'CANCELLED') {
         patch.cancelled_at = now;
-        patch.cancel_reason = 'external';
+        reason = 'external';
       }
       const { error: updErr } = await supabase
         .from('orders')
@@ -253,6 +275,15 @@ export async function POST(req: NextRequest) {
       dbUpdated = !updErr;
       if (updErr) {
         console.error('[cancel-order] reconcile DB update failed:', updErr.message);
+      } else if (reason) {
+        // Best-effort (migration 057) — never break the critical status flip.
+        const { error: reasonErr } = await supabase
+          .from('orders')
+          .update({ cancel_reason: reason })
+          .eq('id', dbOrderId);
+        if (reasonErr) {
+          console.warn('[cancel-order] cancel_reason write skipped:', reasonErr.message);
+        }
       }
     }
 

@@ -201,6 +201,7 @@ interface PortfolioContextValue {
     displayName: string,
     stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number }>,
     budget: number,
+    existingBasketId?: string,
   ) => Promise<BasketTradeResult>;
   /** Sell selected basket positions */
   sellBasketPositions: (
@@ -209,9 +210,9 @@ interface PortfolioContextValue {
     sharesOverride?: Record<string, number>,
   ) => Promise<BasketSellResult>;
   /** Cancel an OPEN order — releases reserved cash for BUY orders */
-  cancelOrder: (orderId: string) => Promise<void>;
+  cancelOrder: (orderId: string, opts?: { detachFromBasket?: boolean }) => Promise<void>;
   /** Cancel a pending basket order — releases reserved cash, marks OPEN orders as CANCELLED */
-  cancelBasketOrder: (basketId: string) => void;
+  cancelBasketOrder: (basketId: string, opts?: { detach?: boolean }) => Promise<void>;
   /** Execute all pending OPEN orders at current market prices */
   executePendingOrders: () => Promise<void>;
   /** All basket orders (grouped, from broker) */
@@ -240,7 +241,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   executeBasketTrade: async () => ({ success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Not initialized' }) as any,
   sellBasketPositions: async () => ({ success: false, proceeds: 0, executed: [], failed: [] }),
   cancelOrder: async () => {},
-  cancelBasketOrder: () => {},
+  cancelBasketOrder: async () => {},
   executePendingOrders: async () => {},
   basketOrders: [],
   pendingBaskets: [],

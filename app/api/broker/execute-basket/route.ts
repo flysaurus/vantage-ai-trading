@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
     basketName?: string;
     basketEmoji?: string;
     basketDisplayName?: string;
+    existingBasketId?: string;
     stocks?: Array<{ symbol: string; dollarAmount: number; allocationPct: number; fallbackPrice?: number }>;
     totalBudget?: number;
   };
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { basketId = '', basketName = '', basketEmoji = '', basketDisplayName = '', stocks = [], totalBudget = 0 } = body;
+  const { basketId = '', basketName = '', basketEmoji = '', basketDisplayName = '', existingBasketId = '', stocks = [], totalBudget = 0 } = body;
 
   if (!Array.isArray(stocks) || stocks.length === 0) {
     return NextResponse.json(
@@ -154,45 +155,79 @@ export async function POST(req: NextRequest) {
     const persisted: string[] = [];
 
     // The client-side `basketId` is a curated catalog id or `custom_<ts>` —
-    // NOT a valid UUID — so we mint a fresh user_baskets.id here and link
-    // every leg to it. Order History joins orders.basket_id → user_baskets.
-    const userBasketId = crypto.randomUUID();
-    // System-generated name: "[Theme] - MMDDYYYY" + per-theme-per-day counter
-    // (2), (3)… — never user-editable. The client's basketDisplayName is
-    // ignored; the theme base is authoritative.
+    // NOT a valid UUID — so for a NEW basket we mint a fresh user_baskets.id
+    // here and link every leg to it. Order History joins orders.basket_id →
+    // user_baskets.
+    //
+    // EDIT-in-place: when the client passes `existingBasketId` (a real
+    // user_baskets.id), we REUSE that row — same id, same name — instead of
+    // minting a duplicate with a re-appended date. This is what makes
+    // "edit pending basket" update the existing order rather than spawn
+    // "GLP-1 Ripple Effect - 08232026 - 08242026".
     const themeBase = (basketName || basketDisplayName || 'Basket').trim() || 'Basket';
     const dateSuffix = formatBasketDateET(new Date());
-    let counter = 1;
-    try {
-      const { data: prior } = await supabase
+    let userBasketId: string;
+    let basketDisplay: string;
+    let userBasketThemeLabel: string | null = themeBase || null;
+    let isUpdate = false;
+
+    if (existingBasketId) {
+      const { data: existing, error: lookupErr } = await supabase
         .from('user_baskets')
-        .select('id, theme_label, created_at')
+        .select('id, name, theme_label')
+        .eq('id', existingBasketId)
         .eq('user_id', authUser!.id)
-        .eq('theme_label', themeBase);
-      const sameDay = (prior || []).filter((b: any) => {
-        try { return formatBasketDateET(new Date(b.created_at)) === dateSuffix; } catch { return false; }
-      });
-      counter = sameDay.length + 1;
-    } catch (e) {
-      console.error('[execute-basket] ⚠️ counter query failed (non-fatal):', e);
+        .maybeSingle();
+
+      if (!lookupErr && existing) {
+        // Reuse the row + name VERBATIM (no date re-append). Preserve the
+        // clean theme_label so future counter lookups still key off the theme.
+        userBasketId = existing.id;
+        basketDisplay = existing.name || `${themeBase} - ${dateSuffix}`;
+        userBasketThemeLabel = existing.theme_label ?? themeBase ?? null;
+        isUpdate = true;
+      } else {
+        // Stale/unknown id → fall back to mint-new.
+        userBasketId = crypto.randomUUID();
+        basketDisplay = `${themeBase} - ${dateSuffix}`;
+      }
+    } else {
+      // System-generated name: "[Theme] - MMDDYYYY" + per-theme-per-day counter
+      // (2), (3)… — never user-editable.
+      userBasketId = crypto.randomUUID();
+      let counter = 1;
+      try {
+        const { data: prior } = await supabase
+          .from('user_baskets')
+          .select('id, theme_label, created_at')
+          .eq('user_id', authUser!.id)
+          .eq('theme_label', themeBase);
+        const sameDay = (prior || []).filter((b: any) => {
+          try { return formatBasketDateET(new Date(b.created_at)) === dateSuffix; } catch { return false; }
+        });
+        counter = sameDay.length + 1;
+      } catch (e) {
+        console.error('[execute-basket] ⚠️ counter query failed (non-fatal):', e);
+      }
+      basketDisplay =
+        counter === 1 ? `${themeBase} - ${dateSuffix}` : `${themeBase} - ${dateSuffix} (${counter})`;
     }
-    const basketDisplay =
-      counter === 1 ? `${themeBase} - ${dateSuffix}` : `${themeBase} - ${dateSuffix} (${counter})`;
+
     const { error: basketErr } = await supabase
       .from('user_baskets')
-      .insert({
+      .upsert({
         id: userBasketId,
         user_id: authUser!.id,
         name: basketDisplay,
-        theme_label: themeBase || null,
+        theme_label: userBasketThemeLabel,
         icon: basketEmoji || null,
         status: 'active',
         connection_id: brokerConnectionId || null,
-      });
+      }, { onConflict: 'id' });
     if (basketErr) {
-      console.error('[execute-basket] ⚠️ user_baskets insert failed:', JSON.stringify(basketErr, null, 2));
+      console.error(`[execute-basket] ⚠️ user_baskets ${isUpdate ? 'upsert' : 'insert'} failed:`, JSON.stringify(basketErr, null, 2));
     } else {
-      console.log(`[execute-basket] 🧺 Basket group persisted: ${userBasketId} ("${basketDisplay}")`);
+      console.log(`[execute-basket] 🧺 Basket ${isUpdate ? 'updated' : 'persisted'}: ${userBasketId} ("${basketDisplay}")`);
     }
 
     for (const leg of result.orders) {

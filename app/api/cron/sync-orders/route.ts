@@ -214,7 +214,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const now = new Date().toISOString();
           const { error: staleErr } = await supabase
             .from('orders')
-            .update({ status: 'cancelled', cancelled_at: now, updated_at: now, cancel_reason: 'stale_guard' })
+            .update({ status: 'cancelled', cancelled_at: now, updated_at: now })
             .eq('id', o.id);
           if (staleErr) {
             errors++;
@@ -223,6 +223,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               staleErr.message,
             );
           } else {
+            // Best-effort reason (migration 057) — never block the status flip.
+            await supabase
+              .from('orders')
+              .update({ cancel_reason: 'stale_guard' })
+              .eq('id', o.id)
+              .then((r) => {
+                if (r.error) console.warn('[sync-orders] cancel_reason write skipped:', r.error.message);
+              });
             staleCancelled++;
             console.log(
               `[sync-orders] Stale-cancel: ${o.brokerage_order_id.slice(0, 8)} open ${Math.round(ageMs / 3600000)}h → cancelled`,
@@ -276,9 +284,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         patch.filled_price = live.fillPrice ?? null;
         patch.filled_at = live.filledAt ?? now;
       }
+      let cancelReason: string | null = null;
       if (live.status === 'CANCELLED') {
         patch.cancelled_at = live.cancelledAt ?? now;
-        patch.cancel_reason = 'external';
+        cancelReason = 'external';
       }
 
       const { error: updErr } = await supabase
@@ -293,6 +302,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           updErr.message,
         );
       } else {
+        // Best-effort reason (migration 057) — never block the status flip.
+        if (cancelReason) {
+          await supabase
+            .from('orders')
+            .update({ cancel_reason: cancelReason })
+            .eq('id', o.id)
+            .then((r) => {
+              if (r.error) console.warn('[sync-orders] cancel_reason write skipped:', r.error.message);
+            });
+        }
         transitions++;
         console.log(
           `[sync-orders] ${o.brokerage_order_id.slice(0, 8)}: ${o.status} → ${newStatus}`,
