@@ -26,6 +26,7 @@ import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { availableCash } from '@/lib/available-cash';
+import { isWorkingStatus } from '@/lib/order-format';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
 import { getBroker } from '@/lib/broker/broker-factory';
@@ -353,6 +354,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [supabaseDegraded, setSupabaseDegraded] = useState(false);
   const [brokerSource, setBrokerSource] = useState<'demo' | 'snaptrade'>('demo');
   const [brokerMeta, setBrokerMeta] = useState<PortfolioContextValue['brokerMeta']>(null);
+  // Bump to force an immediate re-fetch of the real broker account (cash/buying
+  // power) — e.g. right after a cancel, so the CASH tile doesn't wait for the
+  // next 30s poll to show the returned cash.
+  const [brokerRefreshNonce, setBrokerRefreshNonce] = useState(0);
   useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
 
   // ── Bridge demo orders to Zustand OrderStore for OrdersTab rendering ──
@@ -557,7 +562,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
 
-    const loadBrokerAccount = async () => {
+    const loadBrokerAccount = async (silent = false) => {
       try {
         const [ba, positions] = await Promise.all([
           broker.getAccount(),
@@ -598,7 +603,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         console.error('[portfolio context] broker-load SUCCESS — equity:', summary.equity, 'positions:', summary.positions.length);
       } catch (e) {
         console.error('[portfolio context] broker-load FAILED:', e);
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           const msg = e instanceof Error ? e.message : 'Failed to load brokerage data';
           // Surface to the UI — never silently zero out broker display
           setError(msg.includes('expired') || msg.includes('reconnect') || msg.includes('401')
@@ -609,8 +614,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     };
 
     loadBrokerAccount();
-    return () => { cancelled = true; };
-  }, [isConnected, broker, isShowingDemo]);
+    // Keep cash/buying power fresh: SnapTrade's cash can change on fills,
+    // cancels, and settlements with NO local state change. Poll on the same
+    // 30s cadence as the orders poll so the CASH tile stops going stale after
+    // trades/cancels. Background ticks are silent (no error flash); only the
+    // mount / explicit-refresh loads surface errors.
+    const interval = setInterval(() => loadBrokerAccount(true), 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isConnected, broker, isShowingDemo, brokerRefreshNonce]);
 
   // Fetch on mount and when state changes
   useEffect(() => {
@@ -1003,6 +1014,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         // orders, which was the root cause of "closes modal but order stays open".
         useOrderStore.getState().updateOrder(orderId, { status: 'cancelled', cancelReason: 'user_cancelled' });
         await refreshStateFromBroker();
+        // Re-fetch the real broker account NOW so the CASH tile reflects the
+        // released hold immediately instead of waiting for the next 30s poll.
+        setBrokerRefreshNonce((n) => n + 1);
         setToast({ message: `❌ Order for ${symbol} cancelled — cash returned to buying power`, type: 'success' });
         setTimeout(() => setToast(null), 4000);
       } catch (err: any) {
@@ -1039,6 +1053,36 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   // ── cancelBasketOrder ──
   const cancelBasketOrder = useCallback(async (basketId: string) => {
+    const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
+
+    if (isRealSnapTrade) {
+      // Real SnapTrade baskets are a set of individual orders sharing basket_id
+      // (there is no broker-level "basket order"). The read-only real-broker
+      // adapter has no cancelBasketOrder — it's a demo-only concept — so fan out
+      // per-leg through cancelOrder(), which is the SAME server-proxy path used
+      // by single-order cancels and OrdersTab.handleCancelBasket. Only
+      // still-working legs are sent; filled legs have already executed at the
+      // broker and must be sold separately.
+      const legs = useOrderStore.getState().orders.filter(
+        (o: any) => o.basketId === basketId || o.basketOrderId === basketId,
+      );
+      const workingLegs = legs.filter((o: any) => isWorkingStatus(o.status));
+
+      if (workingLegs.length === 0) {
+        setToast({ message: 'No open basket orders left to cancel', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      await Promise.all(workingLegs.map((leg: any) => cancelOrder(leg.id)));
+      setToast({
+        message: `🛑 Basket cancelled — ${workingLegs.length} order${workingLegs.length === 1 ? '' : 's'} returned to buying power`,
+        type: 'success',
+      });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
     const b: BrokerEngine | null = (isShowingDemo || !broker) ? brokerRef.current : (broker as unknown as BrokerEngine);
     if (!b) return;
     const result = await b.cancelBasketOrder(basketId);
@@ -1050,7 +1094,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     await refreshStateFromBroker();
     setToast({ message: '🛑 Basket order cancelled. Cash returned to buying power.', type: 'success' });
     setTimeout(() => setToast(null), 4000);
-  }, [brokerRef, refreshStateFromBroker, broker, isShowingDemo]);
+  }, [brokerRef, refreshStateFromBroker, broker, isShowingDemo, brokerSource, cancelOrder]);
 
   // ── executePendingOrders ──
   const executePendingOrders = useCallback(async () => {

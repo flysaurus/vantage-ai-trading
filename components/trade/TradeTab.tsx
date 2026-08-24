@@ -2173,9 +2173,11 @@ export function TradeTab() {
                 <button
                   onClick={() => {
                     setCancelGroupTarget(null);
-                    for (const leg of workingLegs) {
-                      cancelOrder(leg.id);
-                    }
+                    // Single shared cancel path: fan out per-leg (working legs
+                    // only) through cancelBasketOrder — the same implementation
+                    // the demo basket modal uses, and which delegates to the
+                    // server proxy for real SnapTrade accounts.
+                    cancelBasketOrder(t.basketId);
                   }}
                   style={{
                     flex: 1,

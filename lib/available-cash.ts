@@ -28,6 +28,12 @@ export interface OpenOrderReservation {
   qty?: number | null;
   fillPrice?: number | null;
   limitPrice?: number | null;
+  /** Already-filled quantity (for partially_filled orders). */
+  filledQty?: number | null;
+  /** Price at which the filled portion executed. */
+  filledPrice?: number | null;
+  /** Explicit already-filled dollar cost (overrides filledQty × filledPrice). */
+  filledCost?: number | null;
 }
 
 const OPEN_STATUSES = new Set(['open', 'submitted', 'partially_filled']);
@@ -43,15 +49,32 @@ export function sumOpenReservedAmount(orders: OpenOrderReservation[]): number {
   for (const o of orders) {
     if (!o || !o.status || !OPEN_STATUSES.has(o.status.toLowerCase())) continue;
 
+    // Base reservation: requested_amount (authoritative), then notional, then
+    // requestedQty/qty × a reference price.
+    let reserved = 0;
     if (o.requestedAmount != null && Number(o.requestedAmount) > 0) {
-      total += Number(o.requestedAmount);
+      reserved = Number(o.requestedAmount);
     } else if (o.notional != null && Number(o.notional) > 0) {
-      total += Number(o.notional);
+      reserved = Number(o.notional);
     } else {
       const refPrice = Number(o.fillPrice ?? o.limitPrice ?? 0);
       const qty = Number(o.requestedQty ?? o.qty ?? 0);
-      if (refPrice > 0 && qty > 0) total += qty * refPrice;
+      if (refPrice > 0 && qty > 0) reserved = qty * refPrice;
     }
+
+    // Money-correctness: a partially_filled order has already SPENT the filled
+    // portion. Release it from the reservation so only the unfilled remainder
+    // stays "locked". Without this, partially_filled orders (which stay in
+    // OPEN_STATUSES) would keep their FULL original reservation forever, and
+    // the filled cash would be double-counted against available cash.
+    if (o.status.toLowerCase() === 'partially_filled') {
+      const filledQty = Number(o.filledQty ?? 0);
+      const filledPrice = Number(o.filledPrice ?? 0);
+      const filledCost = Number(o.filledCost ?? 0) || (filledQty * filledPrice);
+      reserved = Math.max(0, reserved - filledCost);
+    }
+
+    total += reserved;
   }
   return total;
 }
