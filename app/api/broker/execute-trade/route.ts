@@ -25,15 +25,8 @@ import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
 import { checkIdempotency, releaseIdempotency } from '@/lib/broker/order-idempotency';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification } from '@/lib/order-notifications';
+import { formatBrokerName } from '@/lib/broker-name';
 import { createClient } from '@supabase/supabase-js';
-
-function formatBrokerName(slug: string | null): string {
-  if (!slug) return 'Unknown';
-  return slug
-    .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
 
 export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();

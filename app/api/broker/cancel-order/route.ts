@@ -28,17 +28,10 @@ import {
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification } from '@/lib/order-notifications';
+import { formatBrokerName } from '@/lib/broker-name';
 import { createClient } from '@supabase/supabase-js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function formatBrokerName(slug: string | null): string {
-  if (!slug) return 'Unknown';
-  return slug
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
 
 export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();

@@ -26,7 +26,7 @@ import {
   derivedRequested,
   type RequestedFields,
 } from '@/lib/order-format';
-import type { OrderEmailEvent } from '@/lib/order-emails';
+import type { OrderEmailEvent, BasketOrderEvent } from '@/lib/order-emails';
 
 const ACTION_URL = '/?tab=invest';
 
@@ -167,5 +167,96 @@ export async function notifyOrderNotification(
     }
   } catch (err: any) {
     console.error('[order-notification] notifyOrderNotification failed:', err?.message);
+  }
+}
+
+const BASKET_BELL_LABEL: Record<BasketOrderEvent['event'], string> = {
+  placed: 'Basket Submitted',
+  filled: 'Basket Filled',
+  partially_filled: 'Basket Partially Filled',
+  cancelled: 'Basket Cancelled',
+};
+
+/**
+ * Basket bell notification — basket-level details FIRST, then one compact row
+ * per individual leg (same style as a single-order "placed" notification).
+ *
+ * Skips demo, honors the per-user preference (default ON), then bulk-inserts
+ * all rows in one write. Never throws.
+ */
+export async function notifyBasketNotification(
+  supabase: any,
+  userId: string,
+  event: BasketOrderEvent,
+): Promise<void> {
+  try {
+    if (!event.isLive) return; // demo exclusion
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('order_notifications_enabled')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (user && user.order_notifications_enabled === false) return;
+
+    const positions = event.positions || [];
+    const total = positions.reduce((sum, p) => {
+      const unit =
+        p.orderUnit === 'dollars' || p.orderUnit === 'shares'
+          ? p.orderUnit
+          : p.requestedAmount != null && p.requestedAmount > 0
+            ? 'dollars'
+            : 'shares';
+      return unit === 'dollars' ? sum + (p.requestedAmount || 0) : sum;
+    }, 0);
+
+    const emoji = event.basketEmoji || '🧺';
+    const name = event.basketName || 'Basket';
+    const rows: Array<Record<string, unknown>> = [];
+
+    // 1) Basket-level summary row (details first)
+    rows.push({
+      user_id: userId,
+      type: `basket_${event.event}`,
+      title: `📊 ${emoji} ${name} — ${BASKET_BELL_LABEL[event.event]}`,
+      message: `${positions.length} stock${positions.length === 1 ? '' : 's'}${total > 0 ? ` · ${fmtDollars(total)}` : ''} · ${event.brokerName}`,
+      action_url: ACTION_URL,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    });
+
+    // 2) Individual leg rows — same style as a single-order "placed" bell.
+    for (const p of positions) {
+      const placed: OrderEmailEvent = {
+        kind: 'placed',
+        brokerName: event.brokerName,
+        symbol: p.symbol,
+        side: p.side,
+        orderId: '',
+        isLive: event.isLive,
+        type: p.type || 'market',
+        orderUnit: p.orderUnit,
+        requestedAmount: p.requestedAmount,
+        requestedQty: p.requestedQty,
+      };
+      const { type, title, message } = buildContent(placed);
+      rows.push({
+        user_id: userId,
+        type,
+        title,
+        message,
+        action_url: ACTION_URL,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    const { error } = await supabase.from('recent_notifications').insert(rows);
+    if (error) {
+      console.error('[order-notification] Basket insert failed:', error.message);
+    }
+  } catch (err: any) {
+    console.error('[order-notification] notifyBasketNotification failed:', err?.message);
   }
 }

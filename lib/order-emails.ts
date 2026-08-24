@@ -115,6 +115,8 @@ export interface BasketPositionSummary extends RequestedFields {
   side: 'BUY' | 'SELL';
   status?: string;
   fillPrice?: number | null;
+  /** Order type (e.g. 'market') — used by the bell's per-leg rows. */
+  type?: string;
 }
 
 export interface BasketOrderEvent {

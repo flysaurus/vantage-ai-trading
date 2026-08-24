@@ -8,6 +8,7 @@ import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { getOrCreateSnapTradeUser } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { formatBrokerName } from '@/lib/broker-name';
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {
   const { authUser, authError } = await requireAuth();
@@ -78,10 +79,4 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
   }
 }
 
-function formatBrokerName(slug: string | null): string {
-  if (!slug) return 'Unknown';
-  return slug
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
-}
+

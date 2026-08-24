@@ -25,14 +25,9 @@ import {
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { createClient } from '@supabase/supabase-js';
-
-function formatBrokerName(slug: string | null): string {
-  if (!slug) return 'Unknown';
-  return slug
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
+import { notifyBasketEvent, type BasketOrderEvent } from '@/lib/order-emails';
+import { notifyBasketNotification } from '@/lib/order-notifications';
+import { formatBrokerName } from '@/lib/broker-name';
 
 // System basket name date suffix: MMDDYYYY in America/New_York (matches the
 // user's ET trading day, not UTC — a basket placed 19:00 ET is still "today").
@@ -275,6 +270,33 @@ export async function POST(req: NextRequest) {
         console.error(`[execute-basket] ⚠️ DB persist exception for ${symbol}:`, persistErr);
       }
     }
+
+    // ── Notifications: basket summary + individual legs (email + bell) ──
+    // Email: ONE consolidated email (basket header + per-position table).
+    // Bell: 1 basket row + N per-leg rows (individual stock orders, same
+    // style as single-order "placed" notifications).
+    const basketEvent: BasketOrderEvent = {
+      brokerName,
+      basketName: basketDisplay,
+      basketEmoji: basketEmoji || undefined,
+      event: 'placed',
+      positions: result.orders.map((leg) => ({
+        symbol: (leg.symbol || '').toUpperCase(),
+        side: 'BUY',
+        orderUnit: 'dollars',
+        requestedAmount: leg.reservedAmount ?? 0,
+        requestedQty: null,
+        type: 'market',
+      })),
+      isLive: true,
+      orderIds: result.orders
+        .map((leg) => leg.orderId)
+        .filter((id): id is string => !!id),
+    };
+    await Promise.allSettled([
+      notifyBasketEvent(supabase, authUser!.id, basketEvent),
+      notifyBasketNotification(supabase, authUser!.id, basketEvent),
+    ]);
 
     return NextResponse.json({
       success: result.success,

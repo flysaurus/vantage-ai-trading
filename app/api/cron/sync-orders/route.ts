@@ -29,6 +29,7 @@ import {
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification } from '@/lib/order-notifications';
+import { formatBrokerName } from '@/lib/broker-name';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
 import type { OrderStatus } from '@/lib/broker/types';
 
@@ -54,14 +55,6 @@ function validateAuth(req: NextRequest): boolean {
   const authHeader =
     req.headers.get('authorization') || req.headers.get('Authorization') || '';
   return ALLOWED_SECRETS.some((secret) => authHeader === `Bearer ${secret}`);
-}
-
-function formatBrokerName(slug: string | null): string {
-  if (!slug) return 'Unknown';
-  return slug
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
 }
 
 interface InFlightOrder {

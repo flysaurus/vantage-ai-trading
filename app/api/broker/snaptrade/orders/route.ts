@@ -15,14 +15,7 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
-
-function formatBrokerName(slug: string | null): string {
-  if (!slug) return 'Unknown';
-  return slug
-    .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
+import { formatBrokerName } from '@/lib/broker-name';
 
 // ─── Dev mode — realistic orders with mixed status ─────────
 const DEV_ORDERS = [
