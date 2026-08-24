@@ -8,6 +8,18 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { getMarketStatus } from '@/lib/market-hours';
 
+// System basket name date suffix: MMDDYYYY in America/New_York.
+function formatSystemBasketDate(d: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  }).formatToParts(d);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value || '';
+  return `${g('month')}${g('day')}${g('year')}`;
+}
+
 // ── 5-step flow: curated → custom_theme → budget → generating → review ──
 // Plus order_ticket after review for curated baskets
 type Step = 'curated' | 'custom_theme' | 'budget' | 'generating' | 'review' | 'basket_review' | 'basket_confirm' | 'success';
@@ -508,8 +520,8 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
   // Initialize basketDisplayName when entering confirm step
   useEffect(() => {
     if (step === 'basket_confirm' && selectedCurated && !basketDisplayName) {
-      const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      setBasketDisplayName(`${selectedCurated.name} · ${today}`);
+      const today = formatSystemBasketDate(new Date());
+      setBasketDisplayName(`${selectedCurated.name} - ${today}`);
     }
   }, [step, selectedCurated, basketDisplayName]);
 
@@ -2108,7 +2120,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
           </div>
         ) : selectedCurated ? (
           <>
-            {/* Basket name input */}
+            {/* System-generated basket name (read-only) */}
             <div style={{
               padding: '16px',
               borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -2122,30 +2134,26 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 letterSpacing: '0.08em',
                 marginBottom: '8px',
               }}>
-                Name your basket
+                Basket name
               </div>
-              <input
-                value={basketDisplayName}
-                onChange={e => setBasketDisplayName(e.target.value)}
-                maxLength={40}
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(34,211,238,0.3)',
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  color: '#ffffff',
-                  fontSize: '15px',
-                  fontWeight: '500',
-                }}
-              />
+              <div style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: '500',
+              }}>
+                {basketDisplayName || `${selectedCurated.name} - ${formatSystemBasketDate(new Date())}`}
+              </div>
               <div style={{
                 color: '#94a3b8',
                 fontSize: '10px',
                 marginTop: '4px',
-                textAlign: 'right',
               }}>
-                {basketDisplayName.length}/40
+                Auto-generated · numbered automatically if you place this theme again today
               </div>
             </div>
 

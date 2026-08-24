@@ -52,6 +52,7 @@ export function OrdersTab() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [expandedBasketId, setExpandedBasketId] = useState<string | null>(null);
   const [cancelNotice, setCancelNotice] = useState<{ kind: 'filled' | 'error'; message: string } | null>(null);
+  const [cancelBasketTarget, setCancelBasketTarget] = useState<BasketGroup | null>(null);
 
   const handleCancel = async (order: Order) => {
     setCancelNotice(null);
@@ -150,6 +151,7 @@ export function OrdersTab() {
   // ── Cancel entire basket (one action → cancel every open leg) ──
   const handleCancelBasket = async (group: BasketGroup) => {
     setCancelNotice(null);
+    setCancelBasketTarget(null);
     const workingLegs = group.legs.filter((l) => isWorking(l.status));
     for (const leg of workingLegs) {
       try {
@@ -293,7 +295,6 @@ export function OrdersTab() {
   // ── Basket accordion card ──
   const renderBasketCard = (group: BasketGroup) => {
     const isOpen = expandedBasketId === group.basketId;
-    const anyWorking = group.legs.some((l) => isWorking(l.status));
     const openCount = group.legs.filter((l) => isWorking(l.status)).length;
     const statusColor =
       group.status === 'Filled' ? '#4ade80'
@@ -326,8 +327,8 @@ export function OrdersTab() {
         {isOpen && (
           <div className="basket-legs">
             {group.legs.map((leg) => renderOrderCard(leg, true))}
-            {anyWorking && (
-              <button className="cancel-btn" onClick={() => handleCancelBasket(group)}>
+            {group.status === 'Open' && (
+              <button className="cancel-btn" onClick={() => setCancelBasketTarget(group)}>
                 Cancel Entire Basket{openCount > 1 ? ` (${openCount} open)` : ''}
               </button>
             )}
@@ -708,6 +709,65 @@ export function OrdersTab() {
           padding-top: 10px;
         }
       `}</style>
+
+      {/* Cancel entire basket confirmation modal */}
+      {cancelBasketTarget && (() => {
+        const t = cancelBasketTarget;
+        const filledCount = t.legs.filter((l) => l.status === 'filled').length;
+        const pendingLegs = t.legs.filter((l) => isWorking(l.status));
+        const pendingCount = pendingLegs.length;
+        const reservedCash = pendingLegs.reduce((s, l) => s + (l.notional ?? l.totalValue ?? 0), 0);
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={() => setCancelBasketTarget(null)}
+          >
+            <div
+              style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 20, maxWidth: 360, width: '100%' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 24 }}>{t.icon}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Cancel entire basket?</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <div style={{ flex: 1, background: '#0f172a', border: '1px solid #263142', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>Filled</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#4ade80' }}>{filledCount}</div>
+                </div>
+                <div style={{ flex: 1, background: '#0f172a', border: '1px solid #263142', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>Pending</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#fbbf24' }}>{pendingCount}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#0f172a', border: '1px solid #263142', borderRadius: 10, marginBottom: 16 }}>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>Reserved cash</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{fmtDollars(reservedCash)}</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setCancelBasketTarget(null)}
+                  style={{ flex: 1, padding: 10, borderRadius: 10, background: 'transparent', border: '1px solid #334155', color: '#cbd5e1', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Keep
+                </button>
+                <button
+                  onClick={() => handleCancelBasket(t)}
+                  style={{ flex: 1, padding: 10, borderRadius: 10, background: '#ef4444', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancel {pendingCount} {pendingCount === 1 ? 'Order' : 'Orders'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       </>
     </div>

@@ -34,6 +34,19 @@ function formatBrokerName(slug: string | null): string {
     .join(' ');
 }
 
+// System basket name date suffix: MMDDYYYY in America/New_York (matches the
+// user's ET trading day, not UTC — a basket placed 19:00 ET is still "today").
+function formatBasketDateET(d: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  }).formatToParts(d);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value || '';
+  return `${g('month')}${g('day')}${g('year')}`;
+}
+
 export async function POST(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
   if (authError) return authError;
@@ -144,14 +157,34 @@ export async function POST(req: NextRequest) {
     // NOT a valid UUID — so we mint a fresh user_baskets.id here and link
     // every leg to it. Order History joins orders.basket_id → user_baskets.
     const userBasketId = crypto.randomUUID();
-    const basketDisplay = basketDisplayName || basketName || 'Basket';
+    // System-generated name: "[Theme] - MMDDYYYY" + per-theme-per-day counter
+    // (2), (3)… — never user-editable. The client's basketDisplayName is
+    // ignored; the theme base is authoritative.
+    const themeBase = (basketName || basketDisplayName || 'Basket').trim() || 'Basket';
+    const dateSuffix = formatBasketDateET(new Date());
+    let counter = 1;
+    try {
+      const { data: prior } = await supabase
+        .from('user_baskets')
+        .select('id, theme_label, created_at')
+        .eq('user_id', authUser!.id)
+        .eq('theme_label', themeBase);
+      const sameDay = (prior || []).filter((b: any) => {
+        try { return formatBasketDateET(new Date(b.created_at)) === dateSuffix; } catch { return false; }
+      });
+      counter = sameDay.length + 1;
+    } catch (e) {
+      console.error('[execute-basket] ⚠️ counter query failed (non-fatal):', e);
+    }
+    const basketDisplay =
+      counter === 1 ? `${themeBase} - ${dateSuffix}` : `${themeBase} - ${dateSuffix} (${counter})`;
     const { error: basketErr } = await supabase
       .from('user_baskets')
       .insert({
         id: userBasketId,
         user_id: authUser!.id,
         name: basketDisplay,
-        theme_label: basketName || null,
+        theme_label: themeBase || null,
         icon: basketEmoji || null,
         status: 'active',
         connection_id: brokerConnectionId || null,
@@ -220,6 +253,7 @@ export async function POST(req: NextRequest) {
       message: result.message,
       brokerName,
       basketId: userBasketId,
+      basketName: basketDisplay,
       persisted,
     });
   } catch (err) {
