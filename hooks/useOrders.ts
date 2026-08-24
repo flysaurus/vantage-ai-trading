@@ -130,8 +130,19 @@ export function useOrders() {
 
       if (!mountedRef.current) return;
 
-      // Persist user_baskets metadata (for grouping legs in Order History)
-      setBaskets((dbOrdersPayload?.baskets as any[]) || []);
+      // Persist user_baskets metadata (for grouping legs in Order History).
+      // Also build lookup maps so we can stamp each order's basketName/emoji
+      // from user_baskets (real broker orders don't carry it; demo orders do).
+      const basketRows = (dbOrdersPayload?.baskets as any[]) || [];
+      setBaskets(basketRows);
+      const basketNameById = new Map<string, string>();
+      const basketEmojiById = new Map<string, string>();
+      for (const b of basketRows) {
+        if (b?.id) {
+          if (b.name) basketNameById.set(b.id, b.name);
+          if (b.icon) basketEmojiById.set(b.id, b.icon);
+        }
+      }
 
       // Map trade_history entries to Order format
       const tradeHistoryOrders: Order[] = (tradeHistory.trades || []).map((trade): Order => ({
@@ -270,8 +281,24 @@ export function useOrders() {
         console.log('[useOrders] Preserved', orphanOrders.length, 'orphan orders from Zustand during refresh:', orphanOrders.map(o => o.id).join(', '));
       }
 
-      console.error('[useOrders] refresh DONE —', mergedOrders.length, 'orders loaded (', mappedBrokerOrders.length, 'from broker +', uniqueTradeHistory.length, 'from trade_history +', uniqueDbOrders.length, 'from db +', orphanOrders.length, 'orphan), symbols:', mergedOrders.map(o => o.symbol).join(', ') || '(none)');
-      setOrders(mergedOrders);
+      // Stamp basket name/emoji onto every order that carries a basketId so
+      // basket cards (Invest tab + Order History) resolve the real basket name
+      // from user_baskets instead of falling back to a leg's ticker symbol.
+      const enrichedWithBasket = mergedOrders.map((o: Order) => {
+        const bid = o.basketId;
+        if (!bid) return o;
+        const name = basketNameById.get(bid);
+        const emoji = basketEmojiById.get(bid);
+        if (!name && !emoji) return o;
+        return {
+          ...o,
+          basketName: o.basketName || name,
+          basketEmoji: o.basketEmoji || emoji,
+        };
+      });
+
+      console.error('[useOrders] refresh DONE —', enrichedWithBasket.length, 'orders loaded (', mappedBrokerOrders.length, 'from broker +', uniqueTradeHistory.length, 'from trade_history +', uniqueDbOrders.length, 'from db +', orphanOrders.length, 'orphan), symbols:', enrichedWithBasket.map(o => o.symbol).join(', ') || '(none)');
+      setOrders(enrichedWithBasket);
       setLoading(false);
 
       // Sync filled orders to trade_history table (fire-and-forget, deduplicated)

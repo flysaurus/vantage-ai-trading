@@ -1342,7 +1342,7 @@ export function PortfolioTab() {
           return {
             id: basketId,
             userId: '',
-            name: firstPos.basketName || firstPos.symbol || 'Basket',
+            name: firstPos.basketName || 'Basket',
             emoji: firstPos.basketEmoji || '🧺',
             theme: '',
             positions: groupPositions.map(p => ({

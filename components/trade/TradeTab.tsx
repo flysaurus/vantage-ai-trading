@@ -1160,7 +1160,7 @@ export function TradeTab() {
             return {
               id: `basket-grp-${basketId}`,
               basketId,
-              basketName: first.basketName || orders[0].symbol || 'Basket',
+              basketName: first.basketName || 'Basket',
               basketEmoji: first.basketEmoji || '🧺',
               orders,
               aggregateStatus: agg.status,
