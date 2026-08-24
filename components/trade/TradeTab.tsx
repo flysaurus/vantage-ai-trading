@@ -51,6 +51,7 @@ export function TradeTab() {
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
   const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
   const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; pendingCount: number; filledCount: number; totalReserved: number } | null>(null);
+  const [cancelGroupTarget, setCancelGroupTarget] = useState<{ basketId: string; basketName: string; basketEmoji: string; orders: any[] } | null>(null);
   const [editingBasket, setEditingBasket] = useState<any>(null);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
   const fetchedSymbolsRef = useRef<Set<string>>(new Set());
@@ -1620,6 +1621,31 @@ export function TradeTab() {
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isPending && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCancelGroupTarget({
+                                basketId: group.basketId,
+                                basketName: group.basketName,
+                                basketEmoji: group.basketEmoji,
+                                orders: group.orders,
+                              });
+                            }}
+                            style={{
+                              background: 'none',
+                              border: '1px solid rgba(239,68,68,0.4)',
+                              borderRadius: '6px',
+                              color: '#ef4444',
+                              fontSize: '11px',
+                              padding: '4px 10px',
+                              cursor: 'pointer',
+                              fontWeight: '600',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        )}
                         {/* Visual status badge with dot */}
                         <span style={{
                           display: 'inline-flex',
@@ -2075,6 +2101,101 @@ export function TradeTab() {
           </div>
         </div>
       )}
+
+      {/* ─── Cancel Entire Basket Group (individual orders) Modal ─── */}
+      {cancelGroupTarget && (() => {
+        const t = cancelGroupTarget;
+        const workingLegs = (t.orders || []).filter((o: any) => isWorkingStatus(o.status));
+        const pendingCount = workingLegs.length;
+        const totalReserved = workingLegs.reduce(
+          (s: number, o: any) =>
+            s + (o.totalCost || o.reservedCost || (o.shares * (o.fillPrice || o.submittedPrice || 0))),
+          0,
+        );
+        return (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 10002,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}>
+            <div style={{
+              background: '#1a2235',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: '16px',
+              padding: '24px',
+              maxWidth: '320px',
+              width: '100%',
+            }}>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
+                Cancel entire basket?
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+              }}>
+                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
+                  {t.basketEmoji || '🧺'} {t.basketName}
+                </div>
+                <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                  {t.orders?.length || 0} orders · ${totalReserved.toFixed(2)} reserved
+                </div>
+                <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+                  {pendingCount} pending order{pendingCount === 1 ? '' : 's'} will be cancelled.
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', lineHeight: '1.4' }}>
+                  Cash will be returned to your buying power immediately.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => setCancelGroupTarget(null)}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '10px',
+                    color: '#cbd5e1',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Keep
+                </button>
+                <button
+                  onClick={() => {
+                    setCancelGroupTarget(null);
+                    for (const leg of workingLegs) {
+                      cancelOrder(leg.id);
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: 'rgba(239,68,68,0.15)',
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    borderRadius: '10px',
+                    color: '#ef4444',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel {pendingCount} Order{pendingCount === 1 ? '' : 's'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ─── Build Basket Modal ─── */}
       {showBuildBasket && createPortal(
