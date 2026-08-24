@@ -26,7 +26,7 @@ import { useOrderStore } from '@/store';
 import { getMarketStatus } from '@/lib/market-hours';
 import { syncPortfolioToSupabase, loadPortfolioFromSupabase } from '@/lib/portfolio-sync';
 import { availableCash } from '@/lib/available-cash';
-import { isWorkingStatus } from '@/lib/order-format';
+import { selectWorkingBasketLegs } from '@/lib/basket-cancel';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
 import { getBroker } from '@/lib/broker/broker-factory';
@@ -1063,10 +1063,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       // by single-order cancels and OrdersTab.handleCancelBasket. Only
       // still-working legs are sent; filled legs have already executed at the
       // broker and must be sold separately.
-      const legs = useOrderStore.getState().orders.filter(
-        (o: any) => o.basketId === basketId || o.basketOrderId === basketId,
+      const workingLegs = selectWorkingBasketLegs(
+        useOrderStore.getState().orders,
+        basketId,
       );
-      const workingLegs = legs.filter((o: any) => isWorkingStatus(o.status));
 
       if (workingLegs.length === 0) {
         setToast({ message: 'No open basket orders left to cancel', type: 'error' });
