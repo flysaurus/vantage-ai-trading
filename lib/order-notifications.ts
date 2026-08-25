@@ -177,12 +177,20 @@ const BASKET_BELL_LABEL: Record<BasketOrderEvent['event'], string> = {
   cancelled: 'Basket Cancelled',
 };
 
+const BASKET_BELL_EMOJI: Record<BasketOrderEvent['event'], string> = {
+  placed: '📊',
+  filled: '✅',
+  partially_filled: '⏳',
+  cancelled: '❌',
+};
+
 /**
- * Basket bell notification — basket-level details FIRST, then one compact row
- * per individual leg (same style as a single-order "placed" notification).
+ * Basket bell notification — a SINGLE basket-level row (name + status + count
+ * + total). Individual stock legs are deliberately omitted from the bell so a
+ * basket never surfaces as flat per-order rows.
  *
- * Skips demo, honors the per-user preference (default ON), then bulk-inserts
- * all rows in one write. Never throws.
+ * Skips demo, honors the per-user preference (default ON), then inserts the
+ * one summary row. Never throws.
  */
 export async function notifyBasketNotification(
   supabase: any,
@@ -219,68 +227,19 @@ export async function notifyBasketNotification(
 
     const emoji = event.basketEmoji || '🧺';
     const name = event.basketName || 'Basket';
-    const rows: Array<Record<string, unknown>> = [];
 
-    // 1) Basket-level summary row (details first)
-    rows.push({
+    // Basket-level notification ONLY — a single summary row. The individual
+    // stock legs are intentionally NOT written to the bell: a basket surfaces
+    // as one unit (name + status + count + total), never as flat per-order rows.
+    const rows: Array<Record<string, unknown>> = [{
       user_id: userId,
       type: `basket_${event.event}`,
-      title: `📊 ${emoji} ${name} — ${BASKET_BELL_LABEL[event.event]}`,
+      title: `${BASKET_BELL_EMOJI[event.event]} ${emoji} ${name} — ${BASKET_BELL_LABEL[event.event]}`,
       message: `${positions.length} stock${positions.length === 1 ? '' : 's'}${total > 0 ? ` · ${fmtDollars(total)}` : ''} · ${event.brokerName}`,
       action_url: ACTION_URL,
       is_read: false,
       created_at: new Date().toISOString(),
-    });
-
-    // 2) Individual leg rows — event-aware. "placed" → "Order Submitted";
-    // "filled"/"partially_filled" → per-leg "Filled"/"Partially Filled" with
-    // real fill qty/price/total; "cancelled" → "Cancelled".
-    for (const p of positions) {
-      const base = {
-        brokerName: event.brokerName,
-        symbol: p.symbol,
-        side: p.side,
-        orderId: '',
-        isLive: event.isLive,
-        orderUnit: p.orderUnit,
-        requestedAmount: p.requestedAmount,
-        requestedQty: p.requestedQty,
-      };
-      let leg: OrderEmailEvent;
-      if (event.event === 'placed') {
-        leg = { ...base, kind: 'placed', type: p.type || 'market' };
-      } else if (event.event === 'cancelled') {
-        leg = { ...base, kind: 'cancelled', cancelReason: 'external' };
-      } else if (event.event === 'partially_filled' && p.status === 'partially_filled') {
-        leg = {
-          ...base,
-          kind: 'partially_filled',
-          fillQty: p.fillQty ?? 0,
-          fillPrice: p.fillPrice ?? 0,
-          fillTotal: p.fillTotal ?? (p.fillPrice ?? 0) * (p.fillQty ?? 0),
-          remainingQty: p.remainingQty ?? 0,
-        };
-      } else {
-        // 'filled' event, or a fully-filled leg inside a 'partially_filled' basket
-        leg = {
-          ...base,
-          kind: 'filled',
-          fillQty: p.fillQty ?? 0,
-          fillPrice: p.fillPrice ?? 0,
-          fillTotal: p.fillTotal ?? (p.fillPrice ?? 0) * (p.fillQty ?? 0),
-        };
-      }
-      const { type, title, message } = buildContent(leg);
-      rows.push({
-        user_id: userId,
-        type,
-        title,
-        message,
-        action_url: ACTION_URL,
-        is_read: false,
-        created_at: new Date().toISOString(),
-      });
-    }
+    }];
 
     const { error } = await supabase.from('recent_notifications').insert(rows);
     if (error) {
