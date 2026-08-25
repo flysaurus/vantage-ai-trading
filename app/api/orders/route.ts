@@ -84,6 +84,7 @@ export async function GET(req: NextRequest) {
         orderUnit: o.order_unit,
         requestedAmount: o.requested_amount != null ? Number(o.requested_amount) : undefined,
         requestedQty: o.requested_qty != null ? Number(o.requested_qty) : undefined,
+        companyName: o.company_name ?? null,
         basketId: o.basket_id ?? null,
       })),
       baskets,

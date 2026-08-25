@@ -245,19 +245,72 @@ export function useOrders() {
         };
       });
 
-      const brokerOrderIds = new Set(enrichedBrokerOrders.map(o => o.id));
+      // ── Secondary link (recovered rows with NULL brokerage_order_id) ──
+      // Rows recovered from `positions` (e.g. the Critical Minerals basket) have
+      // brokerage_order_id = NULL, so the primary broker-ID dedup misses them
+      // and they double-render: once as a basket leg, once as the broker's
+      // standalone fill. Match basket-linked DB rows to broker fills by
+      // symbol+side+filledQty (rounded) so the basket linkage + company name
+      // attach to the authoritative broker fill and the DB row is dropped.
+      const fillKeyOf = (o: { symbol?: string | null; side?: string | null; filledQty?: number | null }) => {
+        const sym = (o.symbol || '').trim().toUpperCase();
+        const side = (o.side || '').trim().toLowerCase();
+        const qty = Number(o.filledQty || 0);
+        if (!sym || !side || !qty) return null;
+        return `${sym}|${side}|${(Math.round(qty * 1e6) / 1e6).toFixed(6)}`;
+      };
+
+      const brokerByFillKey = new Map<string, Order>();
+      for (const o of enrichedBrokerOrders) {
+        const k = fillKeyOf(o);
+        if (k && !brokerByFillKey.has(k)) brokerByFillKey.set(k, o);
+      }
+
+      // Basket-linked DB rows without a brokerage_order_id that match a broker
+      // fill — these get folded into the broker order (dropped from unique set).
+      const dbByFillKey = new Map<string, Order>();
+      for (const d of dbOrders) {
+        if (d.brokerageOrderId) continue; // primary dedup already handles these
+        if (!d.basketId) continue; // only fold basket legs; leave true solo rows alone
+        const k = fillKeyOf(d);
+        if (k && brokerByFillKey.has(k) && !dbByFillKey.has(k)) dbByFillKey.set(k, d);
+      }
+
+      const finalBrokerOrders = enrichedBrokerOrders.map((o) => {
+        const k = fillKeyOf(o);
+        const dbMatch = k ? dbByFillKey.get(k) : undefined;
+        if (!dbMatch) return o;
+        return {
+          ...o,
+          basketId: o.basketId ?? dbMatch.basketId ?? null,
+          companyName: o.companyName ?? dbMatch.companyName ?? null,
+          notional: o.notional ?? dbMatch.notional,
+          orderUnit: o.orderUnit ?? dbMatch.orderUnit,
+          requestedAmount: o.requestedAmount ?? dbMatch.requestedAmount,
+          requestedQty: o.requestedQty ?? dbMatch.requestedQty,
+          source: o.source ?? dbMatch.source ?? null,
+        };
+      });
+
+      const brokerOrderIds = new Set(finalBrokerOrders.map(o => o.id));
       const brokerOrderIdsLower = new Set([...brokerOrderIds].map(id => id.toLowerCase()));
       const uniqueTradeHistory = tradeHistoryOrders.filter(o => !brokerOrderIds.has(o.id));
       const existingIds = new Set([...brokerOrderIds, ...uniqueTradeHistory.map(o => o.id)]);
+      const secondaryLinkedFillKeys = new Set(dbByFillKey.keys());
       const uniqueDbOrders = dbOrders.filter(o => {
         if (existingIds.has(o.id)) return false;
         // Also match by brokerageOrderId — broker order's id IS the brokerage_order_id
         const dbBrokerId = o.brokerageOrderId;
         if (dbBrokerId && brokerOrderIdsLower.has(dbBrokerId.toLowerCase())) return false;
+        // Drop NULL-brokerage basket legs that were secondary-linked to a broker fill.
+        if (!dbBrokerId) {
+          const k = fillKeyOf(o);
+          if (k && secondaryLinkedFillKeys.has(k)) return false;
+        }
         return true;
       });
 
-      const allOrders = [...enrichedBrokerOrders, ...uniqueTradeHistory, ...uniqueDbOrders];
+      const allOrders = [...finalBrokerOrders, ...uniqueTradeHistory, ...uniqueDbOrders];
 
       const mappedOrders = allOrders
         // Deduplicate by ID (safety net)

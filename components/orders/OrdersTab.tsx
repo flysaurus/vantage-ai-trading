@@ -175,6 +175,7 @@ export function OrdersTab() {
         <div className="card-head">
           <div className="head-left">
             <span className="sym">{order.symbol}</span>
+            {order.companyName ? <span className="name">{order.companyName}</span> : null}
             <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -628,6 +629,7 @@ export function OrdersTab() {
         .card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
         .head-left { display: flex; align-items: center; gap: 10px; }
         .sym { font-size: 17px; font-weight: 800; color: #fff; }
+        .name { font-size: 10px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
         .origin { font-size: 10.5px; color: #8b96ab; border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
         .ref { font-size: 10px; color: #5c6579; font-family: "SF Mono", Menlo, monospace; margin-top: 2px; }
 
