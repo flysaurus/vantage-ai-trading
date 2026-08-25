@@ -7,6 +7,7 @@
 // exactly one place — the fix for the recurring "price unavailable"/"0 shares"
 // divergence between the two previously-independent render paths.
 
+import { Fragment } from 'react';
 import type { Order } from '@/types';
 import {
   fmtShares,
@@ -101,96 +102,202 @@ export function orderRef(order: Order): string {
 }
 
 export function OrderStepper({ order }: { order: Order }) {
-  const s = order.status;
-  const isFilled = s === 'filled';
-  const isCancelled = s === 'cancelled';
-  const isRejected = s === 'rejected';
-  const isSubmitted = s === 'submitted';
-  // 'open' and 'pending' both mean the order is confirmed working at the venue.
-  const isOpen = s === 'open' || s === 'pending';
+  const s = (order.status || '').toLowerCase();
 
-  const placedTime = formatStepTime(order.createdAt);
-
-  // Middle step: Open (normal) → Cancelled/Rejected (diverged branch).
-  let middleLabel = 'Open';
-  let middleKind: 'done' | 'active' | 'cancelled' = 'active';
-  let middleTime = '';
-  if (isFilled) {
-    middleKind = 'done';
-    middleTime = formatStepTime(order.filledAt || order.updatedAt);
-  } else if (isCancelled) {
-    middleLabel = 'Cancelled';
-    middleKind = 'cancelled';
-    middleTime = formatStepTime(order.cancelledAt || order.updatedAt);
-  } else if (isRejected) {
-    middleLabel = 'Rejected';
-    middleKind = 'cancelled';
-    middleTime = formatStepTime(order.cancelledAt || order.updatedAt);
-  } else if (isOpen) {
-    middleKind = 'done';
-    middleTime = formatStepTime(order.updatedAt || order.createdAt);
+  // Single horizontal line of steps with arrow separators. Branches:
+  //   filled         → Placed → Open → Filled
+  //   open/pending   → Placed → Open → Filled (Filled = in-progress/amber)
+  //   submitted      → Placed → Open → Filled (Open = in-progress/amber)
+  //   cancelled      → Placed → Open → Cancelled  (Open happened; only Filled is ghost-omitted)
+  //   rejected       → Placed → Rejected            (never reached Open; Filled ghost-omitted)
+  let steps: { label: string; kind: 'done' | 'active' | 'future' | 'cancelled' }[];
+  if (s === 'filled') {
+    steps = [
+      { label: 'Placed', kind: 'done' },
+      { label: 'Open', kind: 'done' },
+      { label: 'Filled', kind: 'done' },
+    ];
+  } else if (s === 'cancelled') {
+    steps = [
+      { label: 'Placed', kind: 'done' },
+      { label: 'Open', kind: 'done' },
+      { label: 'Cancelled', kind: 'cancelled' },
+    ];
+  } else if (s === 'rejected') {
+    steps = [
+      { label: 'Placed', kind: 'done' },
+      { label: 'Rejected', kind: 'cancelled' },
+    ];
+  } else if (s === 'open' || s === 'pending') {
+    steps = [
+      { label: 'Placed', kind: 'done' },
+      { label: 'Open', kind: 'done' },
+      { label: 'Filled', kind: 'active' },
+    ];
   } else {
-    // submitted → still awaiting venue acknowledgement, keep "Open" as the active step.
-    middleKind = 'active';
-    middleTime = '';
+    // submitted (and any unknown non-terminal) → awaiting venue acknowledgement
+    steps = [
+      { label: 'Placed', kind: 'done' },
+      { label: 'Open', kind: 'active' },
+      { label: 'Filled', kind: 'future' },
+    ];
   }
-
-  // Filled step
-  const filledTime = isFilled ? formatStepTime(order.filledAt) : '';
-  const filledMuted = isCancelled || isRejected;
-  const filledDot = isFilled ? '✓' : filledMuted ? '—' : '3';
-  const filledDotClass = isFilled ? 'done' : '';
-
-  // Connectors:
-  //  Placed → middle: emerald once the order reached the middle step (open/filled/cancelled);
-  //    red if REJECTED (diverged immediately after placement, never reached Open);
-  //    faint while still SUBMITTED.
-  const placedLineClass = isRejected ? 'cancelled' : isSubmitted ? '' : 'done';
-  //  middle → Filled: emerald when filled; red when the branch terminated (cancelled/rejected);
-  //    faint while still open/submitted.
-  const middleLineClass = isFilled ? 'done' : isCancelled || isRejected ? 'cancelled' : '';
 
   return (
     <div className="stepper">
-      <div className="step">
-        <div className={`line ${placedLineClass}`} />
-        <div className="dot done">✓</div>
-        <div className="step-label done">Placed</div>
-        <div className="step-time">{placedTime}</div>
-      </div>
-      <div className="step">
-        <div className={`line ${middleLineClass}`} />
-        <div className={`dot ${middleKind}`}>
-          {middleKind === 'done' ? '✓' : middleKind === 'cancelled' ? '✕' : '●'}
-        </div>
-        <div className={`step-label ${middleKind}`}>{middleLabel}</div>
-        <div className="step-time">{middleKind === 'active' ? (middleTime || 'pending') : middleTime}</div>
-      </div>
-      <div className="step" style={filledMuted ? { opacity: 0.35 } : undefined}>
-        <div className={`dot ${filledDotClass}`}>{filledDot}</div>
-        <div className={`step-label ${filledDotClass}`}>Filled</div>
-        <div className="step-time">{filledTime}</div>
-      </div>
+      {steps.map((step, i) => (
+        <Fragment key={step.label}>
+          {i > 0 && <span className="arrow">→</span>}
+          <span className={`step ${step.kind}`}>
+            {step.kind !== 'future' && <span className="dot" />}
+            {step.label}
+          </span>
+        </Fragment>
+      ))}
       <style jsx>{`
-        .stepper { display: flex; align-items: flex-start; margin: 14px 0 16px; }
-        .step { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
-        .dot {
-          width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-          font-size: 11px; font-weight: 800; z-index: 2; border: 2px solid #5c6579; background: #0a0e16; color: #5c6579;
+        .stepper { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; flex-wrap: wrap; }
+        .arrow { color: #5c6579; font-size: 11px; line-height: 1; }
+        .step { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.01em; }
+        .step .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+        .step.done { color: #3ddc97; }
+        .step.active { color: #f0b73f; }
+        .step.active .dot { animation: pulse 1.6s ease-in-out infinite; }
+        .step.future { color: #5c6579; font-weight: 500; }
+        .step.cancelled { color: #ef7b6a; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(240,183,63,0.4);} 50%{box-shadow:0 0 0 4px rgba(240,183,63,0);} }
+      `}</style>
+    </div>
+  );
+}
+
+// ─── Amount / shares resolution (shared with TradeTab order cards) ──────────
+// Total/requested dollar amount for an order — reads request-derived fields
+// FIRST (totalCost / reservedCost / requestedAmount / notional) so cancelled
+// legs show their original amount instead of "$0.00". Falls back to
+// shares × price for plain share orders. Works for both the app `Order` shape
+// and the broker/normalized order shape.
+export function orderAmount(o: any): number {
+  const candidates = [o?.totalCost, o?.reservedCost, o?.requestedAmount, o?.notional];
+  for (const c of candidates) {
+    if (typeof c === 'number' && c > 0) return c;
+  }
+  const shares = Number(o?.shares ?? o?.qty ?? o?.filledQty ?? o?.filledShares ?? 0);
+  const px = Number(o?.fillPrice ?? o?.submittedPrice ?? o?.price ?? 0);
+  return shares > 0 && px > 0 ? shares * px : 0;
+}
+
+// Original requested shares — for notional (dollar) orders, derive an estimate
+// from amount / price so cancelled legs never render "0.00 shares".
+export function orderShares(o: any): number {
+  const q = Number(o?.requestedQty ?? o?.qty ?? o?.shares ?? 0);
+  if (q > 0) return q;
+  const amt = orderAmount(o);
+  const px = Number(o?.fillPrice ?? o?.submittedPrice ?? o?.price ?? 0);
+  if (amt > 0 && px > 0) return amt / px;
+  return 0;
+}
+
+// Left-accent border color for an order card by side + status.
+export function getOrderBorderColor(order: any): string {
+  const side = (order.side || '').toUpperCase();
+  const s = (order.status || '').toLowerCase();
+  if (s === 'filled') return side === 'BUY' ? '#10b981' : '#ef4444';
+  if (s === 'open' || s === 'pending' || s === 'submitted') return '#f59e0b';
+  if (s === 'rejected') return '#f87171';
+  return '#64748b';
+}
+
+// ─── Shared OrderCard — identical structure for solo + basket-child orders ──
+// Top row: symbol + full name + BUY/SELL badge (left) · amount + date (right).
+// Meta line: type · TIF · qty shares. Single-line stepper. Bottom row: order ID
+// (left) + Cancel chip (right, cancellable + showCancelChip only).
+export function OrderCard({
+  order,
+  companyName,
+  showCancelChip = false,
+  onCancel,
+}: {
+  order: any;
+  companyName?: string;
+  showCancelChip?: boolean;
+  onCancel?: (order: any) => void;
+}) {
+  const side = (order.side || '').toUpperCase();
+  const isBuy = side === 'BUY';
+  const cancellable =
+    showCancelChip && ['open', 'pending', 'submitted'].includes((order.status || '').toLowerCase());
+  const ref = orderRef(order);
+  const amount = orderAmount(order);
+  const dateLabel = (order.createdAt || order.date)
+    ? formatOrderDate(order.createdAt || order.date)
+    : '';
+
+  return (
+    <div
+      className="order-card"
+      style={{ borderLeftColor: getOrderBorderColor(order) }}
+    >
+      {/* Top row: symbol + name + badge (left) · amount + date (right) */}
+      <div className="top-row">
+        <div className="top-left">
+          <div className="symbol-line">
+            <span className="sym">{order.symbol}</span>
+            {companyName && <span className="name">{companyName}</span>}
+            <span className={`side-badge ${isBuy ? 'buy' : 'sell'}`}>{side}</span>
+          </div>
+          <div className="meta">
+            {(order.type || 'market').toLowerCase()}
+            {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
+            {' · '}{formatSharesDisplay(orderShares(order))} shares
+          </div>
+        </div>
+        <div className="top-right">
+          <div className="amount">${amount.toFixed(2)}</div>
+          {dateLabel && <div className="date">{dateLabel}</div>}
+        </div>
+      </div>
+
+      <OrderStepper order={order} />
+
+      {/* Bottom row: order ID (left) · Cancel chip (right) */}
+      <div className="bottom-row">
+        <span className="ref">{ref}</span>
+        {cancellable && (
+          <button className="cancel-chip" onClick={() => onCancel?.(order)}>
+            Cancel
+          </button>
+        )}
+      </div>
+
+      <style jsx>{`
+        .order-card {
+          background: var(--card-bg, #1a2235);
+          border: 1px solid var(--card-border, rgba(255,255,255,0.08));
+          border-left-width: 3px;
+          border-left-style: solid;
+          border-radius: 12px;
+          padding: 12px 16px;
+          margin-bottom: 10px;
         }
-        .dot.done { border-color: #3ddc97; background: #3ddc97; color: #06110c; }
-        .dot.active { border-color: #f0b73f; background: #0a0e16; color: #f0b73f; animation: pulse 1.6s ease-in-out infinite; }
-        .dot.cancelled { border-color: #ef7b6a; background: #ef7b6a; color: #1a0a08; }
-        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(240,183,63,0.4);} 50%{box-shadow:0 0 0 5px rgba(240,183,63,0);} }
-        .line { position: absolute; top: 10px; left: 50%; width: 100%; height: 2px; background: #5c6579; z-index: 1; }
-        .line.done { background: #3ddc97; }
-        .line.cancelled { background: #ef7b6a; }
-        .step:last-child .line { display: none; }
-        .step-label { font-size: 9.5px; color: #5c6579; margin-top: 6px; text-align: center; letter-spacing: 0.02em; }
-        .step-label.done { color: #3ddc97; }
-        .step-label.active { color: #f0b73f; font-weight: 700; }
-        .step-label.cancelled { color: #ef7b6a; }
-        .step-time { font-size: 8.5px; color: #5c6579; margin-top: 1px; }
+        .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .top-left { min-width: 0; flex: 1; }
+        .symbol-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .sym { font-size: 13px; font-weight: 600; color: #ffffff; }
+        .name { font-size: 10px; color: #94a3b8; }
+        .side-badge { border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; }
+        .side-badge.buy { background: rgba(16,185,129,0.2); color: #10b981; }
+        .side-badge.sell { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .meta { font-size: 10px; color: var(--dim, #8b96ab); margin-top: 3px; }
+        .top-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+        .amount { font-size: 12px; font-weight: 700; color: #cbd5e1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .date { font-size: 10px; color: #94a3b8; }
+        .bottom-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+        .ref { font-size: 10px; color: #5c6579; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .cancel-chip {
+          background: none; border: 1px solid rgba(239,68,68,0.4); border-radius: 6px;
+          color: #ef4444; font-size: 11px; padding: 4px 10px; cursor: pointer;
+          font-family: inherit; font-weight: 600;
+        }
       `}</style>
     </div>
   );

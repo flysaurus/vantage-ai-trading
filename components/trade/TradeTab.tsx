@@ -8,7 +8,7 @@ import BuildBasketModal from '@/components/BuildBasketModal';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getMarketStatus } from '@/lib/market-hours';
 import BasketActionPanel from '@/components/basket/BasketActionPanel';
-import { OrderStepper, formatSharesDisplay, cancelReasonText } from '@/components/orders/OrderDisplay';
+import { OrderCard } from '@/components/orders/OrderDisplay';
 import { isWorkingStatus } from '@/lib/order-format';
 import { computeBasketAggregateStatus } from '@/lib/basket-aggregate';
 
@@ -19,14 +19,6 @@ const statusBorder: Record<string, string> = {
   cancelled: '#475569',
 };
 
-function getBorderColor(order: any): string {
-  const side = (order.side || '').toUpperCase();
-  if (order.status === 'filled') return side === 'BUY' ? '#10b981' : '#ef4444';
-  if (order.status === 'open' || order.status === 'pending' || order.status === 'submitted') return '#f59e0b';
-  if (order.status === 'rejected') return '#f87171';
-  return '#64748b';
-}
-
 function formatQuoteDate(ts: number) {
   if (!ts) return '';
   const d = new Date(ts * 1000);
@@ -34,32 +26,6 @@ function formatQuoteDate(ts: number) {
     month: 'short',
     day: 'numeric'
   });
-}
-
-// Total/requested dollar amount for an order row — reads request-derived fields
-// FIRST (totalCost / reservedCost / requestedAmount / notional) so cancelled
-// notional legs show their original amount instead of "$0.00". Falls back to
-// shares × price for plain share orders. Works for both the app `Order` shape
-// and the broker `BrokerOrder` shape.
-function orderAmount(o: any): number {
-  const candidates = [o?.totalCost, o?.reservedCost, o?.requestedAmount, o?.notional];
-  for (const c of candidates) {
-    if (typeof c === 'number' && c > 0) return c;
-  }
-  const shares = Number(o?.shares ?? o?.qty ?? o?.filledQty ?? o?.filledShares ?? 0);
-  const px = Number(o?.fillPrice ?? o?.submittedPrice ?? o?.price ?? 0);
-  return shares > 0 && px > 0 ? shares * px : 0;
-}
-
-// Original requested shares — for notional (dollar) orders, derive an estimate
-// from amount / price so cancelled legs never render "0.00 shares".
-function orderShares(o: any): number {
-  const q = Number(o?.requestedQty ?? o?.qty ?? o?.shares ?? 0);
-  if (q > 0) return q;
-  const amt = orderAmount(o);
-  const px = Number(o?.fillPrice ?? o?.submittedPrice ?? o?.price ?? 0);
-  if (amt > 0 && px > 0) return amt / px;
-  return 0;
 }
 
 export function TradeTab() {
@@ -1483,62 +1449,20 @@ export function TradeTab() {
                       </div>
                     </div>
 
-                    {/* Expanded — individual orders with stepper */}
+                    {/* Expanded — individual orders (shared OrderCard) */}
                     {isExpanded && (
                       <div style={{
                         borderTop: '1px solid rgba(255,255,255,0.06)',
                       }}>
-                        {(basket.orders || []).map((order: any) => (
-                          <div key={order.id} style={{
-                            padding: '12px 16px 4px',
-                            borderBottom: '1px solid rgba(255,255,255,0.04)',
-                          }}>
-                            {/* Top row: symbol + name inline, amount right-aligned */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
-                                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
-                                    {order.symbol}
-                                  </span>
-                                  <span style={{
-                                    color: 'var(--emerald)',
-                                    fontSize: '10px',
-                                    background: 'var(--emerald-dim)',
-                                    padding: '1px 5px',
-                                    borderRadius: '3px',
-                                  }}>
-                                    BUY
-                                  </span>
-                                  {companyNames[order.symbol] && (
-                                    <span style={{ color: '#94a3b8', fontSize: '10px' }}>
-                                      {companyNames[order.symbol]}
-                                    </span>
-                                  )}
-                                </div>
-                                <div style={{
-                                  color: 'var(--dim)',
-                                  fontSize: '10px',
-                                  marginTop: '2px',
-                                }}>
-                                  {(order.type || 'market').toLowerCase()}
-                                  {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
-                                  {' · '}{orderShares(order).toFixed(2)} shares
-                                  {' · '}#{(order.brokerageOrderId || order.id || '').toString().replace(/^demo-/, '').slice(0, 8)}
-                                </div>
-                              </div>
-                              <div style={{
-                                color: '#cbd5e1',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                ${orderAmount(order).toFixed(2)}
-                              </div>
-                            </div>
-                            {/* OrderStepper for this child */}
-                            <OrderStepper order={order} />
-                          </div>
-                        ))}
+                        <div style={{ padding: '12px 16px 4px' }}>
+                          {(basket.orders || []).map((order: any) => (
+                            <OrderCard
+                              key={order.id}
+                              order={order}
+                              companyName={companyNames[order.symbol]}
+                            />
+                          ))}
+                        </div>
 
                         {/* Cancel basket — OPEN only */}
                         {basket.status === 'OPEN' && (
@@ -1744,60 +1668,18 @@ export function TradeTab() {
                       </div>
                     </div>
 
-                    {/* Expanded — child orders with steppers (FILLED / PARTIAL / CANCELLED only) */}
+                    {/* Expanded — child orders (shared OrderCard) */}
                     {isExpanded && !isPending && (
                       <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                        {group.orders.map((order: any) => (
-                          <div key={order.id} style={{
-                            padding: '12px 16px 4px',
-                            borderBottom: '1px solid rgba(255,255,255,0.04)',
-                          }}>
-                            {/* Top row: symbol + name inline, amount right-aligned */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
-                                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
-                                    {order.symbol}
-                                  </span>
-                                  <span style={{
-                                    color: 'var(--emerald)',
-                                    fontSize: '10px',
-                                    background: 'var(--emerald-dim)',
-                                    padding: '1px 5px',
-                                    borderRadius: '3px',
-                                  }}>
-                                    {(order.side || 'BUY').toUpperCase()}
-                                  </span>
-                                  {companyNames[order.symbol] && (
-                                    <span style={{ color: '#94a3b8', fontSize: '10px' }}>
-                                      {companyNames[order.symbol]}
-                                    </span>
-                                  )}
-                                </div>
-                                <div style={{
-                                  color: 'var(--dim)',
-                                  fontSize: '10px',
-                                  marginTop: '2px',
-                                }}>
-                                  {(order.type || 'market').toLowerCase()}
-                                  {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
-                                  {' · '}{orderShares(order).toFixed(2)} shares
-                                  {' · '}#{(order.brokerageOrderId || order.id || '').toString().replace(/^demo-/, '').slice(0, 8)}
-                                </div>
-                              </div>
-                              <div style={{
-                                color: '#cbd5e1',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                ${orderAmount(order).toFixed(2)}
-                              </div>
-                            </div>
-                            {/* OrderStepper for this child */}
-                            <OrderStepper order={order} />
-                          </div>
-                        ))}
+                        <div style={{ padding: '12px 16px 4px' }}>
+                          {group.orders.map((order: any) => (
+                            <OrderCard
+                              key={order.id}
+                              order={order}
+                              companyName={companyNames[order.symbol]}
+                            />
+                          ))}
+                        </div>
                         {/* Shared Basket Action Panel — buy/sell from Invest tab */}
                         {(() => {
                           const ctxBasket = baskets.find(b => b.id === group.basketId);
@@ -1846,130 +1728,21 @@ export function TradeTab() {
                 }
                 const order = item.item;
                 return (
-                <div
+                <OrderCard
                   key={order.id}
-                  style={{
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--card-border)',
-                    borderLeft: `3px solid ${getBorderColor(order)}`,
-                    borderRadius: '12px',
-                    padding: '12px 16px',
-                    marginBottom: '10px',
+                  order={order}
+                  companyName={companyNames[order.symbol]}
+                  showCancelChip
+                  onCancel={(o) => {
+                    setConfirmCancel({
+                      orderId: o.id,
+                      symbol: o.symbol,
+                      side: o.side,
+                      shares: o.shares,
+                      price: o.submittedPrice || o.price || 0,
+                    });
                   }}
-                >
-                  {/* HEADER ROW */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                    {/* LEFT */}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
-                          {order.symbol}
-                        </span>
-                        <span style={{
-                          borderRadius: '4px',
-                          padding: '2px 6px',
-                          fontSize: '10px',
-                          fontWeight: '600',
-                          background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-                          color: order.side === 'BUY' ? '#10b981' : '#ef4444'
-                        }}>
-                          {order.side}
-                        </span>
-                        {companyNames[order.symbol] && (
-                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                            {companyNames[order.symbol]}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--dim)', marginTop: '2px' }}>
-                        {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(orderShares(order))} shares
-                      </div>
-                      <div style={{ fontSize: '10px', color: '#5c6579', fontFamily: 'monospace', marginTop: '1px' }}>
-                        #{String(order.brokerageOrderId || order.id).replace(/^demo-/, '').slice(0, 8)}
-                      </div>
-                    </div>
-
-                    {/* RIGHT (amount + date + cancel) */}
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', whiteSpace: 'nowrap' }}>
-                        ${orderAmount(order).toFixed(2)}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                        {(() => {
-                          try {
-                            const d = new Date(order.date);
-                            if (!isNaN(d.getTime())) {
-                              return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-                            }
-                          } catch {}
-                          return order.date || '';
-                        })()}
-                      </div>
-                      {/* Cancel button for any non-terminal order (open/pending/submitted) */}
-                      {['open', 'pending', 'submitted'].includes(order.status) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmCancel({
-                              orderId: order.id,
-                              symbol: order.symbol,
-                              side: order.side,
-                              shares: order.shares,
-                              price: order.submittedPrice || order.price || 0,
-                            });
-                          }}
-                          style={{
-                            background: 'none',
-                            border: '1px solid rgba(239,68,68,0.4)',
-                            borderRadius: '6px',
-                            color: '#ef4444',
-                            fontSize: '11px',
-                            padding: '4px 10px',
-                            cursor: 'pointer',
-                            fontFamily: 'inherit',
-                            fontWeight: '600',
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 3-step timeline — replaces the flat status badge + fill-price subtext */}
-                  <OrderStepper order={order} />
-
-                  {/* FOOTER: total / note / cancel reason */}
-                  {order.status === 'filled' && order.price && (
-                    <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
-                      Total: ${(order.shares * order.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  )}
-                  {['open', 'pending', 'submitted'].includes(order.status) && (
-                    <>
-                      {order.submittedPrice > 0 && (
-                        <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
-                          Total: ${(order.shares * order.submittedPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      )}
-                      {order.note && (
-                        <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>
-                          ⏳ {order.note}
-                        </div>
-                      )}
-                      {!order.note && (
-                        <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
-                          ⏳ Pending execution
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {['cancelled', 'rejected'].includes(order.status) && (
-                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                      {cancelReasonText(order)}
-                    </div>
-                  )}
-                </div>
+                />
                 );
               })}
             </>
