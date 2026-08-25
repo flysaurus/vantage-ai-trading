@@ -64,11 +64,11 @@ function isCacheValid(entry: IndexCacheEntry, range: ChartRange): boolean {
 }
 
 /**
- * Index detail overlay: header (price/change) + scrubbable area chart
+ * Index detail panel: header (price/change) + scrubbable area chart
  * across 5 timeframes (1D default). Reuses the shared PriceChart.
  *
- * Renders as a self-contained overlay — the underlying page keeps rendering
- * underneath (never blocks render).
+ * Renders inline (accordion expansion) beneath the tapped index row —
+ * no full-screen modal; the surrounding list stays in the flow.
  */
 export default function IndexDetail({
   symbol,
@@ -150,32 +150,13 @@ export default function IndexDetail({
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        background: 'rgba(2, 6, 23, 0.6)',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
-        padding: 0,
+        background: 'var(--bg-card, #1a2235)',
+        borderRadius: 16,
+        border: '1px solid rgba(34,211,238,0.35)',
+        padding: '16px 14px 14px',
+        marginTop: 2,
       }}
-      onClick={onClose}
     >
-      <div
-        className="card-frost-sm"
-        style={{
-          width: '100%',
-          maxWidth: 520,
-          maxHeight: '88vh',
-          overflowY: 'auto',
-          borderRadius: '20px 20px 0 0',
-          padding: '20px 20px 28px',
-          margin: '0 auto',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* Header */}
         <div
           style={{
@@ -222,7 +203,7 @@ export default function IndexDetail({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Collapse"
             style={{
               background: 'rgba(148, 163, 184, 0.12)',
               border: 'none',
@@ -255,7 +236,7 @@ export default function IndexDetail({
             style={{
               fontFamily: 'var(--font-sans)',
               fontWeight: 700,
-              fontSize: 28,
+              fontSize: 22,
               color: '#ffffff',
             }}
           >
@@ -289,7 +270,6 @@ export default function IndexDetail({
           gradientId="indexChartGradient"
           valuePrefix="$"
         />
-      </div>
     </div>
   );
 }

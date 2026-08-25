@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import IndexDetail from './IndexDetail';
 
 interface IndexData {
@@ -69,134 +69,162 @@ export default function MarketOverview() {
     return () => clearInterval(interval);
   }, []);
 
+  // Toggle: tapping the same row again collapses it (inline accordion)
   const handleIndexPress = (idx: IndexData) => {
-    setSelectedIndex(idx);
+    setSelectedIndex((cur) => (cur?.symbol === idx.symbol ? null : idx));
   };
 
   return (
-    <div style={{ padding: '0 16px 20px' }}>
+    <div style={{ padding: '0 14px 20px' }}>
       {/* Section Header */}
       <h2 className="section-header" style={{ padding: '20px 0 12px' }}>
         Market Overview
       </h2>
 
-      {/* Compact full-width list rows — one index per row */}
+      {/* Compact list rows — same sizing as portfolio position cards (e.g. AAPL) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {loading
           ? [1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="card-frost-sm"
                 style={{
-                  padding: '14px 16px',
+                  background: 'var(--bg-card, #1a2235)',
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  padding: '12px 14px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>—</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>—</span>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#334155' }}>—</div>
-                </div>
+                <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#334155' }}>—</span>
+                <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#334155' }}>—</span>
               </div>
             ))
-          : indices.map((idx) => (
-              <button
-                key={idx.symbol}
-                type="button"
-                onClick={() => handleIndexPress(idx)}
-                className="card-frost-sm"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  padding: '14px 16px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {/* Name + ticker (legible, larger) */}
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
-                  <span
+          : indices.map((idx) => {
+              const expanded = selectedIndex?.symbol === idx.symbol;
+              return (
+                <Fragment key={idx.symbol}>
+                  <button
+                    type="button"
+                    onClick={() => handleIndexPress(idx)}
                     style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: '#ffffff',
-                      fontFamily: 'var(--font-sans)',
-                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'inherit',
+                      background: 'var(--bg-card, #1a2235)',
+                      borderRadius: 16,
+                      border: expanded
+                        ? '1px solid rgba(34,211,238,0.35)'
+                        : '1px solid rgba(255,255,255,0.06)',
+                      transition: 'border-color 0.2s',
                     }}
                   >
-                    {idx.label}
-                  </span>
-                  {idx.ticker && (
-                    <span
+                    {/* Name + ticker (left) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: '13.5px',
+                          color: '#ffffff',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {idx.label}
+                      </span>
+                      {idx.ticker && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: 999,
+                            background: 'rgba(251, 191, 36, 0.12)',
+                            color: '#fbbf24',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {idx.ticker}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Value + change + chevron (right) */}
+                    <div
                       style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: 'var(--text-accent-warm)',
-                        background: 'rgba(251, 191, 36, 0.12)',
-                        padding: '2px 7px',
-                        borderRadius: 5,
-                        letterSpacing: 0.3,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        flexShrink: 0,
+                        marginLeft: 12,
                       }}
                     >
-                      {idx.ticker}
-                    </span>
+                      <div style={{ textAlign: 'right' }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '12.5px',
+                            color: '#ffffff',
+                            fontFamily: 'var(--mono-font, monospace)',
+                          }}
+                        >
+                          ${idx.value.toFixed(2)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '9.5px',
+                            fontWeight: 600,
+                            color: idx.isLive
+                              ? (idx.change >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)')
+                              : 'var(--faint, #8794a8)',
+                            marginTop: 1,
+                          }}
+                        >
+                          {idx.isLive
+                            ? `${idx.change >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%`
+                            : 'Closed'}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          color: 'var(--dim, #aab4c7)',
+                          fontSize: 14,
+                          lineHeight: 1,
+                          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.25s',
+                          flexShrink: 0,
+                        }}
+                      >
+                        ▾
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Inline expansion — chart renders in-place, no modal */}
+                  {expanded && (
+                    <IndexDetail
+                      symbol={idx.symbol}
+                      label={idx.label}
+                      name={idx.name}
+                      ticker={idx.ticker}
+                      value={idx.value}
+                      change={idx.change}
+                      changePct={idx.changePct}
+                      isLive={idx.isLive}
+                      onClose={() => setSelectedIndex(null)}
+                    />
                   )}
-                </div>
-
-                {/* Value + change (right-aligned) */}
-                <div style={{ textAlign: 'right', minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-sans)',
-                      fontWeight: 700,
-                      fontSize: 16,
-                      color: '#ffffff',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    ${idx.value.toFixed(2)}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-sans)',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      color: idx.isLive
-                        ? (idx.change >= 0 ? 'var(--gain)' : 'var(--loss)')
-                        : 'var(--text-muted)',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {idx.isLive
-                      ? `${idx.change >= 0 ? '+' : ''}$${Math.abs(idx.change).toFixed(2)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
-                      : 'Closed'}
-                  </div>
-                </div>
-              </button>
-            ))}
+                </Fragment>
+              );
+            })}
       </div>
-
-      {/* Index detail overlay (renders on top; page keeps rendering beneath) */}
-      {selectedIndex && (
-        <IndexDetail
-          symbol={selectedIndex.symbol}
-          label={selectedIndex.label}
-          name={selectedIndex.name}
-          ticker={selectedIndex.ticker}
-          value={selectedIndex.value}
-          change={selectedIndex.change}
-          changePct={selectedIndex.changePct}
-          isLive={selectedIndex.isLive}
-          onClose={() => setSelectedIndex(null)}
-        />
-      )}
     </div>
   );
 }
