@@ -42,6 +42,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
   const [budget, setBudget] = useState<number>(0);
   const [distribution, setDistribution] = useState<'score' | 'equal'>('score');
   const [buyingPower, setBuyingPower] = useState<number>(0);
+  const [quotes, setQuotes] = useState<Record<string, number>>({});
   const [skippedStocks, setSkippedStocks] = useState<Set<string>>(new Set());
   const [orderRows, setOrderRows] = useState<OrderRow[]>([]);
   const [qtyDigits, setQtyDigits] = useState<Record<string, string>>({});
@@ -90,7 +91,30 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
       .catch(() => {});
   }, []);
 
-  // Recalculate distributions when budget/distribution changes
+  // Fetch live quotes for market/stop order cost estimates
+  useEffect(() => {
+    if (!basket) return;
+    const symbols = (basket.basket_positions || []).map(p => p.symbol).filter(Boolean);
+    if (symbols.length === 0) return;
+    let cancelled = false;
+    fetch('/api/market/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        const q: Record<string, number> = {};
+        const quotesMap = data.quotes || {};
+        for (const sym of symbols) {
+          if (quotesMap[sym]?.price) q[sym] = Number(quotesMap[sym].price);
+        }
+        setQuotes(q);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [basket]);
   useEffect(() => {
     if (!basket || budget <= 0) return;
 
@@ -155,7 +179,16 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
   };
 
   const activeOrders = orderRows.filter(r => r.included && !skippedStocks.has(r.symbol) && r.qty > 0);
-  const totalCost = activeOrders.reduce((sum, r) => sum + r.qty * (r.orderType === 'limit' ? (r.limitPrice || 0) : 0), 0);
+  // Estimated per-share price for an order row: limit/stop_limit use the
+  // user's limit price; market/stop use the current market price (live quote)
+  // so the estimated cost is meaningful instead of $0.
+  const rowPrice = (row: OrderRow): number => {
+    if (row.orderType === 'limit' || row.orderType === 'stop_limit') {
+      return row.limitPrice || 0;
+    }
+    return quotes[row.symbol] || 0;
+  };
+  const totalCost = activeOrders.reduce((sum, r) => sum + r.qty * rowPrice(r), 0);
 
   const handleExecute = async () => {
     setIsExecuting(true);
@@ -434,7 +467,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                       <div>
                         <label className="text-slate-300 text-2xs font-semibold uppercase block mb-1">Est. Cost</label>
                         <div className="bg-slate-900 border border-slate-700 rounded-lg py-1.5 px-2.5 text-slate-300 text-sm">
-                          ${((row.qty || 0) * (row.orderType === 'limit' ? (row.limitPrice || 0) : 0)).toFixed(2) || '—'}
+                          ${(() => { const c = (row.qty || 0) * rowPrice(row); return c > 0 ? c.toFixed(2) : '—'; })()}
                         </div>
                       </div>
                     </div>
@@ -557,7 +590,7 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
                   <span className="col-span-4 text-right">Est. Cost</span>
                 </div>
                 {activeOrders.map(order => {
-                  const estCost = order.qty * (order.orderType === 'limit' ? (order.limitPrice || 0) : 0);
+                  const estCost = order.qty * rowPrice(order);
                   return (
                     <div key={order.symbol} className="grid grid-cols-12 text-sm py-2 border-b border-slate-700/50">
                       <span className="col-span-3 text-white font-medium">{order.symbol}</span>

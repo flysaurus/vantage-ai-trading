@@ -1502,8 +1502,13 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     }
 
     const bNum = Math.round(parseFloat(budget)) || 0;
-    if (bNum > cashBalance) {
-      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `Insufficient funds. Need $${bNum.toLocaleString()}, have $${cashBalance.toLocaleString()}` } as any);
+    // Validate the ACTUAL new order total (sum of edited dollarAmounts) against
+    // available cash — not the stale `budget` value (which in edit mode is the
+    // OLD reserved total). This catches the case where amounts were edited up
+    // past what the account can cover, even if the review gate missed it.
+    const newTotal = reviewStocks.reduce((sum, s) => sum + (Number(s.dollarAmount) || 0), 0);
+    if (newTotal > cashBalance) {
+      setExecutionResult({ success: false, executed: 0, failed: reviewStocks.length, totalSpent: 0, error: `Insufficient funds. Order total $${newTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds available cash $${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.` } as any);
       setExecuting(false);
       return;
     }
@@ -1514,7 +1519,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         isBasketEditMode ? (editBasket?.basketName || selectedCurated.name) : selectedCurated.name,
         isBasketEditMode ? (editBasket?.basketEmoji || selectedCurated.emoji) : selectedCurated.emoji,
         basketDisplayName || (isBasketEditMode ? (editBasket?.basketDisplayName || selectedCurated.name) : selectedCurated.name),
-        reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name, fallbackPrice: s.price })),
+        reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name, fallbackPrice: s.price, dollarAmount: s.dollarAmount })),
         bNum,
         isBasketEditMode ? (editBasket?.basketId || editBasket?.id) : undefined,
       );

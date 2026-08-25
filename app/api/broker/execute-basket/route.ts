@@ -29,6 +29,7 @@ import { notifyBasketEvent, type BasketOrderEvent } from '@/lib/order-emails';
 import { notifyBasketNotification } from '@/lib/order-notifications';
 import { formatBrokerName } from '@/lib/broker-name';
 import { resolveCompanyNames } from '@/lib/market-data';
+import { availableCash } from '@/lib/available-cash';
 
 // System basket name date suffix: MMDDYYYY in America/New_York (matches the
 // user's ET trading day, not UTC — a basket placed 19:00 ET is still "today").
@@ -131,6 +132,36 @@ export async function POST(req: NextRequest) {
       brokerName: formatBrokerName(brokerSlug),
       tradingEnabled,
     });
+
+    // ── Server-side funds guard ──
+    // Independently re-validate the requested total against the broker's
+    // available cash (primary) / buying power (fallback) BEFORE placing any
+    // legs. The client validates too, but this catches stale/forged requests.
+    const requestedTotal = stocks.reduce((sum, s) => sum + (Number(s.dollarAmount) || 0), 0);
+    if (requestedTotal > 0) {
+      try {
+        const acct = await broker.getAccount();
+        const available = availableCash(
+          { cash: acct.cashBalance, buyingPower: acct.buyingPower },
+          0,
+        );
+        if (requestedTotal > available) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Insufficient funds. Order total $${requestedTotal.toFixed(2)} exceeds available cash $${available.toFixed(2)}.`,
+              status: 'REJECTED',
+            },
+            { status: 400 },
+          );
+        }
+      } catch (err) {
+        // A transient balance-fetch failure shouldn't hard-block placement —
+        // the client already validated and the broker will reject on true
+        // insufficient funds. Log and proceed.
+        console.warn('[execute-basket] ⚠️ funds guard skipped (balance fetch failed):', (err as Error)?.message);
+      }
+    }
 
     const result = await broker.placeBasketOrder({
       basketId,

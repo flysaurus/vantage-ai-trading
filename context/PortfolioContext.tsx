@@ -1413,7 +1413,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     basketName: string,
     basketEmoji: string,
     displayName: string,
-    stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number }>,
+    stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number; dollarAmount?: number }>,
     budget: number,
     existingBasketId?: string,
   ): Promise<BasketTradeResult> => {
@@ -1424,7 +1424,19 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     submittingBasketRef.current = true;
     try {
     // Build the leg payload once (shared by demo + real-broker paths).
-    const stocksPayload = stocks.map(s => ({ symbol: s.symbol, dollarAmount: (s.allocationPct / 100) * budget * 0.95, allocationPct: s.allocationPct, fallbackPrice: s.fallbackPrice }));
+    // Build the leg payload. When the caller supplies an explicit per-leg
+    // dollarAmount (edited basket amounts), pass it through verbatim so the
+    // reserved total always reconciles with what the user sees in the review
+    // screen. Otherwise fall back to allocation% × budget (with the 5% buffer)
+    // for curated / buy-more / buy-single flows.
+    const stocksPayload = stocks.map(s => ({
+      symbol: s.symbol,
+      dollarAmount: s.dollarAmount != null && Number.isFinite(Number(s.dollarAmount))
+        ? Math.round(Number(s.dollarAmount) * 100) / 100
+        : Math.round(((s.allocationPct / 100) * budget * 0.95) * 100) / 100,
+      allocationPct: s.allocationPct,
+      fallbackPrice: s.fallbackPrice,
+    }));
 
     // Real SnapTrade baskets MUST go through the server-side proxy — the
     // `broker` from useBroker() is a read-only SnapTradeAdapter with no
