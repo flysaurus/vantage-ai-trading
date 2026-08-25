@@ -1,18 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
 
 import { apiPost } from '@/lib/api-client';
+import PriceChart, { type ChartPoint, type ChartRange } from '../shared/PriceChart';
 
-type Range = '1D' | '1W' | '1M' | 'YTD' | 'ALL';
+type Range = ChartRange;
 
 interface PositionInput {
   symbol: string;
@@ -22,25 +15,9 @@ interface PositionInput {
   totalCost?: number;
 }
 
-interface ChartPoint {
-  timestamp: number;
-  value: number;
-}
-
 interface Props {
   positions: PositionInput[];
   cashBalance: number;
-}
-
-// ─── Helpers ─────────────────────────────────────────
-
-const DOLLAR_FMT: Intl.NumberFormatOptions = {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-};
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString('en-US', DOLLAR_FMT);
 }
 
 const RANGES: Range[] = ['1D', '1W', '1M', 'YTD', 'ALL'];
@@ -48,8 +25,6 @@ const RANGES: Range[] = ['1D', '1W', '1M', 'YTD', 'ALL'];
 // ─── Module-level cache (survives component unmount/remount) ───
 interface CacheEntry {
   points: ChartPoint[];
-  rangeReturn: number;
-  rangeReturnPct: number;
   range: Range;
   date: string; // YYYY-MM-DD of fetch
   timestamp: number; // ms timestamp of fetch
@@ -61,7 +36,7 @@ const chartCache = new Map<Range, CacheEntry>();
 function makePositionHash(positions: PositionInput[], cashBalance: number): string {
   return JSON.stringify({
     c: cashBalance,
-    p: positions.map(p => `${p.symbol}:${p.avgCost}:${p.totalCost}`).sort().join(','),
+    p: positions.map(p => `${p.symbol}:${p.shares}:${p.avgCost}:${p.totalCost}`).sort().join(','),
   });
 }
 
@@ -83,8 +58,6 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
   const [data, setData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [rangeReturn, setRangeReturn] = useState(0);
-  const [rangeReturnPct, setRangeReturnPct] = useState(0);
 
   const fetchChartData = useCallback(
     async (r: Range) => {
@@ -114,25 +87,14 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
 
         setData(json.points);
 
-        if (json.points.length >= 2) {
-          const first = json.points[0].value;
-          const last = json.points[json.points.length - 1].value;
-          const ret = last - first;
-          const retPct = ((last - first) / (first || 1)) * 100;
-          setRangeReturn(ret);
-          setRangeReturnPct(retPct);
-
-          // Save to module cache
-          chartCache.set(r, {
-            points: json.points,
-            rangeReturn: ret,
-            rangeReturnPct: retPct,
-            range: r,
-            date: new Date().toISOString().split('T')[0],
-            timestamp: Date.now(),
-            positionHash: makePositionHash(positions, cashBalance),
-          });
-        }
+        // Save to module cache (only points — return is derived by PriceChart)
+        chartCache.set(r, {
+          points: json.points,
+          range: r,
+          date: new Date().toISOString().split('T')[0],
+          timestamp: Date.now(),
+          positionHash: makePositionHash(positions, cashBalance),
+        });
       } catch {
         setError(true);
       } finally {
@@ -149,8 +111,6 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
     if (cached && isCacheValid(cached, range, posHash)) {
       // Restore from cache — no flicker
       setData(cached.points);
-      setRangeReturn(cached.rangeReturn);
-      setRangeReturnPct(cached.rangeReturnPct);
       setLoading(false);
       setError(false);
       return;
@@ -159,224 +119,21 @@ export default function PortfolioChart({ positions, cashBalance }: Props) {
     fetchChartData(range);
   }, [range, fetchChartData]);
 
-  // ── Derived display ──
-  const isPositive = rangeReturn >= 0;
-  const lineColor = isPositive ? '#10b981' : '#ef4444';
-  const returnSign = isPositive ? '+' : '';
-
-  // ── X-axis label formatter ──
-  const formatXAxis = (timestamp: number): string => {
-    const date = new Date(timestamp * 1000);
-    switch (range) {
-      case '1D':
-        return date.toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        });
-      case '1W':
-        return date.toLocaleDateString('en-US', {
-          weekday: 'short',
-        });
-      case '1M':
-        return date.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        });
-      case 'YTD':
-      case 'ALL':
-        return date.toLocaleDateString('en-US', {
-          month: 'short',
-          year: '2-digit',
-        });
-    }
-  };
-
-  // ── Custom tooltip (frosted-glass cyan aesthetic) ──
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const val = payload[0].value as number;
-    const ts = payload[0].payload.timestamp as number;
-    return (
-      <div
-        style={{
-          background: 'rgba(15, 23, 42, 0.92)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(34, 211, 238, 0.25)',
-          borderRadius: '10px',
-          padding: '8px 14px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-        }}
-      >
-        <div style={{ color: '#22d3ee', fontWeight: 600, fontSize: 14 }}>
-          ${formatCurrency(val)}
-        </div>
-        <div style={{ color: '#cbd5e1', fontSize: 11, marginTop: 2 }}>
-          {formatXAxis(ts)}
-        </div>
-      </div>
-    );
-  };
-
-  // ── Label override so Recharts doesn't warn ──
-  CustomTooltip.displayName = 'CustomTooltip';
-
   // ── Don't render if no positions ──
   if (!positions || positions.length === 0) return null;
 
   return (
-    <div style={{ marginTop: '8px' }}>
-      {/* Range return indicator */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          marginBottom: '4px',
-          paddingRight: '4px',
-        }}
-      >
-        <span
-          style={{
-            color: isPositive ? '#10b981' : '#ef4444',
-            fontSize: '12px',
-            fontWeight: 500,
-          }}
-        >
-          {returnSign}${formatCurrency(Math.abs(rangeReturn))} (
-          {returnSign}
-          {rangeReturnPct.toFixed(1)}%) this {range}
-        </span>
-      </div>
-
-      {/* Chart area */}
-      {loading ? (
-        <div
-          style={{
-            height: 120,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              width: '100%',
-              height: '2px',
-              background:
-                'linear-gradient(90deg, transparent, #22d3ee, transparent)',
-              animation: 'pulse 1.5s ease-in-out infinite',
-            }}
-          />
-        </div>
-      ) : error ? (
-        <div
-          style={{
-            height: 120,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#94a3b8',
-            fontSize: '12px',
-          }}
-        >
-          Chart unavailable
-        </div>
-      ) : data.length > 0 ? (
-        <ResponsiveContainer width="100%" height={120}>
-          <AreaChart
-            data={data}
-            margin={{ top: 4, right: 4, bottom: 0, left: 4 }}
-          >
-            <defs>
-              <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={lineColor} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="timestamp"
-              tickFormatter={formatXAxis}
-              tick={{ fill: '#9ca3af', fontSize: 10 }}
-              axisLine={false}
-              tickLine={false}
-              interval="preserveStartEnd"
-              minTickGap={40}
-            />
-            <YAxis hide domain={['dataMin - 500', 'dataMax + 500']} />
-            <Tooltip
-              content={<CustomTooltip />}
-              cursor={{
-                stroke: 'rgba(34, 211, 238, 0.35)',
-                strokeWidth: 1,
-                strokeDasharray: '4 3',
-              }}
-              isAnimationActive={false}
-            />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={lineColor}
-              strokeWidth={2}
-              fill="url(#portfolioGradient)"
-              dot={false}
-              activeDot={{
-                r: 4,
-                fill: lineColor,
-                stroke: '#0a0f1e',
-                strokeWidth: 2,
-              }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      ) : (
-        <div
-          style={{
-            height: 120,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#94a3b8',
-            fontSize: '12px',
-          }}
-        >
-          No data
-        </div>
-      )}
-
-      {/* Range selector pills */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '4px',
-          marginTop: '8px',
-        }}
-      >
-        {RANGES.map((r) => (
-          <button
-            key={r}
-            onClick={() => { setRange(r); setData([]); }}
-            style={{
-              padding: '4px 12px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: range === r ? '600' : '400',
-              background:
-                range === r ? 'rgba(34,211,238,0.15)' : 'transparent',
-              border:
-                range === r
-                  ? '1px solid rgba(34,211,238,0.5)'
-                  : '1px solid transparent',
-              color: range === r ? '#22d3ee' : '#6b7280',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {r}
-          </button>
-        ))}
-      </div>
-    </div>
+    <PriceChart
+      points={data}
+      range={range}
+      onRangeChange={(r) => {
+        setRange(r);
+        setData([]);
+      }}
+      loading={loading}
+      error={error}
+      height={120}
+      gradientId="portfolioGradient"
+    />
   );
 }

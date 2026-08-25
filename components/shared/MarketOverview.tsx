@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import IndexDetail from './IndexDetail';
 
 interface IndexData {
   symbol: string;
@@ -22,6 +23,7 @@ export default function MarketOverview() {
     cachedIndices || []
   );
   const [loading, setLoading] = useState(!cachedIndices);
+  const [selectedIndex, setSelectedIndex] = useState<IndexData | null>(null);
 
   const fetchIndices = async () => {
     try {
@@ -67,9 +69,8 @@ export default function MarketOverview() {
     return () => clearInterval(interval);
   }, []);
 
-  // TODO(Phase 6): wire the tap action (index detail / watchlist / chart).
   const handleIndexPress = (idx: IndexData) => {
-    console.log('[MarketOverview] index tapped:', idx.symbol, idx.label);
+    setSelectedIndex(idx);
   };
 
   return (
@@ -181,6 +182,21 @@ export default function MarketOverview() {
               </button>
             ))}
       </div>
+
+      {/* Index detail overlay (renders on top; page keeps rendering beneath) */}
+      {selectedIndex && (
+        <IndexDetail
+          symbol={selectedIndex.symbol}
+          label={selectedIndex.label}
+          name={selectedIndex.name}
+          ticker={selectedIndex.ticker}
+          value={selectedIndex.value}
+          change={selectedIndex.change}
+          changePct={selectedIndex.changePct}
+          isLive={selectedIndex.isLive}
+          onClose={() => setSelectedIndex(null)}
+        />
+      )}
     </div>
   );
 }
