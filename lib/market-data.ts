@@ -476,7 +476,9 @@ async function yahooProfile(symbol: string, timeout = 5000): Promise<CompanyProf
 
     return {
       ticker: meta.symbol || symbol.toUpperCase(),
-      name: meta.shortName || meta.longName || '',
+      // Prefer longName — Yahoo's shortName is truncated for longer names
+      // (e.g. "State Street Industrial Select " vs the full longName).
+      name: meta.longName || meta.shortName || '',
       industry: meta.sector || meta.industry || '',
       marketCap: meta.marketCap ?? null,
       exchange: meta.exchangeName || meta.fullExchangeName || '',
