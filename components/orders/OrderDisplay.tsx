@@ -231,6 +231,12 @@ export function OrderCard({
   const dateLabel = (order.createdAt || order.date)
     ? formatOrderDate(order.createdAt || order.date)
     : '';
+  const status = (order.status || '').toLowerCase();
+  const reason = status === 'rejected'
+    ? cancelReasonText(order)
+    : status === 'cancelled' && order.cancelReason
+      ? cancelReasonText(order)
+      : '';
 
   return (
     <div
@@ -258,6 +264,8 @@ export function OrderCard({
       </div>
 
       <OrderStepper order={order} />
+
+      {reason && <div className="reason">{reason}</div>}
 
       {/* Bottom row: order ID (left) · Cancel chip (right) */}
       <div className="bottom-row">
@@ -293,6 +301,7 @@ export function OrderCard({
         .date { font-size: 10px; color: #94a3b8; }
         .bottom-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
         .ref { font-size: 10px; color: #5c6579; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .reason { font-size: 10px; color: #5c6579; margin-top: 6px; }
         .cancel-chip {
           background: none; border: 1px solid rgba(239,68,68,0.4); border-radius: 6px;
           color: #ef4444; font-size: 11px; padding: 4px 10px; cursor: pointer;
