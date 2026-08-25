@@ -296,21 +296,36 @@ export async function POST(req: NextRequest) {
     // Email: ONE consolidated email (basket header + per-position table).
     // Bell: 1 basket row + N per-leg rows (individual stock orders, same
     // style as single-order "placed" notifications).
+    // Basket-level event kind: if every leg filled synchronously (market
+    // orders), report "filled"; if only some filled, "partially_filled";
+    // otherwise the basket is still just "placed" (open/pending legs).
+    const legs = result.orders || [];
+    const filledLegs = legs.filter((l) => l.status === 'FILLED');
+    const basketEventKind: BasketOrderEvent['event'] =
+      legs.length > 0 && filledLegs.length === legs.length
+        ? 'filled'
+        : filledLegs.length > 0
+          ? 'partially_filled'
+          : 'placed';
+
     const basketEvent: BasketOrderEvent = {
       brokerName,
       basketName: basketDisplay,
       basketEmoji: basketEmoji || undefined,
-      event: 'placed',
-      positions: result.orders.map((leg) => ({
+      event: basketEventKind,
+      positions: legs.map((leg) => ({
         symbol: (leg.symbol || '').toUpperCase(),
         side: 'BUY',
         orderUnit: 'dollars',
         requestedAmount: leg.reservedAmount ?? 0,
         requestedQty: null,
         type: 'market',
+        fillPrice: leg.fillPrice ?? null,
+        fillQty: leg.filledShares ?? 0,
+        fillTotal: (leg.fillPrice ?? 0) * (leg.filledShares ?? 0),
       })),
       isLive: true,
-      orderIds: result.orders
+      orderIds: legs
         .map((leg) => leg.orderId)
         .filter((id): id is string => !!id),
     };

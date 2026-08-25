@@ -27,8 +27,8 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
-import { notifyOrderEvent } from '@/lib/order-emails';
-import { notifyOrderNotification } from '@/lib/order-notifications';
+import { notifyOrderEvent, type BasketOrderEvent } from '@/lib/order-emails';
+import { notifyOrderNotification, notifyBasketNotification } from '@/lib/order-notifications';
 import { formatBrokerName } from '@/lib/broker-name';
 import { consumeLotsForSell, createLotForBuy } from '@/lib/fifo-ledger';
 import type { OrderStatus } from '@/lib/broker/types';
@@ -87,8 +87,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { data: rows, error } = await supabase
     .from('orders')
     .select('id, user_id, connection_id, brokerage_order_id, status, created_at, symbol, side, qty, requested_amount, requested_qty, order_unit, basket_id')
-    .in('status', [...IN_FLIGHT])
-    .not('brokerage_order_id', 'is', null);
+    .in('status', [...IN_FLIGHT]);
 
   if (error) {
     console.error('[sync-orders] Failed to load in-flight orders:', error.message);
@@ -140,6 +139,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let staleCancelled = 0;
   let errors = 0;
 
+  // Basket-fill grouping (Issue C): collect basket legs that transitioned to a
+  // fill status this run so we can emit ONE consolidated basket-level
+  // notification instead of N per-leg bells. Keyed by basket_id; stores the
+  // owning user + broker name for the post-loop grouped emission.
+  const basketFillBatches = new Map<string, { userId: string; brokerName: string }>();
+
   for (const group of groups.values()) {
     const userId = group.userId;
     const orders = group.orders;
@@ -189,13 +194,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const liveById = new Map(liveOrders.map((o) => [o.id, o]));
 
     for (const o of orders) {
-      if (!o.brokerage_order_id) {
-        skipped++;
-        continue;
-      }
-
-      const live = liveById.get(o.brokerage_order_id);
-      if (!live) {
+      // A NULL brokerage_order_id can never be matched against the broker's
+      // recentOrders — it's an un-linkable row (e.g. a manual/recovery write).
+      // Route it through the stale-guard below so it can't linger "open"
+      // invisibly: recent → transient lag (skipped), old → auto-cancelled.
+      const live = o.brokerage_order_id ? liveById.get(o.brokerage_order_id) : undefined;
+      if (!live || !o.brokerage_order_id) {
+        const brokerOrderId = o.brokerage_order_id || o.id;
         // Broker no longer returns this order. Two cases:
         //  1. Recent + missing → transient lag (just placed, not yet visible).
         //     Skip and retry next run.
@@ -226,7 +231,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               });
             staleCancelled++;
             console.log(
-              `[sync-orders] Stale-cancel: ${o.brokerage_order_id.slice(0, 8)} open ${Math.round(ageMs / 3600000)}h → cancelled`,
+              `[sync-orders] Stale-cancel: ${brokerOrderId.slice(0, 8)} open ${Math.round(ageMs / 3600000)}h → cancelled`,
             );
 
             // Honest stale-guard email: we could no longer confirm status with
@@ -236,7 +241,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               brokerName,
               symbol: o.symbol || 'Unknown',
               side: o.side?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
-              orderId: o.brokerage_order_id,
+              orderId: brokerOrderId,
               isLive: true,
               cancelReason: 'stale_guard',
               orderUnit: o.order_unit ?? null,
@@ -249,7 +254,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               brokerName,
               symbol: o.symbol || 'Unknown',
               side: o.side?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
-              orderId: o.brokerage_order_id,
+              orderId: brokerOrderId,
               isLive: true,
               cancelReason: 'stale_guard',
               orderUnit: o.order_unit ?? null,
@@ -374,18 +379,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             ...requested,
           });
 
-          await notifyOrderNotification(supabase, userId, {
-            kind: 'filled',
-            brokerName,
-            symbol: live.symbol,
-            side: live.side,
-            fillQty: fillShares,
-            fillPrice,
-            fillTotal: totalCost,
-            orderId: o.brokerage_order_id,
-            isLive: true,
-            ...requested,
-          });
+          if (o.basket_id) {
+            basketFillBatches.set(o.basket_id, { userId, brokerName });
+          } else {
+            await notifyOrderNotification(supabase, userId, {
+              kind: 'filled',
+              brokerName,
+              symbol: live.symbol,
+              side: live.side,
+              fillQty: fillShares,
+              fillPrice,
+              fillTotal: totalCost,
+              orderId: o.brokerage_order_id,
+              isLive: true,
+              ...requested,
+            });
+          }
         } else if (live.status === 'PARTIALLY_FILLED') {
           const fillShares = live.filledShares ?? live.shares ?? 0;
           const fillPrice = live.fillPrice ?? 0;
@@ -405,19 +414,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             ...requested,
           });
 
-          await notifyOrderNotification(supabase, userId, {
-            kind: 'partially_filled',
-            brokerName,
-            symbol: live.symbol,
-            side: live.side,
-            fillQty: fillShares,
-            fillPrice,
-            fillTotal: totalCost,
-            remainingQty,
-            orderId: o.brokerage_order_id,
-            isLive: true,
-            ...requested,
-          });
+          if (o.basket_id) {
+            basketFillBatches.set(o.basket_id, { userId, brokerName });
+          } else {
+            await notifyOrderNotification(supabase, userId, {
+              kind: 'partially_filled',
+              brokerName,
+              symbol: live.symbol,
+              side: live.side,
+              fillQty: fillShares,
+              fillPrice,
+              fillTotal: totalCost,
+              remainingQty,
+              orderId: o.brokerage_order_id,
+              isLive: true,
+              ...requested,
+            });
+          }
         } else if (live.status === 'CANCELLED') {
           await notifyOrderEvent(supabase, userId, {
             kind: 'cancelled',
@@ -442,6 +455,63 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           });
         }
       }
+    }
+  }
+
+  // ── Emit consolidated basket-fill notifications (Issue C) ──
+  // For every basket whose legs filled this run, query the basket's FULL leg
+  // set + metadata to derive the basket-level status, then fire ONE grouped
+  // notification (interim "Partially Filled" → final "Basket Filled").
+  if (basketFillBatches.size > 0) {
+    const basketIds = Array.from(basketFillBatches.keys());
+    const { data: basketLegs } = await supabase
+      .from('orders')
+      .select('basket_id, symbol, side, status, filled_qty, filled_price, requested_amount, requested_qty, order_unit')
+      .in('basket_id', basketIds);
+    const { data: basketMetaRows } = await supabase
+      .from('user_baskets')
+      .select('id, name, icon')
+      .in('id', basketIds);
+
+    const metaById = new Map<string, { name?: string | null; icon?: string | null }>(
+      (basketMetaRows || []).map((b) => [b.id, b]),
+    );
+    const legsByBasket = new Map<string, any[]>();
+    for (const l of basketLegs || []) {
+      const bid = l.basket_id;
+      if (!legsByBasket.has(bid)) legsByBasket.set(bid, []);
+      legsByBasket.get(bid)!.push(l);
+    }
+
+    for (const [basketId, info] of basketFillBatches) {
+      const legs = legsByBasket.get(basketId) || [];
+      // Legs with any fill progress (fully-filled or partially-filled).
+      const fillLegs = legs.filter((l) => l.status === 'filled' || l.status === 'partially_filled');
+      if (fillLegs.length === 0) continue;
+      const meta = metaById.get(basketId);
+      const allFilled = legs.every((l) => l.status === 'filled');
+      const event: BasketOrderEvent['event'] = allFilled ? 'filled' : 'partially_filled';
+
+      const positions = fillLegs.map((l) => ({
+        symbol: (l.symbol || '').toUpperCase(),
+        side: ((l.side || 'buy').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+        orderUnit: l.order_unit === 'dollars' || l.order_unit === 'shares' ? l.order_unit : null,
+        requestedAmount: typeof l.requested_amount === 'number' ? l.requested_amount : null,
+        requestedQty: typeof l.requested_qty === 'number' ? l.requested_qty : null,
+        status: l.status,
+        fillQty: Number(l.filled_qty || 0),
+        fillPrice: l.filled_price != null ? Number(l.filled_price) : 0,
+        fillTotal: Number(l.filled_qty || 0) * (l.filled_price != null ? Number(l.filled_price) : 0),
+      }));
+
+      await notifyBasketNotification(supabase, info.userId, {
+        brokerName: info.brokerName,
+        basketName: meta?.name || 'Basket',
+        basketEmoji: meta?.icon || undefined,
+        event,
+        positions,
+        isLive: true,
+      });
     }
   }
 

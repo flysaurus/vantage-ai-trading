@@ -117,6 +117,12 @@ export interface BasketPositionSummary extends RequestedFields {
   fillPrice?: number | null;
   /** Order type (e.g. 'market') — used by the bell's per-leg rows. */
   type?: string;
+  /** Filled quantity — used by the bell's per-leg "Filled" rows. */
+  fillQty?: number;
+  /** Filled notional total (qty × price) — bell per-leg "Filled" rows. */
+  fillTotal?: number;
+  /** Remaining open quantity — bell per-leg "Partially Filled" rows. */
+  remainingQty?: number;
 }
 
 export interface BasketOrderEvent {

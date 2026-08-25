@@ -201,7 +201,13 @@ export async function notifyBasketNotification(
     if (user && user.order_notifications_enabled === false) return;
 
     const positions = event.positions || [];
+    // For fill events the summary total reflects the ACTUAL filled notional
+    // (qty × price), not the originally-requested dollar amount.
+    const isFillEvent = event.event === 'filled' || event.event === 'partially_filled';
     const total = positions.reduce((sum, p) => {
+      if (isFillEvent) {
+        return sum + (p.fillTotal ?? (p.fillPrice ?? 0) * (p.fillQty ?? 0));
+      }
       const unit =
         p.orderUnit === 'dollars' || p.orderUnit === 'shares'
           ? p.orderUnit
@@ -226,21 +232,45 @@ export async function notifyBasketNotification(
       created_at: new Date().toISOString(),
     });
 
-    // 2) Individual leg rows — same style as a single-order "placed" bell.
+    // 2) Individual leg rows — event-aware. "placed" → "Order Submitted";
+    // "filled"/"partially_filled" → per-leg "Filled"/"Partially Filled" with
+    // real fill qty/price/total; "cancelled" → "Cancelled".
     for (const p of positions) {
-      const placed: OrderEmailEvent = {
-        kind: 'placed',
+      const base = {
         brokerName: event.brokerName,
         symbol: p.symbol,
         side: p.side,
         orderId: '',
         isLive: event.isLive,
-        type: p.type || 'market',
         orderUnit: p.orderUnit,
         requestedAmount: p.requestedAmount,
         requestedQty: p.requestedQty,
       };
-      const { type, title, message } = buildContent(placed);
+      let leg: OrderEmailEvent;
+      if (event.event === 'placed') {
+        leg = { ...base, kind: 'placed', type: p.type || 'market' };
+      } else if (event.event === 'cancelled') {
+        leg = { ...base, kind: 'cancelled', cancelReason: 'external' };
+      } else if (event.event === 'partially_filled' && p.status === 'partially_filled') {
+        leg = {
+          ...base,
+          kind: 'partially_filled',
+          fillQty: p.fillQty ?? 0,
+          fillPrice: p.fillPrice ?? 0,
+          fillTotal: p.fillTotal ?? (p.fillPrice ?? 0) * (p.fillQty ?? 0),
+          remainingQty: p.remainingQty ?? 0,
+        };
+      } else {
+        // 'filled' event, or a fully-filled leg inside a 'partially_filled' basket
+        leg = {
+          ...base,
+          kind: 'filled',
+          fillQty: p.fillQty ?? 0,
+          fillPrice: p.fillPrice ?? 0,
+          fillTotal: p.fillTotal ?? (p.fillPrice ?? 0) * (p.fillQty ?? 0),
+        };
+      }
+      const { type, title, message } = buildContent(leg);
       rows.push({
         user_id: userId,
         type,
