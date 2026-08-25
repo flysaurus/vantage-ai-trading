@@ -1226,6 +1226,31 @@ export function TradeTab() {
             return true;
           });
 
+          // ── UNIFIED SORT (Phase 3): merge baskets + groups + solo into one
+          // descending-date list. Baskets/groups key on submittedAt, solo on createdAt.
+          const unifiedItems = [
+            ...filteredBasketOrders.map((b: any) => ({
+              kind: 'basket' as const,
+              key: `basket-${b.id}`,
+              ts: b.submittedAt || b.createdAt || '',
+              item: b,
+            })),
+            ...visibleGroups.map((g: any) => ({
+              kind: 'group' as const,
+              key: `group-${g.id}`,
+              ts: g.submittedAt || '',
+              item: g,
+            })),
+            ...soloOrders.map((o: any) => ({
+              kind: 'solo' as const,
+              key: `solo-${o.id}`,
+              ts: o.createdAt || o.date || '',
+              item: o,
+            })),
+          ].sort(
+            (a, b) => new Date(b.ts || 0).getTime() - new Date(a.ts || 0).getTime()
+          );
+
           return (
             <>
               {/* ── Empty state: no orders at all ── */}
@@ -1251,9 +1276,11 @@ export function TradeTab() {
                 </div>
               )}
 
-              {/* ── BASKET ORDER GROUPS (broker-level) ── */}
-              {filteredBasketOrders.map((basket: any) => {
-                const isExpanded = expandedBasketOrder === basket.id;
+              {/* ── UNIFIED ORDER LIST (baskets + groups + solo, date desc) ── */}
+              {unifiedItems.map((item: any) => {
+                if (item.kind === 'basket') {
+                  const basket = item.item;
+                  const isExpanded = expandedBasketOrder === basket.id;
                 const isOpen = basket.status === 'OPEN';
                 const isPartial = basket.status === 'PARTIAL';
                 const isFilled = basket.status === 'FILLED';
@@ -1552,11 +1579,10 @@ export function TradeTab() {
                     )}
                   </div>
                 );
-              })}
-
-              {/* ── BASKET GROUPS FROM INDIVIDUAL ORDERS ── */}
-              {visibleGroups.map((group: any) => {
-                const isExpanded = expandedBasketOrder === group.id;
+                }
+                if (item.kind === 'group') {
+                  const group = item.item;
+                  const isExpanded = expandedBasketOrder === group.id;
                 const isPending = group.aggregateStatus === 'OPEN';
                 const isPartial = group.aggregateStatus === 'PARTIAL';
                 
@@ -1817,10 +1843,9 @@ export function TradeTab() {
                     )}
                   </div>
                 );
-              })}
-
-              {/* ── INDIVIDUAL (NON-BASKET) ORDERS ── */}
-              {soloOrders.map(order => (
+                }
+                const order = item.item;
+                return (
                 <div
                   key={order.id}
                   style={{
@@ -1945,7 +1970,8 @@ export function TradeTab() {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </>
           );
         })()}
