@@ -309,10 +309,46 @@ export function usePortfolio() {
       }
       setError(null);
 
+      const uid = user?.id as string | undefined;
+      const connectionId = activeAccountId?.startsWith('snaptrade:')
+        ? activeAccountId.slice('snaptrade:'.length)
+        : null;
+
+      // ── Fire enrichment queries in PARALLEL with the broker fetch ──
+      // These only need uid (not the positions), so we run them alongside
+      // SnapTrade's slower account+positions calls instead of serializing extra
+      // supabase round-trips AFTER them (keeps first paint fast).
+      const client = getSupabaseBrowserClient();
+      const lotsPromise = uid
+        ? client
+            .from('position_lots')
+            .select('ticker, basket_id, account_id')
+            .eq('user_id', uid)
+            .gt('remaining_qty', 0)
+            .not('basket_id', 'is', null)
+        : Promise.resolve({ data: [] as any[], error: null });
+      const namesPromise = uid
+        ? client
+            .from('orders')
+            .select('symbol, company_name')
+            .eq('user_id', uid)
+            .not('company_name', 'is', null)
+            .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] as any[], error: null });
+      const basketsPromise = uid
+        ? client
+            .from('user_baskets')
+            .select('id, name, icon')
+            .eq('user_id', uid)
+        : Promise.resolve({ data: [] as any[], error: null });
+
       console.error('[usePortfolio] refresh started — calling broker.getAccount() + getPositions()');
-      const [brokerAccount, brokerPositions] = await Promise.all([
+      const [brokerAccount, brokerPositions, lotsRes, namesRes, basketsRes] = await Promise.all([
         broker.getAccount(),
         broker.getPositions(),
+        lotsPromise,
+        namesPromise,
+        basketsPromise,
       ]);
 
       console.error('[usePortfolio] broker data received:', {
@@ -373,35 +409,7 @@ export function usePortfolio() {
       // Baskets: cross-reference positions.symbol against position_lots.basket_id
       // (NO basket_id column on positions, per spec) so real-broker positions group
       // into their basket instead of showing as loose holdings.
-      const uid = user?.id as string | undefined;
-      const connectionId = activeAccountId?.startsWith('snaptrade:')
-        ? activeAccountId.slice('snaptrade:'.length)
-        : null;
-      const positionSymbols = positions.map((p) => p.symbol.toUpperCase());
-
       try {
-        const client = getSupabaseBrowserClient();
-
-        const lotsPromise = uid
-          ? client
-              .from('position_lots')
-              .select('ticker, basket_id, account_id')
-              .eq('user_id', uid)
-              .gt('remaining_qty', 0)
-              .not('basket_id', 'is', null)
-          : Promise.resolve({ data: [] as any[], error: null });
-        const namesPromise = uid && positionSymbols.length > 0
-          ? client
-              .from('orders')
-              .select('symbol, company_name')
-              .eq('user_id', uid)
-              .in('symbol', positionSymbols)
-              .not('company_name', 'is', null)
-              .order('created_at', { ascending: false })
-          : Promise.resolve({ data: [] as any[], error: null });
-
-        const [lotsRes, namesRes] = await Promise.all([lotsPromise, namesPromise]);
-
         // ticker → basketId (scoped to this connection when possible)
         const basketIdsByTicker = new Map<string, string>();
         for (const row of lotsRes.data || []) {
@@ -421,16 +429,9 @@ export function usePortfolio() {
         }
 
         // basket metadata (name + icon) for the grouped basket cards
-        const basketIds = Array.from(new Set(basketIdsByTicker.values()));
         const basketMetaById = new Map<string, { name?: string; emoji?: string }>();
-        if (basketIds.length > 0 && uid) {
-          const { data: basketsData } = await client
-            .from('user_baskets')
-            .select('id, name, icon')
-            .in('id', basketIds);
-          for (const b of (basketsData || []) as any[]) {
-            if (b?.id) basketMetaById.set(b.id, { name: b.name, emoji: b.icon });
-          }
+        for (const b of (basketsRes.data || []) as any[]) {
+          if (b?.id) basketMetaById.set(b.id, { name: b.name, emoji: b.icon });
         }
 
         for (const pos of positions) {

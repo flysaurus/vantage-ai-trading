@@ -1340,17 +1340,24 @@ export function PortfolioTab() {
             name: firstPos.basketName || 'Basket',
             emoji: firstPos.basketEmoji || '🧺',
             theme: '',
-            positions: groupPositions.map(p => ({
-              symbol: p.symbol,
-              shares: p.qty || 0,
-              avgCost: p.avgCost || 0,
-              currentPrice: p.currentPrice || p.avgCost || 0,
-              status: 'active' as const,
-              totalPnl: (p.totalPnl || 0),
-              allocationPct: totalCost > 0 ? (((p.avgCost || 0) * (p.qty || 0)) / totalCost) * 100 : 0,
-              name: p.name || p.symbol,
-              sector: p.sector || '',
-            })),
+            positions: groupPositions.map(p => {
+              const costBasis = (p.avgCost || 0) * (p.qty || 0);
+              const pnl = p.totalPnl ?? ((p.marketValue || 0) - costBasis);
+              const pnlPct = p.totalPnlPercent ?? (costBasis > 0 ? (pnl / costBasis) * 100 : 0);
+              return {
+                symbol: p.symbol,
+                shares: p.qty || 0,
+                avgCost: p.avgCost || 0,
+                currentPrice: p.currentPrice || p.avgCost || 0,
+                status: 'active' as const,
+                marketValue: p.marketValue || 0,
+                totalPnL: pnl,
+                totalPnLPct: pnlPct,
+                allocationPct: totalCost > 0 ? (((p.avgCost || 0) * (p.qty || 0)) / totalCost) * 100 : 0,
+                name: p.name || p.symbol,
+                sector: p.sector || '',
+              };
+            }),
             totalCost,
             marketValue,
             totalPnL: totalPnl,  // match rendering key 'totalPnL'
