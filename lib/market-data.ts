@@ -751,6 +751,42 @@ export async function getCompanyProfile(symbol: string): Promise<CompanyProfile 
   return yahooProfile(symbol);
 }
 
+// ─── Company-name resolution (persisted-name source of truth) ──
+// Resolves the full company/ETF name for a symbol ONCE and caches it in-memory
+// for the process lifetime. Used at order-placement time (execute-trade /
+// execute-basket) and by the one-time backfill so names are persisted onto the
+// order record instead of being re-fetched on every render.
+// Chain: Finnhub → Yahoo (Yahoo only as a fallback — fragile from Vercel IPs).
+
+const _companyNameCache = new Map<string, string | null>();
+
+/** Resolve the display name for a symbol, or null if unresolvable. */
+export async function resolveCompanyName(symbol: string): Promise<string | null> {
+  const s = symbol.toUpperCase();
+  if (_companyNameCache.has(s)) return _companyNameCache.get(s)!;
+  let name: string | null = null;
+  try {
+    const profile = await getCompanyProfile(s);
+    if (profile?.name && profile.name !== s) name = profile.name;
+  } catch {
+    name = null;
+  }
+  _companyNameCache.set(s, name);
+  return name;
+}
+
+/** Batch-resolve names (small batches — placement paths, backfill helper). */
+export async function resolveCompanyNames(symbols: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const unique = Array.from(new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean)));
+  const results = await Promise.allSettled(unique.map((s) => resolveCompanyName(s)));
+  unique.forEach((s, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled' && r.value) out[s] = r.value;
+  });
+  return out;
+}
+
 // ─── Yahoo Crumb Auth (needed for v10/v11 quoteSummary) ─────
 
 let yahooCrumb: { crumb: string; cookie: string; expires: number } | null = null;

@@ -297,6 +297,7 @@ export function TradeTab() {
     brokerageOrderId: o.brokerageOrderId || o.id,
     filledAt: o.filledAt ?? null,
     cancelReason: o.cancelReason ?? o.cancel_reason ?? null,
+    companyName: o.companyName ?? o.company_name ?? null,
   }));
 
   const filteredOrders = normalizedOrders.filter((o: any) => {
@@ -306,10 +307,12 @@ export function TradeTab() {
   });
 
   // Hydrate company names for order symbols (not stored on the order payload).
-  // Reuses the same /api/company/profile source the Portfolio tab uses.
+  // Persisted companyName (orders.company_name) is authoritative — only symbols
+  // WITHOUT a persisted name trigger a live /api/company/profile lookup (fallback).
   useEffect(() => {
+    const covered = new Set(normalizedOrders.filter(o => o.companyName).map(o => o.symbol));
     const symbols = Array.from(new Set(normalizedOrders.map(o => o.symbol).filter(Boolean)));
-    const missing = symbols.filter(s => !companyNames[s] && !fetchedSymbolsRef.current.has(s));
+    const missing = symbols.filter(s => !covered.has(s) && !companyNames[s] && !fetchedSymbolsRef.current.has(s));
     if (missing.length === 0) return;
     missing.forEach(s => fetchedSymbolsRef.current.add(s));
     let cancelled = false;
@@ -1459,7 +1462,7 @@ export function TradeTab() {
                             <OrderCard
                               key={order.id}
                               order={order}
-                              companyName={companyNames[order.symbol]}
+                              companyName={order.companyName || companyNames[order.symbol]}
                             />
                           ))}
                         </div>
@@ -1676,7 +1679,7 @@ export function TradeTab() {
                             <OrderCard
                               key={order.id}
                               order={order}
-                              companyName={companyNames[order.symbol]}
+                              companyName={order.companyName || companyNames[order.symbol]}
                             />
                           ))}
                         </div>
@@ -1731,7 +1734,7 @@ export function TradeTab() {
                 <OrderCard
                   key={order.id}
                   order={order}
-                  companyName={companyNames[order.symbol]}
+                  companyName={order.companyName || companyNames[order.symbol]}
                   showCancelChip
                   onCancel={(o) => {
                     setConfirmCancel({

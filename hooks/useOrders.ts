@@ -88,6 +88,7 @@ export function useOrders() {
     requestedAmount: raw.requestedAmount ?? raw.requested_amount ?? null,
     requestedQty: raw.requestedQty ?? raw.requested_qty ?? null,
     brokerageOrderId: raw.brokerageOrderId ?? raw.brokerage_order_id ?? raw.id,
+    companyName: raw.companyName ?? raw.company_name ?? null,
     basketId: raw.basketId ?? raw.basket_id ?? null,
     basketName: raw.basketName ?? raw.basket_name ?? null,
     basketEmoji: raw.basketEmoji ?? raw.basket_emoji ?? null,
@@ -189,6 +190,7 @@ export function useOrders() {
         requestedAmount: (o.requestedAmount ?? (o as any).requestedAmount) ?? null,
         requestedQty: (o.requestedQty ?? (o as any).requestedQty) ?? null,
         brokerageOrderId: (o as any).brokerageOrderId,
+        companyName: (o.companyName ?? (o as any).company_name) ?? null,
         basketId: o.basketId ?? null,
       }));
 
@@ -237,6 +239,9 @@ export function useOrders() {
           // Basket linkage lives on our persisted DB row — broker orders don't
           // carry it, so propagate it through the dedup so basket legs stay grouped.
           basketId: o.basketId ?? dbMatch.basketId ?? null,
+          // Persisted company name also lives on the DB row — broker orders
+          // don't carry it, so propagate it through the dedup.
+          companyName: o.companyName ?? dbMatch.companyName ?? null,
         };
       });
 

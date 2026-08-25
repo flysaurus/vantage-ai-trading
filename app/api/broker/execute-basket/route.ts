@@ -28,6 +28,7 @@ import { createClient } from '@supabase/supabase-js';
 import { notifyBasketEvent, type BasketOrderEvent } from '@/lib/order-emails';
 import { notifyBasketNotification } from '@/lib/order-notifications';
 import { formatBrokerName } from '@/lib/broker-name';
+import { resolveCompanyNames } from '@/lib/market-data';
 
 // System basket name date suffix: MMDDYYYY in America/New_York (matches the
 // user's ET trading day, not UTC — a basket placed 19:00 ET is still "today").
@@ -225,6 +226,12 @@ export async function POST(req: NextRequest) {
       console.log(`[execute-basket] 🧺 Basket ${isUpdate ? 'updated' : 'persisted'}: ${userBasketId} ("${basketDisplay}")`);
     }
 
+    // Resolve + persist full company/ETF names for every leg up front (parallel,
+    // one Finnhub→Yahoo pass) so each persisted order carries its own name and
+    // the client never needs a live lookup again.
+    const legSymbols = result.orders.map((l) => (l.symbol || '').toUpperCase()).filter(Boolean);
+    const namesBySymbol = await resolveCompanyNames(legSymbols);
+
     for (const leg of result.orders) {
       const symbol = (leg.symbol || '').toUpperCase();
       if (!symbol) continue;
@@ -237,6 +244,7 @@ export async function POST(req: NextRequest) {
         connection_id: brokerConnectionId,
         basket_id: userBasketId,
         symbol,
+        company_name: namesBySymbol[symbol] || null,
         qty: 0,
         order_unit: 'dollars',
         requested_amount: dollarAmount,

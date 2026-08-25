@@ -3,6 +3,23 @@ import { NextRequest, NextResponse } from 'next/server';
 const FINNHUB_KEY = process.env.FINNHUB_IO_API_KEY;
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
+// ─── Server-side response cache (Issue 3) ────────────────
+// The account chart recomputes a weighted value series for EVERY position on
+// EVERY request (N-symbol Finnhub→Yahoo candle fetches). Cache the final point
+// series keyed by a hash of positions + range + cash with a short TTL so
+// repeated range changes / warm re-mounts don't re-fetch the whole universe.
+// The series only truly changes as the market ticks, so 60s is safe.
+const chartCache = new Map<string, { expiresAt: number; payload: { points: any[]; error?: string } }>();
+const CHART_CACHE_TTL_MS = 60_000;
+
+function makeChartCacheKey(positions: PositionInput[], cashBalance: number, range: Range): string {
+  const sig = positions
+    .map((p) => `${p.symbol}:${p.shares}:${p.avgCost ?? 0}:${p.totalCost ?? 0}`)
+    .sort()
+    .join('|');
+  return `${range}|${Math.round(cashBalance * 100) / 100}|${sig}`;
+}
+
 type Range = '1D' | '1W' | '1M' | 'YTD' | 'ALL';
 
 interface PositionInput {
@@ -237,6 +254,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ points: [] });
     }
 
+    // Cache lookup — skip the full N-symbol fetch chain on repeat loads.
+    const cacheKey = makeChartCacheKey(positions, cashBalance, range);
+    const cached = chartCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      console.log(`[Chart] Cache HIT: ${positions.length} positions, range=${range}`);
+      return NextResponse.json(cached.payload);
+    }
+    const respond = (payload: { points: any[]; error?: string }) => {
+      chartCache.set(cacheKey, { expiresAt: Date.now() + CHART_CACHE_TTL_MS, payload });
+      return NextResponse.json(payload);
+    };
+
     const { from, to, resolution } = getRangeParams(range);
 
     // Fetch candles for all symbols in parallel (Finnhub → Yahoo fallback)
@@ -263,9 +292,9 @@ export async function POST(req: NextRequest) {
       // No candles at all — for 1D, fall back to quote-based estimate
       if (range === '1D') {
         const points = await build1DQuoteFallback(positions, cashBalance, from, to);
-        return NextResponse.json(points);
+        return respond(points);
       }
-      return NextResponse.json({ points: [], error: 'No candle data available' });
+      return respond({ points: [], error: 'No candle data available' });
     }
 
     // Build candle maps keyed by symbol
@@ -305,7 +334,7 @@ export async function POST(req: NextRequest) {
       return { timestamp: t, value: Math.round(value * 100) / 100 };
     });
 
-    return NextResponse.json({ points });
+    return respond({ points });
   } catch (error: any) {
     console.error('[Chart API]', error?.message || error);
     return NextResponse.json(

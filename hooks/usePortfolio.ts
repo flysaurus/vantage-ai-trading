@@ -11,6 +11,8 @@ import { useOrderStore } from '@/store';
 import { sumOpenReservedAmount } from '@/lib/available-cash';
 import { useBroker } from '@/components/providers/BrokerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useAccounts } from '@/context/AccountContext';
+import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { apiPost } from '@/lib/api-client';
 import { getDemoAccount, getDemoSectorAllocations, getDemoSymbols } from '@/lib/demo-data';
 import type {
@@ -246,6 +248,7 @@ export function usePortfolio() {
   const { account, setAccount, clearAccount, setLoading, updatePosition } = store;
   const { broker, isConnected } = useBroker();
   const { user } = useAuth();
+  const { activeAccountId } = useAccounts();
   const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
@@ -365,6 +368,87 @@ export function usePortfolio() {
         }
       }
 
+      // ── Enrich positions: persisted names (Issue 1) + basket linkage (Issue 2) ──
+      // Names: single source of truth = orders.company_name (persisted at placement).
+      // Baskets: cross-reference positions.symbol against position_lots.basket_id
+      // (NO basket_id column on positions, per spec) so real-broker positions group
+      // into their basket instead of showing as loose holdings.
+      const uid = user?.id as string | undefined;
+      const connectionId = activeAccountId?.startsWith('snaptrade:')
+        ? activeAccountId.slice('snaptrade:'.length)
+        : null;
+      const positionSymbols = positions.map((p) => p.symbol.toUpperCase());
+
+      try {
+        const client = getSupabaseBrowserClient();
+
+        const lotsPromise = uid
+          ? client
+              .from('position_lots')
+              .select('ticker, basket_id, account_id')
+              .eq('user_id', uid)
+              .gt('remaining_qty', 0)
+              .not('basket_id', 'is', null)
+          : Promise.resolve({ data: [] as any[], error: null });
+        const namesPromise = uid && positionSymbols.length > 0
+          ? client
+              .from('orders')
+              .select('symbol, company_name')
+              .eq('user_id', uid)
+              .in('symbol', positionSymbols)
+              .not('company_name', 'is', null)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] as any[], error: null });
+
+        const [lotsRes, namesRes] = await Promise.all([lotsPromise, namesPromise]);
+
+        // ticker → basketId (scoped to this connection when possible)
+        const basketIdsByTicker = new Map<string, string>();
+        for (const row of lotsRes.data || []) {
+          const ticker = (row.ticker || '').toUpperCase();
+          if (!ticker || !row.basket_id) continue;
+          if (connectionId && row.account_id && row.account_id !== connectionId) continue;
+          basketIdsByTicker.set(ticker, row.basket_id);
+        }
+
+        // symbol → persisted name (most recent non-null wins)
+        const nameBySymbol = new Map<string, string>();
+        for (const row of namesRes.data || []) {
+          const sym = (row.symbol || '').toUpperCase();
+          if (sym && row.company_name && !nameBySymbol.has(sym)) {
+            nameBySymbol.set(sym, row.company_name);
+          }
+        }
+
+        // basket metadata (name + icon) for the grouped basket cards
+        const basketIds = Array.from(new Set(basketIdsByTicker.values()));
+        const basketMetaById = new Map<string, { name?: string; emoji?: string }>();
+        if (basketIds.length > 0 && uid) {
+          const { data: basketsData } = await client
+            .from('user_baskets')
+            .select('id, name, icon')
+            .in('id', basketIds);
+          for (const b of (basketsData || []) as any[]) {
+            if (b?.id) basketMetaById.set(b.id, { name: b.name, emoji: b.icon });
+          }
+        }
+
+        for (const pos of positions) {
+          const sym = pos.symbol.toUpperCase();
+          const persistedName = nameBySymbol.get(sym);
+          if (persistedName) pos.name = persistedName;
+          const bid = basketIdsByTicker.get(sym);
+          if (bid) {
+            pos.basketId = bid;
+            const meta = basketMetaById.get(bid);
+            if (meta?.name) pos.basketName = meta.name;
+            if (meta?.emoji) pos.basketEmoji = meta.emoji;
+          }
+        }
+      } catch (e) {
+        console.warn('[usePortfolio] position enrichment failed (names/baskets):', e);
+      }
+
       // Calculate sector allocation dynamically
       const sectorTotals: Record<string, number> = {};
       for (const pos of positions) {
@@ -442,7 +526,7 @@ export function usePortfolio() {
         if (mountedRef.current) refresh();
       }, RETRY_DELAY);
     }
-  }, [broker, isConnected, setAccount, setLoading]);
+  }, [broker, isConnected, setAccount, setLoading, user?.id, activeAccountId]);
 
   // Initial load
   useEffect(() => {

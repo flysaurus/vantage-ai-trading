@@ -22,6 +22,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
 import { verifyTradeSymbol } from '@/lib/ai/trade-gate';
+import { resolveCompanyName } from '@/lib/market-data';
 import { checkIdempotency, releaseIdempotency } from '@/lib/broker/order-idempotency';
 import { notifyOrderEvent } from '@/lib/order-emails';
 import { notifyOrderNotification } from '@/lib/order-notifications';
@@ -226,6 +227,9 @@ export async function POST(req: NextRequest) {
     if (shouldPersist) {
       try {
         const now = new Date().toISOString();
+        // Persist the full company/ETF name onto the order so the client never
+        // needs a live name lookup again (single source of truth = orders.company_name).
+        const companyName = await resolveCompanyName(symbol);
         // notional=null if column doesn't exist yet (migration 042 pending).
         // qty always stores the share estimate so it's meaningful even without notional.
         const insertRow: Record<string, unknown> = {
@@ -233,6 +237,7 @@ export async function POST(req: NextRequest) {
           user_id: authUser!.id,
           connection_id: brokerConnectionId,
           symbol: symbol.toUpperCase(),
+          company_name: companyName,
           qty: effectiveQty,
           order_unit: orderUnit,
           requested_amount: requestedAmount,

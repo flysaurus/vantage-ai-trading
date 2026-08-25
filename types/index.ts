@@ -114,6 +114,8 @@ export interface Order {
   requestedQty?: number | null;
   /** SnapTrade/Alpaca brokerage_order_id — allows dedup against broker-fetched orders */
   brokerageOrderId?: string;
+  /** Persisted full company/ETF name (orders.company_name) — single source of truth for display names. */
+  companyName?: string | null;
   /** user_baskets.id linking this leg to a basket purchase (null = standalone order) */
   basketId?: string | null;
   /** Basket display name carried by demo-broker orders (real baskets resolve name via user_baskets) */
