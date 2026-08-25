@@ -1495,7 +1495,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
     // Edit mode: cancel old pending order first
     if (isBasketEditMode && editBasket) {
       try {
-        await cancelBasketOrder(editBasket.id);
+        await cancelBasketOrder(editBasket.id, { detach: true });
       } catch (e) {
         console.warn('Failed to cancel old basket order:', e);
       }
@@ -1516,6 +1516,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         basketDisplayName || (isBasketEditMode ? (editBasket?.basketDisplayName || selectedCurated.name) : selectedCurated.name),
         reviewStocks.map(s => ({ symbol: s.symbol, allocationPct: s.allocation, name: s.name, fallbackPrice: s.price })),
         bNum,
+        isBasketEditMode ? (editBasket?.basketId || editBasket?.id) : undefined,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unexpected error placing basket order';

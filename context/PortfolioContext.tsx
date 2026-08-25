@@ -969,7 +969,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const dismissToast = useCallback(() => setToast(null), []);
 
   // ── cancelOrder ──
-  const cancelOrder = useCallback(async (orderId: string) => {
+  const cancelOrder = useCallback(async (orderId: string, opts?: { detachFromBasket?: boolean }) => {
     const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
 
     if (isRealSnapTrade) {
@@ -981,7 +981,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         const result = await fetch('/api/broker/cancel-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId }),
+          body: JSON.stringify({ orderId, detachFromBasket: opts?.detachFromBasket === true }),
         }).then(r => r.json());
 
         if (!result.success) {
@@ -1059,7 +1059,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   }, [demoOrders, brokerRef, refreshStateFromBroker, broker, isShowingDemo, brokerSource]);
 
   // ── cancelBasketOrder ──
-  const cancelBasketOrder = useCallback(async (basketId: string) => {
+  const cancelBasketOrder = useCallback(async (basketId: string, opts?: { detach?: boolean }) => {
     const isRealSnapTrade = !isShowingDemo && brokerSource === 'snaptrade';
 
     if (isRealSnapTrade) {
@@ -1081,7 +1081,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      await Promise.all(workingLegs.map((leg: any) => cancelOrder(leg.id)));
+      await Promise.all(workingLegs.map((leg: any) => cancelOrder(leg.id, { detachFromBasket: opts?.detach === true })));
       setToast({
         message: `🛑 Basket cancelled — ${workingLegs.length} order${workingLegs.length === 1 ? '' : 's'} returned to buying power`,
         type: 'success',
@@ -1378,6 +1378,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     displayName: string,
     stocks: Array<{ symbol: string; allocationPct: number; name: string; fallbackPrice?: number }>,
     budget: number,
+    existingBasketId?: string,
   ): Promise<BasketTradeResult> => {
     if (submittingBasketRef.current) {
       console.log('[executeBasketTrade] Already submitting — ignoring duplicate call');
@@ -1423,6 +1424,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           basketDisplayName: displayName,
           stocks: stocksPayload,
           totalBudget: budget,
+          existingBasketId,
         }),
       }).then(r => r.json());
     } else {

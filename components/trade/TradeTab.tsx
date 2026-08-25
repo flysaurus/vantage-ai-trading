@@ -36,6 +36,32 @@ function formatQuoteDate(ts: number) {
   });
 }
 
+// Total/requested dollar amount for an order row — reads request-derived fields
+// FIRST (totalCost / reservedCost / requestedAmount / notional) so cancelled
+// notional legs show their original amount instead of "$0.00". Falls back to
+// shares × price for plain share orders. Works for both the app `Order` shape
+// and the broker `BrokerOrder` shape.
+function orderAmount(o: any): number {
+  const candidates = [o?.totalCost, o?.reservedCost, o?.requestedAmount, o?.notional];
+  for (const c of candidates) {
+    if (typeof c === 'number' && c > 0) return c;
+  }
+  const shares = Number(o?.shares ?? o?.qty ?? o?.filledQty ?? o?.filledShares ?? 0);
+  const px = Number(o?.fillPrice ?? o?.submittedPrice ?? o?.price ?? 0);
+  return shares > 0 && px > 0 ? shares * px : 0;
+}
+
+// Original requested shares — for notional (dollar) orders, derive an estimate
+// from amount / price so cancelled legs never render "0.00 shares".
+function orderShares(o: any): number {
+  const q = Number(o?.requestedQty ?? o?.qty ?? o?.shares ?? 0);
+  if (q > 0) return q;
+  const amt = orderAmount(o);
+  const px = Number(o?.fillPrice ?? o?.submittedPrice ?? o?.price ?? 0);
+  if (amt > 0 && px > 0) return amt / px;
+  return 0;
+}
+
 export function TradeTab() {
   const { user } = useAuth();
   const { setTab: setActiveTab } = useTabStore();
@@ -1440,49 +1466,46 @@ export function TradeTab() {
                             padding: '12px 16px 4px',
                             borderBottom: '1px solid rgba(255,255,255,0.04)',
                           }}>
-                            {/* Top row: symbol + direction + price */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <div>
-                                <div style={{
-                                  color: '#ffffff',
-                                  fontWeight: '600',
-                                  fontSize: '13px',
-                                }}>
-                                  {order.symbol}
+                            {/* Top row: symbol + name inline, amount right-aligned */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
+                                    {order.symbol}
+                                  </span>
                                   <span style={{
                                     color: 'var(--emerald)',
                                     fontSize: '10px',
-                                    marginLeft: '6px',
                                     background: 'var(--emerald-dim)',
                                     padding: '1px 5px',
                                     borderRadius: '3px',
                                   }}>
                                     BUY
                                   </span>
+                                  {companyNames[order.symbol] && (
+                                    <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                                      {companyNames[order.symbol]}
+                                    </span>
+                                  )}
                                 </div>
-                                {companyNames[order.symbol] && (
-                                  <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '1px' }}>
-                                    {companyNames[order.symbol]}
-                                  </div>
-                                )}
                                 <div style={{
                                   color: 'var(--dim)',
                                   fontSize: '10px',
-                                  marginTop: '1px',
+                                  marginTop: '2px',
                                 }}>
                                   {(order.type || 'market').toLowerCase()}
                                   {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
-                                  {' · '}{(order.shares || order.qty || 0).toFixed(2)} shares
+                                  {' · '}{orderShares(order).toFixed(2)} shares
                                   {' · '}#{(order.brokerageOrderId || order.id || '').toString().replace(/^demo-/, '').slice(0, 8)}
                                 </div>
-                                <div style={{
-                                  color: '#cbd5e1',
-                                  fontSize: '12px',
-                                  fontWeight: '700',
-                                  marginTop: '4px',
-                                }}>
-                                  ${((order.fillPrice || order.submittedPrice || order.price || 0) as number).toFixed(2)}
-                                </div>
+                              </div>
+                              <div style={{
+                                color: '#cbd5e1',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                ${orderAmount(order).toFixed(2)}
                               </div>
                             </div>
                             {/* OrderStepper for this child */}
@@ -1703,49 +1726,46 @@ export function TradeTab() {
                             padding: '12px 16px 4px',
                             borderBottom: '1px solid rgba(255,255,255,0.04)',
                           }}>
-                            {/* Top row: symbol + direction + price */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <div>
-                                <div style={{
-                                  color: '#ffffff',
-                                  fontWeight: '600',
-                                  fontSize: '13px',
-                                }}>
-                                  {order.symbol}
+                            {/* Top row: symbol + name inline, amount right-aligned */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '13px' }}>
+                                    {order.symbol}
+                                  </span>
                                   <span style={{
                                     color: 'var(--emerald)',
                                     fontSize: '10px',
-                                    marginLeft: '6px',
                                     background: 'var(--emerald-dim)',
                                     padding: '1px 5px',
                                     borderRadius: '3px',
                                   }}>
                                     {(order.side || 'BUY').toUpperCase()}
                                   </span>
+                                  {companyNames[order.symbol] && (
+                                    <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                                      {companyNames[order.symbol]}
+                                    </span>
+                                  )}
                                 </div>
-                                {companyNames[order.symbol] && (
-                                  <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '1px' }}>
-                                    {companyNames[order.symbol]}
-                                  </div>
-                                )}
                                 <div style={{
                                   color: 'var(--dim)',
                                   fontSize: '10px',
-                                  marginTop: '1px',
+                                  marginTop: '2px',
                                 }}>
                                   {(order.type || 'market').toLowerCase()}
                                   {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
-                                  {' · '}{(order.shares || order.qty || 0).toFixed(2)} shares
+                                  {' · '}{orderShares(order).toFixed(2)} shares
                                   {' · '}#{(order.brokerageOrderId || order.id || '').toString().replace(/^demo-/, '').slice(0, 8)}
                                 </div>
-                                <div style={{
-                                  color: '#cbd5e1',
-                                  fontSize: '12px',
-                                  fontWeight: '700',
-                                  marginTop: '4px',
-                                }}>
-                                  ${((order.fillPrice || order.submittedPrice || order.price || 0) as number).toFixed(2)}
-                                </div>
+                              </div>
+                              <div style={{
+                                color: '#cbd5e1',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                ${orderAmount(order).toFixed(2)}
                               </div>
                             </div>
                             {/* OrderStepper for this child */}
@@ -1807,45 +1827,48 @@ export function TradeTab() {
                     background: 'var(--card-bg)',
                     border: '1px solid var(--card-border)',
                     borderLeft: `3px solid ${getBorderColor(order)}`,
-                    borderRadius: '16px',
-                    padding: '18px',
+                    borderRadius: '12px',
+                    padding: '12px 16px',
                     marginBottom: '10px',
                   }}
                 >
                   {/* HEADER ROW */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                     {/* LEFT */}
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
                           {order.symbol}
                         </span>
                         <span style={{
                           borderRadius: '4px',
                           padding: '2px 6px',
-                          fontSize: '11px',
+                          fontSize: '10px',
                           fontWeight: '600',
                           background: order.side === 'BUY' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
                           color: order.side === 'BUY' ? '#10b981' : '#ef4444'
                         }}>
                           {order.side}
                         </span>
+                        {companyNames[order.symbol] && (
+                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                            {companyNames[order.symbol]}
+                          </span>
+                        )}
                       </div>
-                      {companyNames[order.symbol] && (
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>
-                          {companyNames[order.symbol]}
-                        </div>
-                      )}
-                      <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '2px' }}>
-                        {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(order.shares)} shares
+                      <div style={{ fontSize: '10px', color: 'var(--dim)', marginTop: '2px' }}>
+                        {order.type} · {order.timeInForce.toUpperCase()} · {formatSharesDisplay(orderShares(order))} shares
                       </div>
-                      <div style={{ fontSize: '10px', color: '#5c6579', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '10px', color: '#5c6579', fontFamily: 'monospace', marginTop: '1px' }}>
                         #{String(order.brokerageOrderId || order.id).replace(/^demo-/, '').slice(0, 8)}
                       </div>
                     </div>
 
-                    {/* RIGHT (date + cancel) */}
+                    {/* RIGHT (amount + date + cancel) */}
                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+                        ${orderAmount(order).toFixed(2)}
+                      </div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                         {(() => {
                           try {
