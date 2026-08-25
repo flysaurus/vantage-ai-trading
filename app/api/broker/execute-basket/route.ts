@@ -244,7 +244,6 @@ export async function POST(req: NextRequest) {
         connection_id: brokerConnectionId,
         basket_id: userBasketId,
         symbol,
-        company_name: namesBySymbol[symbol] || null,
         qty: 0,
         order_unit: 'dollars',
         requested_amount: dollarAmount,
@@ -273,6 +272,20 @@ export async function POST(req: NextRequest) {
         } else {
           persisted.push(data?.id || legId);
           console.log(`[execute-basket] 💾 Leg persisted: ${symbol} → ${data?.id} (broker ${leg.orderId})`);
+          // Best-effort: attach the resolved company name AFTER the order is
+          // safely persisted. Intentionally a SEPARATE UPDATE so a missing
+          // `company_name` column (migration 059 not yet applied) can NEVER
+          // break the critical order insert (regression guard).
+          const cname = namesBySymbol[symbol];
+          if (cname) {
+            const { error: nameErr } = await supabase
+              .from('orders')
+              .update({ company_name: cname })
+              .eq('id', data?.id);
+            if (nameErr) {
+              console.warn(`[execute-basket] ⚠️ name attach failed for ${symbol} (column missing?):`, nameErr.message);
+            }
+          }
         }
       } catch (persistErr) {
         console.error(`[execute-basket] ⚠️ DB persist exception for ${symbol}:`, persistErr);

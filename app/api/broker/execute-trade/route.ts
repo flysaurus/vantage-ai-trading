@@ -227,9 +227,6 @@ export async function POST(req: NextRequest) {
     if (shouldPersist) {
       try {
         const now = new Date().toISOString();
-        // Persist the full company/ETF name onto the order so the client never
-        // needs a live name lookup again (single source of truth = orders.company_name).
-        const companyName = await resolveCompanyName(symbol);
         // notional=null if column doesn't exist yet (migration 042 pending).
         // qty always stores the share estimate so it's meaningful even without notional.
         const insertRow: Record<string, unknown> = {
@@ -237,7 +234,6 @@ export async function POST(req: NextRequest) {
           user_id: authUser!.id,
           connection_id: brokerConnectionId,
           symbol: symbol.toUpperCase(),
-          company_name: companyName,
           qty: effectiveQty,
           order_unit: orderUnit,
           requested_amount: requestedAmount,
@@ -268,6 +264,24 @@ export async function POST(req: NextRequest) {
           dbWarnMsg = `Order at ${formatBrokerName(brokerSlug)} but could not be saved locally — it may not appear in history until the next sync.`;
         } else {
           console.log(`[execute-trade] 💾 Order persisted to DB: ${dbOrder?.id} (${result.orderId})`);
+          // Best-effort: attach the full company/ETF name AFTER the order is
+          // safely persisted (separate UPDATE). This guarantees a missing
+          // `company_name` column (migration 059 lagging) or a failed name
+          // lookup can NEVER break the critical order insert.
+          try {
+            const companyName = await resolveCompanyName(symbol);
+            if (companyName) {
+              const { error: nameErr } = await supabase
+                .from('orders')
+                .update({ company_name: companyName })
+                .eq('id', dbOrder.id);
+              if (nameErr) {
+                console.warn('[execute-trade] ⚠️ name attach failed (column missing?):', nameErr.message);
+              }
+            }
+          } catch (nameErr) {
+            console.warn('[execute-trade] ⚠️ name lookup failed (non-fatal):', nameErr);
+          }
         }
       } catch (persistErr) {
         console.error('[execute-trade] ⚠️ DB persist exception:', persistErr);
