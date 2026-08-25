@@ -805,48 +805,33 @@ function PositionCard({
 // ─── Buying Power Card ──────────────────────────────────
 
 function BuyingPowerCard({ account, invested }: { account: AccountSummary; invested: number }) {
-  const hasBuyingPower = account.buyingPower !== null && account.buyingPower !== undefined;
-  const hasReserved = account.reservedCash !== null && account.reservedCash !== undefined;
-  const columns = 2 + (hasBuyingPower ? 1 : 0) + (hasReserved ? 1 : 0);
+  // Two rows of two — prevents the 4-across layout from clipping Invested.
+  const cells: Array<{ label: string; value: string; color?: string }> = [
+    { label: 'CASH', value: formatCurrency(computeAvailableCash(account)) },
+    { label: 'RESERVED', value: formatCurrency(account.reservedCash ?? 0), color: '#fbbf24' },
+    { label: 'BUYING POWER', value: account.buyingPower != null ? formatCurrency(account.buyingPower) : '—' },
+    { label: 'INVESTED', value: formatCurrency(invested) },
+  ];
   return (
     <div style={{ padding: '0 16px 16px' }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${columns}, 1fr)`,
-        gap: 12,
+        gridTemplateColumns: '1fr 1fr',
+        gap: '12px 16px',
         padding: 16,
         background: 'var(--card-bg)',
         border: '1px solid var(--card-border)',
         borderRadius: 16,
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>CASH</div>
-          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
-            ${computeAvailableCash(account).toLocaleString('en-US', DOLLAR_FMT)}
+        {cells.map((c) => (
+          <div key={c.label} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+            <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600, whiteSpace: 'nowrap' }}>{c.label}</div>
+            <div style={{
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: c.color ?? 'var(--text-primary)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{c.value}</div>
           </div>
-        </div>
-        {hasReserved && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>RESERVED</div>
-            <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: '#fbbf24' }}>
-              ${(account.reservedCash ?? 0).toLocaleString('en-US', DOLLAR_FMT)}
-            </div>
-          </div>
-        )}
-        {hasBuyingPower && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>BUYING POWER</div>
-            <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
-              ${account.buyingPower!.toLocaleString('en-US', DOLLAR_FMT)}
-            </div>
-          </div>
-        )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 11, letterSpacing: 0.5, color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>INVESTED</div>
-          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
-            ${invested.toLocaleString('en-US', DOLLAR_FMT)}
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );

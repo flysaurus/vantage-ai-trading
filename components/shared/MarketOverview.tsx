@@ -67,67 +67,118 @@ export default function MarketOverview() {
     return () => clearInterval(interval);
   }, []);
 
+  // TODO(Phase 6): wire the tap action (index detail / watchlist / chart).
+  const handleIndexPress = (idx: IndexData) => {
+    console.log('[MarketOverview] index tapped:', idx.symbol, idx.label);
+  };
+
   return (
-    <div style={{ padding: '0 20px 20px' }}>
+    <div style={{ padding: '0 16px 20px' }}>
       {/* Section Header */}
       <h2 className="section-header" style={{ padding: '20px 0 12px' }}>
         Market Overview
       </h2>
 
-      {/* 2×2 Grid of Frosted Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 10,
-      }}>
+      {/* Compact full-width list rows — one index per row */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {loading
           ? [1, 2, 3, 4].map((i) => (
-              <div key={i} className="card-frost-sm" style={{ padding: '14px 16px', textAlign: 'center' }}>
-                <div className="section-label" style={{ marginBottom: 4 }}>—</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#334155' }}>—</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>—</div>
+              <div
+                key={i}
+                className="card-frost-sm"
+                style={{
+                  padding: '14px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>—</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>—</span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#334155' }}>—</div>
+                </div>
               </div>
             ))
           : indices.map((idx) => (
-              <div key={idx.symbol} className="card-frost-sm" style={{ padding: '14px 16px', textAlign: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 }}>
-                  <span className="section-label" style={{ marginBottom: 0 }}>
+              <button
+                key={idx.symbol}
+                type="button"
+                onClick={() => handleIndexPress(idx)}
+                className="card-frost-sm"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  padding: '14px 16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {/* Name + ticker (legible, larger) */}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+                  <span
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: '#ffffff',
+                      fontFamily: 'var(--font-sans)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {idx.label}
                   </span>
                   {idx.ticker && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 600,
-                      color: 'var(--text-accent-warm)',
-                      background: 'rgba(251, 191, 36, 0.1)',
-                      padding: '2px 6px', borderRadius: 4,
-                      letterSpacing: 0.3,
-                    }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'var(--text-accent-warm)',
+                        background: 'rgba(251, 191, 36, 0.12)',
+                        padding: '2px 7px',
+                        borderRadius: 5,
+                        letterSpacing: 0.3,
+                      }}
+                    >
                       {idx.ticker}
                     </span>
                   )}
                 </div>
-                <div style={{
-                  fontFamily: 'var(--font-sans)',
-                  fontWeight: 700,
-                  fontSize: 20,
-                  color: '#ffffff',
-                  marginBottom: 2,
-                }}>
-                  ${idx.value.toFixed(2)}
+
+                {/* Value + change (right-aligned) */}
+                <div style={{ textAlign: 'right', minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-sans)',
+                      fontWeight: 700,
+                      fontSize: 16,
+                      color: '#ffffff',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    ${idx.value.toFixed(2)}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-sans)',
+                      fontWeight: 600,
+                      fontSize: 12,
+                      color: idx.isLive
+                        ? (idx.change >= 0 ? 'var(--gain)' : 'var(--loss)')
+                        : 'var(--text-muted)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {idx.isLive
+                      ? `${idx.change >= 0 ? '+' : ''}$${Math.abs(idx.change).toFixed(2)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
+                      : 'Closed'}
+                  </div>
                 </div>
-                <div style={{
-                  fontFamily: 'var(--font-sans)',
-                  fontWeight: 600,
-                  fontSize: 13,
-                  color: idx.isLive
-                    ? (idx.change >= 0 ? 'var(--gain)' : 'var(--loss)')
-                    : 'var(--text-muted)',
-                }}>
-                  {idx.isLive
-                    ? `${idx.change >= 0 ? '+' : ''}$${Math.abs(idx.change).toFixed(2)} (${idx.changePct >= 0 ? '+' : ''}${idx.changePct.toFixed(2)}%)`
-                    : 'Closed'}
-                </div>
-              </div>
+              </button>
             ))}
       </div>
     </div>
