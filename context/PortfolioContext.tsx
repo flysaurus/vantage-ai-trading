@@ -832,6 +832,43 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => setToast(null), 4000);
           return { success: false, error: proxyResult.error || proxyResult.message || 'Order failed', status: proxyResult.status as NonNullable<TradeResult['status']> };
         }
+        // ── Optimistic UI (Phase 4): push the new order into the order store ──
+        // immediately so it shows in Invest/Order History without waiting for the
+        // 30s useOrders poll. The poll reconciles via dedup by id (dbOrderId).
+        {
+          const proxyStatus = ((proxyResult.status as string) || 'OPEN').toUpperCase();
+          const appStatus: Order['status'] =
+            proxyStatus === 'FILLED' ? 'filled'
+            : proxyStatus === 'SUBMITTED' ? 'submitted'
+            : proxyStatus === 'PENDING' ? 'pending'
+            : proxyStatus === 'REJECTED' ? 'rejected'
+            : proxyStatus === 'CANCELLED' ? 'cancelled'
+            : 'open';
+          const isNotional = !!dollarAmount;
+          const optOrder: Order = {
+            id: proxyResult.dbOrderId || proxyResult.orderId || `local-${Date.now()}`,
+            symbol: symbol.toUpperCase(),
+            side: (side.toLowerCase() === 'sell' ? 'sell' : 'buy') as Order['side'],
+            type: (orderType || 'market') as Order['type'],
+            status: appStatus,
+            qty: Number(proxyResult.filledShares || shares || 0),
+            filledQty: Number(proxyResult.filledShares || 0),
+            filledPrice: typeof proxyResult.fillPrice === 'number' ? proxyResult.fillPrice : undefined,
+            totalValue: typeof proxyResult.totalCost === 'number' ? proxyResult.totalCost : undefined,
+            limitPrice,
+            stopPrice,
+            timeInForce: (timeInForce || 'day') as Order['timeInForce'],
+            createdAt: new Date().toISOString(),
+            filledAt: proxyResult.filledAt || (appStatus === 'filled' ? new Date().toISOString() : null),
+            notional: isNotional ? dollarAmount : null,
+            orderUnit: isNotional ? 'dollars' : 'shares',
+            requestedAmount: isNotional ? dollarAmount : null,
+            requestedQty: isNotional ? null : Number(shares || 0),
+            brokerageOrderId: proxyResult.orderId || undefined,
+            source: 'manual',
+          };
+          useOrderStore.getState().addOrder(optOrder);
+        }
         await refreshStateFromBroker();
         const fillPx = proxyResult.fillPrice ?? price;
         const status = proxyResult.status as string;

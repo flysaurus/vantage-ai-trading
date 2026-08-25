@@ -298,7 +298,12 @@ export function usePortfolio() {
     }
 
     try {
-      setLoading(true);
+      // Only surface the full-page spinner on the FIRST load (no account yet).
+      // Subsequent 60s polls update in place — avoids unmounting/remounting the
+      // chart + cards (the "full reload" flash) on every poll. (Phase 4)
+      if (!usePortfolioStore.getState().account) {
+        setLoading(true);
+      }
       setError(null);
 
       console.error('[usePortfolio] refresh started — calling broker.getAccount() + getPositions()');
