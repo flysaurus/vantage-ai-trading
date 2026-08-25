@@ -6,14 +6,6 @@ import PriceChart, { type ChartPoint, type ChartRange } from './PriceChart';
 
 interface IndexDetailProps {
   symbol: string;
-  label: string;
-  name: string;
-  ticker?: string;
-  value: number;
-  change: number;
-  changePct: number;
-  isLive: boolean;
-  onClose: () => void;
 }
 
 // ─── Timeframe → Alpaca bars params ─────────────────────
@@ -64,23 +56,10 @@ function isCacheValid(entry: IndexCacheEntry, range: ChartRange): boolean {
 }
 
 /**
- * Index detail panel: header (price/change) + scrubbable area chart
- * across 5 timeframes (1D default). Reuses the shared PriceChart.
- *
- * Renders inline (accordion expansion) beneath the tapped index row —
- * no full-screen modal; the surrounding list stays in the flow.
+ * Inline index chart panel: scrubbable area chart + range pills only.
+ * Rendered inside the parent index card (no duplicate header/price/change).
  */
-export default function IndexDetail({
-  symbol,
-  label,
-  name,
-  ticker,
-  value,
-  change,
-  changePct,
-  isLive,
-  onClose,
-}: IndexDetailProps) {
+export default function IndexDetail({ symbol }: IndexDetailProps) {
   const [range, setRange] = useState<ChartRange>('1D');
   const [points, setPoints] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,132 +123,27 @@ export default function IndexDetail({
     fetchBars(range);
   }, [range, fetchBars, symbol]);
 
-  const isUp = change >= 0;
-  const displayPrice = value || 0;
-
   return (
     <div
       style={{
-        background: 'var(--bg-card, #1a2235)',
-        borderRadius: 16,
-        border: '1px solid rgba(34,211,238,0.35)',
-        padding: '16px 14px 14px',
-        marginTop: 2,
+        padding: '0 14px 14px',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        paddingTop: 12,
       }}
     >
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            marginBottom: 8,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: 20,
-                  fontWeight: 700,
-                  color: '#ffffff',
-                  fontFamily: 'var(--font-sans)',
-                }}
-              >
-                {label}
-              </h2>
-              {ticker && (
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: 'var(--text-accent-warm)',
-                    background: 'rgba(251, 191, 36, 0.12)',
-                    padding: '2px 7px',
-                    borderRadius: 5,
-                    letterSpacing: 0.3,
-                  }}
-                >
-                  {ticker}
-                </span>
-              )}
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>
-              {name}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Collapse"
-            style={{
-              background: 'rgba(148, 163, 184, 0.12)',
-              border: 'none',
-              borderRadius: '50%',
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#cbd5e1',
-              fontSize: 16,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Price + change */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontWeight: 700,
-              fontSize: 22,
-              color: '#ffffff',
-            }}
-          >
-            ${displayPrice.toFixed(2)}
-          </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontWeight: 600,
-              fontSize: 14,
-              color: isLive ? (isUp ? 'var(--gain)' : 'var(--loss)') : 'var(--text-muted)',
-            }}
-          >
-            {isLive
-              ? `${isUp ? '+' : ''}$${Math.abs(change).toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`
-              : 'Closed'}
-          </span>
-        </div>
-
-        {/* Chart */}
-        <PriceChart
-          points={points}
-          range={range}
-          onRangeChange={(r) => {
-            setRange(r);
-            setPoints([]);
-          }}
-          loading={loading}
-          error={error}
-          height={220}
-          gradientId="indexChartGradient"
-          valuePrefix="$"
-        />
+      <PriceChart
+        points={points}
+        range={range}
+        onRangeChange={(r) => {
+          setRange(r);
+          setPoints([]);
+        }}
+        loading={loading}
+        error={error}
+        height={110}
+        gradientId="indexChartGradient"
+        valuePrefix="$"
+      />
     </div>
   );
 }

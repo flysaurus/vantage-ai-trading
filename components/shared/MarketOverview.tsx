@@ -1,5 +1,5 @@
 'use client';
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import IndexDetail from './IndexDetail';
 
 interface IndexData {
@@ -104,7 +104,18 @@ export default function MarketOverview() {
           : indices.map((idx) => {
               const expanded = selectedIndex?.symbol === idx.symbol;
               return (
-                <Fragment key={idx.symbol}>
+                <div
+                  key={idx.symbol}
+                  style={{
+                    background: 'var(--bg-card, #1a2235)',
+                    borderRadius: 16,
+                    border: expanded
+                      ? '1px solid rgba(34,211,238,0.35)'
+                      : '1px solid rgba(255,255,255,0.06)',
+                    overflow: 'hidden',
+                    transition: 'border-color 0.2s',
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => handleIndexPress(idx)}
@@ -117,12 +128,8 @@ export default function MarketOverview() {
                       cursor: 'pointer',
                       textAlign: 'left',
                       fontFamily: 'inherit',
-                      background: 'var(--bg-card, #1a2235)',
-                      borderRadius: 16,
-                      border: expanded
-                        ? '1px solid rgba(34,211,238,0.35)'
-                        : '1px solid rgba(255,255,255,0.06)',
-                      transition: 'border-color 0.2s',
+                      background: 'transparent',
+                      border: 'none',
                     }}
                   >
                     {/* Name + ticker (left) */}
@@ -207,21 +214,9 @@ export default function MarketOverview() {
                     </div>
                   </button>
 
-                  {/* Inline expansion — chart renders in-place, no modal */}
-                  {expanded && (
-                    <IndexDetail
-                      symbol={idx.symbol}
-                      label={idx.label}
-                      name={idx.name}
-                      ticker={idx.ticker}
-                      value={idx.value}
-                      change={idx.change}
-                      changePct={idx.changePct}
-                      isLive={idx.isLive}
-                      onClose={() => setSelectedIndex(null)}
-                    />
-                  )}
-                </Fragment>
+                  {/* Inline expansion — chart renders inside this card, no modal */}
+                  {expanded && <IndexDetail symbol={idx.symbol} />}
+                </div>
               );
             })}
       </div>
