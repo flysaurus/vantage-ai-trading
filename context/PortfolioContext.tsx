@@ -223,6 +223,8 @@ interface PortfolioContextValue {
   submittingBasketIds: Set<string>;
   /** Whether a given basket id is mid-submit (Cancel/Edit lock) */
   isBasketSubmitting: (basketId: string) => boolean;
+  /** Whether ANY basket placement is currently in-flight (global Cancel/Edit lock) */
+  isPlacingBasket: boolean;
   /** Whether Supabase is currently unreachable (using stale localStorage cache) */
   supabaseDegraded: boolean;
   /** Data source: 'demo' or 'snaptrade' */
@@ -251,6 +253,7 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   pendingBaskets: [],
   submittingBasketIds: new Set(),
   isBasketSubmitting: () => false,
+  isPlacingBasket: false,
   supabaseDegraded: false,
   brokerSource: 'demo',
   brokerMeta: null,
@@ -359,6 +362,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   // lock Cancel/Edit on the submitting basket's card until the order stabilizes.
   const [submittingBasketIds, setSubmittingBasketIds] = useState<Set<string>>(new Set());
   const isBasketSubmitting = useCallback((basketId: string) => submittingBasketIds.has(basketId), [submittingBasketIds]);
+  const [isPlacingBasket, setIsPlacingBasket] = useState(false);
   // Track which userId we've already initialized for (prevents re-init loops)
   const brokerInitDoneForUserRef = useRef<string | null>(null);
   // Degradation flag: Supabase unreachable → show warning, use localStorage cache
@@ -1432,6 +1436,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Basket order already in progress' };
     }
     submittingBasketRef.current = true;
+    setIsPlacingBasket(true);
     // Lock the target basket's card for the full submit-to-stable-state window.
     // `existingBasketId` is the user_baskets.id (= card's `basketId` / group's
     // `basketId`) in edit mode — the same key the cards use for Cancel + Edit.
@@ -1568,6 +1573,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     return { success: true, executed: result.orders.length, failed: failedCount, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
     } finally {
       submittingBasketRef.current = false;
+      setIsPlacingBasket(false);
       if (existingBasketId) {
         setSubmittingBasketIds(prev => {
           const next = new Set(prev);
@@ -1800,6 +1806,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         pendingBaskets,
         submittingBasketIds,
         isBasketSubmitting,
+        isPlacingBasket,
         supabaseDegraded,
         brokerSource,
         brokerMeta,

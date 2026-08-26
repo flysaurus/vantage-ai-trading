@@ -76,7 +76,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast, brokerMeta, isBasketSubmitting } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast, brokerMeta, isBasketSubmitting, isPlacingBasket } = useLivePortfolio();
   const { orders: brokerOrders } = useOrderStore();
   const { activeAccount } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -1384,10 +1384,10 @@ export function TradeTab() {
                       }}>
                         {isOpen && (
                           <button
-                            disabled={basketSubmitting}
+                            disabled={basketSubmitting || isPlacingBasket}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (basketSubmitting) return;
+                              if (basketSubmitting || isPlacingBasket) return;
                               setConfirmCancelBasket({
                                 basketOrderId: basket.id,
                                 basketDisplayName: basket.basketDisplayName || basket.basketName,
@@ -1399,16 +1399,16 @@ export function TradeTab() {
                             }}
                             style={{
                               background: 'none',
-                              border: basketSubmitting ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
+                              border: (basketSubmitting || isPlacingBasket) ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
                               borderRadius: '6px',
-                              color: basketSubmitting ? '#64748b' : '#ef4444',
+                              color: (basketSubmitting || isPlacingBasket) ? '#64748b' : '#ef4444',
                               fontSize: '11px',
                               padding: '4px 10px',
-                              cursor: basketSubmitting ? 'not-allowed' : 'pointer',
+                              cursor: (basketSubmitting || isPlacingBasket) ? 'not-allowed' : 'pointer',
                               fontWeight: '600',
                             }}
                           >
-                            {basketSubmitting ? 'Submitting…' : 'Cancel'}
+                            {basketSubmitting ? 'Submitting…' : isPlacingBasket ? 'Submitting…' : 'Cancel'}
                           </button>
                         )}
                         <span style={{
@@ -1473,9 +1473,9 @@ export function TradeTab() {
                         {basket.status === 'OPEN' && (
                           <div style={{ padding: '12px 16px' }}>
                             <button
-                              disabled={basketSubmitting}
+                              disabled={basketSubmitting || isPlacingBasket}
                               onClick={() => {
-                                if (basketSubmitting) return;
+                                if (basketSubmitting || isPlacingBasket) return;
                                 setConfirmCancelBasket({
                                   basketOrderId: basket.id,
                                   basketDisplayName: basket.basketDisplayName || basket.basketName || 'Basket',
@@ -1489,14 +1489,14 @@ export function TradeTab() {
                                 width: '100%',
                                 padding: '10px',
                                 background: 'none',
-                                border: basketSubmitting ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.3)',
+                                border: (basketSubmitting || isPlacingBasket) ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.3)',
                                 borderRadius: '8px',
-                                color: basketSubmitting ? '#64748b' : '#ef4444',
+                                color: (basketSubmitting || isPlacingBasket) ? '#64748b' : '#ef4444',
                                 fontSize: '13px',
-                                cursor: basketSubmitting ? 'not-allowed' : 'pointer',
+                                cursor: (basketSubmitting || isPlacingBasket) ? 'not-allowed' : 'pointer',
                               }}
                             >
-                              {basketSubmitting ? 'Order is still submitting, please wait…' : 'Cancel Basket Order'}
+                              {(basketSubmitting || isPlacingBasket) ? 'Order is still submitting, please wait…' : 'Cancel Basket Order'}
                             </button>
                             <div style={{
                               color: '#cbd5e1',
@@ -1614,10 +1614,10 @@ export function TradeTab() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {isPending && (
                           <button
-                            disabled={groupSubmitting}
+                            disabled={groupSubmitting || isPlacingBasket}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (groupSubmitting) return;
+                              if (groupSubmitting || isPlacingBasket) return;
                               setCancelGroupTarget({
                                 basketId: group.basketId,
                                 basketName: group.basketName,
@@ -1627,16 +1627,16 @@ export function TradeTab() {
                             }}
                             style={{
                               background: 'none',
-                              border: groupSubmitting ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
+                              border: (groupSubmitting || isPlacingBasket) ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
                               borderRadius: '6px',
-                              color: groupSubmitting ? '#64748b' : '#ef4444',
+                              color: (groupSubmitting || isPlacingBasket) ? '#64748b' : '#ef4444',
                               fontSize: '11px',
                               padding: '4px 10px',
-                              cursor: groupSubmitting ? 'not-allowed' : 'pointer',
+                              cursor: (groupSubmitting || isPlacingBasket) ? 'not-allowed' : 'pointer',
                               fontWeight: '600',
                             }}
                           >
-                            {groupSubmitting ? 'Submitting…' : 'Cancel'}
+                            {groupSubmitting ? 'Submitting…' : isPlacingBasket ? 'Submitting…' : 'Cancel'}
                           </button>
                         )}
                         {/* Visual status badge with dot */}
