@@ -20,6 +20,20 @@ export async function GET(req: NextRequest) {
 
   const connectionId = req.nextUrl.searchParams.get('connectionId');
 
+  // Demo accounts have NO external broker — Vantage itself is the broker there.
+  // Reconciliation diffs Vantage against the broker as source of truth, so it is
+  // structurally inapplicable to demo. Refuse explicitly rather than emit a
+  // misleading "no broker" auth error.
+  if (connectionId === 'demo') {
+    return NextResponse.json(
+      {
+        error:
+          'Reconciliation is not available for demo accounts — there is no external broker to reconcile against.',
+      },
+      { status: 422 },
+    );
+  }
+
   let creds;
   try {
     creds = await resolveSnapTradeCredentials(authUser.id, connectionId);
