@@ -11,6 +11,7 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
+import { createTtlCache } from '@/lib/ttl-cache';
 
 export interface SnapTradePosition {
   symbol: string;
@@ -37,6 +38,10 @@ const DEV_POSITIONS: SnapTradePosition[] = [
   { symbol: 'TSLA', name: 'Tesla, Inc.', units: 15, price: 248.50, marketValue: 3727.50, costBasis: 3300.00, openPnl: 427.50, dayChange: 18.75, dayChangePct: 0.50, assetType: 'stock', currency: 'USD' },
   { symbol: 'QQQ', name: 'Invesco QQQ Trust', units: 15, price: 478.62, marketValue: 7179.30, costBasis: 6300.00, openPnl: 879.30, dayChange: 35.85, dayChangePct: 0.50, assetType: 'etf', currency: 'USD' },
 ];
+
+// Same TTL as the account route — absorbs duplicate/rapid fetches.
+const POSITIONS_CACHE_TTL_MS = 30_000;
+const positionsCache = createTtlCache<SnapTradePosition[]>(POSITIONS_CACHE_TTL_MS);
 
 export async function GET(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
@@ -67,14 +72,17 @@ export async function GET(req: NextRequest) {
   }
 
   const ep = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
+  const fresh = req.nextUrl.searchParams.get('fresh') === '1';
+  const cacheKey = `${authUser.id}:${authorizationId}`;
 
   try {
+    const payload = await positionsCache.getOrFetch(cacheKey, async () => {
     const accounts = await snapTradeFetch<Array<{ id: string; name: string }>>(
       `/authorizations/${authorizationId}/accounts`, null, ep,
     );
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
-      return NextResponse.json([]);
+      return [];
     }
 
     const allPositions: SnapTradePosition[] = [];
@@ -98,7 +106,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(allPositions);
+    return allPositions;
+    }, { fresh });
+
+    return NextResponse.json(payload);
   } catch (err) {
     const msg = (err as Error).message;
     const statusCode = msg.includes('401') ? 401 : msg.includes('403') ? 403 : 502;

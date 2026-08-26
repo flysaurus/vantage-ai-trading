@@ -139,10 +139,10 @@ export interface BrokerAdapter {
   isConnected(): boolean;
 
   // Account
-  getAccount(): Promise<BrokerAccount>;
+  getAccount(fresh?: boolean): Promise<BrokerAccount>;
 
   // Positions
-  getPositions(): Promise<BrokerPosition[]>;
+  getPositions(fresh?: boolean): Promise<BrokerPosition[]>;
   getPosition(symbol: string): Promise<BrokerPosition | null>;
 
   // Orders

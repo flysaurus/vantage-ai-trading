@@ -17,6 +17,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
+import { createTtlCache } from '@/lib/ttl-cache';
 
 // ─── Dev mode — synthetic data ────────────────────────────
 const DEV_ACCOUNT = {
@@ -36,6 +37,12 @@ const DEV_ACCOUNT = {
   positions: [],
   orders: [],
 };
+
+// Absorbs duplicate/rapid SnapTrade fetches (two data layers mounting at once,
+// or a 30s poll racing a 60s poll). TTL is one poll interval; `fresh=1` bypasses
+// after a trade/cancel so cash & positions reflect immediately.
+const ACCOUNT_CACHE_TTL_MS = 30_000;
+const accountCache = createTtlCache<any>(ACCOUNT_CACHE_TTL_MS);
 
 export async function GET(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
@@ -69,8 +76,11 @@ export async function GET(req: NextRequest) {
   }
 
   const ep = { userId: snaptradeUserId, userSecret: snaptradeUserSecret };
+  const fresh = req.nextUrl.searchParams.get('fresh') === '1';
+  const cacheKey = `${authUser.id}:${authorizationId}`;
 
   try {
+    const payload = await accountCache.getOrFetch(cacheKey, async () => {
     // ── Step A: List accounts (with sync_status for per-connection capabilities) ──
     const accounts = await snapTradeFetch<Array<{
       id: string;
@@ -87,7 +97,7 @@ export async function GET(req: NextRequest) {
     }>>(`/authorizations/${authorizationId}/accounts`, null, ep);
 
     if (!Array.isArray(accounts) || accounts.length === 0) {
-      return NextResponse.json({
+      return {
         totalValue: 0, cash: 0, buyingPower: null,
         invested: 0, marketValue: 0,
         dayChange: 0, dayChangePct: 0,
@@ -98,7 +108,7 @@ export async function GET(req: NextRequest) {
         holdingsUnavailable: false,
         positions: [],
         orders: [],
-      });
+      };
     }
 
     // ── Step B: Aggregate across all accounts ────────────
@@ -161,35 +171,38 @@ export async function GET(req: NextRequest) {
     // Prefer SnapTrade's own total, fall back to computed
     const finalEquity = totalEquityFromSnap > 0 ? totalEquityFromSnap : summary.totalValue;
 
-    return NextResponse.json({
-      totalValue: finalEquity,
-      cash: summary.cash,
-      buyingPower: totalBuyingPower,
-      invested: summary.invested,
-      marketValue: summary.marketValue,
-      dayChange: summary.dayChange,
-      dayChangePct: summary.dayChangePct,
-      totalPnl: summary.totalPnl,
-      totalPnlPct: summary.totalPnlPct,
-      currency: 'USD',
-      accountStatus,
-      lastSynced: latestSync,
-      holdingsUnavailable: anyHoldingsUnavailable,
-      positions: allPositions.map(p => ({
-        symbol: p.symbol,
-        name: p.name,
-        units: p.units,
-        price: p.price,
-        marketValue: p.units * p.price,
-        costBasis: p.units * (p.costBasisPerUnit || 0),
-        openPnl: p.openPnl || 0,
-        dayChange: p.dayChange || 0,
-        dayChangePct: p.dayChangePct || 0,
-        assetType: 'stock' as const,
+      return {
+        totalValue: finalEquity,
+        cash: summary.cash,
+        buyingPower: totalBuyingPower,
+        invested: summary.invested,
+        marketValue: summary.marketValue,
+        dayChange: summary.dayChange,
+        dayChangePct: summary.dayChangePct,
+        totalPnl: summary.totalPnl,
+        totalPnlPct: summary.totalPnlPct,
         currency: 'USD',
-      })),
-      orders: [], // orders come from the dedicated /orders endpoint
-    });
+        accountStatus,
+        lastSynced: latestSync,
+        holdingsUnavailable: anyHoldingsUnavailable,
+        positions: allPositions.map(p => ({
+          symbol: p.symbol,
+          name: p.name,
+          units: p.units,
+          price: p.price,
+          marketValue: p.units * p.price,
+          costBasis: p.units * (p.costBasisPerUnit || 0),
+          openPnl: p.openPnl || 0,
+          dayChange: p.dayChange || 0,
+          dayChangePct: p.dayChangePct || 0,
+          assetType: 'stock' as const,
+          currency: 'USD',
+        })),
+        orders: [], // orders come from the dedicated /orders endpoint
+      };
+    }, { fresh });
+
+    return NextResponse.json(payload);
   } catch (err) {
     const msg = (err as Error).message;
     const statusCode = msg.includes('401') ? 401 : msg.includes('403') ? 403 : 502;

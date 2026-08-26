@@ -82,7 +82,8 @@ export class SnapTradeAdapter implements BrokerAdapter {
 
   // ─── Account ─────────────────────────────────────────────
 
-  async getAccount(): Promise<BrokerAccount> {
+  async getAccount(fresh?: boolean): Promise<BrokerAccount> {
+    const url = fresh ? '/api/broker/snaptrade/account?fresh=1' : '/api/broker/snaptrade/account';
     const data = await this.snaptradeFetch<{
       totalValue: number;
       cash: number;
@@ -125,8 +126,9 @@ export class SnapTradeAdapter implements BrokerAdapter {
 
   // ─── Positions ───────────────────────────────────────────
 
-  async getPositions(): Promise<BrokerPosition[]> {
-    const raw = await this.snaptradeFetch<RawPosition[]>('/api/broker/snaptrade/positions');
+  async getPositions(fresh?: boolean): Promise<BrokerPosition[]> {
+    const url = fresh ? '/api/broker/snaptrade/positions?fresh=1' : '/api/broker/snaptrade/positions';
+    const raw = await this.snaptradeFetch<RawPosition[]>(url);
     if (!Array.isArray(raw)) return [];
     return this.mapPositions(raw);
   }

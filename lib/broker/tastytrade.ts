@@ -123,7 +123,7 @@ export class TastytradeAdapter implements BrokerAdapter {
 
   // ─── Account ───────────────────────────────────────────────
 
-  async getAccount(): Promise<BrokerAccount> {
+  async getAccount(_fresh?: boolean): Promise<BrokerAccount> {
     if (!this.accountNumber) {
       throw new Error('Account number not available. Call connect() first.');
     }
@@ -160,7 +160,7 @@ export class TastytradeAdapter implements BrokerAdapter {
 
   // ─── Positions ─────────────────────────────────────────────
 
-  async getPositions(): Promise<BrokerPosition[]> {
+  async getPositions(_fresh?: boolean): Promise<BrokerPosition[]> {
     if (!this.accountNumber) {
       return [];
     }

@@ -111,7 +111,7 @@ export class AlpacaAdapter implements BrokerAdapter {
 
   // ─── Account ───────────────────────────────────────────────
 
-  async getAccount(): Promise<BrokerAccount> {
+  async getAccount(_fresh?: boolean): Promise<BrokerAccount> {
     const raw = await this.api<Record<string, unknown>>('/account');
 
     return {
@@ -146,7 +146,7 @@ export class AlpacaAdapter implements BrokerAdapter {
 
   // ─── Positions ─────────────────────────────────────────────
 
-  async getPositions(): Promise<BrokerPosition[]> {
+  async getPositions(_fresh?: boolean): Promise<BrokerPosition[]> {
     const raw = await this.api<Array<Record<string, unknown>>>('/positions');
 
     return raw.map((p) => ({

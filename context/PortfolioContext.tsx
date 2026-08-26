@@ -579,11 +579,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     const loadBrokerAccount = async (silent = false) => {
       try {
-        const ba = await broker.getAccount();
+        // `fresh` bypasses the server-side account/positions cache. We want
+        // fresh data on mount and after a trade/cancel (the brokerRefreshNonce
+        // bump re-runs this effect with silent=false); the 30s background poll
+        // (silent=true) can safely ride the cache.
+        const fresh = !silent;
+        const ba = await broker.getAccount(fresh);
         const positions =
           ba.positions && ba.positions.length > 0
             ? ba.positions
-            : await broker.getPositions();
+            : await broker.getPositions(fresh);
 
         if (cancelled) return;
 
