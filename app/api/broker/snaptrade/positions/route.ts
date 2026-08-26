@@ -79,16 +79,22 @@ export async function GET(req: NextRequest) {
 
     const allPositions: SnapTradePosition[] = [];
 
-    for (const acct of accounts) {
-      try {
+    // Fetch positions for every account in parallel (removes sequential
+    // SnapTrade round-trips that made multi-account portfolios load slowly).
+    const perAccount = await Promise.allSettled(
+      accounts.map(async (acct) => {
         const raw = await snapTradeFetch<unknown>(
           `/accounts/${acct.id}/positions`, null, ep,
         );
-        const normalised = flattenPositions(raw);
-        allPositions.push(...normalised);
-      } catch (err) {
-        console.error(`[snaptrade/positions] fetch failed for ${acct.id}:`,
-          (err as Error).message);
+        return flattenPositions(raw);
+      }),
+    );
+
+    for (const r of perAccount) {
+      if (r.status === 'fulfilled') {
+        allPositions.push(...r.value);
+      } else {
+        console.error(`[snaptrade/positions] fetch failed:`, (r.reason as Error)?.message);
       }
     }
 

@@ -110,10 +110,10 @@ export async function GET(req: NextRequest) {
     let accountStatus: 'open' | 'closed' | 'archived' | null = null;
     const allPositions: PositionInput[] = [];
 
+    // ── Metadata pass (no network) — cheap aggregation across accounts ──
     for (const acct of accounts) {
       totalEquityFromSnap += Number(acct.balance?.total?.amount || 0);
 
-      // Connection metadata — live, per-account
       const sync = acct.sync_status?.holdings?.last_successful_sync;
       if (sync && (!latestSync || sync > latestSync)) latestSync = sync;
       if (acct.sync_status?.holdings?.holdings_unavailable) anyHoldingsUnavailable = true;
@@ -124,27 +124,35 @@ export async function GET(req: NextRequest) {
       } else if (!accountStatus && s === 'open') {
         accountStatus = 'open';
       }
+    }
 
-      try {
-        const balances = await snapTradeFetch<Array<{
-          currency?: { code?: string };
-          cash?: number;
-          buying_power?: number;
-        }>>(`/accounts/${acct.id}/balances`, null, ep);
-        if (Array.isArray(balances)) {
-          for (const b of balances) {
-            totalCash += Number(b.cash || 0);
-            totalBuyingPower! += Number(b.buying_power || 0);
-          }
+    // ── Data pass — balances + positions per account, ALL in flight at once ──
+    // (removes the sequential per-account SnapTrade round-trips that made
+    // multi-account portfolios load slowly).
+    const perAccount = await Promise.allSettled(
+      accounts.map(async (acct) => {
+        const [balances, rawPositions] = await Promise.all([
+          snapTradeFetch<Array<{
+            currency?: { code?: string };
+            cash?: number;
+            buying_power?: number;
+          }>>(`/accounts/${acct.id}/balances`, null, ep).catch(() => [] as any[]),
+          snapTradeFetch<unknown>(`/accounts/${acct.id}/positions`, null, ep).catch(() => []),
+        ]);
+        return { balances, rawPositions };
+      }),
+    );
+
+    for (const r of perAccount) {
+      if (r.status !== 'fulfilled') continue;
+      const { balances, rawPositions } = r.value;
+      if (Array.isArray(balances)) {
+        for (const b of balances) {
+          totalCash += Number(b.cash || 0);
+          totalBuyingPower! += Number(b.buying_power || 0);
         }
-      } catch { /* partial failure OK */ }
-
-      try {
-        const rawPositions = await snapTradeFetch<unknown>(
-          `/accounts/${acct.id}/positions`, null, ep,
-        );
-        allPositions.push(...normalisePositions(rawPositions));
-      } catch { /* partial failure OK */ }
+      }
+      allPositions.push(...normalisePositions(rawPositions));
     }
 
     // ── Step C: Compute using SHARED function ──────────
