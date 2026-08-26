@@ -114,6 +114,14 @@ export interface Order {
   requestedQty?: number | null;
   /** SnapTrade/Alpaca brokerage_order_id — allows dedup against broker-fetched orders */
   brokerageOrderId?: string;
+  /** Placement origin: 'vantage' (placed via Vantage) vs 'external' (placed directly at the broker, synced in) */
+  origin?: 'vantage' | 'external' | string | null;
+  /** Broker display name for source attribution ("Synced from X") — derived from connection_id → brokerage_slug */
+  brokerName?: string | null;
+  /** broker_connections.id for account isolation (null = demo/legacy) */
+  connectionId?: string | null;
+  /** Whether this order belongs to the demo account */
+  isDemo?: boolean;
   /** Persisted full company/ETF name (orders.company_name) — single source of truth for display names. */
   companyName?: string | null;
   /** user_baskets.id linking this leg to a basket purchase (null = standalone order) */

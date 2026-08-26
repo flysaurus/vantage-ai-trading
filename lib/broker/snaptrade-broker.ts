@@ -1060,7 +1060,11 @@ export class SnapTradeBroker implements BrokerEngine {
     // SnapTrade returns numeric fields as strings (e.g. quantity: "10.5"), so
     // coerce every numeric value before it flows into BrokerOrder / the UI.
     const qty = Number(raw.quantity || raw.filled_quantity || 0);
-    const fillPx = Number(raw.execution_price ?? raw.average_fill_price ?? raw.price ?? 0);
+    // Fee-inclusive average fill price is the authoritative cost basis — it
+    // matches the broker's avg_entry_price that drives position avg_cost.
+    // execution_price is the raw per-fill price and can exclude commissions,
+    // which made the FIFO lot ledger's price_at_fill drift from avg_cost.
+    const fillPx = Number(raw.average_fill_price ?? raw.execution_price ?? raw.price ?? 0);
     const isFilled = _mapSnapTradeStatusToOrderStatus(raw.status) === 'FILLED';
 
     return {

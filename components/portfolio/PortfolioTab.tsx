@@ -958,6 +958,10 @@ export function PortfolioTab() {
   // Hard boundary: Demo must NEVER show broker data. Scope data source by active account.
   const isShowingDemo = activeAccount?.isDemo ?? false;
 
+  // Source attribution: position cards show "Synced from {broker}" for live
+  // accounts (null for demo, where Vantage itself is the broker).
+  const brokerLabel = isShowingDemo ? null : (activeAccount?.name ?? null);
+
   const isBrokerExpected = isConnected && !isShowingDemo;
 
   // ── TRACE diagnostic ──
@@ -1541,6 +1545,7 @@ export function PortfolioTab() {
                           basketEmoji: navigatingBasketTicker.basketEmoji,
                         }}
                         connectionId={null}
+                        brokerLabel={brokerLabel}
                       />
                     </div>
                   );
@@ -1561,6 +1566,7 @@ export function PortfolioTab() {
                     onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
                     showCheckbox={selectMode}
                     connectionId={null}
+                    brokerLabel={brokerLabel}
                   />
                 );
               })}

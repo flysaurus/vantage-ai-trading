@@ -93,6 +93,13 @@ export function formatStepTime(dateStr?: string | null): string {
 }
 
 export function orderOrigin(order: Order): string {
+  // Three-way source attribution (Part 2 of the trust audit):
+  //   external  → placed directly at the broker, synced into Vantage
+  //   ai_advisor→ placed via the AI Advisor chat
+  //   otherwise → placed manually through the Vantage trade ticket/sell
+  if (order.origin === 'external') {
+    return order.brokerName ? `Synced from ${order.brokerName}` : 'Synced from broker';
+  }
   return order.source === 'ai_advisor' ? 'via AI Advisor' : 'Manual buy';
 }
 

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
+import { formatBrokerName } from '@/lib/broker-name';
 
 export async function GET(req: NextRequest) {
   const { authUser, authError } = await requireAuth();
@@ -62,6 +63,22 @@ export async function GET(req: NextRequest) {
       baskets = basketRows || [];
     }
 
+    // Broker names for source attribution (origin='external' → "Synced from X").
+    // Derived connection_id → broker_connections.brokerage_slug → formatBrokerName().
+    const brokerNames: Record<string, string> = {};
+    const connectionIds = Array.from(
+      new Set((data || []).map(o => o.connection_id).filter(Boolean) as string[]),
+    );
+    if (connectionIds.length > 0) {
+      const { data: connRows } = await supabase
+        .from('broker_connections')
+        .select('id, brokerage_slug')
+        .in('id', connectionIds);
+      for (const c of connRows || []) {
+        if (c.brokerage_slug) brokerNames[c.id] = formatBrokerName(c.brokerage_slug);
+      }
+    }
+
     return NextResponse.json({
       orders: (data || []).map(o => ({
         id: o.id,
@@ -86,6 +103,8 @@ export async function GET(req: NextRequest) {
         requestedQty: o.requested_qty != null ? Number(o.requested_qty) : undefined,
         companyName: o.company_name ?? null,
         basketId: o.basket_id ?? null,
+        origin: o.origin ?? null,
+        brokerName: o.connection_id ? brokerNames[o.connection_id] ?? null : null,
       })),
       baskets,
       total: count || 0,

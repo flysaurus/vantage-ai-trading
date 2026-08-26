@@ -19,6 +19,8 @@ interface PositionCardV3Props {
   showCheckbox?: boolean;
   basketContext?: { basketId: string; basketName: string; basketEmoji: string } | null;
   connectionId?: string | null;
+  /** Broker display name for source attribution ("Synced from X"). null = demo/unknown. */
+  brokerLabel?: string | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -56,6 +58,7 @@ export default function PositionCardV3({
   showCheckbox = false,
   basketContext = null,
   connectionId = null,
+  brokerLabel = null,
 }: PositionCardV3Props) {
   const { user } = useAuth();
   const userId = user?.id as string | undefined;
@@ -327,6 +330,11 @@ export default function PositionCardV3({
             <div style={{ fontSize: '9.5px', color: 'var(--faint, #8794a8)', marginTop: 1 }}>
               {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
             </div>
+            {brokerLabel && (
+              <div style={{ fontSize: '9px', color: 'var(--faint, #8794a8)', marginTop: 2, opacity: 0.85 }}>
+                Synced from {brokerLabel}
+              </div>
+            )}
           </div>
         </div>
 

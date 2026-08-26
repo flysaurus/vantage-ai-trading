@@ -453,6 +453,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             cancelReason: 'external',
             ...requested,
           });
+        } else if (live.status === 'REJECTED') {
+          // Rejections surfaced on a poll were previously persisted
+          // (status='rejected') but never notified — the user got no email
+          // and no bell. Mirror the CANCELLED branch so the broker's
+          // rejection is surfaced honestly. (BrokerOrder carries no rejection
+          // reason; both email + bell fall back to a generic message.)
+          await notifyOrderEvent(supabase, userId, {
+            kind: 'rejected',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            ...requested,
+          });
+
+          await notifyOrderNotification(supabase, userId, {
+            kind: 'rejected',
+            brokerName,
+            symbol: live.symbol,
+            side: live.side,
+            orderId: o.brokerage_order_id,
+            isLive: true,
+            ...requested,
+          });
         }
       }
     }
