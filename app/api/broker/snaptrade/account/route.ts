@@ -178,14 +178,13 @@ export async function GET(req: NextRequest) {
       positions: allPositions.map(p => ({
         symbol: p.symbol,
         name: p.name,
-        quantity: p.units,
+        units: p.units,
         price: p.price,
-        costBasis: p.units > 0 && p.costBasisPerUnit ? p.units * p.costBasisPerUnit : p.price,
         marketValue: p.units * p.price,
-        openPnl: p.openPnl,
-        dayChange: 0,
-        dayChangePct: 0,
-        portfolioPercent: 0,
+        costBasis: p.units * (p.costBasisPerUnit || 0),
+        openPnl: p.openPnl || 0,
+        dayChange: p.dayChange || 0,
+        dayChangePct: p.dayChangePct || 0,
         assetType: 'stock' as const,
         currency: 'USD',
       })),
@@ -224,8 +223,10 @@ function normalisePositions(raw: unknown): PositionInput[] {
       const price = Number((p as any).price || 0);
       const costBasisPerUnit = Number((p as any).average_purchase_price || 0);
       const openPnl = Number((p as any).open_pnl || 0);
+      const dayChange = Number((p as any).day_gain || (p as any).day_change || 0);
+      const dayChangePct = Number((p as any).day_gain_percentage || (p as any).day_change_pct || 0);
 
-      return { symbol, name, units, price, costBasisPerUnit, openPnl };
+      return { symbol, name, units, price, costBasisPerUnit, openPnl, dayChange, dayChangePct };
     });
 }
 

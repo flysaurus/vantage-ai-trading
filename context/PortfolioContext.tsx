@@ -579,10 +579,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
     const loadBrokerAccount = async (silent = false) => {
       try {
-        const [ba, positions] = await Promise.all([
-          broker.getAccount(),
-          broker.getPositions(),
-        ]);
+        const ba = await broker.getAccount();
+        const positions =
+          ba.positions && ba.positions.length > 0
+            ? ba.positions
+            : await broker.getPositions();
 
         if (cancelled) return;
 

@@ -36,6 +36,21 @@ interface SnaptradeConfig extends BrokerConfig {
   underlyingBrokerId?: string;
 }
 
+/** Canonical raw position shape returned by both /account and /positions routes. */
+interface RawPosition {
+  symbol: string;
+  name?: string;
+  units: number;
+  price: number;
+  marketValue: number;
+  costBasis: number;
+  openPnl: number;
+  dayChange: number;
+  dayChangePct: number;
+  assetType?: string;
+  currency?: string;
+}
+
 export class SnapTradeAdapter implements BrokerAdapter {
   readonly id = 'snaptrade' as const;
   readonly name = 'SnapTrade (Multi-Broker)';
@@ -82,6 +97,7 @@ export class SnapTradeAdapter implements BrokerAdapter {
       accountStatus: 'open' | 'closed' | 'archived' | null;
       lastSynced: string | null;
       holdingsUnavailable: boolean;
+      positions?: RawPosition[];
     }>('/api/broker/snaptrade/account');
 
     return {
@@ -102,30 +118,23 @@ export class SnapTradeAdapter implements BrokerAdapter {
       lastSynced: data.lastSynced,
       accountStatus: data.accountStatus,
       holdingsUnavailable: data.holdingsUnavailable,
+      // Reuse the positions the account call already fetched (no second round-trip).
+      positions: this.mapPositions(data.positions || []),
     };
   }
 
   // ─── Positions ───────────────────────────────────────────
 
   async getPositions(): Promise<BrokerPosition[]> {
-    const raw = await this.snaptradeFetch<Array<{
-      symbol: string;
-      name?: string;
-      units: number;
-      price: number;
-      marketValue: number;
-      costBasis: number;
-      openPnl: number;
-      dayChange: number;
-      dayChangePct: number;
-      assetType?: string;
-      currency?: string;
-    }>>('/api/broker/snaptrade/positions');
+    const raw = await this.snaptradeFetch<RawPosition[]>('/api/broker/snaptrade/positions');
+    if (!Array.isArray(raw)) return [];
+    return this.mapPositions(raw);
+  }
 
-    if (!Array.isArray(raw) || raw.length === 0) return [];
-
+  /** Map raw positions (shared by /account and /positions) → BrokerPosition. */
+  private mapPositions(raw: RawPosition[]): BrokerPosition[] {
+    if (raw.length === 0) return [];
     const totalValue = raw.reduce((sum, p) => sum + (p.marketValue || 0), 0) || 1;
-
     return raw.map((p) => ({
       symbol: p.symbol || '',
       name: p.name || p.symbol || '',

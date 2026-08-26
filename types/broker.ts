@@ -40,6 +40,8 @@ export interface BrokerAccount {
   lastSynced?: string | null;
   accountStatus?: 'open' | 'closed' | 'archived' | null;
   holdingsUnavailable?: boolean;
+  /** Positions resolved by the same account call (avoids a second broker round-trip). */
+  positions?: BrokerPosition[];
 }
 
 export interface BrokerPosition {

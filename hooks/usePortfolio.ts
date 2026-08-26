@@ -342,14 +342,21 @@ export function usePortfolio() {
             .eq('user_id', uid)
         : Promise.resolve({ data: [] as any[], error: null });
 
-      console.error('[usePortfolio] refresh started — calling broker.getAccount() + getPositions()');
-      const [brokerAccount, brokerPositions, lotsRes, namesRes, basketsRes] = await Promise.all([
+      console.error('[usePortfolio] refresh started — calling broker.getAccount() (+ embedded positions)');
+      const [brokerAccount, lotsRes, namesRes, basketsRes] = await Promise.all([
         broker.getAccount(),
-        broker.getPositions(),
         lotsPromise,
         namesPromise,
         basketsPromise,
       ]);
+
+      // SnapTrade's account call already returns positions — reuse them to avoid a
+      // second broker round-trip. Fall back to getPositions() for brokers that don't
+      // embed positions in the account response.
+      const brokerPositions =
+        brokerAccount.positions && brokerAccount.positions.length > 0
+          ? brokerAccount.positions
+          : await broker.getPositions();
 
       console.error('[usePortfolio] broker data received:', {
         equity: brokerAccount.equity,
