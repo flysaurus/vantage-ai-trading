@@ -1351,9 +1351,6 @@ export function TradeTab() {
                           gap: '8px',
                           marginBottom: '4px',
                         }}>
-                          <span style={{ fontSize: '18px' }}>
-                            {basket.basketEmoji || '🧺'}
-                          </span>
                           <span style={{
                             color: '#ffffff',
                             fontWeight: '700',
@@ -1986,7 +1983,7 @@ export function TradeTab() {
                 marginBottom: '12px',
               }}>
                 <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600', marginBottom: '4px' }}>
-                  {t.basketEmoji || '🧺'} {t.basketName}
+                  {t.basketName}
                 </div>
                 <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
                   {t.orders?.length || 0} orders · ${totalReserved.toFixed(2)} reserved

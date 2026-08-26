@@ -461,7 +461,7 @@ function PositionCard({
         <span key={b.id} style={{
           fontSize: 10, color: 'var(--accent)', opacity: 0.7, display: 'block', marginTop: 4,
         }}>
-          Also in: {b.emoji} {b.name}
+          Also in: {b.name}
         </span>
       ))}
 
@@ -1508,7 +1508,7 @@ export function PortfolioTab() {
                         }}
                       >
                         <span style={{ fontSize: 14 }}>←</span>
-                        <span>{navigatingBasketTicker.basketEmoji} {navigatingBasketTicker.basketName}</span>
+                        <span>{navigatingBasketTicker.basketName}</span>
                       </div>
 
                       {/* PositionCardV3 with basketContext */}

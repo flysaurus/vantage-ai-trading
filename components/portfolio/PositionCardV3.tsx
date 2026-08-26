@@ -323,15 +323,20 @@ export default function PositionCardV3({
                     lineHeight: 1.4,
                   }}
                 >
-                  {basketContext.basketEmoji} {basketContext.basketName}
+                  {basketContext.basketName}
                 </span>
               )}
             </div>
-            <div style={{ fontSize: '9.5px', color: 'var(--faint, #8794a8)', marginTop: 1 }}>
+            {pos.name && pos.name !== pos.symbol && (
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '50ch' }}>
+                {pos.name}
+              </div>
+            )}
+            <div style={{ fontSize: '11.5px', color: '#cbd5e1', marginTop: 1, fontWeight: 500 }}>
               {pos.qty % 1 === 0 ? pos.qty : pos.qty.toFixed(4)} shares
             </div>
             {brokerLabel && (
-              <div style={{ fontSize: '9px', color: 'var(--faint, #8794a8)', marginTop: 2, opacity: 0.85 }}>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: 2, opacity: 0.95 }}>
                 Synced from {brokerLabel}
               </div>
             )}

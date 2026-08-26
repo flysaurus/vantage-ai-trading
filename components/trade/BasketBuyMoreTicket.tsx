@@ -203,7 +203,6 @@ export default function BasketBuyMoreTicket({
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 20 }}>{basket.emoji || '🧺'}</span>
           <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>
             {basket.name}
           </span>

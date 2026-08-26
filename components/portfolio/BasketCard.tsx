@@ -261,8 +261,7 @@ export default function BasketCard({
             </div>
           )}
 
-          {/* Emoji + name + badge */}
-          <span style={{ fontSize: 20, flexShrink: 0 }}>{basket.emoji || '🧺'}</span>
+          {/* Name + badge */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span

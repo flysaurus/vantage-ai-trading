@@ -149,11 +149,11 @@ function buildBasketSubject(n: BasketNotification): string {
   const name = n.basketName || 'Basket';
   switch (n.type) {
     case 'basket_submitted':
-      return `📊 Basket Order Placed: ${n.basketEmoji} ${name}`;
+      return `📊 Basket Order Placed: ${name}`;
     case 'basket_filled':
-      return `✅ Basket Filled: ${n.basketEmoji} ${name} — $${n.totalInvested.toFixed(2)}`;
+      return `✅ Basket Filled: ${name} — $${n.totalInvested.toFixed(2)}`;
     case 'basket_partial_fill':
-      return `⚠️ Basket Partially Filled: ${n.basketEmoji} ${name} (${n.filledCount}/${n.filledCount + n.failedCount})`;
+      return `⚠️ Basket Partially Filled: ${name} (${n.filledCount}/${n.filledCount + n.failedCount})`;
   }
 }
 
@@ -177,7 +177,7 @@ function buildBasketHtml(n: BasketNotification): string {
         ${buildBasketSubject(n)}
       </h2>
       <div style="background: #1e293b; border-radius: 8px; padding: 20px; color: #cbd5e1;">
-        <p style="margin: 0 0 8px;">Basket: <strong style="color: #f8fafc;">${n.basketEmoji} ${n.basketName}</strong></p>
+        <p style="margin: 0 0 8px;">Basket: <strong style="color: #f8fafc;">${n.basketName}</strong></p>
         <p style="margin: 0 0 8px;">Total Invested: <strong style="color: #f8fafc;">$${n.totalInvested.toFixed(2)}</strong></p>
         <p style="color: #10b981; margin: 0 0 4px;">Filled: ${n.filledCount} position${n.filledCount !== 1 ? 's' : ''}</p>
         ${n.failedCount > 0 ? `<p style="color: #ef4444; margin: 0 0 8px;">Failed: ${n.failedCount} position${n.failedCount !== 1 ? 's' : ''}</p>` : ''}

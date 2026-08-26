@@ -428,7 +428,6 @@ export default function BasketSellTicket({
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 20 }}>{basket.emoji || '🧺'}</span>
           <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>
             {basket.name}
           </span>
@@ -523,7 +522,6 @@ export default function BasketSellTicket({
               gap: 12,
             }}
           >
-            <span style={{ fontSize: 40 }}>🧺</span>
             <p
               style={{
                 color: '#fff',

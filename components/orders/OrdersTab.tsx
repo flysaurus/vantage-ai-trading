@@ -15,11 +15,7 @@ import type { Order } from '@/types';
 import {
   formatOrderDate,
   resolveRequested,
-  orderOrigin,
-  orderRef,
-  cancelReasonText,
-  OrderStepper,
-  RequestedFilledBlocks,
+  OrderCard,
   DetailRow,
 } from './OrderDisplay';
 import { fmtShares, fmtDollars } from '@/lib/order-format';
@@ -167,56 +163,29 @@ export function OrdersTab() {
   };
 
   // ── Order card renderer (shared by solo orders + basket legs) ──
+  // Uses the single shared OrderCard (OrderDisplay) so this surface can never
+  // drift from TradeTab. The only OrdersTab-specific extra is the drill-down
+  // Details panel, rendered as a sibling below the canonical card.
   const renderOrderCard = (order: Order, inBasket = false) => {
     const working = isWorking(order.status);
     return (
-      <div key={order.id} className={`order-card ${order.status}`}>
-        {/* Card head: symbol + side + origin + ref */}
-        <div className="card-head">
-          <div className="head-left">
-            <span className="sym">{order.symbol}</span>
-            {order.companyName ? <span className="name">{order.companyName}</span> : null}
-            <span className={`side-badge ${order.side}`}>{order.side.toUpperCase()}</span>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="origin">{orderOrigin(order)}</div>
-            <div className="ref">{orderRef(order)}</div>
-          </div>
-        </div>
+      <div key={order.id}>
+        <OrderCard
+          order={order}
+          companyName={order.companyName ?? undefined}
+          showCancelChip={!inBasket}
+          onCancel={handleCancel}
+          inBasket={inBasket}
+        />
 
-        {/* Timeline stepper: Placed → Open → Filled (or Cancelled/Rejected branch) */}
-        <OrderStepper order={order} />
-
-        {/* Requested vs Filled — always side by side */}
-        <RequestedFilledBlocks order={order} />
-
-        {/* Cancellation / rejection note — reason-specific via shared helper */}
-        {(order.status === 'cancelled' || order.status === 'rejected') && (
-          <div className="cancel-note">
-            {cancelReasonText(order)}
-          </div>
-        )}
-
-        {/* Actions row */}
-        <div className="actions">
-          {working && !inBasket && (
-            <button className="cancel-btn" onClick={() => handleCancel(order)}>
-              Cancel Order
-            </button>
-          )}
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-            {order.bracketOrder && (
-              <span style={{ fontSize: 10, color: '#94a3b8' }}>
-                {`🛡️ SL $${order.bracketOrder.stopLoss} / TP $${order.bracketOrder.takeProfit}`}
-              </span>
-            )}
-            <button
-              className="action-btn"
-              onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-            >
-              {expandedOrderId === order.id ? 'Hide' : 'Details'}
-            </button>
-          </div>
+        {/* Details toggle (OrdersTab-only drill-down) */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -4, marginBottom: 8 }}>
+          <button
+            className="action-btn"
+            onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+          >
+            {expandedOrderId === order.id ? 'Hide' : 'Details'}
+          </button>
         </div>
 
         {/* Expanded Details Panel */}
@@ -309,7 +278,6 @@ export function OrdersTab() {
           onClick={() => setExpandedBasketId(isOpen ? null : group.basketId)}
         >
           <div className="basket-head-left">
-            <span className="basket-icon">{group.icon}</span>
             <div>
               <div className="basket-name">{group.name}</div>
               <div className="basket-summary">
@@ -611,45 +579,6 @@ export function OrdersTab() {
       )}
 
       <style jsx>{`
-        .order-card {
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 16px;
-          padding: 14px 16px;
-          margin-bottom: 8px;
-        }
-        .order-card.filled { border-left: 3px solid #4ade80; }
-        .order-card.open { border-left: 3px solid #fbbf24; }
-        .order-card.pending { border-left: 3px solid #fbbf24; }
-        .order-card.submitted { border-left: 3px solid #fbbf24; }
-        .order-card.cancelled { border-left: 3px solid #64748b; opacity: 0.7; }
-        .order-card.rejected { border-left: 3px solid #f87171; opacity: 0.7; }
-
-        /* Card head */
-        .card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-        .head-left { display: flex; align-items: center; gap: 10px; }
-        .sym { font-size: 17px; font-weight: 800; color: #fff; }
-        .name { font-size: 10px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-        .origin { font-size: 10.5px; color: #8b96ab; border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-        .ref { font-size: 10px; color: #5c6579; font-family: "SF Mono", Menlo, monospace; margin-top: 2px; }
-
-        .side-badge {
-          font-size: 9px;
-          font-weight: 700;
-          padding: 2px 6px;
-          border-radius: 3px;
-          text-transform: uppercase;
-        }
-        .side-badge.buy { background: rgba(34,197,94,0.2); color: #4ade80; }
-        .side-badge.sell { background: rgba(239,68,68,0.2); color: #f87171; }
-
-        .cancel-note {
-          margin-top: 12px; padding: 10px 12px; border-radius: 10px;
-          background: rgba(239,123,106,0.06); border: 1px dashed rgba(239,123,106,0.3);
-          font-size: 11.5px; color: #ef7b6a; line-height: 1.5;
-        }
-
-        .actions { margin-top: 12px; }
         .cancel-btn { width: 100%; padding: 9px; border-radius: 10px; border: 1px solid rgba(239,123,106,0.4); background: transparent; color: #ef7b6a; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-bottom: 6px; }
         .cancel-btn:active { opacity: 0.7; }
 
@@ -684,7 +613,6 @@ export function OrdersTab() {
         }
         .basket-head:active { background: rgba(255,255,255,0.02); }
         .basket-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-        .basket-icon { font-size: 22px; line-height: 1; }
         .basket-name {
           font-size: 14px;
           font-weight: 800;
@@ -729,7 +657,6 @@ export function OrdersTab() {
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <span style={{ fontSize: 24 }}>{t.icon}</span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
                   <div style={{ fontSize: 11, color: '#94a3b8' }}>Cancel entire basket?</div>

@@ -225,7 +225,6 @@ export async function notifyBasketNotification(
       return unit === 'dollars' ? sum + (p.requestedAmount || 0) : sum;
     }, 0);
 
-    const emoji = event.basketEmoji || '🧺';
     const name = event.basketName || 'Basket';
 
     // Basket-level notification ONLY — a single summary row. The individual
@@ -234,7 +233,7 @@ export async function notifyBasketNotification(
     const rows: Array<Record<string, unknown>> = [{
       user_id: userId,
       type: `basket_${event.event}`,
-      title: `${BASKET_BELL_EMOJI[event.event]} ${emoji} ${name} — ${BASKET_BELL_LABEL[event.event]}`,
+      title: `${BASKET_BELL_EMOJI[event.event]} ${name} — ${BASKET_BELL_LABEL[event.event]}`,
       message: `${positions.length} stock${positions.length === 1 ? '' : 's'}${total > 0 ? ` · ${fmtDollars(total)}` : ''} · ${event.brokerName}`,
       action_url: ACTION_URL,
       is_read: false,

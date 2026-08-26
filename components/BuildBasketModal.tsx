@@ -784,10 +784,9 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
               background: '#1a2235', border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: '16px', padding: '16px', marginBottom: '12px',
             }}>
-              {/* Header row: emoji + name + perf badge */}
+              {/* Header row: name + perf badge */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '20px' }}>{basket.emoji}</span>
                   <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '14px' }}>{basket.name}</span>
                 </div>
                 {/* Performance badge */}
@@ -1080,7 +1079,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             background: '#1a2235', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px',
           }}>
             <span style={{ fontSize: '11px', color: '#cbd5e1' }}>Basket: </span>
-            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>{selectedCurated.emoji} {selectedCurated.name}</span>
+            <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '600' }}>{selectedCurated.name}</span>
           </div>
         )}
         <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px' }}>
@@ -1581,7 +1580,7 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: '#ffffff', fontWeight: '600' }}>
-              {selectedCurated?.emoji} {selectedCurated?.name}
+              {selectedCurated?.name}
             </span>
             <span style={{ color: '#22d3ee' }}>${Math.round(parseFloat(budget) || 0).toLocaleString()} budget</span>
           </div>
@@ -2167,7 +2166,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
             <div style={{
               background: '#1a2235', borderRadius: '16px', padding: '20px', marginBottom: '16px',
             }}>
-              <div style={{ fontSize: '24px', marginBottom: '8px' }}>{selectedCurated.emoji}</div>
               <div style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>
                 {basketDisplayName || selectedCurated.name}
               </div>

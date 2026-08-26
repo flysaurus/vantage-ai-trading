@@ -117,7 +117,7 @@ export function OrderStepper({ order }: { order: Order }) {
   //   submitted      → Placed → Open → Filled (Open = in-progress/amber)
   //   cancelled      → Placed → Open → Cancelled  (Open happened; only Filled is ghost-omitted)
   //   rejected       → Placed → Rejected            (never reached Open; Filled ghost-omitted)
-  let steps: { label: string; kind: 'done' | 'active' | 'future' | 'cancelled' }[];
+  let steps: { label: string; kind: 'done' | 'active' | 'future' | 'cancelled' | 'rejected' }[];
   if (s === 'filled') {
     steps = [
       { label: 'Placed', kind: 'done' },
@@ -133,7 +133,7 @@ export function OrderStepper({ order }: { order: Order }) {
   } else if (s === 'rejected') {
     steps = [
       { label: 'Placed', kind: 'done' },
-      { label: 'Rejected', kind: 'cancelled' },
+      { label: '⚠ Rejected', kind: 'rejected' },
     ];
   } else if (s === 'open' || s === 'pending') {
     steps = [
@@ -170,7 +170,8 @@ export function OrderStepper({ order }: { order: Order }) {
         .step.active { color: #f0b73f; }
         .step.active .dot { animation: pulse 1.6s ease-in-out infinite; }
         .step.future { color: #5c6579; font-weight: 500; }
-        .step.cancelled { color: #ef7b6a; }
+        .step.cancelled { color: #8b96ab; }
+        .step.rejected { color: #f97316; font-weight: 800; }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(240,183,63,0.4);} 50%{box-shadow:0 0 0 4px rgba(240,183,63,0);} }
       `}</style>
     </div>
@@ -204,79 +205,185 @@ export function orderShares(o: any): number {
   return 0;
 }
 
-// Left-accent border color for an order card by side + status.
+// Left-accent border color for an order card by STATUS (never by side).
+// Spec: SELL badge carries red (red's only meaning = sell); the card accent is
+// status-driven — cancelled is neutral slate/grey (NOT red), rejected is a
+// heavier, more saturated red-orange (more alarming than a normal sell).
 export function getOrderBorderColor(order: any): string {
-  const side = (order.side || '').toUpperCase();
   const s = (order.status || '').toLowerCase();
-  if (s === 'filled') return side === 'BUY' ? '#10b981' : '#ef4444';
-  if (s === 'open' || s === 'pending' || s === 'submitted') return '#f59e0b';
-  if (s === 'rejected') return '#f87171';
+  if (s === 'rejected') return '#f97316'; // saturated red-orange
+  if (s === 'cancelled') return '#64748b'; // neutral slate/grey
+  if (s === 'filled') return '#10b981'; // success green
+  if (s === 'open' || s === 'pending' || s === 'submitted') return '#f59e0b'; // amber
   return '#64748b';
 }
 
-// ─── Shared OrderCard — identical structure for solo + basket-child orders ──
-// Top row: symbol + full name + BUY/SELL badge (left) · amount + date (right).
-// Meta line: type · TIF · qty shares. Single-line stepper. Bottom row: order ID
-// (left) + Cancel chip (right, cancellable + showCancelChip only).
+// ─── Shared OrderCard — THE single order card (4-row spec) ────────────────────
+// Rendered identically for solo orders AND basket child-legs across OrdersTab
+// and TradeTab so the two surfaces can never drift.
+//
+//   Row 1: symbol + company name (left) · dollar amount + Est./Actual tag (right)
+//   Row 2: type · TIF · qty (left) · BUY/SELL badge (right, under amount)
+//   Row 3: Placed → Open → … stepper (left) · date/time (right)
+//   Row 4: order ID + origin (left) · Cancel chip (right, cancellable only)
+//
+// Est vs Actual: for share (qty) orders the dollar amount is the estimate —
+// "Est." (amber) while working, "Actual" (green) once filled. For dollar
+// (notional) orders the share count is the estimate — "~" prefix in the meta
+// line — and the dollar amount is the authoritative target until the real fill
+// total lands. Reference price = limitPrice || currentPrice || fillPrice (the
+// already-fetched placement quote — no new price-fetch dependency).
+
+function filledAmount(o: any): number | null {
+  const fq = Number(o?.filledQty ?? 0);
+  const fp = Number(o?.filledPrice);
+  if (fq > 0 && fp > 0 && Number.isFinite(fp)) return fq * fp;
+  const tv = Number(o?.totalValue ?? 0);
+  return tv > 0 ? tv : null;
+}
+
+function typeLabel(o: any): string {
+  const t = String(o?.type || 'market').toLowerCase();
+  const map: Record<string, string> = {
+    market: 'Market',
+    limit: 'Limit',
+    stop: 'Stop',
+    stop_limit: 'Stop Limit',
+    stoplimit: 'Stop Limit',
+  };
+  return map[t] || t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export function OrderCard({
   order,
   companyName,
   showCancelChip = false,
   onCancel,
+  inBasket = false,
 }: {
   order: any;
   companyName?: string;
   showCancelChip?: boolean;
   onCancel?: (order: any) => void;
+  inBasket?: boolean;
 }) {
   const side = (order.side || '').toUpperCase();
   const isBuy = side === 'BUY';
-  const cancellable =
-    showCancelChip && ['open', 'pending', 'submitted'].includes((order.status || '').toLowerCase());
-  const ref = orderRef(order);
-  const amount = orderAmount(order);
-  const dateLabel = (order.createdAt || order.date)
-    ? formatOrderDate(order.createdAt || order.date)
-    : '';
   const status = (order.status || '').toLowerCase();
-  const reason = status === 'rejected'
+  const filled = status === 'filled';
+  const working = ['open', 'pending', 'submitted'].includes(status);
+  const unit = resolveRequested(order).unit;
+  const r = resolveRequested(order);
+
+  const cancellable = showCancelChip && working && !inBasket;
+
+  // Row 1 right — dollar amount + Est./Actual tag.
+  let amountValue: number;
+  let tag: { label: string; color: string } | null = null;
+  if (filled) {
+    const fa = filledAmount(order);
+    amountValue = fa != null && fa > 0 ? fa : orderAmount(order);
+    tag = { label: 'Actual', color: '#3ddc97' };
+  } else {
+    amountValue = orderAmount(order);
+    // qty (share) orders → the dollar amount is a derived estimate.
+    if (working && unit === 'shares') tag = { label: 'Est.', color: '#f0b73f' };
+  }
+  const amountText = amountValue > 0 ? fmtDollars(amountValue) : '—';
+
+  // Row 2 meta — type (with limit/stop price when set) · TIF · shares.
+  const type = typeLabel(order);
+  let typeToken = type;
+  const lp = Number(order.limitPrice ?? 0);
+  const sp = Number(order.stopPrice ?? 0);
+  if (lp > 0 && (type === 'Limit' || type === 'Stop Limit')) typeToken = `${type} ${fmtDollars(lp)}`;
+  else if (sp > 0 && (type === 'Stop' || type === 'Stop Limit')) typeToken = `${type} ${fmtDollars(sp)}`;
+  const tif = String(order.timeInForce || 'DAY').toUpperCase();
+
+  let sharesToken: string;
+  if (filled) {
+    const fq = Number(order.filledQty ?? 0);
+    const fp = Number(order.filledPrice);
+    sharesToken = fq > 0
+      ? `${fmtShares(fq)} sh${fp > 0 ? ` @ ${fmtDollars(fp)}` : ''}`
+      : formatSharesDisplay(orderShares(order));
+  } else if (unit === 'dollars') {
+    // dollar order → share count is the estimate ("~" prefix).
+    const q = Number(r.requestedQty ?? 0);
+    sharesToken = q > 0 ? `~${fmtShares(q)} share${q === 1 ? '' : 's'}` : '—';
+  } else {
+    const q = Number(order.qty ?? order.shares ?? 0);
+    sharesToken = q > 0 ? `${fmtShares(q)} share${q === 1 ? '' : 's'}` : '—';
+  }
+
+  // Row 3 right — compact date/time.
+  const dRaw = order.createdAt || order.date;
+  const d = dRaw ? new Date(dRaw) : null;
+  const dateLabel = d && !isNaN(d.getTime())
+    ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+      ' · ' +
+      d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : '';
+
+  // Row 4 left — order ref + source attribution.
+  const ref = orderRef(order);
+  const origin = orderOrigin(order);
+
+  // Terminal-state reason (cancelled/rejected) + bracket SL/TP line.
+  const reason = status === 'rejected' || status === 'cancelled'
     ? cancelReasonText(order)
-    : status === 'cancelled' && order.cancelReason
-      ? cancelReasonText(order)
-      : '';
+    : '';
+  const bracket = order.bracketOrder &&
+    (order.bracketOrder.stopLoss || order.bracketOrder.takeProfit)
+    ? `🛡️ SL ${fmtDollars(order.bracketOrder.stopLoss)} / TP ${fmtDollars(order.bracketOrder.takeProfit)}`
+    : '';
 
   return (
     <div
       className="order-card"
       style={{ borderLeftColor: getOrderBorderColor(order) }}
     >
-      {/* Top row: symbol + name + badge (left) · amount + date (right) */}
-      <div className="top-row">
-        <div className="top-left">
-          <div className="symbol-line">
-            <span className="sym">{order.symbol}</span>
-            {companyName && <span className="name">{companyName}</span>}
-            <span className={`side-badge ${isBuy ? 'buy' : 'sell'}`}>{side}</span>
-          </div>
-          <div className="meta">
-            {(order.type || 'market').toLowerCase()}
-            {' · '}{(order.timeInForce || 'DAY').toUpperCase()}
-            {' · '}{formatSharesDisplay(orderShares(order))} shares
-          </div>
+      {/* Row 1: symbol + name (left) · amount + Est./Actual tag (right) */}
+      <div className="row1">
+        <div className="head">
+          <span className="sym">{order.symbol}</span>
+          {companyName && <span className="name">{companyName}</span>}
         </div>
-        <div className="top-right">
-          <div className="amount">${amount.toFixed(2)}</div>
-          {dateLabel && <div className="date">{dateLabel}</div>}
+        <div className="amount-col">
+          <span className="amount">{amountText}</span>
+          {tag && <span className="tag" style={{ color: tag.color, borderColor: tag.color }}>{tag.label}</span>}
         </div>
       </div>
 
-      <OrderStepper order={order} />
+      {/* Row 2: meta (left) · BUY/SELL badge (right) */}
+      <div className="row2">
+        <div className="meta">
+          {typeToken} · {tif} · {sharesToken}
+        </div>
+        <span className={`side-badge ${isBuy ? 'buy' : 'sell'}`}>{side}</span>
+      </div>
 
-      {reason && <div className="reason">{reason}</div>}
+      {/* Row 3: stepper (left) · date/time (right) */}
+      <div className="row3">
+        <div className="stepper-wrap">
+          <OrderStepper order={order} />
+        </div>
+        {dateLabel && <span className="date">{dateLabel}</span>}
+      </div>
 
-      {/* Bottom row: order ID (left) · Cancel chip (right) */}
+      {reason && (
+        <div className={`reason ${status === 'rejected' ? 'rejected' : ''}`}>
+          {status === 'rejected' ? '⚠ ' : ''}{reason}
+        </div>
+      )}
+      {bracket && <div className="bracket">{bracket}</div>}
+
+      {/* Row 4: order ID + origin (left) · Cancel chip (right) */}
       <div className="bottom-row">
-        <span className="ref">{ref}</span>
+        <div className="bottom-left">
+          <span className="ref">{ref}</span>
+          {origin && <span className="origin">{origin}</span>}
+        </div>
         {cancellable && (
           <button className="cancel-chip" onClick={() => onCancel?.(order)}>
             Cancel
@@ -291,28 +398,50 @@ export function OrderCard({
           border-left-width: 3px;
           border-left-style: solid;
           border-radius: 12px;
-          padding: 12px 16px;
+          padding: 12px 14px;
           margin-bottom: 10px;
         }
-        .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-        .top-left { min-width: 0; flex: 1; }
-        .symbol-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-        .sym { font-size: 13px; font-weight: 600; color: #ffffff; }
-        .name { font-size: 10px; color: #94a3b8; }
-        .side-badge { border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; }
-        .side-badge.buy { background: rgba(16,185,129,0.2); color: #10b981; }
-        .side-badge.sell { background: rgba(239,68,68,0.2); color: #ef4444; }
-        .meta { font-size: 10px; color: var(--dim, #8b96ab); margin-top: 3px; }
-        .top-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
-        .amount { font-size: 12px; font-weight: 700; color: #cbd5e1; white-space: nowrap; font-variant-numeric: tabular-nums; }
-        .date { font-size: 10px; color: #94a3b8; }
-        .bottom-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+        .row1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .head { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+        .sym { font-size: 15px; font-weight: 700; color: #ffffff; line-height: 1.1; }
+        .name {
+          font-size: 11px; font-weight: 600; color: #94a3b8;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          max-width: 50ch;
+        }
+        .amount-col { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px; }
+        .amount {
+          font-size: 14px; font-weight: 700; color: #e2e8f0;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-variant-numeric: tabular-nums; white-space: nowrap;
+        }
+        .tag {
+          font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+          border: 1px solid; border-radius: 4px; padding: 1px 5px;
+          text-transform: uppercase; white-space: nowrap;
+        }
+        .row2 { display: flex; justify-content: space-between; align-items: center; margin-top: 7px; }
+        .meta { font-size: 10.5px; color: var(--dim, #8b96ab); font-weight: 500; }
+        .side-badge {
+          border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700;
+          letter-spacing: 0.04em; text-transform: uppercase; flex-shrink: 0;
+        }
+        .side-badge.buy { background: rgba(16,185,129,0.18); color: #10b981; }
+        .side-badge.sell { background: rgba(239,68,68,0.18); color: #ef4444; }
+        .row3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .stepper-wrap { min-width: 0; flex: 1; }
+        .date { font-size: 10px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+        .bottom-row { display: flex; justify-content: space-between; align-items: center; margin-top: 9px; }
+        .bottom-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .ref { font-size: 10px; color: #5c6579; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-        .reason { font-size: 10px; color: #5c6579; margin-top: 6px; }
+        .origin { font-size: 9.5px; color: #8b96ab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .reason { font-size: 11px; color: #8b96ab; margin-top: 8px; line-height: 1.4; }
+        .reason.rejected { color: #f97316; font-weight: 600; }
+        .bracket { font-size: 10px; color: #94a3b8; margin-top: 6px; }
         .cancel-chip {
           background: none; border: 1px solid rgba(239,68,68,0.4); border-radius: 6px;
           color: #ef4444; font-size: 11px; padding: 4px 10px; cursor: pointer;
-          font-family: inherit; font-weight: 600;
+          font-family: inherit; font-weight: 600; flex-shrink: 0;
         }
       `}</style>
     </div>

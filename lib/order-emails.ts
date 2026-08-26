@@ -357,7 +357,6 @@ const BASKET_EVENT_EMOJI: Record<BasketOrderEvent['event'], string> = {
 
 async function sendBasket(e: BasketOrderEvent, email: string): Promise<void> {
   const greeting = e.userName ? `Hi ${e.userName},` : 'Hi,';
-  const emoji = e.basketEmoji || '🧺';
   const title = e.basketName || 'Basket';
 
   const rows = e.positions
@@ -372,11 +371,11 @@ async function sendBasket(e: BasketOrderEvent, email: string): Promise<void> {
     })
     .join('');
 
-  const subject = `[Vantage] ${BASKET_EVENT_EMOJI[e.event]} ${emoji} ${title} — ${BASKET_EVENT_LABEL[e.event]}`;
+  const subject = `[Vantage] ${BASKET_EVENT_EMOJI[e.event]} ${title} — ${BASKET_EVENT_LABEL[e.event]}`;
   const html = wrap(`
     <h2 style="margin:0 0 12px">${BASKET_EVENT_EMOJI[e.event]} ${BASKET_EVENT_LABEL[e.event]}</h2>
     <p>${greeting}</p>
-    <p>${emoji} <strong>${title}</strong> — one consolidated update for ${e.positions.length} position${e.positions.length === 1 ? '' : 's'} at <strong>${e.brokerName}</strong>:</p>
+    <p><strong>${title}</strong> — one consolidated update for ${e.positions.length} position${e.positions.length === 1 ? '' : 's'} at <strong>${e.brokerName}</strong>:</p>
     <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
       <tr>
         <th style="padding:6px 12px;text-align:left;border-bottom:1px solid #e5e7eb">Symbol</th>
