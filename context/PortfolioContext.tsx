@@ -219,6 +219,10 @@ interface PortfolioContextValue {
   basketOrders: any[];
   /** Pending basket orders (OPEN status, awaiting market open) */
   pendingBaskets: any[];
+  /** Basket ids currently mid-submit (used to lock Cancel/Edit until the order stabilizes) */
+  submittingBasketIds: Set<string>;
+  /** Whether a given basket id is mid-submit (Cancel/Edit lock) */
+  isBasketSubmitting: (basketId: string) => boolean;
   /** Whether Supabase is currently unreachable (using stale localStorage cache) */
   supabaseDegraded: boolean;
   /** Data source: 'demo' or 'snaptrade' */
@@ -245,6 +249,8 @@ const PortfolioContext = createContext<PortfolioContextValue>({
   executePendingOrders: async () => {},
   basketOrders: [],
   pendingBaskets: [],
+  submittingBasketIds: new Set(),
+  isBasketSubmitting: () => false,
   supabaseDegraded: false,
   brokerSource: 'demo',
   brokerMeta: null,
@@ -349,6 +355,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const demoSeededRef = useRef(false);
   const submittingTradeRef = useRef(false); // double-submit guard
   const submittingBasketRef = useRef(false); // double-submit guard
+  // In-flight basket ids (React STATE, not a ref) so the UI can re-render and
+  // lock Cancel/Edit on the submitting basket's card until the order stabilizes.
+  const [submittingBasketIds, setSubmittingBasketIds] = useState<Set<string>>(new Set());
+  const isBasketSubmitting = useCallback((basketId: string) => submittingBasketIds.has(basketId), [submittingBasketIds]);
   // Track which userId we've already initialized for (prevents re-init loops)
   const brokerInitDoneForUserRef = useRef<string | null>(null);
   // Degradation flag: Supabase unreachable → show warning, use localStorage cache
@@ -1422,6 +1432,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       return { success: false, executed: 0, failed: 0, totalSpent: 0, error: 'Basket order already in progress' };
     }
     submittingBasketRef.current = true;
+    // Lock the target basket's card for the full submit-to-stable-state window.
+    // `existingBasketId` is the user_baskets.id (= card's `basketId` / group's
+    // `basketId`) in edit mode — the same key the cards use for Cancel + Edit.
+    if (existingBasketId) {
+      setSubmittingBasketIds(prev => {
+        const next = new Set(prev);
+        next.add(existingBasketId);
+        return next;
+      });
+    }
     try {
     // Build the leg payload once (shared by demo + real-broker paths).
     // Build the leg payload. When the caller supplies an explicit per-leg
@@ -1548,6 +1568,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     return { success: true, executed: result.orders.length, failed: failedCount, totalSpent, status: result.status as 'FILLED' | 'OPEN' };
     } finally {
       submittingBasketRef.current = false;
+      if (existingBasketId) {
+        setSubmittingBasketIds(prev => {
+          const next = new Set(prev);
+          next.delete(existingBasketId);
+          return next;
+        });
+      }
     }
   }, [brokerRef, refreshStateFromBroker, loadBaskets, broker, isShowingDemo, brokerSource]);
 
@@ -1771,6 +1798,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         executePendingOrders,
         basketOrders,
         pendingBaskets,
+        submittingBasketIds,
+        isBasketSubmitting,
         supabaseDegraded,
         brokerSource,
         brokerMeta,

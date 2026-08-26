@@ -177,6 +177,12 @@ export class SnapTradeBroker implements BrokerEngine {
 
   private accountCache: CacheEntry<BrokerAccountSummary> | null = null;
   private positionsCache: CacheEntry<BrokerPosition[]> | null = null;
+  // Cached primary-account lookup. `_fetchAccounts()` is a live HTTP call, so
+  // we memoize the RESOLVED id (via an in-flight promise) so parallel basket
+  // legs and back-to-back trading ops share ONE accounts round-trip instead of
+  // N. TTL keeps it from going stale if the connection's accounts change.
+  private primaryAccountIdPromise: Promise<string | null> | null = null;
+  private primaryAccountIdFetchedAt = 0;
 
   constructor(params: {
     userId: string;
@@ -565,43 +571,72 @@ export class SnapTradeBroker implements BrokerEngine {
 
     const basketOrderId = crypto.randomUUID();
 
+    // ── Parallel leg placement ──
+    // Fire all N legs concurrently and settle each independently. A single
+    // leg's rejection/throw must never abort the others, so we use
+    // Promise.allSettled (not Promise.all) and capture each leg's own outcome
+    // alongside its identity — completion order is irrelevant to correctness.
+    const settled = await Promise.allSettled(
+      req.stocks.map(async (stock) => {
+        // Per-leg Vantage UUID — sent as client_order_id so each basket leg is
+        // traceable back to Vantage's own orders.id (same pattern as single orders).
+        const legClientOrderId = crypto.randomUUID();
+        try {
+          const result = await this.placeOrder({
+            symbol: stock.symbol,
+            side: 'BUY',
+            type: 'market',
+            dollarAmount: stock.dollarAmount,
+            timeInForce: 'day',
+            basketId: req.basketId,
+            basketName: req.basketName,
+            basketEmoji: req.basketEmoji,
+            basketDisplayName: req.basketDisplayName,
+            clientOrderId: legClientOrderId,
+          });
+          return { stock, legClientOrderId, result };
+        } catch (err) {
+          // placeOrder can throw on unexpected/network errors (snapTradeFetchSafe
+          // usually returns a structured rejection instead — don't rely on it).
+          return {
+            stock,
+            legClientOrderId,
+            result: {
+              success: false,
+              orderId: 'error',
+              status: 'REJECTED' as const,
+              message: err instanceof Error ? err.message : 'Unknown error',
+            } satisfies OrderResult,
+          };
+        }
+      }),
+    );
+
     const orders: OrderResult[] = [];
     const errors: string[] = [];
     let totalSpent = 0;
     let totalReserved = 0;
 
-    for (const stock of req.stocks) {
-      try {
-        // Per-leg Vantage UUID — sent as client_order_id so each basket leg is
-        // traceable back to Vantage's own orders.id (same pattern as single orders).
-        const legClientOrderId = crypto.randomUUID();
-        const result = await this.placeOrder({
-          symbol: stock.symbol,
-          side: 'BUY',
-          type: 'market',
-          dollarAmount: stock.dollarAmount,
-          timeInForce: 'day',
-          basketId: req.basketId,
-          basketName: req.basketName,
-          basketEmoji: req.basketEmoji,
-          basketDisplayName: req.basketDisplayName,
-          clientOrderId: legClientOrderId,
-        });
-        if (!result.success) {
-          if (result.message) errors.push(`${stock.symbol}: ${result.message}`);
-          continue;
-        }
-        // Notional orders don't echo reservedAmount back from placeOrder —
-        // carry the requested dollar amount so queued legs still report an
-        // accurate reserve total. Also stamp symbol + clientOrderId so the
-        // caller can map each leg back for per-leg persistence.
-        orders.push({ ...result, symbol: stock.symbol, clientOrderId: legClientOrderId, reservedAmount: stock.dollarAmount });
-        totalSpent += result.totalCost || 0;
-        totalReserved += stock.dollarAmount;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        errors.push(`${stock.symbol}: ${msg}`);
+    for (const outcome of settled) {
+      if (outcome.status === 'rejected') {
+        // Defensive: the map-callback shouldn't reject (it catches internally),
+        // but if it ever does, surface the reason instead of crashing the basket.
+        const msg = outcome.reason instanceof Error ? outcome.reason.message : 'Unknown error';
+        errors.push(msg);
+        continue;
       }
+      const { stock, legClientOrderId, result } = outcome.value;
+      if (!result.success) {
+        if (result.message) errors.push(`${stock.symbol}: ${result.message}`);
+        continue;
+      }
+      // Notional orders don't echo reservedAmount back from placeOrder — carry
+      // the requested dollar amount so queued legs still report an accurate
+      // reserve total. Also stamp symbol + clientOrderId so the caller can map
+      // each leg back for per-leg persistence.
+      orders.push({ ...result, symbol: stock.symbol, clientOrderId: legClientOrderId, reservedAmount: stock.dollarAmount });
+      totalSpent += result.totalCost || 0;
+      totalReserved += stock.dollarAmount;
     }
 
     const executed = orders.length;
@@ -996,6 +1031,16 @@ export class SnapTradeBroker implements BrokerEngine {
   // ── Internals ─────────────────────────────────────────────
 
   private async _getPrimaryAccountId(): Promise<string | null> {
+    const now = Date.now();
+    if (this.primaryAccountIdPromise && now - this.primaryAccountIdFetchedAt < CACHE_TTL) {
+      return this.primaryAccountIdPromise;
+    }
+    this.primaryAccountIdFetchedAt = now;
+    this.primaryAccountIdPromise = this._resolvePrimaryAccountId();
+    return this.primaryAccountIdPromise;
+  }
+
+  private async _resolvePrimaryAccountId(): Promise<string | null> {
     try {
       const accounts = await this._fetchAccounts();
       if (accounts.length === 0) return null;

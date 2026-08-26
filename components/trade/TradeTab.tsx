@@ -76,7 +76,7 @@ export function TradeTab() {
     lastTradeTime: number;
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast, brokerMeta } = useLivePortfolio();
+  const { account, executeTrade, demoOrders: liveOrders, basketOrders: liveBasketOrders, pendingBaskets, baskets, cancelOrder, cancelBasketOrder, executePendingOrders, toast, dismissToast, brokerMeta, isBasketSubmitting } = useLivePortfolio();
   const { orders: brokerOrders } = useOrderStore();
   const { activeAccount } = useAccounts();
   const isShowingDemo = activeAccount?.isDemo ?? false;
@@ -1252,6 +1252,8 @@ export function TradeTab() {
                   const isExpanded = expandedBasketOrder === basket.id;
                 const isOpen = basket.status === 'OPEN';
                 const isPartial = basket.status === 'PARTIAL';
+                // In-flight submit lock for demo basket orders (same semantics as the group path).
+                const basketSubmitting = isBasketSubmitting(basket.basketId);
                 const isFilled = basket.status === 'FILLED';
 
                 // Status badge style for broker-level basket orders
@@ -1282,6 +1284,7 @@ export function TradeTab() {
                     {/* Basket header — tap to expand (filled) or edit (pending) */}
                     <div
                       onClick={() => {
+                        if (basketSubmitting) return;
                         if (isOpen) {
                           // Build edit payload from ACTUAL held positions (single source of truth),
                           // NOT from the basket order's execution plan (which may be stale/outdated).
@@ -1384,8 +1387,10 @@ export function TradeTab() {
                       }}>
                         {isOpen && (
                           <button
+                            disabled={basketSubmitting}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (basketSubmitting) return;
                               setConfirmCancelBasket({
                                 basketOrderId: basket.id,
                                 basketDisplayName: basket.basketDisplayName || basket.basketName,
@@ -1397,16 +1402,16 @@ export function TradeTab() {
                             }}
                             style={{
                               background: 'none',
-                              border: '1px solid rgba(239,68,68,0.4)',
+                              border: basketSubmitting ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
                               borderRadius: '6px',
-                              color: '#ef4444',
+                              color: basketSubmitting ? '#64748b' : '#ef4444',
                               fontSize: '11px',
                               padding: '4px 10px',
-                              cursor: 'pointer',
+                              cursor: basketSubmitting ? 'not-allowed' : 'pointer',
                               fontWeight: '600',
                             }}
                           >
-                            Cancel
+                            {basketSubmitting ? 'Submitting…' : 'Cancel'}
                           </button>
                         )}
                         <span style={{
@@ -1471,26 +1476,30 @@ export function TradeTab() {
                         {basket.status === 'OPEN' && (
                           <div style={{ padding: '12px 16px' }}>
                             <button
-                              onClick={() => setConfirmCancelBasket({
-                                basketOrderId: basket.id,
-                                basketDisplayName: basket.basketDisplayName || basket.basketName || 'Basket',
-                                orderCount: basket.orders?.length || 0,
-                                pendingCount: (basket.orders || []).filter((o: any) => isWorkingStatus(o.status)).length,
-                                filledCount: (basket.orders || []).filter((o: any) => o.status === 'filled').length,
-                                totalReserved: basket.totalReserved || 0,
-                              })}
+                              disabled={basketSubmitting}
+                              onClick={() => {
+                                if (basketSubmitting) return;
+                                setConfirmCancelBasket({
+                                  basketOrderId: basket.id,
+                                  basketDisplayName: basket.basketDisplayName || basket.basketName || 'Basket',
+                                  orderCount: basket.orders?.length || 0,
+                                  pendingCount: (basket.orders || []).filter((o: any) => isWorkingStatus(o.status)).length,
+                                  filledCount: (basket.orders || []).filter((o: any) => o.status === 'filled').length,
+                                  totalReserved: basket.totalReserved || 0,
+                                });
+                              }}
                               style={{
                                 width: '100%',
                                 padding: '10px',
                                 background: 'none',
-                                border: '1px solid rgba(239,68,68,0.3)',
+                                border: basketSubmitting ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.3)',
                                 borderRadius: '8px',
-                                color: '#ef4444',
+                                color: basketSubmitting ? '#64748b' : '#ef4444',
                                 fontSize: '13px',
-                                cursor: 'pointer',
+                                cursor: basketSubmitting ? 'not-allowed' : 'pointer',
                               }}
                             >
-                              Cancel Basket Order
+                              {basketSubmitting ? 'Order is still submitting, please wait…' : 'Cancel Basket Order'}
                             </button>
                             <div style={{
                               color: '#cbd5e1',
@@ -1512,6 +1521,9 @@ export function TradeTab() {
                   const isExpanded = expandedBasketOrder === group.id;
                 const isPending = group.aggregateStatus === 'OPEN';
                 const isPartial = group.aggregateStatus === 'PARTIAL';
+                // In-flight submit lock: while this basket is being placed, block
+                // Cancel + Edit so taps are received but intentionally disabled.
+                const groupSubmitting = isBasketSubmitting(group.basketId);
                 
                 // Status badge style based on aggregate status
                 const badgeStyle = isPending
@@ -1540,6 +1552,7 @@ export function TradeTab() {
                     {/* Basket header — tap to expand */}
                     <div
                       onClick={() => {
+                        if (groupSubmitting) return;
                         if (isPending) {
                           // Build edit payload from LIVE grouped orders (not stale localStorage)
                           const stocks = (group.orders || []).map((o: any) => ({
@@ -1594,13 +1607,20 @@ export function TradeTab() {
                               {' · '}⏳ {getMarketStatus().isOpen ? '⚡ Market Open — executing soon' : 'awaiting market open'}
                             </span>
                           )}
+                          {groupSubmitting && (
+                            <span style={{ color: '#f0b73f' }}>
+                              {' · '}⏳ Order is still submitting, please wait
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {isPending && (
                           <button
+                            disabled={groupSubmitting}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (groupSubmitting) return;
                               setCancelGroupTarget({
                                 basketId: group.basketId,
                                 basketName: group.basketName,
@@ -1610,16 +1630,16 @@ export function TradeTab() {
                             }}
                             style={{
                               background: 'none',
-                              border: '1px solid rgba(239,68,68,0.4)',
+                              border: groupSubmitting ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(239,68,68,0.4)',
                               borderRadius: '6px',
-                              color: '#ef4444',
+                              color: groupSubmitting ? '#64748b' : '#ef4444',
                               fontSize: '11px',
                               padding: '4px 10px',
-                              cursor: 'pointer',
+                              cursor: groupSubmitting ? 'not-allowed' : 'pointer',
                               fontWeight: '600',
                             }}
                           >
-                            Cancel
+                            {groupSubmitting ? 'Submitting…' : 'Cancel'}
                           </button>
                         )}
                         {/* Visual status badge with dot */}
