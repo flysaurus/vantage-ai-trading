@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       connection_id: resolvedConnectionId,
       symbol: p.symbol,
+      name: p.name ?? p.description ?? null,
       qty: p.shares ?? p.qty ?? 0,
       avg_cost: p.avgCost ?? p.avg_cost ?? 0,
       market_value: p.marketValue ?? p.market_value ?? 0,
