@@ -179,7 +179,6 @@ export async function POST(req: NextRequest) {
     // whole basket into a single card.
     const brokerName = formatBrokerName(brokerSlug);
     const now = new Date().toISOString();
-    const persisted: string[] = [];
 
     // The client-side `basketId` is a curated catalog id or `custom_<ts>` —
     // NOT a valid UUID — so for a NEW basket we mint a fresh user_baskets.id
@@ -263,65 +262,76 @@ export async function POST(req: NextRequest) {
     const legSymbols = result.orders.map((l) => (l.symbol || '').toUpperCase()).filter(Boolean);
     const namesBySymbol = await resolveCompanyNames(legSymbols);
 
-    for (const leg of result.orders) {
-      const symbol = (leg.symbol || '').toUpperCase();
-      if (!symbol) continue;
-      const legId = leg.clientOrderId || crypto.randomUUID();
-      const dollarAmount = leg.reservedAmount ?? 0;
-      const isFilled = leg.status === 'FILLED';
-      const insertRow: Record<string, unknown> = {
-        id: legId,
-        user_id: authUser!.id,
-        connection_id: brokerConnectionId,
-        basket_id: userBasketId,
-        symbol,
-        qty: 0,
-        order_unit: 'dollars',
-        requested_amount: dollarAmount,
-        requested_qty: null,
-        filled_qty: isFilled ? (leg.filledShares || 0) : 0,
-        side: 'buy',
-        order_type: 'market',
-        status: (leg.status || 'OPEN').toLowerCase(),
-        filled_price: leg.fillPrice || null,
-        filled_at: leg.filledAt || (isFilled ? now : null),
-        time_in_force: 'day',
-        is_demo: false,
-        brokerage_order_id: leg.orderId || null,
-        source: 'manual',
-        notional: dollarAmount,
-        created_at: now,
-      };
-      try {
-        const { data, error: dbErr } = await supabase
-          .from('orders')
-          .insert(insertRow)
-          .select('id')
-          .single();
-        if (dbErr) {
-          console.error(`[execute-basket] ⚠️ DB persist failed for ${symbol}:`, JSON.stringify(dbErr, null, 2));
-        } else {
-          persisted.push(data?.id || legId);
-          console.log(`[execute-basket] 💾 Leg persisted: ${symbol} → ${data?.id} (broker ${leg.orderId})`);
-          // Best-effort: attach the resolved company name AFTER the order is
-          // safely persisted. Intentionally a SEPARATE UPDATE so a missing
-          // `company_name` column (migration 059 not yet applied) can NEVER
-          // break the critical order insert (regression guard).
-          const cname = namesBySymbol[symbol];
-          if (cname) {
-            const { error: nameErr } = await supabase
+    // ── Persist legs in parallel ──
+    // Previously a sequential for-loop: 2 DB round-trips per leg (insert +
+    // name update) → O(N) latency that grew with basket size. Now every leg's
+    // insert + name attach runs concurrently; Promise.all preserves input order
+    // so `persisted` stays deterministic.
+    const persisted: string[] = (
+      await Promise.all(
+        result.orders.map(async (leg) => {
+          const symbol = (leg.symbol || '').toUpperCase();
+          if (!symbol) return '';
+          const legId = leg.clientOrderId || crypto.randomUUID();
+          const dollarAmount = leg.reservedAmount ?? 0;
+          const isFilled = leg.status === 'FILLED';
+          const insertRow: Record<string, unknown> = {
+            id: legId,
+            user_id: authUser!.id,
+            connection_id: brokerConnectionId,
+            basket_id: userBasketId,
+            symbol,
+            qty: 0,
+            order_unit: 'dollars',
+            requested_amount: dollarAmount,
+            requested_qty: null,
+            filled_qty: isFilled ? (leg.filledShares || 0) : 0,
+            side: 'buy',
+            order_type: 'market',
+            status: (leg.status || 'OPEN').toLowerCase(),
+            filled_price: leg.fillPrice || null,
+            filled_at: leg.filledAt || (isFilled ? now : null),
+            time_in_force: 'day',
+            is_demo: false,
+            brokerage_order_id: leg.orderId || null,
+            source: 'manual',
+            notional: dollarAmount,
+            created_at: now,
+          };
+          try {
+            const { data, error: dbErr } = await supabase
               .from('orders')
-              .update({ company_name: cname })
-              .eq('id', data?.id);
-            if (nameErr) {
-              console.warn(`[execute-basket] ⚠️ name attach failed for ${symbol} (column missing?):`, nameErr.message);
+              .insert(insertRow)
+              .select('id')
+              .single();
+            if (dbErr) {
+              console.error(`[execute-basket] ⚠️ DB persist failed for ${symbol}:`, JSON.stringify(dbErr, null, 2));
+              return '';
             }
+            const insertedId = data?.id || legId;
+            console.log(`[execute-basket] 💾 Leg persisted: ${symbol} → ${insertedId} (broker ${leg.orderId})`);
+            // Best-effort: attach the resolved company name AFTER the order is
+            // safely persisted. Intentionally a SEPARATE UPDATE so a missing
+            // `company_name` column (migration 059 not yet applied) can NEVER
+            // break the critical order insert (regression guard).
+            const cname = namesBySymbol[symbol];
+            if (cname) {
+              const { error: nameErr } = await supabase
+                .from('orders')
+                .update({ company_name: cname })
+                .eq('id', insertedId);
+              if (nameErr) {
+                console.warn(`[execute-basket] ⚠️ name attach failed for ${symbol} (column missing?):`, nameErr.message);
+              }
+            }
+            return insertedId;
+          } catch (persistErr) {
+            console.error(`[execute-basket] ⚠️ DB persist exception for ${symbol}:`, persistErr);
+            return '';
           }
-        }
-      } catch (persistErr) {
-        console.error(`[execute-basket] ⚠️ DB persist exception for ${symbol}:`, persistErr);
-      }
-    }
+        }),
+      )
+    ).filter(Boolean);
 
     // ── Notifications: basket summary + individual legs (email + bell) ──
     // Email: ONE consolidated email (basket header + per-position table).
