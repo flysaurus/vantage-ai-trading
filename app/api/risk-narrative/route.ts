@@ -31,6 +31,7 @@ interface PositionPayload {
 interface RequestBody {
   positions: PositionPayload[];
   investorStyle?: string;
+  forceRegen?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -141,6 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         narrative: null,
         triggers: [],
         cached: false,
+        generatedAt: null,
         sectorCount: new Set(
           body.positions
             .map((p) => p.sector)
@@ -152,33 +154,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // ── Build cache key ──
     const hash = metricsHash(triggers, body.positions);
 
-    // ── Check ai_facts for existing narrative ──
+    // ── Check ai_facts for existing narrative (skipped on manual regenerate) ──
     const supabase = createServerClient();
-    const { data: existingFacts } = await (supabase as any)
-      .from('ai_facts')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('subject', 'risk_narrative')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    if (!body.forceRegen) {
+      const { data: existingFacts } = await (supabase as any)
+        .from('ai_facts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('subject', 'risk_narrative')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-    // Quick cache-key match in the claim field (we store hash there for exact-match)
-    if (existingFacts && existingFacts.length > 0) {
-      const fact = existingFacts[0];
-      // Check if the stored hash matches current metrics
-      if (fact.claim?.startsWith(hash + '|')) {
-        const cached = fact.claim.slice(hash.length + 1);
-        const diagMatch = cached.match(/^DIAGNOSIS:\s*(.+?)(?:\n|$)/m);
-        const suggMatch = cached.match(/^SUGGESTION:\s*(.+?)(?:\n|$)/m);
-        const narrative = diagMatch?.[1]?.trim() || cached;
-        const suggestion = suggMatch?.[1]?.trim() || null;
-        return NextResponse.json({
-          narrative,
-          suggestion,
-          triggers,
-          cached: true,
-        });
+      // Quick cache-key match in the claim field (we store hash there for exact-match)
+      if (existingFacts && existingFacts.length > 0) {
+        const fact = existingFacts[0];
+        // Check if the stored hash matches current metrics
+        if (fact.claim?.startsWith(hash + '|')) {
+          const cached = fact.claim.slice(hash.length + 1);
+          const diagMatch = cached.match(/^DIAGNOSIS:\s*(.+?)(?:\n|$)/m);
+          const suggMatch = cached.match(/^SUGGESTION:\s*(.+?)(?:\n|$)/m);
+          const narrative = diagMatch?.[1]?.trim() || cached;
+          const suggestion = suggMatch?.[1]?.trim() || null;
+          return NextResponse.json({
+            narrative,
+            suggestion,
+            triggers,
+            cached: true,
+            generatedAt: fact.created_at,
+          });
+        }
       }
     }
 
@@ -215,6 +220,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         triggers,
         cached: false,
         aiError: true,
+        generatedAt: null,
       });
     }
 
@@ -240,6 +246,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       suggestion,
       triggers,
       cached: false,
+      generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
     console.error('[risk-narrative] Unexpected error:', err?.message || err);

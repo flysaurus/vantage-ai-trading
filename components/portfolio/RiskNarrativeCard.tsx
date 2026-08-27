@@ -19,6 +19,7 @@ interface NarrativeResponse {
   cached: boolean;
   sectorCount?: number;
   aiError?: boolean;
+  generatedAt?: string | null;
 }
 
 // ── Props ─────────────────────────────────────────────────────
@@ -65,6 +66,19 @@ const SEVERITY_LABELS: Record<SeverityLevel, string> = {
   critical: 'High Risk',
 };
 
+function formatTime(iso: string | null | undefined): string {
+  if (!iso) return 'just now';
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.floor(diffH / 24)}d ago`;
+}
+
 // ── Component ─────────────────────────────────────────────────
 
 export default function RiskNarrativeCard({
@@ -73,15 +87,18 @@ export default function RiskNarrativeCard({
 }: RiskNarrativeCardProps) {
   const [data, setData] = useState<NarrativeResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const generatingRef = useRef(false);
 
   // ── Auto-fire: evaluate risk on portfolio load (unmetered) ──
-  const generate = async () => {
+  // `force` bypasses the server-side ai_facts cache (manual regenerate).
+  const generate = async (force = false) => {
     if (!positions || positions.length === 0) return;
     if (generatingRef.current) return;
     generatingRef.current = true;
-    setLoading(true);
+    if (force) setRegenerating(true);
+    else setLoading(true);
     try {
       const payload = {
         positions: positions.map((p) => ({
@@ -92,6 +109,7 @@ export default function RiskNarrativeCard({
           avgCost: p.avgCost,
         })),
         investorStyle: investorStyle || undefined,
+        forceRegen: force || undefined,
       };
 
       const res = await fetch('/api/risk-narrative', {
@@ -101,16 +119,17 @@ export default function RiskNarrativeCard({
       });
 
       if (!res.ok) {
-        setData(null);
+        if (!force) setData(null);
         return;
       }
 
       const result: NarrativeResponse = await res.json();
       setData(result);
     } catch (err: any) {
-      setData(null);
+      if (!force) setData(null);
     } finally {
       generatingRef.current = false;
+      setRegenerating(false);
       setLoading(false);
     }
   };
@@ -120,6 +139,12 @@ export default function RiskNarrativeCard({
     generate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions]);
+
+  // Manual regenerate — re-runs the POST with forceRegen (card stays visible).
+  const handleRegenerate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    generate(true);
+  };
 
   // ── No positions → nothing to show ──
   if (!positions || positions.length === 0) {
@@ -251,27 +276,61 @@ export default function RiskNarrativeCard({
           )}
         </div>
 
-        {hasTriggers && (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span
             style={{
-              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease',
-              flexShrink: 0,
+              fontSize: 11,
+              color: 'rgba(255,255,255,0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              whiteSpace: 'nowrap',
             }}
           >
-            <path
-              d="M3.5 5.25L7 8.75L10.5 5.25"
-              stroke={colors.text}
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
+            ✨ AI · Updated {formatTime(data.generatedAt)}
+          </span>
+          <button
+            onClick={handleRegenerate}
+            disabled={regenerating}
+            aria-label="Regenerate risk narrative"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 6,
+              color: 'rgba(255,255,255,0.5)',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+              lineHeight: 1,
+              padding: '4px 8px',
+              fontFamily: 'inherit',
+              opacity: regenerating ? 0.5 : 1,
+            }}
+          >
+            ↻
+          </button>
+          {hasTriggers && (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              style={{
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+                flexShrink: 0,
+              }}
+            >
+              <path
+                d="M3.5 5.25L7 8.75L10.5 5.25"
+                stroke={colors.text}
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </div>
       </div>
 
       {/* Narrative text */}
