@@ -263,6 +263,9 @@ export default function BasketCard({
 
           {/* Name + badge */}
           <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: '#8794a8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+              Basket
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
                 style={{

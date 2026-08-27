@@ -4,9 +4,9 @@
 // (3m/ytd/1y) per stock, computes weighted basket performance,
 // generates changelog vs previous baskets, and deactivates/inserts.
 //
-// Auth: Authorization: Bearer <CRON_SECRET>
+// Auth: Authorization: Bearer <CRON_SECRET> (Vercel cron sends GET)
 //
-// Cron: 0 10 * * 1 (bi-weekly Monday 6am ET)
+// Cron: 0 10 * * 1 (Monday 6am ET) — wired in vercel.json
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
@@ -118,16 +118,17 @@ REQUIRED BASKET THEMES (always include these 6, but update stocks based on curre
 5. Quality Compounders (boring but reliable)
 6. Emerging Market Leaders`;
 
-// ─── POST handler ─────────────────────────────────────────────
+// ─── Auth helper ──────────────────────────────────────────────
 
-export async function POST(req: NextRequest) {
-  // Verify cron secret
+function isAuthorized(req: NextRequest): boolean {
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  if (!process.env.CRON_SECRET || token !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  return !!process.env.CRON_SECRET && token === process.env.CRON_SECRET;
+}
 
+// ─── Shared generation logic ──────────────────────────────────
+
+async function runGeneration(): Promise<NextResponse> {
   try {
     console.log('[Baskets] Starting generation...');
 
@@ -297,4 +298,22 @@ If nothing changed write: "No changes this refresh."`,
     console.error('[Baskets] Error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+// ─── POST handler (manual/testing) ────────────────────────────
+
+export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return runGeneration();
+}
+
+// ─── GET handler (Vercel cron) ────────────────────────────────
+
+export async function GET(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return runGeneration();
 }

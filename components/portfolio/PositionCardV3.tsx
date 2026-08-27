@@ -323,7 +323,7 @@ export default function PositionCardV3({
                     lineHeight: 1.4,
                   }}
                 >
-                  {basketContext.basketName}
+                  Basket · {basketContext.basketName}
                 </span>
               )}
             </div>

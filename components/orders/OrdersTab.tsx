@@ -279,6 +279,7 @@ export function OrdersTab() {
         >
           <div className="basket-head-left">
             <div>
+              <div className="basket-eyebrow">Basket</div>
               <div className="basket-name">{group.name}</div>
               <div className="basket-summary">
                 {formatOrderDate(group.placedAt)} · {fmtDollars(group.total)} · {group.count} {group.count === 1 ? 'stock' : 'stocks'}
@@ -620,6 +621,14 @@ export function OrdersTab() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        .basket-eyebrow {
+          font-size: 9px;
+          font-weight: 700;
+          color: #8794a8;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 2px;
         }
         .basket-summary { font-size: 11px; color: #8b96ab; margin-top: 2px; }
         .basket-head-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

@@ -1345,6 +1345,9 @@ export function TradeTab() {
                       }}
                     >
                       <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#8794a8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                          Basket
+                        </div>
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1586,6 +1589,9 @@ export function TradeTab() {
                       }}
                     >
                       <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#8794a8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                          Basket
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                           <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>
                             {group.basketName}
