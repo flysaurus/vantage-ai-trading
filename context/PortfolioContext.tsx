@@ -55,6 +55,8 @@ export interface BasketPosition {
   totalPnL?: number;
   totalPnLPct?: number;
   dailyPnL?: number;
+  /** Per-share % change since prior close (Today %). Matches Position.dayChangePercent semantics. */
+  dailyPnLPct?: number;
   /** For pending baskets: when the order will execute */
   nextOpenLabel?: string;
   /** Cash reserved for pending order */
@@ -71,6 +73,7 @@ export interface Basket {
   totalPnL: number;
   totalPnLPct: number;
   dailyPnL: number;
+  dailyPnLPct: number;
   positionCount: number;
   activeCount: number;
   status: 'active' | 'partial' | 'closed' | 'pending';
@@ -1309,6 +1312,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         totalPnL: 0,
         totalPnLPct: 0,
         dailyPnL: 0,
+        dailyPnLPct: 0,
         positionCount: posList.length,
         activeCount: active.length,
         status: allPending
@@ -1408,13 +1412,19 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         const totalPnL = marketValue - pos.totalCost;
         const totalPnLPct = pos.totalCost > 0 ? (totalPnL / pos.totalCost) * 100 : 0;
         const dailyPnL = pos.shares * (quote.d || 0);
-        return { ...pos, currentPrice, marketValue, totalPnL, totalPnLPct, dailyPnL };
+        const dailyPnLPct = typeof quote.dp === 'number' && isFinite(quote.dp)
+          ? quote.dp
+          : (quote.pc > 0 ? (quote.d / quote.pc) * 100 : 0);
+        return { ...pos, currentPrice, marketValue, totalPnL, totalPnLPct, dailyPnL, dailyPnLPct };
       });
 
       const activePositions = enrichedPositions.filter(p => p.status === 'active');
       const marketValue = activePositions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
       const totalCost = activePositions.reduce((sum, p) => sum + p.totalCost, 0);
       const totalPnL = marketValue - totalCost;
+      const dailyPnL = activePositions.reduce((sum, p) => sum + (p.dailyPnL || 0), 0);
+      const prevCloseValue = marketValue - dailyPnL;
+      const dailyPnLPct = prevCloseValue > 0 ? (dailyPnL / prevCloseValue) * 100 : 0;
 
       return {
         ...basket,
@@ -1422,7 +1432,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         marketValue,
         totalPnL,
         totalPnLPct: totalCost > 0 ? (totalPnL / totalCost) * 100 : 0,
-        dailyPnL: activePositions.reduce((sum, p) => sum + (p.dailyPnL || 0), 0),
+        dailyPnL,
+        dailyPnLPct,
       };
     }));
   }, []);

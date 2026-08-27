@@ -19,6 +19,8 @@ interface PositionCardV3Props {
   showCheckbox?: boolean;
   basketContext?: { basketId: string; basketName: string; basketEmoji: string } | null;
   connectionId?: string | null;
+  /** Render only the expanded content inline (no card chrome/header) — used inside basket accordion. */
+  inline?: boolean;
   /** Broker display name for source attribution ("Synced from X"). null = demo/unknown. */
   brokerLabel?: string | null;
 }
@@ -58,6 +60,7 @@ export default function PositionCardV3({
   showCheckbox = false,
   basketContext = null,
   connectionId = null,
+  inline = false,
   brokerLabel = null,
 }: PositionCardV3Props) {
   const { user } = useAuth();
@@ -220,29 +223,38 @@ export default function PositionCardV3({
   return (
     <div
       className="position-card-v3"
-      style={{
-        margin: '0 14px 8px',
-        background: 'var(--bg-card, #1a2235)',
-        borderRadius: 16,
-        border: isExpanded
-          ? '1px solid rgba(34,211,238,0.35)'
-          : '1px solid rgba(255,255,255,0.06)',
-        overflow: 'hidden',
-        transition: 'border-color 0.2s',
-      }}
+      style={inline
+        ? {
+            margin: 0,
+            background: 'transparent',
+            borderRadius: 0,
+            border: 'none',
+            overflow: 'visible',
+          }
+        : {
+            margin: '0 14px 8px',
+            background: 'var(--bg-card, #1a2235)',
+            borderRadius: 16,
+            border: isExpanded
+              ? '1px solid rgba(34,211,238,0.35)'
+              : '1px solid rgba(255,255,255,0.06)',
+            overflow: 'hidden',
+            transition: 'border-color 0.2s',
+          }}
     >
       {/* ── Compact Header Row ── */}
-      <div
-        className="pcv3-header"
-        onClick={onToggleExpand}
-        style={{
-          padding: '12px 14px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer',
-        }}
-      >
+      {!inline && (
+        <div
+          className="pcv3-header"
+          onClick={onToggleExpand}
+          style={{
+            padding: '12px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+          }}
+        >
         {/* Left side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
           {/* Checkbox (select mode) */}
@@ -394,16 +406,22 @@ export default function PositionCardV3({
             ▾
           </span>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* ── Expanded Sections ── */}
-      {isExpanded && (
+      {(inline || isExpanded) && (
         <div
-          style={{
-            padding: '0 14px 14px',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            paddingTop: 12,
-          }}
+          style={inline
+            ? {
+                padding: '12px 0 0',
+                borderTop: '1px solid rgba(179,137,240,0.12)',
+              }
+            : {
+                padding: '0 14px 14px',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                paddingTop: 12,
+              }}
         >
           {/* ── 1. Lots & Cost Basis ── */}
           <div style={{ marginBottom: 14 }}>

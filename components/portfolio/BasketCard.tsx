@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/auth/supabase-client';
 import { getActiveLotCount, type Lot } from '@/lib/fifo-engine';
+import type { Position } from '@/types';
+import PositionCardV3 from './PositionCardV3';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -15,6 +17,10 @@ export interface BasketPositionForCard {
   marketValue: number;
   totalPnL: number;
   totalPnLPct: number;
+  /** Today's $ change since prior close (shares × day change). */
+  dailyPnL?: number;
+  /** Today's % change since prior close (per share). */
+  dailyPnLPct?: number;
   name?: string;
   status: string;
   sector?: string;
@@ -29,6 +35,8 @@ export interface BasketCardBasket {
   marketValue: number;
   totalPnL: number;
   totalPnLPct: number;
+  dailyPnL?: number;
+  dailyPnLPct?: number;
   activeCount: number;
   status: string;
 }
@@ -43,7 +51,8 @@ interface BasketCardProps {
   onToggleSelect: () => void;
   onBuy?: () => void;
   onSell?: () => void;
-  onNavigateToTicker?: (symbol: string, tickerData: BasketPositionForCard) => void;
+  onBuyTicker?: (ticker: BasketPositionForCard) => void;
+  onSellTicker?: (ticker: BasketPositionForCard, lots: Lot[]) => void;
   connectionId?: string | null;
 }
 
@@ -53,25 +62,6 @@ const DOLLAR_FMT: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 };
-
-const formatLotDate = (dateStr: string): string => {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: '2-digit',
-  });
-};
-
-function groupBy<T>(arr: T[], key: keyof T): Record<string, T[]> {
-  const result: Record<string, T[]> = {};
-  for (const item of arr) {
-    const k = String(item[key]);
-    if (!result[k]) result[k] = [];
-    result[k].push(item);
-  }
-  return result;
-}
 
 // ─── Violet (basket) color ───
 const VIOLET = 'var(--violet, #b389f0)';
@@ -90,7 +80,8 @@ export default function BasketCard({
   onToggleSelect,
   onBuy,
   onSell,
-  onNavigateToTicker,
+  onBuyTicker,
+  onSellTicker,
   connectionId,
 }: BasketCardProps) {
   // ── Lot data for all tickers in basket ──
@@ -270,11 +261,11 @@ export default function BasketCard({
               <span
                 style={{
                   fontWeight: 700,
-                  fontSize: 14,
+                  fontSize: 12.5,
                   color: '#ffffff',
                   whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  flexShrink: 1,
+                  minWidth: 0,
                 }}
               >
                 {basket.name}
@@ -331,6 +322,16 @@ export default function BasketCard({
             >
               {plSign}${Math.abs(basket.totalPnL).toLocaleString('en-US', DOLLAR_FMT)} ({plSign}{basket.totalPnLPct.toFixed(1)}%)
             </div>
+            <div
+              style={{
+                color: (basket.dailyPnL ?? 0) >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)',
+                fontSize: 10.5,
+                fontWeight: 600,
+                marginTop: 2,
+              }}
+            >
+              Today {(basket.dailyPnL ?? 0) >= 0 ? '+' : ''}${Math.abs(basket.dailyPnL ?? 0).toLocaleString('en-US', DOLLAR_FMT)} ({(basket.dailyPnLPct ?? 0) >= 0 ? '+' : ''}{(basket.dailyPnLPct ?? 0).toFixed(2)}%)
+            </div>
           </div>
 
           {/* Chevron */}
@@ -362,10 +363,32 @@ export default function BasketCard({
           {tickerRows.map((ticker, idx) => {
             const tPnLColor = ticker.totalPnL >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)';
             const tPnLSign = ticker.totalPnL >= 0 ? '+' : '';
+            const todayPnL = ticker.dailyPnL ?? 0;
+            const todayPnLPct = ticker.dailyPnLPct ?? 0;
+            const todayColor = todayPnL >= 0 ? 'var(--gain, #10b981)' : 'var(--loss, #ef4444)';
+            const todaySign = todayPnL >= 0 ? '+' : '';
             const isTickerExpanded = expandedTickers.has(ticker.symbol);
             const displayAvgCost = ticker.hasMultiLot
               ? ticker.weightedAvgCost
               : ticker.avgCost;
+            const companyName = ticker.name && ticker.name !== ticker.symbol ? ticker.name : null;
+
+            // Map basket position → Position so the inline standalone component
+            // (PositionCardV3) renders its full detail scoped to this ticker.
+            const inlinePosition: Position = {
+              symbol: ticker.symbol,
+              name: companyName ?? ticker.symbol,
+              qty: ticker.shares,
+              avgCost: ticker.avgCost,
+              currentPrice: ticker.currentPrice,
+              marketValue: ticker.marketValue,
+              dayChange: todayPnL,
+              dayChangePercent: todayPnLPct,
+              totalPnl: ticker.totalPnL,
+              totalPnlPercent: ticker.totalPnLPct,
+              portfolioPercent: ticker.allocationPct,
+              sector: ticker.sector,
+            };
 
             return (
               <div
@@ -374,270 +397,134 @@ export default function BasketCard({
                   padding: '10px 12px',
                   marginBottom: idx < tickerRows.length - 1 ? 6 : 8,
                   background: 'rgba(179,137,240,0.04)',
-                  border: '1px solid rgba(179,137,240,0.10)',
+                  border: isTickerExpanded
+                    ? '1px solid rgba(179,137,240,0.30)'
+                    : '1px solid rgba(179,137,240,0.10)',
                   borderRadius: 12,
                 }}
               >
-                {/* Ticker header row */}
+                {/* Ticker header row (tap to expand accordion) */}
                 <div
+                  onClick={() => toggleTicker(ticker.symbol)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
+                    cursor: 'pointer',
                   }}
                 >
-                  {/* Left: symbol + badges */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 13,
-                        color: '#ffffff',
-                        cursor: 'pointer',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleTicker(ticker.symbol);
-                      }}
-                    >
+                  {/* Left: symbol · company name */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13.5, color: '#ffffff' }}>
                       {ticker.symbol}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontWeight: 600,
-                        color: 'var(--faint, #8794a8)',
-                      }}
-                    >
-                      {ticker.shares} sh
-                    </span>
-                    {ticker.hasMultiLot && (
+                    {companyName && (
                       <span
                         style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: '1px 6px',
-                          borderRadius: 999,
-                          background: 'rgba(34,211,238,0.10)',
-                          color: '#22d3ee',
-                          cursor: 'pointer',
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          color: 'var(--dim, #aab4c7)',
                           whiteSpace: 'nowrap',
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleTicker(ticker.symbol);
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          maxWidth: '24ch',
                         }}
                       >
-                        {ticker.activeLots} lots
+                        · {companyName}
                       </span>
                     )}
                   </div>
 
-                  {/* Right: price + PnL + nav-arrow */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      flexShrink: 0,
-                    }}
-                  >
+                  {/* Right: current price + shares + chevron */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 10 }}>
                     <div style={{ textAlign: 'right' }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: '#ffffff',
-                          fontFamily: 'var(--mono-font, monospace)',
-                        }}
-                      >
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--mono-font, monospace)' }}>
                         ${ticker.currentPrice.toFixed(2)}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 600,
-                          color: tPnLColor,
-                        }}
-                      >
-                        {tPnLSign}{Math.abs(ticker.totalPnL).toFixed(0)}
+                      <div style={{ fontSize: 10, color: 'var(--faint, #8794a8)' }}>
+                        {ticker.shares % 1 === 0 ? ticker.shares : ticker.shares.toFixed(4)} sh
                       </div>
                     </div>
-
-                    {/* Nav-arrow: navigates to standalone PositionCardV3 */}
                     <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNavigateToTicker?.(ticker.symbol, ticker);
-                      }}
                       style={{
-                        fontSize: 18,
-                        fontWeight: 700,
-                        color: VIOLET_HEX,
-                        cursor: 'pointer',
+                        color: 'var(--dim, #aab4c7)',
+                        fontSize: 13,
                         lineHeight: 1,
-                        padding: '2px 4px',
-                        opacity: 0.7,
-                        transition: 'opacity 0.15s',
+                        transform: isTickerExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s',
+                        flexShrink: 0,
                       }}
-                      title={`View ${ticker.symbol} details`}
                     >
-                      ›
+                      ▾
                     </span>
                   </div>
                 </div>
 
-                {/* Avg cost sub-row */}
+                {/* Stat grid: Fill/Avg · Today · Total */}
                 <div
                   style={{
-                    fontSize: 10,
-                    color: 'var(--faint, #8794a8)',
-                    marginTop: 3,
-                    display: 'flex',
-                    gap: 12,
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gap: 8,
+                    marginTop: 9,
                   }}
                 >
-                  <span>Avg ${displayAvgCost.toFixed(2)}</span>
-                  <span style={{ color: tPnLColor }}>
-                    {tPnLSign}{ticker.totalPnLPct.toFixed(1)}%
-                  </span>
-                  <span>
-                    PnL {tPnLSign}${Math.abs(ticker.totalPnL).toFixed(2)}
-                  </span>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--faint, #8794a8)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>
+                      {ticker.hasMultiLot ? 'Avg' : 'Fill'}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#ffffff', fontFamily: 'var(--mono-font, monospace)' }}>
+                      ${displayAvgCost.toFixed(2)}
+                    </div>
+                    {ticker.hasMultiLot && (
+                      <div style={{ fontSize: 9.5, color: 'var(--faint, #8794a8)', marginTop: 1 }}>
+                        {ticker.activeLots} lots
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--faint, #8794a8)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>
+                      Today
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: todayColor, fontFamily: 'var(--mono-font, monospace)' }}>
+                      {todaySign}${Math.abs(todayPnL).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: todayColor, marginTop: 1 }}>
+                      {todaySign}{todayPnLPct.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--faint, #8794a8)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>
+                      Total
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: tPnLColor, fontFamily: 'var(--mono-font, monospace)' }}>
+                      {tPnLSign}${Math.abs(ticker.totalPnL).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: tPnLColor, marginTop: 1 }}>
+                      {tPnLSign}{ticker.totalPnLPct.toFixed(2)}%
+                    </div>
+                  </div>
                 </div>
 
-                {/* Inline lot table (when expanded) */}
-                {isTickerExpanded && ticker.lots.length > 0 && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      marginLeft: 4,
-                      background: 'rgba(30,41,59,0.40)',
-                      border: '1px solid rgba(255,255,255,0.06)',
-                      borderRadius: 8,
-                      overflow: 'hidden',
+                {/* Inline standalone detail (accordion) */}
+                {isTickerExpanded && (
+                  <PositionCardV3
+                    inline
+                    pos={inlinePosition}
+                    isSelected={false}
+                    isExpanded={true}
+                    onToggleSelect={() => {}}
+                    onToggleExpand={() => toggleTicker(ticker.symbol)}
+                    onBuy={() => onBuyTicker?.(ticker)}
+                    onSell={(lots) => onSellTicker?.(ticker, lots)}
+                    showCheckbox={false}
+                    basketContext={{
+                      basketId: basket.id,
+                      basketName: basket.name,
+                      basketEmoji: basket.emoji,
                     }}
-                  >
-                    {/* Mini lot header */}
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '2fr 1fr 1fr 1fr',
-                        gap: 3,
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                        fontSize: 8,
-                        fontWeight: 600,
-                        color: 'var(--faint, #8794a8)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                      }}
-                    >
-                      <span>Acquired</span>
-                      <span>Qty</span>
-                      <span>Price</span>
-                      <span>Source</span>
-                    </div>
-
-                    {ticker.lots.map((lot: Lot, li: number) => {
-                      let sourceLabel = lot.source || 'vantage';
-                      if (lot.origin_tag) {
-                        if (lot.origin_tag === 'basket_buy') sourceLabel = 'Basket';
-                        else if (lot.origin_tag === 'buy_more') sourceLabel = 'Buy+';
-                      }
-                      return (
-                        <div
-                          key={lot.id}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '2fr 1fr 1fr 1fr',
-                            gap: 3,
-                            padding: '5px 8px',
-                            borderBottom:
-                              li < ticker.lots.length - 1
-                                ? '1px solid rgba(255,255,255,0.03)'
-                                : 'none',
-                            alignItems: 'center',
-                            fontSize: 10,
-                          }}
-                        >
-                          <div style={{ color: 'var(--faint, #8794a8)' }}>
-                            {formatLotDate(lot.filled_at)}
-                          </div>
-                          <div
-                            style={{
-                              color: '#ffffff',
-                              fontFamily: 'var(--mono-font, monospace)',
-                              fontWeight: 500,
-                              textAlign: 'right',
-                            }}
-                          >
-                            {lot.remaining_qty}
-                          </div>
-                          <div
-                            style={{
-                              color: '#ffffff',
-                              fontFamily: 'var(--mono-font, monospace)',
-                              fontWeight: 500,
-                              textAlign: 'right',
-                            }}
-                          >
-                            ${lot.price_at_fill.toFixed(2)}
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <span
-                              style={{
-                                fontSize: 8,
-                                fontWeight: 600,
-                                padding: '1px 4px',
-                                borderRadius: 4,
-                                background:
-                                  lot.source === 'vantage'
-                                    ? 'rgba(34,211,238,0.10)'
-                                    : 'rgba(139,150,171,0.08)',
-                                color:
-                                  lot.source === 'vantage'
-                                    ? '#22d3ee'
-                                    : 'var(--dim, #aab4c7)',
-                                textTransform: 'capitalize',
-                              }}
-                            >
-                              {sourceLabel}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Loading state for lots */}
-                {isTickerExpanded && lotsLoading && ticker.lots.length === 0 && (
-                  <div style={{ fontSize: 10, color: 'var(--faint, #8794a8)', padding: '6px 8px' }}>
-                    Loading lots…
-                  </div>
-                )}
-
-                {/* No lots message */}
-                {isTickerExpanded && !lotsLoading && ticker.lots.length === 0 && (
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: 'var(--faint, #8794a8)',
-                      padding: '6px 8px',
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    No lot data for this position
-                  </div>
+                    connectionId={connectionId ?? null}
+                  />
                 )}
               </div>
             );

@@ -926,14 +926,6 @@ export function PortfolioTab() {
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [expandedBasketIds, setExpandedBasketIds] = useState<Set<string>>(new Set());
-  // Phase 4: Basket ticker navigation state
-  const [navigatingBasketTicker, setNavigatingBasketTicker] = useState<{
-    symbol: string;
-    basketId: string;
-    basketName: string;
-    basketEmoji: string;
-    tickerData: any;
-  } | null>(null);
   const briefsRef = useRef<HTMLDivElement>(null);
   const [tradeTicket, setTradeTicket] = useState<{
     symbol: string; side: 'BUY' | 'SELL'; currentPrice: number;
@@ -1059,6 +1051,15 @@ export function PortfolioTab() {
 
   // ── Derived values ──
   const displayPositions = enrichedPositions.length > 0 ? enrichedPositions : positions;
+
+  // Symbol → hydrated company name (used to enrich basket position rows).
+  const nameBySymbol = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of enrichedPositions) {
+      if (p.name && p.name !== p.symbol) m.set(p.symbol, p.name);
+    }
+    return m;
+  }, [enrichedPositions]);
 
   const totalMarketValue = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * (p.currentPrice || p.avgCost), 0);
   const totalCost = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * p.avgCost, 0);
@@ -1428,7 +1429,9 @@ export function PortfolioTab() {
                       marketValue: p.marketValue,
                       totalPnL: p.totalPnL,
                       totalPnLPct: p.totalPnLPct,
-                      name: p.name,
+                      dailyPnL: p.dailyPnL ?? 0,
+                      dailyPnLPct: p.dailyPnLPct ?? 0,
+                      name: nameBySymbol.get(p.symbol) || p.name || p.symbol,
                       status: p.status,
                       sector: p.sector,
                     })),
@@ -1436,6 +1439,8 @@ export function PortfolioTab() {
                     marketValue: basket.marketValue,
                     totalPnL: basket.totalPnL,
                     totalPnLPct: basket.totalPnLPct,
+                    dailyPnL: basket.dailyPnL ?? 0,
+                    dailyPnLPct: basket.dailyPnLPct ?? 0,
                     activeCount: basket.activeCount,
                     status: basket.status,
                   }}
@@ -1468,13 +1473,23 @@ export function PortfolioTab() {
                     // Phase 6: Open basket-level Sell ticket
                     setBasketSellTicket({ basketId: basket.id });
                   }}
-                  onNavigateToTicker={(symbol: string, tickerData: any) => {
-                    setNavigatingBasketTicker({
-                      symbol,
-                      basketId: basket.id,
-                      basketName: basket.name,
-                      basketEmoji: basket.emoji || '🧺',
-                      tickerData,
+                  onBuyTicker={(ticker) => {
+                    setTradeTicket({
+                      symbol: ticker.symbol,
+                      side: 'BUY',
+                      currentPrice: ticker.currentPrice ?? ticker.avgCost,
+                      sharesHeld: ticker.shares,
+                      availableCash: computeAvailableCash(displayAccount),
+                    });
+                  }}
+                  onSellTicker={(ticker, lots) => {
+                    setTradeTicket({
+                      symbol: ticker.symbol,
+                      side: 'SELL',
+                      currentPrice: ticker.currentPrice ?? ticker.avgCost,
+                      sharesHeld: ticker.shares,
+                      availableCash: 0,
+                      lots,
                     });
                   }}
                   connectionId={null}
@@ -1485,91 +1500,24 @@ export function PortfolioTab() {
             {/* Individual stocks NOT in any basket */}
             {filteredPositions
               .filter((pos: any) => !basketSymbolMap.has(pos.symbol))
-              .map((pos: any) => {
-                // Phase 4: Check if this position is being navigated to from a basket
-                const isBasketNavigated = navigatingBasketTicker && navigatingBasketTicker.symbol === pos.symbol;
-
-                if (isBasketNavigated && navigatingBasketTicker) {
-                  return (
-                    <div key={`basket-nav-${pos.symbol}`} style={{ marginBottom: 8 }}>
-                      {/* Back row */}
-                      <div
-                        onClick={() => setNavigatingBasketTicker(null)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '8px 14px',
-                          margin: '0 14px 4px',
-                          cursor: 'pointer',
-                          color: 'var(--violet, #b389f0)',
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}
-                      >
-                        <span style={{ fontSize: 14 }}>←</span>
-                        <span>{navigatingBasketTicker.basketName}</span>
-                      </div>
-
-                      {/* PositionCardV3 with basketContext */}
-                      <PositionCardV3
-                        key={pos.symbol}
-                        pos={pos}
-                        isSelected={selectedSymbols.has(pos.symbol)}
-                        isExpanded={true}
-                        onToggleSelect={() => toggleSelect(pos.symbol)}
-                        onToggleExpand={() => toggleExpand(pos.symbol)}
-                        onBuy={() => {
-                          setTradeTicket({
-                            symbol: pos.symbol,
-                            side: 'BUY',
-                            currentPrice: pos.currentPrice ?? pos.avgCost,
-                            sharesHeld: pos.qty,
-                            availableCash: computeAvailableCash(displayAccount),
-                          });
-                        }}
-                        onSell={(lots) =>
-                          setTradeTicket({
-                            symbol: pos.symbol,
-                            side: 'SELL',
-                            currentPrice: pos.currentPrice ?? pos.avgCost,
-                            sharesHeld: pos.qty,
-                            availableCash: 0,
-                            lots,
-                          })
-                        }
-                        showCheckbox={selectMode}
-                        basketContext={{
-                          basketId: navigatingBasketTicker.basketId,
-                          basketName: navigatingBasketTicker.basketName,
-                          basketEmoji: navigatingBasketTicker.basketEmoji,
-                        }}
-                        connectionId={null}
-                        brokerLabel={brokerLabel}
-                      />
-                    </div>
-                  );
-                }
-
-                return (
-                  <PositionCardV3
-                    key={pos.symbol}
-                    pos={pos}
-                    isSelected={selectedSymbols.has(pos.symbol)}
-                    isExpanded={expandedSymbols.has(pos.symbol)}
-                    onToggleSelect={() => toggleSelect(pos.symbol)}
-                    onToggleExpand={() => toggleExpand(pos.symbol)}
-                    onBuy={() => {
-                      console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
-                      setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
-                    }}
-                    onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
-                    showCheckbox={selectMode}
-                    connectionId={null}
-                    brokerLabel={brokerLabel}
-                  />
-                );
-              })}
+              .map((pos: any) => (
+                <PositionCardV3
+                  key={pos.symbol}
+                  pos={pos}
+                  isSelected={selectedSymbols.has(pos.symbol)}
+                  isExpanded={expandedSymbols.has(pos.symbol)}
+                  onToggleSelect={() => toggleSelect(pos.symbol)}
+                  onToggleExpand={() => toggleExpand(pos.symbol)}
+                  onBuy={() => {
+                    console.log('[BUY] setTradeTicket firing for', pos.symbol, 'cash:', displayAccount?.cash);
+                    setTradeTicket({ symbol: pos.symbol, side: 'BUY', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: computeAvailableCash(displayAccount) });
+                  }}
+                  onSell={(lots) => setTradeTicket({ symbol: pos.symbol, side: 'SELL', currentPrice: pos.currentPrice ?? pos.avgCost, sharesHeld: pos.qty, availableCash: 0, lots })}
+                  showCheckbox={selectMode}
+                  connectionId={null}
+                  brokerLabel={brokerLabel}
+                />
+              ))}
 
             {/* No items at all */}
             {allBasketRows.length === 0 && filteredPositions.filter((pos: any) => !basketSymbolMap.has(pos.symbol)).length === 0 && (
