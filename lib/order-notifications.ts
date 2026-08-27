@@ -28,8 +28,6 @@ import {
 } from '@/lib/order-format';
 import type { OrderEmailEvent, BasketOrderEvent } from '@/lib/order-emails';
 
-const ACTION_URL = '/?tab=invest';
-
 /** Compact requested label: "authoritative (derived)" — e.g. "$1,000.00 (≈3.27 shares est.)". */
 function requestedLabel(f: RequestedFields): string {
   const auth = authoritativeRequested(f);
@@ -157,7 +155,6 @@ export async function notifyOrderNotification(
       type,
       title,
       message,
-      action_url: ACTION_URL,
       is_read: false,
       created_at: new Date().toISOString(),
     });
@@ -183,6 +180,23 @@ const BASKET_BELL_EMOJI: Record<BasketOrderEvent['event'], string> = {
   partially_filled: '⏳',
   cancelled: '❌',
 };
+
+/**
+ * Recover the basket name from a bell title like
+ * "⏳ Humanoid Robotics Revolution - 08262026 — Basket Partially Filled"
+ * (or "📊 ⛏️ Critical Minerals Supply Chain … — Basket Submitted" when the
+ * basket name itself is emoji-prefixed). The name sits between the leading
+ * bell emoji and the trailing " — <status>" separator, so we take everything
+ * after the FIRST space and before the LAST " — ". Returns null when the
+ * title has no " — " separator (i.e. not a basket row).
+ */
+function basketNameFromTitle(title: string): string | null {
+  const sep = title.lastIndexOf(' — ');
+  if (sep === -1) return null;
+  const firstSpace = title.indexOf(' ');
+  const start = firstSpace === -1 ? 0 : firstSpace + 1;
+  return title.slice(start, sep).trim();
+}
 
 /**
  * Basket bell notification — a SINGLE basket-level row (name + status + count
@@ -230,17 +244,47 @@ export async function notifyBasketNotification(
     // Basket-level notification ONLY — a single summary row. The individual
     // stock legs are intentionally NOT written to the bell: a basket surfaces
     // as one unit (name + status + count + total), never as flat per-order rows.
-    const rows: Array<Record<string, unknown>> = [{
-      user_id: userId,
+    //
+    // One basket = one alert: each lifecycle transition (submitted →
+    // partially_filled → filled) REPLACES the prior row for the same basket
+    // (matched by its unique name) instead of stacking three separate alerts.
+    const row = {
       type: `basket_${event.event}`,
       title: `${BASKET_BELL_EMOJI[event.event]} ${name} — ${BASKET_BELL_LABEL[event.event]}`,
       message: `${positions.length} stock${positions.length === 1 ? '' : 's'}${total > 0 ? ` · ${fmtDollars(total)}` : ''} · ${event.brokerName}`,
-      action_url: ACTION_URL,
       is_read: false,
       created_at: new Date().toISOString(),
-    }];
+    };
 
-    const { error } = await supabase.from('recent_notifications').insert(rows);
+    // Drop any existing alert for THIS basket before writing the updated state.
+    const { data: existingBaskets } = await supabase
+      .from('recent_notifications')
+      .select('id, type, title')
+      .eq('user_id', userId)
+      .like('type', 'basket%');
+
+    const dupeIds: string[] = (existingBaskets || [])
+      .filter(
+        (r: any) =>
+          String(r.type || '').startsWith('basket_') &&
+          basketNameFromTitle(String(r.title || '')) === name,
+      )
+      .map((r: any) => r.id as string);
+
+    if (dupeIds.length > 0) {
+      const { error: delErr } = await supabase
+        .from('recent_notifications')
+        .delete()
+        .in('id', dupeIds);
+      if (delErr) {
+        console.error('[order-notification] Basket dedupe delete failed:', delErr.message);
+      }
+    }
+
+    const { error } = await supabase.from('recent_notifications').insert({
+      ...row,
+      user_id: userId,
+    });
     if (error) {
       console.error('[order-notification] Basket insert failed:', error.message);
     }
