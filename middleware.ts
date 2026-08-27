@@ -73,8 +73,12 @@ export async function middleware(request: NextRequest) {
 
   // ═══════════════════════════════════════════════════════════════
   // 1. CANONICAL DOMAIN REDIRECT
+  //    (skipped for /api/* — Vercel Cron invokes routes on the
+  //    deployment hostname, not the canonical alias, so redirecting
+  //    API/cron requests with 308 would break scheduled jobs)
   // ═══════════════════════════════════════════════════════════════
   if (
+    !pathname.startsWith('/api/') &&
     hostname !== CANONICAL_HOST &&
     !hostname.includes('localhost') &&
     hostname !== '127.0.0.1'
