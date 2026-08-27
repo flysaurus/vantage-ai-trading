@@ -249,7 +249,6 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
       <div className="min-h-screen bg-slate-900 max-w-lg mx-auto">
         {/* Header */}
         <div className="px-4 py-4 flex items-center gap-3 border-b border-slate-800">
-          <div className="text-2xl">{basket.emoji}</div>
           <div className="flex-1">
             <h1 className="text-white font-semibold text-base">{basket.name}</h1>
             <p className="text-slate-300 text-xs">
@@ -336,7 +335,6 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
         <button onClick={() => router.back()} className="text-slate-300 hover:text-white p-1 -ml-1">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="text-2xl">{basket.emoji}</div>
         <div>
           <h1 className="text-white font-semibold text-base">{basket.name}</h1>
           <p className="text-slate-300 text-xs">
@@ -574,7 +572,6 @@ export default function BasketOrderPage({ params }: { params: Promise<{ id: stri
           <div className="bg-slate-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto border border-slate-700">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <span className="text-2xl">{basket.emoji}</span>
                 <div>
                   <h2 className="text-white font-semibold">Confirm Orders</h2>
                   <p className="text-slate-300 text-xs">{activeOrders.length} order{activeOrders.length > 1 ? 's' : ''} · {basket.name}</p>

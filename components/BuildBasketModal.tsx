@@ -2378,7 +2378,6 @@ export default function BuildBasketModal({ isOpen, onClose, onBasketGenerated, e
                 paddingBottom: '12px',
                 borderBottom: '1px solid rgba(255,255,255,0.06)',
               }}>
-                <span style={{ fontSize: '24px' }}>{basketResult.basketEmoji}</span>
                 <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '18px' }}>{basketResult.basketName}</span>
                 {(basketResult as any).status === 'OPEN' && (
                   <span style={{

@@ -1587,7 +1587,6 @@ export function TradeTab() {
                     >
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '18px' }}>{group.basketEmoji}</span>
                           <span style={{ color: '#ffffff', fontWeight: '700', fontSize: '15px' }}>
                             {group.basketName}
                           </span>
