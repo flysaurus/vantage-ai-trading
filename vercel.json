@@ -55,7 +55,7 @@
       "maxDuration": 55
     },
     "app/api/baskets/generate/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "app/api/ai/weekly-snapshot/route.ts": {
       "maxDuration": 60
