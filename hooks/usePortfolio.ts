@@ -514,9 +514,13 @@ export function usePortfolio() {
 
       console.error('[usePortfolio] SUCCESS — positions:', positions.length, 'account equity:', accountSummary.equity);
 
-      // Sync broker positions to Supabase for AI routes (daily-brief, weekly-snapshot)
-      if (brokerPositions.length > 0 && isConnected) {
-        apiPost('/api/positions/sync', { positions: brokerPositions }).catch((e) =>
+      // Sync broker positions to Supabase for AI routes (daily-brief, weekly-snapshot).
+      // Always sync (even empty) so a sell-to-zero clears stale rows in the positions table.
+      if (isConnected) {
+        apiPost('/api/positions/sync', {
+          positions: brokerPositions,
+          connectionId: connectionId || undefined,
+        }).catch((e) =>
           console.warn('[usePortfolio] positions sync skipped:', e?.message)
         );
       }

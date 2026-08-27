@@ -61,21 +61,22 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     }));
 
+    // Always delete this connection's live positions, then insert fresh.
+    // (Even an empty positions array must clear stale rows after a sell-to-zero.)
+    await (supabase as any)
+      .from('positions')
+      .delete()
+      .eq('user_id', userId)
+      .eq('is_demo', false)
+      .eq('connection_id', resolvedConnectionId);
+
     if (rows.length > 0) {
-      // Delete ONLY this connection's live positions, then insert fresh.
-      await (supabase as any)
-        .from('positions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('is_demo', false)
-        .eq('connection_id', resolvedConnectionId);
-      
       await (supabase as any)
         .from('positions')
         .insert(rows.map(r => ({ ...r, is_demo: false })));
-
-      console.log(`[positions/sync] Synced ${rows.length} broker positions for user ${userId.slice(0, 8)} connection ${resolvedConnectionId.slice(0, 8)}`);
     }
+
+    console.log(`[positions/sync] Synced ${rows.length} broker positions for user ${userId.slice(0, 8)} connection ${resolvedConnectionId.slice(0, 8)}`);
 
     return NextResponse.json({ synced: rows.length });
   } catch (err: any) {

@@ -35,13 +35,22 @@ interface RequestBody {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-function metricsHash(triggers: ReturnType<typeof evaluateRiskTriggers>): string {
-  const compact = triggers.map((t) => ({
-    type: t.type,
-    severity: t.severity,
-    metrics: t.metrics,
-  }));
-  return createHash('sha256').update(JSON.stringify(compact, Object.keys(compact).sort())).digest('hex');
+function metricsHash(
+  triggers: ReturnType<typeof evaluateRiskTriggers>,
+  positions: PositionPayload[],
+): string {
+  // Include the sorted symbol list so ANY ticker change invalidates the cache —
+  // otherwise selling one set of names and buying others within the same rounded
+  // sector % keeps the same hash and serves a stale, symbol-specific narrative.
+  const compact = {
+    symbols: positions.map((p) => p.symbol.toUpperCase()).sort(),
+    triggers: triggers.map((t) => ({
+      type: t.type,
+      severity: t.severity,
+      metrics: t.metrics,
+    })),
+  };
+  return createHash('sha256').update(JSON.stringify(compact)).digest('hex');
 }
 
 function buildPrompt(triggers: ReturnType<typeof evaluateRiskTriggers>, metrics: ReturnType<typeof computeRiskMetrics>): string {
@@ -141,7 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // ── Build cache key ──
-    const hash = metricsHash(triggers);
+    const hash = metricsHash(triggers, body.positions);
 
     // ── Check ai_facts for existing narrative ──
     const supabase = createServerClient();
