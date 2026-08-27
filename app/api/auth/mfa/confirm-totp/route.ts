@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { verifyTotpToken } from '@/lib/totp';
 import { generateBackupCodes } from '@/lib/backup-codes';
+import { decryptTotpSecret } from '@/lib/vault';
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'MFA is already enabled' }, { status: 400 });
     }
 
-    const secret = userRows[0].totp_secret;
+    const secret = decryptTotpSecret(userId, userRows[0].totp_secret);
     if (!secret) {
       return NextResponse.json({ error: 'No TOTP setup in progress. Start setup first.' }, { status: 400 });
     }

@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { verifyTotpToken } from '@/lib/totp';
 import { verifyBackupCode } from '@/lib/backup-codes';
+import { decryptTotpSecret } from '@/lib/vault';
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -75,10 +76,11 @@ export async function POST(req: NextRequest) {
 
     // ── TOTP verification ──────────────────────────────
     if (user.mfa_method === 'totp' && !isBackupCode) {
-      if (!user.totp_secret) {
+      const secret = decryptTotpSecret(userId, user.totp_secret);
+      if (!secret) {
         return NextResponse.json({ error: 'TOTP not configured. Contact support.' }, { status: 500 });
       }
-      verified = await verifyTotpToken(user.totp_secret, cleanCode);
+      verified = await verifyTotpToken(secret, cleanCode);
     }
 
     // ── Backup code verification ───────────────────────

@@ -4,7 +4,7 @@
 // interaction — Supabase never sees plaintext keys.
 //
 // Each user's credentials are encrypted with a per-user derived key:
-//   SHA-256(userId + VAULT_ENCRYPTION_KEY)
+//   HKDF-SHA256(ikm = VAULT_ENCRYPTION_KEY, salt = app salt, info = userId)
 //
 // CRITICAL: Decrypted credentials must NEVER leave the server.
 // Only broker proxy/session endpoints decrypt internally.
@@ -21,8 +21,64 @@ const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 const ALGORITHM = 'aes-256-gcm';
 
+const HKDF_SALT = 'vantage:vault:v1:salt';
+const HKDF_INFO_PREFIX = 'vantage:vault:v1:';
+
+/**
+ * Read and decode the master encryption key.
+ *
+ * THROWS if VAULT_ENCRYPTION_KEY is unset. There is deliberately no fallback
+ * key — silently encrypting with a hardcoded key is a catastrophic-but-invisible
+ * failure mode and must be impossible.
+ *
+ * Accepts a 64-char hex string (from `openssl rand -hex 32`) or a raw
+ * passphrase string.
+ */
+function getMasterKey(): Buffer {
+  const secret = process.env.VAULT_ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error(
+      'VAULT_ENCRYPTION_KEY is not set. Refusing to encrypt/decrypt with a fallback key. ' +
+        'Set VAULT_ENCRYPTION_KEY (openssl rand -hex 32) in the environment.',
+    );
+  }
+  if (/^[0-9a-fA-F]{64}$/.test(secret)) {
+    return Buffer.from(secret, 'hex');
+  }
+  return Buffer.from(secret, 'utf8');
+}
+
+/**
+ * Per-user derived key via HKDF-SHA256.
+ *
+ * IKM  = master key (32 random bytes)
+ * salt = fixed application salt (domain separation)
+ * info = userId (per-user domain separation)
+ */
 export function deriveUserKey(userId: string): Buffer {
-  const secret = process.env.VAULT_ENCRYPTION_KEY || 'dev-encryption-key-change-me';
+  const masterKey = getMasterKey();
+  const derived = crypto.hkdfSync(
+    'sha256',
+    masterKey,
+    Buffer.from(HKDF_SALT, 'utf8'),
+    Buffer.from(HKDF_INFO_PREFIX + userId, 'utf8'),
+    32,
+  );
+  return Buffer.from(derived);
+}
+
+/**
+ * LEGACY derivation: SHA-256(userId + VAULT_ENCRYPTION_KEY) — the pre-HKDF
+ * scheme. Kept ONLY to decrypt rows encrypted before the HKDF migration
+ * (via decryptDataCompat) and by the one-time re-encryption script.
+ *
+ * DO NOT use for new encryption. New encryption always uses deriveUserKey().
+ */
+export function deriveUserKeyLegacy(userId: string): Buffer {
+  const secret = process.env.VAULT_ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error('VAULT_ENCRYPTION_KEY is not set — cannot derive legacy key.');
+  }
   return crypto.createHash('sha256').update(userId + secret).digest();
 }
 
@@ -43,6 +99,55 @@ export function decryptData(payload: string, key: Buffer): string {
   const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(iv, 'base64'), { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(Buffer.from(authTag, 'base64'));
   return decipher.update(encrypted, 'base64', 'utf8') + decipher.final('utf8');
+}
+
+/**
+ * Encrypt a per-user secret with the user's HKDF-derived key.
+ * Returns the same JSON payload shape used by encryptData.
+ */
+export function encryptForUser(userId: string, plaintext: string): string {
+  return encryptData(plaintext, deriveUserKey(userId));
+}
+
+/**
+ * Decrypt a per-user secret with the user's HKDF-derived key.
+ */
+export function decryptForUser(userId: string, payload: string): string {
+  return decryptData(payload, deriveUserKey(userId));
+}
+
+/**
+ * Decrypt a per-user secret, falling back to the legacy SHA-256 derivation.
+ * Transition helper: lets pre-migration rows decrypt until the re-encryption
+ * script runs. Once migration is complete, the legacy branch is never hit.
+ * New encryption always uses HKDF (deriveUserKey).
+ */
+export function decryptDataCompat(payload: string, userId: string): string {
+  try {
+    return decryptData(payload, deriveUserKey(userId));
+  } catch (hkdfErr) {
+    try {
+      return decryptData(payload, deriveUserKeyLegacy(userId));
+    } catch {
+      throw hkdfErr;
+    }
+  }
+}
+
+/**
+ * Decrypt a stored TOTP secret, transparently handling the legacy plaintext
+ * format (pre-encryption rows) so the migration is zero-downtime.
+ *
+ * - null / empty → null
+ * - legacy plaintext base32 (does not start with `{"encrypted"`) → returned as-is
+ * - encrypted JSON payload → decrypted with the user's HKDF-derived key
+ */
+export function decryptTotpSecret(userId: string, stored: string | null): string | null {
+  if (!stored) return null;
+  if (!stored.startsWith('{"encrypted"')) {
+    return stored; // legacy plaintext base32 secret
+  }
+  return decryptData(stored, deriveUserKey(userId));
 }
 
 // ─── Store Credentials ────────────────────────────────────────

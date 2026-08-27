@@ -12,6 +12,7 @@
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { encryptUserSecret } from '@/lib/snaptrade/client';
 
 const SNAPTRADE_API = 'https://api.snaptrade.com/api/v1';
 
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
   // Hoist these so they're available in both try and catch blocks
   let snapTradeUserId = authUser.id;
   let snapTradeUserSecret = authUser.id;
-  let encryptedSecret: string | null = authUser.id; // fallback
+  let encryptedSecret: string | null = encryptUserSecret(authUser.id, authUser.id); // fallback (dev mock)
 
   try {
     const headers = getSnapTradeHeaders();
@@ -94,8 +95,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Store the user secret (Supabase encrypts at rest; vault encryption on read)
-    encryptedSecret = snapTradeUserSecret;
+    // Store the user secret (AES-256-GCM, per-user key — never plaintext)
+    encryptedSecret = encryptUserSecret(authUser.id, snapTradeUserSecret);
 
     // Step 2: Get login link URI
     const linkRes = await fetch(`${SNAPTRADE_API}/snap_trade/login`, {

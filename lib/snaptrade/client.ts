@@ -12,7 +12,7 @@
 //   listAccounts(connectionId, userId, userSecret) → [{ id, name, ... }]
 
 import { snapTradeFetch } from './auth';
-import { decryptData, encryptData, deriveUserKey } from '@/lib/vault';
+import { decryptDataCompat, encryptData, deriveUserKey } from '@/lib/vault';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -242,8 +242,7 @@ export async function getOrCreateSnapTradeUser(
   // If we already have a SnapTrade user, decrypt the secret
   if (existingSnapUserId && existingSecretEncrypted) {
     try {
-      const key = deriveUserKey(vantageUserId);
-      const userSecret = decryptData(existingSecretEncrypted, key);
+      const userSecret = decryptDataCompat(existingSecretEncrypted, vantageUserId);
       return { userId: existingSnapUserId, userSecret, isNew: false };
     } catch (err) {
       // Decryption failed — re-register

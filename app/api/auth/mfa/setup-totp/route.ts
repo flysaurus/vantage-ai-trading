@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { generateTotpSecret } from '@/lib/totp';
+import { encryptForUser } from '@/lib/vault';
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     // Store secret + mark method (not enabled yet)
     const { error } = await sb.from('users').update({
       mfa_method: 'totp',
-      totp_secret: setup.secret,
+      totp_secret: encryptForUser(userId, setup.secret),
       // mfa_enabled stays false until confirmed
     }).eq('id', userId);
 

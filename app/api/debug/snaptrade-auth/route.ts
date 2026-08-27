@@ -19,7 +19,7 @@ import { createServerClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { snapTradeFetch } from '@/lib/snaptrade/auth';
 import { registerSnapTradeUser } from '@/lib/snaptrade/client';
-import { decryptData, deriveUserKey } from '@/lib/vault';
+import { decryptDataCompat } from '@/lib/vault';
 
 async function testPair(
   label: string,
@@ -107,8 +107,7 @@ export async function GET(req: NextRequest) {
 
   // ── B: stored userId + decrypted stored value (treat as encrypted) ──
   try {
-    const key = deriveUserKey(vantageUserId);
-    const decrypted = decryptData(storedSecretRaw, key);
+    const decrypted = decryptDataCompat(storedSecretRaw, vantageUserId);
     const b = await testPair('B_decrypted_stored', storedUserId, decrypted);
     tests.push(b);
   } catch (e) {
