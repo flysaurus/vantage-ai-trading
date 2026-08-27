@@ -326,6 +326,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [demoOrders, setDemoOrders] = useState<DemoOrder[]>(initialPersistedState?.orders || []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [baskets, setBaskets] = useState<Basket[]>([]);
+  const basketsRef = useRef<Basket[]>([]);
+  useEffect(() => { basketsRef.current = baskets; }, [baskets]);
   const [basketOrders, setBasketOrders] = useState<any[]>([]);
   const [pendingBaskets, setPendingBaskets] = useState<any[]>([]);
 
@@ -1364,10 +1366,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    if (baskets.length > 0) {
-      refreshBasketPrices(baskets);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const tick = () => {
+      const current = basketsRef.current;
+      if (current.length > 0) refreshBasketPrices(current);
+    };
+    tick(); // initial enrichment on mount
+    const interval = setInterval(tick, 60000); // keep Today/Total live (matches Market Overview cadence)
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps (refreshBasketPrices is stable: useCallback [])
 
   // ── refreshBasketPrices (direct Finnhub quotes for basket positions) ──
   const refreshBasketPrices = useCallback(async (basketList: Basket[]) => {
@@ -1411,10 +1417,16 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         const marketValue = pos.shares * currentPrice;
         const totalPnL = marketValue - pos.totalCost;
         const totalPnLPct = pos.totalCost > 0 ? (totalPnL / pos.totalCost) * 100 : 0;
-        const dailyPnL = pos.shares * (quote.d || 0);
-        const dailyPnLPct = typeof quote.dp === 'number' && isFinite(quote.dp)
-          ? quote.dp
-          : (quote.pc > 0 ? (quote.d / quote.pc) * 100 : 0);
+        // "Today" = shares × (current − previousClose); fall back to Finnhub d/dp
+        // when c/pc are missing (mirrors server-side lib/finnhub-quote.ts).
+        const prevClose = quote.pc || 0;
+        const dayChangePerUnit = (currentPrice > 0 && prevClose > 0)
+          ? (currentPrice - prevClose)
+          : (quote.d || 0);
+        const dailyPnL = pos.shares * dayChangePerUnit;
+        const dailyPnLPct = prevClose > 0
+          ? ((currentPrice - prevClose) / prevClose) * 100
+          : (typeof quote.dp === 'number' && isFinite(quote.dp) ? quote.dp : 0);
         return { ...pos, currentPrice, marketValue, totalPnL, totalPnLPct, dailyPnL, dailyPnLPct };
       });
 

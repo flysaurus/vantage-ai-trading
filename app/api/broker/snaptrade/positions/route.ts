@@ -11,6 +11,7 @@ import {
   SnapTradeAmbiguousError,
 } from '@/lib/snaptrade/client';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
+import { fetchFinnhubQuotes, positionDayChange } from '@/lib/finnhub-quote';
 import { createTtlCache } from '@/lib/ttl-cache';
 
 export interface SnapTradePosition {
@@ -104,6 +105,15 @@ export async function GET(req: NextRequest) {
       } else {
         console.error(`[snaptrade/positions] fetch failed:`, (r.reason as Error)?.message);
       }
+    }
+
+    // ── Enrich "Today" P&L from Finnhub ───────────────────
+    // Same back-fill as the account route: SnapTrade has no day-gain field.
+    const quoteMap = await fetchFinnhubQuotes(allPositions.map((p) => p.symbol));
+    for (const pos of allPositions) {
+      const { dayChange, dayChangePct } = positionDayChange(pos.units, quoteMap[pos.symbol]);
+      pos.dayChange = dayChange;
+      pos.dayChangePct = dayChangePct;
     }
 
     return allPositions;

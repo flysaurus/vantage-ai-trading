@@ -17,6 +17,7 @@ import {
 } from '@/lib/snaptrade/client';
 import { computeAccountSummary, type PositionInput } from '@/lib/broker/account-summary';
 import { extractPositionTicker, extractPositionName } from '@/lib/snaptrade/mapping';
+import { fetchFinnhubQuotes, positionDayChange } from '@/lib/finnhub-quote';
 import { createTtlCache } from '@/lib/ttl-cache';
 
 // ─── Dev mode — synthetic data ────────────────────────────
@@ -163,6 +164,17 @@ export async function GET(req: NextRequest) {
         }
       }
       allPositions.push(...normalisePositions(rawPositions));
+    }
+
+    // ── Enrich "Today" P&L from Finnhub ───────────────────
+    // SnapTrade positions expose open_pnl only (no day_gain/day_change), so
+    // day change = units × (current − previousClose) comes from the same
+    // Finnhub feed used by Market Overview + basket cards.
+    const quoteMap = await fetchFinnhubQuotes(allPositions.map((p) => p.symbol));
+    for (const pos of allPositions) {
+      const { dayChange, dayChangePct } = positionDayChange(pos.units, quoteMap[pos.symbol]);
+      pos.dayChange = dayChange;
+      pos.dayChangePct = dayChangePct;
     }
 
     // ── Step C: Compute using SHARED function ──────────
