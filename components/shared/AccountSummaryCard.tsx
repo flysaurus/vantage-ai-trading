@@ -36,7 +36,7 @@ export function AccountSummaryCard({ account }: { account: AccountSummary }) {
   return (
     <div className="card">
       <div>
-        <p className="text-slate-300 text-xs tracking-widest uppercase font-medium mb-1">Account Value</p>
+        <p className="text-slate-300 text-xs tracking-widest uppercase font-medium mb-1">Portfolio Value</p>
         <div className="flex items-center justify-between">
           <p className="text-white font-bold text-4xl tracking-tight">${account.equity.toLocaleString('en-US', DOLLAR_FMT)}</p>
           {styleDef && (

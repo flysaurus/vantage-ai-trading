@@ -103,7 +103,7 @@ function AccountHero({ account, isConnected }: { account: AccountSummary; isConn
       </span>
 
       {/* Label */}
-      <div className="hero-label">Account Value</div>
+      <div className="hero-label">Portfolio Value</div>
 
       {/* Hero number */}
       <div>
@@ -837,83 +837,6 @@ function BuyingPowerCard({ account, invested }: { account: AccountSummary; inves
   );
 }
 
-// ─── Portfolio Summary Sticky Footer ──────────────────────
-
-function PortfolioFooter({
-  totalMarketValue,
-  totalTodayPnL,
-  totalTotalPnL,
-  totalTotalPnLPct,
-}: {
-  totalMarketValue: number;
-  totalTodayPnL: number;
-  totalTotalPnL: number;
-  totalTotalPnLPct: number;
-}) {
-  return (
-    <div style={{
-      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-      background: 'rgba(10,15,30,0.95)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      borderTop: '1px solid rgba(255,255,255,0.06)',
-      padding: '12px 20px',
-      paddingBottom: 'calc(12px + env(safe-area-inset-bottom) + 64px)',
-      display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-    }}>
-      {/* Market Value */}
-      <div style={{ textAlign: 'center' }}>
-        <div className="section-label" style={{ fontSize: 10, letterSpacing: '0.08em', marginBottom: 2 }}>
-          Market Value
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16, color: '#ffffff',
-        }}>
-          {totalMarketValue >= 10000
-            ? `$${(totalMarketValue / 1000).toFixed(1)}K`
-            : `$${totalMarketValue.toFixed(0)}`}
-        </div>
-      </div>
-
-      {/* Today P&L */}
-      <div style={{ textAlign: 'center' }}>
-        <div className="section-label" style={{ fontSize: 10, letterSpacing: '0.08em', marginBottom: 2 }}>
-          Today
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,
-          color: totalTodayPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
-        }}>
-          {totalTodayPnL >= 0 ? '+' : ''}
-          {Math.abs(totalTodayPnL) >= 10000
-            ? `$${(Math.abs(totalTodayPnL) / 1000).toFixed(1)}K`
-            : `$${Math.abs(totalTodayPnL).toFixed(0)}`}
-        </div>
-      </div>
-
-      {/* Total P&L */}
-      <div style={{ textAlign: 'center' }}>
-        <div className="section-label" style={{ fontSize: 10, letterSpacing: '0.08em', marginBottom: 2 }}>
-          Total
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,
-          color: totalTotalPnL >= 0 ? 'var(--gain)' : 'var(--loss)',
-        }}>
-          {totalTotalPnL >= 0 ? '+' : ''}
-          {Math.abs(totalTotalPnL) >= 10000
-            ? `$${(Math.abs(totalTotalPnL) / 1000).toFixed(1)}K`
-            : `$${Math.abs(totalTotalPnL).toFixed(0)}`}
-          {' '}
-          <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.7 }}>
-            ({totalTotalPnLPct >= 0 ? '+' : ''}{totalTotalPnLPct.toFixed(1)}%)
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main PortfolioTab ───────────────────────────────────
 
 export function PortfolioTab() {
@@ -1061,17 +984,18 @@ export function PortfolioTab() {
     return m;
   }, [enrichedPositions]);
 
-  const totalMarketValue = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * (p.currentPrice || p.avgCost), 0);
-  const totalCost = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * p.avgCost, 0);
-  const cashBalance = Math.max(0, 100000 - totalCost);
-  const correctEquity = totalMarketValue + cashBalance;
-  const totalTodayPnL = displayPositions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
-  const totalTotalPnL = displayPositions.reduce((acc: number, p: Position) => {
-    const mv = p.qty * (p.currentPrice ?? p.avgCost);
-    return acc + (mv - (p.totalCost ?? p.qty * p.avgCost));
-  }, 0);
-  const totalCostBasis = displayPositions.reduce((acc: number, p: Position) => acc + (p.totalCost ?? p.qty * p.avgCost), 0);
-  const totalTotalPnLPct = totalTotalPnL / 100000 * 100; // % of $100K starting capital
+  // Invested = sum of per-position MARKET VALUE. Broker-authoritative when present
+  // (Position.marketValue), falling back to price×qty only for transient demo rows.
+  // Used solely for the Cash/Reserved/Invested invariant. Equity/Today/Total are
+  // read from `accountData` (single source of truth) — never re-summed here.
+  const investedValue = displayPositions.reduce((acc: number, p: Position) => acc + (p.marketValue || p.qty * (p.currentPrice || p.avgCost)), 0);
+
+  // Demo-only fallbacks (only reached while the demo account is still loading).
+  // Demo genuinely starts at $100K, so these are correct for the demo path only.
+  const demoTotalCost = displayPositions.reduce((acc: number, p: Position) => acc + p.qty * p.avgCost, 0);
+  const demoCashBalance = Math.max(0, 100000 - demoTotalCost);
+  const demoEquity = investedValue + demoCashBalance;
+  const demoTodayPnL = displayPositions.reduce((acc: number, p: Position) => acc + (p.dayChange || 0), 0);
 
   const filteredPositions = useMemo(() => {
     if (filter === 'all') return displayPositions;
@@ -1106,13 +1030,13 @@ export function PortfolioTab() {
     positions: [],
   } : isShowingDemo ? {
     // Genuinely demo → demo numbers. buyingPower = cash (no margin concept).
-    equity: correctEquity,
-    cash: cashBalance,
-    buyingPower: cashBalance,
-    dayPnl: totalTodayPnL,
-    dayPnlPercent: correctEquity > 0 ? (totalTodayPnL / correctEquity) * 100 : 0,
-    totalPnl: correctEquity - 100000,
-    totalPnlPercent: ((correctEquity - 100000) / 100000) * 100,
+    equity: demoEquity,
+    cash: demoCashBalance,
+    buyingPower: demoCashBalance,
+    dayPnl: demoTodayPnL,
+    dayPnlPercent: demoEquity > 0 ? (demoTodayPnL / demoEquity) * 100 : 0,
+    totalPnl: demoEquity - 100000,
+    totalPnlPercent: ((demoEquity - 100000) / 100000) * 100,
     positions: displayPositions,
   } : {
     // Neither broker-expected nor demo → never substitute another account's data.
@@ -1154,7 +1078,7 @@ export function PortfolioTab() {
   }
 
   return (
-    <div style={{ paddingBottom: 120 }}>
+    <div style={{ paddingBottom: 24 }}>
       {/* ── 1. Account Hero ── */}
       <AccountHero account={accountData} isConnected={isBrokerExpected} />
 
@@ -1228,7 +1152,7 @@ export function PortfolioTab() {
       </div>
 
       {/* ── 4. Cash / Invested Summary ── */}
-      <BuyingPowerCard account={accountData} invested={totalMarketValue} />
+      <BuyingPowerCard account={accountData} invested={investedValue} />
 
       {/* ── 5. Market Overview ── */}
       <MarketOverview />
@@ -1713,12 +1637,6 @@ export function PortfolioTab() {
         </div>
       )}
 
-      <PortfolioFooter
-        totalMarketValue={totalMarketValue}
-        totalTodayPnL={totalTodayPnL}
-        totalTotalPnL={totalTotalPnL}
-        totalTotalPnLPct={totalTotalPnLPct}
-      />
     </div>
   );
 }

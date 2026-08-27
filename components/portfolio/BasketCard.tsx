@@ -264,6 +264,8 @@ export default function BasketCard({
                   fontSize: 12.5,
                   color: '#ffffff',
                   whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                   flexShrink: 1,
                   minWidth: 0,
                 }}

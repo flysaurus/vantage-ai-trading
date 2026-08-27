@@ -206,8 +206,9 @@ export default function PositionCardV3({
   // ── Derived values ──
   const currentPrice = pos.currentPrice ?? pos.avgCost;
   const costBasis = pos.totalCost ?? pos.qty * pos.avgCost;
-  const totalPnL = (currentPrice - pos.avgCost) * pos.qty;
-  const totalPnLPct = costBasis > 0 ? (totalPnL / costBasis) * 100 : 0;
+  // Single source of truth: broker-authoritative open PnL when present.
+  const totalPnL = pos.totalPnl ?? (currentPrice - pos.avgCost) * pos.qty;
+  const totalPnLPct = pos.totalPnlPercent ?? (costBasis > 0 ? (totalPnL / costBasis) * 100 : 0);
   const todayPnL = pos.dayChange ?? 0;
   const todayPnLPct = pos.dayChangePercent ?? 0;
 
