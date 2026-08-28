@@ -295,7 +295,10 @@ export default function DcaSetupPage() {
         setExistingSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, symbol: selectedSymbol, config: { ...s.config, ...body } } : s));
         setEditingSchedule(null);
       } else {
-        setTimeout(() => router.back(), 1200);
+        // Land on the Invest tab, not the account-select screen (which re-shows
+        // whenever MainApp remounts on a bare router.back()).
+        try { localStorage.setItem('vantage:skipAccountSelect', 'true'); } catch {}
+        setTimeout(() => router.replace('/?tab=invest'), 1200);
       }
     } catch {
       setToast('Network error. Please try again.');

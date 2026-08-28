@@ -42,6 +42,7 @@ export function TradeTab() {
   const [tif, setTif] = useState<'day' | 'gtc'>('day');
   const [historyTab, setHistoryTab] = useState<'filled' | 'open' | 'cancelled' | 'all'>('all');
   const [showBuildBasket, setShowBuildBasket] = useState(false);
+  const [activeSchedules, setActiveSchedules] = useState<any[]>([]);
   const [confirmCancel, setConfirmCancel] = useState<{ orderId: string; symbol: string; side: string; shares: number; price: number } | null>(null);
   const [expandedBasketOrder, setExpandedBasketOrder] = useState<string | null>(null);
   const [confirmCancelBasket, setConfirmCancelBasket] = useState<{ basketOrderId: string; basketDisplayName: string; orderCount: number; pendingCount: number; filledCount: number; totalReserved: number } | null>(null);
@@ -188,6 +189,19 @@ export function TradeTab() {
     };
     window.addEventListener('vantage-set-subtab', handler);
     return () => window.removeEventListener('vantage-set-subtab', handler);
+  }, []);
+
+  // Load active DCA schedules so they surface on the Invest tab (STRATEGIES > ACTIVE)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/strategies/dca/get-all', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setActiveSchedules(data.schedules || []);
+        }
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   // Load pending baskets from broker in-memory state (no localStorage fallback).
@@ -394,6 +408,43 @@ export function TradeTab() {
             </button>
           </div>
         </div>
+        {/* ACTIVE — user's live DCA schedules (edit via the DCA setup page) */}
+        {activeSchedules.length > 0 && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>
+              ACTIVE
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 16px' }}>
+              {activeSchedules.map((s: any) => (
+                <button
+                  key={s.id}
+                  onClick={() => router.push('/strategies/setup/dca')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    background: '#1a2235',
+                    border: '1px solid rgba(34,211,238,0.25)',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}>{s.symbol}</span>
+                    <span style={{ fontSize: '9px', fontWeight: '600', color: '#22d3ee', background: 'rgba(34,211,238,0.12)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>DCA</span>
+                  </div>
+                  <span style={{ color: '#94a3b8', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {s.config?.investBy === 'shares' ? `${s.config.quantity || '?'} sh` : `$${s.config?.amount ?? '?'}`} · {s.config?.frequency ?? 'weekly'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {/* COMING SOON — collapsed to a single slim informational row */}
         <div style={{ padding: '0 16px', marginBottom: '16px' }}>
           <div style={{
