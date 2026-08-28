@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/get-server-user';
 import { createServerClient } from '@/lib/supabase';
+import { calculateNextRun } from '@/lib/scheduler';
 
 const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
 const VALID_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
@@ -95,8 +96,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         symbol: symbol.trim().toUpperCase(),
         config,
         is_active: true,
+        // Seed next_run_at so weekly/biweekly/monthly schedules respect their
+        // day-of-week / day-of-month from the start (otherwise the first cron
+        // after startDate fires immediately regardless of the configured day).
+        next_run_at: calculateNextRun(config as any).toISOString(),
       })
-      .select('id, type, symbol, config, is_active, created_at')
+      .select('id, type, symbol, config, is_active, created_at, next_run_at')
       .single();
 
     if (error) {

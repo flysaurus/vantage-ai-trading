@@ -1,9 +1,10 @@
 // ─── DCA Strategy Scheduler ─────────────────────────────
 // Evaluates all active DCA schedules and executes orders.
-// Called by cron endpoint. Does NOT place actual orders
-// unless a broker is connected — instead it updates the
-// schedule's last_run_at / next_run_at and logs the
-// intended order.
+// Called by cron endpoint. Places REAL market BUY orders
+// through the user's connected brokerage (SnapTrade) via
+// SnapTradeBroker — the same engine as execute-trade /
+// execute-basket. Falls back to a logged skip only when
+// the user has no connected trading brokerage.
 
 interface DcaConfig {
   amount: number;
@@ -36,8 +37,13 @@ interface DcaExecutionResult {
   price?: number;
 }
 
-import { getBrokerContext, makeAlpacaRequest } from '@/lib/broker-service';
 import { getPrice } from '@/lib/market-data';
+import { resolveSnapTradeCredentials, SnapTradeAuthError, SnapTradeAmbiguousError } from '@/lib/snaptrade/client';
+import { SnapTradeBroker } from '@/lib/broker/snaptrade-broker';
+import { formatBrokerName } from '@/lib/broker-name';
+import { notifyOrderEvent } from '@/lib/order-emails';
+import { notifyOrderNotification } from '@/lib/order-notifications';
+import type { OrderRequest, OrderResult } from '@/lib/broker/types';
 
 // ─── Calculate next run time ─────────────────────────────
 export function calculateNextRun(config: DcaConfig, fromDate?: Date): Date {
@@ -168,10 +174,15 @@ export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionRe
         shares = amount / price;
       }
 
-      // Place order via Alpaca (if broker connected)
-      // For now: log the intended order. The actual broker trade
-      // requires reading the user's encrypted Alpaca keys from vault.
-      const orderPlaced = await placeDcaOrder(supabase, sched.user_id, sched.symbol, shares, price);
+      // Place a real order through the user's connected brokerage (SnapTrade).
+      // Amount mode → notional_value BUY; shares mode → explicit units.
+      // Fails soft (skip) only when no trading broker is connected.
+      const isNotional = config.investBy !== 'shares';
+      const outcome = await placeDcaOrder(supabase, sched.user_id, sched.symbol, {
+        shares,
+        amount,
+        isNotional,
+      });
 
       // Update schedule
       const nextRun = calculateNextRun(config, now);
@@ -187,10 +198,8 @@ export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionRe
         scheduleId: sched.id,
         symbol: sched.symbol,
         userId: sched.user_id,
-        action: orderPlaced ? 'executed' : 'executed',
-        details: orderPlaced
-          ? `Buy ${shares.toFixed(4)} ${sched.symbol} @ $${price} = $${amount.toFixed(2)}`
-          : `Order logged: ${shares.toFixed(4)} ${sched.symbol} @ $${price} (broker not connected)`,
+        action: outcome.placed ? 'executed' : outcome.error ? 'error' : 'skipped',
+        details: outcome.detail,
         amount,
         shares,
         price,
@@ -203,36 +212,162 @@ export async function executeDcaSchedules(supabase: any): Promise<DcaExecutionRe
   return results;
 }
 
-// ─── Place DCA order via broker ──────────────────────────
+// ─── Place DCA order via the connected broker (SnapTrade) ──
+//
+// Resolves the user's LIVE SnapTrade credentials and places a real market BUY
+// through SnapTradeBroker (the same engine as execute-trade / execute-basket).
+// Skips only when the user has no connected trading brokerage. Persists the
+// order to `orders` and fires the email + bell notifications so DCA fills are
+// visible exactly like manual buys.
 async function placeDcaOrder(
   supabase: any,
   userId: string,
   symbol: string,
-  shares: number,
-  price: number,
-): Promise<boolean> {
+  opts: { shares: number; amount: number; isNotional: boolean },
+): Promise<{ placed: boolean; error: boolean; detail: string }> {
+  let creds: Awaited<ReturnType<typeof resolveSnapTradeCredentials>>;
   try {
-    // Get broker credentials via broker-service (Supabase Vault)
-    const ctx = await getBrokerContext(userId);
-
-    if (ctx.isDemo || !ctx.credentials || ctx.provider !== 'alpaca') {
-      return false; // Demo mode or no Alpaca broker connected
+    creds = await resolveSnapTradeCredentials(userId);
+  } catch (err) {
+    if (err instanceof SnapTradeAuthError) {
+      return { placed: false, error: false, detail: 'No connected brokerage — order not placed' };
     }
-
-    await makeAlpacaRequest('/v2/orders', ctx.credentials, {
-      method: 'POST',
-      body: JSON.stringify({
-        symbol,
-        qty: String(shares.toFixed(4)),
-        side: 'buy',
-        type: 'market',
-        time_in_force: 'day',
-        client_order_id: `dca-${userId.slice(0, 8)}-${Date.now()}`,
-      }),
-    });
-
-    return true;
-  } catch {
-    return false;
+    if (err instanceof SnapTradeAmbiguousError) {
+      return { placed: false, error: true, detail: 'Multiple brokerages connected — connect exactly one to enable DCA' };
+    }
+    return { placed: false, error: true, detail: `Credential resolution failed: ${(err as Error)?.message || 'unknown'}` };
   }
+
+  const broker = new SnapTradeBroker({
+    userId: creds.snaptradeUserId,
+    userSecret: creds.snaptradeUserSecret,
+    connectionId: creds.connectionId,
+    brokerSlug: creds.brokerSlug,
+    brokerName: formatBrokerName(creds.brokerSlug),
+    tradingEnabled: creds.tradingEnabled,
+  });
+
+  // Internal Vantage order id — sent to the broker as client_order_id for 1:1
+  // traceability (idempotency), then reused as orders.id on persist.
+  const vantageOrderId = crypto.randomUUID();
+
+  const orderReq: OrderRequest = {
+    symbol,
+    side: 'BUY',
+    type: 'market',
+    timeInForce: 'day',
+    clientOrderId: vantageOrderId,
+  };
+  if (opts.isNotional && opts.amount > 0) {
+    orderReq.dollarAmount = opts.amount;
+  } else {
+    orderReq.shares = opts.shares;
+  }
+
+  let result: OrderResult;
+  try {
+    result = await broker.placeOrder(orderReq);
+  } catch (err) {
+    return { placed: false, error: true, detail: `Order placement failed: ${(err as Error)?.message || 'unknown'}` };
+  }
+
+  // Pre-broker sentinels — never reached SnapTrade (validation failures).
+  const PHANTOM_ORDER_IDS = new Set(['readonly', 'no-account', 'bad-symbol', 'no-qty', 'unknown']);
+  const isPhantom = PHANTOM_ORDER_IDS.has(result.orderId || '');
+  const shouldPersist = !isPhantom;
+
+  const orderUnit: 'dollars' | 'shares' = opts.isNotional ? 'dollars' : 'shares';
+  const requestedAmount = opts.isNotional
+    ? opts.amount
+    : (opts.shares > 0 ? Number((opts.shares * (result.fillPrice || 0)).toFixed(2)) : null);
+  const requestedQty = opts.isNotional
+    ? (result.fillPrice && result.fillPrice > 0 ? Number((opts.amount / result.fillPrice).toFixed(6)) : opts.shares)
+    : opts.shares;
+
+  if (shouldPersist) {
+    try {
+      const now = new Date().toISOString();
+      const insertRow: Record<string, unknown> = {
+        id: vantageOrderId,
+        user_id: userId,
+        connection_id: creds.brokerConnectionId,
+        symbol: symbol.toUpperCase(),
+        qty: opts.shares,
+        order_unit: orderUnit,
+        requested_amount: requestedAmount,
+        requested_qty: requestedQty,
+        filled_qty: result.status === 'FILLED' ? (result.filledShares || opts.shares) : 0,
+        side: 'buy',
+        order_type: 'market',
+        status: (result.status || 'OPEN').toLowerCase(),
+        filled_price: result.fillPrice || null,
+        filled_at: result.filledAt || (result.status === 'FILLED' ? now : null),
+        time_in_force: 'day',
+        is_demo: false,
+        brokerage_order_id: result.orderId || null,
+        source: 'dca',
+        created_at: now,
+      };
+      if (opts.isNotional) {
+        insertRow.notional = opts.amount;
+      }
+      await supabase.from('orders').insert(insertRow).select('id').single();
+    } catch (persistErr) {
+      console.error('[scheduler][dca] ⚠️ DB persist failed:', (persistErr as Error)?.message);
+    }
+  }
+
+  // Notifications (placed + immediate fill) — mirror execute-trade.
+  const brokerName = formatBrokerName(creds.brokerSlug);
+  const orderIdForEmail = result.orderId || vantageOrderId;
+  const requestedFields = {
+    orderUnit,
+    requestedAmount: requestedAmount ?? null,
+    requestedQty: requestedQty ?? null,
+  };
+
+  if (shouldPersist && result.success) {
+    const placedShares = result.filledShares || result.estimatedShares || opts.shares || 0;
+    const estimatedTotal = result.totalCost
+      || (result.fillPrice && placedShares ? result.fillPrice * placedShares : 0)
+      || opts.amount
+      || 0;
+
+    await notifyOrderEvent(
+      supabase,
+      userId,
+      { kind: 'placed', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', type: 'market', estimatedTotal, orderId: orderIdForEmail, isLive: true, ...requestedFields },
+    );
+    await notifyOrderNotification(
+      supabase,
+      userId,
+      { kind: 'placed', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', type: 'market', estimatedTotal, orderId: orderIdForEmail, isLive: true, ...requestedFields },
+    );
+
+    const fillShares = result.filledShares || placedShares || 0;
+    const fillPrice = result.fillPrice || 0;
+    const totalCost = result.totalCost || (fillPrice * fillShares);
+
+    if (result.status === 'FILLED') {
+      await notifyOrderEvent(
+        supabase,
+        userId,
+        { kind: 'filled', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', fillQty: fillShares, fillPrice, fillTotal: totalCost, orderId: orderIdForEmail, isLive: true, ...requestedFields },
+      );
+      await notifyOrderNotification(
+        supabase,
+        userId,
+        { kind: 'filled', brokerName, symbol: symbol.toUpperCase(), side: 'BUY', fillQty: fillShares, fillPrice, fillTotal: totalCost, orderId: orderIdForEmail, isLive: true, ...requestedFields },
+      );
+    }
+  }
+
+  const ok = result.success;
+  return {
+    placed: ok,
+    error: !ok,
+    detail: ok
+      ? `Buy ${opts.shares.toFixed(4)} ${symbol} = $${opts.amount.toFixed(2)} (${result.status || 'OPEN'})`
+      : `Rejected: ${result.message || 'order not accepted'}`,
+  };
 }

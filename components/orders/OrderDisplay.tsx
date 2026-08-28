@@ -100,7 +100,9 @@ export function orderOrigin(order: Order): string {
   if (order.origin === 'external') {
     return order.brokerName ? `Synced from ${order.brokerName}` : 'Synced from broker';
   }
-  return order.source === 'ai_advisor' ? 'via AI Advisor' : 'Manual buy';
+  if (order.source === 'ai_advisor') return 'via AI Advisor';
+  if (order.source === 'dca') return 'DCA auto-buy';
+  return 'Manual buy';
 }
 
 export function orderRef(order: Order): string {
