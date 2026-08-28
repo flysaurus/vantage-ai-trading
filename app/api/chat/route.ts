@@ -13,6 +13,7 @@ import { CHAT_PRINCIPLES } from '@/lib/ai-principles';
 import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
+import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
 import { checkUsageLimit, incrementUsage, getLocalDateFromTimezone } from '@/lib/ai-guard'
 import { getOptionalUserId } from '@/lib/auth/get-server-user'
 import { getActiveFacts, writeFact, formatFactsForPrompt } from '@/lib/ai/facts'
@@ -996,6 +997,20 @@ export async function POST(req: Request) {
       return Response.json({
         content: "I specialize exclusively in portfolio analysis and market intelligence. What would you like to know about your portfolio or the markets?"
       })
+    }
+
+    // ── Deterministic profile questions (grounded — no model call) ──
+    // "What is my investment style" / "what's my risk tolerance" / "what's my
+    // profile" are fully answerable from the server-known profile. Answering them
+    // with a free-form model previously hallucinated a fabricated "$1,000 ETF
+    // portfolio" + unsolicited ROK/AXON/PLTR recommendations. Route them
+    // deterministically so the answer is always correct + coherent.
+    if (mode !== 'alerts') {
+      const profileKind = detectProfileQuestion(lastMessage);
+      if (profileKind) {
+        console.log(`[chat] 🧭 profile question (${profileKind}) → deterministic answer`);
+        return Response.json({ content: buildProfileAnswer(profile, profileKind) });
+      }
     }
 
     const systemPrompt = mode === 'alerts'
