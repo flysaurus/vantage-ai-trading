@@ -14,7 +14,7 @@ import { resolveTickers } from '@/lib/ticker-resolver';
 import { buildUserProfileContext } from '@/lib/ai/userProfile'
 import type { UserProfile } from '@/lib/ai/userProfile'
 import { detectProfileQuestion, buildProfileAnswer } from '@/lib/ai/profile-answers'
-import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
+import { detectAccountAction, computeRebalancePlan, styleLabel, formatStyleChangeAnswer, formatInvalidStyleAnswer, formatRebalancePlanAnswer, formatTargetsOnlyAnswer, detectPortfolioTotalMismatch, detectExecuteRebalance, detectRebalanceFollowUp, rebalancePlanToLegs, formatRebalanceExecutionPreview } from '@/lib/ai/account-actions'
 import type { PortfolioSnapshot } from '@/lib/ai/account-actions'
 import { READONLY_TOOLS, executeReadonlyTool } from '@/lib/ai/readonly-tools'
 import type { ReadonlyToolContext } from '@/lib/ai/readonly-tools'
@@ -1104,7 +1104,7 @@ export async function POST(req: Request) {
     // confirmation. The actual order placement happens in the confirm gate above
     // via executePendingAction → execRebalance. Detected BEFORE detectAccountAction
     // so "execute the rebalance" isn't re-read as a new plan request.
-    if (mode !== 'alerts' && detectExecuteRebalance(lastMessage)) {
+    if (mode !== 'alerts' && (detectExecuteRebalance(lastMessage) || detectRebalanceFollowUp(messages))) {
       const supabase = createServerClient();
       const targetStyle = (profile.investorStyle || 'Lynch').toLowerCase();
       if (!portfolioSnapshot || (portfolioSnapshot.equity <= 0 && portfolioSnapshot.positions.length === 0)) {

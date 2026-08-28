@@ -153,6 +153,32 @@ export function detectExecuteRebalance(message: string): boolean {
   return /\b(?:execute|place|run|perform|proceed|go\s+ahead|fire|submit)\b/i.test(m);
 }
 
+// Bare approval/execution phrases that, in the context of a just-shown rebalance
+// plan, mean "stage the rebalance execution preview". Users rarely repeat the
+// word "rebalance" — they say "go ahead" / "do it" / "yes, execute now" — and
+// `detectExecuteRebalance` (which requires the literal word) misses those.
+const REBALANCE_FOLLOWUP_RE =
+  /\b(?:go\s+ahead|do\s+it|do\s+that|run\s+it|make\s+it\s+so|place\s+(?:the\s+)?trades?|execute|proceed|approve|approved|confirm|confirmed|fire|submit|yes|yeah|yep|let'?s\s+go|lets\s+go)\b/i;
+
+/**
+ * Detect a follow-up approval to a rebalance plan the assistant just showed.
+ * Only fires when the immediately-preceding assistant message is a rebalance
+ * plan or preview ("Here's the rebalance plan…" / "Ready to rebalance…"), so a
+ * bare "yes"/"go ahead" can't be misread in any other conversation.
+ */
+export function detectRebalanceFollowUp(
+  messages: Array<{ role: string; content: string }>,
+): boolean {
+  if (!Array.isArray(messages) || messages.length === 0) return false;
+  const last = (messages[messages.length - 1]?.content ?? '').trim();
+  if (!last || last.length > 240) return false;
+  if (!REBALANCE_FOLLOWUP_RE.test(last)) return false;
+  const prevAssistant = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant')?.content ?? '';
+  return /rebalance\s+plan\s+to|ready\s+to\s+rebalance/i.test(prevAssistant);
+}
+
 export interface RebalanceLeg {
   symbol: string;
   side: 'BUY' | 'SELL';
