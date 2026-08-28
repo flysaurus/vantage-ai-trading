@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { useLivePortfolio } from '@/context/PortfolioContext';
 import { useTabStore, useOrderStore } from '@/store';
 import { useAccounts } from '@/context/AccountContext';
@@ -30,6 +31,7 @@ function formatQuoteDate(ts: number) {
 
 export function TradeTab() {
   const { user } = useAuth();
+  const router = useRouter();
   const { setTab: setActiveTab } = useTabStore();
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
@@ -377,10 +379,10 @@ export function TradeTab() {
               <div style={{ color: '#cbd5e1', fontSize: '10px', lineHeight: '1.2' }}>AI-curated themed portfolios</div>
             </button>
             <button
-              onClick={() => setActiveTab('invest')}
+              onClick={() => router.push('/strategies/setup/dca')}
               style={{
                 background: '#1a2235',
-                border: '1px solid rgba(255,255,255,0.06)',
+                border: '1px solid rgba(34,211,238,0.3)',
                 borderRadius: '10px',
                 padding: '10px 8px',
                 cursor: 'pointer',
